@@ -1,0 +1,464 @@
+@import "tailwindcss";
+
+@layer base {
+  *, ::before, ::after {
+    -webkit-tap-highlight-color: transparent;
+    box-sizing: border-box;
+  }
+
+  html, body {
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  :root {
+    /* Boardly Core Palette */
+    --boardly-gold: #1E5AFF;
+    --boardly-gold-hover: #1546CC;
+    --boardly-blue: #1E5AFF;
+    --boardly-blue-hover: #1546CC;
+    --boardly-navy: #0A1330;
+    --boardly-dark: #090909;
+    --boardly-light: #F8F9FB;
+    
+    /* Theme vars for light design */
+    --ios-system-blue: var(--boardly-blue);
+    --ios-system-green: #34C759;
+    --ios-system-red: #FF3B30;
+    --ios-system-gray: #8E8E93;
+    
+    --ios-bg: var(--boardly-light);
+    --ios-card: #FFFFFF;
+    --ios-card-secondary: #EEF2FF;
+    --ios-card-tertiary: #E0E7FF;
+    --ios-text-primary: #0A1330;
+    --ios-text-secondary: #475569;
+    --ios-border: rgba(30, 90, 255, 0.15);
+  }
+
+  html, body {
+    background-color: #F8F9FB !important;
+    color: #0A1330 !important;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    min-height: 100vh;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-overflow-scrolling: touch;
+    scroll-behavior: smooth;
+  }
+
+  h1, h2, h3, h4, h5, h6, .font-serif {
+    font-family: "Space Grotesk", "Clash Display", -apple-system, sans-serif;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+  }
+}
+
+@keyframes drawerInstantSlide {
+  0% {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-drawer-fast {
+  animation: drawerInstantSlide 120ms cubic-bezier(0, 0, 0.2, 1) both;
+}
+
+@keyframes iosSpring {
+  0% { transform: scale(0.99) translateY(2px); opacity: 0.95; }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+@keyframes logoBreathing {
+  0%, 100% {
+    transform: scale(0.92);
+    opacity: 0.9;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+}
+
+@keyframes flameFlicker {
+  0%, 100% {
+    transform: scale3d(1, 1, 1) translateY(0) rotate(0deg);
+    opacity: 1;
+  }
+  25% {
+    transform: scale3d(1.06, 0.95, 1) translateY(-1.5px) rotate(-2deg);
+    opacity: 0.96;
+  }
+  50% {
+    transform: scale3d(0.96, 1.05, 1) translateY(-2.5px) rotate(2deg);
+    opacity: 1;
+  }
+  75% {
+    transform: scale3d(1.04, 0.96, 1) translateY(-1px) rotate(-1deg);
+    opacity: 0.94;
+  }
+}
+
+@keyframes riseEmber {
+  0% {
+    transform: translate3d(0, 0, 0) scale(0.5);
+    opacity: 0;
+  }
+  25% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate3d(0, -32px, 0) scale(1.3) rotate(45deg);
+    opacity: 0;
+  }
+}
+
+@keyframes flamePulseRing {
+  0% {
+    transform: scale3d(0.92, 0.92, 1);
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0.5);
+  }
+  60% {
+    transform: scale3d(1.06, 1.06, 1);
+    box-shadow: 0 0 0 8px rgba(249, 115, 22, 0);
+  }
+  100% {
+    transform: scale3d(0.92, 0.92, 1);
+    box-shadow: 0 0 0 0 rgba(249, 115, 22, 0);
+  }
+}
+
+@keyframes flameGlowPulse {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scale3d(0.96, 0.96, 1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale3d(1.04, 1.04, 1);
+  }
+}
+
+@keyframes flameSparkle {
+  0%, 100% {
+    opacity: 0.85;
+    transform: scale3d(1, 1, 1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale3d(1.15, 1.15, 1);
+  }
+}
+
+.animate-ios-spring {
+  animation: iosSpring 280ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-pulse-glow {
+  animation: pulseGlow 3s ease-in-out infinite;
+}
+.animate-logo-breath {
+  animation: logoBreathing 1.8s ease-in-out infinite;
+}
+.animate-flame-flicker {
+  animation: flameFlicker 1.2s ease-in-out infinite;
+  transform-origin: bottom center;
+  will-change: transform;
+}
+.animate-rise-ember-1 {
+  animation: riseEmber 2s ease-out infinite;
+  will-change: transform, opacity;
+}
+.animate-rise-ember-2 {
+  animation: riseEmber 2.4s ease-out 0.6s infinite;
+  will-change: transform, opacity;
+}
+.animate-rise-ember-3 {
+  animation: riseEmber 1.8s ease-out 1.2s infinite;
+  will-change: transform, opacity;
+}
+.animate-flame-ring {
+  animation: flamePulseRing 2s ease-in-out infinite;
+  will-change: transform, box-shadow;
+}
+.animate-flame-glow {
+  animation: flameGlowPulse 2.5s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+.animate-flame-sparkle {
+  animation: flameSparkle 1.8s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* Card rendering performance containment */
+.card-containment {
+  contain: layout paint;
+}
+
+.section-containment {
+  contain: layout paint;
+  content-visibility: auto;
+  contain-intrinsic-size: 0 400px;
+}
+
+.gpu-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
+
+/* Boardly Main Glassmorphism App Card */
+.ios-glass-card {
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  border-radius: 24px;
+  background: #FFFFFF;
+  border: 1px solid rgba(10, 10, 10, 0.1);
+  box-shadow: 0 12px 24px -10px rgba(0, 0, 0, 0.06), 0 0 1px 1px rgba(0, 0, 0, 0.03);
+}
+
+/* Boardly Grouped Cell */
+.ios-grouped-cell {
+  transition: background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  border-radius: 16px;
+  background: #FFFFFF;
+  border: 1px solid rgba(10, 10, 10, 0.1);
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.04);
+}
+
+/* iOS Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(142, 142, 147, 0.35);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(142, 142, 147, 0.6);
+}
+
+.font-urdu {
+  font-family: 'Noto Nastaliq Urdu', 'Noto Sans Arabic', 'Jameel Noori Nastaliq', 'Urdu Typesetting', serif;
+  line-height: 2.2;
+}
+.board-exam-paper {
+  border: 2px solid #1E5AFF;
+  border-radius: 16px;
+  background-image: linear-gradient(to bottom, rgba(255, 255, 255, 0.98), rgba(240, 244, 255, 0.98));
+}
+
+@keyframes continuous-scroll {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-continuous-scroll {
+  display: flex;
+  width: max-content;
+  animation: continuous-scroll 32s linear infinite;
+}
+
+.animate-continuous-scroll:hover,
+.animate-continuous-scroll:active {
+  animation-play-state: paused;
+}
+@media print {
+  /* Reset body and background for clean paper print */
+  body, html {
+    background: #ffffff !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide header, navigation, background blurs, watermarks, review buttons, and non-printable elements */
+  header,
+  footer,
+  nav,
+  .no-print,
+  .no-print-bg,
+  .SecurityWatermark,
+  .animate-pulse-glow,
+  .animate-ios-spring,
+  .backdrop-blur-md,
+  button:not(.print-keep) {
+    display: none !important;
+  }
+
+  /* Hide app main container background elements if modal is open */
+  .fixed.inset-0.bg-slate-900\/70,
+  .fixed.inset-0 {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    overflow: visible !important;
+  }
+
+  /* Optimize test paper container for print */
+  .printable-paper-root,
+  .print-content {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 10mm 12mm !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    border-radius: 0 !important;
+  }
+
+  .printable-paper-root {
+    position: relative !important;
+  }
+
+  /* Ensure watermark background layer is printed crisply */
+  .boardly-pdf-watermark-overlay {
+    display: block !important;
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 0 !important;
+    pointer-events: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Clean page break management */
+  .break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .break-before-page {
+    break-before: page !important;
+    page-break-before: always !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.animate-shimmer {
+  animation: shimmer 3s infinite;
+}
+
+/* =========================================================================
+   KaTeX Math Equation Typesetting & Styling for Study Buddy AI
+   ========================================================================= */
+.katex-display {
+  margin: 0.75rem 0 !important;
+  padding: 0.875rem 1.25rem !important;
+  background: rgba(30, 90, 255, 0.05) !important;
+  border: 1px solid rgba(30, 90, 255, 0.2) !important;
+  border-radius: 0.875rem !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  text-align: center !important;
+  color: inherit !important;
+  font-size: 1.12em !important;
+}
+
+.katex {
+  font-size: 1.08em !important;
+  text-indent: 0 !important;
+  line-height: 1.35 !important;
+  text-rendering: optimizeLegibility;
+}
+
+.katex-inline {
+  display: inline-block;
+  vertical-align: middle;
+  padding: 0.1em 0.2em;
+  color: inherit;
+  font-weight: 500;
+}
+
+.katex-inline .katex {
+  color: inherit;
+}
+
+/* Ensure superscripts, subscripts, and brackets do not get clipped or misaligned */
+.katex .mord.sup, 
+.katex .msupsub {
+  vertical-align: baseline;
+}
+
+.katex .mopen:not(.delimsizing), 
+.katex .mclose:not(.delimsizing) {
+  vertical-align: middle;
+}
+
+/* Properly scale matrix brackets and large delimiters relative to matrix rows */
+.katex .delimsizing {
+  line-height: normal !important;
+}
+
+.katex .delimsizing.mult {
+  height: auto !important;
+}
+
+.katex .delimsizing.mult > span {
+  height: 100% !important;
+}
+
+.katex .mtable {
+  vertical-align: middle !important;
+}
+
+/* =========================================================================
+   GPU-Accelerated Zero-Jank Scroll Animation Classes
+   ========================================================================= */
+.scroll-anim-card,
+.scroll-anim-row {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+  transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.scroll-anim-card.is-visible,
+.scroll-anim-row.is-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scroll-anim-card,
+  .scroll-anim-row {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}
+
