@@ -135,6 +135,9 @@ export async function validatePdfFile(
     const doc = await Promise.race([docPromise, timeoutPromise]);
 
     if (!doc || typeof doc.numPages !== 'number' || doc.numPages < 1) {
+      if (doc) {
+        try { doc.cleanup(); (doc as any).destroy?.(); } catch {}
+      }
       return {
         isValid: false,
         error: 'Upload failed — file appears corrupted, please try again',
@@ -146,6 +149,7 @@ export async function validatePdfFile(
     try {
       const page1 = await doc.getPage(1);
       if (!page1) {
+        try { doc.cleanup(); (doc as any).destroy?.(); } catch {}
         return {
           isValid: false,
           error: 'Upload failed — file appears corrupted, please try again',
@@ -154,6 +158,7 @@ export async function validatePdfFile(
       }
     } catch (pageErr) {
       console.warn('[validatePdfFile] Failed to parse page 1 of PDF:', pageErr);
+      try { doc.cleanup(); (doc as any).destroy?.(); } catch {}
       return {
         isValid: false,
         error: 'Upload failed — file appears corrupted, please try again',
@@ -161,9 +166,15 @@ export async function validatePdfFile(
       };
     }
 
+    const totalPages = doc.numPages;
+    try {
+      doc.cleanup();
+      (doc as any).destroy?.();
+    } catch {}
+
     return {
       isValid: true,
-      totalPages: doc.numPages,
+      totalPages,
       magicHeader: magicCheck.magicHeader,
       fileSizeBytes: byteLength,
     };

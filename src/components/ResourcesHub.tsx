@@ -47,7 +47,6 @@ import {
   IntegrityCheckItem,
 } from '../lib/pdfIntegrityChecker';
 import { ResourceCard } from './ResourceCard';
-import { UploadResourceDrawer } from './UploadResourceDrawer';
 import {
   StudyStickyNote,
   StudyHighlight,
@@ -64,7 +63,9 @@ import {
   deleteResourceFromHub,
   isAdminEmail
 } from '../lib/supabase';
-import { InlinePdfViewer } from './InlinePdfViewer';
+
+const InlinePdfViewer = lazy(() => import('./InlinePdfViewer').then(m => ({ default: m.InlinePdfViewer })));
+const UploadResourceDrawer = lazy(() => import('./UploadResourceDrawer').then(m => ({ default: m.UploadResourceDrawer })));
 
 export const CLASS_TABS = [
   'All Classes',

@@ -162,35 +162,42 @@ export async function exportPdfPageToImage(
   );
 
   const pdf = await Promise.race([docPromise, timeoutPromise]);
-  const totalPages = pdf.numPages;
-  const targetPageNumber = Math.min(Math.max(1, pageNumber), totalPages);
-  const page = await pdf.getPage(targetPageNumber);
+  try {
+    const totalPages = pdf.numPages;
+    const targetPageNumber = Math.min(Math.max(1, pageNumber), totalPages);
+    const page = await pdf.getPage(targetPageNumber);
 
-  const viewport = page.getViewport({ scale });
-  const canvas = document.createElement('canvas');
-  const context = canvas.getContext('2d', { alpha: false });
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d', { alpha: false });
 
-  if (!context) {
-    throw new Error('Canvas 2D context is not available');
+    if (!context) {
+      throw new Error('Canvas 2D context is not available');
+    }
+
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+
+    // Fill background with clean white for sharp document print fidelity
+    context.fillStyle = '#FFFFFF';
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    const renderContext = {
+      canvasContext: context,
+      canvas: canvas,
+      viewport: viewport,
+    };
+
+    await page.render(renderContext as any).promise;
+
+    const dataUrl = canvas.toDataURL('image/png', 1.0);
+    return { dataUrl, width: canvas.width, height: canvas.height, totalPages };
+  } finally {
+    try {
+      pdf.cleanup();
+      (pdf as any).destroy?.();
+    } catch {}
   }
-
-  canvas.width = Math.floor(viewport.width);
-  canvas.height = Math.floor(viewport.height);
-
-  // Fill background with clean white for sharp document print fidelity
-  context.fillStyle = '#FFFFFF';
-  context.fillRect(0, 0, canvas.width, canvas.height);
-
-  const renderContext = {
-    canvasContext: context,
-    canvas: canvas,
-    viewport: viewport,
-  };
-
-  await page.render(renderContext as any).promise;
-
-  const dataUrl = canvas.toDataURL('image/png', 1.0);
-  return { dataUrl, width: canvas.width, height: canvas.height, totalPages };
 }
 
 /**

@@ -46,7 +46,7 @@ function formatDate(dateStr?: string) {
   }
 }
 
-export const ResourceCard = React.memo<ResourceCardProps>(({
+const ResourceCardComponent: React.FC<ResourceCardProps> = ({
   item,
   isSelected,
   isAdmin,
@@ -179,6 +179,18 @@ export const ResourceCard = React.memo<ResourceCardProps>(({
         )}
       </div>
     </div>
+  );
+};
+
+export const ResourceCard = React.memo<ResourceCardProps>(ResourceCardComponent, (prev, next) => {
+  return (
+    prev.item.id === next.item.id &&
+    prev.item.title === next.item.title &&
+    prev.item.file_size === next.item.file_size &&
+    prev.item.subject === next.item.subject &&
+    prev.item.class === next.item.class &&
+    prev.isSelected === next.isSelected &&
+    prev.isAdmin === next.isAdmin
   );
 });
 

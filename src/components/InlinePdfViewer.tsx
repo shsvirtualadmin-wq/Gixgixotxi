@@ -1,6 +1,4 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {
   Loader2,
   AlertCircle,
@@ -9,28 +7,11 @@ import {
   ChevronLeft,
   ChevronRight,
   ExternalLink,
-  RotateCw,
   Maximize2,
   RefreshCw,
   FileText
 } from 'lucide-react';
 import { fetchPdfBinary, openExternalPdfBrowser, resolveProxyPdfUrl } from '../lib/pdfExport';
-
-// Configure pdfjs worker with multiple reliable fallbacks (Vite bundled worker, jsdelivr, cdnjs)
-if (typeof window !== 'undefined') {
-  try {
-    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        pdfWorkerUrl ||
-        `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '6.2.108'}/build/pdf.worker.min.mjs`;
-    }
-  } catch (e) {
-    console.warn('[InlinePdfViewer] Worker config warning:', e);
-  }
-}
-
-// In-memory document cache to eliminate redundant network fetches
-const pdfDocumentCache = new Map<string, any>();
 
 interface InlinePdfViewerProps {
   fileUrl: string;
@@ -47,7 +28,6 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
   title,
   currentPage,
   onPageChange,
-  searchQuery = '',
   children,
   onPdfLoaded,
 }) => {
@@ -64,6 +44,7 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
   const [useNativeViewerFallback, setUseNativeViewerFallback] = useState<boolean>(false);
 
   const renderTaskRef = useRef<any>(null);
+  const activeDocRef = useRef<any>(null);
 
   // Load PDF Document with strict timeout & error handling
   useEffect(() => {
@@ -75,18 +56,6 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
     if (!fileUrl) {
       setIsLoading(false);
       setErrorMessage('No PDF document URL provided.');
-      return;
-    }
-
-    // Check memory cache first for instant opening
-    if (pdfDocumentCache.has(fileUrl)) {
-      const cachedDoc = pdfDocumentCache.get(fileUrl);
-      setPdfDoc(cachedDoc);
-      setTotalPages(cachedDoc.numPages);
-      setIsLoading(false);
-      if (onPdfLoaded) {
-        onPdfLoaded(cachedDoc.numPages);
-      }
       return;
     }
 
@@ -102,11 +71,15 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
     const loadDocument = async () => {
       try {
         console.log('[InlinePdfViewer] Fetching PDF binary for:', fileUrl);
-        const pdfBytes = await fetchPdfBinary(fileUrl);
+        const [pdfBytes, pdfjsLib, pdfWorkerUrlModule] = await Promise.all([
+          fetchPdfBinary(fileUrl),
+          import('pdfjs-dist'),
+          import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+        ]);
 
         if (isCancelled) return;
 
-        // Ensure workerSrc is set
+        const pdfWorkerUrl = (pdfWorkerUrlModule.default || pdfWorkerUrlModule) as string;
         if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
           pdfjsLib.GlobalWorkerOptions.workerSrc =
             pdfWorkerUrl ||
@@ -122,15 +95,28 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
 
         // Add 6s promise race so a frozen worker never hangs indefinitely
         const docPromise = loadingTask.promise;
-        const raceTimeout = new Promise((_, reject) =>
+        const raceTimeout = new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('PDF.js worker initialization timed out')), 6500)
         );
 
         const doc: any = await Promise.race([docPromise, raceTimeout]);
-        if (isCancelled) return;
+        if (isCancelled) {
+          try {
+            doc.cleanup();
+            doc.destroy();
+          } catch {}
+          return;
+        }
 
         clearTimeout(timeoutId);
-        pdfDocumentCache.set(fileUrl, doc);
+        // Destroy previous active doc if any to free memory
+        if (activeDocRef.current && activeDocRef.current !== doc) {
+          try {
+            activeDocRef.current.cleanup();
+            activeDocRef.current.destroy();
+          } catch {}
+        }
+        activeDocRef.current = doc;
         setPdfDoc(doc);
         setTotalPages(doc.numPages);
         setIsLoading(false);
@@ -158,6 +144,14 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
         try {
           renderTaskRef.current.cancel();
         } catch {}
+        renderTaskRef.current = null;
+      }
+      if (activeDocRef.current) {
+        try {
+          activeDocRef.current.cleanup();
+          activeDocRef.current.destroy();
+        } catch {}
+        activeDocRef.current = null;
       }
     };
   }, [fileUrl, retryKey]);
@@ -171,6 +165,7 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
         try {
           renderTaskRef.current.cancel();
         } catch {}
+        renderTaskRef.current = null;
       }
 
       setIsRenderingPage(true);
@@ -214,6 +209,14 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
 
   useEffect(() => {
     renderCurrentPage();
+    return () => {
+      if (renderTaskRef.current) {
+        try {
+          renderTaskRef.current.cancel();
+        } catch {}
+        renderTaskRef.current = null;
+      }
+    };
   }, [renderCurrentPage]);
 
   // Keyboard navigation for page turning
@@ -249,7 +252,6 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
     if (containerRef.current) {
       const containerWidth = containerRef.current.clientWidth - 48;
       if (containerWidth > 300) {
-        // Standard A4 width is ~595pt. Calculate appropriate scale
         const calculatedScale = Math.min(Math.max(0.8, containerWidth / 650), 1.8);
         setScale(parseFloat(calculatedScale.toFixed(2)));
       }
@@ -269,7 +271,6 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
   };
 
   const handleRetry = () => {
-    pdfDocumentCache.delete(fileUrl);
     setRetryKey(prev => prev + 1);
   };
 
@@ -465,3 +466,4 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
     </div>
   );
 };
+export default InlinePdfViewer;

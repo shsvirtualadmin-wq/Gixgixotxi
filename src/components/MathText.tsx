@@ -1,5 +1,5 @@
-import React from 'react';
-import { parseMathParts, renderKaTeX } from '../lib/mathConverter';
+import React, { useState, useEffect } from 'react';
+import { parseMathParts, renderKaTeX, isKaTeXLoaded, loadKaTeX } from '../lib/mathConverter';
 
 interface MathTextProps {
   text: string;
@@ -14,9 +14,22 @@ export const MathText: React.FC<MathTextProps> = React.memo(({
   isUrduOrIslamiat = false,
   block = false,
 }) => {
+  const [katexReady, setKatexReady] = useState(() => isKaTeXLoaded());
+
   if (!text) return null;
 
   const parts = parseMathParts(text);
+  const hasMath = parts.some(
+    p => p.type !== 'text' || /\\+(?:displaystyle|begin|end|pmatrix|bmatrix|vmatrix|frac|sqrt|lim|int|sum|prod|alpha|beta|gamma|delta|theta|pi|lambda|mu|sigma|omega|Delta)/.test(p.content)
+  );
+
+  useEffect(() => {
+    if (hasMath && !katexReady) {
+      loadKaTeX().then(() => {
+        setKatexReady(true);
+      });
+    }
+  }, [hasMath, katexReady]);
 
   const containerClasses = `${block ? 'block' : 'inline-wrap'} ${
     isUrduOrIslamiat ? 'font-["Noto_Nastaliq_Urdu","Noto_Sans_Arabic",serif]' : ''
@@ -48,7 +61,7 @@ export const MathText: React.FC<MathTextProps> = React.memo(({
           return (
             <span
               key={index}
-              className="block my-2 text-center overflow-x-auto py-1.5 px-2 bg-black/5  rounded-xl border border-black/5 "
+              className="block my-2 text-center overflow-x-auto py-1.5 px-2 bg-black/5 rounded-xl border border-black/5"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );
@@ -67,3 +80,4 @@ export const MathText: React.FC<MathTextProps> = React.memo(({
 });
 
 export default MathText;
+

@@ -9,7 +9,6 @@ import {
 } from '../lib/supabase';
 import { sanitizeStudyBuddyText, isGarbledResponse } from '../lib/studyBuddySanitizer';
 import { StudyBuddyFormattedMessage } from './StudyBuddyFormattedMessage';
-import 'katex/dist/katex.min.css';
 import {
   GraduationCap,
   X,
@@ -24,15 +23,8 @@ import {
   User,
 } from 'lucide-react';
 
-export interface MCQContext {
-  question: string;
-  options: string[];
-  correctOption: number;
-  selectedOption: number | null;
-  subject?: string;
-  topic?: string;
-  explanation?: string;
-}
+import { MCQContext } from '../types';
+export type { MCQContext };
 
 export interface ChatMessage {
   id: string;

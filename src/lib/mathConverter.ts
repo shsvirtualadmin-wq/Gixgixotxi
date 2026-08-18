@@ -1,4 +1,35 @@
-import katex from 'katex';
+let katexModule: any = null;
+let katexCssLoaded = false;
+let katexLoadPromise: Promise<any> | null = null;
+
+/**
+ * Dynamically loads KaTeX engine and injects KaTeX styles only when math formulas are rendered.
+ */
+export function loadKaTeX(): Promise<any> {
+  if (katexModule) return Promise.resolve(katexModule);
+  if (katexLoadPromise) return katexLoadPromise;
+
+  if (!katexCssLoaded && typeof document !== 'undefined') {
+    katexCssLoaded = true;
+    import('katex/dist/katex.min.css').catch(() => {});
+  }
+
+  katexLoadPromise = import('katex')
+    .then((mod) => {
+      katexModule = mod.default || mod;
+      return katexModule;
+    })
+    .catch((err) => {
+      console.warn('[loadKaTeX] Failed to load KaTeX dynamic module:', err);
+      return null;
+    });
+
+  return katexLoadPromise;
+}
+
+export function isKaTeXLoaded(): boolean {
+  return Boolean(katexModule);
+}
 
 interface Chunk {
   type: 'text' | 'math' | 'display-math';
@@ -419,19 +450,27 @@ export function parseMathParts(rawText: string): MathPart[] {
 export function renderKaTeX(latex: string, displayMode: boolean = false): string {
   try {
     let cleanLatex = formatLatexContent(latex);
-    let html = katex.renderToString(cleanLatex, {
-      displayMode,
-      throwOnError: false,
-      output: 'htmlAndMathml',
-      strict: false,
-    });
+    if (katexModule) {
+      let html = katexModule.renderToString(cleanLatex, {
+        displayMode,
+        throwOnError: false,
+        output: 'htmlAndMathml',
+        strict: false,
+      });
 
-    // Remove any accidental red error cursor character '|' from katex-error elements if present
-    if (html.includes('katex-error')) {
-      html = html.replace(/(<span class="katex-error"[^>]*>.*?)\|(<\/span>)/g, '$1$2');
+      // Remove any accidental red error cursor character '|' from katex-error elements if present
+      if (html.includes('katex-error')) {
+        html = html.replace(/(<span class="katex-error"[^>]*>.*?)\|(<\/span>)/g, '$1$2');
+      }
+
+      return html;
     }
 
-    return html;
+    // Trigger background loading if not already initiated
+    loadKaTeX();
+
+    // Clean fallback presentation until KaTeX finishes downloading
+    return `<span class="katex-fallback font-mono">${cleanLatex}</span>`;
   } catch (err) {
     console.warn('KaTeX rendering error:', err);
     return latex;

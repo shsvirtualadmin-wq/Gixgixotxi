@@ -106,4 +106,16 @@ export interface ResourceItem {
   created_at: string;
 }
 
+export interface MCQContext {
+  question: string;
+  options: string[];
+  correctOption: number;
+  selectedOption: number | null;
+  subject?: string;
+  topic?: string;
+  explanation?: string;
+  difficulty?: string;
+}
+
+
 

@@ -32,12 +32,14 @@ import { StudentHomeDashboard } from './components/StudentHomeDashboard';
 import { BrandedLoadingSpinner } from './components/BrandedLoadingSpinner';
 import { SiteSettingsProvider } from './context/SiteSettingsContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { ModalProvider, useModals } from './context/ModalContext';
+import { GlobalModals } from './components/GlobalModals';
 import { PLAN_OPTIONS, type PlanId } from './components/PlanSelectionScreen';
 import { getPricingTrackFromProfile, type PricingTrack, type BillingCycle } from './components/PricingPage';
 import type { SetupWizardData } from './components/GuidedSetupWizard';
-import type { MCQContext } from './components/StudyBuddyModal';
+import type { MCQContext } from './types';
 
-// Code-split heavy secondary screens & modals to minimize initial JS bundle size
+// Code-split heavy secondary screens to minimize initial JS bundle size
 const GradesFlowScreen = React.lazy(() => import('./components/GradesFlowScreen').then(m => ({ default: m.GradesFlowScreen })));
 const GuidedSetupWizard = React.lazy(() => import('./components/GuidedSetupWizard').then(m => ({ default: m.GuidedSetupWizard })));
 const StudentRegistrationFlow = React.lazy(() => import('./components/StudentRegistrationFlow').then(m => ({ default: m.StudentRegistrationFlow })));
@@ -46,17 +48,10 @@ const SubjectScreen = React.lazy(() => import('./components/SubjectScreen').then
 const DurationScreen = React.lazy(() => import('./components/DurationScreen').then(m => ({ default: m.DurationScreen })));
 const TestScreen = React.lazy(() => import('./components/TestScreen').then(m => ({ default: m.TestScreen })));
 const ResultsScreen = React.lazy(() => import('./components/ResultsScreen').then(m => ({ default: m.ResultsScreen })));
-const PrintableTestModal = React.lazy(() => import('./components/PrintableTestModal').then(m => ({ default: m.PrintableTestModal })));
-const CommunityModal = React.lazy(() => import('./components/CommunityModal').then(m => ({ default: m.CommunityModal })));
-const HistoryModal = React.lazy(() => import('./components/HistoryModal').then(m => ({ default: m.HistoryModal })));
-const LmsPortalModal = React.lazy(() => import('./components/LmsPortalModal').then(m => ({ default: m.LmsPortalModal })));
-const StudyBuddyModal = React.lazy(() => import('./components/StudyBuddyModal').then(m => ({ default: m.StudyBuddyModal })));
 const LmsAuthScreen = React.lazy(() => import('./components/LmsAuthScreen').then(m => ({ default: m.LmsAuthScreen })));
 const AdminDashboardScreen = React.lazy(() => import('./components/AdminDashboardScreen').then(m => ({ default: m.AdminDashboardScreen })));
 const ClassStreamDashboard = React.lazy(() => import('./components/ClassStreamDashboard').then(m => ({ default: m.ClassStreamDashboard })));
 const PaymentRequiredScreen = React.lazy(() => import('./components/PaymentRequiredScreen').then(m => ({ default: m.PaymentRequiredScreen })));
-const PaymentProofModal = React.lazy(() => import('./components/PaymentProofModal').then(m => ({ default: m.PaymentProofModal })));
-const TestLimitModal = React.lazy(() => import('./components/TestLimitModal').then(m => ({ default: m.TestLimitModal })));
 const PlanSelectionScreen = React.lazy(() => import('./components/PlanSelectionScreen').then(m => ({ default: m.PlanSelectionScreen })));
 const PricingPage = React.lazy(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })));
 
@@ -449,15 +444,31 @@ export function App() {
   const mcqAbortControllerRef = useRef<AbortController | null>(null);
   const bgMcqAbortControllerRef = useRef<AbortController | null>(null);
   const mcqRequestIdRef = useRef<number>(0);
-  const [showCommunityModal, setShowCommunityModal] = useState<boolean>(false);
-  const [showHistoryModal, setShowHistoryModal] = useState<boolean>(false);
-  const [showPrintModal, setShowPrintModal] = useState<boolean>(false);
-  const [showLmsModal, setShowLmsModal] = useState<boolean>(false);
-  const [showPaymentModal, setShowPaymentModal] = useState<boolean>(false);
-  const [showTestLimitModal, setShowTestLimitModal] = useState<boolean>(false);
+  const {
+    showCommunityModal,
+    showHistoryModal,
+    showPrintModal,
+    showLmsModal,
+    showPaymentModal,
+    showTestLimitModal,
+    showStudyBuddy,
+    openCommunityModal,
+    closeCommunityModal,
+    openHistoryModal,
+    closeHistoryModal,
+    openPrintModal,
+    closePrintModal,
+    openLmsModal,
+    closeLmsModal,
+    openPaymentModal,
+    closePaymentModal,
+    openTestLimitModal,
+    closeTestLimitModal,
+    openStudyBuddy,
+    closeStudyBuddy,
+    setStudyBuddyContext,
+  } = useModals();
   const [testLimitResetDate, setTestLimitResetDate] = useState<string>('');
-  const [showStudyBuddy, setShowStudyBuddy] = useState<boolean>(false);
-  const [studyBuddyContext, setStudyBuddyContext] = useState<MCQContext | null>(null);
   const [mcqUsageCount, setMcqUsageCount] = useState<number>(0);
   const [trackNotice, setTrackNotice] = useState<string | null>(null);
 
@@ -1154,19 +1165,19 @@ export function App() {
 
       // 2. Close overlay modals first
       if (showLmsModalRef.current) {
-        setShowLmsModal(false);
+        closeLmsModal();
         return;
       }
       if (showPrintModalRef.current) {
-        setShowPrintModal(false);
+        closePrintModal();
         return;
       }
       if (showHistoryModalRef.current) {
-        setShowHistoryModal(false);
+        closeHistoryModal();
         return;
       }
       if (showCommunityModalRef.current) {
-        setShowCommunityModal(false);
+        closeCommunityModal();
         return;
       }
 
@@ -1708,10 +1719,10 @@ export function App() {
   };
 
   const handleGlobalBack = () => {
-    if (showLmsModal) { setShowLmsModal(false); return; }
-    if (showPrintModal) { setShowPrintModal(false); return; }
-    if (showHistoryModal) { setShowHistoryModal(false); return; }
-    if (showCommunityModal) { setShowCommunityModal(false); return; }
+    if (showLmsModal) { closeLmsModal(); return; }
+    if (showPrintModal) { closePrintModal(); return; }
+    if (showHistoryModal) { closeHistoryModal(); return; }
+    if (showCommunityModal) { closeCommunityModal(); return; }
 
     if (window.history.state && !window.history.state.isRoot) {
       window.history.back();
@@ -2109,8 +2120,9 @@ export function App() {
       if (startRes.status === 403 || startData?.limitExceeded) {
         console.warn('[executeStartTest - Server Limit Exceeded]:', startData?.error || startData?.message);
         setIsGenerating(false);
+        const resetDate = startData?.resetDate || testLimitResetDate;
         if (startData?.resetDate) setTestLimitResetDate(startData.resetDate);
-        setShowTestLimitModal(true);
+        openTestLimitModal(resetDate, currentMonthlyTestCount);
         return;
       }
 
@@ -2175,7 +2187,7 @@ export function App() {
 
     if (!isPaymentApprovedOrExempt && currentMonthlyTestCount >= 2) {
       setIsGenerating(false);
-      setShowTestLimitModal(true);
+      openTestLimitModal(testLimitResetDate, currentMonthlyTestCount);
       return;
     }
 
@@ -2193,8 +2205,9 @@ export function App() {
         const checkData = await safeJsonResponse(checkRes);
         if (!checkRes.ok || checkData?.allowed === false || checkData?.limitExceeded) {
           setIsGenerating(false);
+          const resetDate = checkData?.resetDate || testLimitResetDate;
           if (checkData?.resetDate) setTestLimitResetDate(checkData.resetDate);
-          setShowTestLimitModal(true);
+          openTestLimitModal(resetDate, currentMonthlyTestCount);
           return;
         }
       } catch (checkErr) {
@@ -2453,13 +2466,13 @@ export function App() {
   return (
     <div className="min-h-dvh flex flex-col bg-[#F8F9FB]  text-slate-900  selection:bg-[#1E5AFF] selection:text-white relative">
       <MainHeader 
-        onMenuClick={() => setShowLmsModal(true)} 
+        onMenuClick={() => openLmsModal()} 
         currentUser={currentUser}
         userProfile={userProfile}
         selectedClass={selectedClass}
         selectedGroup={selectedGroup}
         currentScreen={screen}
-        onTrackClick={() => setShowLmsModal(true)}
+        onTrackClick={() => openLmsModal()}
         onGoBack={handleGlobalBack}
         onGoHome={() => {
           if (!confirmExitTestIfActive()) return;
@@ -2473,8 +2486,8 @@ export function App() {
         canGoBack={screen !== 'intro' && screen !== 'dashboard' && screen !== 'admin'}
         isIntroScreen={screen === 'intro' && !currentUser}
         historyCount={history.length}
-        onOpenHistory={() => setShowHistoryModal(true)}
-        onOpenLmsPortal={() => setShowLmsModal(true)}
+        onOpenHistory={() => openHistoryModal()}
+        onOpenLmsPortal={() => openLmsModal()}
         onStartFree={() => {
           if (!confirmExitTestIfActive()) return;
           setScreen('grades_flow');
@@ -2510,7 +2523,7 @@ export function App() {
           if (!confirmExitTestIfActive()) return;
           setScreen('subjects');
         }}
-        onOpenStudyBuddy={() => setShowStudyBuddy(true)}
+        onOpenStudyBuddy={() => openStudyBuddy()}
         onNavigateSubscription={() => {
           if (!confirmExitTestIfActive()) return;
           const userTrack = getPricingTrackFromProfile(userProfile, selectedClass ? String(selectedClass) : undefined, selectedGroup);
@@ -2623,10 +2636,10 @@ export function App() {
                         setSelectedGroup('TCAT');
                         setScreen('auth');
                       }}
-                      onOpenCommunity={() => setShowCommunityModal(true)}
-                      onOpenHistory={() => setShowHistoryModal(true)}
+                      onOpenCommunity={() => openCommunityModal()}
+                      onOpenHistory={() => openHistoryModal()}
                       onOpenLmsPortal={() => setScreen('auth')}
-                      onOpenStudyBuddy={() => setShowStudyBuddy(true)}
+                      onOpenStudyBuddy={() => openStudyBuddy()}
                       historyCount={history.length}
                     />
                   ) : (
@@ -2644,7 +2657,7 @@ export function App() {
                       onUpgradeClick={() => setScreen('plan_selection')}
                       onStartPracticeTest={() => {
                         if (isTestLimitReached) {
-                          setShowTestLimitModal(true);
+                          openTestLimitModal(testLimitResetDate, currentMonthlyTestCount);
                           return;
                         }
                         if (userProfile?.grade) {
@@ -2664,7 +2677,7 @@ export function App() {
                       }}
                       onPracticeWeakTopic={(subject, topic) => {
                         if (isTestLimitReached) {
-                          setShowTestLimitModal(true);
+                          openTestLimitModal(testLimitResetDate, currentMonthlyTestCount);
                           return;
                         }
                         const targetSubject = mapSubject(subject);
@@ -2672,9 +2685,9 @@ export function App() {
                         setCustomTopic(topic);
                         setScreen('duration');
                       }}
-                      onOpenLmsPortal={() => setShowLmsModal(true)}
-                      onOpenHistory={() => setShowHistoryModal(true)}
-                      onOpenCommunity={() => setShowCommunityModal(true)}
+                      onOpenLmsPortal={() => openLmsModal()}
+                      onOpenHistory={() => openHistoryModal()}
+                      onOpenCommunity={() => openCommunityModal()}
                     />
                   )
                 )}
@@ -2713,14 +2726,14 @@ export function App() {
                       selectedGroup={selectedGroup}
                       selectedTrackOverride={selectedPricingTrack}
                       currentTestsUsed={history.length}
-                      onOpenPaymentModal={() => setShowPaymentModal(true)}
+                      onOpenPaymentModal={() => openPaymentModal(selectedPricingTrack, selectedPricingCycle)}
                       onContinueFree={() => {
                         setScreen(currentUser ? 'dashboard' : 'intro');
                       }}
                       onSelectProPlan={(track, cycle) => {
                         setSelectedPricingTrack(track);
                         setSelectedPricingCycle(cycle);
-                        setShowPaymentModal(true);
+                        openPaymentModal(track, cycle);
                       }}
                       onBack={() => {
                         setScreen(currentUser ? 'dashboard' : 'intro');
@@ -2733,7 +2746,7 @@ export function App() {
                     <PaymentRequiredScreen
                       currentUser={currentUser}
                       userProfile={userProfile}
-                      onOpenPaymentModal={() => setShowPaymentModal(true)}
+                      onOpenPaymentModal={() => openPaymentModal(selectedPricingTrack, selectedPricingCycle)}
                       onRefreshProfile={async () => {
                         await refreshUserProfile();
                       }}
@@ -2842,7 +2855,7 @@ export function App() {
                           setSelectedClass(c);
                           setSelectedGroup(g);
                         }}
-                        onOpenHistory={() => setShowHistoryModal(true)}
+                        onOpenHistory={() => openHistoryModal()}
                         onStartTest={handleStartTest}
                         onBackToClasses={() => {
                           setScreen('grades_flow');
@@ -2989,7 +3002,7 @@ export function App() {
                     onUpgradeClick={() => setScreen('plan_selection')}
                     onExplainMcq={(mcqCtx) => {
                       setStudyBuddyContext(mcqCtx);
-                      setShowStudyBuddy(true);
+                      openStudyBuddy();
                     }}
                   />
                 )}
@@ -3008,7 +3021,7 @@ export function App() {
                           setScreen('grades_flow');
                         }
                       }}
-                      onOpenPrintModal={() => setShowPrintModal(true)}
+                      onOpenPrintModal={() => openPrintModal(testResult)}
                       onUpgradeClick={() => setScreen('plan_selection')}
                       onBackToHome={() => {
                         if (currentUser) {
@@ -3023,7 +3036,7 @@ export function App() {
                       }}
                       onExplainMcq={(mcqCtx) => {
                         setStudyBuddyContext(mcqCtx);
-                        setShowStudyBuddy(true);
+                        openStudyBuddy();
                       }}
                     />
                   ) : (
@@ -3080,10 +3093,10 @@ export function App() {
                         setSelectedGroup('TCAT');
                         setScreen('auth');
                       }}
-                      onOpenCommunity={() => setShowCommunityModal(true)}
-                      onOpenHistory={() => setShowHistoryModal(true)}
+                      onOpenCommunity={() => openCommunityModal()}
+                      onOpenHistory={() => openHistoryModal()}
                       onOpenLmsPortal={() => setScreen('auth')}
-                      onOpenStudyBuddy={() => setShowStudyBuddy(true)}
+                      onOpenStudyBuddy={() => openStudyBuddy()}
                       historyCount={history.length}
                     />
                   ) : (
@@ -3101,14 +3114,14 @@ export function App() {
                       onUpgradeClick={() => setScreen('plan_selection')}
                       onStartPracticeTest={() => {
                         if (isTestLimitReached) {
-                          setShowTestLimitModal(true);
+                          openTestLimitModal(testLimitResetDate, currentMonthlyTestCount);
                           return;
                         }
                         setScreen('subjects');
                       }}
                       onPracticeWeakTopic={(subject, topic) => {
                         if (isTestLimitReached) {
-                          setShowTestLimitModal(true);
+                          openTestLimitModal(testLimitResetDate, currentMonthlyTestCount);
                           return;
                         }
                         const targetSubject = mapSubject(subject);
@@ -3116,9 +3129,9 @@ export function App() {
                         setCustomTopic(topic);
                         setScreen('duration');
                       }}
-                      onOpenLmsPortal={() => setShowLmsModal(true)}
-                      onOpenHistory={() => setShowHistoryModal(true)}
-                      onOpenCommunity={() => setShowCommunityModal(true)}
+                      onOpenLmsPortal={() => openLmsModal()}
+                      onOpenHistory={() => openHistoryModal()}
+                      onOpenCommunity={() => openCommunityModal()}
                     />
                   )
                 )}
@@ -3129,98 +3142,22 @@ export function App() {
         </div>
       </main>
 
-      {/* Lazy-loaded Modals wrapped in Suspense */}
-      <React.Suspense fallback={null}>
-        {/* Study Buddy Chatbot (Floating button + bottom-sheet modal across non-test screens, contextual in test) */}
-        <StudyBuddyModal
-          isOpen={showStudyBuddy}
-          onClose={() => setShowStudyBuddy((prev) => !prev)}
-          preloadedContext={studyBuddyContext}
-          onClearPreloadedContext={() => setStudyBuddyContext(null)}
-          studentProfile={userProfile}
-          selectedClass={selectedClass}
-          selectedGroup={selectedGroup}
-          selectedSubject={selectedSubject}
-          customTopic={customTopic}
-          hideFloatingButton={screen === 'test'}
-          onUpgradeClick={() => setScreen('plan_selection')}
-        />
-
-        {showLmsModal && (
-          <LmsPortalModal
-            currentUser={currentUser}
-            userProfile={userProfile}
-            isTestLimitReached={isTestLimitReached}
-            onClose={() => setShowLmsModal(false)}
-            onRefreshProfile={() => refreshUserProfile()}
-            onStartPractice={() => {
-              setShowLmsModal(false);
-              setScreen('grades_flow');
-            }}
-            onOpenAdminDashboard={() => {
-              setShowLmsModal(false);
-              setScreen('admin');
-            }}
-          />
-        )}
-
-        {showHistoryModal && (
-          <HistoryModal
-            history={history}
-            onClearHistory={handleClearHistory}
-            onClose={() => setShowHistoryModal(false)}
-          />
-        )}
-
-        {showCommunityModal && (
-          <CommunityModal
-            onClose={() => setShowCommunityModal(false)}
-          />
-        )}
-
-        {showPrintModal && testResult && (
-          <PrintableTestModal
-            result={testResult}
-            currentUser={currentUser}
-            userProfile={userProfile}
-            onClose={() => setShowPrintModal(false)}
-            onUpgradeClick={() => {
-              setShowPrintModal(false);
-              setScreen('plan_selection');
-            }}
-          />
-        )}
-
-        {showPaymentModal && currentUser && (
-          <PaymentProofModal
-            isOpen={showPaymentModal}
-            onClose={() => setShowPaymentModal(false)}
-            currentUser={currentUser}
-            studentProfile={userProfile}
-            selectedTrackOverride={selectedPricingTrack}
-            selectedCycleOverride={selectedPricingCycle}
-            onSubmitted={async () => {
-              if (currentUser?.id) {
-                const updated = await fetchStudentProfileFromSupabase(currentUser.id, true, currentUser.email);
-                if (updated) setUserProfile(updated);
-              }
-            }}
-          />
-        )}
-
-        <TestLimitModal
-          isOpen={showTestLimitModal}
-          onClose={() => setShowTestLimitModal(false)}
-          resetDate={testLimitResetDate}
-          currentUsage={currentMonthlyTestCount}
-          onUpgradeClick={() => {
-            setScreen('pricing');
-          }}
-          onSubmitPaymentProofClick={() => {
-            setShowPaymentModal(true);
-          }}
-        />
-      </React.Suspense>
+      {/* Global Lazy-loaded Modals rendered outside main tree for high performance */}
+      <GlobalModals
+        currentUser={currentUser}
+        userProfile={userProfile}
+        setUserProfile={setUserProfile}
+        history={history}
+        handleClearHistory={handleClearHistory}
+        isTestLimitReached={isTestLimitReached}
+        refreshUserProfile={refreshUserProfile}
+        selectedClass={selectedClass}
+        selectedGroup={selectedGroup}
+        selectedSubject={selectedSubject}
+        customTopic={customTopic}
+        screen={screen}
+        setScreen={setScreen}
+      />
 
       {/* MCQ Generation Loading Overlay */}
       {isGenerating && (
@@ -3252,7 +3189,9 @@ export const AppWithSettings: React.FC = () => {
   return (
     <ThemeProvider>
       <SiteSettingsProvider>
-        <App />
+        <ModalProvider>
+          <App />
+        </ModalProvider>
       </SiteSettingsProvider>
     </ThemeProvider>
   );

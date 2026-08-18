@@ -1,5 +1,4 @@
-import React from 'react';
-import { motion, UseInViewOptions, TargetAndTransition } from 'motion/react';
+import React, { useEffect, useRef, useState } from 'react';
 
 export interface ScrollRevealProps {
   children: React.ReactNode;
@@ -14,76 +13,107 @@ export interface ScrollRevealProps {
   /** Additional CSS class names */
   className?: string;
   /** Fraction of element that must be visible to trigger (0 to 1 or "some" / "all") */
-  amount?: UseInViewOptions['amount'];
+  amount?: number | 'some' | 'all';
   /** Optional hover transform */
-  whileHover?: TargetAndTransition;
+  whileHover?: any;
   /** Inline styles */
   style?: React.CSSProperties;
   /** Optional stagger delay for children */
   staggerChildren?: number;
 }
 
+// Shared singleton IntersectionObserver to avoid creating dozens of observer instances
+let sharedObserver: IntersectionObserver | null = null;
+const observerCallbacks = new WeakMap<Element, (isIntersecting: boolean) => void>();
+
+function getSharedObserver(): IntersectionObserver | null {
+  if (typeof window === 'undefined' || !('IntersectionObserver' in window)) return null;
+  if (!sharedObserver) {
+    sharedObserver = new IntersectionObserver(
+      (entries) => {
+        for (let i = 0; i < entries.length; i++) {
+          const entry = entries[i];
+          const cb = observerCallbacks.get(entry.target);
+          if (cb) {
+            cb(entry.isIntersecting);
+          }
+        }
+      },
+      {
+        rootMargin: '50px 0px 50px 0px',
+        threshold: 0.01,
+      }
+    );
+  }
+  return sharedObserver;
+}
+
 /**
- * ScrollReveal component optimized for 60fps GPU performance.
- * Fades and slides elements up from the bottom when scrolled into view.
+ * ScrollReveal component optimized for 60fps GPU compositor performance.
+ * Uses native CSS transform/opacity transitions and offscreen content-visibility
+ * instead of JS-driven scroll recalculations.
  */
 export const ScrollReveal: React.FC<ScrollRevealProps> = ({
   children,
   delay = 0,
-  duration = 0.4,
-  distance = 25,
+  duration = 0.35,
+  distance = 18,
   once = true,
   className = '',
-  amount = 0.01,
-  whileHover,
   style,
-  staggerChildren,
 }) => {
-  if (staggerChildren && staggerChildren > 0) {
-    return (
-      <motion.div
-        initial="hidden"
-        whileInView="show"
-        viewport={{ once: true, amount }}
-        variants={{
-          hidden: { opacity: 0.1, y: distance },
-          show: {
-            opacity: 1,
-            y: 0,
-            transition: {
-              duration,
-              delay,
-              ease: [0.16, 1, 0.3, 1],
-              staggerChildren: Math.min(staggerChildren, 0.05),
-            },
-          },
-        }}
-        whileHover={whileHover}
-        style={style}
-        className={className}
-      >
-        {children}
-      </motion.div>
-    );
-  }
+  const domRef = useRef<HTMLDivElement | null>(null);
+  const [isVisible, setIsVisible] = useState<boolean>(false);
+
+  useEffect(() => {
+    const el = domRef.current;
+    if (!el) return;
+
+    const observer = getSharedObserver();
+    if (!observer) {
+      setIsVisible(true);
+      return;
+    }
+
+    const callback = (isIntersecting: boolean) => {
+      if (isIntersecting) {
+        setIsVisible(true);
+        if (once) {
+          observer.unobserve(el);
+          observerCallbacks.delete(el);
+        }
+      } else if (!once) {
+        setIsVisible(false);
+      }
+    };
+
+    observerCallbacks.set(el, callback);
+    observer.observe(el);
+
+    return () => {
+      observer.unobserve(el);
+      observerCallbacks.delete(el);
+    };
+  }, [once]);
+
+  const transitionStyle: React.CSSProperties = {
+    transitionProperty: 'opacity, transform',
+    transitionDuration: `${duration}s`,
+    transitionDelay: `${delay}s`,
+    transitionTimingFunction: 'cubic-bezier(0.16, 1, 0.3, 1)',
+    transform: isVisible ? 'translate3d(0, 0, 0)' : `translate3d(0, ${distance}px, 0)`,
+    opacity: isVisible ? 1 : 0.05,
+    willChange: isVisible ? 'auto' : 'transform, opacity',
+    contentVisibility: 'auto',
+    containIntrinsicSize: 'auto 120px',
+    ...style,
+  };
 
   return (
-    <motion.div
-      initial={{ opacity: 0.1, y: distance }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, amount }}
-      transition={{
-        duration,
-        delay,
-        ease: [0.16, 1, 0.3, 1],
-      }}
-      whileHover={whileHover}
-      style={style}
-      className={className}
-    >
+    <div ref={domRef} style={transitionStyle} className={className}>
       {children}
-    </motion.div>
+    </div>
   );
 };
 
-export default ScrollReveal;
+export default React.memo(ScrollReveal);
