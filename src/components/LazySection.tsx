@@ -18,7 +18,7 @@ export const LazySection: React.FC<LazySectionProps> = React.memo(({
   children,
   placeholderHeight = '200px',
   className = '',
-  rootMargin = '400px 0px',
+  rootMargin = '800px 0px',
   minHeight,
   id,
 }) => {
@@ -37,7 +37,7 @@ export const LazySection: React.FC<LazySectionProps> = React.memo(({
 
     // Check if element is already visible or close to viewport
     const rect = element.getBoundingClientRect();
-    if (rect.top < window.innerHeight + 400 && rect.bottom > -400) {
+    if (rect.top < window.innerHeight + 800 && rect.bottom > -800) {
       setIsVisible(true);
       return;
     }
@@ -74,7 +74,7 @@ export const LazySection: React.FC<LazySectionProps> = React.memo(({
     >
       {isVisible ? children : (
         <div
-          className="w-full flex items-center justify-center rounded-2xl bg-slate-50/40 border border-slate-200/30"
+          className="w-full flex items-center justify-center rounded-2xl bg-[#0d1b3e]/40 border border-[#1e3a8a]/30"
           style={{ height: typeof placeholderHeight === 'number' ? `${placeholderHeight}px` : placeholderHeight }}
         />
       )}

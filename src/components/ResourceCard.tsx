@@ -62,8 +62,7 @@ export const ResourceCard = React.memo<ResourceCardProps>(({
       id={`resource-card-${item.id}`}
       style={{
         contentVisibility: 'auto',
-        containIntrinsicSize: 'auto 150px',
-        contain: 'layout style paint',
+        containIntrinsicSize: 'auto 168px',
       }}
       className={`bg-[#131f42] hover:bg-[#17254e] border ${
         isSelected
