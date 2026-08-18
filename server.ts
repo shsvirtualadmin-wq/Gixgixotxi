@@ -10,6 +10,7 @@ import { getGoogleAccessToken } from "./functions/_utils/googleAuth.js";
 import nodemailer from "nodemailer";
 import { generateMDCATFullMockBank } from "./src/data/mdcatPrebuiltQuestions.js";
 import { generateTCATFullMockBank } from "./src/data/tcatPrebuiltQuestions.js";
+import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 dotenv.config();
 
@@ -5097,6 +5098,244 @@ ${scopeInstruction}`;
       return res.status(500).json({
         success: false,
         error: err?.message || "Failed to delete resource.",
+      });
+    }
+  });
+
+  // User Profile Picture (PFP) Upload with Cloudflare R2 & Local Fallback Storage
+  const AVATARS_DIR = path.join(process.cwd(), "data", "avatars");
+  if (!fs.existsSync(AVATARS_DIR)) {
+    fs.mkdirSync(AVATARS_DIR, { recursive: true });
+  }
+
+  let r2ClientInstance: S3Client | null = null;
+  function getR2Client(): S3Client | null {
+    if (r2ClientInstance) return r2ClientInstance;
+    const accountId = getEnvVar("R2_ACCOUNT_ID") || getEnvVar("CLOUDFLARE_ACCOUNT_ID") || getEnvVar("ACCOUNT_ID");
+    const accessKeyId = getEnvVar("R2_ACCESS_KEY_ID") || getEnvVar("AWS_ACCESS_KEY_ID") || getEnvVar("CLOUDFLARE_R2_ACCESS_KEY_ID");
+    const secretAccessKey = getEnvVar("R2_SECRET_ACCESS_KEY") || getEnvVar("AWS_SECRET_ACCESS_KEY") || getEnvVar("CLOUDFLARE_R2_SECRET_ACCESS_KEY");
+
+    if (!accountId || !accessKeyId || !secretAccessKey) {
+      return null;
+    }
+
+    try {
+      r2ClientInstance = new S3Client({
+        region: "auto",
+        endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+        credentials: {
+          accessKeyId,
+          secretAccessKey,
+        },
+      });
+      return r2ClientInstance;
+    } catch (err) {
+      console.warn("[getR2Client error]:", err);
+      return null;
+    }
+  }
+
+  const avatarUploadMulter = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB max
+    },
+    fileFilter: (_req, file, cb) => {
+      const allowedMimes = [
+        "image/jpeg",
+        "image/jpg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "image/avif",
+        "image/svg+xml",
+      ];
+      if (!allowedMimes.includes(file.mimetype) && !file.mimetype.startsWith("image/")) {
+        return cb(new Error("Invalid file format. Please upload an image file (JPEG, PNG, WebP, GIF, AVIF)."));
+      }
+      cb(null, true);
+    },
+  });
+
+  // Serve locally cached avatar files with high-availability caching
+  app.get("/api/avatar-file/:filename", (req, res) => {
+    const filename = path.basename(req.params.filename);
+    const filePath = path.join(AVATARS_DIR, filename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).send("Avatar image not found");
+    }
+    res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+    const ext = path.extname(filename).toLowerCase();
+    const mimeTypes: Record<string, string> = {
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".png": "image/png",
+      ".webp": "image/webp",
+      ".gif": "image/gif",
+      ".avif": "image/avif",
+      ".svg": "image/svg+xml",
+    };
+    if (mimeTypes[ext]) {
+      res.setHeader("Content-Type", mimeTypes[ext]);
+    }
+    return res.sendFile(filePath);
+  });
+
+  app.post("/api/user/upload-avatar", (req, res, next) => {
+    avatarUploadMulter.single("avatar")(req, res, (err) => {
+      if (err) {
+        if (err.code === "LIMIT_FILE_SIZE") {
+          return res.status(400).json({
+            success: false,
+            error: "Image exceeds 5MB file limit. Please select a smaller photo.",
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          error: err.message || "Invalid image upload.",
+        });
+      }
+      next();
+    });
+  }, async (req: express.Request, res: express.Response) => {
+    try {
+      const file = req.file;
+      if (!file || !file.buffer || file.buffer.length === 0) {
+        return res.status(400).json({
+          success: false,
+          error: "No image file provided. Please choose a picture to upload.",
+        });
+      }
+
+      const { user: tokenUser } = await verifyAuthToken(req);
+      const userId = (req.body.userId || tokenUser?.id || "").trim();
+      const userEmail = (req.body.userEmail || tokenUser?.email || "").trim().toLowerCase();
+
+      if (!userId && !userEmail) {
+        return res.status(400).json({
+          success: false,
+          error: "User identification is required to update profile picture.",
+        });
+      }
+
+      // Basic magic bytes validation for images
+      const headerBytes = file.buffer.slice(0, 8);
+      const isJpeg = headerBytes[0] === 0xff && headerBytes[1] === 0xd8;
+      const isPng = headerBytes[0] === 0x89 && headerBytes[1] === 0x50 && headerBytes[2] === 0x4e && headerBytes[3] === 0x47;
+      const isGif = headerBytes[0] === 0x47 && headerBytes[1] === 0x49 && headerBytes[2] === 0x46;
+      const isWebp = file.mimetype === "image/webp" || file.originalname.toLowerCase().endsWith(".webp");
+      const isAvif = file.mimetype === "image/avif" || file.originalname.toLowerCase().endsWith(".avif");
+      const isSvg = file.mimetype === "image/svg+xml" || file.originalname.toLowerCase().endsWith(".svg");
+
+      if (!isJpeg && !isPng && !isGif && !isWebp && !isAvif && !isSvg && !file.mimetype.startsWith("image/")) {
+        return res.status(400).json({
+          success: false,
+          error: "File does not appear to be a valid image. Please select a JPEG, PNG, or WebP photo.",
+        });
+      }
+
+      let ext = path.extname(file.originalname).toLowerCase();
+      if (!ext || ext === ".") {
+        ext = isPng ? ".png" : isWebp ? ".webp" : isGif ? ".gif" : ".jpg";
+      }
+
+      const safeId = (userId || userEmail).replace(/[^a-zA-Z0-9_-]/g, "_");
+      const timestamp = Date.now();
+      const filename = `avatar-${safeId}-${timestamp}${ext}`;
+      const objectKey = `avatars/${filename}`;
+
+      // 1. Write file to local storage directory
+      const localFilePath = path.join(AVATARS_DIR, filename);
+      fs.writeFileSync(localFilePath, file.buffer);
+
+      // 2. Upload to Cloudflare R2 via S3 API if credentials available
+      let avatarUrl = "";
+      const publicDomain = (
+        getEnvVar("PUBLIC_R2_DOMAIN") ||
+        getEnvVar("R2_PUBLIC_DOMAIN") ||
+        getEnvVar("VITE_R2_PUBLIC_DOMAIN") ||
+        "pub-51ccade1f191417389ac7df61830c670.r2.dev"
+      ).replace(/\/$/, "");
+
+      const r2PublicUrl = publicDomain.startsWith("http")
+        ? `${publicDomain}/${objectKey}`
+        : `https://${publicDomain}/${objectKey}`;
+
+      const r2Client = getR2Client();
+      const r2Bucket = getEnvVar("R2_AVATARS_BUCKET") || getEnvVar("R2_BUCKET_NAME") || getEnvVar("RESOURCES_BUCKET") || "boardly-resources";
+
+      if (r2Client) {
+        try {
+          await r2Client.send(
+            new PutObjectCommand({
+              Bucket: r2Bucket,
+              Key: objectKey,
+              Body: file.buffer,
+              ContentType: file.mimetype || "image/jpeg",
+              Metadata: {
+                userId: safeId,
+                userEmail,
+                uploadedAt: new Date().toISOString(),
+              },
+            })
+          );
+          avatarUrl = r2PublicUrl;
+          console.log(`✅ [R2 Storage]: Successfully uploaded ${objectKey} to bucket ${r2Bucket}`);
+        } catch (r2Err: any) {
+          console.warn("[R2 S3 PutObject warning, fallback to local URL]:", r2Err?.message);
+        }
+      }
+
+      if (!avatarUrl) {
+        avatarUrl = `/api/avatar-file/${filename}`;
+      }
+
+      // 3. Update Database (students table) and Supabase Auth
+      const db = getSupabaseAdminClient() || supabaseServer;
+      let updatedProfile: any = null;
+
+      if (db) {
+        try {
+          let query = db.from("students").update({
+            avatar_url: avatarUrl,
+            updated_at: new Date().toISOString(),
+          });
+
+          if (userId) {
+            query = query.eq("id", userId);
+          } else {
+            query = query.eq("email", userEmail);
+          }
+
+          const { data, error } = await query.select("*").maybeSingle();
+          if (error) {
+            console.warn("[upload-avatar DB update warning]:", error.message);
+          } else if (data) {
+            updatedProfile = data;
+          }
+
+          // Also update auth user metadata if admin client is available
+          if (userId && (db as any).auth?.admin) {
+            await (db as any).auth.admin.updateUserById(userId, {
+              user_metadata: { avatar_url: avatarUrl, picture: avatarUrl },
+            }).catch((authErr: any) => console.warn("[upload-avatar auth update warning]:", authErr.message));
+          }
+        } catch (dbErr: any) {
+          console.warn("[upload-avatar DB update error]:", dbErr);
+        }
+      }
+
+      return res.json({
+        success: true,
+        avatarUrl,
+        profile: updatedProfile,
+        message: "Profile picture updated successfully!",
+      });
+    } catch (err: any) {
+      console.error("[api/user/upload-avatar exception]:", err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || "Failed to upload profile picture.",
       });
     }
   });

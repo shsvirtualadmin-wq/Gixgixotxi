@@ -1840,6 +1840,92 @@ export async function updateStudentPersonalInfo(
   }
 }
 
+export async function uploadUserAvatar(
+  userId: string,
+  file: File,
+  userEmail?: string
+): Promise<{ success: boolean; avatarUrl?: string; profile?: StudentProfile; message?: string }> {
+  try {
+    // Client-side basic validation
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/svg+xml'];
+    if (!validTypes.includes(file.type) && !file.type.startsWith('image/')) {
+      return {
+        success: false,
+        message: 'Invalid file type. Please upload a JPEG, PNG, WebP, GIF, or AVIF image.',
+      };
+    }
+
+    const maxBytes = 5 * 1024 * 1024; // 5MB
+    if (file.size > maxBytes) {
+      return {
+        success: false,
+        message: 'Image exceeds 5MB limit. Please choose a smaller photo.',
+      };
+    }
+
+    const formData = new FormData();
+    formData.append('avatar', file);
+    formData.append('userId', userId);
+    if (userEmail) formData.append('userEmail', userEmail);
+
+    const res = await apiFetch('/api/user/upload-avatar', {
+      method: 'POST',
+      body: formData,
+    });
+
+    const data = await safeJsonResponse(res);
+
+    if (data && data.success && data.avatarUrl) {
+      const avatarUrl = data.avatarUrl;
+
+      // Update cached memory and local storage
+      const cachedMem = profileMemoryCache.get(userId);
+      let updatedProf: StudentProfile = data.profile || cachedMem?.profile || {
+        id: userId,
+        name: 'Student',
+        email: userEmail || '',
+        grade: '11th',
+        stream: 'Pre-Medical',
+        subjects: [],
+        sign_up_method: 'Google',
+        status: 'active',
+        is_registered: true,
+        created_at: new Date().toISOString(),
+      };
+
+      updatedProf = {
+        ...updatedProf,
+        avatar_url: avatarUrl,
+        updated_at: new Date().toISOString(),
+      };
+
+      profileMemoryCache.set(userId, { profile: updatedProf, timestamp: Date.now() });
+      try {
+        localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(updatedProf));
+        localStorage.setItem('boardly_cached_profile', JSON.stringify(updatedProf));
+      } catch {}
+
+      return {
+        success: true,
+        avatarUrl,
+        profile: updatedProf,
+        message: 'Profile picture updated successfully!',
+      };
+    }
+
+    return {
+      success: false,
+      message: data?.error || 'Failed to upload profile picture.',
+    };
+  } catch (err: any) {
+    console.error('Error uploading user avatar:', err);
+    return {
+      success: false,
+      message: err?.message || 'Failed to upload profile picture. Please try again.',
+    };
+  }
+}
+
 export async function checkUserExistsInDatabase(userId: string, email?: string): Promise<boolean> {
   if (!isSupabaseConfigured || !userId) return true;
   if (email && isAdminEmail(email)) return true;

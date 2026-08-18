@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { StudentProfile, User, updateStudentPersonalInfo, supabase, evaluateStudentAccess } from '../lib/supabase';
+import React, { useState, useRef } from 'react';
+import { StudentProfile, User, updateStudentPersonalInfo, uploadUserAvatar, supabase, evaluateStudentAccess } from '../lib/supabase';
 import { renderTargetUniversityBadge } from './InstitutionBadge';
 import { TargetUniversityModal } from './TargetUniversityModal';
 import { UserAvatar } from './UserAvatar';
@@ -22,6 +22,8 @@ import {
   CreditCard,
   Layers,
   LogOut,
+  Camera,
+  Loader2,
 } from 'lucide-react';
 
 interface StudentProfileViewProps {
@@ -45,8 +47,51 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [toast, setToast] = useState<{ text: string; isError?: boolean } | null>(null);
   const [showUniModal, setShowUniModal] = useState<boolean>(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const initialLetter = (profile.name || user.email || 'S').charAt(0).toUpperCase();
+
+  const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 1. Validation
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/svg+xml'];
+    if (!validTypes.includes(file.type) && !file.type.startsWith('image/')) {
+      setToast({ text: 'Please select a valid image file (JPEG, PNG, WebP, GIF, AVIF).', isError: true });
+      setTimeout(() => setToast(null), 4000);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    const maxBytes = 5 * 1024 * 1024; // 5 MB
+    if (file.size > maxBytes) {
+      setToast({ text: 'Image exceeds 5MB limit. Please choose a smaller photo.', isError: true });
+      setTimeout(() => setToast(null), 4000);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    try {
+      const res = await uploadUserAvatar(user.id, file, user.email || profile.email);
+      if (res.success) {
+        setToast({ text: 'Profile picture updated successfully!' });
+        setTimeout(() => setToast(null), 3500);
+        onRefreshProfile();
+      } else {
+        setToast({ text: res.message || 'Failed to upload profile picture.', isError: true });
+        setTimeout(() => setToast(null), 4000);
+      }
+    } catch (err: any) {
+      setToast({ text: err?.message || 'Failed to upload photo.', isError: true });
+      setTimeout(() => setToast(null), 4000);
+    } finally {
+      setIsUploadingAvatar(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const handleSaveDetails = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -130,12 +175,42 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
 
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
           <div className="flex items-center gap-4">
-            {/* Google Profile Picture or Initial Letter Avatar */}
-            <UserAvatar user={user} profile={profile} size="lg" shape="square" className="shadow-lg border-2 border-white/20" />
+            {/* Avatar with Camera upload button overlay */}
+            <div className="relative group shrink-0">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+                className="hidden"
+                onChange={handleAvatarFileChange}
+                disabled={isUploadingAvatar}
+              />
+              <UserAvatar
+                user={user}
+                profile={profile}
+                size="lg"
+                shape="square"
+                className="shadow-lg border-2 border-slate-200/80 rounded-2xl"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploadingAvatar}
+                className="absolute -bottom-1 -right-1 p-1.5 bg-[#1E5AFF] hover:bg-[#1546CC] text-white rounded-xl shadow-md border-2 border-white transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                title="Change Profile Picture"
+                aria-label="Change Profile Picture"
+              >
+                {isUploadingAvatar ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Camera className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
 
             <div className="space-y-1">
               <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-['Space_Grotesk'] text-xl font-bold text-slate-900  leading-tight">
+                <h3 className="font-['Space_Grotesk'] text-xl font-bold text-slate-900 leading-tight">
                   {profile.name || 'Student Account'}
                 </h3>
                 <span className="bg-[#F2B90C] text-[#0A0A0A] text-[9px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-xs">
@@ -143,20 +218,33 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
                 </span>
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs text-slate-300 font-medium pt-0.5">
-                <span className="flex items-center gap-1.5 text-slate-300">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs text-slate-600 font-medium pt-0.5">
+                <span className="flex items-center gap-1.5 text-slate-600">
                   <Mail className="w-3.5 h-3.5 text-[#F2B90C]" />
                   <span>{profile.email}</span>
                 </span>
                 {profile.phone && (
                   <>
-                    <span className="hidden sm:inline text-slate-600">&bull;</span>
-                    <span className="flex items-center gap-1.5 text-slate-300">
+                    <span className="hidden sm:inline text-slate-400">&bull;</span>
+                    <span className="flex items-center gap-1.5 text-slate-600">
                       <Phone className="w-3.5 h-3.5 text-[#F2B90C]" />
                       <span>{profile.phone}</span>
                     </span>
                   </>
                 )}
+              </div>
+
+              {/* Upload photo helper button */}
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingAvatar}
+                  className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#1E5AFF] hover:text-[#1546CC] hover:underline cursor-pointer transition-colors"
+                >
+                  <Camera className="w-3 h-3" />
+                  <span>{isUploadingAvatar ? 'Uploading picture...' : 'Change profile picture'}</span>
+                </button>
               </div>
             </div>
           </div>
