@@ -48,16 +48,23 @@ export function SegmentedControl<T extends string | number = string>({
   const controlId = id || generatedId;
   const layoutId = `${layoutIdPrefix || 'segmented-control'}-${controlId}`;
 
-  // Normalize options
-  const normalizedOptions: SegmentedOption<T>[] = options.map(opt => {
-    if (typeof opt === 'object' && opt !== null && 'value' in opt) {
-      return opt as SegmentedOption<T>;
-    }
-    return {
-      value: opt as T,
-      label: String(opt),
-    };
-  });
+  // Normalize options safely filtering out empty or invalid items
+  const normalizedOptions: SegmentedOption<T>[] = options
+    .filter(opt => {
+      if (opt === null || opt === undefined) return false;
+      if (typeof opt === 'string' && opt.trim() === '') return false;
+      if (typeof opt === 'object' && 'value' in opt && (opt.value === null || opt.value === undefined || opt.value === '')) return false;
+      return true;
+    })
+    .map(opt => {
+      if (typeof opt === 'object' && opt !== null && 'value' in opt) {
+        return opt as SegmentedOption<T>;
+      }
+      return {
+        value: opt as T,
+        label: String(opt),
+      };
+    });
 
   // Size styling maps
   const sizeStyles = {

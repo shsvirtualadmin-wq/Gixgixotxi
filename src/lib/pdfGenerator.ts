@@ -1,7 +1,5 @@
 import { Question } from '../types';
 import { getWatermarkHtmlOverlay, getActiveLogoUrl, WATERMARK_LOGO_BASE64 } from './pdfWatermark';
-import html2canvas from 'html2canvas';
-import jsPDF, { jsPDF as JsPdfNamed } from 'jspdf';
 
 interface PdfOptions {
   subject: string;
@@ -366,7 +364,13 @@ export async function downloadQuizPdf({
 
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const PDFConstructor = jsPDF || JsPdfNamed;
+      const [html2canvasModule, jspdfModule] = await Promise.all([
+        import('html2canvas'),
+        import('jspdf'),
+      ]);
+
+      const html2canvas = (html2canvasModule.default || html2canvasModule) as (element: HTMLElement, options?: any) => Promise<HTMLCanvasElement>;
+      const PDFConstructor = (jspdfModule.jsPDF || jspdfModule.default) as any;
       if (!PDFConstructor) {
         throw new Error('PDF export library unavailable — please try again');
       }

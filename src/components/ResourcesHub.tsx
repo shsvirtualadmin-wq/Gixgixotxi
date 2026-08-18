@@ -974,7 +974,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
           onChange={(cat) => handleSelectCategory(cat)}
           theme="light"
           size="md"
-          className="w-full sm:w-auto shrink-0 shadow-xs"
+          className="shrink-0 shadow-xs inline-flex"
         />
 
         {/* Filter Controls (Search + Class Pill Filters / Single-Class Badge) */}

@@ -1,11 +1,3 @@
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-
-// Ensure PDF.js worker is registered with Vite bundled worker
-if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-}
-
 export interface PdfValidationResult {
   isValid: boolean;
   error?: string;
@@ -114,6 +106,16 @@ export async function validatePdfFile(
     }
 
     // Step 2: Open and parse with PDF.js
+    const [pdfjsLib, pdfWorkerUrlModule] = await Promise.all([
+      import('pdfjs-dist'),
+      import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+    ]);
+
+    const pdfWorkerUrl = (pdfWorkerUrlModule.default || pdfWorkerUrlModule) as string;
+    if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+    }
+
     const uint8Data = new Uint8Array(arrayBuffer.slice(0));
     const loadingTask = pdfjsLib.getDocument({
       data: uint8Data,

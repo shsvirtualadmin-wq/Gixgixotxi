@@ -1,11 +1,3 @@
-import * as pdfjsLib from 'pdfjs-dist';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-
-// Use Vite bundled worker for instant local loading and exact version compatibility
-if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-}
-
 export interface PdfExportOptions {
   pageNumber?: number;
   scale?: number; // default 2.5 for crisp high-resolution export
@@ -144,7 +136,16 @@ export async function exportPdfPageToImage(
   pageNumber = 1,
   scale = 2.5
 ): Promise<{ dataUrl: string; width: number; height: number; totalPages: number }> {
-  const pdfBytes = await fetchPdfBinary(pdfUrl);
+  const [pdfBytes, pdfjsLib, pdfWorkerUrlModule] = await Promise.all([
+    fetchPdfBinary(pdfUrl),
+    import('pdfjs-dist'),
+    import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+  ]);
+
+  const pdfWorkerUrl = (pdfWorkerUrlModule.default || pdfWorkerUrlModule) as string;
+  if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+  }
 
   const loadingTask = pdfjsLib.getDocument({
     data: pdfBytes,

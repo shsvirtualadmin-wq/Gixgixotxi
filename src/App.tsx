@@ -29,30 +29,37 @@ import { HeaderLogo } from './components/HeaderLogo';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { IntroScreen } from './components/IntroScreen';
 import { StudentHomeDashboard } from './components/StudentHomeDashboard';
-import { GradesFlowScreen } from './components/GradesFlowScreen';
-import { GuidedSetupWizard, SetupWizardData } from './components/GuidedSetupWizard';
-import { StudentRegistrationFlow } from './components/StudentRegistrationFlow';
-import { ClassGroupScreen } from './components/ClassGroupScreen';
-import { SubjectScreen } from './components/SubjectScreen';
-import { DurationScreen } from './components/DurationScreen';
-import { TestScreen } from './components/TestScreen';
-import { ResultsScreen } from './components/ResultsScreen';
-import { PrintableTestModal } from './components/PrintableTestModal';
-import { CommunityModal } from './components/CommunityModal';
-import { HistoryModal } from './components/HistoryModal';
-import { LmsPortalModal } from './components/LmsPortalModal';
-import { StudyBuddyModal, MCQContext } from './components/StudyBuddyModal';
-import { LmsAuthScreen } from './components/LmsAuthScreen';
-import { AdminDashboardScreen } from './components/AdminDashboardScreen';
 import { BrandedLoadingSpinner } from './components/BrandedLoadingSpinner';
-import { ClassStreamDashboard } from './components/ClassStreamDashboard';
 import { SiteSettingsProvider } from './context/SiteSettingsContext';
 import { ThemeProvider } from './context/ThemeContext';
-import { PaymentRequiredScreen } from './components/PaymentRequiredScreen';
-import { PaymentProofModal } from './components/PaymentProofModal';
-import { TestLimitModal } from './components/TestLimitModal';
-import { PlanSelectionScreen, PlanId, PLAN_OPTIONS } from './components/PlanSelectionScreen';
-import { PricingPage, PricingTrack, BillingCycle, getPricingTrackFromProfile } from './components/PricingPage';
+import { PLAN_OPTIONS, type PlanId } from './components/PlanSelectionScreen';
+import { getPricingTrackFromProfile, type PricingTrack, type BillingCycle } from './components/PricingPage';
+import type { SetupWizardData } from './components/GuidedSetupWizard';
+import type { MCQContext } from './components/StudyBuddyModal';
+
+// Code-split heavy secondary screens & modals to minimize initial JS bundle size
+const GradesFlowScreen = React.lazy(() => import('./components/GradesFlowScreen').then(m => ({ default: m.GradesFlowScreen })));
+const GuidedSetupWizard = React.lazy(() => import('./components/GuidedSetupWizard').then(m => ({ default: m.GuidedSetupWizard })));
+const StudentRegistrationFlow = React.lazy(() => import('./components/StudentRegistrationFlow').then(m => ({ default: m.StudentRegistrationFlow })));
+const ClassGroupScreen = React.lazy(() => import('./components/ClassGroupScreen').then(m => ({ default: m.ClassGroupScreen })));
+const SubjectScreen = React.lazy(() => import('./components/SubjectScreen').then(m => ({ default: m.SubjectScreen })));
+const DurationScreen = React.lazy(() => import('./components/DurationScreen').then(m => ({ default: m.DurationScreen })));
+const TestScreen = React.lazy(() => import('./components/TestScreen').then(m => ({ default: m.TestScreen })));
+const ResultsScreen = React.lazy(() => import('./components/ResultsScreen').then(m => ({ default: m.ResultsScreen })));
+const PrintableTestModal = React.lazy(() => import('./components/PrintableTestModal').then(m => ({ default: m.PrintableTestModal })));
+const CommunityModal = React.lazy(() => import('./components/CommunityModal').then(m => ({ default: m.CommunityModal })));
+const HistoryModal = React.lazy(() => import('./components/HistoryModal').then(m => ({ default: m.HistoryModal })));
+const LmsPortalModal = React.lazy(() => import('./components/LmsPortalModal').then(m => ({ default: m.LmsPortalModal })));
+const StudyBuddyModal = React.lazy(() => import('./components/StudyBuddyModal').then(m => ({ default: m.StudyBuddyModal })));
+const LmsAuthScreen = React.lazy(() => import('./components/LmsAuthScreen').then(m => ({ default: m.LmsAuthScreen })));
+const AdminDashboardScreen = React.lazy(() => import('./components/AdminDashboardScreen').then(m => ({ default: m.AdminDashboardScreen })));
+const ClassStreamDashboard = React.lazy(() => import('./components/ClassStreamDashboard').then(m => ({ default: m.ClassStreamDashboard })));
+const PaymentRequiredScreen = React.lazy(() => import('./components/PaymentRequiredScreen').then(m => ({ default: m.PaymentRequiredScreen })));
+const PaymentProofModal = React.lazy(() => import('./components/PaymentProofModal').then(m => ({ default: m.PaymentProofModal })));
+const TestLimitModal = React.lazy(() => import('./components/TestLimitModal').then(m => ({ default: m.TestLimitModal })));
+const PlanSelectionScreen = React.lazy(() => import('./components/PlanSelectionScreen').then(m => ({ default: m.PlanSelectionScreen })));
+const PricingPage = React.lazy(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })));
+
 import { supabase, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, User, StudentProfile } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight } from 'lucide-react';
@@ -2410,15 +2417,16 @@ export function App() {
 
   const displayName = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0];
 
-  if ((authLoading && !currentUser) || (profileSyncing && (!userProfile || !userProfile.is_registered))) {
+  const isIntroScreen = screen === 'intro';
+  if (!isIntroScreen && ((authLoading && !currentUser) || (profileSyncing && (!userProfile || !userProfile.is_registered)))) {
     return (
-      <div className="min-h-dvh h-dvh sm:min-h-screen bg-[#F8F9FB]  text-slate-900  flex flex-col items-center justify-center p-4 relative overflow-hidden">
+      <div className="min-h-dvh h-dvh sm:min-h-screen bg-[#F8F9FB] text-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden">
         {/* Glowing ambient background blur with hardware-accelerated continuous ease */}
         <motion.div
           initial={{ opacity: 0.1, scale: 0.8 }}
           animate={{ opacity: [0.15, 0.3, 0.15], scale: [0.9, 1.1, 0.9] }}
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute w-80 h-80 bg-emerald-500/20  rounded-full blur-3xl pointer-events-none"
+          className="absolute w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none"
         />
 
         <motion.div
@@ -2426,7 +2434,7 @@ export function App() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: -10 }}
           transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-          className="rounded-[32px] p-8 max-w-sm w-full flex flex-col items-center gap-5 text-center shadow-2xl border border-emerald-500/20  bg-white/90  backdrop-blur-xl relative z-10"
+          className="rounded-[32px] p-8 max-w-sm w-full flex flex-col items-center gap-5 text-center shadow-2xl border border-emerald-500/20 bg-white/90 backdrop-blur-xl relative z-10"
         >
           <HeaderLogo isIntro={false} currentUserEmail={currentUser?.email} />
           
@@ -2593,7 +2601,13 @@ export function App() {
                 </button>
               </div>
             ) : (
-              <>
+              <React.Suspense
+                fallback={
+                  <div className="w-full min-h-[50vh] flex flex-col items-center justify-center p-8 text-center animate-ios-spring">
+                    <BrandedLoadingSpinner size="lg" label="Loading Screen..." sublabel="Preparing module assets..." />
+                  </div>
+                }
+              >
                 {(screen === 'intro' || screen === 'dashboard' || screen === 'stats') && (
                   !currentUser ? (
                     <IntroScreen
@@ -3108,102 +3122,105 @@ export function App() {
                     />
                   )
                 )}
-              </>
+              </React.Suspense>
             )}
             </ErrorBoundary>
           </div>
         </div>
       </main>
 
-      {/* Study Buddy Chatbot (Floating button + bottom-sheet modal across non-test screens, contextual in test) */}
-      <StudyBuddyModal
-        isOpen={showStudyBuddy}
-        onClose={() => setShowStudyBuddy((prev) => !prev)}
-        preloadedContext={studyBuddyContext}
-        onClearPreloadedContext={() => setStudyBuddyContext(null)}
-        studentProfile={userProfile}
-        selectedClass={selectedClass}
-        selectedGroup={selectedGroup}
-        selectedSubject={selectedSubject}
-        customTopic={customTopic}
-        hideFloatingButton={screen === 'test'}
-        onUpgradeClick={() => setScreen('plan_selection')}
-      />
-
-      {showLmsModal && (
-        <LmsPortalModal
-          currentUser={currentUser}
-          userProfile={userProfile}
-          isTestLimitReached={isTestLimitReached}
-          onClose={() => setShowLmsModal(false)}
-          onRefreshProfile={() => refreshUserProfile()}
-          onStartPractice={() => {
-            setShowLmsModal(false);
-            setScreen('grades_flow');
-          }}
-          onOpenAdminDashboard={() => {
-            setShowLmsModal(false);
-            setScreen('admin');
-          }}
-        />
-      )}
-
-      {showHistoryModal && (
-        <HistoryModal
-          history={history}
-          onClearHistory={handleClearHistory}
-          onClose={() => setShowHistoryModal(false)}
-        />
-      )}
-
-      {showCommunityModal && (
-        <CommunityModal
-          onClose={() => setShowCommunityModal(false)}
-        />
-      )}
-
-      {showPrintModal && testResult && (
-        <PrintableTestModal
-          result={testResult}
-          currentUser={currentUser}
-          userProfile={userProfile}
-          onClose={() => setShowPrintModal(false)}
-          onUpgradeClick={() => {
-            setShowPrintModal(false);
-            setScreen('plan_selection');
-          }}
-        />
-      )}
-
-      {showPaymentModal && currentUser && (
-        <PaymentProofModal
-          isOpen={showPaymentModal}
-          onClose={() => setShowPaymentModal(false)}
-          currentUser={currentUser}
+      {/* Lazy-loaded Modals wrapped in Suspense */}
+      <React.Suspense fallback={null}>
+        {/* Study Buddy Chatbot (Floating button + bottom-sheet modal across non-test screens, contextual in test) */}
+        <StudyBuddyModal
+          isOpen={showStudyBuddy}
+          onClose={() => setShowStudyBuddy((prev) => !prev)}
+          preloadedContext={studyBuddyContext}
+          onClearPreloadedContext={() => setStudyBuddyContext(null)}
           studentProfile={userProfile}
-          selectedTrackOverride={selectedPricingTrack}
-          selectedCycleOverride={selectedPricingCycle}
-          onSubmitted={async () => {
-            if (currentUser?.id) {
-              const updated = await fetchStudentProfileFromSupabase(currentUser.id, true, currentUser.email);
-              if (updated) setUserProfile(updated);
-            }
+          selectedClass={selectedClass}
+          selectedGroup={selectedGroup}
+          selectedSubject={selectedSubject}
+          customTopic={customTopic}
+          hideFloatingButton={screen === 'test'}
+          onUpgradeClick={() => setScreen('plan_selection')}
+        />
+
+        {showLmsModal && (
+          <LmsPortalModal
+            currentUser={currentUser}
+            userProfile={userProfile}
+            isTestLimitReached={isTestLimitReached}
+            onClose={() => setShowLmsModal(false)}
+            onRefreshProfile={() => refreshUserProfile()}
+            onStartPractice={() => {
+              setShowLmsModal(false);
+              setScreen('grades_flow');
+            }}
+            onOpenAdminDashboard={() => {
+              setShowLmsModal(false);
+              setScreen('admin');
+            }}
+          />
+        )}
+
+        {showHistoryModal && (
+          <HistoryModal
+            history={history}
+            onClearHistory={handleClearHistory}
+            onClose={() => setShowHistoryModal(false)}
+          />
+        )}
+
+        {showCommunityModal && (
+          <CommunityModal
+            onClose={() => setShowCommunityModal(false)}
+          />
+        )}
+
+        {showPrintModal && testResult && (
+          <PrintableTestModal
+            result={testResult}
+            currentUser={currentUser}
+            userProfile={userProfile}
+            onClose={() => setShowPrintModal(false)}
+            onUpgradeClick={() => {
+              setShowPrintModal(false);
+              setScreen('plan_selection');
+            }}
+          />
+        )}
+
+        {showPaymentModal && currentUser && (
+          <PaymentProofModal
+            isOpen={showPaymentModal}
+            onClose={() => setShowPaymentModal(false)}
+            currentUser={currentUser}
+            studentProfile={userProfile}
+            selectedTrackOverride={selectedPricingTrack}
+            selectedCycleOverride={selectedPricingCycle}
+            onSubmitted={async () => {
+              if (currentUser?.id) {
+                const updated = await fetchStudentProfileFromSupabase(currentUser.id, true, currentUser.email);
+                if (updated) setUserProfile(updated);
+              }
+            }}
+          />
+        )}
+
+        <TestLimitModal
+          isOpen={showTestLimitModal}
+          onClose={() => setShowTestLimitModal(false)}
+          resetDate={testLimitResetDate}
+          currentUsage={currentMonthlyTestCount}
+          onUpgradeClick={() => {
+            setScreen('pricing');
+          }}
+          onSubmitPaymentProofClick={() => {
+            setShowPaymentModal(true);
           }}
         />
-      )}
-
-      <TestLimitModal
-        isOpen={showTestLimitModal}
-        onClose={() => setShowTestLimitModal(false)}
-        resetDate={testLimitResetDate}
-        currentUsage={currentMonthlyTestCount}
-        onUpgradeClick={() => {
-          setScreen('pricing');
-        }}
-        onSubmitPaymentProofClick={() => {
-          setShowPaymentModal(true);
-        }}
-      />
+      </React.Suspense>
 
       {/* MCQ Generation Loading Overlay */}
       {isGenerating && (
