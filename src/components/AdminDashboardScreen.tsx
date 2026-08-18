@@ -163,6 +163,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
   const [auditResults, setAuditResults] = useState<AuditResultItem[]>([]);
   const [dismissedFlagIds, setDismissedFlagIds] = useState<string[]>([]);
   const [sanitizedCount, setSanitizedCount] = useState<number>(0);
+  const [avatarLoadError, setAvatarLoadError] = useState<boolean>(false);
 
   // Admin Override state for student class/stream
   const [editStudentGrade, setEditStudentGrade] = useState<string>('');
@@ -246,8 +247,8 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
 
       runAuditAndRevertUnverifiedPro(studentList, paymentList);
     } catch (err: any) {
-      console.error('Failed to fetch admin data from Supabase:', err);
-      setError('Failed to load live admin data from Supabase Postgres.');
+      console.error('Failed to fetch admin data from database:', err);
+      setError('Failed to load live admin data from database.');
     } finally {
       setLoading(false);
     }
@@ -643,7 +644,7 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
     try {
       const res = await permanentlyDeleteTestRecordInSupabase(deletingRecord.id);
       if (!res.success) {
-        throw new Error(res.error || 'Failed to permanently delete record from Supabase database.');
+        throw new Error(res.error || 'Failed to permanently delete record from database.');
       }
       setAllTestResults((prev) => prev.filter((t) => t.id !== deletingRecord.id));
       setStudentHistory((prev) => prev.filter((t) => t.id !== deletingRecord.id));
@@ -931,10 +932,10 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
         };
         setSelectedStudent(updatedStudentObj);
         setStudents((prev) => prev.map((s) => s.id === selectedStudent.id ? updatedStudentObj : s));
-        setAdminOverrideToast('✅ Grade & Stream lock updated successfully in Supabase!');
+        setAdminOverrideToast('✅ Grade & Stream lock updated successfully!');
         loadData();
       } else {
-        setAdminOverrideToast(`⚠️ Failed to save changes: ${res.message || 'Supabase update failed.'}`);
+        setAdminOverrideToast(`⚠️ Failed to save changes: ${res.message || 'Database update failed.'}`);
       }
     } catch (err: any) {
       setAdminOverrideToast(`❌ Error: ${err.message || 'Update failed'}`);
@@ -1159,6 +1160,21 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
     (r) => r.status === 'flagged' && !dismissedFlagIds.includes(r.id)
   ).length;
 
+  // Google account profile picture from admin login credentials
+  const adminStudentProfile = students.find(
+    (s) => s.email && currentUser?.email && s.email.toLowerCase() === currentUser.email.toLowerCase()
+  );
+  const adminGoogleAvatar =
+    currentUser?.user_metadata?.avatar_url ||
+    currentUser?.user_metadata?.picture ||
+    currentUser?.user_metadata?.picture_url ||
+    (currentUser?.identities && currentUser.identities[0]?.identity_data?.avatar_url) ||
+    (currentUser?.identities && currentUser.identities[0]?.identity_data?.picture) ||
+    adminStudentProfile?.avatar_url ||
+    null;
+
+  const adminAvatarSrc = (!avatarLoadError && adminGoogleAvatar) ? adminGoogleAvatar : '/boardly-logo.png';
+
   return (
     <div className="space-y-6 animate-ios-spring w-full max-w-7xl mx-auto pb-12 min-w-0 overflow-x-hidden">
       {/* Admin Header */}
@@ -1173,16 +1189,21 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="min-w-0">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-xl bg-[#0A0A0A] border border-[#F2B90C]/40 p-0.5 flex items-center justify-center shrink-0 shadow-sm overflow-hidden">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full border-2 border-slate-200/80 bg-slate-100 flex items-center justify-center shrink-0 shadow-sm overflow-hidden ring-2 ring-slate-100/80">
                 <img
-                  src="https://i.ibb.co/ymPFp2Wb/Chat-Box-1256234838.jpg"
-                  alt="Boardly Logo"
-                  className="w-full h-full object-cover rounded-lg"
+                  src={adminAvatarSrc}
+                  alt={currentUser?.user_metadata?.full_name || currentUser?.email || 'Admin Profile'}
+                  referrerPolicy="no-referrer"
+                  className="w-full h-full object-cover rounded-full aspect-square"
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
-                    target.onerror = null;
-                    target.src = '/logo.png';
+                    if (!avatarLoadError && adminGoogleAvatar) {
+                      setAvatarLoadError(true);
+                    } else {
+                      target.onerror = null;
+                      target.src = '/boardly-logo.png';
+                    }
                   }}
                 />
               </div>
@@ -1191,7 +1212,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
               </h1>
             </div>
             <p className="text-xs text-slate-500  font-medium mt-0.5 truncate">
-              Live Management • Supabase Postgres Database • Multi-Student Directory
+              Live Management • Administration Control Center • Multi-Student Directory
             </p>
           </div>
         </div>
@@ -1515,7 +1536,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
               <BrandedLoadingSpinner
                 size="lg"
                 label="Fetching student directory..."
-                sublabel="Querying Supabase database"
+                sublabel="Loading student records..."
               />
             </div>
           ) : filteredStudents.length === 0 ? (
@@ -3078,7 +3099,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                   <span>DESTRUCTIVE ACTION (Full Account Wipe)</span>
                 </p>
                 <p>
-                  This action permanently deletes this student record, test history, MCQ attempts, and AI Study Buddy conversations from Supabase.
+                  This action permanently deletes this student record, test history, MCQ attempts, and AI Study Buddy conversations from the database.
                 </p>
                 <p className="text-[11px] text-rose-800  font-bold pt-1">
                   Upon logging back in with this email, the user will be treated as an unregistered brand-new student.

@@ -78,7 +78,7 @@ export const UploadResourceDrawer: React.FC<UploadResourceDrawerProps> = ({
 
       if (result.success && result.resource) {
         triggerHaptic(HAPTIC_PATTERNS.success);
-        setUploadSuccess('Resource published successfully to R2 bucket & database!');
+        setUploadSuccess('Resource published successfully to digital library!');
         onSuccess(result.resource);
         setUploadFile(null);
         setUploadTitle('');
@@ -328,7 +328,7 @@ export const UploadResourceDrawer: React.FC<UploadResourceDrawerProps> = ({
             {isUploading ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Publishing to R2...</span>
+                <span>Publishing document...</span>
               </>
             ) : (
               <>

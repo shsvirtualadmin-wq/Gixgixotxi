@@ -2759,7 +2759,7 @@ export async function bulkImportMcqsToSupabase(
         return {
           success: true,
           insertedCount: resData.insertedCount || items.length,
-          message: resData.message || `Successfully imported ${resData.insertedCount || items.length} MCQs into Supabase mcq_bank table.`,
+          message: resData.message || `Successfully imported ${resData.insertedCount || items.length} MCQs into question bank.`,
           errors: resData.errors,
         };
       }
@@ -2789,7 +2789,7 @@ export async function bulkImportMcqsToSupabase(
       return {
         success: true,
         insertedCount,
-        message: `Successfully imported ${insertedCount} of ${items.length} MCQs into Supabase.`,
+        message: `Successfully imported ${insertedCount} of ${items.length} MCQs into question bank.`,
         errors: errors.length > 0 ? errors : undefined,
       };
     }
@@ -2797,7 +2797,7 @@ export async function bulkImportMcqsToSupabase(
     return {
       success: false,
       insertedCount: 0,
-      message: errors.length > 0 ? errors.join('; ') : 'Failed to insert MCQs into Supabase.',
+      message: errors.length > 0 ? errors.join('; ') : 'Failed to insert MCQs into database.',
     };
   } catch (err: any) {
     console.error('Error in bulkImportMcqsToSupabase:', err);
@@ -2968,7 +2968,7 @@ export async function submitPaymentProofApi(payload: Record<string, any> | FormD
       return { success: true, data: data as PaymentRequest };
     }
 
-    return { success: false, error: error?.message || 'Failed to record payment proof in Supabase.' };
+    return { success: false, error: error?.message || 'Failed to record payment proof.' };
   } catch (fbErr: any) {
     console.error('Direct Supabase fallback write failed:', fbErr);
     return { success: false, error: fbErr?.message || 'Failed to record payment proof.' };

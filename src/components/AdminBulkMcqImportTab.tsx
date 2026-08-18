@@ -132,7 +132,7 @@ export const AdminBulkMcqImportTab: React.FC<AdminBulkMcqImportTabProps> = ({ cu
     if (!parseResult || parseResult.validItems.length === 0) return;
 
     setIsImporting(true);
-    setImportStatus({ type: 'idle', message: 'Importing MCQs into Supabase...' });
+    setImportStatus({ type: 'idle', message: 'Importing MCQs into question bank...' });
 
     const result = await bulkImportMcqsToSupabase(parseResult.validItems, adminEmail);
 
@@ -177,11 +177,11 @@ export const AdminBulkMcqImportTab: React.FC<AdminBulkMcqImportTabProps> = ({ cu
                 Bulk MCQ CSV Importer
               </h2>
               <span className="px-2 py-0.5 text-xs font-semibold bg-emerald-500/20 text-emerald-300 rounded-full border border-emerald-500/30">
-                Supabase mcq_bank
+                Question Bank
               </span>
             </div>
             <p className="text-sm text-slate-300 mt-1 max-w-2xl">
-              Upload or paste CSV files to bulk insert thousands of high-quality MDCAT/FBISE MCQs directly into the <code className="text-emerald-300 font-mono text-xs">mcq_bank</code> table. Includes automated schema & column validation.
+              Upload or paste CSV files to bulk insert thousands of high-quality MDCAT/FBISE MCQs directly into the question bank. Includes automated schema & column validation.
             </p>
           </div>
         </div>
@@ -190,7 +190,7 @@ export const AdminBulkMcqImportTab: React.FC<AdminBulkMcqImportTabProps> = ({ cu
         <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 min-w-[220px] shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between text-xs text-slate-400 mb-2">
             <span className="flex items-center gap-1.5 font-medium">
-              <Database className="w-3.5 h-3.5 text-emerald-400" /> Supabase Status
+              <Database className="w-3.5 h-3.5 text-emerald-400" /> Database Status
             </span>
             <button
               onClick={loadDbStats}
@@ -388,11 +388,11 @@ export const AdminBulkMcqImportTab: React.FC<AdminBulkMcqImportTabProps> = ({ cu
               >
                 {isImporting ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" /> Importing to Supabase...
+                    <Loader2 className="w-4 h-4 animate-spin" /> Importing to Database...
                   </>
                 ) : (
                   <>
-                    <Database className="w-4 h-4" /> Insert {parseResult.validItems.length} MCQs into Supabase
+                    <Database className="w-4 h-4" /> Insert {parseResult.validItems.length} MCQs into Question Bank
                   </>
                 )}
               </button>

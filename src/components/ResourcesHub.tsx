@@ -899,7 +899,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
           <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
             <span>Resources Hub</span>
             <span className="text-xs font-bold bg-blue-50 text-[#1E5AFF] border border-blue-200 px-2.5 py-0.5 rounded-full">
-              R2 PDF Cloud
+              Cloud Library
             </span>
           </h2>
           <p className="text-slate-600 text-xs sm:text-sm font-normal">
