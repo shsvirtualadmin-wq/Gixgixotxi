@@ -5175,10 +5175,22 @@ ${scopeInstruction}`;
       const contentRange = upstreamResponse.headers.get("content-range");
       const acceptRanges = upstreamResponse.headers.get("accept-ranges");
 
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Range, Authorization");
       res.setHeader("Content-Type", contentType.includes("pdf") ? "application/pdf" : contentType);
-      res.setHeader("Content-Disposition", "inline");
       res.setHeader("Cache-Control", "public, max-age=86400");
       res.setHeader("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges");
+
+      const isDownload = req.query.download === "1" || Boolean(req.query.filename);
+      if (isDownload) {
+        const rawFilename = (req.query.filename as string) || "document.pdf";
+        let safeFilename = rawFilename.replace(/[/\\?%*:|"<>]/g, "_");
+        if (!safeFilename.toLowerCase().endsWith(".pdf")) safeFilename += ".pdf";
+        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(safeFilename)}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
+      } else {
+        res.setHeader("Content-Disposition", "inline");
+      }
 
       if (acceptRanges) res.setHeader("Accept-Ranges", acceptRanges);
       if (contentRange) res.setHeader("Content-Range", contentRange);
@@ -5957,69 +5969,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     } catch (err: any) {
       console.error("[api/drive-delete error]:", err);
       return res.status(500).json({ success: false, error: err?.message || "Failed to delete file." });
-    }
-  });
-
-  // API Endpoint: Proxy PDF & Binary resource files with proper CORS, redirect following, and binary streaming
-  app.get("/api/resources/proxy", async (req: express.Request, res: express.Response) => {
-    try {
-      const rawUrl = (req.query.url as string || "").trim();
-      if (!rawUrl) {
-        return res.status(400).json({ success: false, error: "Missing required 'url' query parameter." });
-      }
-
-      let targetUrl = rawUrl;
-      try {
-        targetUrl = decodeURIComponent(rawUrl);
-      } catch {}
-
-      if (!targetUrl.startsWith("http://") && !targetUrl.startsWith("https://")) {
-        return res.status(400).json({ success: false, error: "Invalid URL scheme." });
-      }
-
-      console.log(`[api/resources/proxy] Proxying binary request to: ${targetUrl}`);
-      const upstreamRes = await fetch(targetUrl, {
-        method: "GET",
-        headers: {
-          "Accept": "application/pdf,application/octet-stream,*/*",
-          "User-Agent": "Mozilla/5.0 (compatible; BoardlyApp/1.0)",
-        },
-        redirect: "follow",
-      });
-
-      if (!upstreamRes.ok) {
-        console.warn(`[api/resources/proxy] Upstream returned HTTP ${upstreamRes.status}: ${upstreamRes.statusText}`);
-        return res.status(upstreamRes.status).send(`Upstream storage returned status ${upstreamRes.status}`);
-      }
-
-      const contentType = upstreamRes.headers.get("content-type") || "application/pdf";
-      const contentLength = upstreamRes.headers.get("content-length");
-      const etag = upstreamRes.headers.get("etag");
-
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Range, Authorization");
-      res.setHeader("Content-Type", contentType);
-      res.setHeader("Cache-Control", "public, max-age=86400");
-      if (contentLength) res.setHeader("Content-Length", contentLength);
-      if (etag) res.setHeader("ETag", etag);
-
-      const isDownload = req.query.download === "1" || Boolean(req.query.filename);
-      if (isDownload) {
-        const rawFilename = (req.query.filename as string) || "document.pdf";
-        let safeFilename = rawFilename.replace(/[/\\?%*:|"<>]/g, "_");
-        if (!safeFilename.toLowerCase().endsWith(".pdf")) safeFilename += ".pdf";
-        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(safeFilename)}"; filename*=UTF-8''${encodeURIComponent(safeFilename)}`);
-      }
-
-      const arrayBuffer = await upstreamRes.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-
-      console.log(`[api/resources/proxy] Streamed binary: ${buffer.length} bytes. Header: ${buffer.toString('latin1', 0, 8)}`);
-      return res.send(buffer);
-    } catch (err: any) {
-      console.error("[api/resources/proxy error]:", err);
-      return res.status(500).json({ success: false, error: err?.message || "Failed to proxy resource file." });
     }
   });
 

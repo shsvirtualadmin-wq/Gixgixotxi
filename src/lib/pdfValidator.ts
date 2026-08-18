@@ -113,19 +113,26 @@ export async function validatePdfFile(
 
     const pdfWorkerUrl = (pdfWorkerUrlModule.default || pdfWorkerUrlModule) as string;
     if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        pdfWorkerUrl ||
+        `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '6.2.108'}/build/pdf.worker.min.mjs`;
     }
 
     const uint8Data = new Uint8Array(arrayBuffer.slice(0));
     const loadingTask = pdfjsLib.getDocument({
       data: uint8Data,
-      cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+      cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '6.2.108'}/cmaps/`,
       cMapPacked: true,
       enableXfa: false,
       stopAtErrors: true,
     });
 
-    const doc = await loadingTask.promise;
+    const docPromise = loadingTask.promise;
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('PDF verification timed out')), 6000)
+    );
+
+    const doc = await Promise.race([docPromise, timeoutPromise]);
 
     if (!doc || typeof doc.numPages !== 'number' || doc.numPages < 1) {
       return {

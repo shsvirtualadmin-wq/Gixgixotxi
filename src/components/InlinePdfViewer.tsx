@@ -11,13 +11,22 @@ import {
   ExternalLink,
   RotateCw,
   Maximize2,
-  RefreshCw
+  RefreshCw,
+  FileText
 } from 'lucide-react';
-import { fetchPdfBinary, openExternalPdfBrowser } from '../lib/pdfExport';
+import { fetchPdfBinary, openExternalPdfBrowser, resolveProxyPdfUrl } from '../lib/pdfExport';
 
-// Configure pdfjs worker with Vite bundled worker for instant local loading and exact version compatibility
-if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+// Configure pdfjs worker with multiple reliable fallbacks (Vite bundled worker, jsdelivr, cdnjs)
+if (typeof window !== 'undefined') {
+  try {
+    if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        pdfWorkerUrl ||
+        `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '6.2.108'}/build/pdf.worker.min.mjs`;
+    }
+  } catch (e) {
+    console.warn('[InlinePdfViewer] Worker config warning:', e);
+  }
 }
 
 // In-memory document cache to eliminate redundant network fetches
@@ -52,14 +61,16 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [isRenderingPage, setIsRenderingPage] = useState<boolean>(false);
   const [retryKey, setRetryKey] = useState<number>(0);
+  const [useNativeViewerFallback, setUseNativeViewerFallback] = useState<boolean>(false);
 
   const renderTaskRef = useRef<any>(null);
 
-  // Load PDF Document (with memory cache for instant subsequent opens and proxy CORS resilience)
+  // Load PDF Document with strict timeout & error handling
   useEffect(() => {
     let isCancelled = false;
     setIsLoading(true);
     setErrorMessage(null);
+    setUseNativeViewerFallback(false);
 
     if (!fileUrl) {
       setIsLoading(false);
@@ -67,7 +78,7 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
       return;
     }
 
-    // Check memory cache first
+    // Check memory cache first for instant opening
     if (pdfDocumentCache.has(fileUrl)) {
       const cachedDoc = pdfDocumentCache.get(fileUrl);
       setPdfDoc(cachedDoc);
@@ -79,6 +90,15 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
       return;
     }
 
+    // 8-second watchdog timer: if PDF parsing stalls, fail fast with actionable retry/fallback
+    const timeoutId = setTimeout(() => {
+      if (!isCancelled && isLoading) {
+        console.warn('[InlinePdfViewer] Document loading timed out after 8s:', fileUrl);
+        setIsLoading(false);
+        setErrorMessage('Document took longer than expected to load. You can retry or open the PDF directly.');
+      }
+    }, 8000);
+
     const loadDocument = async () => {
       try {
         console.log('[InlinePdfViewer] Fetching PDF binary for:', fileUrl);
@@ -86,29 +106,30 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
 
         if (isCancelled) return;
 
-        // Log exact received byte length and first 8 bytes before handing to pdf.js
-        const first8Ascii = Array.from(pdfBytes.subarray(0, 8))
-          .map((b) => (b >= 32 && b <= 126 ? String.fromCharCode(b) : '.'))
-          .join('');
-        const first8Hex = Array.from(pdfBytes.subarray(0, 8))
-          .map((b) => '0x' + b.toString(16).padStart(2, '0').toUpperCase())
-          .join(', ');
-
-        console.log(
-          `%c[InlinePdfViewer -> pdf.js Hand-off] Total bytes: ${pdfBytes.byteLength.toLocaleString()} | First 8 bytes ASCII: "${first8Ascii}" | Hex: [${first8Hex}] | URL: ${fileUrl}`,
-          'color: #3b82f6; font-weight: bold;'
-        );
+        // Ensure workerSrc is set
+        if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc =
+            pdfWorkerUrl ||
+            `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '6.2.108'}/build/pdf.worker.min.mjs`;
+        }
 
         const loadingTask = pdfjsLib.getDocument({
           data: pdfBytes,
-          cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+          cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '6.2.108'}/cmaps/`,
           cMapPacked: true,
           enableXfa: true,
         });
 
-        const doc = await loadingTask.promise;
+        // Add 6s promise race so a frozen worker never hangs indefinitely
+        const docPromise = loadingTask.promise;
+        const raceTimeout = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('PDF.js worker initialization timed out')), 6500)
+        );
+
+        const doc: any = await Promise.race([docPromise, raceTimeout]);
         if (isCancelled) return;
 
+        clearTimeout(timeoutId);
         pdfDocumentCache.set(fileUrl, doc);
         setPdfDoc(doc);
         setTotalPages(doc.numPages);
@@ -120,9 +141,10 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
       } catch (err: any) {
         console.error('[InlinePdfViewer] Failed to load PDF document:', err);
         if (isCancelled) return;
+        clearTimeout(timeoutId);
         setIsLoading(false);
         setErrorMessage(
-          err?.message || "Couldn't load preview. The storage service may be temporarily unavailable or blocking access."
+          err?.message || "Failed to load document preview. You can retry or open the file directly in browser."
         );
       }
     };
@@ -131,6 +153,7 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
 
     return () => {
       isCancelled = true;
+      clearTimeout(timeoutId);
       if (renderTaskRef.current) {
         try {
           renderTaskRef.current.cancel();
@@ -250,12 +273,50 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
     setRetryKey(prev => prev + 1);
   };
 
+  // If user requested native iframe fallback
+  if (useNativeViewerFallback && fileUrl) {
+    const directOrProxied = resolveProxyPdfUrl(fileUrl);
+    return (
+      <div className="relative flex-1 w-full h-full bg-slate-900 flex flex-col">
+        <div className="bg-slate-800 px-4 py-2 flex items-center justify-between text-xs text-white border-b border-slate-700">
+          <span className="font-semibold flex items-center gap-2">
+            <FileText className="w-4 h-4 text-blue-400" />
+            Native Document Viewer: {title}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setUseNativeViewerFallback(false)}
+              className="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded text-xs text-white font-medium cursor-pointer"
+            >
+              Switch to Interactive Canvas
+            </button>
+            <a
+              href={fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-2.5 py-1 bg-blue-600 hover:bg-blue-500 rounded text-xs text-white font-bold flex items-center gap-1"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              Open Tab
+            </a>
+          </div>
+        </div>
+        <iframe
+          src={directOrProxied}
+          title={title}
+          className="w-full flex-1 border-0"
+        />
+      </div>
+    );
+  }
+
   return (
     <div
       ref={containerRef}
       className="relative flex-1 w-full h-full bg-slate-100 overflow-auto flex flex-col items-center select-none"
     >
-      {/* Lightweight Loading Overlay with App Blue Spinner & Accent Dot */}
+      {/* Lightweight Loading Overlay with App Blue Spinner */}
       {isLoading && (
         <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-white/95 backdrop-blur-xs">
           <div className="relative flex items-center justify-center">
@@ -269,7 +330,7 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
         </div>
       )}
 
-      {/* Clear, Helpful Error State (No silent blank fallbacks) */}
+      {/* Clear, Helpful Error State with Retry & Fallbacks */}
       {errorMessage && !isLoading && (
         <div className="m-auto p-6 max-w-md bg-white rounded-2xl border border-rose-200 shadow-md text-center space-y-3.5 my-8">
           <div className="w-12 h-12 mx-auto rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-500">
@@ -277,14 +338,12 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
           </div>
           <div className="space-y-1.5">
             <h4 className="text-sm font-bold text-slate-900">
-              {errorMessage.toLowerCase().includes('invalid pdf') || errorMessage.toLowerCase().includes('corrupt')
+              {errorMessage.toLowerCase().includes('corrupt') || errorMessage.toLowerCase().includes('invalid pdf')
                 ? 'Corrupted PDF Document'
-                : "Couldn't load preview"}
+                : 'Failed to load document'}
             </h4>
             <p className="text-xs text-slate-600 leading-relaxed">
-              {errorMessage.toLowerCase().includes('invalid pdf') || errorMessage.toLowerCase().includes('corrupt')
-                ? 'This file in storage appears corrupted (Invalid PDF structure), likely from an interrupted or broken upload.'
-                : errorMessage}
+              {errorMessage}
             </p>
           </div>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2 border-t border-slate-100">
@@ -294,7 +353,15 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
               className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-sm transition-all cursor-pointer"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>Retry Loading</span>
+              <span>Try Again</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setUseNativeViewerFallback(true)}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl border border-slate-300 transition-all cursor-pointer"
+            >
+              <FileText className="w-3.5 h-3.5 text-slate-600" />
+              <span>Native Viewer</span>
             </button>
             <a
               href={fileUrl}
@@ -304,7 +371,7 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
                 e.preventDefault();
                 openExternalPdfBrowser(fileUrl);
               }}
-              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl border border-slate-300 transition-all cursor-pointer"
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl border border-slate-300 transition-all cursor-pointer"
             >
               <ExternalLink className="w-3.5 h-3.5 text-slate-600" />
               <span>Open in Browser</span>

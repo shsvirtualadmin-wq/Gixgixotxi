@@ -64,11 +64,7 @@ import {
   deleteResourceFromHub,
   isAdminEmail
 } from '../lib/supabase';
-
-// Lazy-load PDF viewer to code-split pdfjs-dist and speed up initial render
-const LazyInlinePdfViewer = lazy(() =>
-  import('./InlinePdfViewer').then((m) => ({ default: m.InlinePdfViewer }))
-);
+import { InlinePdfViewer } from './InlinePdfViewer';
 
 export const CLASS_TABS = [
   'All Classes',
@@ -963,19 +959,39 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
 
       {/* CATEGORY TOGGLE SLIDER SWITCH & FILTER CONTROLS */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 relative z-10">
-        {/* The Toggle / Slider Switch with Primary Blue Active State */}
-        <SegmentedControl<ResourceCategory>
+        {/* Category Tab Bar (Past Papers & MCQs Drills ONLY - No stray pills or empty slots) */}
+        <div
           id="resources-category-segmented-control"
-          options={[
-            { value: 'past_paper', label: 'Past Papers', icon: FileText },
-            { value: 'mcq_drill', label: 'MCQs Drills', icon: Layers },
-          ]}
-          value={activeCategory}
-          onChange={(cat) => handleSelectCategory(cat)}
-          theme="light"
-          size="md"
-          className="shrink-0 shadow-xs inline-flex"
-        />
+          className="inline-flex items-center p-1 bg-slate-100 border border-slate-200 rounded-2xl sm:rounded-full shrink-0 shadow-xs"
+        >
+          <button
+            type="button"
+            id="tab-past-papers"
+            onClick={() => handleSelectCategory('past_paper')}
+            className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl sm:rounded-full text-xs sm:text-sm font-extrabold transition-all cursor-pointer select-none ${
+              activeCategory === 'past_paper'
+                ? 'bg-[#1E5AFF] text-white shadow-md shadow-blue-500/25'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <FileText className="w-4 h-4 shrink-0" />
+            <span>Past Papers</span>
+          </button>
+
+          <button
+            type="button"
+            id="tab-mcq-drills"
+            onClick={() => handleSelectCategory('mcq_drill')}
+            className={`inline-flex items-center justify-center gap-2 px-4 py-2 rounded-xl sm:rounded-full text-xs sm:text-sm font-extrabold transition-all cursor-pointer select-none ${
+              activeCategory === 'mcq_drill'
+                ? 'bg-[#1E5AFF] text-white shadow-md shadow-blue-500/25'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+            }`}
+          >
+            <Layers className="w-4 h-4 shrink-0" />
+            <span>MCQs Drills</span>
+          </button>
+        </div>
 
         {/* Filter Controls (Search + Class Pill Filters / Single-Class Badge) */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 lg:justify-end">
@@ -1000,17 +1016,27 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
             )}
           </div>
 
-          {/* Class Filter: SegmentedControl if multiple classes, or single-class Badge if only 1 */}
+          {/* Class Filter: If multiple classes, show clean class pills */}
           {availableClassTabs.length > 1 ? (
-            <SegmentedControl<string>
+            <div
               id="resources-class-filter-segmented"
-              options={availableClassTabs.map((tab) => ({ value: tab, label: tab }))}
-              value={selectedClassFilter}
-              onChange={(tab) => handleSelectClassFilter(tab)}
-              theme="light"
-              size="sm"
-              className="max-w-full shadow-inner"
-            />
+              className="inline-flex items-center p-1 bg-slate-100 border border-slate-200 rounded-2xl sm:rounded-full overflow-x-auto [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden max-w-full shadow-inner gap-1"
+            >
+              {availableClassTabs.map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => handleSelectClassFilter(tab)}
+                  className={`inline-flex items-center justify-center px-3 py-1.5 rounded-xl sm:rounded-full text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 ${
+                    selectedClassFilter === tab
+                      ? 'bg-[#1E5AFF] text-white font-black shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
           ) : (
             <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 shadow-xs shrink-0 whitespace-nowrap">
               <GraduationCap className="w-4 h-4 text-[#1E5AFF]" />
@@ -1723,29 +1749,21 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                   )}
 
                   {/* Inline PDF Viewer Component (Fast Canvas Rendering with Page Navigation & Zoom) */}
-                  <Suspense
-                    fallback={
-                      <div className="flex-1 flex flex-col items-center justify-center p-8 text-slate-500 gap-2">
-                        <Loader2 className="w-8 h-8 text-blue-600 animate-spin" />
-                        <span className="text-xs font-semibold">Loading document viewer...</span>
-                      </div>
-                    }
+                  <InlinePdfViewer
+                    fileUrl={previewResource.file_url}
+                    title={previewResource.title}
+                    currentPage={exportPageNumber}
+                    searchQuery={previewSearchQuery}
+                    onPdfLoaded={(pages) => {
+                      setPreviewTotalPages(pages);
+                      setIsPreviewLoading(false);
+                    }}
+                    onPageChange={(page, total) => {
+                      setExportPageNumber(page);
+                      setPreviewTotalPages(total);
+                    }}
                   >
-                    <LazyInlinePdfViewer
-                      fileUrl={previewResource.file_url}
-                      title={previewResource.title}
-                      currentPage={exportPageNumber}
-                      searchQuery={previewSearchQuery}
-                      onPdfLoaded={(pages) => {
-                        setPreviewTotalPages(pages);
-                        setIsPreviewLoading(false);
-                      }}
-                      onPageChange={(page, total) => {
-                        setExportPageNumber(page);
-                        setPreviewTotalPages(total);
-                      }}
-                    >
-                      {/* Render Study Sticky Notes on Top of PDF Canvas */}
+                    {/* Render Study Sticky Notes on Top of PDF Canvas */}
                       {studyNotes
                         .filter(n => n.pageNumber === exportPageNumber)
                         .map((note) => (
@@ -1793,8 +1811,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                             />
                           </div>
                         ))}
-                    </LazyInlinePdfViewer>
-                  </Suspense>
+                  </InlinePdfViewer>
                 </div>
 
                 {/* Study Notes & Highlights Sidebar Drawer in Light Theme */}

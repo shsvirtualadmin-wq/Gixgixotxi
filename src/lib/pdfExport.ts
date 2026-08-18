@@ -144,17 +144,24 @@ export async function exportPdfPageToImage(
 
   const pdfWorkerUrl = (pdfWorkerUrlModule.default || pdfWorkerUrlModule) as string;
   if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-    pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      pdfWorkerUrl ||
+      `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '6.2.108'}/build/pdf.worker.min.mjs`;
   }
 
   const loadingTask = pdfjsLib.getDocument({
     data: pdfBytes,
-    cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/cmaps/',
+    cMapUrl: `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version || '6.2.108'}/cmaps/`,
     cMapPacked: true,
     enableXfa: true,
   });
 
-  const pdf = await loadingTask.promise;
+  const docPromise = loadingTask.promise;
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('PDF loading timed out')), 7000)
+  );
+
+  const pdf = await Promise.race([docPromise, timeoutPromise]);
   const totalPages = pdf.numPages;
   const targetPageNumber = Math.min(Math.max(1, pageNumber), totalPages);
   const page = await pdf.getPage(targetPageNumber);
