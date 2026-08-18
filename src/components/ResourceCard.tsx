@@ -20,14 +20,14 @@ export interface ResourceCardProps {
 }
 
 const subjectBadgeColors: Record<string, { bg: string; text: string; border: string }> = {
-  Physics: { bg: 'bg-cyan-500/15', text: 'text-cyan-400', border: 'border-cyan-500/30' },
-  Chemistry: { bg: 'bg-emerald-500/15', text: 'text-emerald-400', border: 'border-emerald-500/30' },
-  Biology: { bg: 'bg-teal-500/15', text: 'text-teal-400', border: 'border-teal-500/30' },
-  Mathematics: { bg: 'bg-amber-500/15', text: 'text-amber-400', border: 'border-amber-500/30' },
-  'Computer Science': { bg: 'bg-indigo-500/15', text: 'text-indigo-400', border: 'border-indigo-500/30' },
-  English: { bg: 'bg-purple-500/15', text: 'text-purple-400', border: 'border-purple-500/30' },
-  'Logical Reasoning': { bg: 'bg-pink-500/15', text: 'text-pink-400', border: 'border-pink-500/30' },
-  General: { bg: 'bg-slate-500/15', text: 'text-slate-300', border: 'border-slate-500/30' },
+  Physics: { bg: 'bg-cyan-50', text: 'text-cyan-800', border: 'border-cyan-200' },
+  Chemistry: { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200' },
+  Biology: { bg: 'bg-teal-50', text: 'text-teal-800', border: 'border-teal-200' },
+  Mathematics: { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200' },
+  'Computer Science': { bg: 'bg-indigo-50', text: 'text-indigo-800', border: 'border-indigo-200' },
+  English: { bg: 'bg-purple-50', text: 'text-purple-800', border: 'border-purple-200' },
+  'Logical Reasoning': { bg: 'bg-pink-50', text: 'text-pink-800', border: 'border-pink-200' },
+  General: { bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-200' },
 };
 
 function getSubjectBadge(subject: string) {
@@ -64,11 +64,11 @@ export const ResourceCard = React.memo<ResourceCardProps>(({
         contentVisibility: 'auto',
         containIntrinsicSize: 'auto 168px',
       }}
-      className={`bg-[#131f42] hover:bg-[#17254e] border ${
+      className={`bg-white hover:bg-slate-50/80 border ${
         isSelected
-          ? 'border-[#1a6dff] ring-1 ring-[#1a6dff]/40 bg-[#13224f]'
-          : 'border-[#1e3a8a]/50 hover:border-[#1a6dff]/60'
-      } rounded-2xl p-4 sm:p-4.5 transition-colors shadow-sm group flex flex-col justify-between gap-3 relative`}
+          ? 'border-[#1E5AFF] ring-1 ring-[#1E5AFF]/30 bg-blue-50/30'
+          : 'border-slate-200 hover:border-blue-300'
+      } rounded-2xl p-4 sm:p-4.5 transition-all shadow-xs group flex flex-col justify-between gap-3 relative`}
     >
       {/* Top Row: Selection Checkbox + Subject/Class Badges + Top Admin Delete */}
       <div className="flex items-center justify-between gap-2">
@@ -81,8 +81,8 @@ export const ResourceCard = React.memo<ResourceCardProps>(({
               onClick={e => onToggleSelect(item.id, e)}
               className={`p-1 rounded-lg border transition-colors cursor-pointer flex items-center justify-center ${
                 isSelected
-                  ? 'bg-[#1a6dff] border-[#1a6dff] text-white shadow-sm shadow-[#1a6dff]/40'
-                  : 'bg-[#0d1b3e] border-[#1e3a8a] text-transparent hover:border-[#1a6dff]/50'
+                  ? 'bg-[#1E5AFF] border-[#1E5AFF] text-white shadow-xs shadow-blue-500/30'
+                  : 'bg-slate-100 border-slate-300 text-transparent hover:border-[#1E5AFF]/60'
               }`}
               title={isSelected ? 'Deselect resource' : 'Select resource for batch actions'}
             >
@@ -99,7 +99,7 @@ export const ResourceCard = React.memo<ResourceCardProps>(({
 
           {/* Class Badge */}
           {item.class && item.class !== 'All' && (
-            <span className="text-[10px] font-extrabold text-[#94a3b8] bg-[#0d1b3e] border border-[#1e3a8a] px-2.5 py-0.5 rounded-full">
+            <span className="text-[10px] font-extrabold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-0.5 rounded-full">
               {item.class}
             </span>
           )}
@@ -111,7 +111,7 @@ export const ResourceCard = React.memo<ResourceCardProps>(({
             type="button"
             id={`delete-resource-btn-top-${item.id}`}
             onClick={e => onOpenDeleteModal(item, e)}
-            className="text-[#94a3b8] hover:text-rose-400 p-1.5 rounded-lg hover:bg-rose-500/10 transition-colors cursor-pointer"
+            className="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
             title="Delete PDF Resource"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -121,18 +121,18 @@ export const ResourceCard = React.memo<ResourceCardProps>(({
 
       {/* Middle: Document Title & Metadata */}
       <div className="space-y-1.5">
-        <h4 className="font-['Space_Grotesk'] font-bold text-sm sm:text-base text-white group-hover:text-blue-200 transition-colors leading-snug line-clamp-2">
+        <h4 className="font-['Space_Grotesk'] font-bold text-sm sm:text-base text-slate-900 group-hover:text-[#1E5AFF] transition-colors leading-snug line-clamp-2">
           {item.title}
         </h4>
 
-        <div className="flex flex-wrap items-center gap-3 text-[11px] text-[#94a3b8] font-medium pt-0.5">
+        <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-500 font-medium pt-0.5">
           <span className="flex items-center gap-1">
-            <Calendar className="w-3 h-3 text-[#1a6dff]" />
+            <Calendar className="w-3 h-3 text-[#1E5AFF]" />
             <span>{formatDate(item.created_at)}</span>
           </span>
           {item.file_size && (
             <span className="flex items-center gap-1">
-              <FileText className="w-3 h-3 text-[#94a3b8]" />
+              <FileText className="w-3 h-3 text-slate-400" />
               <span>{item.file_size}</span>
             </span>
           )}
@@ -146,10 +146,10 @@ export const ResourceCard = React.memo<ResourceCardProps>(({
           type="button"
           id={`preview-resource-btn-${item.id}`}
           onClick={(e) => onOpenPreview(item, e)}
-          className="flex-1 bg-[#1e293b] hover:bg-[#1a6dff]/20 text-slate-200 hover:text-white border border-[#1e3a8a]/70 hover:border-[#1a6dff]/60 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-sm cursor-pointer"
+          className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 hover:text-slate-900 border border-slate-200 font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-xs cursor-pointer"
           title="Preview PDF document without downloading"
         >
-          <Eye className="w-3.5 h-3.5 text-[#1a6dff]" />
+          <Eye className="w-3.5 h-3.5 text-[#1E5AFF]" />
           <span>Preview</span>
         </button>
 
@@ -158,7 +158,7 @@ export const ResourceCard = React.memo<ResourceCardProps>(({
           type="button"
           id={`download-resource-btn-${item.id}`}
           onClick={() => onDownload(item)}
-          className="flex-1 bg-[#1a6dff] hover:bg-[#1557cc] text-white font-extrabold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-sm cursor-pointer border border-blue-400/20"
+          className="flex-1 bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-extrabold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all shadow-xs cursor-pointer border border-blue-600/20"
           title="Download PDF file directly"
         >
           <Download className="w-3.5 h-3.5" />
@@ -171,7 +171,7 @@ export const ResourceCard = React.memo<ResourceCardProps>(({
             type="button"
             id={`delete-resource-btn-bottom-${item.id}`}
             onClick={e => onOpenDeleteModal(item, e)}
-            className="px-3 py-2.5 bg-[#0d1b3e] hover:bg-rose-500/15 text-[#94a3b8] hover:text-rose-400 border border-[#1e3a8a]/60 hover:border-rose-500/40 rounded-xl transition-colors cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
+            className="px-3 py-2.5 bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 border border-slate-200 hover:border-rose-200 rounded-xl transition-colors cursor-pointer flex items-center justify-center shrink-0 active:scale-95"
             title="Delete PDF Resource"
           >
             <Trash2 className="w-4 h-4" />

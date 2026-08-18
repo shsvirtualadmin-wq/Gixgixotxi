@@ -886,26 +886,26 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
   return (
     <section
       id="resources-hub-section"
-      className="bg-[#0d1b3e] text-white rounded-3xl p-5 sm:p-7 border border-[#1e3a8a]/40 shadow-2xl relative overflow-hidden flex flex-col gap-5"
+      className="bg-white text-slate-900 rounded-3xl p-5 sm:p-7 border border-slate-200 shadow-sm relative overflow-hidden flex flex-col gap-5"
     >
-      {/* Background ambient lighting (zero blur filters for maximum mobile GPU responsiveness) */}
-      <div className="absolute top-0 right-0 w-80 h-80 bg-[radial-gradient(circle,rgba(26,109,255,0.08)_0%,transparent_70%)] pointer-events-none" />
-      <div className="absolute bottom-0 left-0 w-64 h-64 bg-[radial-gradient(circle,rgba(99,102,241,0.06)_0%,transparent_70%)] pointer-events-none" />
+      {/* Background ambient lighting */}
+      <div className="absolute top-0 right-0 w-80 h-80 bg-[radial-gradient(circle,rgba(30,90,255,0.04)_0%,transparent_70%)] pointer-events-none" />
+      <div className="absolute bottom-0 left-0 w-64 h-64 bg-[radial-gradient(circle,rgba(99,102,241,0.03)_0%,transparent_70%)] pointer-events-none" />
 
       {/* Header Row */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10 border-b border-[#1e3a8a]/40 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10 border-b border-slate-200 pb-4">
         <div className="space-y-1">
-          <div className="flex items-center gap-2 text-xs font-black text-[#1a6dff] uppercase tracking-wider">
-            <BookOpen className="w-4 h-4 text-[#1a6dff]" />
+          <div className="flex items-center gap-2 text-xs font-black text-[#1E5AFF] uppercase tracking-wider">
+            <BookOpen className="w-4 h-4 text-[#1E5AFF]" />
             <span>Digital Library &amp; Archives</span>
           </div>
-          <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-extrabold text-white tracking-tight flex items-center gap-2.5">
+          <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
             <span>Resources Hub</span>
-            <span className="text-xs font-bold bg-[#1a6dff]/20 text-[#1a6dff] border border-[#1a6dff]/30 px-2.5 py-0.5 rounded-full">
+            <span className="text-xs font-bold bg-blue-50 text-[#1E5AFF] border border-blue-200 px-2.5 py-0.5 rounded-full">
               R2 PDF Cloud
             </span>
           </h2>
-          <p className="text-[#94a3b8] text-xs sm:text-sm font-normal">
+          <p className="text-slate-600 text-xs sm:text-sm font-normal">
             Official solved past papers, model answers, and topical MCQ practice drill sheets.
           </p>
         </div>
@@ -922,10 +922,10 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                   handleStartIntegrityScan();
                 }
               }}
-              className="inline-flex items-center justify-center gap-1.5 bg-[#131f42] hover:bg-[#1e3a8a] text-[#93c5fd] hover:text-white font-bold text-xs sm:text-sm py-2.5 px-3.5 rounded-2xl transition-all active:scale-95 border border-[#1e3a8a] cursor-pointer shadow-sm"
+              className="inline-flex items-center justify-center gap-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 font-bold text-xs sm:text-sm py-2.5 px-3.5 rounded-2xl transition-all active:scale-95 border border-slate-200 cursor-pointer shadow-xs"
               title="Scan entire PDF library for corrupted files or invalid structures"
             >
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
               <span>Verify Storage Integrity</span>
             </button>
 
@@ -936,7 +936,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                 triggerHaptic(HAPTIC_PATTERNS.light);
                 setShowUploadForm(true);
               }}
-              className="inline-flex items-center justify-center gap-2 bg-[#1a6dff] hover:bg-[#1557cc] text-white font-extrabold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition-all active:scale-95 shadow-md shadow-[#1a6dff]/20 cursor-pointer border border-blue-400/30"
+              className="inline-flex items-center justify-center gap-2 bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-extrabold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition-all active:scale-95 shadow-md shadow-blue-500/20 cursor-pointer border border-blue-600/30"
             >
               <Upload className="w-4 h-4" />
               <span>Upload {activeCategory === 'past_paper' ? 'Past Paper' : 'MCQs Drill'}</span>
@@ -972,28 +972,28 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
           ]}
           value={activeCategory}
           onChange={(cat) => handleSelectCategory(cat)}
-          theme="dark"
+          theme="light"
           size="md"
-          className="w-full sm:w-auto shrink-0 shadow-sm"
+          className="w-full sm:w-auto shrink-0 shadow-xs"
         />
 
         {/* Filter Controls (Search + Class Pill Filters / Single-Class Badge) */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 lg:justify-end">
           {/* Quick Search */}
           <div className="relative flex-1 sm:max-w-xs min-w-[180px]">
-            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-[#94a3b8]" />
+            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search PDFs..."
-              className="w-full bg-[#131f42] border border-[#1e3a8a]/60 focus:border-[#1a6dff] text-white placeholder-[#94a3b8]/60 text-xs rounded-2xl pl-8 pr-7 py-2.5 outline-none transition-colors shadow-sm"
+              className="w-full bg-slate-50 border border-slate-200 focus:border-[#1E5AFF] text-slate-900 placeholder:text-slate-400 text-xs rounded-2xl pl-8 pr-7 py-2.5 outline-none transition-colors shadow-xs"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#94a3b8] hover:text-white"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -1007,14 +1007,14 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
               options={availableClassTabs.map((tab) => ({ value: tab, label: tab }))}
               value={selectedClassFilter}
               onChange={(tab) => handleSelectClassFilter(tab)}
-              theme="gold"
+              theme="light"
               size="sm"
               className="max-w-full shadow-inner"
             />
           ) : (
-            <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-[#131f42] border border-[#1e3a8a]/60 text-xs font-bold text-slate-300 shadow-sm shrink-0 whitespace-nowrap">
-              <GraduationCap className="w-4 h-4 text-[#1a6dff]" />
-              <span>Showing: <strong className="text-white font-extrabold">{availableClassTabs[0] || selectedClassFilter}</strong></span>
+            <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-700 shadow-xs shrink-0 whitespace-nowrap">
+              <GraduationCap className="w-4 h-4 text-[#1E5AFF]" />
+              <span>Showing: <strong className="text-slate-900 font-extrabold">{availableClassTabs[0] || selectedClassFilter}</strong></span>
             </div>
           )}
         </div>
@@ -1028,31 +1028,31 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
               type="button"
               id="resources-select-all-btn"
               onClick={handleToggleSelectAll}
-              className={`inline-flex items-center justify-center gap-2 bg-[#131f42] hover:bg-[#1e3a8a] text-[#93c5fd] hover:text-white font-bold text-xs sm:text-sm py-2.5 px-3.5 rounded-2xl transition-all active:scale-95 border border-[#1e3a8a] cursor-pointer shadow-sm select-none shrink-0 ${
+              className={`inline-flex items-center justify-center gap-2 bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 font-bold text-xs sm:text-sm py-2.5 px-3.5 rounded-2xl transition-all active:scale-95 border border-slate-200 cursor-pointer shadow-xs select-none shrink-0 ${
                 filteredResources.length > 0 &&
                 filteredResources.every(r => selectedResourceIds.includes(r.id))
-                  ? 'bg-[#1a6dff]/25 border-[#1a6dff] text-white shadow-[#1a6dff]/20'
+                  ? 'bg-blue-50 border-blue-300 text-[#1E5AFF] shadow-blue-500/10'
                   : ''
               }`}
             >
               {filteredResources.length > 0 &&
               filteredResources.every(r => selectedResourceIds.includes(r.id)) ? (
                 <>
-                  <CheckSquare className="w-4 h-4 text-[#1a6dff]" />
+                  <CheckSquare className="w-4 h-4 text-[#1E5AFF]" />
                   <span>Deselect All</span>
                 </>
               ) : (
                 <>
-                  <Square className="w-4 h-4 text-emerald-400" />
+                  <Square className="w-4 h-4 text-emerald-600" />
                   <span>Select All ({filteredResources.length})</span>
                 </>
               )}
             </button>
 
             {selectedResourceIds.length > 0 && (
-              <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-[#131f42] border border-[#1e3a8a]/60 text-xs font-semibold text-[#94a3b8] shadow-sm">
-                <span className="inline-block w-2 h-2 rounded-full bg-[#1a6dff] animate-pulse" />
-                <span className="text-white font-bold">{selectedResourceIds.length}</span> selected
+              <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-semibold text-slate-600 shadow-xs">
+                <span className="inline-block w-2 h-2 rounded-full bg-[#1E5AFF] animate-pulse" />
+                <span className="text-slate-900 font-bold">{selectedResourceIds.length}</span> selected
               </span>
             )}
           </div>
@@ -1064,7 +1064,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                   type="button"
                   id="resources-clear-selection-btn"
                   onClick={handleClearSelection}
-                  className="inline-flex items-center justify-center px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold bg-[#131f42] hover:bg-[#1e3a8a] text-[#94a3b8] hover:text-white border border-[#1e3a8a] transition-all cursor-pointer select-none active:scale-95 shadow-sm"
+                  className="inline-flex items-center justify-center px-3.5 py-2.5 rounded-2xl text-xs sm:text-sm font-bold bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-900 border border-slate-200 transition-all cursor-pointer select-none active:scale-95 shadow-xs"
                 >
                   Clear Selection
                 </button>
@@ -1074,7 +1074,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                     type="button"
                     id="resources-bulk-delete-btn"
                     onClick={handleOpenBulkDeleteModal}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold bg-rose-600 hover:bg-rose-700 text-white border border-rose-500/40 shadow-lg shadow-rose-950/40 transition-all active:scale-95 cursor-pointer animate-fadeIn"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold bg-rose-600 hover:bg-rose-700 text-white border border-rose-500/40 shadow-md shadow-rose-900/20 transition-all active:scale-95 cursor-pointer animate-fadeIn"
                   >
                     <Trash2 className="w-3.5 h-3.5 shrink-0" />
                     <span>Delete Selected ({selectedResourceIds.length})</span>
@@ -1094,10 +1094,10 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
       >
         {isLoading ? (
           <div
-            className="bg-[#131f42]/60 border border-[#1e3a8a]/40 rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-3 animate-fadeIn"
+            className="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-3 animate-fadeIn"
           >
-            <Loader2 className="w-7 h-7 text-[#1a6dff] animate-spin" />
-            <p className="text-xs text-[#94a3b8] font-medium">
+            <Loader2 className="w-7 h-7 text-[#1E5AFF] animate-spin" />
+            <p className="text-xs text-slate-600 font-medium">
               Loading {activeCategory === 'past_paper' ? 'past papers' : 'MCQs drills'}...
             </p>
           </div>
@@ -1127,7 +1127,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                 <button
                   type="button"
                   onClick={() => setDisplayLimit(prev => prev + 16)}
-                  className="px-5 py-2.5 bg-[#13224f] hover:bg-[#1a6dff]/20 border border-[#1e3a8a] hover:border-[#1a6dff]/50 text-blue-300 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-sm active:scale-95 flex items-center gap-2"
+                  className="px-5 py-2.5 bg-slate-50 hover:bg-slate-100 border border-slate-200 hover:border-slate-300 text-slate-700 font-bold text-xs rounded-xl transition-all cursor-pointer shadow-xs active:scale-95 flex items-center gap-2"
                 >
                   <span>Show More Resources ({filteredResources.length - displayLimit} remaining)</span>
                 </button>
@@ -1137,16 +1137,16 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
         ) : (
           /* EMPTY STATE EXACT MATCH */
           <div
-            className="bg-[#131f42]/50 border border-[#1e3a8a]/40 rounded-2xl p-8 sm:p-10 text-center flex flex-col items-center justify-center gap-3 animate-fadeIn"
+            className="bg-slate-50 border border-slate-200 rounded-2xl p-8 sm:p-10 text-center flex flex-col items-center justify-center gap-3 animate-fadeIn"
           >
-            <div className="w-12 h-12 rounded-2xl bg-[#1a6dff]/15 border border-[#1a6dff]/30 flex items-center justify-center text-[#1a6dff]">
+            <div className="w-12 h-12 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#1E5AFF]">
               <FileText className="w-6 h-6" />
             </div>
             <div className="space-y-1 max-w-md">
-              <p className="font-['Space_Grotesk'] font-bold text-sm sm:text-base text-white">
+              <p className="font-['Space_Grotesk'] font-bold text-sm sm:text-base text-slate-900">
                 No {activeCategory === 'past_paper' ? 'Past Papers' : 'MCQs Drills'} uploaded yet for this class — check back soon!
               </p>
-              <p className="text-xs text-[#94a3b8]">
+              <p className="text-xs text-slate-500">
                 Our academic team regularly uploads official Board Exams, MDCAT, and TCAT documents.
               </p>
             </div>
@@ -1154,7 +1154,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
               <button
                 type="button"
                 onClick={() => setShowUploadForm(true)}
-                className="mt-2 inline-flex items-center gap-1.5 bg-[#1a6dff] hover:bg-[#1557cc] text-white font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-sm cursor-pointer"
+                className="mt-2 inline-flex items-center gap-1.5 bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-bold text-xs px-4 py-2 rounded-xl transition-all shadow-sm cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>Upload First {activeCategory === 'past_paper' ? 'Past Paper' : 'MCQs Drill'}</span>
@@ -1164,12 +1164,12 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
         )}
       </div>
 
-      {/* CUSTOM STYLED DARK DELETE CONFIRMATION MODAL (SINGLE ITEM) */}
+      {/* CUSTOM STYLED DELETE CONFIRMATION MODAL (SINGLE ITEM) */}
       <AnimatePresence>
         {resourceToDelete && (
           <div
             id="delete-resource-modal-overlay"
-            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fadeIn overflow-y-auto"
+            className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn overflow-y-auto"
             onClick={() => {
               if (!isDeletingResource) {
                 setResourceToDelete(null);
@@ -1185,24 +1185,24 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
               initial={{ opacity: 0, scale: 0.94, y: 12 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.94, y: 12 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
               onClick={e => e.stopPropagation()}
-              className="bg-[#0d1b3e] border border-[#1e3a8a] rounded-2xl sm:rounded-3xl max-w-md w-full max-w-[95vw] sm:max-w-md p-5 sm:p-6 shadow-2xl space-y-4 text-white relative overflow-hidden box-border my-auto"
+              className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl max-w-md w-full max-w-[95vw] sm:max-w-md p-5 sm:p-6 shadow-2xl space-y-4 text-slate-900 relative overflow-hidden box-border my-auto"
             >
               {/* Top destructive accent bar */}
               <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-600 via-rose-500 to-rose-600" />
 
               {/* Modal Header */}
-              <div className="flex items-start justify-between gap-2 pt-1 border-b border-[#1e3a8a]/40 pb-3">
+              <div className="flex items-start justify-between gap-2 pt-1 border-b border-slate-200 pb-3">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
                     <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                   <div className="min-w-0">
-                    <h3 id="delete-resource-modal-title" className="font-['Space_Grotesk'] font-bold text-base sm:text-lg text-white truncate">
+                    <h3 id="delete-resource-modal-title" className="font-['Space_Grotesk'] font-bold text-base sm:text-lg text-slate-900 truncate">
                       Delete Resource
                     </h3>
-                    <p className="text-[11px] text-[#94a3b8] truncate">
+                    <p className="text-[11px] text-slate-500 truncate">
                       Admin Resource Management
                     </p>
                   </div>
@@ -1216,7 +1216,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                     setResourceToDelete(null);
                     setDeleteResourceError(null);
                   }}
-                  className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors cursor-pointer disabled:opacity-40 shrink-0"
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-40 shrink-0"
                   aria-label="Close modal"
                 >
                   <X className="w-4 h-4" />
@@ -1225,31 +1225,31 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
 
               {/* Modal Body */}
               <div className="space-y-3.5 pt-0.5">
-                <p className="text-xs sm:text-sm font-semibold text-slate-200 leading-relaxed">
+                <p className="text-xs sm:text-sm font-semibold text-slate-700 leading-relaxed">
                   Are you sure you want to delete this resource?
                 </p>
 
                 {/* Resource Summary Card */}
-                <div className="bg-[#081028] border border-[#1e3a8a]/60 rounded-xl p-3.5 space-y-2">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2">
                   <div className="flex items-start gap-2.5">
-                    <div className="p-2 rounded-lg bg-[#1a6dff]/15 text-[#1a6dff] border border-[#1a6dff]/25 shrink-0 mt-0.5">
+                    <div className="p-2 rounded-lg bg-blue-50 text-[#1E5AFF] border border-blue-200 shrink-0 mt-0.5">
                       <FileText className="w-4 h-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <h4 className="font-['Space_Grotesk'] font-bold text-xs sm:text-sm text-white line-clamp-2 leading-snug">
+                      <h4 className="font-['Space_Grotesk'] font-bold text-xs sm:text-sm text-slate-900 line-clamp-2 leading-snug">
                         {resourceToDelete.title}
                       </h4>
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1.5 text-[10px] sm:text-[11px] text-[#94a3b8]">
-                        <span className="bg-[#0d1b3e] px-2 py-0.5 rounded border border-[#1e3a8a]/40 font-semibold text-slate-300">
+                      <div className="flex flex-wrap items-center gap-1.5 pt-1.5 text-[10px] sm:text-[11px] text-slate-500">
+                        <span className="bg-white px-2 py-0.5 rounded border border-slate-200 font-semibold text-slate-700">
                           {resourceToDelete.subject}
                         </span>
                         {resourceToDelete.class && (
-                          <span className="bg-[#0d1b3e] px-2 py-0.5 rounded border border-[#1e3a8a]/40 font-semibold text-slate-300">
+                          <span className="bg-white px-2 py-0.5 rounded border border-slate-200 font-semibold text-slate-700">
                             {resourceToDelete.class}
                           </span>
                         )}
                         {resourceToDelete.category && (
-                          <span className="text-[10px] uppercase font-bold text-[#60a5fa] bg-[#1a6dff]/10 px-2 py-0.5 rounded border border-[#1a6dff]/20">
+                          <span className="text-[10px] uppercase font-bold text-[#1E5AFF] bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
                             {resourceToDelete.category === 'past_paper' ? 'Past Paper' : 'MCQs Drill'}
                           </span>
                         )}
@@ -1258,21 +1258,21 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                   </div>
                 </div>
 
-                <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-2.5 text-xs text-rose-300 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-2.5 text-xs text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
                   <span>This action cannot be undone and will immediately remove this resource.</span>
                 </div>
 
                 {deleteResourceError && (
-                  <div className="bg-rose-500/15 border border-rose-500/30 text-rose-300 rounded-xl p-3 text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
                     <span>{deleteResourceError}</span>
                   </div>
                 )}
               </div>
 
               {/* Modal Buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#1e3a8a]/40">
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-200">
                 <button
                   type="button"
                   id="cancel-delete-resource-btn"
@@ -1281,7 +1281,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                     setResourceToDelete(null);
                     setDeleteResourceError(null);
                   }}
-                  className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-[#131f42] hover:bg-[#1e3a8a]/50 text-slate-300 border border-[#1e3a8a]/50 transition-all cursor-pointer disabled:opacity-40 active:scale-95"
+                  className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-all cursor-pointer disabled:opacity-40 active:scale-95"
                 >
                   Cancel
                 </button>
@@ -1291,7 +1291,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                   id="confirm-delete-resource-btn"
                   disabled={isDeletingResource}
                   onClick={handleConfirmDeleteResource}
-                  className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-rose-600 hover:bg-rose-700 text-white transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-rose-900/30 active:scale-95 disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-rose-600 hover:bg-rose-700 text-white transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md shadow-rose-900/20 active:scale-95 disabled:opacity-50"
                 >
                   {isDeletingResource ? (
                     <>
@@ -1311,12 +1311,12 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
         )}
       </AnimatePresence>
 
-      {/* CUSTOM STYLED DARK BATCH DELETE CONFIRMATION MODAL */}
+      {/* CUSTOM STYLED BATCH DELETE CONFIRMATION MODAL */}
       <AnimatePresence>
         {showBulkDeleteModal && selectedResourceIds.length > 0 && (
           <div
             id="bulk-delete-resource-modal-overlay"
-            className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fadeIn overflow-y-auto"
+            className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn overflow-y-auto"
             onClick={() => {
               if (!isBulkDeleting) {
                 setShowBulkDeleteModal(false);
@@ -1332,24 +1332,24 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
               initial={{ opacity: 0, scale: 0.94, y: 12 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.94, y: 12 }}
-              transition={{ duration: 0.2, ease: 'easeOut' }}
+              transition={{ duration: 0.15, ease: 'easeOut' }}
               onClick={e => e.stopPropagation()}
-              className="bg-[#0d1b3e] border border-[#1e3a8a] rounded-2xl sm:rounded-3xl max-w-md w-full max-w-[95vw] sm:max-w-md p-5 sm:p-6 shadow-2xl space-y-4 text-white relative overflow-hidden box-border my-auto"
+              className="bg-white border border-slate-200 rounded-2xl sm:rounded-3xl max-w-md w-full max-w-[95vw] sm:max-w-md p-5 sm:p-6 shadow-2xl space-y-4 text-slate-900 relative overflow-hidden box-border my-auto"
             >
               {/* Top destructive accent bar */}
               <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-rose-600 via-rose-500 to-rose-600" />
 
               {/* Modal Header */}
-              <div className="flex items-start justify-between gap-2 pt-1 border-b border-[#1e3a8a]/40 pb-3">
+              <div className="flex items-start justify-between gap-2 pt-1 border-b border-slate-200 pb-3">
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl sm:rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
                     <Trash2 className="w-4 h-4 sm:w-5 sm:h-5" />
                   </div>
                   <div className="min-w-0">
-                    <h3 id="bulk-delete-modal-title" className="font-['Space_Grotesk'] font-bold text-base sm:text-lg text-white truncate">
+                    <h3 id="bulk-delete-modal-title" className="font-['Space_Grotesk'] font-bold text-base sm:text-lg text-slate-900 truncate">
                       Batch Delete Resources
                     </h3>
-                    <p className="text-[11px] text-[#94a3b8] truncate">
+                    <p className="text-[11px] text-slate-500 truncate">
                       Admin Resource Management
                     </p>
                   </div>
@@ -1363,7 +1363,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                     setShowBulkDeleteModal(false);
                     setBulkDeleteError(null);
                   }}
-                  className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors cursor-pointer disabled:opacity-40 shrink-0"
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-40 shrink-0"
                   aria-label="Close modal"
                 >
                   <X className="w-4 h-4" />
@@ -1372,40 +1372,40 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
 
               {/* Modal Body */}
               <div className="space-y-3.5 pt-0.5">
-                <p className="text-xs sm:text-sm font-semibold text-slate-200 leading-relaxed">
-                  Are you sure you want to delete <span className="text-rose-400 font-bold">{selectedResourceIds.length} {selectedResourceIds.length === 1 ? 'resource' : 'resources'}</span>?
+                <p className="text-xs sm:text-sm font-semibold text-slate-700 leading-relaxed">
+                  Are you sure you want to delete <span className="text-rose-600 font-bold">{selectedResourceIds.length} {selectedResourceIds.length === 1 ? 'resource' : 'resources'}</span>?
                 </p>
 
                 {/* Selected List Summary */}
-                <div className="bg-[#081028] border border-[#1e3a8a]/60 rounded-xl p-3 max-h-36 overflow-y-auto space-y-1.5 [scrollbar-width:thin]">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 max-h-36 overflow-y-auto space-y-1.5 [scrollbar-width:thin]">
                   {resources
                     .filter(r => selectedResourceIds.includes(r.id))
                     .map(item => (
-                      <div key={item.id} className="flex items-center gap-2 text-xs text-slate-300 py-1 border-b border-[#1e3a8a]/30 last:border-0">
-                        <FileText className="w-3.5 h-3.5 text-[#1a6dff] shrink-0" />
+                      <div key={item.id} className="flex items-center gap-2 text-xs text-slate-700 py-1 border-b border-slate-200 last:border-0">
+                        <FileText className="w-3.5 h-3.5 text-[#1E5AFF] shrink-0" />
                         <span className="truncate flex-1 font-medium">{item.title}</span>
-                        <span className="text-[10px] bg-[#0d1b3e] px-1.5 py-0.5 rounded text-slate-400 border border-[#1e3a8a]/40 shrink-0">
+                        <span className="text-[10px] bg-white px-1.5 py-0.5 rounded text-slate-600 border border-slate-200 shrink-0">
                           {item.subject}
                         </span>
                       </div>
                     ))}
                 </div>
 
-                <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-2.5 text-xs text-rose-300 flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-2.5 text-xs text-rose-700 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
                   <span>This batch action cannot be undone. All selected items will be deleted permanently.</span>
                 </div>
 
                 {bulkDeleteError && (
-                  <div className="bg-rose-500/15 border border-rose-500/30 text-rose-300 rounded-xl p-3 text-xs flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                  <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-xl p-3 text-xs flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
                     <span>{bulkDeleteError}</span>
                   </div>
                 )}
               </div>
 
               {/* Modal Buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-[#1e3a8a]/40">
+              <div className="flex items-center justify-end gap-2.5 pt-2 border-t border-slate-200">
                 <button
                   type="button"
                   id="cancel-bulk-delete-btn"
@@ -1414,7 +1414,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                     setShowBulkDeleteModal(false);
                     setBulkDeleteError(null);
                   }}
-                  className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-[#131f42] hover:bg-[#1e3a8a]/50 text-slate-300 border border-[#1e3a8a]/50 transition-all cursor-pointer disabled:opacity-40 active:scale-95"
+                  className="px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 transition-all cursor-pointer disabled:opacity-40 active:scale-95"
                 >
                   Cancel
                 </button>
@@ -1424,7 +1424,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                   id="confirm-bulk-delete-btn"
                   disabled={isBulkDeleting}
                   onClick={handleConfirmBulkDelete}
-                  className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-rose-600 hover:bg-rose-700 text-white transition-all cursor-pointer flex items-center justify-center gap-2 shadow-lg shadow-rose-900/30 active:scale-95 disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold bg-rose-600 hover:bg-rose-700 text-white transition-all cursor-pointer flex items-center justify-center gap-2 shadow-md shadow-rose-900/20 active:scale-95 disabled:opacity-50"
                 >
                   {isBulkDeleting ? (
                     <>
@@ -1442,8 +1442,10 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
             </motion.div>
           </div>
         )}
+      </AnimatePresence>
 
-        {/* IN-APP PDF PREVIEW MODAL / DRAWER */}
+      {/* IN-APP PDF PREVIEW MODAL / DRAWER */}
+      <AnimatePresence>
         {previewResource && (
           <div
             id="pdf-preview-modal-backdrop"
@@ -2070,7 +2072,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
       <AnimatePresence>
         {showIntegrityModal && (
           <div
-            className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
+            className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-5 overflow-y-auto"
             onClick={() => {
               if (!isScanningIntegrity) {
                 setShowIntegrityModal(false);
@@ -2082,19 +2084,19 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 15 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-[#0f172a] text-slate-100 border border-slate-700 rounded-3xl p-5 sm:p-7 w-full max-w-2xl shadow-2xl space-y-5 my-auto max-h-[90vh] overflow-y-auto"
+              className="bg-white text-slate-900 border border-slate-200 rounded-3xl p-5 sm:p-7 w-full max-w-2xl shadow-2xl space-y-5 my-auto max-h-[90vh] overflow-y-auto"
             >
               {/* Modal Header */}
-              <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-4">
+              <div className="flex items-start justify-between gap-3 border-b border-slate-200 pb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-2xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                  <div className="w-10 h-10 rounded-2xl bg-blue-50 border border-blue-200 flex items-center justify-center text-[#1E5AFF] shrink-0">
                     <ShieldCheck className="w-5 h-5" />
                   </div>
                   <div>
-                    <h3 className="font-['Space_Grotesk'] text-lg sm:text-xl font-extrabold text-white flex items-center gap-2">
+                    <h3 className="font-['Space_Grotesk'] text-lg sm:text-xl font-extrabold text-slate-900 flex items-center gap-2">
                       <span>Storage &amp; PDF Integrity Auditor</span>
                     </h3>
-                    <p className="text-xs text-slate-400">
+                    <p className="text-xs text-slate-500">
                       Verifies %PDF- magic bytes and structural rendering validity across all storage files.
                     </p>
                   </div>
@@ -2103,7 +2105,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                   type="button"
                   disabled={isScanningIntegrity}
                   onClick={() => setShowIntegrityModal(false)}
-                  className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-30 cursor-pointer"
+                  className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-30 cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -2111,21 +2113,21 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
 
               {/* Action Banner / Notification */}
               {corruptedActionMsg && (
-                <div className="p-3 bg-blue-500/15 border border-blue-500/30 text-blue-300 rounded-xl text-xs flex items-center gap-2">
-                  <CheckCircle2 className="w-4 h-4 text-blue-400 shrink-0" />
+                <div className="p-3 bg-blue-50 border border-blue-200 text-blue-800 rounded-xl text-xs flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#1E5AFF] shrink-0" />
                   <span>{corruptedActionMsg}</span>
                 </div>
               )}
 
               {/* Active Scan Progress */}
               {isScanningIntegrity && (
-                <div className="p-4 bg-slate-900 border border-slate-800 rounded-2xl space-y-3">
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
                   <div className="flex items-center justify-between text-xs">
-                    <div className="flex items-center gap-2 font-bold text-blue-400">
-                      <Loader2 className="w-4 h-4 animate-spin text-blue-400" />
+                    <div className="flex items-center gap-2 font-bold text-[#1E5AFF]">
+                      <Loader2 className="w-4 h-4 animate-spin text-[#1E5AFF]" />
                       <span>Auditing Documents...</span>
                     </div>
-                    <span className="text-slate-400 font-mono text-[11px]">
+                    <span className="text-slate-500 font-mono text-[11px]">
                       {scanProgress.current} / {scanProgress.total} (
                       {scanProgress.total > 0
                         ? Math.round((scanProgress.current / scanProgress.total) * 100)
@@ -2135,7 +2137,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                   </div>
 
                   {/* Progress Bar */}
-                  <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                  <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-linear-to-r from-blue-500 to-indigo-500 transition-all duration-200"
                       style={{
@@ -2149,9 +2151,9 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                   </div>
 
                   {scanProgress.currentItemName && (
-                    <p className="text-[11px] text-slate-400 truncate">
+                    <p className="text-[11px] text-slate-500 truncate">
                       Testing:{' '}
-                      <span className="text-slate-200 font-medium">{scanProgress.currentItemName}</span>
+                      <span className="text-slate-800 font-medium">{scanProgress.currentItemName}</span>
                     </p>
                   )}
                 </div>
@@ -2161,27 +2163,27 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
               {integrityReport && !isScanningIntegrity && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-3 gap-3">
-                    <div className="p-3.5 bg-slate-900 border border-slate-800 rounded-2xl text-center space-y-1">
-                      <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                    <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-center space-y-1">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
                         Total Scanned
                       </span>
-                      <span className="text-xl sm:text-2xl font-extrabold text-white font-mono">
+                      <span className="text-xl sm:text-2xl font-extrabold text-slate-900 font-mono">
                         {integrityReport.totalScanned}
                       </span>
                     </div>
-                    <div className="p-3.5 bg-emerald-950/40 border border-emerald-500/30 rounded-2xl text-center space-y-1">
-                      <span className="text-[11px] font-bold text-emerald-400 uppercase tracking-wider block">
+                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl text-center space-y-1">
+                      <span className="text-[11px] font-bold text-emerald-700 uppercase tracking-wider block">
                         Healthy
                       </span>
-                      <span className="text-xl sm:text-2xl font-extrabold text-emerald-300 font-mono">
+                      <span className="text-xl sm:text-2xl font-extrabold text-emerald-700 font-mono">
                         {integrityReport.healthyCount}
                       </span>
                     </div>
                     <div
                       className={`p-3.5 rounded-2xl text-center space-y-1 border ${
                         integrityReport.corruptedCount > 0
-                          ? 'bg-rose-950/40 border-rose-500/40 text-rose-300'
-                          : 'bg-slate-900 border-slate-800 text-slate-400'
+                          ? 'bg-rose-50 border-rose-200 text-rose-700'
+                          : 'bg-slate-50 border-slate-200 text-slate-500'
                       }`}
                     >
                       <span className="text-[11px] font-bold uppercase tracking-wider block">
@@ -2197,7 +2199,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                   {integrityReport.corruptedCount > 0 ? (
                     <div className="space-y-3">
                       <div className="flex items-center justify-between">
-                        <h4 className="text-xs font-extrabold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <h4 className="text-xs font-extrabold text-rose-600 uppercase tracking-wider flex items-center gap-1.5">
                           <AlertCircle className="w-3.5 h-3.5" />
                           <span>Corrupted Files Requiring Action ({integrityReport.corruptedCount})</span>
                         </h4>
@@ -2205,7 +2207,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                           type="button"
                           disabled={isDeletingCorrupted}
                           onClick={handleDeleteAllCorrupted}
-                          className="text-[11px] font-bold text-rose-400 hover:text-rose-300 hover:underline inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          className="text-[11px] font-bold text-rose-600 hover:text-rose-700 hover:underline inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
                         >
                           <Trash2 className="w-3 h-3" />
                           <span>Delete All Corrupted</span>
@@ -2216,25 +2218,25 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                         {integrityReport.corruptedItems.map((item) => (
                           <div
                             key={item.id}
-                            className="p-3.5 bg-rose-950/30 border border-rose-500/30 rounded-2xl space-y-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+                            className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl space-y-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                           >
                             <div className="space-y-1 min-w-0 flex-1">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-sm text-white truncate">
+                                <span className="font-bold text-sm text-slate-900 truncate">
                                   {item.title}
                                 </span>
                                 {item.targetClass && (
-                                  <span className="text-[10px] font-semibold bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded-md border border-rose-500/30">
+                                  <span className="text-[10px] font-semibold bg-white text-rose-700 px-2 py-0.5 rounded-md border border-rose-200">
                                     {item.targetClass}
                                   </span>
                                 )}
                                 {item.subject && (
-                                  <span className="text-[10px] font-semibold bg-slate-800 text-slate-300 px-2 py-0.5 rounded-md">
+                                  <span className="text-[10px] font-semibold bg-white text-slate-700 px-2 py-0.5 rounded-md border border-slate-200">
                                     {item.subject}
                                   </span>
                                 )}
                               </div>
-                              <p className="text-[11px] text-rose-300/90 leading-relaxed font-mono">
+                              <p className="text-[11px] text-rose-700 leading-relaxed font-mono">
                                 {item.errorDetails || 'Invalid PDF structure / corrupted magic bytes'}
                               </p>
                             </div>
@@ -2243,7 +2245,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleReplaceCorruptedItem(item)}
-                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1 cursor-pointer"
+                                className="px-3 py-1.5 bg-[#1E5AFF] hover:bg-[#1546CC] text-white rounded-xl text-xs font-bold transition-all shadow-xs inline-flex items-center gap-1 cursor-pointer"
                                 title="Open upload drawer with pre-filled title to upload a clean copy"
                               >
                                 <Upload className="w-3 h-3" />
@@ -2253,7 +2255,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                                 type="button"
                                 disabled={isDeletingCorrupted}
                                 onClick={() => handleDeleteCorruptedItem(item)}
-                                className="p-2 bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white rounded-xl text-xs font-bold border border-rose-500/40 transition-all cursor-pointer disabled:opacity-50"
+                                className="p-2 bg-rose-100 hover:bg-rose-600 text-rose-700 hover:text-white rounded-xl text-xs font-bold border border-rose-200 transition-all cursor-pointer disabled:opacity-50"
                                 title="Delete corrupted file permanently from database & storage"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -2264,14 +2266,14 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="p-4 bg-emerald-950/20 border border-emerald-500/30 rounded-2xl text-center space-y-1.5">
-                      <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto">
+                    <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-center space-y-1.5">
+                      <div className="w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
                         <CheckCircle2 className="w-4 h-4" />
                       </div>
-                      <h4 className="text-sm font-bold text-emerald-300">
+                      <h4 className="text-sm font-bold text-emerald-800">
                         100% Storage Integrity Verified
                       </h4>
-                      <p className="text-xs text-slate-400">
+                      <p className="text-xs text-slate-600">
                         All {integrityReport.totalScanned} PDF documents have valid %PDF- headers and
                         can be rendered without corruption.
                       </p>
@@ -2281,12 +2283,12 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
               )}
 
               {/* Modal Footer Controls */}
-              <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-800">
+              <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-200">
                 <button
                   type="button"
                   disabled={isScanningIntegrity}
                   onClick={handleStartIntegrityScan}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  className="px-4 py-2 bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-extrabold text-xs rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                 >
                   {isScanningIntegrity ? (
                     <>
@@ -2305,7 +2307,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                   type="button"
                   disabled={isScanningIntegrity}
                   onClick={() => setShowIntegrityModal(false)}
-                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-xl transition-all border border-slate-700 cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition-all border border-slate-300 cursor-pointer"
                 >
                   Close
                 </button>
