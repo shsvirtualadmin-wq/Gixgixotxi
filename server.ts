@@ -5181,7 +5181,17 @@ ${scopeInstruction}`;
     return res.sendFile(filePath);
   });
 
+  app.options("/api/user/upload-avatar", (_req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "*");
+    return res.status(204).end();
+  });
+
   app.post("/api/user/upload-avatar", (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "*");
     avatarUploadMulter.single("avatar")(req, res, (err) => {
       if (err) {
         if (err.code === "LIMIT_FILE_SIZE") {

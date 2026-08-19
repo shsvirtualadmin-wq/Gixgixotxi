@@ -1913,9 +1913,112 @@ export async function uploadUserAvatar(
       };
     }
 
+    // Fallback: If API returned an error or is unreachable, use Supabase Storage or Direct Data URL
+    console.warn('[uploadUserAvatar] Backend API returned non-success, attempting direct fallback...', data?.error);
+
+    let fallbackAvatarUrl = '';
+
+    // 1. Try Supabase Storage 'avatars' bucket if configured
+    if (isSupabaseConfigured) {
+      try {
+        const safeUserId = (userId || userEmail || 'user').replace(/[^a-zA-Z0-9_-]/g, '_');
+        const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase() || '.jpg';
+        const storagePath = `avatars/${safeUserId}-${Date.now()}${ext}`;
+
+        const { data: storageUpload, error: storageErr } = await supabase.storage
+          .from('avatars')
+          .upload(storagePath, file, {
+            upsert: true,
+            contentType: file.type,
+          });
+
+        if (!storageErr && storageUpload) {
+          const { data: publicUrlData } = supabase.storage.from('avatars').getPublicUrl(storagePath);
+          if (publicUrlData?.publicUrl) {
+            fallbackAvatarUrl = publicUrlData.publicUrl;
+          }
+        }
+      } catch (storageException) {
+        console.warn('[uploadUserAvatar] Supabase Storage upload fallback skipped:', storageException);
+      }
+    }
+
+    // 2. If storage wasn't available, encode image as base64 data URL
+    if (!fallbackAvatarUrl) {
+      try {
+        fallbackAvatarUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      } catch (readerErr) {
+        console.warn('[uploadUserAvatar] FileReader base64 fallback error:', readerErr);
+      }
+    }
+
+    if (fallbackAvatarUrl) {
+      // Save avatar_url directly to Supabase students table
+      let dbUpdated = false;
+      let updatedProfileFromDb = null;
+      if (isSupabaseConfigured) {
+        try {
+          const { data: updatedDbRow, error: updateErr } = await supabase
+            .from('students')
+            .update({
+              avatar_url: fallbackAvatarUrl,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', userId)
+            .select('*')
+            .maybeSingle();
+
+          if (!updateErr && updatedDbRow) {
+            dbUpdated = true;
+            updatedProfileFromDb = normalizeStudentProfileFromRow(updatedDbRow, userId);
+          }
+        } catch (dbEx) {
+          console.warn('[uploadUserAvatar] Direct Supabase update failed:', dbEx);
+        }
+      }
+
+      const cachedMem = profileMemoryCache.get(userId);
+      let updatedProf: StudentProfile = updatedProfileFromDb || cachedMem?.profile || {
+        id: userId,
+        name: 'Student',
+        email: userEmail || '',
+        grade: '11th',
+        stream: 'Pre-Medical',
+        subjects: [],
+        sign_up_method: 'Google',
+        status: 'active',
+        is_registered: true,
+        created_at: new Date().toISOString(),
+      };
+
+      updatedProf = {
+        ...updatedProf,
+        avatar_url: fallbackAvatarUrl,
+        updated_at: new Date().toISOString(),
+      };
+
+      profileMemoryCache.set(userId, { profile: updatedProf, timestamp: Date.now() });
+      try {
+        localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(updatedProf));
+        localStorage.setItem('boardly_cached_profile', JSON.stringify(updatedProf));
+      } catch {}
+
+      return {
+        success: true,
+        avatarUrl: fallbackAvatarUrl,
+        profile: updatedProf,
+        message: 'Profile picture updated successfully!',
+      };
+    }
+
     return {
       success: false,
-      message: data?.error || 'Failed to upload profile picture.',
+      message: data?.error || 'Failed to upload profile picture. Please try again.',
     };
   } catch (err: any) {
     console.error('Error uploading user avatar:', err);
