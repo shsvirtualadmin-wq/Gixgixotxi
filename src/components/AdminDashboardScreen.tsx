@@ -1216,62 +1216,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
             </p>
           </div>
         </div>
-
-        {/* Header Quick Controls */}
-        <div className="flex items-center gap-2 flex-wrap min-w-0">
-          <div className="bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-full text-[11px] font-extrabold text-emerald-600  flex items-center gap-1.5 shrink-0">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-            </span>
-            <span>Live DB Connected</span>
-          </div>
-
-          <button
-            type="button"
-            onClick={loadData}
-            disabled={loading || isAuditingPro}
-            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200   text-slate-800  text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 shrink-0"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading || isAuditingPro ? 'animate-spin text-blue-500' : ''}`} />
-            <span>Refresh</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => runAuditAndRevertUnverifiedPro(students, paymentRequests)}
-            disabled={isAuditingPro}
-            className="px-3 py-1.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 text-purple-600  border border-purple-500/30 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50 shrink-0"
-          >
-            <ShieldCheck className={`w-3.5 h-3.5 ${isAuditingPro ? 'animate-spin' : ''}`} />
-            <span>Audit Pro Accounts</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleExportStudentsCSV}
-            className="px-3 py-1.5 rounded-xl bg-[#007AFF] hover:bg-[#0066CC]   text-white text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer shadow-md active:scale-95 shrink-0"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span>Export Roster CSV</span>
-          </button>
-        </div>
       </div>
-
-      {auditProNotice && (
-        <div className="bg-purple-500/10 border border-purple-500/30 text-purple-700  p-3.5 rounded-2xl text-xs font-bold flex items-center justify-between gap-2 animate-fadeIn min-w-0">
-          <div className="flex items-center gap-2 min-w-0">
-            <ShieldCheck className="w-4 h-4 text-purple-500 shrink-0" />
-            <span className="truncate">{auditProNotice}</span>
-          </div>
-          <button
-            onClick={() => setAuditProNotice(null)}
-            className="p-1 hover:bg-purple-500/20 rounded-lg transition-all shrink-0"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
-      )}
 
       {removeSuccessToast && (
         <div className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-700  p-3.5 rounded-2xl text-xs font-bold flex items-center justify-between gap-2 animate-fadeIn min-w-0">
