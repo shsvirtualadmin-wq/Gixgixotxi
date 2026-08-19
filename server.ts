@@ -5342,6 +5342,17 @@ ${scopeInstruction}`;
             }
           }
 
+          if (updatedProfile) {
+            console.log("✅ [upload-avatar DB Update Success]:", {
+              id: updatedProfile.id,
+              name: updatedProfile.name,
+              email: updatedProfile.email,
+              avatar_url: updatedProfile.avatar_url,
+            });
+          } else {
+            console.warn("⚠️ [upload-avatar DB]: No existing student row matched for update (userId:", userId, "userEmail:", userEmail, ")");
+          }
+
           // Also update auth user metadata if admin client is available
           if (userId && (db as any).auth?.admin) {
             await (db as any).auth.admin.updateUserById(userId, {

@@ -900,12 +900,23 @@ export async function syncUserProfile(
     }
 
     try {
-      // Check if student exists
-      const { data: existing } = await supabase
+      // Check if student exists by ID, or fallback to email
+      let { data: existing } = await supabase
         .from('students')
         .select('*')
         .eq('id', user.id)
         .maybeSingle();
+
+      if (!existing && user.email) {
+        const { data: existingByEmail } = await supabase
+          .from('students')
+          .select('*')
+          .eq('email', user.email.toLowerCase().trim())
+          .maybeSingle();
+        if (existingByEmail) {
+          existing = existingByEmail;
+        }
+      }
 
       let finalProfile: StudentProfile;
 
@@ -922,11 +933,12 @@ export async function syncUserProfile(
         if (displayName && existing.name !== displayName) {
           updates.name = displayName;
         }
+        // Strictly preserve stored custom avatar_url; only set Google OAuth avatar if avatar_url is currently empty in DB
         if (!existing.avatar_url && avatarUrl) {
           updates.avatar_url = avatarUrl;
         }
         if (Object.keys(updates).length > 0) {
-          await supabase.from('students').update(updates).eq('id', user.id);
+          await supabase.from('students').update(updates).eq('id', existing.id || user.id);
         }
 
         finalProfile = normalizeStudentProfileFromRow({ ...existing, ...updates }, user.id);

@@ -178,6 +178,15 @@ export const onRequestPost = async (context: PagesContext) => {
           }
         }
 
+        if (updatedProfile) {
+          console.log("✅ [upload-avatar Pages Function DB Update Success]:", {
+            id: updatedProfile.id,
+            name: updatedProfile.name,
+            email: updatedProfile.email,
+            avatar_url: updatedProfile.avatar_url,
+          });
+        }
+
         // Also update auth user metadata if admin client is available
         if (userId && (db as any).auth?.admin) {
           await (db as any).auth.admin
