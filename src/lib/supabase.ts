@@ -922,7 +922,7 @@ export async function syncUserProfile(
         if (displayName && existing.name !== displayName) {
           updates.name = displayName;
         }
-        if (avatarUrl && existing.avatar_url !== avatarUrl) {
+        if (!existing.avatar_url && avatarUrl) {
           updates.avatar_url = avatarUrl;
         }
         if (Object.keys(updates).length > 0) {

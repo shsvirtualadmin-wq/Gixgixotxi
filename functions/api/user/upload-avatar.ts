@@ -146,20 +146,36 @@ export const onRequestPost = async (context: PagesContext) => {
 
     if (db) {
       try {
-        let query = db.from("students").update({
-          avatar_url: avatarUrl,
-          updated_at: new Date().toISOString(),
-        });
-
         if (userId) {
-          query = query.eq("id", userId);
-        } else {
-          query = query.eq("email", userEmail);
+          const { data, error } = await db
+            .from("students")
+            .update({
+              avatar_url: avatarUrl,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", userId)
+            .select("*")
+            .maybeSingle();
+
+          if (!error && data) {
+            updatedProfile = data;
+          }
         }
 
-        const { data, error } = await query.select("*").maybeSingle();
-        if (!error && data) {
-          updatedProfile = data;
+        if (!updatedProfile && userEmail) {
+          const { data, error } = await db
+            .from("students")
+            .update({
+              avatar_url: avatarUrl,
+              updated_at: new Date().toISOString(),
+            })
+            .eq("email", userEmail)
+            .select("*")
+            .maybeSingle();
+
+          if (!error && data) {
+            updatedProfile = data;
+          }
         }
 
         // Also update auth user metadata if admin client is available

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 export interface UserAvatarProps {
   user?: { user_metadata?: Record<string, any>; email?: string | null } | null;
@@ -24,6 +24,10 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
     user?.user_metadata?.avatar_url ||
     user?.user_metadata?.picture ||
     user?.user_metadata?.picture_url;
+
+  useEffect(() => {
+    setImageError(false);
+  }, [rawAvatarUrl]);
 
   const displayName =
     fallbackName ||

@@ -5306,22 +5306,40 @@ ${scopeInstruction}`;
 
       if (db) {
         try {
-          let query = db.from("students").update({
-            avatar_url: avatarUrl,
-            updated_at: new Date().toISOString(),
-          });
-
           if (userId) {
-            query = query.eq("id", userId);
-          } else {
-            query = query.eq("email", userEmail);
+            const { data, error } = await db
+              .from("students")
+              .update({
+                avatar_url: avatarUrl,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", userId)
+              .select("*")
+              .maybeSingle();
+
+            if (!error && data) {
+              updatedProfile = data;
+            } else if (error) {
+              console.warn("[upload-avatar DB update id warning]:", error.message);
+            }
           }
 
-          const { data, error } = await query.select("*").maybeSingle();
-          if (error) {
-            console.warn("[upload-avatar DB update warning]:", error.message);
-          } else if (data) {
-            updatedProfile = data;
+          if (!updatedProfile && userEmail) {
+            const { data, error } = await db
+              .from("students")
+              .update({
+                avatar_url: avatarUrl,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("email", userEmail)
+              .select("*")
+              .maybeSingle();
+
+            if (!error && data) {
+              updatedProfile = data;
+            } else if (error) {
+              console.warn("[upload-avatar DB update email warning]:", error.message);
+            }
           }
 
           // Also update auth user metadata if admin client is available
