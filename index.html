@@ -54,7 +54,20 @@
           <div style="width: 160px; height: 4px; background: #E2E8F0; border-radius: 9999px; overflow: hidden; position: relative;">
             <div style="position: absolute; top: 0; left: 0; bottom: 0; width: 50%; background: #1E5AFF; border-radius: 9999px; animation: boardlyPreloadPulse 1.2s infinite ease-in-out;"></div>
           </div>
+
+          <div id="preloader-timeout-action" style="display: none; margin-top: 8px; text-align: center;">
+            <p style="font-size: 11px; color: #64748B; margin-bottom: 8px;">Taking longer than usual?</p>
+            <button onclick="window.location.reload()" style="background: #1E5AFF; color: #FFFFFF; border: none; padding: 8px 16px; border-radius: 12px; font-size: 11px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(30, 90, 255, 0.2);">Refresh Page</button>
+          </div>
         </div>
+        <script>
+          setTimeout(function() {
+            var action = document.getElementById('preloader-timeout-action');
+            if (action && document.getElementById('initial-preloader')) {
+              action.style.display = 'block';
+            }
+          }, 8000);
+        </script>
         <style>
           @keyframes boardlyPreloadPulse {
             0% { transform: translateX(-100%); }

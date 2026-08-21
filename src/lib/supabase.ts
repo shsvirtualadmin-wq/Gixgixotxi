@@ -32,6 +32,55 @@ export function isAdminEmail(email?: string | null): boolean {
 }
 
 /**
+ * Runs a promise with an explicit timeout threshold.
+ * Prevents any async database, auth, or network operation from hanging indefinitely.
+ */
+export function withTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  fallbackValue?: T,
+  operationName: string = 'Operation'
+): Promise<T> {
+  return new Promise((resolve, reject) => {
+    let timer: any = null;
+    let isSettled = false;
+
+    const timeoutPromise = new Promise<never>((_, rej) => {
+      timer = setTimeout(() => {
+        if (isSettled) return;
+        isSettled = true;
+        const msg = `[Async Timeout] ${operationName} exceeded ${ms}ms threshold.`;
+        console.warn(msg);
+        if (fallbackValue !== undefined) {
+          resolve(fallbackValue);
+        } else {
+          rej(new Error(msg));
+        }
+      }, ms);
+    });
+
+    Promise.race([promise, timeoutPromise])
+      .then((res) => {
+        if (isSettled) return;
+        isSettled = true;
+        clearTimeout(timer);
+        resolve(res as T);
+      })
+      .catch((err) => {
+        if (isSettled) return;
+        isSettled = true;
+        clearTimeout(timer);
+        if (fallbackValue !== undefined) {
+          console.warn(`[Promise Fallback] ${operationName} failed or timed out:`, err);
+          resolve(fallbackValue);
+        } else {
+          reject(err);
+        }
+      });
+  });
+}
+
+/**
  * Helper to fetch internal APIs with Supabase Auth JWT token
  */
 export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
@@ -866,35 +915,35 @@ export async function syncUserProfile(
     return syncInFlightPromises.get(userId)!;
   }
 
+  const method = authMethod || (user.app_metadata?.provider === 'google' ? 'Google' : 'Email/Password');
+  const displayName =
+    user.user_metadata?.full_name ||
+    user.user_metadata?.name ||
+    user.user_metadata?.displayName ||
+    user.email?.split('@')[0] ||
+    'Student';
+
+  const avatarUrl =
+    user.user_metadata?.avatar_url ||
+    user.user_metadata?.picture ||
+    user.user_metadata?.picture_url ||
+    '';
+
+  const isAdmin = isAdminEmail(user.email);
+
+  const defaultProfile: StudentProfile = {
+    id: user.id,
+    name: displayName,
+    email: user.email || '',
+    avatar_url: avatarUrl,
+    grade: isAdmin ? 'Admin' : (extraGrade && extraGrade !== 'General Student' ? extraGrade : ''),
+    stream: isAdmin ? 'Admin Stream' : '',
+    sign_up_method: method,
+    is_registered: isAdmin,
+    created_at: new Date().toISOString(),
+  };
+
   const syncPromise = (async (): Promise<StudentProfile> => {
-    const method = authMethod || (user.app_metadata?.provider === 'google' ? 'Google' : 'Email/Password');
-    const displayName =
-      user.user_metadata?.full_name ||
-      user.user_metadata?.name ||
-      user.user_metadata?.displayName ||
-      user.email?.split('@')[0] ||
-      'Student';
-
-    const avatarUrl =
-      user.user_metadata?.avatar_url ||
-      user.user_metadata?.picture ||
-      user.user_metadata?.picture_url ||
-      '';
-
-    const isAdmin = isAdminEmail(user.email);
-
-    const defaultProfile: StudentProfile = {
-      id: user.id,
-      name: displayName,
-      email: user.email || '',
-      avatar_url: avatarUrl,
-      grade: isAdmin ? 'Admin' : (extraGrade && extraGrade !== 'General Student' ? extraGrade : ''),
-      stream: isAdmin ? 'Admin Stream' : '',
-      sign_up_method: method,
-      is_registered: isAdmin,
-      created_at: new Date().toISOString(),
-    };
-
     if (!isSupabaseConfigured) {
       return defaultProfile;
     }
@@ -980,9 +1029,10 @@ export async function syncUserProfile(
     }
   })();
 
-  syncInFlightPromises.set(userId, syncPromise);
+  const timedSyncPromise = withTimeout(syncPromise, 6000, defaultProfile, `syncUserProfile(${userId})`);
+  syncInFlightPromises.set(userId, timedSyncPromise);
   try {
-    return await syncPromise;
+    return await timedSyncPromise;
   } finally {
     syncInFlightPromises.delete(userId);
   }
@@ -2201,9 +2251,10 @@ export async function fetchStudentProfileFromSupabase(
     return null;
   })();
 
-  profileInFlightPromises.set(userId, fetchPromise);
+  const timedFetchPromise = withTimeout(fetchPromise, 6000, null, `fetchStudentProfileFromSupabase(${userId})`);
+  profileInFlightPromises.set(userId, timedFetchPromise);
   try {
-    return await fetchPromise;
+    return await timedFetchPromise;
   } finally {
     profileInFlightPromises.delete(userId);
   }

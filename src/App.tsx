@@ -57,9 +57,9 @@ const PaymentRequiredScreen = lazyWithRetry(() => import('./components/PaymentRe
 const PlanSelectionScreen = lazyWithRetry(() => import('./components/PlanSelectionScreen').then(m => ({ default: m.PlanSelectionScreen })), 'PlanSelection');
 const PricingPage = lazyWithRetry(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })), 'Pricing');
 
-import { supabase, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, User, StudentProfile } from './lib/supabase';
+import { supabase, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
-import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight } from 'lucide-react';
+import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
 
 type ScreenType =
@@ -509,6 +509,43 @@ export function App() {
 
   const [profileSyncing, setProfileSyncing] = useState<boolean>(false);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [authTimedOut, setAuthTimedOut] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
+  const handleRetryAuth = useCallback(async () => {
+    setAuthTimedOut(false);
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      const { data, error } = await withTimeout(
+        supabase.auth.getSession(),
+        7000,
+        { data: { session: null }, error: null } as any,
+        'retryGetSession'
+      );
+      if (error) {
+        console.warn('[Retry Auth] getSession returned error:', error);
+      }
+      const session = data?.session;
+      const user = session?.user ?? null;
+      setCurrentUser(user);
+
+      if (user) {
+        setProfileSyncing(true);
+        const profile = await syncUserProfile(user);
+        setUserProfile(profile);
+        setProfileSyncing(false);
+      } else {
+        setUserProfile(null);
+      }
+    } catch (err: any) {
+      console.error('[Retry Auth Exception]:', err);
+      setAuthError('Connection took too long. Please try again or continue to portal.');
+    } finally {
+      setAuthLoading(false);
+      setProfileSyncing(false);
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -1413,12 +1450,28 @@ export function App() {
       }
     };
 
-    // 1. Initial Session Check on app load
-    supabase.auth
-      .getSession()
-      .then(({ data: { session } }) => {
-        if (!isSubscribed) return;
+    // 1. Initial Session Check on app load with explicit safety timeout (8s max)
+    const splashTimeoutTimer = setTimeout(() => {
+      if (!isSubscribed) return;
+      console.error('[Splash Screen Safety Timeout] Initial session and profile sync check exceeded 8000ms. Releasing splash lock to allow user recovery.');
+      setAuthTimedOut(true);
+      setAuthLoading(false);
+      setProfileSyncing(false);
+    }, 8000);
 
+    withTimeout(
+      supabase.auth.getSession(),
+      7000,
+      { data: { session: null }, error: null } as any,
+      'supabase.auth.getSession'
+    )
+      .then(({ data, error }) => {
+        if (!isSubscribed) return;
+        if (error) {
+          console.warn('[getSession warning]:', error);
+        }
+
+        const session = data?.session;
         const user = session?.user ?? null;
         setCurrentUser(user);
 
@@ -1431,8 +1484,11 @@ export function App() {
         setAuthLoading(false);
       })
       .catch((err) => {
-        console.error('getSession() error:', err);
-        if (isSubscribed) setAuthLoading(false);
+        console.error('[getSession exception]:', err);
+        if (isSubscribed) {
+          setAuthLoading(false);
+          setAuthError('Unable to connect to authentication server.');
+        }
       });
 
     // 2. Real-time Auth State Change Listener
@@ -1451,10 +1507,13 @@ export function App() {
       }
 
       setAuthLoading(false);
+      setAuthTimedOut(false);
+      setAuthError(null);
     });
 
     return () => {
       isSubscribed = false;
+      clearTimeout(splashTimeoutTimer);
       subscription.unsubscribe();
     };
   }, []);
@@ -2433,7 +2492,13 @@ export function App() {
   const displayName = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0];
 
   const isIntroScreen = screen === 'intro';
-  if (!isIntroScreen && ((authLoading && !currentUser) || (profileSyncing && (!userProfile || !userProfile.is_registered)))) {
+  const showSplash = !isIntroScreen && (
+    (authLoading && !currentUser) ||
+    (profileSyncing && (!userProfile || !userProfile.is_registered)) ||
+    (authTimedOut && !currentUser && !userProfile)
+  );
+
+  if (showSplash) {
     return (
       <div className="min-h-dvh h-dvh sm:min-h-screen bg-[#F8F9FB] text-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden">
         {/* Glowing ambient background blur with hardware-accelerated continuous ease */}
@@ -2441,7 +2506,7 @@ export function App() {
           initial={{ opacity: 0.1, scale: 0.8 }}
           animate={{ opacity: [0.15, 0.3, 0.15], scale: [0.9, 1.1, 0.9] }}
           transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute w-80 h-80 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none"
+          className="absolute w-80 h-80 bg-blue-500/15 rounded-full blur-3xl pointer-events-none"
         />
 
         <motion.div
@@ -2449,17 +2514,69 @@ export function App() {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.96, y: -10 }}
           transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-          className="rounded-[32px] p-8 max-w-sm w-full flex flex-col items-center gap-5 text-center shadow-2xl border border-emerald-500/20 bg-white/90 backdrop-blur-xl relative z-10"
+          className="rounded-[32px] p-8 max-w-sm w-full flex flex-col items-center gap-5 text-center shadow-2xl border border-slate-200/80 bg-white/90 backdrop-blur-xl relative z-10"
         >
           <HeaderLogo isIntro={false} currentUserEmail={currentUser?.email} />
           
-          <div className="flex flex-col items-center gap-3 w-full pt-1">
-            <BrandedLoadingSpinner
-              size="lg"
-              label="Launching Student Dashboard..."
-              sublabel="Syncing curriculum & student profile..."
-            />
-          </div>
+          {authTimedOut || authError ? (
+            <div className="flex flex-col items-center gap-4 w-full pt-1 animate-fadeIn">
+              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+
+              <div className="space-y-1.5">
+                <h3 className="font-['Space_Grotesk'] font-bold text-base text-slate-900">
+                  Connection Taking Longer Than Usual
+                </h3>
+                <p className="text-xs text-slate-500 leading-relaxed max-w-xs">
+                  We're having trouble contacting authentication servers. You can retry connection or continue directly into the portal.
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2 w-full pt-2">
+                <button
+                  onClick={handleRetryAuth}
+                  className="w-full py-3 px-4 bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-bold rounded-2xl text-xs shadow-md active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  <span>Retry Connection</span>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setAuthTimedOut(false);
+                    setAuthLoading(false);
+                    setProfileSyncing(false);
+                    setScreen('intro');
+                  }}
+                  className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <span>Continue to Home Screen</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={() => {
+                    setAuthTimedOut(false);
+                    setAuthLoading(false);
+                    setProfileSyncing(false);
+                    setScreen('auth');
+                  }}
+                  className="text-[11px] font-semibold text-[#1E5AFF] hover:underline pt-1 cursor-pointer"
+                >
+                  Sign In with Email / Password
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 w-full pt-1">
+              <BrandedLoadingSpinner
+                size="lg"
+                label="Launching Student Dashboard..."
+                sublabel="Syncing curriculum & student profile..."
+              />
+            </div>
+          )}
         </motion.div>
       </div>
     );
