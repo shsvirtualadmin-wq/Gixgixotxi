@@ -270,9 +270,9 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
               />
             </div>
             <div>
-              <h2 className="font-['Space_Grotesk'] font-black text-base sm:text-lg text-slate-900  uppercase tracking-wider leading-none">
+              <h1 className="font-['Space_Grotesk'] font-black text-base sm:text-lg text-slate-900 uppercase tracking-wider leading-none">
                 BOARDLY ACADEMY
-              </h2>
+              </h1>
               <p className="text-[10px] sm:text-[11px] font-bold text-[#F2B90C] tracking-wide mt-0.5">
                 Official Score &amp; Evaluation Report
               </p>

@@ -73,12 +73,12 @@ export const HeaderLogo: React.FC<HeaderLogoProps> = ({
 
       {/* Brand Title */}
       <div className="flex flex-col items-center justify-center gap-0.5">
-        <h1
-          className="font-black text-2xl sm:text-3xl tracking-wider uppercase text-transparent bg-clip-text bg-gradient-to-r from-[#0A1330] via-[#1E5AFF] to-[#0A1330]    filter drop-shadow-[0_1px_3px_rgba(10,19,48,0.2)] "
+        <div
+          className="font-black text-2xl sm:text-3xl tracking-wider uppercase text-transparent bg-clip-text bg-gradient-to-r from-[#0A1330] via-[#1E5AFF] to-[#0A1330] filter drop-shadow-[0_1px_3px_rgba(10,19,48,0.2)]"
           style={{ fontFamily: "'Fraunces', Georgia, serif" }}
         >
           BOARDLY
-        </h1>
+        </div>
 
         {/* Moved subtle tagline: Animated cycling words (Learn, Grow, Archive, BOARDLY) */}
         <div className="h-4 sm:h-5 flex items-center justify-center">

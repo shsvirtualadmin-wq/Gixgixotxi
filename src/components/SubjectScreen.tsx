@@ -46,9 +46,9 @@ export const SubjectScreen: React.FC<SubjectScreenProps> = React.memo(({
       </div>
 
       <div className="space-y-1">
-        <h2 className="font-['Space_Grotesk'] text-2xl font-extrabold text-slate-900 ">
+        <h1 className="font-['Space_Grotesk'] text-2xl font-extrabold text-slate-900">
           Choose Your Subject
-        </h2>
+        </h1>
         <p className="text-slate-600  text-xs sm:text-sm">
           Select a subject or enter a custom chapter topic to practice.
         </p>

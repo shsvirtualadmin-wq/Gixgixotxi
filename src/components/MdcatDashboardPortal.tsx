@@ -247,7 +247,7 @@ export const MdcatDashboardPortal: React.FC<MdcatDashboardPortalProps> = ({
 
           <div className="space-y-2">
             <h1 className="font-['Space_Grotesk'] font-extrabold text-2xl sm:text-4xl text-white tracking-tight leading-tight">
-              National MDCAT <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400">Preparation Portal</span>
+              National MDCAT Portal — <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-orange-400 to-rose-400">Boardly by SHS Virtual Academy</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-300 max-w-3xl leading-relaxed">
               Master the Medical & Dental College Admission Test with 64 PMDC chapters and individual topic-level practice across Biology, Chemistry, Physics, English, and Logical Reasoning.

@@ -511,9 +511,9 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
                 <Sparkles className="w-4 h-4" />
                 <span>Student Dashboard</span>
               </div>
-              <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-extrabold text-slate-900  leading-tight truncate">
+              <h1 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-extrabold text-slate-900 leading-tight truncate">
                 Welcome back, {studentName}! 👋
-              </h2>
+              </h1>
               <p className="text-slate-600  text-xs sm:text-sm leading-relaxed font-normal">
                 Track your board exam practice performance, review chapter accuracy, and practice targeted MCQs.
               </p>

@@ -698,10 +698,10 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
               className="space-y-4 relative z-10 max-w-3xl"
             >
               <h1 className="font-['Space_Grotesk'] text-3xl sm:text-4xl lg:text-5xl font-black text-slate-900  leading-[1.15] tracking-tight">
-                Master Every Chapter with Intelligent MCQs & AI Explanations
+                Boardly by SHS Virtual Academy — An online Educational Platform for FSC Matric & Post FSC Students
               </h1>
               <p className="text-slate-600  text-sm sm:text-base lg:text-lg leading-relaxed font-normal">
-                Prepare for SSC & HSSC FBISE exams, PMDC MDCAT Medical, and UET Taxila TCAT entrance tests with chapter-wise SLO question banks, step-by-step AI reasoning, and performance analytics.
+                Master FBISE SSC & HSSC Matric & FSC curriculum, PMDC MDCAT Medical, and UET Taxila TCAT entrance exams with intelligent chapter-wise question banks, step-by-step AI reasoning, and performance analytics.
               </p>
             </motion.div>
 

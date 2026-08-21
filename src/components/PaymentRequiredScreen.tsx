@@ -86,13 +86,13 @@ export const PaymentRequiredScreen: React.FC<PaymentRequiredScreenProps> = ({
             <span>New Student Access Policy</span>
           </div>
 
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 ">
+          <h1 className="text-xl sm:text-2xl font-black text-slate-900">
             {isPending
               ? 'Payment Verification Pending'
               : isRejected
               ? 'Payment Verification Declined'
               : 'Payment Verification Required'}
-          </h2>
+          </h1>
 
           <p className="text-xs text-slate-600  leading-relaxed max-w-md mx-auto">
             Logged in as <strong className="text-slate-900  font-bold">{userProfile?.name || currentUser.email}</strong> ({currentUser.email}).

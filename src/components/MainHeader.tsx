@@ -240,10 +240,10 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
             </div>
 
             <div className="flex flex-col">
-              <h1 className="font-['Space_Grotesk'] text-base sm:text-lg font-bold text-[#0A1330]  leading-tight tracking-tight group-hover:text-[#1E5AFF] transition-colors flex items-center gap-1.5">
+              <span className="font-['Space_Grotesk'] text-base sm:text-lg font-bold text-[#0A1330] leading-tight tracking-tight group-hover:text-[#1E5AFF] transition-colors flex items-center gap-1.5">
                 <span>Boardly</span>
-              </h1>
-              <span className="text-[9px] font-bold tracking-widest uppercase text-blue-800  hidden sm:block">
+              </span>
+              <span className="text-[9px] font-bold tracking-widest uppercase text-blue-800 hidden sm:block">
                 Academy Platform
               </span>
             </div>

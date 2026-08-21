@@ -269,8 +269,8 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = ({
           />
         </div>
 
-        <h1 className="font-['Space_Grotesk'] font-black text-2xl sm:text-3xl tracking-widest text-[#F2B90C] uppercase leading-none">
-          BOARDLY
+        <h1 className="font-['Space_Grotesk'] font-black text-xl sm:text-2xl tracking-tight text-white leading-tight">
+          Boardly Student Portal — <span className="text-[#F2B90C]">SHS Virtual Academy</span>
         </h1>
 
         <p className="text-[10px] sm:text-[11px] font-extrabold tracking-[0.2em] text-[#F2B90C]/90 uppercase">

@@ -290,7 +290,22 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = ({
   return (
     <section className="dashboard-container screen animate-ios-spring text-left flex flex-col gap-3 sm:gap-4 pb-4">
       {/* Top Header Card */}
-      <div className="flex flex-col gap-2 bg-white border border-slate-200 rounded-[24px] sm:rounded-[28px] p-3.5 sm:p-5 shadow-sm">
+      <div className="flex flex-col gap-3 bg-white border border-slate-200 rounded-[24px] sm:rounded-[28px] p-3.5 sm:p-5 shadow-sm">
+        {/* Page Main H1 Heading */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 pb-1">
+          <div>
+            <h1 className="font-['Space_Grotesk'] text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
+              Class {classNum} {group ? `(${group})` : ''} Exam Dashboard — Boardly by SHS Virtual Academy
+            </h1>
+            <p className="text-xs text-slate-600 mt-0.5">
+              Online secondary education syllabus, chapter-wise MCQs, and full-length exam simulations.
+            </p>
+          </div>
+          <span className="text-[11px] font-extrabold text-[#1E5AFF] bg-[#1E5AFF]/10 border border-[#1E5AFF]/20 px-3 py-1 rounded-full self-start sm:self-center shrink-0">
+            FBISE Class {classNum}
+          </span>
+        </div>
+
         {isAdmin && (
           <div className="flex items-center justify-between gap-2 pb-2.5 border-b border-slate-200 mb-1">
             <button

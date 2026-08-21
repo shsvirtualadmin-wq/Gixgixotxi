@@ -255,7 +255,7 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = ({
 
           <div className="space-y-2">
             <h1 className="font-['Space_Grotesk'] font-extrabold text-2xl sm:text-4xl text-slate-900  tracking-tight leading-tight">
-              TCAT / UET Taxila <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-500   ">Entry Test Prep</span>
+              TCAT / UET Taxila Series — <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-500">Boardly by SHS Virtual Academy</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-600  max-w-3xl leading-relaxed">
               Comprehensive engineering entrance preparation tailored for UET Taxila degree programs. Practice FSc Part I & II subjects with real formula-driven MCQs, quick numerical calculations, and detailed step-by-step solutions.

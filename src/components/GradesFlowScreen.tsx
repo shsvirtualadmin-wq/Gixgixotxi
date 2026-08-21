@@ -76,9 +76,9 @@ export const GradesFlowScreen: React.FC<GradesFlowScreenProps> = ({
       </div>
 
       <div className="space-y-1">
-        <h2 className="font-['Space_Grotesk'] text-2xl font-extrabold text-[#0A0A0A] ">
+        <h1 className="font-['Space_Grotesk'] text-2xl font-extrabold text-[#0A0A0A]">
           Select Your Class
-        </h2>
+        </h1>
         <p className="text-slate-600  text-xs sm:text-sm leading-relaxed">
           Choose your FBISE class level to view subject groups and chapter tests.
         </p>

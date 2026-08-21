@@ -28,9 +28,9 @@ export const ClassGroupScreen: React.FC<ClassGroupScreenProps> = ({
         </div>
 
         <div className="space-y-1">
-          <h2 className="font-['Space_Grotesk'] text-2xl font-extrabold text-[#0A0A0A] ">
+          <h1 className="font-['Space_Grotesk'] text-2xl font-extrabold text-[#0A0A0A]">
             Select Class Level
-          </h2>
+          </h1>
           <p className="text-slate-600  text-xs sm:text-sm">
             Choose your grade level for FBISE (Classes 9–12), MDCAT, or TCAT.
           </p>
@@ -109,9 +109,9 @@ export const ClassGroupScreen: React.FC<ClassGroupScreenProps> = ({
       </div>
 
       <div className="space-y-1">
-        <h2 className="font-['Space_Grotesk'] text-2xl font-extrabold text-[#0A0A0A] ">
+        <h1 className="font-['Space_Grotesk'] text-2xl font-extrabold text-[#0A0A0A]">
           Class {selectedClass} Subject Stream
-        </h2>
+        </h1>
         <p className="text-slate-600  text-xs sm:text-sm">
           Select your study group to load the corresponding subjects.
         </p>

@@ -95,9 +95,9 @@ export const DurationScreen: React.FC<DurationScreenProps> = ({
       </div>
 
       <div className="space-y-1">
-        <h2 className="font-['Space_Grotesk'] text-2xl font-extrabold text-slate-900 ">
+        <h1 className="font-['Space_Grotesk'] text-2xl font-extrabold text-slate-900">
           Configure Your Practice Test
-        </h2>
+        </h1>
         <p className="text-slate-600  text-xs sm:text-sm">
           Subject: <strong className="text-slate-900 ">{subject}</strong>
           {customTopic && <span className="text-[#1E5AFF]"> ({customTopic})</span>}

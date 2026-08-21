@@ -259,9 +259,9 @@ export const PrintableTestModal: React.FC<PrintableTestModalProps> = ({
                 </div>
                 <div className="text-left">
                   <div className="flex items-center gap-2">
-                    <h1 className="font-extrabold text-base text-slate-900 tracking-wide uppercase leading-none">
+                    <div className="font-extrabold text-base text-slate-900 tracking-wide uppercase leading-none">
                       BOARDLY
-                    </h1>
+                    </div>
                     <span className="inline-flex items-center justify-center h-[18px] px-2 text-[9.5px] font-extrabold text-[#1E5AFF] bg-blue-50 rounded border border-blue-200 uppercase leading-none">
                       SHS Virtual Academy
                     </span>

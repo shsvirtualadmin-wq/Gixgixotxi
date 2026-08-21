@@ -294,7 +294,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
         </div>
 
         <h1 className="text-2xl sm:text-4xl font-black text-slate-900  tracking-tight">
-          Invest in Your Exam Success
+          Boardly Plans &amp; Pricing — SHS Virtual Academy
         </h1>
 
         <p className="text-sm sm:text-base text-slate-600  leading-relaxed">

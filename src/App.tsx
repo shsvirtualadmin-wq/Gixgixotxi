@@ -41,6 +41,7 @@ import { GlobalModals } from './components/GlobalModals';
 import { LeaveConfirmationModal } from './components/LeaveConfirmationModal';
 import { PLAN_OPTIONS, type PlanId } from './components/PlanSelectionScreen';
 import { getPricingTrackFromProfile, type PricingTrack, type BillingCycle } from './components/PricingPage';
+import { setPageMeta, DEFAULT_PAGE_META } from './utils/seo';
 import type { SetupWizardData } from './components/GuidedSetupWizard';
 import type { MCQContext } from './types';
 
@@ -385,7 +386,40 @@ export function App() {
         localStorage.setItem('boardly_active_screen', screen);
       }
     } catch {}
-  }, [screen]);
+
+    // Synchronize page-specific meta description, document title, and canonical URL
+    const metaConfig = DEFAULT_PAGE_META[screen] || DEFAULT_PAGE_META.intro;
+    let customTitle = metaConfig.title;
+    let customDesc = metaConfig.description;
+
+    let canonicalHref = 'https://boardly.cfd/';
+    if (screen === 'pricing') {
+      canonicalHref = 'https://boardly.cfd/?screen=pricing';
+    } else if (screen === 'grades_flow') {
+      canonicalHref = 'https://boardly.cfd/?screen=grades_flow';
+    } else if (screen === 'group') {
+      canonicalHref = `https://boardly.cfd/?screen=group${selectedClass ? `&class=${selectedClass}` : ''}`;
+    } else if (screen === 'dashboard') {
+      const classLabel = typeof selectedClass === 'number' ? `Class ${selectedClass}` : selectedClass;
+      if (classLabel) {
+        customTitle = `${classLabel} Dashboard — Boardly by SHS Virtual Academy`;
+        customDesc = `Track ${classLabel} board exam practice performance, review chapter accuracy, and practice MCQs on Boardly by SHS Virtual Academy. Visit shsvirtualacademy.pro to learn more.`;
+      }
+      canonicalHref = `https://boardly.cfd/?screen=dashboard${selectedClass ? `&class=${selectedClass}` : ''}`;
+    } else if (screen === 'subjects') {
+      canonicalHref = `https://boardly.cfd/?screen=subjects${selectedClass ? `&class=${selectedClass}` : ''}`;
+    } else if (screen === 'subject' && selectedSubject) {
+      customTitle = `${selectedSubject} MCQs & Tests — Boardly by SHS Virtual Academy`;
+      customDesc = `Practice chapter-wise ${selectedSubject} MCQs and questions with AI explanations on Boardly by SHS Virtual Academy. Visit shsvirtualacademy.pro to learn more.`;
+      canonicalHref = `https://boardly.cfd/?screen=subject&subject=${encodeURIComponent(selectedSubject)}`;
+    } else if (screen === 'auth') {
+      canonicalHref = 'https://boardly.cfd/?screen=auth';
+    } else if (screen === 'admin') {
+      canonicalHref = 'https://boardly.cfd/?screen=admin';
+    }
+
+    setPageMeta(customDesc, customTitle, canonicalHref);
+  }, [screen, selectedClass, selectedSubject]);
 
   const path: PathType = 'boards';
 
