@@ -57,7 +57,7 @@ const PaymentRequiredScreen = lazyWithRetry(() => import('./components/PaymentRe
 const PlanSelectionScreen = lazyWithRetry(() => import('./components/PlanSelectionScreen').then(m => ({ default: m.PlanSelectionScreen })), 'PlanSelection');
 const PricingPage = lazyWithRetry(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })), 'Pricing');
 
-import { supabase, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile } from './lib/supabase';
+import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
@@ -515,11 +515,15 @@ export function App() {
   const handleRetryAuth = useCallback(async () => {
     setAuthTimedOut(false);
     setAuthError(null);
+    if (!isSupabaseConfigured) {
+      setAuthLoading(false);
+      return;
+    }
     setAuthLoading(true);
     try {
       const { data, error } = await withTimeout(
         supabase.auth.getSession(),
-        7000,
+        3000,
         { data: { session: null }, error: null } as any,
         'retryGetSession'
       );
@@ -1450,23 +1454,36 @@ export function App() {
       }
     };
 
-    // 1. Initial Session Check on app load with explicit safety timeout (8s max)
-    const splashTimeoutTimer = setTimeout(() => {
+    // If Supabase is not configured in this environment, complete auth state immediately without waiting
+    if (!isSupabaseConfigured) {
+      setAuthLoading(false);
+      setProfileSyncing(false);
+      return () => {
+        isSubscribed = false;
+      };
+    }
+
+    // 1. Initial Session Check on app load with explicit safety timeout (3500ms max)
+    let splashTimeoutTimer: any = setTimeout(() => {
       if (!isSubscribed) return;
-      console.error('[Splash Screen Safety Timeout] Initial session and profile sync check exceeded 8000ms. Releasing splash lock to allow user recovery.');
+      console.warn('[Splash Screen Safety Timeout] Initial session check exceeded threshold. Releasing splash lock to allow user recovery.');
       setAuthTimedOut(true);
       setAuthLoading(false);
       setProfileSyncing(false);
-    }, 8000);
+    }, 3500);
 
     withTimeout(
       supabase.auth.getSession(),
-      7000,
+      2500,
       { data: { session: null }, error: null } as any,
       'supabase.auth.getSession'
     )
       .then(({ data, error }) => {
         if (!isSubscribed) return;
+        if (splashTimeoutTimer) {
+          clearTimeout(splashTimeoutTimer);
+          splashTimeoutTimer = null;
+        }
         if (error) {
           console.warn('[getSession warning]:', error);
         }
@@ -1484,6 +1501,10 @@ export function App() {
         setAuthLoading(false);
       })
       .catch((err) => {
+        if (splashTimeoutTimer) {
+          clearTimeout(splashTimeoutTimer);
+          splashTimeoutTimer = null;
+        }
         console.error('[getSession exception]:', err);
         if (isSubscribed) {
           setAuthLoading(false);
@@ -1496,6 +1517,10 @@ export function App() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, session) => {
       if (!isSubscribed) return;
+      if (splashTimeoutTimer) {
+        clearTimeout(splashTimeoutTimer);
+        splashTimeoutTimer = null;
+      }
 
       const user = session?.user ?? null;
       setCurrentUser(user);
@@ -1513,7 +1538,9 @@ export function App() {
 
     return () => {
       isSubscribed = false;
-      clearTimeout(splashTimeoutTimer);
+      if (splashTimeoutTimer) {
+        clearTimeout(splashTimeoutTimer);
+      }
       subscription.unsubscribe();
     };
   }, []);
