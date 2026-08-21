@@ -61,7 +61,7 @@ export const MathText: React.FC<MathTextProps> = React.memo(({
           return (
             <span
               key={index}
-              className="block my-2 text-center overflow-x-auto py-1.5 px-2 bg-black/5 rounded-xl border border-black/5"
+              className="block my-1.5 text-center overflow-x-auto"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );

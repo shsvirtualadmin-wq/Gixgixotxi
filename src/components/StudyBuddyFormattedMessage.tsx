@@ -24,7 +24,7 @@ export const StudyBuddyFormattedMessage: React.FC<StudyBuddyFormattedMessageProp
   return (
     <div
       className={`study-buddy-message font-sans space-y-2 text-xs sm:text-sm leading-relaxed overflow-x-auto ${
-        isUser ? 'text-slate-950 font-medium' : 'text-slate-100'
+        isUser ? 'is-user text-white font-medium' : 'text-slate-100'
       } ${className}`}
     >
       <ReactMarkdown

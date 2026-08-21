@@ -269,7 +269,7 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = React.memo(({
           />
         </div>
 
-        <h1 className="font-['Space_Grotesk'] font-black text-xl sm:text-2xl tracking-tight text-white leading-tight">
+        <h1 className="font-['Space_Grotesk'] font-black text-xl sm:text-2xl tracking-tight text-black leading-tight">
           Boardly Student Portal — <span className="text-[#F2B90C]">SHS Virtual Academy</span>
         </h1>
 

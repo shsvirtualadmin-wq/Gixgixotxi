@@ -124,8 +124,12 @@ export function formatLatexContent(rawLatex: string): string {
   s = s.replace(/\\int\s+from\s+([^\s]+)\s+to\s+([^\s]+)\s+of\s+(.+?)\s*(dx|dy|dt|du)\b/gi, '\\int_{$1}^{$2} $3 \\, $4');
   s = s.replace(/\\int_?([0-9a-zA-Z\(\)]+)\^([0-9a-zA-Z\(\)]+)/g, '\\int_{$1}^{$2}');
 
-  // 6. Physics and math variable subscripts: e.g., v0 -> v_{0}, v_0 -> v_{0}, Fnet -> F_{\text{net}}
+  // 6. Physics and math variable subscripts: e.g., v0 -> v_{0}, v_0 -> v_{0}, Fnet -> F_{\text{net}}, K.E.max -> \text{K.E.}_{\text{max}}
   s = s.replace(/\bF_?net\b/gi, 'F_{\\text{net}}');
+  s = s.replace(/\bK\.?E\.?(?:_?max|max)\b/gi, '\\text{K.E.}_{\\text{max}}');
+  s = s.replace(/\bK\.?E\.?\b/gi, '\\text{K.E.}');
+  s = s.replace(/\bP\.?E\.?\b/gi, '\\text{P.E.}');
+  s = s.replace(/\bhnu\b/gi, 'h\\nu');
   s = s.replace(/([PVTmrvaxyz])(\d+)/g, '$1_{$2}');
   s = s.replace(/([PVTmrvaxyz])_(\d+|[a-z])/g, '$1_{$2}');
 
@@ -190,6 +194,14 @@ export function formatLatexContent(rawLatex: string): string {
   s = s.replace(/μ0/g, ' \\mu_0 ');
   s = s.replace(/ε0/g, ' \\epsilon_0 ');
   s = s.replace(/\bomega\b|ω/gi, ' \\omega ');
+  s = s.replace(/\bPhi\b/g, ' \\Phi ');
+  s = s.replace(/\bphi\b/g, ' \\phi ');
+  s = s.replace(/\bnu\b|ν/g, ' \\nu ');
+  s = s.replace(/\balpha\b|α/gi, ' \\alpha ');
+  s = s.replace(/\bbeta\b|β/gi, ' \\beta ');
+  s = s.replace(/\bgamma\b|γ/gi, ' \\gamma ');
+  s = s.replace(/\bdelta\b|δ/gi, ' \\delta ');
+  s = s.replace(/\bsigma\b|σ/gi, ' \\sigma ');
 
   // 16. Balance unclosed braces
   if (s.includes('\\frac') || s.includes('\\sqrt') || s.includes('\\mathrm') || s.includes('\\text')) {
