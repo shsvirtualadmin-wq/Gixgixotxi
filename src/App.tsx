@@ -1901,7 +1901,7 @@ export function App() {
     let currentQuestions = [...initialQuestions];
 
     while (currentQuestions.length < targetTotalCount && !bgAbort.signal.aborted) {
-      const nextBatchCount = Math.min(15, targetTotalCount - currentQuestions.length);
+      const nextBatchCount = Math.min(5, targetTotalCount - currentQuestions.length);
       const existingStems = currentQuestions.map((q) => q.q);
       let batchAppended = false;
 
@@ -1909,6 +1909,7 @@ export function App() {
       for (let attempt = 1; attempt <= 3; attempt++) {
         if (bgAbort.signal.aborted) break;
         try {
+          const bgStartMs = Date.now();
           console.log(`[MCQ Background Gen Attempt ${attempt}/3] Requesting ${nextBatchCount} questions for "${targetSubject}" (current: ${currentQuestions.length}/${targetTotalCount})`);
 
           const fetchPromise = apiFetch('/api/generate-mcqs', {
@@ -2062,6 +2063,10 @@ export function App() {
     instantFeedback: boolean;
     subject?: string;
     customTopic?: string;
+    subtopic?: string;
+    chapterName?: string;
+    isFullMock?: boolean;
+    groupSubjects?: string[];
   }) => {
     // Immediately set generating loading state for instant UI feedback
     setIsGenerating(true);
@@ -2108,20 +2113,21 @@ export function App() {
     const currentReqId = ++mcqRequestIdRef.current;
 
     const targetTotalCount = Math.max(1, params.questionCount || 10);
-    const initialBatchCount = Math.min(15, targetTotalCount);
+    // Initial batch target is 5 questions to guarantee instant UI startup within 10 seconds
+    const FIRST_BATCH_READY_THRESHOLD = Math.min(5, targetTotalCount);
 
-    console.log(`[MCQ Progressive Instant Start] Target Subject: "${targetSubject}", Initial Batch: ${initialBatchCount}, Target Total: ${targetTotalCount}`);
+    console.log(`[MCQ Progressive Fast Start] Subject: "${targetSubject}", First Batch Target: ${FIRST_BATCH_READY_THRESHOLD}, Total Target: ${targetTotalCount}`);
 
     // 1. Instantly assemble initial questions from cache & prebuilt bank so the test screen opens immediately (< 0.5s)
     let initialSet: Question[] = getCachedQuestions(targetSubject, targetTopic) || [];
     
-    // CRITICAL FIX: If cached set is larger than targetTotalCount, slice it to targetTotalCount!
+    // If cached set is larger than targetTotalCount, slice it to targetTotalCount
     if (initialSet.length > targetTotalCount) {
       initialSet = initialSet.slice(0, targetTotalCount);
     }
 
-    // Top up to targetTotalCount using authentic prebuilt bank if needed
-    if (initialSet.length < targetTotalCount) {
+    // Top up using authentic prebuilt bank if needed
+    if (initialSet.length < FIRST_BATCH_READY_THRESHOLD) {
       const prebuiltPool = getPrebuiltQuestionsForSubject(targetSubject, targetTopic);
       const shuffledPrebuilt = [...prebuiltPool].sort(() => 0.5 - Math.random());
       for (const pbq of shuffledPrebuilt) {
@@ -2135,16 +2141,17 @@ export function App() {
       }
     }
 
-    // If initialSet is empty (no cache or prebuilt questions), fetch directly from API before opening test
+    // If initialSet is empty (no cache or prebuilt questions), fetch the first batch (5 questions) directly from API
     if (initialSet.length === 0) {
       try {
-        console.log(`[MCQ Start] No prebuilt/cached questions for "${targetSubject}" - "${targetTopic}". Fetching live MCQs from API...`);
-        const fetchCount = Math.min(15, targetTotalCount);
+        console.log(`[MCQ Start] No prebuilt/cached questions for "${targetSubject}" - "${targetTopic}". Fetching live first batch (${FIRST_BATCH_READY_THRESHOLD} questions) from API...`);
+        const fetchCount = FIRST_BATCH_READY_THRESHOLD;
         let liveSuccess = false;
 
         for (let liveAttempt = 1; liveAttempt <= 2; liveAttempt++) {
           if (liveSuccess || abortController.signal.aborted) break;
           try {
+            const apiStartMs = Date.now();
             console.log(`[MCQ Start Live Fetch Attempt ${liveAttempt}/2] Requesting ${fetchCount} questions for "${targetSubject}" - "${targetTopic}"`);
             const fetchRes = await apiFetch('/api/generate-mcqs', {
               method: 'POST',
@@ -2153,6 +2160,8 @@ export function App() {
               body: JSON.stringify({
                 subject: targetSubject,
                 customTopic: targetTopic,
+                subtopic: params.subtopic,
+                chapterName: params.chapterName,
                 path: isMdcat ? 'mdcat' : 'boards',
                 classNum: selectedClass,
                 group: selectedGroup,
@@ -2161,11 +2170,14 @@ export function App() {
                 mode: params.mode,
                 userId: activeUser?.id || 'guest',
                 userEmail: activeUser?.email,
+                isFirstBatch: true,
               }),
             });
 
+            const apiElapsedMs = Date.now() - apiStartMs;
             if (fetchRes.ok) {
               const fetchData = await safeJsonResponse(fetchRes);
+              console.log(`[MCQ Initial Batch Latency] HTTP Roundtrip: ${apiElapsedMs}ms (${(apiElapsedMs / 1000).toFixed(2)}s) | Server Gemini: ${fetchData?.latency?.geminiMs || 'N/A'}ms | Server Total: ${fetchData?.latency?.totalServerMs || 'N/A'}ms | Qs: ${fetchData?.questions?.length || 0}`);
               if (fetchData?.success && Array.isArray(fetchData.questions) && fetchData.questions.length > 0) {
                 initialSet = fetchData.questions.slice(0, targetTotalCount);
                 liveSuccess = true;
@@ -2173,12 +2185,12 @@ export function App() {
               }
             } else {
               const errData = await safeJsonResponse(fetchRes).catch(() => null);
-              console.warn(`[MCQ Live Fetch Non-OK Status ${fetchRes.status}]:`, errData);
+              console.warn(`[MCQ Live Fetch Non-OK Status ${fetchRes.status} in ${apiElapsedMs}ms]:`, errData);
             }
           } catch (attemptErr: any) {
             console.warn(`[MCQ Live Fetch Attempt ${liveAttempt} Error]:`, attemptErr?.message || attemptErr);
             if (liveAttempt < 2) {
-              await new Promise((r) => setTimeout(r, 1200));
+              await new Promise((r) => setTimeout(r, 1000));
             }
           }
         }
@@ -2261,7 +2273,7 @@ export function App() {
       localStorage.setItem('boardly_active_test_session', JSON.stringify(sessionObj));
     } catch {}
 
-    // Immediately open test screen for the student! (0.1s UI latency)
+    // Immediately open test screen for the student!
     setScreen('test');
     setIsGenerating(false);
     setPendingTestParams(null);

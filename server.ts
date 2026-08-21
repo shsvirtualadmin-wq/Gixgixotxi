@@ -1182,11 +1182,17 @@ export function extractCleanErrorMessage(err: any): string {
 export function getGeminiApiKey(customEnv?: Record<string, any>): string {
   const candidates = [
     customEnv?.GEMINI_API_KEY,
+    customEnv?.GEMINI_API_KEY_1,
     customEnv?.GEMINI_API_KEY_2,
+    customEnv?.GEMINI_API_KEY_3,
+    customEnv?.GEMINI_API_KEY_4,
     customEnv?.VITE_GEMINI_API_KEY,
     customEnv?.GOOGLE_API_KEY,
     getEnvVar("GEMINI_API_KEY"),
+    getEnvVar("GEMINI_API_KEY_1"),
     getEnvVar("GEMINI_API_KEY_2"),
+    getEnvVar("GEMINI_API_KEY_3"),
+    getEnvVar("GEMINI_API_KEY_4"),
     getEnvVar("VITE_GEMINI_API_KEY"),
     getEnvVar("GOOGLE_API_KEY"),
     getEnvVar("API_KEY"),
@@ -3199,6 +3205,10 @@ function formatRemainingTimeString(ms: number): string {
 
   // API Endpoint: Generate MCQs via Gemini AI or Cache (with 100 monthly hard limit enforcement)
   app.post("/api/generate-mcqs", async (req, res) => {
+    const serverStartMs = Date.now();
+    let geminiApiDurationMs = 0;
+    let ruleValidationDurationMs = 0;
+
     const {
       customTopic,
       topic: requestedTopic,
@@ -3215,9 +3225,11 @@ function formatRemainingTimeString(ms: number): string {
       bypassCache = false,
       isFullMock = false,
       groupSubjects = [],
-    } = req.body;
+      isFirstBatch: isFirstBatchExplicit,
+    } = req.body || {};
 
-    const rawSubject = String(req.body.subject || "Physics");
+    const isFirstBatch = Boolean(isFirstBatchExplicit) || (!req.body?.isBackgroundBatch && (!req.body?.batchOffset || Number(req.body?.batchOffset) === 0));
+    const rawSubject = String(req.body?.subject || "Physics");
     const subject = normalizeSubjectKey(rawSubject);
 
     const requestedCount = Math.max(1, Number(questionCount) || 10);
@@ -3620,8 +3632,8 @@ ${scopeInstruction}`;
             if (needed <= 0) break;
 
             const modelName = modelsToTry[attempt % modelsToTry.length];
-            // Request in compact batches of 5-8 questions to prevent truncation and latency spikes
-            const requestCountForAttempt = Math.min(needed, 7);
+            // Request in compact batches (5 for first batch to guarantee <10s start, 7 for background)
+            const requestCountForAttempt = isFirstBatch ? Math.min(needed, 5) : Math.min(needed, 7);
 
             let excludeInstruction = "";
             if (finalQuestions.length > 0) {
@@ -3641,7 +3653,7 @@ ${scopeInstruction}${excludeInstruction}`;
 
             const startMs = Date.now();
             try {
-              console.log(`[Gemini Attempt ${attempt + 1}/${maxAttempts}] Requesting ${requestCountForAttempt} MCQs with ${modelName} for "${subject}" - "${targetTopicConstraint}" (Needed: ${needed})`);
+              console.log(`[Gemini Attempt ${attempt + 1}/${maxAttempts}] Requesting ${requestCountForAttempt} MCQs with ${modelName} for "${subject}" - "${targetTopicConstraint}" (Needed: ${needed}, isFirstBatch: ${isFirstBatch})`);
 
               const geminiCall = ai.models.generateContent({
                 model: modelName,
@@ -3684,13 +3696,17 @@ ${scopeInstruction}${excludeInstruction}`;
 
               const response = await Promise.race([geminiCall, timeoutCall]);
               const elapsedMs = Date.now() - startMs;
+              geminiApiDurationMs += elapsedMs;
 
               const responseText = response.text || "";
               console.log(`[Gemini Response Received in ${elapsedMs}ms from ${modelName}]: Length ${responseText.length} chars`);
 
               if (responseText) {
+                const valStartMs = Date.now();
                 const rawParsed = repairAndParseJson(responseText);
                 const validatedQs = validateAndFixQuestions(rawParsed, subject, topicLabel, difficulty, targetTopicConstraint);
+                const valElapsedMs = Date.now() - valStartMs;
+                ruleValidationDurationMs += valElapsedMs;
 
                 let addedInAttempt = 0;
                 if (validatedQs.length > 0) {
@@ -3704,7 +3720,7 @@ ${scopeInstruction}${excludeInstruction}`;
                   }
                 }
 
-                console.log(`[Gemini Attempt ${attempt + 1}/${maxAttempts} Result] Validated: ${validatedQs.length}/${rawParsed.length}, Added: ${addedInAttempt}, Total now: ${finalQuestions.length}/${requestedCount}`);
+                console.log(`[Gemini Attempt ${attempt + 1}/${maxAttempts} Result] Validated: ${validatedQs.length}/${rawParsed.length} (in ${valElapsedMs}ms), Added: ${addedInAttempt}, Total now: ${finalQuestions.length}/${requestedCount}`);
 
                 if (validatedQs.length < rawParsed.length) {
                   console.warn(`[Gemini Validation Warning] Attempt ${attempt + 1}: ${rawParsed.length - validatedQs.length} questions rejected. Parsed count: ${rawParsed.length}`);
@@ -3717,6 +3733,7 @@ ${scopeInstruction}${excludeInstruction}`;
               }
             } catch (modelErr: any) {
               const elapsedMs = Date.now() - startMs;
+              geminiApiDurationMs += elapsedMs;
               const statusCode = modelErr?.status || modelErr?.statusCode || 500;
               console.error(`[Gemini Attempt ${attempt + 1}/${maxAttempts} Error in ${elapsedMs}ms on ${modelName} (Status ${statusCode})]:`, modelErr?.message || modelErr);
               geminiError = modelErr?.message || String(modelErr);
@@ -3756,12 +3773,24 @@ ${scopeInstruction}${excludeInstruction}`;
     // Ensure all questions have randomized option positions and corrected answer indices
     finalQuestions = finalQuestions.map(shuffleQuestionOptions);
 
+    const totalServerDurationMs = Date.now() - serverStartMs;
+    console.log(`[MCQ Performance Benchmark] Batch: ${isFirstBatch ? 'FIRST BATCH (Instant Start Target <=10s)' : 'Background Batch'} | Gemini: ${geminiApiDurationMs}ms | Validation: ${ruleValidationDurationMs}ms | Total Server: ${totalServerDurationMs}ms | Questions: ${finalQuestions.length}/${requestedCount}`);
+
+    res.setHeader("X-Response-Time-Ms", String(totalServerDurationMs));
+    res.setHeader("Server-Timing", `gemini;dur=${geminiApiDurationMs}, val;dur=${ruleValidationDurationMs}, total;dur=${totalServerDurationMs}`);
+
     return res.json({
       success: true,
       selectedSubject: subject,
       subjectSentToGemini: subject,
       subjectReturned: subject,
       questions: finalQuestions,
+      isFirstBatch,
+      latency: {
+        geminiMs: geminiApiDurationMs,
+        validationMs: ruleValidationDurationMs,
+        totalServerMs: totalServerDurationMs,
+      },
       adaptiveContextApplied: Boolean(weaknessProfile && weaknessProfile.totalAttempts > 0),
       weaknessProfile: weaknessProfile || undefined,
       usage: {
