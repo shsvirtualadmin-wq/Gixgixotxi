@@ -219,7 +219,7 @@ const TRUSTED_INSTITUTIONS_MARQUEE: TrustedInstitution[] = [
     name: 'FBISE',
     shortName: 'FBISE',
     localLogoUrl: '/logos/academic/fbise.png',
-    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/unnamed.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png',
     fallbackInitials: 'FBISE',
   },
   {
@@ -259,7 +259,7 @@ const TRUSTED_INSTITUTIONS_MARQUEE: TrustedInstitution[] = [
     name: 'Army Public School (APS)',
     shortName: 'APS (Army Public School)',
     localLogoUrl: '/logos/academic/aps.png',
-    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images.jpeg',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_000000000c0c82088a7c46700ba17bd5.png',
     fallbackInitials: 'APS',
   },
   {
@@ -267,7 +267,7 @@ const TRUSTED_INSTITUTIONS_MARQUEE: TrustedInstitution[] = [
     name: 'Quaid-i-Azam University (QAU)',
     shortName: 'QAU (Quaid-i-Azam)',
     localLogoUrl: '/logos/academic/qau.png',
-    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images%20(2).jpeg',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_000000007cec8208ba576fe1db5a4e93.png',
     fallbackInitials: 'QAU',
   },
   {
@@ -307,7 +307,7 @@ const TRUSTED_INSTITUTIONS_MARQUEE: TrustedInstitution[] = [
     name: 'FG College',
     shortName: 'FG College',
     localLogoUrl: '/logos/academic/fgc.png',
-    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/444.jpg',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000016248208870342fb6e403b94.png',
     fallbackInitials: 'FGC',
   },
   {
@@ -315,7 +315,7 @@ const TRUSTED_INSTITUTIONS_MARQUEE: TrustedInstitution[] = [
     name: 'STEM Education',
     shortName: 'STEM Education',
     localLogoUrl: '/logos/academic/stem.png',
-    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images%20(1).png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000e5188208a03e6fe07eeef99c.png',
     fallbackInitials: 'STEM',
   },
   {
@@ -323,7 +323,7 @@ const TRUSTED_INSTITUTIONS_MARQUEE: TrustedInstitution[] = [
     name: 'KIPS',
     shortName: 'KIPS',
     localLogoUrl: '/logos/academic/kips.png',
-    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000ca3482089810078834ca4bd2.png',
     fallbackInitials: 'KIPS',
   },
 ];

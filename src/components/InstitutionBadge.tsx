@@ -156,7 +156,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-emerald-400',
     borderColor: 'border-emerald-500/30',
     badgeInitials: 'BOARDS',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/unnamed.png',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png',
     description: 'Board Examinations & Curriculum Islamabad & Nationwide.',
   },
   pmdc: {
@@ -192,7 +192,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-400',
     borderColor: 'border-blue-400/30',
     badgeInitials: 'APS',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images.jpeg',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_000000000c0c82088a7c46700ba17bd5.png',
     description: 'Federal Board SSC & HSSC excellence network.',
   },
   fgc: {
@@ -204,7 +204,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-teal-200',
     borderColor: 'border-teal-400/30',
     badgeInitials: 'FGC',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/444.jpg',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000016248208870342fb6e403b94.png',
     description: 'Federal Government Institutions across Pakistan.',
   },
   opf: {
@@ -228,7 +228,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-300',
     borderColor: 'border-blue-400/30',
     badgeInitials: 'KIPS',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images.png',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000ca3482089810078834ca4bd2.png',
     description: 'Leading entry test preparation academies in Pakistan.',
   },
   pgc: {
