@@ -35,6 +35,8 @@ import {
   DollarSign,
   Brain,
   MessageCircle,
+  ExternalLink,
+  Layers,
 } from 'lucide-react';
 import { fetchStudentCountFromSupabase } from '../lib/supabase';
 import { InstitutionBadge, INSTITUTIONS } from './InstitutionBadge';
@@ -813,6 +815,170 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
             </div>
           </div>
         </section>
+
+        {/* =========================================================================
+            SECTION: PLATFORM OVERVIEW & ACADEMIC SCOPE
+           ========================================================================= */}
+        <LazySection rootMargin="300px" minHeight="380px">
+        <section id="platform-overview" className="bg-white border border-slate-200/80 card-containment rounded-3xl p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
+          <div className="space-y-3 max-w-3xl">
+            <div className="inline-flex items-center gap-2 bg-[#1E5AFF]/15 text-[#0A1330] px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider border border-[#1E5AFF]/30">
+              <BookOpen className="w-3.5 h-3.5 text-[#1E5AFF]" />
+              <span>Dedicated Exam Preparation Platform</span>
+            </div>
+            <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 leading-tight">
+              Intelligent MCQ Practice & Test Prep for Matric, FSC & Entry Tests
+            </h2>
+            <p className="text-sm sm:text-base text-slate-600 leading-relaxed font-normal">
+              Boardly is a dedicated online examination and multiple-choice question (MCQ) mastery platform built specifically for Pakistan’s secondary and higher secondary students. Developed as an educational initiative under{' '}
+              <a
+                href="https://shsvirtualacademy.pro"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#1E5AFF] font-bold underline hover:text-[#1546CC] inline-flex items-center gap-0.5"
+              >
+                SHS Virtual Academy (shsvirtualacademy.pro)
+                <ExternalLink className="w-3 h-3 ml-0.5" />
+              </a>
+              , Boardly provides structured chapter-by-chapter question banks, realistic mock exams, and instant AI-driven answer derivations to prepare students for top board and university entrance results.
+            </p>
+            <div className="p-4 bg-blue-50/80 rounded-2xl border border-blue-100 text-xs text-slate-700 leading-relaxed flex items-start gap-2.5">
+              <Sparkles className="w-4 h-4 text-[#1E5AFF] shrink-0 mt-0.5" />
+              <span>
+                <strong>Academic Scope Note:</strong> Boardly specializes exclusively in self-paced MCQ practice, past papers simulation, and AI-powered step-by-step solutions. Scheduled interactive lectures and live classes are conducted separately through our academy portal at{' '}
+                <a
+                  href="https://schaorlio.me"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#1E5AFF] font-bold underline hover:text-[#1546CC]"
+                >
+                  schaorlio.me
+                </a>
+                .
+              </span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+            {/* Column 1: Who It's For */}
+            <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-4 flex flex-col justify-between">
+              <div className="space-y-3">
+                <div className="w-10 h-10 rounded-xl bg-[#1E5AFF]/15 text-[#0A1330] flex items-center justify-center border border-[#1E5AFF]/30">
+                  <GraduationCap className="w-5 h-5 text-[#1E5AFF]" />
+                </div>
+                <h3 className="font-['Space_Grotesk'] text-lg font-bold text-slate-900">
+                  Who Boardly Is For
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Tailored specifically for Matric, FSC Intermediate, and Post-FSC students preparing for high-stakes examinations:
+                </p>
+                <ul className="space-y-2 text-xs text-slate-700 font-medium">
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span><strong>Matric (Classes 9 & 10):</strong> Full FBISE SSC coverage across Physics, Chemistry, Biology, Mathematics & Computer Science.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span><strong>FSC (Classes 11 & 12 / HSSC):</strong> Specialized banks for Pre-Medical, Pre-Engineering, ICS & General Science streams.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span><strong>Post-FSC Entrance Aspirants:</strong> PMDC MDCAT Medical and UET Taxila TCAT Engineering admission test prep.</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Column 2: Key Features */}
+            <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-4 flex flex-col justify-between">
+              <div className="space-y-3">
+                <div className="w-10 h-10 rounded-xl bg-[#1E5AFF]/15 text-[#0A1330] flex items-center justify-center border border-[#1E5AFF]/30">
+                  <Layers className="w-5 h-5 text-[#1E5AFF]" />
+                </div>
+                <h3 className="font-['Space_Grotesk'] text-lg font-bold text-slate-900">
+                  Core Features & Study Tools
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Structured around active recall and real-world exam conditions for maximum score improvement:
+                </p>
+                <ul className="space-y-2 text-xs text-slate-700 font-medium">
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span><strong>SLO-Mapped Question Banks:</strong> Practice chapter-by-chapter according to official Federal Board Student Learning Outcomes.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span><strong>Timed Mock Simulations:</strong> Customizable question counts, authentic timer countdowns, and negative marking rules.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span><strong>Instant Scoring & Answer Keys:</strong> Immediate diagnostic feedback without waiting days for manual paper grading.</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Column 3: AI Explanations & Analytics */}
+            <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-4 flex flex-col justify-between">
+              <div className="space-y-3">
+                <div className="w-10 h-10 rounded-xl bg-[#1E5AFF]/15 text-[#0A1330] flex items-center justify-center border border-[#1E5AFF]/30">
+                  <Brain className="w-5 h-5 text-[#1E5AFF]" />
+                </div>
+                <h3 className="font-['Space_Grotesk'] text-lg font-bold text-slate-900">
+                  Step-by-Step AI Solutions
+                </h3>
+                <p className="text-xs text-slate-600 leading-relaxed">
+                  Understanding why an option is correct transforms practice into actual conceptual mastery:
+                </p>
+                <ul className="space-y-2 text-xs text-slate-700 font-medium">
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span><strong>Formula Derivations:</strong> Clear mathematical steps and scientific reasoning for every question.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span><strong>Study Buddy AI:</strong> 24/7 interactive tutor to ask follow-up questions and clarify doubts anytime.</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span><strong>Diagnostic Analytics:</strong> Highlight weak subjects and track historical accuracy trends over time.</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Action Band */}
+          <div className="p-6 rounded-2xl bg-[#0A1330] text-white flex flex-col sm:flex-row items-center justify-between gap-4 border border-[#1E5AFF]/30">
+            <div className="space-y-1 text-center sm:text-left">
+              <h4 className="font-['Space_Grotesk'] font-bold text-base sm:text-lg">
+                Ready to Start Practicing?
+              </h4>
+              <p className="text-xs text-slate-300">
+                Select your class level or entrance exam series to try free chapter MCQs now.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                onClick={onSelectGradesFlow || onContinue}
+                className="bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-extrabold px-6 py-3 rounded-full text-xs sm:text-sm flex items-center gap-2 transition-all cursor-pointer shadow-md"
+              >
+                <span>Try Free MCQs</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+              <a
+                href="https://shsvirtualacademy.pro"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-white/10 hover:bg-white/20 text-white font-bold px-5 py-3 rounded-full text-xs transition-all border border-white/20 flex items-center gap-1.5"
+              >
+                <span>Visit SHS Virtual Academy</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
+            </div>
+          </div>
+        </section>
+        </LazySection>
 
         {/* =========================================================================
             SECTION 3: HOW IT WORKS
@@ -1697,7 +1863,16 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                 </span>
               </div>
               <p className="text-slate-600  leading-relaxed font-normal">
-                Pakistan's premier intelligent MCQ practice platform for FBISE (SSC & HSSC), PMDC MDCAT Medical, and UET Taxila TCAT entrance exams.
+                Pakistan's premier intelligent MCQ practice platform for FBISE (SSC & HSSC), PMDC MDCAT Medical, and UET Taxila TCAT entrance exams. A dedicated project under{' '}
+                <a
+                  href="https://shsvirtualacademy.pro"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#1E5AFF] font-bold underline hover:text-[#1546CC]"
+                >
+                  SHS Virtual Academy
+                </a>
+                .
               </p>
             </div>
 
@@ -1760,9 +1935,20 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
               <ul className="space-y-2 text-slate-600  font-medium">
                 <li>
                   <a
+                    href="https://shsvirtualacademy.pro"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-[#1E5AFF] transition-colors flex items-center gap-1"
+                  >
+                    <span>SHS Virtual Academy</span>
+                    <ExternalLink className="w-3 h-3 text-[#1E5AFF]" />
+                  </a>
+                </li>
+                <li>
+                  <a
                     href="https://chat.whatsapp.com/L3EYfjDXFNOGTzZjAjRuvg?s=cl&p=a&ilr=1"
                     target="_blank"
-                    rel="noreferrer"
+                    rel="noopener noreferrer"
                     onClick={() => onOpenCommunity && onOpenCommunity()}
                     className="hover:text-emerald-500 transition-colors cursor-pointer"
                   >
