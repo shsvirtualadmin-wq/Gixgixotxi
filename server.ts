@@ -1763,185 +1763,7 @@ async function startServer() {
     });
   });
 
-  // Syllabus Question Generator from static question templates (NO PLACEHOLDERS)
-function generateTopicSpecificTemplates(subject: string, topic: string, count: number) {
-  const normTopic = topic.trim();
-  const lower = normTopic.toLowerCase();
 
-  if (
-    lower.includes("base") || 
-    lower.includes("physical quantit") || 
-    lower.includes("measurement") || 
-    lower.includes("si unit") || 
-    lower.includes("dimension") || 
-    lower.includes("error") || 
-    lower.includes("uncertainty") || 
-    lower.includes("significant figure")
-  ) {
-    return [
-      {
-        q: `Which of the following physical quantities is classified as a fundamental (base) SI quantity?`,
-        options: ["Thermodynamic Temperature", "Electric Charge", "Velocity", "Force"],
-        correct: 0,
-        explain: "In SI units, thermodynamic temperature (Kelvin), mass, length, time, electric current, amount of substance, and luminous intensity are the 7 base physical quantities."
-      },
-      {
-        q: `The dimensional formula for linear momentum (p = m × v) in terms of base dimensions [M], [L], and [T] is:`,
-        options: ["[M L T⁻¹]", "[M L T⁻²]", "[M L² T⁻¹]", "[M L⁰ T⁻¹]"],
-        correct: 0,
-        explain: "Momentum p = mass × velocity = [M] × [L T⁻¹] = [M L T⁻¹]."
-      },
-      {
-        q: `Which of the following physical quantities is a scalar quantity with magnitude only?`,
-        options: ["Electric Potential", "Torque", "Linear Momentum", "Gravitational Field Intensity"],
-        correct: 0,
-        explain: "Electric potential is a scalar quantity (work done per unit charge) and does not possess directional orientation."
-      },
-      {
-        q: `The SI derived unit of Force (Newton, N) expressed in terms of base SI units is:`,
-        options: ["kg·m·s⁻²", "kg·m·s⁻¹", "kg·m²·s⁻²", "kg·m⁻¹·s⁻²"],
-        correct: 0,
-        explain: "By Newton's second law F = ma, 1 Newton = 1 kg × 1 m/s² = kg·m·s⁻²."
-      },
-      {
-        q: `An instrument with a least count of 0.01 mm used to measure wire diameter or sheet thickness with high precision is a:`,
-        options: ["Micrometer Screw Gauge", "Vernier Caliper", "Meter Rule", "Spherometer"],
-        correct: 0,
-        explain: "A micrometer screw gauge has a typical least count of 0.01 mm (0.001 cm), providing higher precision than standard calipers."
-      },
-      {
-        q: `Which metric prefix in the SI system represents a scale factor of 10⁻⁹?`,
-        options: ["Nano (n)", "Micro (μ)", "Pico (p)", "Milli (m)"],
-        correct: 0,
-        explain: "Nano (n) = 10⁻⁹, micro (μ) = 10⁻⁶, pico (p) = 10⁻¹², and milli (m) = 10⁻³."
-      },
-      {
-        q: `How many significant figures are present in the measurement 0.005080 meters?`,
-        options: ["4", "3", "6", "5"],
-        correct: 0,
-        explain: "Leading zeros (0.00) are non-significant. The digits 5, 0, 8, and trailing zero 0 are significant, giving 4 significant figures."
-      },
-      {
-        q: `Which type of measurement error produces consistent deviations in one direction due to instrument calibration faults?`,
-        options: ["Systematic Error", "Random Error", "Parallax Error", "Human Judgment Error"],
-        correct: 0,
-        explain: "Systematic errors occur predictably due to faulty zeroing or calibration and can be eliminated by zero-correction."
-      },
-      {
-        q: `The dimensional formula of Work Done (W = F × d) is identical to the dimensional formula of:`,
-        options: ["Torque", "Power", "Momentum", "Pressure"],
-        correct: 0,
-        explain: "Work Done and Torque both have dimensions [M L² T⁻²] and SI unit Newton-meter (N·m)."
-      },
-      {
-        q: `If the percentage uncertainty in measuring mass is 1% and in velocity is 2%, the percentage uncertainty in Kinetic Energy (KE = ½ m v²) is:`,
-        options: ["5%", "3%", "4%", "2%"],
-        correct: 0,
-        explain: "% uncertainty in KE = % uncertainty in m + 2 × (% uncertainty in v) = 1% + 2(2%) = 5%."
-      },
-      {
-        q: `Which of the following is NOT one of the seven base SI units?`,
-        options: ["Joule (J)", "Kelvin (K)", "Candela (cd)", "Ampere (A)"],
-        correct: 0,
-        explain: "Joule is an SI derived unit of energy (kg·m²·s⁻²), while Kelvin, Candela, and Ampere are base SI units."
-      },
-      {
-        q: `The supplementary SI unit for measuring a solid three-dimensional angle is:`,
-        options: ["Steradian (sr)", "Radian (rad)", "Degree (°)", "Gradian"],
-        correct: 0,
-        explain: "Steradian (sr) is the SI unit for solid angle, whereas radian (rad) measures plane angle."
-      }
-    ];
-  }
-
-  // Subject-grounded authentic fallback
-  const subjectLower = subject.toLowerCase();
-  let subjectFallbackPool: Array<{ q: string; options: string[]; correct: number; explain: string }> = [];
-
-  if (subjectLower.includes("physic")) {
-    subjectFallbackPool = [
-      {
-        q: `Regarding ${normTopic} in Physics: Which physical quantity is classified as an SI base quantity?`,
-        options: ["Thermodynamic Temperature", "Electric Charge", "Velocity", "Force"],
-        correct: 0,
-        explain: "Thermodynamic temperature (Kelvin), mass, length, time, electric current, amount of substance, and luminous intensity are the 7 base SI quantities."
-      },
-      {
-        q: `In the study of ${normTopic}: What is the dimensional formula for linear momentum [M L T⁻¹]?`,
-        options: ["[M L T⁻¹]", "[M L T⁻²]", "[M L² T⁻¹]", "[M L⁰ T⁻¹]"],
-        correct: 0,
-        explain: "Momentum p = m × v gives dimensions [M] × [L T⁻¹] = [M L T⁻¹]."
-      },
-      {
-        q: `Which scalar quantity in Physics possesses magnitude only without directional orientation?`,
-        options: ["Electric Potential", "Torque", "Linear Momentum", "Gravitational Field"],
-        correct: 0,
-        explain: "Electric potential is a scalar quantity defined as work done per unit positive charge."
-      },
-      {
-        q: `By Newton's Second Law, the rate of change of linear momentum equals:`,
-        options: ["Net Applied Force", "Kinetic Energy", "Total Work", "Momentum Constant"],
-        correct: 0,
-        explain: "F_net = dp/dt according to Newton's second law of motion."
-      },
-      {
-        q: `Which precision instrument with a typical least count of 0.01 mm is used to measure thin wire diameters?`,
-        options: ["Micrometer Screw Gauge", "Vernier Caliper", "Meter Rule", "Spherometer"],
-        correct: 0,
-        explain: "A micrometer screw gauge provides precision measurements down to 0.01 mm."
-      }
-    ];
-  } else if (subjectLower.includes("chem")) {
-    subjectFallbackPool = [
-      {
-        q: `In Chemistry regarding ${normTopic}: How many particles are present in 1 mole of any substance (Avogadro's constant)?`,
-        options: ["6.022 × 10²³", "3.00 × 10⁸", "1.602 × 10⁻¹⁹", "9.81 × 10⁰"],
-        correct: 0,
-        explain: "Avogadro's number N_A = 6.022 × 10²³ particles/mol."
-      },
-      {
-        q: `Which quantum number specifies the orientation of an orbital in three-dimensional space?`,
-        options: ["Magnetic quantum number (m)", "Principal quantum number (n)", "Azimuthal quantum number (l)", "Spin quantum number (s)"],
-        correct: 0,
-        explain: "The magnetic quantum number m determines the spatial orientation of orbitals."
-      }
-    ];
-  } else if (subjectLower.includes("bio")) {
-    subjectFallbackPool = [
-      {
-        q: `In Biology regarding ${normTopic}: Which organelle is known as the powerhouse of the cell due to ATP synthesis?`,
-        options: ["Mitochondria", "Ribosome", "Golgi apparatus", "Lysosome"],
-        correct: 0,
-        explain: "Mitochondria carry out oxidative phosphorylation to generate cellular ATP."
-      },
-      {
-        q: `Which chemical bond links adjacent amino acids together during protein synthesis?`,
-        options: ["Peptide bond", "Glycosidic bond", "Phosphodiester bond", "Ester bond"],
-        correct: 0,
-        explain: "Peptide bonds (-CO-NH-) join amino acid monomers to form polypeptides."
-      }
-    ];
-  } else {
-    subjectFallbackPool = [
-      {
-        q: `Which fundamental law or principle governs ${normTopic} in ${subject}?`,
-        options: ["Primary core principle", "Secondary derivative factor", "Inverse empirical relation", "Constant ratio"],
-        correct: 0,
-        explain: `In the study of ${normTopic}, the primary principles establish foundational relationships.`
-      }
-    ];
-  }
-
-  const generated = [];
-  for (let i = 0; i < count; i++) {
-    const item = subjectFallbackPool[i % subjectFallbackPool.length];
-    generated.push({
-      ...item,
-      topic: normTopic
-    });
-  }
-  return generated;
-}
 
   function generateSyllabusQuestions(
     subject: string,
@@ -2325,10 +2147,8 @@ function generateTopicSpecificTemplates(subject: string, topic: string, count: n
 
     if (customTopic && customTopic !== `${subject} Core Curriculum` && customTopic !== `${subject} Syllabus` && customTopic !== "All Topics") {
       const filteredPool = activePool.filter(t => checkQuestionTopicRelevance(t.q, undefined, t.options, t.explain, customTopic, subject));
-      if (filteredPool.length >= questionCount) {
+      if (filteredPool.length > 0) {
         activePool = filteredPool;
-      } else {
-        activePool = generateTopicSpecificTemplates(subject, customTopic, questionCount);
       }
     }
 
@@ -3702,17 +3522,38 @@ ${scopeInstruction}`;
           console.log(`[Gemini MCQ Request Start] Subject: "${subject}", Topic: "${targetTopicConstraint}", Class: ${activeClassNum}, Group: "${activeGroup}", Offset: ${batchOffset}, Count: ${requestedCount}, User: ${userId}`);
 
           const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+          const maxAttempts = 3;
 
-          for (const modelName of modelsToTry) {
-            if (finalQuestions.length >= requestedCount) break;
-            
+          for (let attempt = 0; attempt < maxAttempts; attempt++) {
+            const needed = requestedCount - finalQuestions.length;
+            if (needed <= 0) break;
+
+            const modelName = modelsToTry[attempt % modelsToTry.length];
+            const requestCountForAttempt = Math.max(needed, Math.min(needed + 2, requestedCount));
+
+            let excludeInstruction = "";
+            if (finalQuestions.length > 0) {
+              excludeInstruction = `\n\nDO NOT generate any of the following questions that were already created:\n${finalQuestions.map((q, idx) => `${idx + 1}. ${q.q}`).join('\n')}`;
+            }
+
+            const attemptUserPrompt = `Generate ${requestCountForAttempt} multiple choice questions (MCQs) for:
+Subject: ${subject}
+${isMdcat ? 'Exam Type: PMDC MDCAT / TCAT Entrance Exam' : `Class Level: Class ${activeClassNum}\nGroup/Stream: ${activeGroup}`}
+${chapterName ? `Chapter: ${chapterName}` : ''}
+${subtopic ? `Subtopic: ${subtopic}` : ''}
+${effectiveTopic ? `Topic/Syllabus Focus: ${effectiveTopic}` : ''}
+Target Difficulty Level: ${difficulty}
+${subjectConstraintNote}${adaptiveContextText}
+
+${scopeInstruction}${excludeInstruction}`;
+
             const startMs = Date.now();
             try {
-              console.log(`[Gemini Attempting Model]: ${modelName} (8s max timeout)`);
-              
+              console.log(`[Gemini Attempt ${attempt + 1}/${maxAttempts}] Requesting ${requestCountForAttempt} MCQs with ${modelName} for "${subject}" - "${targetTopicConstraint}" (Needed: ${needed})`);
+
               const geminiCall = ai.models.generateContent({
                 model: modelName,
-                contents: userPrompt,
+                contents: attemptUserPrompt,
                 config: {
                   systemInstruction,
                   temperature: 0.1,
@@ -3745,7 +3586,7 @@ ${scopeInstruction}`;
               });
 
               const timeoutCall = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error(`Gemini API call to ${modelName} timed out after 8 seconds`)), 8000)
+                setTimeout(() => reject(new Error(`Gemini API call to ${modelName} timed out after 10 seconds`)), 10000)
               );
 
               const response = await Promise.race([geminiCall, timeoutCall]);
@@ -3758,50 +3599,43 @@ ${scopeInstruction}`;
                 const rawParsed = JSON.parse(responseText.trim());
                 const validatedQs = validateAndFixQuestions(rawParsed, subject, topicLabel, difficulty, targetTopicConstraint);
 
+                let addedInAttempt = 0;
                 if (validatedQs.length > 0) {
                   for (const vq of validatedQs) {
                     const normStem = vq.q.toLowerCase().replace(/[^a-z0-9]/g, '');
                     if (!finalQuestions.some(existing => existing.q.toLowerCase().replace(/[^a-z0-9]/g, '') === normStem)) {
                       finalQuestions.push(vq);
+                      addedInAttempt++;
                     }
                     if (finalQuestions.length >= requestedCount) break;
                   }
-                  console.log(`[Gemini Success] Successfully generated & validated ${finalQuestions.length} MCQs using ${modelName}`);
-                  if (finalQuestions.length >= requestedCount) break;
-                } else {
-                  console.warn(`[Gemini Validation] All generated questions rejected by validator for model ${modelName} ("${subject}" - "${targetTopicConstraint}").`);
+                }
+
+                console.log(`[Gemini Attempt ${attempt + 1}/${maxAttempts} Result] Validated: ${validatedQs.length}/${rawParsed.length}, Added: ${addedInAttempt}, Total now: ${finalQuestions.length}/${requestedCount}`);
+
+                if (validatedQs.length < rawParsed.length) {
+                  console.warn(`[Gemini Validation Warning] Attempt ${attempt + 1}: ${rawParsed.length - validatedQs.length} questions failed validation and were rejected.`);
+                }
+
+                if (finalQuestions.length >= requestedCount) {
+                  console.log(`[Gemini Target Met] Successfully gathered ${finalQuestions.length}/${requestedCount} authentic questions.`);
+                  break;
                 }
               }
             } catch (modelErr: any) {
               const elapsedMs = Date.now() - startMs;
-              console.error(`[Gemini Model Error/Timeout in ${elapsedMs}ms on ${modelName}]:`, modelErr?.message || modelErr);
+              console.error(`[Gemini Attempt ${attempt + 1}/${maxAttempts} Error in ${elapsedMs}ms on ${modelName}]:`, modelErr?.message || modelErr);
               geminiError = modelErr?.message || String(modelErr);
             }
+          }
+
+          if (finalQuestions.length < requestedCount) {
+            console.warn(`[MCQ Generation Retries Exhausted] Generated ${finalQuestions.length}/${requestedCount} authentic questions for "${subject}" - "${targetTopicConstraint}". Missing slots will be skipped without fallback placeholders.`);
           }
         }
       } catch (err: any) {
         geminiError = err?.message || String(err);
         console.error("[Gemini AI MCQ generation error]:", geminiError);
-      }
-    }
-
-    // Fallback or Supplement with topic-specific template questions if Gemini produced fewer valid on-topic questions than requested
-    if (finalQuestions.length < requestedCount) {
-      const missingCount = requestedCount - finalQuestions.length;
-      console.log(`[MCQ Supplement] Generating ${missingCount} topic-specific fallback questions for "${subject}" - "${targetTopicConstraint}"`);
-      const staticTopicQuestions = generateTopicSpecificTemplates(subject, targetTopicConstraint, missingCount);
-      for (let idx = 0; idx < staticTopicQuestions.length; idx++) {
-        const sq = staticTopicQuestions[idx];
-        finalQuestions.push(shuffleQuestionOptions({
-          id: `topic-q-${idx + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          q: sq.q,
-          options: sq.options,
-          correct: sq.correct,
-          topic: targetTopicConstraint,
-          explain: sq.explain,
-          difficulty,
-        }));
-        if (finalQuestions.length >= requestedCount) break;
       }
     }
 

@@ -1,7 +1,7 @@
 import { Question } from '../types';
 import { mapSubject } from '../utils/subjectMapper';
 import { shuffleQuestionOptions } from '../lib/shuffle';
-import { checkQuestionTopicRelevance, generateTopicSpecificTemplates } from '../utils/topicValidator';
+import { checkQuestionTopicRelevance } from '../utils/topicValidator';
 
 export const PREBUILT_QUESTIONS: Record<string, Question[]> = {
   "Physics": [
@@ -3569,22 +3569,7 @@ export function getPrebuiltQuestionsForSubject(subjectName: string, customTopic?
       checkQuestionTopicRelevance(q.q || '', q.topic, q.options || [], q.explain || '', customTopic, subjectName)
     );
 
-    if (filteredPool.length > 0) {
-      return filteredPool.map(shuffleQuestionOptions);
-    } else {
-      // Return topic-specific template questions if prebuilt bank lacks this specific subtopic
-      const templates = generateTopicSpecificTemplates(subjectName, customTopic, 15);
-      return templates.map((t, idx) =>
-        shuffleQuestionOptions({
-          id: `prebuilt-topic-${idx + 1}-${Date.now()}`,
-          q: t.q,
-          options: t.options,
-          correct: t.correct,
-          topic: customTopic,
-          explain: t.explain,
-        })
-      );
-    }
+    return filteredPool.map(shuffleQuestionOptions);
   }
 
   return pool.map(shuffleQuestionOptions);

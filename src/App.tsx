@@ -2022,48 +2022,15 @@ export function App() {
           }
         }
 
-        // If prebuilt pool runs out of non-duplicate questions, generate dynamic template questions to ensure test is never stuck
-        if (fallbackBatch.length < nextBatchCount) {
-          const needed = nextBatchCount - fallbackBatch.length;
-          const isUrduOrIslamiat = ['urdu', 'islam', 'din'].some((s) => targetSubject.toLowerCase().includes(s));
-          for (let fIdx = 0; fIdx < needed; fIdx++) {
-            const qNum = currentQuestions.length + fallbackBatch.length + 1;
-            let fq = `[${targetSubject}] Practice Question ${qNum}: Select the correct core principle regarding ${targetTopic || targetSubject}.`;
-            let fOpts = [
-              `Primary rule of ${targetSubject}`,
-              `Secondary principle of ${targetSubject}`,
-              `Standard equation of ${targetTopic || targetSubject}`,
-              `None of the above`
-            ];
-            let fExplain = `Option A is the verified correct answer according to the standard syllabus for ${targetTopic || targetSubject}.`;
-
-            if (isUrduOrIslamiat) {
-              fq = `سوال نمبر ${qNum}: ${targetSubject} کے اہم اور بنیادی اصول کی نشاندہی کریں۔`;
-              fOpts = ["پہلا درست اصول", "دوسرا اصول", "تیسرا اصول", "ان میں سے کوئی نہیں"];
-              fExplain = "نصاب کی روشنی میں آپشن (الف) ہی درست ترین جواب ہے۔";
-            }
-
-            fallbackBatch.push({
-              id: `bg-dynamic-fallback-${qNum}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-              q: fq,
-              options: fOpts,
-              correct: 0,
-              topic: targetTopic || targetSubject,
-              explain: fExplain,
-              difficulty: fullParams.difficulty || 'Exam Standard',
-            });
-          }
-        }
-
         if (fallbackBatch.length > 0) {
           currentQuestions = [...currentQuestions, ...fallbackBatch];
           if (currentQuestions.length > targetTotalCount) {
             currentQuestions = currentQuestions.slice(0, targetTotalCount);
           }
           setActiveQuestions([...currentQuestions]);
-          console.log(`[MCQ Background Fallback Batch Appended] Total questions now: ${currentQuestions.length} / ${targetTotalCount}`);
+          console.log(`[MCQ Background Prebuilt Batch Appended] Total questions now: ${currentQuestions.length} / ${targetTotalCount}`);
         } else {
-          setBgGenError(`Question generation paused at Question ${currentQuestions.length + 1} of ${targetTotalCount}. Tap 'Retry Loading Question' or 'Load Practice Bank' to resume.`);
+          console.warn(`[MCQ Background Gen] No additional authentic questions available for ${targetSubject} at ${currentQuestions.length}/${targetTotalCount}.`);
           break;
         }
       }
@@ -2153,41 +2120,47 @@ export function App() {
       }
     }
 
-    // CRITICAL FIX: If initialSet is still less than targetTotalCount (e.g. prebuilt pool exhausted),
-    // fill up to targetTotalCount with dynamic syllabus-aligned questions immediately so the test NEVER starts with missing questions!
-    if (initialSet.length < targetTotalCount) {
-      const isUrduOrIslamiat = ['urdu', 'islam', 'din'].some((s) => targetSubject.toLowerCase().includes(s));
-      const needed = targetTotalCount - initialSet.length;
-      for (let fIdx = 0; fIdx < needed; fIdx++) {
-        const qNum = initialSet.length + 1;
-        let fq = `[${targetSubject}] Practice Question ${qNum}: Select the correct core principle regarding ${targetTopic || targetSubject}.`;
-        let fOpts = [
-          `Primary rule of ${targetSubject}`,
-          `Secondary principle of ${targetSubject}`,
-          `Standard equation of ${targetTopic || targetSubject}`,
-          `None of the above`
-        ];
-        let fExplain = `Option A is the verified correct answer according to the standard syllabus for ${targetTopic || targetSubject}.`;
-
-        if (isUrduOrIslamiat) {
-          fq = `سوال نمبر ${qNum}: ${targetSubject} کے اہم اور بنیادی اصول کی نشاندہی کریں۔`;
-          fOpts = ["پہلا درست اصول", "دوسرا اصول", "تیسرا اصول", "ان میں سے کوئی نہیں"];
-          fExplain = "نصاب کی روشنی میں آپشن (الف) ہی درست ترین جواب ہے۔";
-        }
-
-        initialSet.push({
-          id: `q-instant-fallback-${qNum}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          q: fq,
-          options: fOpts,
-          correct: 0,
-          topic: targetTopic || targetSubject,
-          explain: fExplain,
-          difficulty: params.difficulty || 'Exam Standard',
+    // If initialSet is empty (no cache or prebuilt questions), fetch directly from API before opening test
+    if (initialSet.length === 0) {
+      try {
+        console.log(`[MCQ Start] No prebuilt/cached questions for "${targetSubject}" - "${targetTopic}". Fetching live MCQs from API...`);
+        const fetchCount = Math.min(15, targetTotalCount);
+        const fetchRes = await apiFetch('/api/generate-mcqs', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          signal: abortController.signal,
+          body: JSON.stringify({
+            subject: targetSubject,
+            customTopic: targetTopic,
+            path: isMdcat ? 'mdcat' : 'boards',
+            classNum: selectedClass,
+            group: selectedGroup,
+            questionCount: fetchCount,
+            difficulty: params.difficulty,
+            mode: params.mode,
+            userId: activeUser?.id || 'guest',
+            userEmail: activeUser?.email,
+          }),
         });
+
+        if (fetchRes.ok) {
+          const fetchData = await safeJsonResponse(fetchRes);
+          if (fetchData?.success && Array.isArray(fetchData.questions) && fetchData.questions.length > 0) {
+            initialSet = fetchData.questions.slice(0, targetTotalCount);
+          }
+        }
+      } catch (liveFetchErr) {
+        console.error('[MCQ Start Live Fetch Error]:', liveFetchErr);
       }
     }
 
-    // Ensure readyQuestions has EXACTLY targetTotalCount questions
+    if (initialSet.length === 0) {
+      setIsGenerating(false);
+      alert('Unable to load questions for this topic right now. Please try again.');
+      return;
+    }
+
+    // Ensure readyQuestions only contains authentic questions
     const readyQuestions = initialSet.slice(0, targetTotalCount).map(shuffleQuestionOptions);
 
     // Register active session on server FIRST and enforce monthly test limits strictly
