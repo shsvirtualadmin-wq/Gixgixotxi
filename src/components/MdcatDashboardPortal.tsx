@@ -57,7 +57,7 @@ interface MdcatDashboardPortalProps {
   onUpgradeClick?: () => void;
 }
 
-export const MdcatDashboardPortal: React.FC<MdcatDashboardPortalProps> = ({
+export const MdcatDashboardPortal: React.FC<MdcatDashboardPortalProps> = React.memo(({
   currentUser,
   userProfile,
   history,
@@ -830,4 +830,4 @@ export const MdcatDashboardPortal: React.FC<MdcatDashboardPortalProps> = ({
       </AnimatePresence>
     </div>
   );
-};
+});

@@ -12,7 +12,7 @@ interface ClassGroupScreenProps {
   onBack: () => void;
 }
 
-export const ClassGroupScreen: React.FC<ClassGroupScreenProps> = ({
+export const ClassGroupScreen: React.FC<ClassGroupScreenProps> = React.memo(({
   selectedClass,
   onSelectClass,
   onSelectGroup,
@@ -161,4 +161,4 @@ export const ClassGroupScreen: React.FC<ClassGroupScreenProps> = ({
       </div>
     </section>
   );
-};
+});

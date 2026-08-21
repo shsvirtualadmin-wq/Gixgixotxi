@@ -43,7 +43,7 @@ interface ResultsScreenProps {
   onExplainMcq?: (context: MCQContext) => void;
 }
 
-export const ResultsScreen: React.FC<ResultsScreenProps> = ({
+export const ResultsScreen: React.FC<ResultsScreenProps> = React.memo(({
   result,
   currentUser,
   userProfile,
@@ -706,4 +706,4 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = ({
       )}
     </section>
   );
-};
+});

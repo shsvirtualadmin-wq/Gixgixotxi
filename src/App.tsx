@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   PathType,
@@ -703,12 +703,17 @@ export function App() {
         }),
       }).then(res => safeJsonResponse(res)).then(data => {
         if (data?.success && data?.userAnswers && Object.keys(data.userAnswers).length > 0) {
-          // If server returned merged locked userAnswers, ensure local state stays strictly aligned
-          setTestSessionProgress(prev => prev ? { ...prev, userAnswers: { ...data.userAnswers, ...prev.userAnswers } } : prev);
+          setTestSessionProgress(prev => {
+            if (!prev) return prev;
+            // Only update state if server returned new answer keys to avoid infinite re-render loop
+            const hasNew = Object.keys(data.userAnswers).some(k => !prev.userAnswers[k]);
+            if (!hasNew) return prev;
+            return { ...prev, userAnswers: { ...data.userAnswers, ...prev.userAnswers } };
+          });
         }
       }).catch(() => {});
     }
-  }, [screen, activeQuestions, testConfig, testSessionProgress, activeTestSessionId, currentUser?.id, currentUser?.email]);
+  }, [screen, activeQuestions, testConfig, testSessionProgress?.currentIndex, testSessionProgress?.userAnswers, activeTestSessionId, currentUser?.id, currentUser?.email]);
 
   // Active Test Session Restoration on Reload / Refresh
   useEffect(() => {
@@ -1068,13 +1073,6 @@ export function App() {
       document.removeEventListener('visibilitychange', handleFocusSync);
     };
   }, [currentUser?.id, currentUser?.email]);
-
-  // Re-fetch profile on screen transition (e.g. going to dashboard or practice MCQs)
-  useEffect(() => {
-    if (currentUser?.id) {
-      refreshUserProfile(currentUser.id, currentUser.email);
-    }
-  }, [screen, currentUser?.id, currentUser?.email]);
 
   // Periodic background sync to pick up admin status/plan upgrades automatically (4s poll when on payment_required, 60s otherwise)
   useEffect(() => {
@@ -1633,14 +1631,18 @@ export function App() {
     };
   }, []);
 
-  // Verify active student session exists in database on protected page load / screen transition
+  // Verify active student session exists in database on protected page load / screen transition (throttled to avoid DB churn)
+  const lastUserVerificationRef = useRef<number>(0);
   useEffect(() => {
     if (!currentUser) return;
     const isUserAdmin = Boolean(currentUser.email && isAdminEmail(currentUser.email));
     if (isUserAdmin) return;
 
     const protectedScreens = ['dashboard', 'subject', 'duration', 'test', 'result', 'admin', 'grades_flow', 'group'];
-    if (protectedScreens.includes(screen)) {
+    const now = Date.now();
+    // Only check at most once every 60 seconds unless on initial mount
+    if (protectedScreens.includes(screen) && (now - lastUserVerificationRef.current > 60000)) {
+      lastUserVerificationRef.current = now;
       checkUserExistsInDatabase(currentUser.id, currentUser.email).then((exists) => {
         if (!exists) {
           console.warn('[Protected Page Verification] Student record wiped/deleted in database. Forcing sign-out...');
@@ -1658,7 +1660,7 @@ export function App() {
         }
       });
     }
-  }, [screen, currentUser]);
+  }, [screen, currentUser?.id, currentUser?.email]);
 
   const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
 
@@ -1736,9 +1738,9 @@ export function App() {
         setMcqUsageCount(info.currentUsage || 0);
       }).catch(() => {});
     }
-  }, [currentUser?.id, currentUser?.email, userProfile, history.length]);
+  }, [currentUser?.id, currentUser?.email, userProfile?.id, userProfile?.tests_used_this_month, history.length]);
 
-  const currentMonthlyTestCount = (() => {
+  const currentMonthlyTestCount = useMemo(() => {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth();
@@ -1769,7 +1771,7 @@ export function App() {
 
     const profileTestsUsed = Number(userProfile?.tests_used_this_month || 0);
     return Math.max(mcqUsageCount, profileTestsUsed, currentMonthHistoryCount);
-  })();
+  }, [history, mcqUsageCount, userProfile?.tests_used_this_month]);
 
   const usedTestAttempts = currentMonthlyTestCount;
   const isTestLimitReached = !isPaymentApprovedOrExempt && usedTestAttempts >= 2;

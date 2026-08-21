@@ -13,7 +13,7 @@ interface GradesFlowScreenProps {
   onAutoRedirectLocked?: (c: BoardClass, s: string) => void;
 }
 
-export const GradesFlowScreen: React.FC<GradesFlowScreenProps> = ({
+export const GradesFlowScreen: React.FC<GradesFlowScreenProps> = React.memo(({
   onSelectGrade,
   onSelectClass,
   onBack,
@@ -133,4 +133,4 @@ export const GradesFlowScreen: React.FC<GradesFlowScreenProps> = ({
       )}
     </section>
   );
-};
+});

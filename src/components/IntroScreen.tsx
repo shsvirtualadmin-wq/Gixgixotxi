@@ -66,7 +66,7 @@ const ScrollFadeInCard: React.FC<{
   children: React.ReactNode;
   delayIndex?: number;
   className?: string;
-}> = ({ children, delayIndex = 0, className = '' }) => {
+}> = React.memo(({ children, delayIndex = 0, className = '' }) => {
   return (
     <motion.div
       initial={{ opacity: 0, y: 25 }}
@@ -83,7 +83,7 @@ const ScrollFadeInCard: React.FC<{
       {children}
     </motion.div>
   );
-};
+});
 
 const AnimatedStatCard: React.FC<{
   targetValue: number;
@@ -91,7 +91,7 @@ const AnimatedStatCard: React.FC<{
   midCountFn?: (val: number) => string;
   finalDisplay: string;
   duration?: number;
-}> = ({ targetValue, label, midCountFn, finalDisplay, duration = 1300 }) => {
+}> = React.memo(({ targetValue, label, midCountFn, finalDisplay, duration = 1300 }) => {
   const { ref, displayString } = useCountUp({
     end: targetValue,
     duration,
@@ -122,12 +122,12 @@ const AnimatedStatCard: React.FC<{
       </span>
     </motion.div>
   );
-};
+});
 
 const AnimatedTableRow: React.FC<{
   children: React.ReactNode;
   delayIndex: number;
-}> = ({ children, delayIndex }) => {
+}> = React.memo(({ children, delayIndex }) => {
   return (
     <motion.tr
       initial={{ opacity: 0, y: 15 }}
@@ -143,7 +143,7 @@ const AnimatedTableRow: React.FC<{
       {children}
     </motion.tr>
   );
-};
+});
 
 const TypewriterChatPreview: React.FC<{ fullText: string }> = React.memo(({ fullText }) => {
   const [progress, setProgress] = useState(0);
@@ -330,7 +330,9 @@ const TRUSTED_INSTITUTIONS_MARQUEE: TrustedInstitution[] = [
   },
 ];
 
-const CarouselLogoItem: React.FC<{ inst: TrustedInstitution }> = ({ inst }) => {
+const MARQUEE_ITEMS = [...TRUSTED_INSTITUTIONS_MARQUEE, ...TRUSTED_INSTITUTIONS_MARQUEE];
+
+const CarouselLogoItem: React.FC<{ inst: TrustedInstitution }> = React.memo(({ inst }) => {
   const [currentSrc, setCurrentSrc] = useState<string>(inst.remoteLogoUrl || inst.localLogoUrl);
   const [hasFailed, setHasFailed] = useState(false);
 
@@ -352,7 +354,8 @@ const CarouselLogoItem: React.FC<{ inst: TrustedInstitution }> = ({ inst }) => {
             alt={`${inst.name} Logo`}
             className="w-full h-full object-contain max-w-full max-h-full block filter drop-shadow-xs transition-transform duration-300"
             style={{ objectFit: 'contain' }}
-            decoding="sync"
+            loading="lazy"
+            decoding="async"
             referrerPolicy="no-referrer"
             onError={handleError}
           />
@@ -369,9 +372,9 @@ const CarouselLogoItem: React.FC<{ inst: TrustedInstitution }> = ({ inst }) => {
       </p>
     </div>
   );
-};
+});
 
-const CardLogoImage: React.FC<{ src: string; alt: string; fallbackText: string; bgClass: string; textClass: string }> = ({
+const CardLogoImage: React.FC<{ src: string; alt: string; fallbackText: string; bgClass: string; textClass: string }> = React.memo(({
   src,
   alt,
   fallbackText,
@@ -394,11 +397,13 @@ const CardLogoImage: React.FC<{ src: string; alt: string; fallbackText: string; 
       alt={alt}
       className="w-full h-full object-contain"
       style={{ objectFit: 'contain' }}
+      loading="lazy"
+      decoding="async"
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
     />
   );
-};
+});
 
 // 9 Testimonials Dataset
 interface Testimonial {
@@ -648,10 +653,11 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
     }
   };
 
-  const filteredTestimonials =
-    activeTrackFilter === 'ALL'
+  const filteredTestimonials = React.useMemo(() => {
+    return activeTrackFilter === 'ALL'
       ? TESTIMONIALS_DATA
       : TESTIMONIALS_DATA.filter((t) => t.track === activeTrackFilter);
+  }, [activeTrackFilter]);
 
   return (
     <div className="min-h-screen bg-transparent text-[#1A1A1A]  transition-colors duration-200 flex flex-col font-sans relative">
@@ -809,7 +815,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
 
             {/* Continuous Marquee Track */}
             <div className="animate-continuous-scroll flex gap-6 sm:gap-10 items-start will-change-transform">
-              {[...TRUSTED_INSTITUTIONS_MARQUEE, ...TRUSTED_INSTITUTIONS_MARQUEE].map((inst, index) => (
+              {MARQUEE_ITEMS.map((inst, index) => (
                 <CarouselLogoItem key={`${inst.id}-${index}`} inst={inst} />
               ))}
             </div>

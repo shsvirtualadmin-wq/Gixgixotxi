@@ -56,7 +56,7 @@ interface ClassStreamDashboardProps {
   onUpgradeClick?: () => void;
 }
 
-export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = ({
+export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = React.memo(({
   classNum,
   group,
   history,
@@ -968,4 +968,4 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = ({
       )}
     </section>
   );
-};
+});

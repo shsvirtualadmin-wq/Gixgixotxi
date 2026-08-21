@@ -213,7 +213,7 @@ const FAQS = [
   },
 ];
 
-export const PricingPage: React.FC<PricingPageProps> = ({
+export const PricingPage: React.FC<PricingPageProps> = React.memo(({
   userProfile,
   selectedClass,
   selectedGroup,
@@ -701,4 +701,4 @@ export const PricingPage: React.FC<PricingPageProps> = ({
       </div>
     </div>
   );
-};
+});

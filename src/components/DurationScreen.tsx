@@ -27,7 +27,7 @@ interface DurationScreenProps {
   isTestLimitReached?: boolean;
 }
 
-export const DurationScreen: React.FC<DurationScreenProps> = ({
+export const DurationScreen: React.FC<DurationScreenProps> = React.memo(({
   stepLabel = 'Step 4 of 4',
   subject,
   customTopic,
@@ -248,4 +248,4 @@ export const DurationScreen: React.FC<DurationScreenProps> = ({
       </div>
     </section>
   );
-};
+});

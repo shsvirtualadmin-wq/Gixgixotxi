@@ -67,7 +67,7 @@ interface TcatDashboardPortalProps {
   onUpgradeClick?: () => void;
 }
 
-export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = ({
+export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.memo(({
   currentUser,
   userProfile,
   history,
@@ -891,4 +891,4 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = ({
       </AnimatePresence>
     </div>
   );
-};
+});

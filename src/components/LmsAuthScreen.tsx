@@ -30,7 +30,7 @@ interface LmsAuthScreenProps {
   initialMode?: 'signin' | 'signup';
 }
 
-export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = ({
+export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = React.memo(({
   onSuccess,
   onBack,
   initialMode = 'signin',
@@ -552,5 +552,5 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = ({
       )}
     </div>
   );
-};
+});
 
