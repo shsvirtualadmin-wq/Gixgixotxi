@@ -547,39 +547,34 @@ interface FAQItem {
 
 const FAQ_DATA: FAQItem[] = [
   {
-    question: 'Is Boardly aligned with the latest FBISE SLO curriculum?',
+    question: 'What is Boardly?',
     answer:
-      'Yes, 100%! All question banks for SSC (Classes 9 & 10) and HSSC (Classes 11 & 12) are curated and mapped directly against FBISE Student Learning Outcomes (SLO) guidelines and textbook topics.',
+      'Boardly is a dedicated online MCQ practice and examination preparation platform engineered specifically for Matric, FSC, and post-FSC entry test students in Pakistan. It combines chapter-wise question banks, timed mock exam simulations, step-by-step solution derivations, and 24/7 AI tutoring to help students master their syllabus through active recall and continuous diagnostic assessment.',
   },
   {
-    question: 'How does the MDCAT Medical test portal work?',
+    question: 'Which subjects and exams does Boardly cover?',
     answer:
-      'The MDCAT track covers Biology, Chemistry, Physics, and English mapped to the PMDC / PMC syllabus. You can choose full 200-question mock exams or topic-wise practice modules with instant explanations and score reports.',
+      'Boardly provides comprehensive coverage for FBISE SSC (Classes 9 & 10) and HSSC (Classes 11 & 12) across Physics, Chemistry, Biology, Mathematics, Computer Science, English, Urdu, and Islamiat. Additionally, it offers dedicated competitive entrance test modules for PMDC MDCAT (Medical) and UET Taxila TCAT (Engineering), complete with syllabus-specific question weightings.',
   },
   {
-    question: 'What is the TCAT / UET Taxila exam format?',
+    question: 'Is Boardly free to use?',
     answer:
-      'The Taxila Combined Admission Test (TCAT) engineering mock series replicates the official UET Taxila structure: 100 total MCQs (Mathematics, Physics, Chemistry/CS/Stats, English) for 400 total marks with realistic timer controls.',
+      'Yes, students can practice core chapter-wise question banks, attempt mock exams, and view AI-powered answer explanations for free. Optional Pro memberships provide extended question sets, in-depth performance analytics, and priority Study Buddy AI access. (Note that all Pro upgrades are digital purchases subject to a strict no-refunds policy.)',
   },
   {
-    question: 'How does Study Buddy AI explain complex numerical problems?',
+    question: 'How is Boardly different from live classes on schaorlio.me?',
     answer:
-      'Study Buddy uses custom-trained AI logic to break down mathematical derivations, chemical equations, and physics formulas into simple, numbered step-by-step points — explaining why the correct option is right and why distractors are wrong.',
+      'Boardly focuses strictly on self-paced MCQ testing, active question drills, instant step-by-step formula derivations, and diagnostic score tracking. Live interactive classes, scheduled video lectures, and instructor-led mentoring sessions are hosted separately through schaorlio.me.',
   },
   {
-    question: 'Is Boardly mobile-friendly?',
+    question: 'Does Boardly provide explanations for MCQ answers?',
     answer:
-      'Absolutely! Boardly is built mobile-first with responsive layouts, smooth touch interactions, and offline caching support for Android and mobile web browsers.',
+      'Yes, every single question features detailed step-by-step explanations, formula breakdowns, and reasoning for why the correct option applies. Students can also chat directly with the 24/7 AI Study Buddy tutor to ask follow-up questions on complex numericals or tricky definitions.',
   },
   {
-    question: 'Are past paper solutions verified by subject teachers?',
+    question: 'Is Boardly part of SHS Virtual Academy?',
     answer:
-      'Yes. Our core question keys and AI explanation guidelines are regularly audited by former board position holders and experienced college faculty to ensure zero errors in key answer options.',
-  },
-  {
-    question: 'Is Boardly free for students?',
-    answer:
-      'Yes! Core chapter practice, full mock tests, past paper analytics, and Study Buddy AI access are completely free for all students. Optional premium features are priced affordably for individual students. Note: All purchases are final — strict no-refunds policy.',
+      'Yes, Boardly is an educational initiative developed and operated under SHS Virtual Academy (shsvirtualacademy.pro). While SHS Virtual Academy provides overarching curriculum guidance, academic direction, and mentorship, Boardly serves as the specialized digital testing and practice portal.',
   },
 ];
 
@@ -802,9 +797,9 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
               <Building2 className="w-3.5 h-3.5" />
               <span>Academic Network</span>
             </span>
-            <h2 className="text-xs sm:text-sm font-extrabold uppercase tracking-widest text-slate-700 ">
-              TRUSTED BY STUDENTS & POSITION-HOLDERS FROM LEADING INSTITUTIONS
-            </h2>
+            <p className="text-xs sm:text-sm font-extrabold uppercase tracking-widest text-slate-700 ">
+              TRUSTED BY STUDENTS &amp; POSITION-HOLDERS FROM LEADING INSTITUTIONS
+            </p>
           </div>
 
           {/* Auto-sliding Horizontal Carousel with Gradient Fades at Edges */}
@@ -832,7 +827,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
               <span>Dedicated Exam Preparation Platform</span>
             </div>
             <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 leading-tight">
-              Intelligent MCQ Practice & Test Prep for Matric, FSC & Entry Tests
+              How does Boardly help you prepare for FBISE, MDCAT, and TCAT exams?
             </h2>
             <p className="text-sm sm:text-base text-slate-600 leading-relaxed font-normal">
               Boardly is a comprehensive online MCQ practice and examination preparation platform engineered specifically for students across Pakistan. Designed to foster active recall and conceptual clarity, Boardly provides an extensive repository of chapter-wise multiple-choice questions, timed mock tests, and instant step-by-step solutions across science and general subjects. Whether you are revising core textbook concepts or testing your problem-solving speed under exam conditions, Boardly helps you identify learning gaps and master your syllabus with confidence.
@@ -968,9 +963,9 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
           {/* Quick Action Band */}
           <div className="p-6 rounded-2xl bg-[#0A1330] text-white flex flex-col sm:flex-row items-center justify-between gap-4 border border-[#1E5AFF]/30">
             <div className="space-y-1 text-center sm:text-left">
-              <h4 className="font-['Space_Grotesk'] font-bold text-base sm:text-lg">
+              <h3 className="font-['Space_Grotesk'] font-bold text-base sm:text-lg">
                 Ready to Start Practicing?
-              </h4>
+              </h3>
               <p className="text-xs text-slate-300">
                 Select your class level or entrance exam series to try free chapter MCQs now.
               </p>
@@ -1008,7 +1003,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 <span>3-Step Mastery</span>
               </div>
               <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-black text-slate-900 ">
-                How Boardly Works
+                How does Boardly work in 3 simple steps?
               </h2>
             </div>
             <span className="text-xs font-bold text-slate-600  hidden sm:inline-block">
@@ -1064,7 +1059,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 px-1">
             <div>
               <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-black text-slate-900 ">
-                Available Test Tracks
+                Which test tracks and classes are available on Boardly?
               </h2>
               <p className="text-xs text-slate-600 ">
                 Select your board or entrance test track to begin practicing immediately
@@ -1245,7 +1240,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
               <span>Smart Comparison</span>
             </div>
             <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-black text-slate-900 ">
-              Why Students Choose Boardly Over Traditional Academies
+              Why choose Boardly over traditional coaching academies?
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 ">
               Compare how Boardly redefines test prep efficiency compared to expensive physical academies and generic question apps.
@@ -1349,7 +1344,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
 
               <div className="space-y-2">
                 <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-black text-slate-900 ">
-                  Meet Study Buddy: Your Instant Concept Solver
+                  How does Study Buddy AI solve complex numericals and concepts?
                 </h2>
                 <p className="text-xs sm:text-sm text-slate-600  leading-relaxed font-normal">
                   Never get stuck on a difficult numerical or conceptual MCQ again. Study Buddy AI breaks down complex Physics derivations, Organic reaction mechanisms, and Biology memory mnemonics step-by-step.
@@ -1397,7 +1392,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                     <Bot className="w-4 h-4" />
                   </motion.div>
                   <div>
-                    <h4 className="text-xs font-bold text-slate-900 ">Study Buddy AI</h4>
+                    <span className="text-xs font-bold text-slate-900 block">Study Buddy AI</span>
                     <span className="text-[10px] text-emerald-600  font-semibold flex items-center gap-1.5">
                       <span className="relative flex h-2 w-2">
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -1533,9 +1528,9 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                         {item.avatarText}
                       </div>
                       <div className="overflow-hidden">
-                        <h4 className="text-xs font-bold text-slate-900  truncate">
+                        <p className="text-xs font-bold text-slate-900  truncate">
                           {item.name}
-                        </h4>
+                        </p>
                         <p className="text-[10px] text-slate-500  font-medium truncate">
                           {item.cityBoard}
                         </p>
@@ -1564,7 +1559,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
               <span>Our Mission & Roots</span>
             </div>
             <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-black text-slate-900 ">
-              Built by FBISE Toppers for Pakistan's Students
+              Who built Boardly and what is our mission?
             </h2>
           </div>
 
@@ -1595,9 +1590,9 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                     <CheckCircle2 className="w-4 h-4 text-[#1E5AFF]" />
                   </div>
                   <div className="space-y-1">
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 ">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 ">
                       Syllabus-Accuracy over Generic Content
-                    </h4>
+                    </h3>
                     <p className="text-xs text-slate-600  leading-relaxed font-normal">
                       Every MCQ is mapped directly to Student Learning Outcomes (SLOs), textbook chapters, and exact exam guidelines for FBISE, PMDC MDCAT, and UET Taxila.
                     </p>
@@ -1611,9 +1606,9 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                     <Zap className="w-4 h-4 text-[#1E5AFF]" />
                   </div>
                   <div className="space-y-1">
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 ">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 ">
                       Explanation-First over Answer-Keys
-                    </h4>
+                    </h3>
                     <p className="text-xs text-slate-600  leading-relaxed font-normal">
                       We don't just show correct options. Every question features step-by-step reasoning, formula derivations, and 24/7 AI Study Buddy chat guidance.
                     </p>
@@ -1627,9 +1622,9 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                     <Heart className="w-4 h-4 text-[#1E5AFF]" />
                   </div>
                   <div className="space-y-1">
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 ">
+                    <h3 className="text-xs sm:text-sm font-bold text-slate-900 ">
                       Priced for Students, Not Academies
-                    </h4>
+                    </h3>
                     <p className="text-xs text-slate-600  leading-relaxed font-normal">
                       Top-grade test prep shouldn't cost 50,000 PKR. Boardly provides full features, mock tests, and past paper analytics completely free or on accessible student plans. All purchases are final — strict no-refunds policy.
                     </p>
@@ -1715,7 +1710,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
               <span>Privacy & Data Protection</span>
             </div>
             <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-black text-slate-900 ">
-              Your Trust & Data Security First
+              How does Boardly protect student privacy and data?
             </h2>
             <p className="text-xs text-slate-600  max-w-2xl">
               We adhere to strict data privacy principles to protect student identities and study records.
@@ -1729,7 +1724,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                 <div className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-600  border border-emerald-500/30 flex items-center justify-center shrink-0">
                   <Eye className="w-4 h-4" />
                 </div>
-                <h4 className="text-xs font-bold text-slate-900 ">What We Collect</h4>
+                <h3 className="text-xs font-bold text-slate-900 ">What We Collect</h3>
                 <p className="text-[11px] text-slate-600  leading-relaxed font-normal">
                   Minimal account details (Name, Class, Track, Email/Phone) required purely to sync quiz history, Study Buddy conversations, and performance logs across devices.
                 </p>
@@ -1741,7 +1736,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                 <div className="w-8 h-8 rounded-lg bg-rose-500/10 text-rose-600  border border-rose-500/30 flex items-center justify-center shrink-0">
                   <Lock className="w-4 h-4" />
                 </div>
-                <h4 className="text-xs font-bold text-slate-900 ">What We Never Do</h4>
+                <h3 className="text-xs font-bold text-slate-900 ">What We Never Do</h3>
                 <p className="text-[11px] text-slate-600  leading-relaxed font-normal">
                   We never sell your personal data, track background device activity, or share your contact information with commercial third-party telemarketers or advertisers.
                 </p>
@@ -1753,7 +1748,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                 <div className="w-8 h-8 rounded-lg bg-[#1E5AFF]/15 text-[#0A1330]  border border-[#1E5AFF]/30 flex items-center justify-center shrink-0">
                   <Trash2 className="w-4 h-4 text-[#1E5AFF]" />
                 </div>
-                <h4 className="text-xs font-bold text-slate-900 ">User Data Control</h4>
+                <h3 className="text-xs font-bold text-slate-900 ">User Data Control</h3>
                 <p className="text-[11px] text-slate-600  leading-relaxed font-normal">
                   You retain full ownership of your data. Request instant account wipes or progress erasures anytime directly from your profile settings or support.
                 </p>
@@ -1765,7 +1760,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                 <div className="w-8 h-8 rounded-lg bg-cyan-500/10 text-cyan-600  border border-cyan-500/30 flex items-center justify-center shrink-0">
                   <CreditCard className="w-4 h-4" />
                 </div>
-                <h4 className="text-xs font-bold text-slate-900 ">Transparent Payments & No Refunds</h4>
+                <h3 className="text-xs font-bold text-slate-900 ">Transparent Payments & No Refunds</h3>
                 <p className="text-[11px] text-slate-600  leading-relaxed font-normal">
                   Payment transfers for optional premium unlocks are logged securely with verified admin receipts. All purchases are final — strict no-refunds policy once payment is submitted.
                 </p>
@@ -1894,9 +1889,9 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
 
             {/* Column 2: Product Links */}
             <div className="space-y-2.5">
-              <h4 className="font-bold text-slate-900  uppercase tracking-wider text-[11px]">
+              <p className="font-bold text-slate-900  uppercase tracking-wider text-[11px]">
                 Product Tracks
-              </h4>
+              </p>
               <ul className="space-y-2 text-slate-600  font-medium">
                 <li>
                   <button
@@ -1945,9 +1940,9 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
 
             {/* Column 3: Community & Info */}
             <div className="space-y-2.5">
-              <h4 className="font-bold text-slate-900  uppercase tracking-wider text-[11px]">
+              <p className="font-bold text-slate-900  uppercase tracking-wider text-[11px]">
                 Community & Info
-              </h4>
+              </p>
               <ul className="space-y-2 text-slate-600  font-medium">
                 <li>
                   <a
@@ -2000,9 +1995,9 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
 
             {/* Column 4: Legal & Support */}
             <div className="space-y-2.5">
-              <h4 className="font-bold text-slate-900  uppercase tracking-wider text-[11px]">
+              <p className="font-bold text-slate-900  uppercase tracking-wider text-[11px]">
                 Legal & Support
-              </h4>
+              </p>
               <ul className="space-y-2 text-slate-600  font-medium">
                 <li>
                   <button

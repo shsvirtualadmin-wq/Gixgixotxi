@@ -127,8 +127,9 @@ export function setPageMeta(description: string, title?: string, canonicalHref?:
   // Ensure and update canonical link tag and sync og:url
   setCanonicalUrl(canonicalHref);
 
-  // Ensure and maintain EducationalOrganization JSON-LD structured data (no duplicates)
+  // Ensure and maintain EducationalOrganization & FAQPage JSON-LD structured data (no duplicates)
   ensureEducationalOrgJsonLd();
+  ensureFaqPageJsonLd();
 }
 
 /**
@@ -185,22 +186,92 @@ export const EDUCATIONAL_ORG_SCHEMA = {
   }
 };
 
+export const FAQ_PAGE_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is Boardly?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Boardly is a dedicated online MCQ practice and examination preparation platform engineered specifically for Matric, FSC, and post-FSC entry test students in Pakistan. It combines chapter-wise question banks, timed mock exam simulations, step-by-step solution derivations, and 24/7 AI tutoring to help students master their syllabus through active recall and continuous diagnostic assessment."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Which subjects and exams does Boardly cover?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Boardly provides comprehensive coverage for FBISE SSC (Classes 9 & 10) and HSSC (Classes 11 & 12) across Physics, Chemistry, Biology, Mathematics, Computer Science, English, Urdu, and Islamiat. Additionally, it offers dedicated competitive entrance test modules for PMDC MDCAT (Medical) and UET Taxila TCAT (Engineering), complete with syllabus-specific question weightings."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Boardly free to use?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, students can practice core chapter-wise question banks, attempt mock exams, and view AI-powered answer explanations for free. Optional Pro memberships provide extended question sets, in-depth performance analytics, and priority Study Buddy AI access. (Note that all Pro upgrades are digital purchases subject to a strict no-refunds policy.)"
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "How is Boardly different from live classes on schaorlio.me?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Boardly focuses strictly on self-paced MCQ testing, active question drills, instant step-by-step formula derivations, and diagnostic score tracking. Live interactive classes, scheduled video lectures, and instructor-led mentoring sessions are hosted separately through schaorlio.me."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Does Boardly provide explanations for MCQ answers?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, every single question features detailed step-by-step explanations, formula breakdowns, and reasoning for why the correct option applies. Students can also chat directly with the 24/7 AI Study Buddy tutor to ask follow-up questions on complex numericals or tricky definitions."
+      }
+    },
+    {
+      "@type": "Question",
+      "name": "Is Boardly part of SHS Virtual Academy?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "Yes, Boardly is an educational initiative developed and operated under SHS Virtual Academy (shsvirtualacademy.pro). While SHS Virtual Academy provides overarching curriculum guidance, academic direction, and mentorship, Boardly serves as the specialized digital testing and practice portal."
+      }
+    }
+  ]
+};
+
 /**
  * Ensures exactly one EducationalOrganization JSON-LD script exists in <head>, replacing or inserting cleanly.
  */
 export function ensureEducationalOrgJsonLd(schemaData: object = EDUCATIONAL_ORG_SCHEMA): void {
   if (typeof document === 'undefined') return;
 
-  let script = document.querySelector<HTMLScriptElement>('script#schema-educational-org') ||
-               document.querySelector<HTMLScriptElement>('script[type="application/ld+json"]');
+  let script = document.querySelector<HTMLScriptElement>('script#schema-educational-org');
 
   if (!script) {
     script = document.createElement('script');
     script.type = 'application/ld+json';
     script.id = 'schema-educational-org';
     document.head.appendChild(script);
-  } else {
-    script.id = 'schema-educational-org';
+  }
+
+  script.textContent = JSON.stringify(schemaData, null, 2);
+}
+
+/**
+ * Ensures exactly one FAQPage JSON-LD script exists in <head>, replacing or inserting cleanly.
+ */
+export function ensureFaqPageJsonLd(schemaData: object = FAQ_PAGE_SCHEMA): void {
+  if (typeof document === 'undefined') return;
+
+  let script = document.querySelector<HTMLScriptElement>('script#schema-faq');
+
+  if (!script) {
+    script = document.createElement('script');
+    script.type = 'application/ld+json';
+    script.id = 'schema-faq';
+    document.head.appendChild(script);
   }
 
   script.textContent = JSON.stringify(schemaData, null, 2);
