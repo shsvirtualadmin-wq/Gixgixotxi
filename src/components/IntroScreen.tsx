@@ -403,7 +403,7 @@ interface Testimonial {
   name: string;
   role: string;
   cityBoard: string;
-  track: 'Board Exams' | 'MDCAT' | 'TCAT';
+  track: 'FBISE' | 'MDCAT' | 'TCAT';
   outcome: string;
   avatarBg: string;
   avatarText: string;
@@ -416,14 +416,14 @@ const TESTIMONIALS_DATA: Testimonial[] = [
     id: '1',
     name: 'Ayesha Malik',
     role: 'Pre-Medical Student',
-    cityBoard: 'Board Exams HSSC-II, Islamabad',
-    track: 'Board Exams',
+    cityBoard: 'FBISE HSSC-II, Islamabad',
+    track: 'FBISE',
     outcome: 'Scored 1070 / 1100 (97.2%)',
     avatarBg: 'bg-[#1E5AFF]/20 border-[#1E5AFF]/40 text-blue-900 ',
     avatarText: 'AM',
     rating: 5,
     quote:
-      'The chapter-wise MCQ practice with instant Study Buddy step-by-step explanations helped me pinpoint my exact weak concepts in Organic Chemistry before the board finals.',
+      'The chapter-wise MCQ practice with instant Study Buddy step-by-step explanations helped me pinpoint my exact weak concepts in Organic Chemistry before the FBISE finals.',
   },
   {
     id: '2',
@@ -455,14 +455,14 @@ const TESTIMONIALS_DATA: Testimonial[] = [
     id: '4',
     name: 'Saad Chaudhry',
     role: 'Science Stream Student',
-    cityBoard: 'Board Exams SSC-II, Lahore',
-    track: 'Board Exams',
+    cityBoard: 'FBISE SSC-II, Lahore',
+    track: 'FBISE',
     outcome: '98% in Physics & Math',
     avatarBg: 'bg-[#1E5AFF]/20 border-[#1E5AFF]/40 text-blue-900 ',
     avatarText: 'SC',
     rating: 5,
     quote:
-      'Boardly’s SLO-aligned question bank matched Board Exams paper SLO guidelines line by line. Solved 1,200+ MCQs before my physics exam.',
+      'Boardly’s SLO-aligned question bank matched FBISE paper SLO guidelines line by line. Solved 1,200+ MCQs before my physics exam.',
   },
   {
     id: '5',
@@ -494,8 +494,8 @@ const TESTIMONIALS_DATA: Testimonial[] = [
     id: '7',
     name: 'Maryam Nawaz',
     role: 'Pre-Engineering Student',
-    cityBoard: 'Board Exams HSSC-I, Multan',
-    track: 'Board Exams',
+    cityBoard: 'FBISE HSSC-I, Multan',
+    track: 'FBISE',
     outcome: 'Scored 485 / 520 in Part-1',
     avatarBg: 'bg-[#1E5AFF]/20 border-[#1E5AFF]/40 text-blue-900 ',
     avatarText: 'MN',
@@ -520,9 +520,9 @@ const TESTIMONIALS_DATA: Testimonial[] = [
     id: '9',
     name: 'Mahnoor Raza',
     role: 'Matric Science Student',
-    cityBoard: 'Board Exams Class 9, Faisalabad',
-    track: 'Board Exams',
-    outcome: 'Board Position Holder',
+    cityBoard: 'FBISE Class 9, Faisalabad',
+    track: 'FBISE',
+    outcome: 'FBISE Position Holder',
     avatarBg: 'bg-[#1E5AFF]/20 border-[#1E5AFF]/40 text-blue-900 ',
     avatarText: 'MR',
     rating: 5,
@@ -539,9 +539,9 @@ interface FAQItem {
 
 const FAQ_DATA: FAQItem[] = [
   {
-    question: 'Is Boardly aligned with the latest Board Exams SLO curriculum?',
+    question: 'Is Boardly aligned with the latest FBISE SLO curriculum?',
     answer:
-      'Yes, 100%! All question banks for SSC (Classes 9 & 10) and HSSC (Classes 11 & 12) are curated and mapped directly against Board Student Learning Outcomes (SLO) guidelines and textbook topics.',
+      'Yes, 100%! All question banks for SSC (Classes 9 & 10) and HSSC (Classes 11 & 12) are curated and mapped directly against FBISE Student Learning Outcomes (SLO) guidelines and textbook topics.',
   },
   {
     question: 'How does the MDCAT Medical test portal work?',
@@ -588,7 +588,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
 }) => {
   const [studentCount, setStudentCount] = useState<number>(12000);
   const [activeLegalModal, setActiveLegalModal] = useState<'privacy' | 'terms' | 'no-refunds' | null>(null);
-  const [activeTrackFilter, setActiveTrackFilter] = useState<'ALL' | 'Board Exams' | 'MDCAT' | 'TCAT'>('ALL');
+  const [activeTrackFilter, setActiveTrackFilter] = useState<'ALL' | 'FBISE' | 'MDCAT' | 'TCAT'>('ALL');
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
   const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
@@ -598,7 +598,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
     containerRef: testimonialTabsRef,
     registerTab: registerTestimonialTab,
     pillStyle: testimonialPillStyle,
-  } = useSlidingPill<'ALL' | 'Board Exams' | 'MDCAT' | 'TCAT'>(activeTrackFilter);
+  } = useSlidingPill<'ALL' | 'FBISE' | 'MDCAT' | 'TCAT'>(activeTrackFilter);
 
   useEffect(() => {
     let isMounted = true;
@@ -674,7 +674,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 className="inline-flex items-center gap-2 bg-[#1E5AFF]/15  border border-[#1E5AFF]/30 text-[#0A1330]  px-3.5 py-1.5 rounded-full text-xs font-extrabold uppercase tracking-wider"
               >
                 <Sparkles className="w-3.5 h-3.5 text-[#1E5AFF]" />
-                <span>Board Exams & Entrance Exam Academy Platform</span>
+                <span>FBISE & Entrance Exam Academy Platform</span>
               </motion.div>
 
               <motion.div
@@ -700,7 +700,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 Master Every Chapter with Intelligent MCQs & AI Explanations
               </h1>
               <p className="text-slate-600  text-sm sm:text-base lg:text-lg leading-relaxed font-normal">
-                Prepare for SSC & HSSC Federal Board exams, PMDC MDCAT Medical, and UET Taxila TCAT entrance tests with chapter-wise SLO question banks, step-by-step AI reasoning, and performance analytics.
+                Prepare for SSC & HSSC FBISE exams, PMDC MDCAT Medical, and UET Taxila TCAT entrance tests with chapter-wise SLO question banks, step-by-step AI reasoning, and performance analytics.
               </p>
             </motion.div>
 
@@ -769,7 +769,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                     duration={1000}
                     midCountFn={(v) => `${Math.round(v)}`}
                     finalDisplay="3 Tracks"
-                    label="Board Exams, MDCAT, TCAT"
+                    label="FBISE, MDCAT, TCAT"
                   />
                   <AnimatedStatCard
                     targetValue={24}
@@ -841,7 +841,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 </div>
                 <h3 className="font-bold text-base text-slate-900 ">Select Your Exam Track</h3>
                 <p className="text-xs text-slate-600  leading-relaxed font-normal">
-                  Choose Board Exams (Classes 9-12), PMDC MDCAT Medical, or UET Taxila TCAT Engineering test series.
+                  Choose FBISE (Classes 9-12), PMDC MDCAT Medical, or UET Taxila TCAT Engineering test series.
                 </p>
               </div>
             </ScrollFadeInCard>
@@ -889,7 +889,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {/* Track 1: Board Exams */}
+            {/* Track 1: FBISE */}
             <ScrollFadeInCard delayIndex={0} className="h-full">
               <div
                 onClick={onSelectGradesFlow || onContinue}
@@ -898,7 +898,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="w-12 h-12 rounded-xl bg-emerald-500/10 p-1 flex items-center justify-center border border-emerald-500/30 overflow-hidden shrink-0 shadow-xs">
-                      <CardLogoImage src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/unnamed.png" alt="Board Exams Official Logo" fallbackText="BOARDS" bgClass="bg-emerald-600" textClass="text-white" />
+                      <CardLogoImage src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png" alt="FBISE Official Logo" fallbackText="FBISE" bgClass="bg-emerald-600" textClass="text-white" />
                     </div>
                     <span className="bg-[#1E5AFF]/15 text-[#0A1330]  text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
                       Class 9 – 12
@@ -907,17 +907,17 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
 
                   <div className="space-y-2">
                     <h3 className="font-['Space_Grotesk'] font-extrabold text-xl text-slate-900  group-hover:text-[#1E5AFF] transition-colors break-words min-w-0">
-                      Board Exams (Classes 9–12)
+                      FBISE (Classes 9–12)
                     </h3>
                     <p className="text-xs text-slate-600  leading-relaxed font-normal">
-                      Complete SSC & HSSC question banks covering Physics, Chemistry, Biology, Mathematics, Computer Science, and English mapped to SLO guidelines.
+                      Complete FBISE question banks covering Physics, Chemistry, Biology, Mathematics, Computer Science, and English mapped to SLO guidelines.
                     </p>
                   </div>
 
                   <div className="space-y-2 pt-2 border-t border-slate-100  text-xs text-slate-600  font-medium">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>SLO Mapped Board Questions</span>
+                      <span>SLO Mapped FBISE Questions</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
@@ -931,7 +931,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 </div>
 
                 <button className="w-full bg-[#0A1330] text-white  group-hover:bg-[#1E5AFF] group-hover:text-white font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer">
-                  <span>Select Board Class</span>
+                  <span>Select FBISE Class</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -1092,7 +1092,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                       Syllabus Alignment
                     </td>
                     <td className="p-4 sm:p-5 font-bold text-slate-900  bg-[#1E5AFF]/5 ">
-                      100% Board Exams SLO, PMDC & UET Mapped
+                      100% FBISE SLO, PMDC & UET Mapped
                     </td>
                     <td className="p-4 sm:p-5 text-slate-500 ">
                       Outdated paper notes & recycled lists
@@ -1169,7 +1169,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                   <div className="w-6 h-6 rounded-lg bg-[#1E5AFF]/20 text-[#0A1330]  flex items-center justify-center shrink-0">
                     <Check className="w-3.5 h-3.5 stroke-[3]" />
                   </div>
-                  <span>Tailored explanations aligned with Federal Board & PMC syllabus</span>
+                  <span>Tailored explanations aligned with FBISE & PMC syllabus</span>
                 </div>
                 <div className="flex items-center gap-2.5">
                   <div className="w-6 h-6 rounded-lg bg-[#1E5AFF]/20 text-[#0A1330]  flex items-center justify-center shrink-0">
@@ -1234,7 +1234,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
 * **Intensity:** Governs the total number of photons hitting the surface per second, increasing emitted electrons, not their kinetic speed!
 * **Work Function ($\\\\Phi$):** Threshold energy needed to eject an electron ($\\\\Phi = h\\\\nu_0$).
 
-✓ **Board Exams HSSC Physics Chapter 19 SLO Key Point**`}
+✓ **FBISE HSSC Physics Chapter 19 SLO Key Point**`}
                   />
                 </div>
               </div>
@@ -1262,7 +1262,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                 Student Success Stories
               </h2>
               <p className="text-xs text-slate-600 ">
-                Verified outcomes from students who aced their board & entry tests using Boardly
+                Verified outcomes from students who aced their FBISE & entry tests using Boardly
               </p>
             </div>
 
@@ -1284,7 +1284,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                 }}
               />
 
-              {(['ALL', 'Board Exams', 'MDCAT', 'TCAT'] as const).map((filter) => (
+              {(['ALL', 'FBISE', 'MDCAT', 'TCAT'] as const).map((filter) => (
                 <button
                   key={filter}
                   ref={registerTestimonialTab(filter)}
@@ -1366,7 +1366,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
               <span>Our Mission & Roots</span>
             </div>
             <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-black text-slate-900 ">
-              Built by Board-Toppers for Pakistan's Students
+              Built by FBISE Toppers for Pakistan's Students
             </h2>
           </div>
 
@@ -1401,7 +1401,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                       Syllabus-Accuracy over Generic Content
                     </h4>
                     <p className="text-xs text-slate-600  leading-relaxed font-normal">
-                      Every MCQ is mapped directly to Student Learning Outcomes (SLOs), textbook chapters, and exact exam guidelines for Board Exams, PMDC MDCAT, and UET Taxila.
+                      Every MCQ is mapped directly to Student Learning Outcomes (SLOs), textbook chapters, and exact exam guidelines for FBISE, PMDC MDCAT, and UET Taxila.
                     </p>
                   </div>
                 </div>
@@ -1618,7 +1618,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
             </div>
 
             <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl lg:text-4xl font-extrabold text-white leading-tight">
-              Ready to Ace Your Board & Entrance Exams?
+              Ready to Ace Your FBISE & Entrance Exams?
             </h2>
             <p className="text-slate-300 text-xs sm:text-sm font-normal leading-relaxed">
               Access chapter-wise MCQs, instant AI explanations, 24/7 Study Buddy tutoring, and full past paper model series completely free.
@@ -1681,7 +1681,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                 </span>
               </div>
               <p className="text-slate-600  leading-relaxed font-normal">
-                Pakistan's premier intelligent MCQ practice platform for Board Exams SSC & HSSC, PMDC MDCAT Medical, and UET Taxila TCAT entrance exams.
+                Pakistan's premier intelligent MCQ practice platform for FBISE (SSC & HSSC), PMDC MDCAT Medical, and UET Taxila TCAT entrance exams.
               </p>
             </div>
 
@@ -1696,7 +1696,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                     onClick={onSelectGradesFlow || onContinue}
                     className="hover:text-[#1E5AFF] transition-colors cursor-pointer"
                   >
-                    Board Exams Class 9 – 12 MCQs
+                    FBISE Class 9 – 12 MCQs
                   </button>
                 </li>
                 <li>
@@ -1953,7 +1953,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
 
                   <h4 className="font-bold text-slate-900  text-sm">3. Disclaimer</h4>
                   <p>
-                    While Boardly strives for 100% curriculum accuracy aligned with Board Exams (Federal & Provincial), PMDC, and UET Taxila, official exam scoring remains strictly under the jurisdiction of respective testing authorities.
+                    While Boardly strives for 100% curriculum accuracy aligned with FBISE, PMDC, and UET Taxila, official exam scoring remains strictly under the jurisdiction of respective testing authorities.
                   </p>
                 </div>
               </div>

@@ -116,10 +116,10 @@ export function getCategoryDisplayLabel(
       }
     }
 
-    const shortLabel = `Board - Grade ${cleanGradeNum}`;
+    const shortLabel = `FBISE - Grade ${cleanGradeNum}`;
     const fullLabel = streamLabel
-      ? `Board - Grade ${cleanGradeNum} (${streamLabel})`
-      : `Board - Grade ${cleanGradeNum}`;
+      ? `FBISE - Grade ${cleanGradeNum} (${streamLabel})`
+      : `FBISE - Grade ${cleanGradeNum}`;
 
     return {
       shortLabel,

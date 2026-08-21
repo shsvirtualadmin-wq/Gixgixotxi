@@ -70,7 +70,7 @@ export const TCAT_SUBJECTS: TCATSubjectConfig[] = [
     mcqCount: 30,
     weightagePercent: 30,
     badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30',
-    description: 'FSc Part I & II (Punjab/Federal Board Syllabus)',
+    description: 'FSc Part I & II (Punjab/FBISE Syllabus)',
     topics: [
       { id: 'tcat-math-1', name: 'Number Systems', subtopics: 'Real & complex numbers, field axioms, modulus & polar representation', isHighYield: true },
       { id: 'tcat-math-2', name: 'Sets Functions and Groups', subtopics: 'Sets, operations, relations, functions, domain & range, binary operations, groups', isHighYield: true },
@@ -100,7 +100,7 @@ export const TCAT_SUBJECTS: TCATSubjectConfig[] = [
     mcqCount: 30,
     weightagePercent: 30,
     badgeColor: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-    description: 'FSc Part I & II (Punjab/Federal Board Syllabus)',
+    description: 'FSc Part I & II (Punjab/FBISE Syllabus)',
     topics: [
       { id: 'tcat-phy-1', name: 'Measurements', subtopics: 'SI units, dimensions, scientific notation, significant figures, errors & uncertainties', isHighYield: false },
       { id: 'tcat-phy-2', name: 'Vectors and Equilibrium', subtopics: 'Vector addition, rectangular components, dot product, cross product, torque, equilibrium conditions', isHighYield: true },
@@ -131,7 +131,7 @@ export const TCAT_SUBJECTS: TCATSubjectConfig[] = [
     mcqCount: 30,
     weightagePercent: 30,
     badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-    description: 'FSc Part I & II (Punjab/Federal Board Syllabus)',
+    description: 'FSc Part I & II (Punjab/FBISE Syllabus)',
     topics: [
       { id: 'tcat-chem-1', name: 'Basic Concepts of Chemistry', subtopics: 'Atom, molecule, mole, Avogadro number, stoichiometry, limiting reactant', isHighYield: true },
       { id: 'tcat-chem-2', name: 'Experimental Techniques', subtopics: 'Filtration, crystallization, sublimation, solvent extraction, chromatography', isHighYield: false },

@@ -80,7 +80,7 @@ export const GradesFlowScreen: React.FC<GradesFlowScreenProps> = ({
           Select Your Class
         </h2>
         <p className="text-slate-600  text-xs sm:text-sm leading-relaxed">
-          Choose your Board Exam level to view subject groups and chapter tests.
+          Choose your FBISE class level to view subject groups and chapter tests.
         </p>
       </div>
 

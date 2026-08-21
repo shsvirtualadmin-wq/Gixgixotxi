@@ -314,14 +314,14 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
   };
 
   const AVAILABLE_ASSIGNABLE_CLASSES = [
-    'Board 9',
-    'Board 10',
-    'Board 11 Pre-Engineering',
-    'Board 11 Pre-Medical',
-    'Board 11 ICS',
-    'Board 12 Pre-Engineering',
-    'Board 12 Pre-Medical',
-    'Board 12 ICS',
+    'FBISE 9',
+    'FBISE 10',
+    'FBISE 11 Pre-Engineering',
+    'FBISE 11 Pre-Medical',
+    'FBISE 11 ICS',
+    'FBISE 12 Pre-Engineering',
+    'FBISE 12 Pre-Medical',
+    'FBISE 12 ICS',
     'MDCAT',
     'ECAT / TCAT',
   ];
@@ -344,7 +344,7 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
 
     const existingClasses = student.assigned_classes && student.assigned_classes.length > 0
       ? student.assigned_classes
-      : (student.grade ? [`${student.grade}${student.stream ? ' ' + student.stream : ''}`.trim()] : ['Board 11 Pre-Engineering']);
+      : (student.grade ? [`${student.grade}${student.stream ? ' ' + student.stream : ''}`.trim()] : ['FBISE 11 Pre-Engineering']);
     setSelectedAssignedClassesForChange(existingClasses);
 
     const initialPkgName = (student.package_name && student.package_name.trim())

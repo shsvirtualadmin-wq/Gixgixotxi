@@ -32,7 +32,7 @@ export const ClassGroupScreen: React.FC<ClassGroupScreenProps> = ({
             Select Class Level
           </h2>
           <p className="text-slate-600  text-xs sm:text-sm">
-            Choose your grade level for Federal Board (FBISE).
+            Choose your grade level for FBISE (Classes 9–12), MDCAT, or TCAT.
           </p>
         </div>
 

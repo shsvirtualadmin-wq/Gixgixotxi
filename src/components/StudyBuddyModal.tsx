@@ -228,19 +228,19 @@ export function getTrackInfo(
     };
   }
 
-  // STATE 4: Logged in - Board Exams Track
+  // STATE 4: Logged in - FBISE Track
   const classNum = rawClass.replace(/[^0-9]/g, '');
   const gradeStr = classNum ? `Class ${classNum}` : (rawClass && rawClass !== 'undefined' ? rawClass : 'Class 9');
   const classStreamStr = stream ? `${gradeStr} ${stream}` : gradeStr;
 
-  const trackName = `Board Exams ${classStreamStr}`;
+  const trackName = `FBISE ${classStreamStr}`;
   const greetingSubject = currentSub
-    ? `${classStreamStr} ${currentSub} — Board Exams`
-    : `${classStreamStr} — Board Exams`;
+    ? `${classStreamStr} ${currentSub} — FBISE`
+    : `${classStreamStr} — FBISE`;
 
   const headerTag = currentSub
-    ? `Board Exams ${classStreamStr} • ${currentSub}${currentTopic ? ` (${currentTopic})` : ''}`
-    : `Board Exams ${classStreamStr}`;
+    ? `FBISE ${classStreamStr} • ${currentSub}${currentTopic ? ` (${currentTopic})` : ''}`
+    : `FBISE ${classStreamStr}`;
 
   return {
     isOnboarding: false,
@@ -270,7 +270,7 @@ export function getTrackInfo(
         icon: Target,
         title: 'Review Weak Topics',
         description: 'High-yield exam topics & common mistakes to avoid',
-        prompt: 'What are the most high-yield exam topics and common mistakes to avoid in Board exams?',
+        prompt: 'What are the most high-yield exam topics and common mistakes to avoid in FBISE exams?',
       },
       {
         id: 'chip-mcq',

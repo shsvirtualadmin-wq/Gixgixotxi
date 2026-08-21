@@ -21,7 +21,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '9-bio',
     name: 'Biology',
     classNum: 9,
-    description: 'Board Exams Class 9 Biology Textbook Curriculum',
+    description: 'FBISE Class 9 Biology Textbook Curriculum',
     chapters: [
       { id: '9-bio-1', name: 'The Science of Biology', subtopics: 'branches of biology, scientific method, career fields', isHighYield: true },
       { id: '9-bio-2', name: 'Molecular Biology', subtopics: 'biomolecules, nucleic acids (DNA/RNA), proteins, enzymes', isHighYield: true },
@@ -39,7 +39,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '9-chem',
     name: 'Chemistry',
     classNum: 9,
-    description: 'Board Exams Class 9 Chemistry Textbook Curriculum',
+    description: 'FBISE Class 9 Chemistry Textbook Curriculum',
     chapters: [
       { id: '9-chem-1', name: 'Nature of Science in Chemistry', subtopics: 'scientific method, branches of chemistry, chemistry in daily life' },
       { id: '9-chem-2', name: 'Matter', subtopics: 'states of matter, physical/chemical changes, classification of matter' },
@@ -66,7 +66,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '9-phy',
     name: 'Physics',
     classNum: 9,
-    description: 'Board Exams Class 9 Physics Textbook Curriculum',
+    description: 'FBISE Class 9 Physics Textbook Curriculum',
     chapters: [
       { id: '9-phy-1', name: 'Chapter 1: Physical Quantities and Measurement', subtopics: 'Physics and its Importance; Physical Quantities; International System of Units; Prefixes; Scientific Notation; Significant Figures; Precision and Accuracy; Measuring Instruments; Uncertainty in Measurements' },
       { id: '9-phy-2', name: 'Chapter 2: Kinematics', subtopics: 'Rest and Motion; Types of Motion; Scalars and Vectors; Displacement and Distance; Speed and Velocity; Acceleration; Equations of Motion; Motion Under Gravity; Graphical Analysis of Motion', isHighYield: true },
@@ -83,7 +83,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '9-math',
     name: 'Mathematics',
     classNum: 9,
-    description: 'Board Exams Class 9 Mathematics Curriculum',
+    description: 'FBISE Class 9 Mathematics Curriculum',
     chapters: [
       { id: '9-math-1', name: 'Real Numbers', subtopics: 'number systems, rational/irrational numbers, radicals, laws of exponents', isHighYield: true },
       { id: '9-math-2', name: 'Logarithms', subtopics: 'laws of logarithms, common logarithms, applications', isHighYield: true },
@@ -102,7 +102,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '9-cs',
     name: 'Computer Science',
     classNum: 9,
-    description: 'Board Exams Class 9 Computer Science Curriculum',
+    description: 'FBISE Class 9 Computer Science Curriculum',
     chapters: [
       { id: '9-cs-1', name: 'Problem Solving', subtopics: 'Problem solving steps, Flowcharts, Symbols, Algorithms, Test data & Verification', isHighYield: true },
       { id: '9-cs-2', name: 'Fundamentals of Operating System', subtopics: 'OS functions, Types of OS (GUI vs CLI), File management, Windows OS utilities', isHighYield: true },
@@ -115,7 +115,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '9-eng',
     name: 'English',
     classNum: 9,
-    description: 'Board Exams Class 9 English Curriculum',
+    description: 'FBISE Class 9 English Curriculum',
     chapters: [
       { id: '9-eng-1', name: 'Textual Reading & Comprehension', subtopics: 'Short stories, Essays, Main idea extraction, Contextual inference, Vocabulary' },
       { id: '9-eng-2', name: 'Poetry Analysis', subtopics: 'Theme, Paraphrasing, Figures of speech (Metaphor, Simile, Personification), Rhyme scheme' },
@@ -129,7 +129,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '9-urd',
     name: 'Urdu',
     classNum: 9,
-    description: 'Board Exams Class 9 Urdu Curriculum',
+    description: 'FBISE Class 9 Urdu Curriculum',
     chapters: [
       { id: '9-urd-1', name: 'Nasr (Prose)', subtopics: 'Akhlaq-e-Husna (Seerat Nigari), Kahani, Afsana, Drama, Novel/Novel Excerpt, Khaka, Tazkira/Mazah, Safarnama, Mazmoon' },
       { id: '9-urd-2', name: 'Nazm (Poetry)', subtopics: 'Hamd, Naat, Manqabat, Mehnat ki Barkat, Kirkit aur Muzahiya, Sindhi Zaban ki Shayeri (Tarjuma)' },
@@ -140,7 +140,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '9-isl',
     name: 'Islamiat',
     classNum: 9,
-    description: 'Board Exams Class 9 Islamiat Curriculum',
+    description: 'FBISE Class 9 Islamiat Curriculum',
     chapters: [
       { id: '9-isl-1', name: 'Quran Majeed ki Hadith Nabvi ke Sath Hifazat aur Tadween-e-Hadith', subtopics: 'Hifazat-e-Quran, tadween ke marahil, Ahadith-e-Nabaviya' },
       { id: '9-isl-2', name: 'Eimaniyat wa Ibadaat', subtopics: 'Aqeeda-e-Risalat, Aqeeda-e-Tauheed, Malaika (farishte), Aqeeda-e-Akhirat' },
@@ -157,7 +157,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '9-pak',
     name: 'Pakistan Studies',
     classNum: 9,
-    description: 'Board Exams Class 9 Pakistan Studies Curriculum',
+    description: 'FBISE Class 9 Pakistan Studies Curriculum',
     chapters: [
       { id: '9-pak-1', name: 'Ideological Basis of Pakistan', subtopics: 'Two-Nation Theory, Quaid-e-Azam statements, Allama Iqbal vision', isHighYield: true },
       { id: '9-pak-2', name: 'Making of Pakistan', subtopics: 'Pakistan Movement (1906-1947), Lahore Resolution 1940, Independence 1947' },
@@ -171,7 +171,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '10-bio',
     name: 'Biology',
     classNum: 10,
-    description: 'Board Exams Class 10 Biology Textbook Curriculum',
+    description: 'FBISE Class 10 Biology Textbook Curriculum',
     chapters: [
       { id: '10-bio-1', name: 'Gaseous Exchange', subtopics: 'Gaseous exchange in plants, Human respiratory system, Lungs & Alveoli, Respiratory disorders (Bronchitis, Emphysema, Asthma)', isHighYield: true },
       { id: '10-bio-2', name: 'Homeostasis', subtopics: 'Homeostasis in plants, Human urinary system, Kidney structure & Nephron, Osmoregulation, Kidney stones, Dialysis & Transplant', isHighYield: true },
@@ -188,7 +188,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '10-chem',
     name: 'Chemistry',
     classNum: 10,
-    description: 'Board Exams Class 10 Chemistry Textbook Curriculum',
+    description: 'FBISE Class 10 Chemistry Textbook Curriculum',
     chapters: [
       { id: '10-chem-1', name: 'Chemical Equilibrium', subtopics: 'Reversible reactions, Dynamic equilibrium, Law of Mass Action, Equilibrium constant Kc, Factors affecting equilibrium', isHighYield: true },
       { id: '10-chem-2', name: 'Acids, Bases and Salts', subtopics: 'Arrhenius, Bronsted-Lowry & Lewis concepts, pH scale & calculations, Indicators, Salts preparation and uses', isHighYield: true },
@@ -204,7 +204,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '10-phy',
     name: 'Physics',
     classNum: 10,
-    description: 'Board Exams Class 10 Physics Textbook Curriculum',
+    description: 'FBISE Class 10 Physics Textbook Curriculum',
     chapters: [
       { id: '10-phy-10', name: 'Unit 10: Heat Capacity and Modes of Heat Transfer', subtopics: 'Specific Heat Capacity; Transfer of Heat; Applications of Heat Transfer; Green House Effect and Global Warming; Flow of Heat in Geothermal Activities' },
       { id: '10-phy-11', name: 'Unit 11: Thermal Expansion and Change of State', subtopics: 'Kinetic Theory of Matter; Thermal Expansion; Evaporation; Latent Heat; Pressure Exerted by Gas Particles; Superconductivity' },
@@ -224,7 +224,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '10-math',
     name: 'Mathematics',
     classNum: 10,
-    description: 'Board Exams Class 10 Mathematics Curriculum',
+    description: 'FBISE Class 10 Mathematics Curriculum',
     chapters: [
       { id: '10-math-1', name: 'Quadratic Equations', subtopics: 'Solution by factorization, Completing square, Quadratic formula, Reducible equations', isHighYield: true },
       { id: '10-math-2', name: 'Theory of Quadratic Equations', subtopics: 'Discriminant & nature of roots, Cube roots of unity, Synthetic division, Simultaneous quadratic equations', isHighYield: true },
@@ -245,7 +245,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '10-cs',
     name: 'Computer Science',
     classNum: 10,
-    description: 'Board Exams Class 10 Computer Science Curriculum',
+    description: 'FBISE Class 10 Computer Science Curriculum',
     chapters: [
       { id: '10-cs-1', name: 'Programming in C / Python', subtopics: 'Programming environment, Data types, Variables, Constants, Input/Output functions (printf, scanf / print, input)', isHighYield: true },
       { id: '10-cs-2', name: 'User-Defined Control Structures', subtopics: 'If statement, If-else, Else-if ladder, Switch statement, Conditional operators', isHighYield: true },
@@ -258,7 +258,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '10-eng',
     name: 'English',
     classNum: 10,
-    description: 'Board Exams Class 10 English Curriculum',
+    description: 'FBISE Class 10 English Curriculum',
     chapters: [
       { id: '10-eng-1', name: 'Textual Lessons & Comprehension', subtopics: 'Biographies, Moral stories, Historical essays, Contextual vocabulary, Inference questions' },
       { id: '10-eng-2', name: 'Poem Analysis & Paraphrasing', subtopics: 'Poetic devices, Theme, Stanza paraphrasing, Rhyme scheme' },
@@ -271,7 +271,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '10-urd',
     name: 'Urdu',
     classNum: 10,
-    description: 'Board Exams Class 10 Urdu Curriculum',
+    description: 'FBISE Class 10 Urdu Curriculum',
     chapters: [
       { id: '10-urd-1', name: 'Hissa-e-Nasr (Sabaq)', subtopics: 'Sabaq Khulasa, Contextual Tashreeh, Character studies' },
       { id: '10-urd-2', name: 'Hissa-e-Nazam', subtopics: 'Nazam Ash\'ar Tashreeh, Central idea, Poet style' },
@@ -283,7 +283,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '10-isl',
     name: 'Islamiat',
     classNum: 10,
-    description: 'Board Exams Class 10 Islamiat Curriculum',
+    description: 'FBISE Class 10 Islamiat Curriculum',
     chapters: [
       { id: '10-isl-1', name: 'Surah Ahzab & Quranic Verses', subtopics: 'Translation, Historical background, Moral and social guidelines' },
       { id: '10-isl-2', name: 'Ahadith-e-Mubaraka', subtopics: 'Translation, Explanation, Character building principles' },
@@ -294,7 +294,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '10-pak',
     name: 'Pakistan Studies',
     classNum: 10,
-    description: 'Board Exams Class 10 Pakistan Studies Curriculum',
+    description: 'FBISE Class 10 Pakistan Studies Curriculum',
     chapters: [
       { id: '10-pak-1', name: 'History of Pakistan (1947 to Present)', subtopics: 'Constitutional developments (1956, 1962, 1973), Political eras, Atomic power milestone', isHighYield: true },
       { id: '10-pak-2', name: 'Foreign Relations of Pakistan', subtopics: 'Foreign policy objectives, Relations with neighbors, UN role, OIC & SAARC' },
@@ -308,7 +308,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '11-bio',
     name: 'Biology',
     classNum: 11,
-    description: 'Board Exams Class 11 Biology Textbook (1st Year HSSC 1)',
+    description: 'FBISE Class 11 Biology Textbook (1st Year HSSC 1)',
     chapters: [
       { id: '11-bio-1', name: 'Biological Molecules', subtopics: 'Water properties, Carbohydrates, Lipids & Fatty acids, Proteins & Amino acids, Nucleic acids (DNA & RNA structure)', isHighYield: true },
       { id: '11-bio-2', name: 'Enzymes', subtopics: 'Structure of enzymes, Mechanism of enzyme action, Factors affecting activity, Enzyme inhibitors (Competitive & Non-competitive)', isHighYield: true },
@@ -329,7 +329,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '11-chem',
     name: 'Chemistry',
     classNum: 11,
-    description: 'Board Exams Class 11 Chemistry Textbook (1st Year HSSC 1)',
+    description: 'FBISE Class 11 Chemistry Textbook (1st Year HSSC 1)',
     chapters: [
       { id: '11-chem-1', name: 'Stoichiometry', subtopics: 'Mole concept, Avogadro number, Empirical & Molecular formulas, Stoichiometric calculations, Limiting reactant, Yield', isHighYield: true },
       { id: '11-chem-2', name: 'Atomic Structure', subtopics: 'Discovery of electron/proton/neutron, Planck quantum theory, Bohr model, Quantum numbers, Aufbau/Hund/Pauli principles, Electronic configuration', isHighYield: true },
@@ -347,7 +347,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '11-phy',
     name: 'Physics',
     classNum: 11,
-    description: 'Board Exams Class 11 Physics Textbook (1st Year HSSC 1)',
+    description: 'FBISE Class 11 Physics Textbook (1st Year HSSC 1)',
     chapters: [
       { id: '11-phy-1', name: 'Measurements', subtopics: 'SI units, Systematic & Random errors, Uncertainty calculations, Significant figures, Precision & Accuracy, Dimensions', isHighYield: true },
       { id: '11-phy-2', name: 'Vectors and Equilibrium', subtopics: 'Vector addition by rectangular components, Scalar dot product, Vector cross product, Torque & Moment arm, Equilibrium conditions', isHighYield: true },
@@ -365,7 +365,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '11-math',
     name: 'Mathematics',
     classNum: 11,
-    description: 'Board Exams Class 11 Mathematics Curriculum (1st Year HSSC 1)',
+    description: 'FBISE Class 11 Mathematics Curriculum (1st Year HSSC 1)',
     chapters: [
       { id: '11-math-1', name: 'Number Systems', subtopics: 'Real numbers properties, Complex numbers algebra, Modulus and Argument, De Moivre theorem', isHighYield: true },
       { id: '11-math-2', name: 'Sets, Functions and Groups', subtopics: 'Operations on sets, Venn diagrams, Binary relations, Types of functions, Group theory fundamentals', isHighYield: true },
@@ -387,7 +387,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '11-cs',
     name: 'Computer Science',
     classNum: 11,
-    description: 'Board Exams Class 11 Computer Science Curriculum (1st Year HSSC 1)',
+    description: 'FBISE Class 11 Computer Science Curriculum (1st Year HSSC 1)',
     chapters: [
       { id: '11-cs-1', name: 'Basics of Information Technology', subtopics: 'Data vs Information, Hardware components, Software classification, System bus, Memory hierarchy', isHighYield: true },
       { id: '11-cs-2', name: 'Computer Architecture', subtopics: 'CPU components (ALU, CU, Registers), Instruction cycle, Fetch-Decode-Execute, Ports & Expansion slots', isHighYield: true },
@@ -403,7 +403,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '11-eng',
     name: 'English',
     classNum: 11,
-    description: 'Board Exams Class 11 English Curriculum (1st Year HSSC 1)',
+    description: 'FBISE Class 11 English Curriculum (1st Year HSSC 1)',
     chapters: [
       { id: '11-eng-1', name: 'Prose & Textual Analysis', subtopics: 'Short stories, Historical speeches, Essays, Vocabulary in context, Comprehension questions' },
       { id: '11-eng-2', name: 'Poetry & Literary Devices', subtopics: 'Poetic devices (Metaphor, Imagery, Alliteration), Stanza analysis, Paraphrasing, Theme' },
@@ -417,7 +417,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '11-urd',
     name: 'Urdu',
     classNum: 11,
-    description: 'Board Exams Class 11 Urdu Curriculum (1st Year HSSC 1)',
+    description: 'FBISE Class 11 Urdu Curriculum (1st Year HSSC 1)',
     chapters: [
       { id: '11-urd-1', name: 'Hissa-e-Nasr (Sabaq)', subtopics: 'Sabaq Khulasa, Contextual Tashreeh, Character sketches' },
       { id: '11-urd-2', name: 'Hissa-e-Nazam', subtopics: 'Nazam Tashreeh, Central idea, Poet bio' },
@@ -429,7 +429,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '11-isl',
     name: 'Islamiat',
     classNum: 11,
-    description: 'Board Exams Class 11 Islamiat Curriculum (1st Year HSSC 1)',
+    description: 'FBISE Class 11 Islamiat Curriculum (1st Year HSSC 1)',
     chapters: [
       { id: '11-isl-1', name: 'Quranic Verses & Translation', subtopics: 'Surah translation, Context, Moral guidelines' },
       { id: '11-isl-2', name: 'Ahadith-e-Nabvi (PBUH)', subtopics: 'Translation, Explanation, Character development' },
@@ -442,7 +442,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '12-bio',
     name: 'Biology',
     classNum: 12,
-    description: 'Board Exams Class 12 Biology Textbook (2nd Year HSSC 2)',
+    description: 'FBISE Class 12 Biology Textbook (2nd Year HSSC 2)',
     chapters: [
       { id: '12-bio-1', name: 'Homeostasis', subtopics: 'Osmoregulation in plants & animals, Human excretory system, Kidney structure & Nephron, Dialysis & Transplant, Thermoregulation', isHighYield: true },
       { id: '12-bio-2', name: 'Support and Movement', subtopics: 'Human skeleton structure, Bone & Cartilage, Joints, Sliding filament theory of muscle contraction, Muscle disorders', isHighYield: true },
@@ -460,7 +460,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '12-chem',
     name: 'Chemistry',
     classNum: 12,
-    description: 'Board Exams Class 12 Chemistry Textbook (2nd Year HSSC 2)',
+    description: 'FBISE Class 12 Chemistry Textbook (2nd Year HSSC 2)',
     chapters: [
       { id: '12-chem-1', name: 'Periodic Periodicity', subtopics: 'Periodic classification, Atomic properties trends, s-Block & p-Block elements, Hydrides, Oxides & Halides reactivity', isHighYield: true },
       { id: '12-chem-2', name: 's-Block Elements', subtopics: 'Group IA and IIA metals, Chemical properties, Diagonal relationships, Commercial uses of Sodium & Calcium compounds' },
@@ -481,7 +481,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '12-phy',
     name: 'Physics',
     classNum: 12,
-    description: 'Board Exams Class 12 Physics Textbook (2nd Year HSSC 2)',
+    description: 'FBISE Class 12 Physics Textbook (2nd Year HSSC 2)',
     chapters: [
       { id: '12-phy-1', name: 'Electrostatics', subtopics: 'Coulomb law, Electric field intensity, Gauss law applications, Electric potential, Parallel plate capacitors, Dielectric effect', isHighYield: true },
       { id: '12-phy-2', name: 'Current Electricity', subtopics: 'Ohm law, Resistivity & Temperature coefficient, Kirchhoff laws (KVL & KCL), Wheatstone bridge, Potentiometer', isHighYield: true },
@@ -499,7 +499,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '12-math',
     name: 'Mathematics',
     classNum: 12,
-    description: 'Board Exams Class 12 Mathematics Curriculum (2nd Year HSSC 2)',
+    description: 'FBISE Class 12 Mathematics Curriculum (2nd Year HSSC 2)',
     chapters: [
       { id: '12-math-1', name: 'Functions and Limits', subtopics: 'Types of functions, Domain & Range, Limits of functions, Sandwich theorem, Continuity & Discontinuity', isHighYield: true },
       { id: '12-math-2', name: 'Differentiation', subtopics: 'Derivatives definition, Power rule, Product & Quotient rules, Chain rule, Implicit differentiation, Derivatives of Trig & Inverse Trig functions', isHighYield: true },
@@ -514,7 +514,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '12-cs',
     name: 'Computer Science',
     classNum: 12,
-    description: 'Board Exams Class 12 Computer Science Curriculum (2nd Year HSSC 2)',
+    description: 'FBISE Class 12 Computer Science Curriculum (2nd Year HSSC 2)',
     chapters: [
       { id: '12-cs-1', name: 'Data Structures', subtopics: 'Arrays, Stacks (Push/Pop), Queues (Enqueue/Dequeue), Linked lists, Trees, Searching & Sorting algorithms', isHighYield: true },
       { id: '12-cs-2', name: 'Object-Oriented Programming (OOP)', subtopics: 'Classes & Objects, Constructors & Destructors, Encapsulation, Inheritance, Polymorphism', isHighYield: true },
@@ -527,7 +527,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '12-eng',
     name: 'English',
     classNum: 12,
-    description: 'Board Exams Class 12 English Curriculum (2nd Year HSSC 2)',
+    description: 'FBISE Class 12 English Curriculum (2nd Year HSSC 2)',
     chapters: [
       { id: '12-eng-1', name: 'Prose & Modern Essays', subtopics: 'Modern essays, Scientific perspectives, Biographies, Critical comprehension, Vocabulary' },
       { id: '12-eng-2', name: 'Poetry & Literary Criticism', subtopics: 'Modern poems, Paraphrasing, Tone & Mood analysis, Figurative language' },
@@ -541,7 +541,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '12-urd',
     name: 'Urdu',
     classNum: 12,
-    description: 'Board Exams Class 12 Urdu Curriculum (2nd Year HSSC 2)',
+    description: 'FBISE Class 12 Urdu Curriculum (2nd Year HSSC 2)',
     chapters: [
       { id: '12-urd-1', name: 'Hissa-e-Nasr (Sabaq)', subtopics: 'Sabaq Khulasa, Contextual Tashreeh, Character studies' },
       { id: '12-urd-2', name: 'Hissa-e-Nazam', subtopics: 'Nazam Ash\'ar Tashreeh, Markazi Khayal, Poet style' },
@@ -553,7 +553,7 @@ export const FBISE_SYLLABUS_DATA: FBISESubjectConfig[] = [
     id: '12-isl',
     name: 'Islamiat',
     classNum: 12,
-    description: 'Board Exams Class 12 Islamiat Curriculum (2nd Year HSSC 2)',
+    description: 'FBISE Class 12 Islamiat Curriculum (2nd Year HSSC 2)',
     chapters: [
       { id: '12-isl-1', name: 'Selected Surahs & Verses', subtopics: 'Translation, Context, Social and moral laws' },
       { id: '12-isl-2', name: 'Ahadith-e-Nabvi (PBUH)', subtopics: 'Translation, Practical life guidance' },

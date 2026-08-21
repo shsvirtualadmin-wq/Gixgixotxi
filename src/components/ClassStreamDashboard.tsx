@@ -610,7 +610,7 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = ({
                             Subtopic {String(subIdx + 1).padStart(2, '0')}
                           </span>
                           <span className="text-[10px] text-slate-400 font-medium">
-                            Board Class {classNum}
+                            FBISE Class {classNum}
                           </span>
                         </div>
 
@@ -663,7 +663,7 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = ({
                         </span>
                       </div>
                       <p className="text-xs text-slate-500  mt-0.5">
-                        {getFBISEChaptersForSubject(classNum, selectedFbiseSubject).length} official board chapters available. Tap 'Explore Subtopics' to view subtopics or practice.
+                        {getFBISEChaptersForSubject(classNum, selectedFbiseSubject).length} official FBISE chapters available. Tap 'Explore Subtopics' to view subtopics or practice.
                       </p>
                     </div>
                   </div>
@@ -761,10 +761,10 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = ({
             <Award className="w-6 h-6 text-blue-500" />
             <div>
               <h2 className="text-base font-black text-slate-900 ">
-                Full-Length Board Mock Exam
+                Full-Length FBISE Mock Exam
               </h2>
               <p className="text-xs text-slate-500 font-medium">
-                Simulated {config.levelTag} Board Exam environment.
+                Simulated {config.levelTag} FBISE Exam environment.
               </p>
             </div>
           </div>
@@ -795,7 +795,7 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = ({
               className="w-full py-3 bg-[#1E5AFF] hover:bg-[#1546CC] text-white rounded-2xl font-extrabold text-sm active:scale-98 transition-all cursor-pointer shadow-md flex items-center justify-center gap-2"
             >
               <Award className="w-4 h-4" />
-              <span>Start Stream Board Mock Exam</span>
+              <span>Start Stream FBISE Mock Exam</span>
             </button>
           </div>
         </div>
@@ -861,7 +861,7 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = ({
           </div>
 
           <div className="text-xs text-slate-600  leading-relaxed">
-            <strong>Key Focus Area:</strong> Practice questions regularly to increase speed and maintain consistent scores above 80% for top board exam ranking.
+            <strong>Key Focus Area:</strong> Practice questions regularly to increase speed and maintain consistent scores above 80% for top FBISE exam ranking.
           </div>
         </div>
       )}

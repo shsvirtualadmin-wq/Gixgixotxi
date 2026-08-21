@@ -352,13 +352,13 @@ export const GuidedSetupWizard: React.FC<GuidedSetupWizardProps> = ({
                       </div>
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
-                          <h4 className="font-bold text-base text-white">Board Exams Preparation</h4>
+                          <h4 className="font-bold text-base text-white">FBISE Preparation</h4>
                           <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded bg-blue-500/20 text-blue-300">
                             Class 9 - 12
                           </span>
                         </div>
                         <p className="text-xs text-slate-400">
-                          Board Examinations SSC & HSSC curriculum alignment with chapter-wise solved MCQs & tests.
+                          FBISE SSC & HSSC curriculum alignment with chapter-wise solved MCQs & tests.
                         </p>
                       </div>
                     </div>
@@ -544,7 +544,7 @@ export const GuidedSetupWizard: React.FC<GuidedSetupWizardProps> = ({
                 ) : (
                   <>
                     <div>
-                      <h3 className="text-lg font-bold text-white">Select Target University / Board</h3>
+                      <h3 className="text-lg font-bold text-white">Select Target Institution</h3>
                       <p className="text-xs text-slate-400">
                         Choose your primary dream institution to align mock test weighting.
                       </p>

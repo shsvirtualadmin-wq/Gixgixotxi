@@ -1,6 +1,6 @@
 {
   "name": "Boardly — MCQ Practice Portal",
-  "description": "Practice-ready multiple choice tests for board exams and top university admission tests — Grades 9 through 12.",
+  "description": "Practice-ready multiple choice tests for FBISE (Grades 9-12), MDCAT, and TCAT entrance exams.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

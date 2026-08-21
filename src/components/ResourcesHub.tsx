@@ -1174,7 +1174,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                 No {activeCategory === 'past_paper' ? 'Past Papers' : 'MCQs Drills'} uploaded yet for this class — check back soon!
               </p>
               <p className="text-xs text-slate-500">
-                Our academic team regularly uploads official Board Exams, MDCAT, and TCAT documents.
+                Our academic team regularly uploads official FBISE, MDCAT, and TCAT documents.
               </p>
             </div>
             {isAdmin && (
@@ -1998,7 +1998,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
                             type="text"
                             value={newHighlightNote}
                             onChange={(e) => setNewHighlightNote(e.target.value)}
-                            placeholder="e.g. Frequently asked in Board Past Papers"
+                            placeholder="e.g. Frequently asked in FBISE Past Papers"
                             className="w-full p-2.5 bg-slate-50 border border-slate-300 focus:border-blue-600 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none"
                           />
                         </div>

@@ -108,13 +108,13 @@ export const CommunityModal: React.FC<CommunityModalProps> = ({ onClose }) => {
             </div>
 
             <p className="text-slate-700  text-xs font-medium mb-3.5 leading-relaxed">
-              Real-time updates, daily MCQ practice, model paper solution keys, and peer guidance across Board Exams, MDCAT, TCAT, and all entry test series.
+              Real-time updates, daily MCQ practice, model paper solution keys, and peer guidance across FBISE, MDCAT, TCAT, and all entry test series.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4 text-xs font-semibold text-slate-700 ">
               <div className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                <span>Board Exams, MDCAT & TCAT/UET</span>
+                <span>FBISE, MDCAT & TCAT/UET</span>
               </div>
               <div className="flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
@@ -157,7 +157,7 @@ export const CommunityModal: React.FC<CommunityModalProps> = ({ onClose }) => {
             </div>
 
             <p className="text-slate-600  text-xs font-medium mb-2.5 leading-relaxed">
-              Special weekend mock exams for Federal Board (Class 9-12), MDCAT Medical & TCAT Engineering entry tests with instant analytics.
+              Special weekend mock exams for FBISE (Class 9-12), MDCAT Medical & TCAT Engineering entry tests with instant analytics.
             </p>
 
             <div className="flex flex-wrap gap-3 pt-2 border-t border-slate-200/60  text-[11px] font-semibold text-slate-600 ">

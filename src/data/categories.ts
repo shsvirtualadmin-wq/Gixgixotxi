@@ -156,7 +156,7 @@ export function getSubjectTopicsForClass(sub: string, classNum?: BoardClass | st
       }
     }
   }
-  return SUBJECT_TOPICS[sub] || ['General Practice', 'Core Concepts', 'Board High Yield'];
+  return SUBJECT_TOPICS[sub] || ['General Practice', 'Core Concepts', 'FBISE High Yield'];
 }
 
 export const SUBJECT_TOPICS: Record<string, string[]> = {

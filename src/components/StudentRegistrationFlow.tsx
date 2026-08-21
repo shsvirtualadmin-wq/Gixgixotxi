@@ -305,7 +305,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
         activeUser = authData?.user || null;
       }
       const userId = activeUser?.id || `anon-${Date.now()}`;
-      const trackText = selectedTrack === 'FBISE' ? `Board Exams ${fbiseGrade}` : selectedTrack === 'MDCAT' ? 'MDCAT' : `TCAT (${tcatGroup})`;
+      const trackText = selectedTrack === 'FBISE' ? `FBISE ${fbiseGrade}` : selectedTrack === 'MDCAT' ? 'MDCAT' : `TCAT (${tcatGroup})`;
       const planDetails = getFeePlanDetails();
 
       const payload = {
@@ -514,21 +514,21 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
     if (selectedTrack === 'FBISE') {
       if (fbiseGrade === 'Class 9' || fbiseGrade === 'Class 10') {
         return {
-          planTitle: 'Board Exams Matric Access (Class 9th & 10th)',
+          planTitle: 'FBISE Matric Access (Class 9th & 10th)',
           fee: '499',
           features: [
-            'Full 9th & 10th Board Exam MCQ Bank',
+            'Full 9th & 10th FBISE MCQ Bank',
             'Chapter-wise Practice & Past Papers',
             'AI Performance Analytics',
           ],
         };
       }
       return {
-        planTitle: 'Board Exams FSc Access (Class 11th & 12th)',
+        planTitle: 'FBISE FSc Access (Class 11th & 12th)',
         fee: '999',
         features: [
           'Full 11th & 12th Pre-Med / Pre-Eng / ICS Bank',
-          'Past Papers & Board Exam Simulations',
+          'Past Papers & FBISE Exam Simulations',
           'Detailed Step-by-Step Solutions',
         ],
       };
@@ -687,7 +687,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
 
     const trackLabel =
       selectedTrack === 'FBISE'
-        ? `Board Exams (${fbiseGrade} - ${fbiseStream})`
+        ? `FBISE (${fbiseGrade} - ${fbiseStream})`
         : selectedTrack === 'MDCAT'
         ? 'PMDC MDCAT Entrance Prep'
         : `UET Taxila TCAT (${tcatGroup})`;
@@ -818,7 +818,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
 
     const trackText =
       selectedTrack === 'FBISE'
-        ? `Board Exams ${fbiseGrade} (${fbiseStream})`
+        ? `FBISE ${fbiseGrade} (${fbiseStream})`
         : selectedTrack === 'MDCAT'
         ? 'PMDC MDCAT Entrance'
         : `UET Taxila TCAT (${tcatGroup})`;
@@ -1058,7 +1058,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
                   )}
                 </div>
                 <div>
-                  <div className="font-extrabold text-xs">Board Exams</div>
+                  <div className="font-extrabold text-xs">FBISE</div>
                   <div className="text-[10px] text-slate-500  mt-0.5">
                     Classes 9th, 10th, 11th & 12th
                   </div>
@@ -1553,7 +1553,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
                 <span className="text-slate-400 font-medium">Selected Track:</span>{' '}
                 <strong className="text-emerald-600  font-bold">
                   {selectedTrack === 'FBISE'
-                    ? `Board Exams ${fbiseGrade} (${fbiseStream})`
+                    ? `FBISE ${fbiseGrade} (${fbiseStream})`
                     : selectedTrack === 'MDCAT'
                     ? 'PMDC MDCAT Entrance'
                     : `UET Taxila TCAT (${tcatGroup})`}
@@ -1853,7 +1853,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
                 </div>
                 <div className="text-slate-600  space-y-1 text-[11px]">
                   <div>• Student Name: <strong className="text-slate-900 ">{fullName}</strong> ({email})</div>
-                  <div>• Track: <strong>{selectedTrack === 'FBISE' ? `Board Exams ${fbiseGrade}` : selectedTrack === 'MDCAT' ? 'MDCAT' : `TCAT (${tcatGroup})`}</strong></div>
+                  <div>• Track: <strong>{selectedTrack === 'FBISE' ? `FBISE ${fbiseGrade}` : selectedTrack === 'MDCAT' ? 'MDCAT' : `TCAT (${tcatGroup})`}</strong></div>
                   <div>• Target Institution: <strong>{dreamUniversity === 'Other' ? customUniversity : dreamUniversity}</strong></div>
                 </div>
               </div>
@@ -1901,7 +1901,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
                 </div>
                 <div className="text-slate-700  space-y-1 text-[11px] font-medium">
                   <div>• Student Name: <strong className="text-slate-900  font-bold">{fullName}</strong> ({email})</div>
-                  <div>• Selected Track: <strong>{selectedTrack === 'FBISE' ? `Board Exams ${fbiseGrade}` : selectedTrack === 'MDCAT' ? 'MDCAT' : `TCAT (${tcatGroup})`}</strong></div>
+                  <div>• Selected Track: <strong>{selectedTrack === 'FBISE' ? `FBISE ${fbiseGrade}` : selectedTrack === 'MDCAT' ? 'MDCAT' : `TCAT (${tcatGroup})`}</strong></div>
                   <div>• Target University: <strong>{dreamUniversity === 'Other' ? customUniversity : dreamUniversity}</strong></div>
                   {transactionRef && (
                     <div>• Transaction Reference: <span className="font-mono font-bold text-blue-600 ">{transactionRef}</span> ({selectedMethod})</div>

@@ -171,7 +171,7 @@ export const UploadResourceDrawer: React.FC<UploadResourceDrawerProps> = ({
               onChange={e => setUploadTitle(e.target.value)}
               placeholder={
                 activeCategory === 'past_paper'
-                  ? 'e.g. Board Physics Class 11 2024 Solved Past Paper'
+                  ? 'e.g. FBISE Physics Class 11 2024 Solved Past Paper'
                   : 'e.g. Chemical Bonding 100 MCQs Practice Drill Sheet'
               }
               className="w-full bg-slate-50 border border-slate-200 focus:border-[#1E5AFF] focus:ring-2 focus:ring-blue-500/20 text-slate-900 placeholder:text-slate-400 text-xs sm:text-sm rounded-xl px-3.5 py-2.5 outline-none transition-all"

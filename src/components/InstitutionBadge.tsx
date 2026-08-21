@@ -149,15 +149,15 @@ export const INSTITUTIONS: Record<string, Institution> = {
   },
   fbise: {
     id: 'fbise',
-    name: 'Board Examinations (Classes 9-12)',
-    shortName: 'Board Exams',
+    name: 'FBISE Examinations (Classes 9-12)',
+    shortName: 'FBISE',
     category: 'board',
     bgGradient: 'from-[#064E3B] to-[#047857]',
     textColor: 'text-emerald-400',
     borderColor: 'border-emerald-500/30',
-    badgeInitials: 'BOARDS',
+    badgeInitials: 'FBISE',
     logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png',
-    description: 'Board Examinations & Curriculum Islamabad & Nationwide.',
+    description: 'FBISE Examinations & Curriculum Islamabad & Nationwide.',
   },
   pmdc: {
     id: 'pmdc',
@@ -193,7 +193,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     borderColor: 'border-blue-400/30',
     badgeInitials: 'APS',
     logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_000000000c0c82088a7c46700ba17bd5.png',
-    description: 'Federal Board SSC & HSSC excellence network.',
+    description: 'FBISE SSC & HSSC excellence network.',
   },
   fgc: {
     id: 'fgc',
