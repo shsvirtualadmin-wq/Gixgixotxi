@@ -380,7 +380,7 @@ const CardLogoImage: React.FC<{ src: string; alt: string; fallbackText: string; 
 
   if (failed) {
     return (
-      <div className={`w-full h-full ${bgClass} flex items-center justify-center rounded-lg font-black text-xs ${textClass}`}>
+      <div className={`w-full h-full ${bgClass} flex items-center justify-center rounded-xl font-black text-sm sm:text-base ${textClass}`}>
         {fallbackText}
       </div>
     );
@@ -390,7 +390,8 @@ const CardLogoImage: React.FC<{ src: string; alt: string; fallbackText: string; 
     <img
       src={src}
       alt={alt}
-      className="w-full h-full object-contain p-0.5"
+      className="w-full h-full object-contain"
+      style={{ objectFit: 'contain' }}
       referrerPolicy="no-referrer"
       onError={() => setFailed(true)}
     />
@@ -895,14 +896,19 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 onClick={onSelectGradesFlow || onContinue}
                 className="bg-white border border-slate-200/80 card-containment hover:border-[#1E5AFF] rounded-2xl p-6 shadow-sm hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer group flex flex-col justify-between gap-6 relative overflow-hidden h-full"
               >
+                {/* Top-Right Category Badge */}
+                <div className="absolute top-5 right-5 z-10 pointer-events-none">
+                  <span className="bg-[#1E5AFF]/15 text-[#0A1330]  text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
+                    Class 9 – 12
+                  </span>
+                </div>
+
                 <div className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="w-12 h-12 rounded-xl bg-emerald-500/10 p-1 flex items-center justify-center border border-emerald-500/30 overflow-hidden shrink-0 shadow-xs">
+                  {/* Centered Logo (No box/border/bg container) */}
+                  <div className="flex justify-center pt-2 pb-1">
+                    <div className="w-[108px] h-[108px] sm:w-[116px] sm:h-[116px] flex items-center justify-center shrink-0">
                       <CardLogoImage src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png" alt="FBISE Official Logo" fallbackText="FBISE" bgClass="bg-emerald-600" textClass="text-white" />
                     </div>
-                    <span className="bg-[#1E5AFF]/15 text-[#0A1330]  text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
-                      Class 9 – 12
-                    </span>
                   </div>
 
                   <div className="space-y-2">
@@ -943,14 +949,19 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 onClick={onSelectMdcat || onSelectGradesFlow || onContinue}
                 className="bg-white border border-slate-200/80 card-containment hover:border-rose-500 rounded-2xl p-6 shadow-sm hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer group flex flex-col justify-between gap-6 relative overflow-hidden h-full"
               >
+                {/* Top-Right Category Badge */}
+                <div className="absolute top-5 right-5 z-10 pointer-events-none">
+                  <span className="bg-rose-500/15 text-rose-700  text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
+                    Post-FSc Entrance
+                  </span>
+                </div>
+
                 <div className="space-y-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="w-12 h-12 rounded-xl bg-rose-500/10 p-1 flex items-center justify-center border border-rose-500/30 overflow-hidden shrink-0 shadow-xs">
+                  {/* Centered Logo (No box/border/bg container) */}
+                  <div className="flex justify-center pt-2 pb-1">
+                    <div className="w-[108px] h-[108px] sm:w-[116px] sm:h-[116px] flex items-center justify-center shrink-0">
                       <CardLogoImage src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/PMDC%20Logo-Green.png" alt="PMDC MDCAT Official Logo" fallbackText="PMDC" bgClass="bg-rose-700" textClass="text-white" />
                     </div>
-                    <span className="bg-rose-500/15 text-rose-700  text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
-                      Post-FSc Entrance
-                    </span>
                   </div>
 
                   <div className="space-y-2">
@@ -991,47 +1002,52 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 onClick={onSelectTcat || onSelectGradesFlow || onContinue}
                 className="bg-white border border-slate-200/80 card-containment hover:border-cyan-500 rounded-2xl p-6 shadow-sm hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer group flex flex-col justify-between gap-6 relative overflow-hidden h-full"
               >
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="w-12 h-12 rounded-xl bg-cyan-500/10 p-1 flex items-center justify-center border border-cyan-500/30 overflow-hidden shrink-0 shadow-xs">
-                    <CardLogoImage src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png" alt="UET Taxila TCAT Official Logo" fallbackText="UET" bgClass="bg-sky-900" textClass="text-cyan-300" />
-                  </div>
+                {/* Top-Right Category Badge */}
+                <div className="absolute top-5 right-5 z-10 pointer-events-none">
                   <span className="bg-cyan-500/15 text-cyan-700  text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
                     Post-FSc Engineering
                   </span>
                 </div>
 
-                <div className="space-y-2">
-                  <h3 className="font-['Space_Grotesk'] font-extrabold text-xl text-slate-900  group-hover:text-cyan-600  transition-colors break-words min-w-0">
-                    TCAT / UET Taxila Series
-                  </h3>
-                  <p className="text-xs text-slate-600  leading-relaxed font-normal">
-                    Taxila Combined Admission Test preparation portal featuring FSc group combinations, 100-MCQ full mock tests & 400 total marks scoring.
-                  </p>
+                <div className="space-y-4">
+                  {/* Centered Logo (No box/border/bg container) */}
+                  <div className="flex justify-center pt-2 pb-1">
+                    <div className="w-[108px] h-[108px] sm:w-[116px] sm:h-[116px] flex items-center justify-center shrink-0">
+                      <CardLogoImage src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png" alt="UET Taxila TCAT Official Logo" fallbackText="UET" bgClass="bg-sky-900" textClass="text-cyan-300" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <h3 className="font-['Space_Grotesk'] font-extrabold text-xl text-slate-900  group-hover:text-cyan-600  transition-colors break-words min-w-0">
+                      TCAT / UET Taxila Series
+                    </h3>
+                    <p className="text-xs text-slate-600  leading-relaxed font-normal">
+                      Taxila Combined Admission Test preparation portal featuring FSc group combinations, 100-MCQ full mock tests & 400 total marks scoring.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-slate-100  text-xs text-slate-600  font-medium">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-cyan-500 shrink-0" />
+                      <span>Math, Physics, CS/Chem & English</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-cyan-500 shrink-0" />
+                      <span>400 Marks Exam Simulation</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-cyan-500 shrink-0" />
+                      <span>Negative Marking Rules</span>
+                    </div>
+                  </div>
                 </div>
 
-                <div className="space-y-2 pt-2 border-t border-slate-100  text-xs text-slate-600  font-medium">
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-cyan-500 shrink-0" />
-                    <span>Math, Physics, CS/Chem & English</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-cyan-500 shrink-0" />
-                    <span>400 Marks Exam Simulation</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-cyan-500 shrink-0" />
-                    <span>Negative Marking Rules</span>
-                  </div>
-                </div>
+                <button className="w-full bg-slate-900 text-white  group-hover:bg-cyan-600 group-hover:text-white font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer">
+                  <span>Open TCAT Dashboard</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
               </div>
-
-              <button className="w-full bg-slate-900 text-white  group-hover:bg-cyan-600 group-hover:text-white font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer">
-                <span>Open TCAT Dashboard</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
-            </div>
-          </ScrollFadeInCard>
+            </ScrollFadeInCard>
           </div>
         </section>
         </LazySection>
