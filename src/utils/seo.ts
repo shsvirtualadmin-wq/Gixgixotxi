@@ -12,7 +12,7 @@ export const OG_IMAGE_URL = 'https://boardly.cfd/logo.png';
 
 export const DEFAULT_PAGE_META: Record<string, PageMetaConfig> = {
   intro: {
-    title: 'Boardly — MCQ Practice for FSC Matric & Post FSC Students | SHS Virtual Academy',
+    title: 'Boardly — MCQ Practice for FSC & Matric',
     description:
       'Boardly by SHS Virtual Academy provides MCQ practice and test prep for FSC Matric and Post FSC students. Visit shsvirtualacademy.pro to learn more.',
   },
@@ -32,7 +32,7 @@ export const DEFAULT_PAGE_META: Record<string, PageMetaConfig> = {
       'Choose your FBISE class level (Class 9–12) for chapter-wise MCQ practice and board exam test prep on Boardly.',
   },
   group: {
-    title: 'Subject Groups & Streams — Boardly by SHS Virtual Academy',
+    title: 'Subject Groups — Boardly by SHS Virtual Academy',
     description:
       'Select Pre-Medical, Pre-Engineering, Computer Science (ICS), or General Science study groups for targeted MCQ practice on Boardly.',
   },
@@ -52,12 +52,12 @@ export const DEFAULT_PAGE_META: Record<string, PageMetaConfig> = {
       'Practice chapter-wise SLO MCQs with instant step-by-step AI explanations on Boardly by SHS Virtual Academy.',
   },
   test: {
-    title: 'Interactive Test Simulation — Boardly by SHS Virtual Academy',
+    title: 'MCQ Test Simulation — Boardly by SHS Virtual Academy',
     description:
       'Take timed FSC, Matric, MDCAT & TCAT MCQ practice tests on Boardly with instant scoring and detailed answer explanations.',
   },
   results: {
-    title: 'Test Analytics & Score Report — Boardly by SHS Virtual Academy',
+    title: 'Test Score & Analytics — Boardly',
     description:
       'Review your test analytics, chapter breakdown, accuracy rates, and AI step-by-step explanations on Boardly by SHS Virtual Academy.',
   },
@@ -67,12 +67,12 @@ export const DEFAULT_PAGE_META: Record<string, PageMetaConfig> = {
       'Access the Boardly student portal by SHS Virtual Academy to resume MCQ practice tests and track your academic progress.',
   },
   guided_wizard: {
-    title: 'Configure Practice Test — Boardly by SHS Virtual Academy',
+    title: 'Configure Practice Test — Boardly',
     description:
       'Customize test parameters, chapter selection, question count, and time limits for targeted board exam prep on Boardly.',
   },
   payment_required: {
-    title: 'Membership Activation — Boardly by SHS Virtual Academy',
+    title: 'Membership Activation — Boardly',
     description:
       'Activate your Boardly Pro membership by SHS Virtual Academy for unlimited MCQ practice tests, past papers, and AI assistance.',
   },
@@ -103,7 +103,7 @@ function setMetaTag(attrName: 'property' | 'name', attrValue: string, content: s
 export function setPageMeta(description: string, title?: string, canonicalHref?: string): void {
   if (typeof document === 'undefined') return;
 
-  const effectiveTitle = title || DEFAULT_PAGE_META.intro.title || 'Boardly — Official Portal of SHS Virtual Academy';
+  const effectiveTitle = title || DEFAULT_PAGE_META.intro.title || 'Boardly — MCQ Practice for FSC & Matric';
 
   // Standard document title
   document.title = effectiveTitle;
