@@ -256,7 +256,7 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = React.memo(({
     <div className="w-full max-w-md mx-auto py-6 px-2 text-white animate-fadeIn">
       {/* Header Branding */}
       <div className="flex flex-col items-center text-center space-y-2 mb-6">
-        <div className="w-14 h-14 bg-[#0A0A0A] border-2 border-[#F2B90C] rounded-2xl flex items-center justify-center shadow-lg mb-1 overflow-hidden p-1">
+        <div className="w-14 h-14 bg-[#0A0A0A] border-2 border-[#1E5AFF] rounded-2xl flex items-center justify-center shadow-lg mb-1 overflow-hidden p-1">
           <img
             src={logoUrl || "https://i.ibb.co/ymPFp2Wb/Chat-Box-1256234838.jpg"}
             alt="Boardly Logo"
@@ -269,11 +269,11 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = React.memo(({
           />
         </div>
 
-        <h1 className="font-['Space_Grotesk'] font-black text-xl sm:text-2xl tracking-tight text-black leading-tight">
-          Boardly Student Portal — <span className="text-[#F2B90C]">SHS Virtual Academy</span>
+        <h1 className="font-['Space_Grotesk'] font-black text-xl sm:text-2xl tracking-tight text-[#1E5AFF] leading-tight">
+          Boardly Student Portal — <span>SHS Virtual Academy</span>
         </h1>
 
-        <p className="text-[10px] sm:text-[11px] font-extrabold tracking-[0.2em] text-[#F2B90C]/90 uppercase">
+        <p className="text-[10px] sm:text-[11px] font-extrabold tracking-[0.2em] text-[#1E5AFF]/90 uppercase">
           LEARN &middot; GROW &middot; ACHIEVE
         </p>
       </div>
