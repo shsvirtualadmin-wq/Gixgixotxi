@@ -24,7 +24,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-400',
     borderColor: 'border-blue-500/30',
     badgeInitials: 'NUST',
-    logoUrl: '/logos/academic/nust.png',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nust-logo-png_seeklogo-234117.png',
     description: 'ECAT & NET Entry Test prep for Engineering, CS & Applied Sciences.',
   },
   fast: {
@@ -36,7 +36,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-cyan-400',
     borderColor: 'border-cyan-500/30',
     badgeInitials: 'FAST',
-    logoUrl: '/logos/academic/fast.png',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Fast-University-Logo.png',
     description: 'Top CS & Software Engineering entry test specialization.',
   },
   giki: {
@@ -48,7 +48,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-300',
     borderColor: 'border-blue-400/30',
     badgeInitials: 'GIKI',
-    logoUrl: '/logos/academic/giki.png',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/cropped-giki-logo-updated.png',
     description: 'High-level engineering & AI technology entrance exam.',
   },
   ned: {
@@ -120,7 +120,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-lime-300',
     borderColor: 'border-lime-400/30',
     badgeInitials: 'NUMS',
-    logoUrl: '/logos/academic/nums.png',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nums-logo.png',
     description: 'Army Medical College & NUMS affiliated admissions.',
   },
   kmu: {
@@ -156,7 +156,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-emerald-400',
     borderColor: 'border-emerald-500/30',
     badgeInitials: 'BOARDS',
-    logoUrl: '/logos/academic/fbise.png',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/unnamed.png',
     description: 'Board Examinations & Curriculum Islamabad & Nationwide.',
   },
   pmdc: {
@@ -168,7 +168,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-400',
     borderColor: 'border-blue-500/30',
     badgeInitials: 'PMDC',
-    logoUrl: '/logos/academic/pmdc.png',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/PMDC%20Logo-Green.png',
     description: 'Official PMDC MDCAT medical entry test authority.',
   },
   uet: {
@@ -180,7 +180,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-cyan-400',
     borderColor: 'border-cyan-500/30',
     badgeInitials: 'UET',
-    logoUrl: '/logos/academic/uet-taxila.png',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png',
     description: 'Official UET Taxila TCAT engineering entry test authority.',
   },
   apsacs: {
@@ -192,7 +192,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-400',
     borderColor: 'border-blue-400/30',
     badgeInitials: 'APS',
-    logoUrl: '/logos/academic/aps.png',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images.jpeg',
     description: 'Federal Board SSC & HSSC excellence network.',
   },
   fgc: {
@@ -204,7 +204,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-teal-200',
     borderColor: 'border-teal-400/30',
     badgeInitials: 'FGC',
-    logoUrl: '/logos/academic/fgc.png',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/444.jpg',
     description: 'Federal Government Institutions across Pakistan.',
   },
   opf: {
@@ -228,7 +228,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-300',
     borderColor: 'border-blue-400/30',
     badgeInitials: 'KIPS',
-    logoUrl: '/logos/academic/kips.png',
+    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images.png',
     description: 'Leading entry test preparation academies in Pakistan.',
   },
   pgc: {

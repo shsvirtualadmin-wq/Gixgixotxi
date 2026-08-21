@@ -329,13 +329,13 @@ const TRUSTED_INSTITUTIONS_MARQUEE: TrustedInstitution[] = [
 ];
 
 const CarouselLogoItem: React.FC<{ inst: TrustedInstitution }> = ({ inst }) => {
-  const [currentSrc, setCurrentSrc] = useState<string>(inst.localLogoUrl);
+  const [currentSrc, setCurrentSrc] = useState<string>(inst.remoteLogoUrl || inst.localLogoUrl);
   const [hasFailed, setHasFailed] = useState(false);
 
   const handleError = () => {
-    if (currentSrc === inst.localLogoUrl && inst.remoteLogoUrl) {
-      // Try remote fallback if local is not available
-      setCurrentSrc(inst.remoteLogoUrl);
+    if (currentSrc === inst.remoteLogoUrl && inst.localLogoUrl) {
+      // Try local fallback if remote is not available
+      setCurrentSrc(inst.localLogoUrl);
     } else {
       setHasFailed(true);
     }
@@ -898,7 +898,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="w-12 h-12 rounded-xl bg-emerald-500/10 p-1 flex items-center justify-center border border-emerald-500/30 overflow-hidden shrink-0 shadow-xs">
-                      <CardLogoImage src="/logos/fbise.svg" alt="Board Exams Official Logo" fallbackText="BOARDS" bgClass="bg-emerald-600" textClass="text-white" />
+                      <CardLogoImage src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/unnamed.png" alt="Board Exams Official Logo" fallbackText="BOARDS" bgClass="bg-emerald-600" textClass="text-white" />
                     </div>
                     <span className="bg-[#1E5AFF]/15 text-[#0A1330]  text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
                       Class 9 – 12
@@ -946,7 +946,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="w-12 h-12 rounded-xl bg-rose-500/10 p-1 flex items-center justify-center border border-rose-500/30 overflow-hidden shrink-0 shadow-xs">
-                      <CardLogoImage src="/logos/pmdc.svg" alt="PMDC MDCAT Official Logo" fallbackText="PMDC" bgClass="bg-rose-700" textClass="text-white" />
+                      <CardLogoImage src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/PMDC%20Logo-Green.png" alt="PMDC MDCAT Official Logo" fallbackText="PMDC" bgClass="bg-rose-700" textClass="text-white" />
                     </div>
                     <span className="bg-rose-500/15 text-rose-700  text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
                       Post-FSc Entrance
@@ -994,7 +994,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
               <div className="space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="w-12 h-12 rounded-xl bg-cyan-500/10 p-1 flex items-center justify-center border border-cyan-500/30 overflow-hidden shrink-0 shadow-xs">
-                    <CardLogoImage src="/logos/uet.svg" alt="UET Taxila TCAT Official Logo" fallbackText="UET" bgClass="bg-sky-900" textClass="text-cyan-300" />
+                    <CardLogoImage src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png" alt="UET Taxila TCAT Official Logo" fallbackText="UET" bgClass="bg-sky-900" textClass="text-cyan-300" />
                   </div>
                   <span className="bg-cyan-500/15 text-cyan-700  text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
                     Post-FSc Engineering
