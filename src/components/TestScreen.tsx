@@ -26,6 +26,7 @@ import { MathText } from './MathText';
 import { checkAndRecordPdfDownload } from '../lib/pdfLimit';
 import { isUserProOrPaid } from '../lib/supabase';
 import { PdfRestrictionModal } from './PdfRestrictionModal';
+import { LeaveConfirmationModal } from './LeaveConfirmationModal';
 
 interface TestScreenProps {
   questions: Question[];
@@ -72,6 +73,7 @@ export const TestScreen: React.FC<TestScreenProps> = React.memo(({
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [showExitConfirmModal, setShowExitConfirmModal] = useState<boolean>(false);
   const [restrictionInfo, setRestrictionInfo] = useState<{
     reason: string;
     message?: string;
@@ -421,9 +423,7 @@ export const TestScreen: React.FC<TestScreenProps> = React.memo(({
               {onExitTest && (
                 <button
                   onClick={() => {
-                    if (window.confirm('Exiting will count this test as a used attempt — are you sure you want to exit and return to the dashboard?')) {
-                      onExitTest();
-                    }
+                    setShowExitConfirmModal(true);
                   }}
                   className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-1.5 rounded-full bg-rose-500/10 text-rose-600  border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all cursor-pointer mr-1 shadow-xs"
                   title="Exit Test & Return to Dashboard"
@@ -814,9 +814,7 @@ export const TestScreen: React.FC<TestScreenProps> = React.memo(({
                 <button
                   onClick={() => {
                     setShowNavGrid(false);
-                    if (window.confirm('Exiting will count this test as a used attempt — are you sure you want to exit and return to the dashboard?')) {
-                      onExitTest();
-                    }
+                    setShowExitConfirmModal(true);
                   }}
                   className="flex-1 bg-rose-500/10 hover:bg-rose-500 text-rose-600 hover:text-white font-bold text-xs py-3 rounded-full cursor-pointer transition-all border border-rose-500/20"
                 >
@@ -826,6 +824,23 @@ export const TestScreen: React.FC<TestScreenProps> = React.memo(({
             </div>
           </div>
         </div>
+      )}
+
+      {showExitConfirmModal && (
+        <LeaveConfirmationModal
+          isOpen={showExitConfirmModal}
+          title="Exit Test?"
+          message="Exiting will count this test as a used attempt and your current test progress will be lost. Are you sure you want to exit and return to the dashboard?"
+          stayLabel="Stay"
+          leaveLabel="Leave Anyway"
+          onStay={() => setShowExitConfirmModal(false)}
+          onLeaveAnyway={() => {
+            setShowExitConfirmModal(false);
+            if (onExitTest) {
+              onExitTest();
+            }
+          }}
+        />
       )}
 
       {restrictionInfo && (

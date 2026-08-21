@@ -38,6 +38,7 @@ import { SiteSettingsProvider } from './context/SiteSettingsContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ModalProvider, useModals } from './context/ModalContext';
 import { GlobalModals } from './components/GlobalModals';
+import { LeaveConfirmationModal } from './components/LeaveConfirmationModal';
 import { PLAN_OPTIONS, type PlanId } from './components/PlanSelectionScreen';
 import { getPricingTrackFromProfile, type PricingTrack, type BillingCycle } from './components/PricingPage';
 import type { SetupWizardData } from './components/GuidedSetupWizard';
@@ -59,7 +60,7 @@ const PricingPage = lazyWithRetry(() => import('./components/PricingPage').then(
 
 import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
-import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw } from 'lucide-react';
+import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
 
 type ScreenType =
@@ -461,6 +462,14 @@ export function App() {
   const mcqAbortControllerRef = useRef<AbortController | null>(null);
   const bgMcqAbortControllerRef = useRef<AbortController | null>(null);
   const mcqRequestIdRef = useRef<number>(0);
+  const [leaveModalConfig, setLeaveModalConfig] = useState<{
+    isOpen: boolean;
+    title?: string;
+    message?: string;
+    stayLabel?: string;
+    leaveLabel?: string;
+    onConfirm: () => void;
+  } | null>(null);
   const {
     showCommunityModal,
     showHistoryModal,
@@ -814,6 +823,7 @@ export function App() {
   const isAdminRef = useRef(isAdmin);
   const authBackScreenRef = useRef<ScreenType>('intro');
   const isExitingTestRef = useRef(false);
+  const isGeneratingRef = useRef(false);
 
   const [nextScreenAfterAuth, setNextScreenAfterAuth] = useState<ScreenType | null>(null);
   const [authBackScreen, setAuthBackScreen] = useState<ScreenType>('intro');
@@ -965,6 +975,7 @@ export function App() {
     isRegisteredStudentRef.current = isRegisteredStudent;
     isAdminRef.current = isAdmin;
     authBackScreenRef.current = authBackScreen;
+    isGeneratingRef.current = isGenerating;
   }, [
     screen,
     selectedClass,
@@ -978,6 +989,7 @@ export function App() {
     isRegisteredStudent,
     isAdmin,
     authBackScreen,
+    isGenerating,
   ]);
 
   const refreshUserProfile = async (uid?: string, email?: string) => {
@@ -1205,20 +1217,47 @@ export function App() {
       isNavigatingFromPopstateRef.current = true;
       const state = e.state;
 
-      // 1. If currently taking active test, confirm before leaving test
+      // 1. If currently generating MCQs, confirm before leaving
+      if (isGeneratingRef.current) {
+        window.history.pushState(
+          { screen: screenRef.current, selectedClass: selectedClassRef.current, selectedGroup: selectedGroupRef.current, selectedSubject: selectedSubjectRef.current },
+          '',
+          buildUrl(screenRef.current, null, selectedClassRef.current, selectedGroupRef.current, selectedSubjectRef.current)
+        );
+        isNavigatingFromPopstateRef.current = false;
+        setLeaveModalConfig({
+          isOpen: true,
+          title: 'Leave this page?',
+          message: 'Question generation is still in progress and will be lost.',
+          stayLabel: 'Stay',
+          leaveLabel: 'Leave Anyway',
+          onConfirm: () => {
+            handleCancelGeneration();
+            handleGlobalBackInternal();
+          },
+        });
+        return;
+      }
+
+      // 2. If currently taking active test, confirm before leaving test
       if (screenRef.current === 'test') {
-        const confirmLeave = window.confirm('Are you sure you want to exit this test? Progress will be lost.');
-        if (!confirmLeave) {
-          window.history.pushState(
-            { screen: 'test', selectedClass: selectedClassRef.current, selectedGroup: selectedGroupRef.current, selectedSubject: selectedSubjectRef.current },
-            '',
-            buildUrl('test', null, selectedClassRef.current, selectedGroupRef.current, selectedSubjectRef.current)
-          );
-          isNavigatingFromPopstateRef.current = false;
-          return;
-        } else {
-          handleExitTestSession();
-        }
+        window.history.pushState(
+          { screen: 'test', selectedClass: selectedClassRef.current, selectedGroup: selectedGroupRef.current, selectedSubject: selectedSubjectRef.current },
+          '',
+          buildUrl('test', null, selectedClassRef.current, selectedGroupRef.current, selectedSubjectRef.current)
+        );
+        isNavigatingFromPopstateRef.current = false;
+        setLeaveModalConfig({
+          isOpen: true,
+          title: 'Exit Test?',
+          message: 'Exiting will count this test as a used attempt and your current progress will be lost. Are you sure you want to exit and return to the dashboard?',
+          stayLabel: 'Stay',
+          leaveLabel: 'Leave Anyway',
+          onConfirm: () => {
+            handleExitTestSession();
+          },
+        });
+        return;
       }
 
       // 2. Close overlay modals first
@@ -1770,14 +1809,51 @@ export function App() {
     }).catch(() => {});
   }, [activeTestSessionId, currentUser]);
 
-  const confirmExitTestIfActive = (): boolean => {
-    if (screen === 'test') {
-      const ok = window.confirm('Exiting will count this test as a used attempt — are you sure you want to exit and return to the dashboard?');
-      if (ok) {
-        handleExitTestSession();
-        return false;
-      }
+  const handleCancelGeneration = useCallback(() => {
+    if (mcqAbortControllerRef.current) {
+      mcqAbortControllerRef.current.abort();
+      mcqAbortControllerRef.current = null;
+    }
+    if (bgMcqAbortControllerRef.current) {
+      bgMcqAbortControllerRef.current.abort();
+      bgMcqAbortControllerRef.current = null;
+    }
+    setIsGenerating(false);
+    setPendingTestParams(null);
+    setLeaveModalConfig(null);
+  }, []);
+
+  const confirmExitTestIfActive = (proceedAction?: () => void): boolean => {
+    if (isGeneratingRef.current) {
+      setLeaveModalConfig({
+        isOpen: true,
+        title: 'Leave this page?',
+        message: 'Question generation is still in progress and will be lost.',
+        stayLabel: 'Stay',
+        leaveLabel: 'Leave Anyway',
+        onConfirm: () => {
+          handleCancelGeneration();
+          if (proceedAction) proceedAction();
+        },
+      });
       return false;
+    }
+    if (screen === 'test') {
+      setLeaveModalConfig({
+        isOpen: true,
+        title: 'Exit Test?',
+        message: 'Exiting will count this test as a used attempt and your current progress will be lost. Are you sure you want to exit and return to the dashboard?',
+        stayLabel: 'Stay',
+        leaveLabel: 'Leave Anyway',
+        onConfirm: () => {
+          handleExitTestSession();
+          if (proceedAction) proceedAction();
+        },
+      });
+      return false;
+    }
+    if (proceedAction) {
+      proceedAction();
     }
     return true;
   };
@@ -1806,9 +1882,16 @@ export function App() {
         setScreen(authBackScreenRef.current || 'grades_flow');
         break;
       case 'test':
-        if (window.confirm('Exiting will count this test as a used attempt — are you sure you want to exit and return to the dashboard?')) {
-          handleExitTestSession();
-        }
+        setLeaveModalConfig({
+          isOpen: true,
+          title: 'Exit Test?',
+          message: 'Exiting will count this test as a used attempt and your current progress will be lost. Are you sure you want to exit and return to the dashboard?',
+          stayLabel: 'Stay',
+          leaveLabel: 'Leave Anyway',
+          onConfirm: () => {
+            handleExitTestSession();
+          },
+        });
         break;
       case 'results':
         setScreen(isRegistered ? 'dashboard' : 'intro');
@@ -1826,6 +1909,35 @@ export function App() {
     if (showPrintModal) { closePrintModal(); return; }
     if (showHistoryModal) { closeHistoryModal(); return; }
     if (showCommunityModal) { closeCommunityModal(); return; }
+
+    if (isGeneratingRef.current) {
+      setLeaveModalConfig({
+        isOpen: true,
+        title: 'Leave this page?',
+        message: 'Question generation is still in progress and will be lost.',
+        stayLabel: 'Stay',
+        leaveLabel: 'Leave Anyway',
+        onConfirm: () => {
+          handleCancelGeneration();
+          handleGlobalBackInternal();
+        },
+      });
+      return;
+    }
+
+    if (screen === 'test') {
+      setLeaveModalConfig({
+        isOpen: true,
+        title: 'Exit Test?',
+        message: 'Exiting will count this test as a used attempt and your current progress will be lost. Are you sure you want to exit and return to the dashboard?',
+        stayLabel: 'Stay',
+        leaveLabel: 'Leave Anyway',
+        onConfirm: () => {
+          handleExitTestSession();
+        },
+      });
+      return;
+    }
 
     if (window.history.state && !window.history.state.isRoot) {
       window.history.back();
@@ -2645,13 +2757,14 @@ export function App() {
         onTrackClick={() => openLmsModal()}
         onGoBack={handleGlobalBack}
         onGoHome={() => {
-          if (!confirmExitTestIfActive()) return;
-          if (currentUser) {
-            setScreen('dashboard');
-          } else {
-            setScreen('intro');
-          }
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          confirmExitTestIfActive(() => {
+            if (currentUser) {
+              setScreen('dashboard');
+            } else {
+              setScreen('intro');
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
         }}
         canGoBack={screen !== 'intro' && screen !== 'dashboard' && screen !== 'admin'}
         isIntroScreen={screen === 'intro' && !currentUser}
@@ -2659,62 +2772,70 @@ export function App() {
         onOpenHistory={() => openHistoryModal()}
         onOpenLmsPortal={() => openLmsModal()}
         onStartFree={() => {
-          if (!confirmExitTestIfActive()) return;
-          setScreen('grades_flow');
+          confirmExitTestIfActive(() => {
+            setScreen('grades_flow');
+          });
         }}
         onSignOut={async () => {
-          if (!confirmExitTestIfActive()) return;
-          await supabase.auth.signOut();
-          clearProfileCache();
-          try {
-            localStorage.removeItem('boardly_cached_user');
-            localStorage.removeItem('boardly_cached_profile');
-          } catch {}
-          setCurrentUser(null);
-          setUserProfile(null);
-          setScreen('intro');
+          confirmExitTestIfActive(async () => {
+            await supabase.auth.signOut();
+            clearProfileCache();
+            try {
+              localStorage.removeItem('boardly_cached_user');
+              localStorage.removeItem('boardly_cached_profile');
+            } catch {}
+            setCurrentUser(null);
+            setUserProfile(null);
+            setScreen('intro');
+          });
         }}
         onNavigateDashboard={() => {
-          if (!confirmExitTestIfActive()) return;
-          setScreen('dashboard');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          confirmExitTestIfActive(() => {
+            setScreen('dashboard');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
         }}
         onNavigateSubjects={() => {
-          if (!confirmExitTestIfActive()) return;
-          setScreen('subjects');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          confirmExitTestIfActive(() => {
+            setScreen('subjects');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
         }}
         onNavigateStats={() => {
-          if (!confirmExitTestIfActive()) return;
-          setScreen('dashboard');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          confirmExitTestIfActive(() => {
+            setScreen('dashboard');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
         }}
         onNavigatePractice={() => {
-          if (!confirmExitTestIfActive()) return;
-          setScreen('subjects');
+          confirmExitTestIfActive(() => {
+            setScreen('subjects');
+          });
         }}
         onOpenStudyBuddy={() => openStudyBuddy()}
         onNavigateSubscription={() => {
-          if (!confirmExitTestIfActive()) return;
-          const userTrack = getPricingTrackFromProfile(userProfile, selectedClass ? String(selectedClass) : undefined, selectedGroup);
-          setSelectedPricingTrack(userTrack);
-          try {
-            const newUrl = new URL(window.location.href);
-            newUrl.searchParams.set('screen', 'pricing');
-            newUrl.searchParams.set('track', userTrack);
-            window.history.pushState({}, '', newUrl.toString());
-          } catch {}
-          setScreen('pricing');
-          window.scrollTo({ top: 0, behavior: 'smooth' });
+          confirmExitTestIfActive(() => {
+            const userTrack = getPricingTrackFromProfile(userProfile, selectedClass ? String(selectedClass) : undefined, selectedGroup);
+            setSelectedPricingTrack(userTrack);
+            try {
+              const newUrl = new URL(window.location.href);
+              newUrl.searchParams.set('screen', 'pricing');
+              newUrl.searchParams.set('track', userTrack);
+              window.history.pushState({}, '', newUrl.toString());
+            } catch {}
+            setScreen('pricing');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
         }}
         onNavigateAdmin={(tab) => {
-          if (!confirmExitTestIfActive()) return;
-          if (tab) {
-            setAdminTab(tab);
-          } else {
-            setAdminTab('students');
-          }
-          setScreen('admin');
+          confirmExitTestIfActive(() => {
+            if (tab) {
+              setAdminTab(tab);
+            } else {
+              setAdminTab('students');
+            }
+            setScreen('admin');
+          });
         }}
       />
       
@@ -3343,8 +3464,49 @@ export function App() {
             <div className="w-full bg-slate-100  rounded-full h-1.5 overflow-hidden mt-1">
               <div className="bg-[#1E5AFF] h-full animate-pulse w-full" />
             </div>
+
+            {/* Cancel / Exit Button */}
+            <button
+              type="button"
+              id="cancel-generation-btn"
+              onClick={() => {
+                setLeaveModalConfig({
+                  isOpen: true,
+                  title: 'Leave this page?',
+                  message: 'Question generation is still in progress and will be lost.',
+                  stayLabel: 'Stay',
+                  leaveLabel: 'Leave Anyway',
+                  onConfirm: () => {
+                    handleCancelGeneration();
+                  },
+                });
+              }}
+              className="mt-2 text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 px-4 py-2 rounded-full transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Cancel & Exit</span>
+            </button>
           </div>
         </div>
+      )}
+
+      {/* In-App Leave Confirmation Modal */}
+      {leaveModalConfig?.isOpen && (
+        <LeaveConfirmationModal
+          isOpen={leaveModalConfig.isOpen}
+          title={leaveModalConfig.title || 'Leave this page?'}
+          message={leaveModalConfig.message || 'Question generation is still in progress and will be lost.'}
+          stayLabel={leaveModalConfig.stayLabel || 'Stay'}
+          leaveLabel={leaveModalConfig.leaveLabel || 'Leave Anyway'}
+          onStay={() => setLeaveModalConfig(null)}
+          onLeaveAnyway={() => {
+            const confirmFn = leaveModalConfig.onConfirm;
+            setLeaveModalConfig(null);
+            if (confirmFn) {
+              confirmFn();
+            }
+          }}
+        />
       )}
 
       {/* In-App MCQ Generation Error Modal */}
