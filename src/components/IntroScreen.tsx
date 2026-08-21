@@ -204,29 +204,165 @@ const TypewriterChatPreview: React.FC<{ fullText: string }> = React.memo(({ full
   );
 });
 
-const CarouselLogoItem: React.FC<{ inst: any }> = ({ inst }) => {
-  const [imgFailed, setImgFailed] = useState(false);
+interface TrustedInstitution {
+  id: string;
+  name: string;
+  shortName: string;
+  localLogoUrl: string;
+  remoteLogoUrl: string;
+  fallbackInitials: string;
+}
+
+const TRUSTED_INSTITUTIONS_MARQUEE: TrustedInstitution[] = [
+  {
+    id: 'fbise',
+    name: 'FBISE',
+    shortName: 'FBISE',
+    localLogoUrl: '/logos/academic/fbise.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/unnamed.png',
+    fallbackInitials: 'FBISE',
+  },
+  {
+    id: 'uet-peshawar',
+    name: 'UET Peshawar',
+    shortName: 'UET Peshawar',
+    localLogoUrl: '/logos/academic/uet-peshawar.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/uet-02.png',
+    fallbackInitials: 'UETP',
+  },
+  {
+    id: 'uet-taxila',
+    name: 'UET Taxila',
+    shortName: 'UET Taxila',
+    localLogoUrl: '/logos/academic/uet-taxila.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png',
+    fallbackInitials: 'UETT',
+  },
+  {
+    id: 'nums',
+    name: 'NUMS',
+    shortName: 'NUMS',
+    localLogoUrl: '/logos/academic/nums.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nums-logo.png',
+    fallbackInitials: 'NUMS',
+  },
+  {
+    id: 'nust',
+    name: 'NUST',
+    shortName: 'NUST',
+    localLogoUrl: '/logos/academic/nust.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nust-logo-png_seeklogo-234117.png',
+    fallbackInitials: 'NUST',
+  },
+  {
+    id: 'aps',
+    name: 'Army Public School (APS)',
+    shortName: 'APS (Army Public School)',
+    localLogoUrl: '/logos/academic/aps.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images.jpeg',
+    fallbackInitials: 'APS',
+  },
+  {
+    id: 'qau',
+    name: 'Quaid-i-Azam University (QAU)',
+    shortName: 'QAU (Quaid-i-Azam)',
+    localLogoUrl: '/logos/academic/qau.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images%20(2).jpeg',
+    fallbackInitials: 'QAU',
+  },
+  {
+    id: 'fazaia',
+    name: 'Fazaia',
+    shortName: 'Fazaia',
+    localLogoUrl: '/logos/academic/fazaia.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images%20(1).jpeg',
+    fallbackInitials: 'PAF',
+  },
+  {
+    id: 'giki',
+    name: 'GIKI',
+    shortName: 'GIKI',
+    localLogoUrl: '/logos/academic/giki.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/cropped-giki-logo-updated.png',
+    fallbackInitials: 'GIKI',
+  },
+  {
+    id: 'pmdc',
+    name: 'PMDC (MDCAT)',
+    shortName: 'PMDC (MDCAT)',
+    localLogoUrl: '/logos/academic/pmdc.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/PMDC%20Logo-Green.png',
+    fallbackInitials: 'PMDC',
+  },
+  {
+    id: 'fast',
+    name: 'FAST University',
+    shortName: 'FAST University',
+    localLogoUrl: '/logos/academic/fast.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Fast-University-Logo.png',
+    fallbackInitials: 'FAST',
+  },
+  {
+    id: 'fgc',
+    name: 'FG College',
+    shortName: 'FG College',
+    localLogoUrl: '/logos/academic/fgc.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/444.jpg',
+    fallbackInitials: 'FGC',
+  },
+  {
+    id: 'stem',
+    name: 'STEM Education',
+    shortName: 'STEM Education',
+    localLogoUrl: '/logos/academic/stem.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images%20(1).png',
+    fallbackInitials: 'STEM',
+  },
+  {
+    id: 'kips',
+    name: 'KIPS',
+    shortName: 'KIPS',
+    localLogoUrl: '/logos/academic/kips.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images.png',
+    fallbackInitials: 'KIPS',
+  },
+];
+
+const CarouselLogoItem: React.FC<{ inst: TrustedInstitution }> = ({ inst }) => {
+  const [currentSrc, setCurrentSrc] = useState<string>(inst.localLogoUrl);
+  const [hasFailed, setHasFailed] = useState(false);
+
+  const handleError = () => {
+    if (currentSrc === inst.localLogoUrl && inst.remoteLogoUrl) {
+      // Try remote fallback if local is not available
+      setCurrentSrc(inst.remoteLogoUrl);
+    } else {
+      setHasFailed(true);
+    }
+  };
 
   return (
-    <div className="flex flex-col items-center justify-start shrink-0 w-28 sm:w-32 md:w-36 group/item cursor-pointer transition-transform duration-300 hover:-translate-y-1.5">
-      <div className="w-24 h-24 sm:w-28 sm:h-28 md:w-32 md:h-32 rounded-full bg-white  border-2 border-slate-200/90  p-3.5 sm:p-4 md:p-5 flex items-center justify-center shadow-md  group-hover/item:border-[#1E5AFF] group-hover/item:shadow-xl group-hover/item:shadow-[#1E5AFF]/20 group-hover/item:scale-105 transition-all duration-300 overflow-hidden relative">
-        {inst.logoUrl && !imgFailed ? (
+    <div className="flex flex-col items-center justify-start shrink-0 w-28 sm:w-32 md:w-36 group/item cursor-pointer transition-transform duration-300 hover:-translate-y-1.5 select-none">
+      <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-full bg-white border border-slate-200/90 shadow-sm p-3 sm:p-3.5 md:p-4 flex items-center justify-center overflow-hidden transition-all duration-300 group-hover/item:border-[#1E5AFF] group-hover/item:shadow-md group-hover/item:shadow-[#1E5AFF]/10 group-hover/item:scale-105 relative">
+        {!hasFailed ? (
           <img
-            src={inst.logoUrl}
+            src={currentSrc}
             alt={`${inst.name} Logo`}
-            className="w-full h-full object-contain filter drop-shadow-xs"
+            className="w-full h-full object-contain max-w-full max-h-full block filter drop-shadow-xs transition-transform duration-300"
+            style={{ objectFit: 'contain' }}
+            decoding="sync"
             referrerPolicy="no-referrer"
-            onError={() => setImgFailed(true)}
+            onError={handleError}
           />
         ) : (
-          <div className={`w-full h-full rounded-full bg-gradient-to-br ${inst.bgGradient || 'from-slate-800 to-slate-900'} flex items-center justify-center border border-white/20 shadow-inner p-1`}>
-            <span className={`font-black text-xs sm:text-sm md:text-base ${inst.textColor || 'text-blue-400'} text-center`}>
-              {inst.badgeInitials || inst.shortName}
+          <div className="w-full h-full rounded-full bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center border border-slate-300/60 shadow-inner p-1">
+            <span className="font-extrabold text-xs sm:text-sm text-slate-800 text-center tracking-wider">
+              {inst.fallbackInitials || inst.shortName}
             </span>
           </div>
         )}
       </div>
-      <p className="mt-3 text-xs sm:text-sm font-extrabold text-center text-slate-800  group-hover/item:text-[#1E5AFF] transition-colors leading-tight line-clamp-2 px-1">
+      <p className="mt-2.5 sm:mt-3 text-xs sm:text-sm font-bold text-center text-slate-700 group-hover/item:text-[#1E5AFF] transition-colors leading-tight line-clamp-2 px-1 max-w-[120px] sm:max-w-[140px]">
         {inst.shortName || inst.name}
       </p>
     </div>
@@ -669,34 +805,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
             <div className="absolute right-0 top-0 bottom-0 w-12 sm:w-20 bg-gradient-to-l from-white/80  to-transparent z-10 pointer-events-none" />
 
             {/* Continuous Marquee Track */}
-            <div className="animate-continuous-scroll flex gap-6 sm:gap-10 items-start">
-              {[
-                INSTITUTIONS.apsacs,
-                INSTITUTIONS.fgc,
-                INSTITUTIONS.opf,
-                INSTITUTIONS.kips,
-                INSTITUTIONS.pgc,
-                INSTITUTIONS.nust,
-                INSTITUTIONS.fast,
-                INSTITUTIONS.uhs,
-                INSTITUTIONS.pmdc,
-                INSTITUTIONS.uet,
-                INSTITUTIONS.fbise,
-                INSTITUTIONS.szabmu,
-
-                INSTITUTIONS.apsacs,
-                INSTITUTIONS.fgc,
-                INSTITUTIONS.opf,
-                INSTITUTIONS.kips,
-                INSTITUTIONS.pgc,
-                INSTITUTIONS.nust,
-                INSTITUTIONS.fast,
-                INSTITUTIONS.uhs,
-                INSTITUTIONS.pmdc,
-                INSTITUTIONS.uet,
-                INSTITUTIONS.fbise,
-                INSTITUTIONS.szabmu,
-              ].filter(Boolean).map((inst, index) => (
+            <div className="animate-continuous-scroll flex gap-6 sm:gap-10 items-start will-change-transform">
+              {[...TRUSTED_INSTITUTIONS_MARQUEE, ...TRUSTED_INSTITUTIONS_MARQUEE].map((inst, index) => (
                 <CarouselLogoItem key={`${inst.id}-${index}`} inst={inst} />
               ))}
             </div>
