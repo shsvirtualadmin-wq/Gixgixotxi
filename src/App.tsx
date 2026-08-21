@@ -29,7 +29,11 @@ import { HeaderLogo } from './components/HeaderLogo';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { IntroScreen } from './components/IntroScreen';
 import { StudentHomeDashboard } from './components/StudentHomeDashboard';
+import { TestScreen } from './components/TestScreen';
+import { ResultsScreen } from './components/ResultsScreen';
 import { BrandedLoadingSpinner } from './components/BrandedLoadingSpinner';
+import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
+import { lazyWithRetry } from './lib/lazyWithRetry';
 import { SiteSettingsProvider } from './context/SiteSettingsContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ModalProvider, useModals } from './context/ModalContext';
@@ -39,21 +43,19 @@ import { getPricingTrackFromProfile, type PricingTrack, type BillingCycle } from
 import type { SetupWizardData } from './components/GuidedSetupWizard';
 import type { MCQContext } from './types';
 
-// Code-split heavy secondary screens to minimize initial JS bundle size
-const GradesFlowScreen = React.lazy(() => import('./components/GradesFlowScreen').then(m => ({ default: m.GradesFlowScreen })));
-const GuidedSetupWizard = React.lazy(() => import('./components/GuidedSetupWizard').then(m => ({ default: m.GuidedSetupWizard })));
-const StudentRegistrationFlow = React.lazy(() => import('./components/StudentRegistrationFlow').then(m => ({ default: m.StudentRegistrationFlow })));
-const ClassGroupScreen = React.lazy(() => import('./components/ClassGroupScreen').then(m => ({ default: m.ClassGroupScreen })));
-const SubjectScreen = React.lazy(() => import('./components/SubjectScreen').then(m => ({ default: m.SubjectScreen })));
-const DurationScreen = React.lazy(() => import('./components/DurationScreen').then(m => ({ default: m.DurationScreen })));
-const TestScreen = React.lazy(() => import('./components/TestScreen').then(m => ({ default: m.TestScreen })));
-const ResultsScreen = React.lazy(() => import('./components/ResultsScreen').then(m => ({ default: m.ResultsScreen })));
-const LmsAuthScreen = React.lazy(() => import('./components/LmsAuthScreen').then(m => ({ default: m.LmsAuthScreen })));
-const AdminDashboardScreen = React.lazy(() => import('./components/AdminDashboardScreen').then(m => ({ default: m.AdminDashboardScreen })));
-const ClassStreamDashboard = React.lazy(() => import('./components/ClassStreamDashboard').then(m => ({ default: m.ClassStreamDashboard })));
-const PaymentRequiredScreen = React.lazy(() => import('./components/PaymentRequiredScreen').then(m => ({ default: m.PaymentRequiredScreen })));
-const PlanSelectionScreen = React.lazy(() => import('./components/PlanSelectionScreen').then(m => ({ default: m.PlanSelectionScreen })));
-const PricingPage = React.lazy(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })));
+// Code-split heavy secondary screens with retry and self-healing reload on chunk update
+const GradesFlowScreen = lazyWithRetry(() => import('./components/GradesFlowScreen').then(m => ({ default: m.GradesFlowScreen })), 'GradesFlow');
+const GuidedSetupWizard = lazyWithRetry(() => import('./components/GuidedSetupWizard').then(m => ({ default: m.GuidedSetupWizard })), 'GuidedSetup');
+const StudentRegistrationFlow = lazyWithRetry(() => import('./components/StudentRegistrationFlow').then(m => ({ default: m.StudentRegistrationFlow })), 'Registration');
+const ClassGroupScreen = lazyWithRetry(() => import('./components/ClassGroupScreen').then(m => ({ default: m.ClassGroupScreen })), 'ClassGroup');
+const SubjectScreen = lazyWithRetry(() => import('./components/SubjectScreen').then(m => ({ default: m.SubjectScreen })), 'Subject');
+const DurationScreen = lazyWithRetry(() => import('./components/DurationScreen').then(m => ({ default: m.DurationScreen })), 'Duration');
+const LmsAuthScreen = lazyWithRetry(() => import('./components/LmsAuthScreen').then(m => ({ default: m.LmsAuthScreen })), 'LmsAuth');
+const AdminDashboardScreen = lazyWithRetry(() => import('./components/AdminDashboardScreen').then(m => ({ default: m.AdminDashboardScreen })), 'AdminDashboard');
+const ClassStreamDashboard = lazyWithRetry(() => import('./components/ClassStreamDashboard').then(m => ({ default: m.ClassStreamDashboard })), 'ClassStream');
+const PaymentRequiredScreen = lazyWithRetry(() => import('./components/PaymentRequiredScreen').then(m => ({ default: m.PaymentRequiredScreen })), 'PaymentRequired');
+const PlanSelectionScreen = lazyWithRetry(() => import('./components/PlanSelectionScreen').then(m => ({ default: m.PlanSelectionScreen })), 'PlanSelection');
+const PricingPage = lazyWithRetry(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })), 'Pricing');
 
 import { supabase, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, User, StudentProfile } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -2614,13 +2616,14 @@ export function App() {
                 </button>
               </div>
             ) : (
-              <React.Suspense
-                fallback={
-                  <div className="w-full min-h-[50vh] flex flex-col items-center justify-center p-8 text-center animate-ios-spring">
-                    <BrandedLoadingSpinner size="lg" label="Loading Screen..." sublabel="Preparing module assets..." />
-                  </div>
-                }
-              >
+              <ChunkErrorBoundary>
+                <React.Suspense
+                  fallback={
+                    <div className="w-full min-h-[50vh] flex flex-col items-center justify-center p-8 text-center animate-ios-spring">
+                      <BrandedLoadingSpinner size="lg" label="Loading Screen..." sublabel="Preparing module assets..." />
+                    </div>
+                  }
+                >
                 {(screen === 'intro' || screen === 'dashboard' || screen === 'stats') && (
                   !currentUser ? (
                     <IntroScreen
@@ -3136,8 +3139,9 @@ export function App() {
                   )
                 )}
               </React.Suspense>
-            )}
-            </ErrorBoundary>
+            </ChunkErrorBoundary>
+          )}
+          </ErrorBoundary>
           </div>
         </div>
       </main>

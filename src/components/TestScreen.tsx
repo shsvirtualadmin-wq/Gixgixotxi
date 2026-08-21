@@ -445,6 +445,12 @@ export const TestScreen: React.FC<TestScreenProps> = React.memo(({
             </div>
 
             <div className="flex items-center gap-2">
+              {effectiveQuestions.length < totalQ && (
+                <span className="hidden md:inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-600 bg-blue-50 border border-blue-200/60 px-2.5 py-1 rounded-full animate-pulse" title="Syllabus-aligned questions generating in background">
+                  <Sparkles className="w-3 h-3 text-[#1E5AFF] shrink-0" />
+                  <span>Generating more questions ({effectiveQuestions.length}/{totalQ} ready)</span>
+                </span>
+              )}
               <span
                 className={`font-mono text-sm font-extrabold px-3.5 py-1 rounded-full border ${
                   timeLeftSeconds < 120

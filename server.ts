@@ -1614,8 +1614,31 @@ function validateAndFixQuestions(
     if (cleanedOptions.some((opt) => !opt || opt.trim().length === 0)) continue;
 
     const OPTION_PLACEHOLDER_REGEX = /^(option\s*[a-d1-4]|choice\s*[a-d1-4]|placeholder|sample\s*option|lorem\s*ipsum|tbd|todo)$/i;
-    if (cleanedOptions.some((opt) => OPTION_PLACEHOLDER_REGEX.test(opt.trim()))) {
-      console.warn(`[MCQ Validation] Rejected question with placeholder option text: "${qText}"`);
+    const isBoilerplateOption = (text: string): boolean => {
+      const lower = text.trim().toLowerCase();
+      if (lower.length < 2) return true;
+      if (OPTION_PLACEHOLDER_REGEX.test(lower)) return true;
+      const fillerPhrases = [
+        "primary rule of",
+        "primary law of",
+        "secondary principle of",
+        "secondary principle",
+        "standard rule of",
+        "primary fundamental principle",
+        "secondary empirical approximation",
+        "inverse derivative constant",
+        "unrelated systemic formula",
+        "general scientific method",
+        "concept 1",
+        "concept 2",
+        "concept 3",
+        "concept 4"
+      ];
+      return fillerPhrases.some(phrase => lower.includes(phrase));
+    };
+
+    if (cleanedOptions.some(isBoilerplateOption)) {
+      console.warn(`[MCQ Validation] Rejected question with filler/placeholder option text: "${qText}"`);
       continue;
     }
 
@@ -7649,8 +7672,37 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
+    
+    // Serve hashed assets with immutable long-term caching
+    app.use(
+      "/assets",
+      express.static(path.join(distPath, "assets"), {
+        maxAge: "1y",
+        immutable: true,
+        setHeaders: (res) => {
+          res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        },
+      })
+    );
+
+    // Serve other static files with validation
+    app.use(
+      express.static(distPath, {
+        setHeaders: (res, filePath) => {
+          if (filePath.endsWith("index.html")) {
+            res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+            res.setHeader("Pragma", "no-cache");
+            res.setHeader("Expires", "0");
+          }
+        },
+      })
+    );
+
+    // SPA fallback: Always serve index.html with no-cache headers
     app.get("*", (req, res) => {
+      res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");
+      res.setHeader("Pragma", "no-cache");
+      res.setHeader("Expires", "0");
       res.sendFile(path.join(distPath, "index.html"));
     });
   }

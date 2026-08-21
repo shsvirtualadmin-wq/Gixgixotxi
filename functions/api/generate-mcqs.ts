@@ -543,6 +543,29 @@ function validateAndFixQuestions(
   const QUESTION_PLACEHOLDER_REGEX = /\b(lorem ipsum|placeholder|insert question|sample question|example question|type question|test question|n\/a|tbd|todo)\b/i;
   const OPTION_PLACEHOLDER_REGEX = /^(option\s*[a-d1-4]|choice\s*[a-d1-4]|placeholder|sample\s*option|lorem\s*ipsum|tbd|todo)$/i;
 
+  const isBoilerplateOption = (text: string): boolean => {
+    const lower = text.trim().toLowerCase();
+    if (lower.length < 2) return true;
+    if (OPTION_PLACEHOLDER_REGEX.test(lower)) return true;
+    const fillerPhrases = [
+      "primary rule of",
+      "primary law of",
+      "secondary principle of",
+      "secondary principle",
+      "standard rule of",
+      "primary fundamental principle",
+      "secondary empirical approximation",
+      "inverse derivative constant",
+      "unrelated systemic formula",
+      "general scientific method",
+      "concept 1",
+      "concept 2",
+      "concept 3",
+      "concept 4"
+    ];
+    return fillerPhrases.some(phrase => lower.includes(phrase));
+  };
+
   for (let i = 0; i < rawQuestions.length; i++) {
     const item = rawQuestions[i];
     if (!item || typeof item !== "object") continue;
@@ -607,8 +630,8 @@ function validateAndFixQuestions(
     if (cleanedOptions.length !== 4) continue;
     if (cleanedOptions.some((opt) => !opt || opt.trim().length === 0)) continue;
 
-    // Reject questions with generic placeholder option text
-    if (cleanedOptions.some((opt) => OPTION_PLACEHOLDER_REGEX.test(opt.trim()))) continue;
+    // Reject questions with generic placeholder option text or boilerplate filler
+    if (cleanedOptions.some((opt) => isBoilerplateOption(opt))) continue;
 
     // Ensure options are 100% distinct (exactly 4 unique options in this question)
     const uniqueOpts = new Set(cleanedOptions.map((o) => o.toLowerCase()));
@@ -1016,35 +1039,23 @@ function generateSyllabusQuestions(
   };
 
   const keySubject = normalizeSubjectKey(subject);
-  const isUrduOrIslamiat = keySubject === "Urdu" || keySubject === "Islamiat";
   const pool = templates[keySubject] || [];
 
-  for (let i = 0; i < questionCount; i++) {
-    const template = pool[i % pool.length];
-    const isCustomFallback = i >= pool.length;
+  if (pool.length === 0) {
+    return [];
+  }
 
-    let fallbackQ = `[${subject}] Practice Question ${i + 1}: Select the correct core principle regarding ${topicLabel}.`;
-    let fallbackOpts = [
-      `Primary law of ${subject}`,
-      `Secondary principle of ${subject}`,
-      `Standard rule of ${topicLabel}`,
-      `None of the above`
-    ];
-    let fallbackExplain = `Option A is the verified correct answer according to the standard syllabus derivation for ${topicLabel}.`;
-
-    if (isUrduOrIslamiat) {
-      fallbackQ = `سوال نمبر ${i + 1}: ${subject} کے اہم اور بنیادی اصول کی نشاندہی کریں۔`;
-      fallbackOpts = ["پہلا درست اصول", "دوسرا اصول", "تیسرا اصول", "ان میں سے کوئی نہیں"];
-      fallbackExplain = "نصاب کی روشنی میں آپشن (الف) ہی درست ترین جواب ہے۔";
-    }
+  for (let i = 0; i < Math.min(questionCount, pool.length); i++) {
+    const template = pool[i];
+    if (!template) continue;
 
     questions.push({
-      id: `static-q-${i + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      q: !isCustomFallback && template ? template.q : fallbackQ,
-      options: !isCustomFallback && template ? template.options : fallbackOpts,
-      correct: !isCustomFallback && template ? template.correct : 0,
-      topic: customTopic || (!isCustomFallback && template?.q ? topicLabel : subject),
-      explain: !isCustomFallback && template ? template.explain : fallbackExplain,
+      id: `verified-q-${i + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      q: template.q,
+      options: template.options,
+      correct: template.correct,
+      topic: customTopic || topicLabel || subject,
+      explain: template.explain,
       difficulty
     });
   }
