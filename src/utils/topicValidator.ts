@@ -42,6 +42,13 @@ export const TOPIC_CONCEPT_MAP: Record<string, string[]> = {
   "organic chemistry": ["functional group", "homologous series", "isomerism", "alkane", "alkene", "alkyne", "haloalkane", "alcohol", "phenol", "ether", "aldehyde", "ketone", "carboxylic acid", "ester", "amine", "benzene", "aromatic", "sn1", "sn2", "electrophilic substitution", "nucleophilic addition"],
 
   // --- BIOLOGY ---
+  "the science of biology": ["biology", "living", "organism", "scientific method", "hypothesis", "deduction", "theory", "law", "experiment", "control group", "branches of biology", "zoology", "botany", "microbiology", "morphology", "anatomy", "histology", "physiology", "genetics", "embryology", "taxonomy", "paleontology", "environmental", "biotechnology", "levels of biological organization", "subatomic", "atom", "molecule", "organelle", "cell", "tissue", "organ", "organ system", "individual", "population", "community", "ecosystem", "biosphere"],
+  "fundamental concepts": ["biology", "living", "organism", "life", "cell", "scientific method", "hypothesis", "theory", "law", "experiment", "branches of biology", "levels of organization", "matter", "energy", "metabolism", "homeostasis", "reproduction", "adaptation", "evolution", "characteristics of life", "biomolecules", "classification", "prokaryote", "eukaryote", "species", "biodiversity", "observation", "deduction", "data", "biological problem", "carbohydrate", "protein", "lipid", "water", "nucleic acid", "enzyme"],
+  "core fundamentals": ["biology", "living", "organism", "life", "cell", "scientific method", "hypothesis", "theory", "law", "experiment", "branches of biology", "levels of organization", "matter", "energy", "metabolism", "homeostasis", "reproduction", "adaptation", "evolution", "characteristics of life", "biomolecules", "classification", "prokaryote", "eukaryote", "species", "biodiversity", "observation", "deduction", "data", "biological problem"],
+  "scientific method": ["scientific method", "biological method", "observation", "hypothesis", "deduction", "experiment", "experimentation", "control group", "experimental group", "result", "conclusion", "theory", "law", "principle", "data", "quantitative", "qualitative", "malaria", "plasmodium", "ronald ross", "laveran"],
+  "branches of biology": ["zoology", "botany", "microbiology", "morphology", "anatomy", "histology", "cell biology", "physiology", "genetics", "embryology", "taxonomy", "paleontology", "environmental biology", "socio-biology", "parasitology", "biotechnology", "immunology", "entomology", "pharmacology"],
+  "levels of biological organization": ["subatomic", "atom", "molecule", "biomolecule", "organelle", "cell", "tissue", "organ", "organ system", "individual", "organism", "population", "community", "ecosystem", "biosphere", "biome", "species", "habitat"],
+  "biodiversity": ["biodiversity", "species", "five kingdom", "classification", "monera", "protista", "fungi", "plantae", "animalia", "binomial nomenclature", "linnaeus", "genus", "family", "order", "class", "phylum", "kingdom", "taxon", "flora", "fauna", "endangered", "extinct"],
   "cell biology": ["cell structure", "cell wall", "cell membrane", "fluid mosaic", "mitochondria", "chloroplast", "ribosome", "endoplasmic reticulum", "golgi apparatus", "lysosome", "nucleus", "vacuole", "cytoskeleton", "prokaryote", "eukaryote"],
   "cell structure and function": ["cell structure", "cell wall", "cell membrane", "fluid mosaic", "mitochondria", "chloroplast", "ribosome", "endoplasmic reticulum", "golgi apparatus", "lysosome", "nucleus", "vacuole", "cytoskeleton", "prokaryote", "eukaryote"],
   "biological molecules": ["carbohydrate", "monosaccharide", "glucose", "disaccharide", "polysaccharide", "protein", "amino acid", "peptide bond", "lipid", "fatty acid", "nucleic acid", "dna", "rna", "nucleotide", "enzyme", "water", "hydrogen bond", "polarity"],
@@ -319,9 +326,19 @@ export function checkQuestionTopicRelevance(
     // Fallback: check if raw tokens of the subtopic appear in the question
     const rawTokens = subtopicKey.split(/[\s\-_,:]+/).filter(t => t.length > 2 && !["chapter", "topics", "subtopic", "and", "the", "for", "with", "units"].includes(t));
     if (rawTokens.length > 0) {
-      const tokenMatch = rawTokens.some(t => fullText.includes(t));
-      if (!tokenMatch) {
-        return false;
+      const isIntroductoryOrGeneral = ["fundamental", "concepts", "concept", "intro", "introduction", "basic", "basics", "overview", "principles", "principle", "core", "general", "methods", "definitions"].some(ig => subtopicKey.includes(ig));
+      if (isIntroductoryOrGeneral) {
+        // For general/introductory subtopics, allow if either a token matches or any chapter/subject term matches
+        const tokenMatch = rawTokens.some(t => fullText.includes(t));
+        const chapterMatch = normTargetClean.length > 3 && normTargetClean.split(/[\s\-_,:]+/).some(ct => ct.length > 3 && fullText.includes(ct));
+        if (!tokenMatch && !chapterMatch) {
+          return false;
+        }
+      } else {
+        const tokenMatch = rawTokens.some(t => fullText.includes(t));
+        if (!tokenMatch) {
+          return false;
+        }
       }
     }
   }

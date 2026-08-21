@@ -443,6 +443,21 @@ export function App() {
   const [testResult, setTestResult] = useState<TestResult | null>(null);
 
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
+  const [generationError, setGenerationError] = useState<{
+    isOpen: boolean;
+    subject: string;
+    topic?: string;
+    params?: {
+      durationMinutes: number;
+      questionCount: number;
+      difficulty: QuestionDifficulty;
+      mode: TestMode;
+      instantFeedback: boolean;
+      subject?: string;
+      customTopic?: string;
+    };
+    errorMessage?: string;
+  } | null>(null);
   const mcqAbortControllerRef = useRef<AbortController | null>(null);
   const bgMcqAbortControllerRef = useRef<AbortController | null>(null);
   const mcqRequestIdRef = useRef<number>(0);
@@ -2125,28 +2140,46 @@ export function App() {
       try {
         console.log(`[MCQ Start] No prebuilt/cached questions for "${targetSubject}" - "${targetTopic}". Fetching live MCQs from API...`);
         const fetchCount = Math.min(15, targetTotalCount);
-        const fetchRes = await apiFetch('/api/generate-mcqs', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          signal: abortController.signal,
-          body: JSON.stringify({
-            subject: targetSubject,
-            customTopic: targetTopic,
-            path: isMdcat ? 'mdcat' : 'boards',
-            classNum: selectedClass,
-            group: selectedGroup,
-            questionCount: fetchCount,
-            difficulty: params.difficulty,
-            mode: params.mode,
-            userId: activeUser?.id || 'guest',
-            userEmail: activeUser?.email,
-          }),
-        });
+        let liveSuccess = false;
 
-        if (fetchRes.ok) {
-          const fetchData = await safeJsonResponse(fetchRes);
-          if (fetchData?.success && Array.isArray(fetchData.questions) && fetchData.questions.length > 0) {
-            initialSet = fetchData.questions.slice(0, targetTotalCount);
+        for (let liveAttempt = 1; liveAttempt <= 2; liveAttempt++) {
+          if (liveSuccess || abortController.signal.aborted) break;
+          try {
+            console.log(`[MCQ Start Live Fetch Attempt ${liveAttempt}/2] Requesting ${fetchCount} questions for "${targetSubject}" - "${targetTopic}"`);
+            const fetchRes = await apiFetch('/api/generate-mcqs', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              signal: abortController.signal,
+              body: JSON.stringify({
+                subject: targetSubject,
+                customTopic: targetTopic,
+                path: isMdcat ? 'mdcat' : 'boards',
+                classNum: selectedClass,
+                group: selectedGroup,
+                questionCount: fetchCount,
+                difficulty: params.difficulty,
+                mode: params.mode,
+                userId: activeUser?.id || 'guest',
+                userEmail: activeUser?.email,
+              }),
+            });
+
+            if (fetchRes.ok) {
+              const fetchData = await safeJsonResponse(fetchRes);
+              if (fetchData?.success && Array.isArray(fetchData.questions) && fetchData.questions.length > 0) {
+                initialSet = fetchData.questions.slice(0, targetTotalCount);
+                liveSuccess = true;
+                break;
+              }
+            } else {
+              const errData = await safeJsonResponse(fetchRes).catch(() => null);
+              console.warn(`[MCQ Live Fetch Non-OK Status ${fetchRes.status}]:`, errData);
+            }
+          } catch (attemptErr: any) {
+            console.warn(`[MCQ Live Fetch Attempt ${liveAttempt} Error]:`, attemptErr?.message || attemptErr);
+            if (liveAttempt < 2) {
+              await new Promise((r) => setTimeout(r, 1200));
+            }
           }
         }
       } catch (liveFetchErr) {
@@ -2156,7 +2189,13 @@ export function App() {
 
     if (initialSet.length === 0) {
       setIsGenerating(false);
-      alert('Unable to load questions for this topic right now. Please try again.');
+      setGenerationError({
+        isOpen: true,
+        subject: targetSubject,
+        topic: targetTopic,
+        params,
+        errorMessage: 'Unable to formulate verified questions for this specific subtopic right now.',
+      });
       return;
     }
 
@@ -3291,6 +3330,66 @@ export function App() {
             />
             <div className="w-full bg-slate-100  rounded-full h-1.5 overflow-hidden mt-1">
               <div className="bg-[#1E5AFF] h-full animate-pulse w-full" />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-App MCQ Generation Error Modal */}
+      {generationError?.isOpen && (
+        <div className="fixed inset-0 z-[310] bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4 animate-ios-spring">
+          <div className="bg-white  border border-slate-200  rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl flex flex-col items-center text-center gap-5">
+            <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500">
+              <AlertTriangle className="w-7 h-7" />
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold text-slate-900 ">
+                Unable to Load Questions
+              </h3>
+              <p className="text-sm text-slate-500  leading-relaxed">
+                The question generation service is temporarily busy or took too long to formulate verified questions for this specific subtopic.
+              </p>
+            </div>
+
+            {(generationError.subject || generationError.topic) && (
+              <div className="w-full bg-slate-50  border border-slate-200/80  rounded-2xl p-3.5 text-left text-xs space-y-1.5">
+                <div className="text-slate-400  font-medium uppercase tracking-wider text-[10px]">Practice Scope</div>
+                <div className="font-semibold text-slate-800  flex items-center gap-1.5 flex-wrap">
+                  <span className="bg-[#1E5AFF]/10 text-[#1E5AFF] px-2 py-0.5 rounded-md font-bold">{generationError.subject}</span>
+                  {generationError.topic && (
+                    <span className="bg-slate-200  text-slate-700  px-2 py-0.5 rounded-md font-medium">{generationError.topic}</span>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row gap-2.5 w-full pt-1">
+              <button
+                type="button"
+                onClick={() => {
+                  const retryParams = generationError.params;
+                  setGenerationError(null);
+                  if (retryParams) {
+                    executeStartTest(retryParams);
+                  }
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-bold text-sm shadow-md transition-all active:scale-[0.98]"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Try Again</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setGenerationError(null);
+                  setScreen('subjects');
+                }}
+                className="flex-1 inline-flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-slate-100  hover:bg-slate-200  text-slate-700  font-bold text-sm transition-all active:scale-[0.98]"
+              >
+                <span>Choose Topic</span>
+              </button>
             </div>
           </div>
         </div>

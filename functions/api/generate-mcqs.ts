@@ -390,6 +390,11 @@ function checkQuestionTopicRelevance(
 
   // Topic specific dictionary mappings for major Board Exams & PMDC MDCAT chapters & subtopics
   const TOPIC_CONCEPT_MAP: Record<string, string[]> = {
+    "the science of biology": ["biology", "living", "organism", "scientific method", "hypothesis", "deduction", "theory", "law", "experiment", "branches of biology", "levels of organization"],
+    "fundamental concepts": ["biology", "living", "organism", "life", "cell", "scientific method", "hypothesis", "theory", "law", "experiment", "branches of biology", "levels of organization", "metabolism", "homeostasis", "reproduction", "characteristics of life", "biomolecules", "carbohydrate", "protein", "lipid", "water"],
+    "core fundamentals": ["biology", "living", "organism", "life", "cell", "scientific method", "hypothesis", "theory", "law", "experiment", "branches of biology", "levels of organization", "metabolism", "homeostasis"],
+    "cell biology": ["cell", "mitochondria", "organelle", "ribosome", "membrane", "endoplasmic", "golgi", "nucleus", "cytoplasm", "lysosome", "chloroplast"],
+    "cell structure and function": ["cell", "mitochondria", "organelle", "ribosome", "membrane", "endoplasmic", "golgi", "nucleus", "cytoplasm", "lysosome", "chloroplast", "fluid mosaic"],
     "water properties": ["water", "polar", "polarity", "hydrogen bond", "hydrogen bonding", "solvent", "heat capacity", "heat of vaporization", "cohesion", "adhesion", "surface tension", "density of ice", "hydrophobic", "hydrophilic", "aqueous", "universal solvent", "specific heat", "latent heat", "amphipathic"],
     "properties of water": ["water", "polar", "polarity", "hydrogen bond", "hydrogen bonding", "solvent", "heat capacity", "heat of vaporization", "cohesion", "adhesion", "surface tension", "density of ice", "hydrophobic", "hydrophilic", "aqueous", "universal solvent", "specific heat", "latent heat", "amphipathic"],
     "carbohydrates": ["carbohydrate", "monosaccharide", "glucose", "fructose", "galactose", "disaccharide", "sucrose", "lactose", "maltose", "polysaccharide", "starch", "glycogen", "cellulose", "chitin", "glycosidic", "reducing sugar", "triose", "tetrose", "pentose", "hexose", "aldose", "ketose", "amylose", "amylopectin", "saccharide", "haworth", "fischer", "hemiacetal", "hemiketal"],
@@ -426,7 +431,6 @@ function checkQuestionTopicRelevance(
     "complex numbers": ["complex number", "complex numbers", "imaginary", "iota", "modulus", "argument", "conjugate", "de moivre"],
     "differentiation": ["derivative", "derivatives", "differentiation", "tangent", "normal", "rate of change", "chain rule", "product rule", "quotient rule"],
     "integration": ["integral", "integrals", "integration", "antiderivative", "definite integral", "area under curve", "by parts", "partial fractions"],
-    "cell biology": ["cell", "mitochondria", "organelle", "ribosome", "membrane", "endoplasmic", "golgi", "nucleus", "cytoplasm", "lysosome", "chloroplast"],
     "biological molecules": ["carbohydrate", "protein", "lipid", "amino acid", "enzyme", "nucleic acid", "dna", "rna", "peptide", "monosaccharide", "water", "hydrogen bond"],
     "chemical equilibrium": ["equilibrium", "le chatelier", "kc", "kp", "solubility product", "common ion", "buffer", "reversible"],
     "stoichiometry": ["mole", "avogadro", "molar mass", "empirical formula", "limiting reactant", "percentage yield", "stoichiometry"]
@@ -468,7 +472,8 @@ function checkQuestionTopicRelevance(
     }
   } else {
     // Generic topic match: at least 1 topic token must match
-    if (tokenMatchCount === 0) {
+    const isIntroductory = ["fundamental", "concepts", "concept", "intro", "basic", "basics", "principles", "core"].some(ig => subtopicKey.includes(ig));
+    if (!isIntroductory && tokenMatchCount === 0) {
       return false;
     }
   }
@@ -523,6 +528,66 @@ function checkQuestionTopicRelevance(
   }
 
   return true;
+}
+
+function repairAndParseJson(rawText: string): any[] {
+  if (!rawText || typeof rawText !== "string") return [];
+  const text = rawText.trim();
+
+  // 1. Direct JSON.parse
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.questions)) return parsed.questions;
+    if (parsed && typeof parsed === "object") return [parsed];
+  } catch {}
+
+  // 2. Strip Markdown code fences
+  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.questions)) return parsed.questions;
+    if (parsed && typeof parsed === "object") return [parsed];
+  } catch {}
+
+  // 3. Extract outermost array slice
+  const firstBracket = cleaned.indexOf("[");
+  const lastBracket = cleaned.lastIndexOf("]");
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    const arraySlice = cleaned.substring(firstBracket, lastBracket + 1);
+    try {
+      const parsed = JSON.parse(arraySlice);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+
+    // 4. Remove trailing commas before } or ]
+    const noTrailingCommas = arraySlice.replace(/,\s*([\]\}])/g, "$1");
+    try {
+      const parsed = JSON.parse(noTrailingCommas);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+
+  // 5. Regex extraction for individual JSON question objects
+  const objectMatches = cleaned.match(/\{[\s\S]*?"q"[\s\S]*?"options"[\s\S]*?"correct"[\s\S]*?\}/g);
+  if (objectMatches && objectMatches.length > 0) {
+    const extractedObjects: any[] = [];
+    for (const objStr of objectMatches) {
+      try {
+        const cleanObjStr = objStr.replace(/,\s*([\}])/g, "$1");
+        const parsedObj = JSON.parse(cleanObjStr);
+        if (parsedObj && (parsedObj.q || parsedObj.question)) {
+          extractedObjects.push(parsedObj);
+        }
+      } catch {}
+    }
+    if (extractedObjects.length > 0) {
+      return extractedObjects;
+    }
+  }
+
+  return [];
 }
 
 function validateAndFixQuestions(
@@ -1215,7 +1280,7 @@ ${subjectConstraintNote}${adaptiveContextText}
 
 ${scopeInstruction}`;
 
-      const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+      const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest"];
       let mcqSuccess = false;
       let lastStatusCode = 0;
       let lastErrorMessage = "";
@@ -1223,12 +1288,13 @@ ${scopeInstruction}`;
       for (const modelName of modelsToTry) {
         if (mcqSuccess) break;
         let attempt = 0;
-        const maxRetries = 2;
+        const maxRetries = 3;
 
         while (attempt < maxRetries && !mcqSuccess) {
           attempt++;
+          const callStart = Date.now();
           try {
-            console.log(`[Generate MCQs Worker] Calling Gemini model: ${modelName} (attempt ${attempt})`);
+            console.log(`[Generate MCQs Worker] Calling Gemini model: ${modelName} (attempt ${attempt}/${maxRetries})`);
             const response = await ai.models.generateContent({
               model: modelName,
               contents: userPrompt,
@@ -1263,20 +1329,26 @@ ${scopeInstruction}`;
               }
             });
 
+            const elapsed = Date.now() - callStart;
             const responseText = response.text || "";
+            console.log(`[Generate MCQs Worker] Response from ${modelName} in ${elapsed}ms: ${responseText.length} chars`);
+
             if (responseText) {
-              const rawParsed = JSON.parse(responseText.trim());
+              const rawParsed = repairAndParseJson(responseText);
               const validatedQs = validateAndFixQuestions(rawParsed, subject, topicLabel, difficulty, targetTopicConstraint);
               if (validatedQs.length > 0) {
                 finalQuestions = validatedQs.slice(0, requestedCount);
                 mcqSuccess = true;
                 break;
+              } else {
+                console.warn(`[Generate MCQs Worker] Model ${modelName} output yielded 0 validated questions out of ${rawParsed.length} parsed items. Raw snippet: ${responseText.slice(0, 150)}`);
               }
             }
           } catch (err: any) {
+            const elapsed = Date.now() - callStart;
             lastStatusCode = Number(err?.status || err?.statusCode || err?.code) || 500;
             lastErrorMessage = err?.message || String(err);
-            console.error(`[Generate MCQs Worker Error] Model ${modelName} attempt ${attempt} failed (Status ${lastStatusCode}):`, lastErrorMessage, err?.stack || "");
+            console.error(`[Generate MCQs Worker Error] Model ${modelName} attempt ${attempt} failed after ${elapsed}ms (Status ${lastStatusCode}):`, lastErrorMessage);
 
             const errStr = lastErrorMessage.toLowerCase();
             const isRetryable =
@@ -1291,10 +1363,12 @@ ${scopeInstruction}`;
               errStr.includes("overloaded") ||
               errStr.includes("resource_exhausted") ||
               errStr.includes("rate limit") ||
-              errStr.includes("fetch failed");
+              errStr.includes("fetch failed") ||
+              errStr.includes("timeout");
 
             if (isRetryable && attempt < maxRetries) {
-              await new Promise((resolve) => setTimeout(resolve, 1500));
+              const backoffMs = attempt * 1200;
+              await new Promise((resolve) => setTimeout(resolve, backoffMs));
             } else {
               break;
             }

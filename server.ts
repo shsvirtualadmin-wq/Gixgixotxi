@@ -1445,16 +1445,46 @@ function checkQuestionTopicRelevance(
     "differentiation": ["derivative", "derivatives", "differentiation", "tangent", "normal", "rate of change", "chain rule", "product rule", "quotient rule"],
     "integration": ["integral", "integrals", "integration", "antiderivative", "definite integral", "area under curve", "by parts", "partial fractions"],
     "cell biology": ["cell", "mitochondria", "organelle", "ribosome", "membrane", "endoplasmic", "golgi", "nucleus", "cytoplasm", "lysosome", "chloroplast"],
-    "biological molecules": ["carbohydrate", "protein", "lipid", "amino acid", "enzyme", "nucleic acid", "dna", "rna", "peptide", "monosaccharide"],
+    "cell structure and function": ["cell", "mitochondria", "organelle", "ribosome", "membrane", "endoplasmic", "golgi", "nucleus", "cytoplasm", "lysosome", "chloroplast", "fluid mosaic"],
+    "the science of biology": ["biology", "living", "organism", "scientific method", "hypothesis", "deduction", "theory", "law", "experiment", "branches of biology", "levels of organization"],
+    "fundamental concepts": ["biology", "living", "organism", "life", "cell", "scientific method", "hypothesis", "theory", "law", "experiment", "branches of biology", "levels of organization", "metabolism", "homeostasis", "reproduction", "characteristics of life", "biomolecules", "carbohydrate", "protein", "lipid", "water"],
+    "core fundamentals": ["biology", "living", "organism", "life", "cell", "scientific method", "hypothesis", "theory", "law", "experiment", "branches of biology", "levels of organization", "metabolism", "homeostasis"],
+    "biological molecules": ["carbohydrate", "protein", "lipid", "amino acid", "enzyme", "nucleic acid", "dna", "rna", "peptide", "monosaccharide", "water", "hydrogen bond"],
+    "bio molecules": ["carbohydrate", "protein", "lipid", "amino acid", "enzyme", "nucleic acid", "dna", "rna", "peptide", "monosaccharide", "water", "hydrogen bond"],
+    "water properties": ["water", "polar", "polarity", "hydrogen bond", "hydrogen bonding", "solvent", "heat capacity", "heat of vaporization", "cohesion", "adhesion", "surface tension", "density of ice", "specific heat"],
+    "properties of water": ["water", "polar", "polarity", "hydrogen bond", "hydrogen bonding", "solvent", "heat capacity", "heat of vaporization", "cohesion", "adhesion", "surface tension", "density of ice", "specific heat"],
+    "carbohydrates": ["carbohydrate", "monosaccharide", "glucose", "fructose", "galactose", "disaccharide", "sucrose", "lactose", "maltose", "polysaccharide", "starch", "glycogen", "cellulose", "chitin", "glycosidic", "reducing sugar"],
+    "lipids": ["lipid", "fatty acid", "triglyceride", "glycerol", "phospholipid", "steroid", "cholesterol", "wax", "ester bond", "saturated", "unsaturated"],
+    "proteins": ["protein", "amino acid", "peptide bond", "polypeptide", "primary structure", "secondary structure", "tertiary structure", "quaternary structure", "denaturation", "zwitterion"],
+    "nucleic acids": ["nucleic acid", "dna", "rna", "nucleotide", "purine", "pyrimidine", "adenine", "thymine", "guanine", "cytosine", "uracil", "double helix"],
+    "enzymes": ["enzyme", "active site", "substrate", "lock and key", "induced fit", "competitive inhibition", "non-competitive", "vmax", "km", "coenzyme", "cofactor"],
+    "bioenergetics": ["photosynthesis", "light reaction", "dark reaction", "calvin cycle", "photophosphorylation", "chlorophyll", "rubisco", "respiration", "glycolysis", "krebs cycle", "electron transport chain", "atp"],
     "chemical equilibrium": ["equilibrium", "le chatelier", "kc", "kp", "solubility product", "common ion", "buffer", "reversible"],
     "stoichiometry": ["mole", "avogadro", "molar mass", "empirical formula", "limiting reactant", "percentage yield", "stoichiometry"]
   };
 
+  const targetParts = lowerTarget.split(/\s*[-:–—]\s*/);
+  const subtopicKey = targetParts.length > 1 ? targetParts[targetParts.length - 1].trim() : lowerTarget;
+
   let conceptKeywords: string[] = [];
-  for (const [key, keywords] of Object.entries(TOPIC_CONCEPT_MAP)) {
-    if (lowerTarget.includes(key) || key.includes(lowerTarget)) {
-      conceptKeywords = keywords;
-      break;
+  if (TOPIC_CONCEPT_MAP[subtopicKey]) {
+    conceptKeywords = TOPIC_CONCEPT_MAP[subtopicKey];
+  } else if (TOPIC_CONCEPT_MAP[lowerTarget]) {
+    conceptKeywords = TOPIC_CONCEPT_MAP[lowerTarget];
+  } else {
+    for (const [key, keywords] of Object.entries(TOPIC_CONCEPT_MAP)) {
+      if (subtopicKey.includes(key) || key.includes(subtopicKey)) {
+        conceptKeywords = keywords;
+        break;
+      }
+    }
+    if (conceptKeywords.length === 0) {
+      for (const [key, keywords] of Object.entries(TOPIC_CONCEPT_MAP)) {
+        if (lowerTarget.includes(key) || key.includes(lowerTarget)) {
+          conceptKeywords = keywords;
+          break;
+        }
+      }
     }
   }
 
@@ -1465,7 +1495,8 @@ function checkQuestionTopicRelevance(
     }
   } else {
     // Generic topic match: at least 1 topic token must match
-    if (tokenMatchCount === 0) {
+    const isIntroductory = ["fundamental", "concepts", "concept", "intro", "basic", "basics", "principles", "core"].some(ig => subtopicKey.includes(ig));
+    if (!isIntroductory && tokenMatchCount === 0) {
       return false;
     }
   }
@@ -1510,6 +1541,66 @@ function checkQuestionTopicRelevance(
   }
 
   return true;
+}
+
+function repairAndParseJson(rawText: string): any[] {
+  if (!rawText || typeof rawText !== "string") return [];
+  const text = rawText.trim();
+
+  // 1. Direct JSON.parse
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.questions)) return parsed.questions;
+    if (parsed && typeof parsed === "object") return [parsed];
+  } catch {}
+
+  // 2. Strip Markdown code fences
+  const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && typeof parsed === "object" && Array.isArray(parsed.questions)) return parsed.questions;
+    if (parsed && typeof parsed === "object") return [parsed];
+  } catch {}
+
+  // 3. Extract outermost array slice
+  const firstBracket = cleaned.indexOf("[");
+  const lastBracket = cleaned.lastIndexOf("]");
+  if (firstBracket !== -1 && lastBracket > firstBracket) {
+    const arraySlice = cleaned.substring(firstBracket, lastBracket + 1);
+    try {
+      const parsed = JSON.parse(arraySlice);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+
+    // 4. Remove trailing commas before } or ]
+    const noTrailingCommas = arraySlice.replace(/,\s*([\]\}])/g, "$1");
+    try {
+      const parsed = JSON.parse(noTrailingCommas);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+
+  // 5. Regex extraction for individual JSON question objects
+  const objectMatches = cleaned.match(/\{[\s\S]*?"q"[\s\S]*?"options"[\s\S]*?"correct"[\s\S]*?\}/g);
+  if (objectMatches && objectMatches.length > 0) {
+    const extractedObjects: any[] = [];
+    for (const objStr of objectMatches) {
+      try {
+        const cleanObjStr = objStr.replace(/,\s*([\}])/g, "$1");
+        const parsedObj = JSON.parse(cleanObjStr);
+        if (parsedObj && (parsedObj.q || parsedObj.question)) {
+          extractedObjects.push(parsedObj);
+        }
+      } catch {}
+    }
+    if (extractedObjects.length > 0) {
+      return extractedObjects;
+    }
+  }
+
+  return [];
 }
 
 // Cross-check and validation step for generated MCQs with strict duplicate prevention and topic filter
@@ -3521,7 +3612,7 @@ ${scopeInstruction}`;
 
           console.log(`[Gemini MCQ Request Start] Subject: "${subject}", Topic: "${targetTopicConstraint}", Class: ${activeClassNum}, Group: "${activeGroup}", Offset: ${batchOffset}, Count: ${requestedCount}, User: ${userId}`);
 
-          const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+          const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest"];
           const maxAttempts = 3;
 
           for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -3529,7 +3620,8 @@ ${scopeInstruction}`;
             if (needed <= 0) break;
 
             const modelName = modelsToTry[attempt % modelsToTry.length];
-            const requestCountForAttempt = Math.max(needed, Math.min(needed + 2, requestedCount));
+            // Request in compact batches of 5-8 questions to prevent truncation and latency spikes
+            const requestCountForAttempt = Math.min(needed, 7);
 
             let excludeInstruction = "";
             if (finalQuestions.length > 0) {
@@ -3585,8 +3677,9 @@ ${scopeInstruction}${excludeInstruction}`;
                 }
               });
 
+              // 35-second timeout per Gemini call to accommodate complex prompt generation without prematurely dropping requests
               const timeoutCall = new Promise<never>((_, reject) =>
-                setTimeout(() => reject(new Error(`Gemini API call to ${modelName} timed out after 10 seconds`)), 10000)
+                setTimeout(() => reject(new Error(`Gemini API call to ${modelName} timed out after 35 seconds`)), 35000)
               );
 
               const response = await Promise.race([geminiCall, timeoutCall]);
@@ -3596,7 +3689,7 @@ ${scopeInstruction}${excludeInstruction}`;
               console.log(`[Gemini Response Received in ${elapsedMs}ms from ${modelName}]: Length ${responseText.length} chars`);
 
               if (responseText) {
-                const rawParsed = JSON.parse(responseText.trim());
+                const rawParsed = repairAndParseJson(responseText);
                 const validatedQs = validateAndFixQuestions(rawParsed, subject, topicLabel, difficulty, targetTopicConstraint);
 
                 let addedInAttempt = 0;
@@ -3614,7 +3707,7 @@ ${scopeInstruction}${excludeInstruction}`;
                 console.log(`[Gemini Attempt ${attempt + 1}/${maxAttempts} Result] Validated: ${validatedQs.length}/${rawParsed.length}, Added: ${addedInAttempt}, Total now: ${finalQuestions.length}/${requestedCount}`);
 
                 if (validatedQs.length < rawParsed.length) {
-                  console.warn(`[Gemini Validation Warning] Attempt ${attempt + 1}: ${rawParsed.length - validatedQs.length} questions failed validation and were rejected.`);
+                  console.warn(`[Gemini Validation Warning] Attempt ${attempt + 1}: ${rawParsed.length - validatedQs.length} questions rejected. Parsed count: ${rawParsed.length}`);
                 }
 
                 if (finalQuestions.length >= requestedCount) {
@@ -3624,8 +3717,14 @@ ${scopeInstruction}${excludeInstruction}`;
               }
             } catch (modelErr: any) {
               const elapsedMs = Date.now() - startMs;
-              console.error(`[Gemini Attempt ${attempt + 1}/${maxAttempts} Error in ${elapsedMs}ms on ${modelName}]:`, modelErr?.message || modelErr);
+              const statusCode = modelErr?.status || modelErr?.statusCode || 500;
+              console.error(`[Gemini Attempt ${attempt + 1}/${maxAttempts} Error in ${elapsedMs}ms on ${modelName} (Status ${statusCode})]:`, modelErr?.message || modelErr);
               geminiError = modelErr?.message || String(modelErr);
+
+              // Backoff before next attempt
+              if (attempt < maxAttempts - 1) {
+                await new Promise((resolve) => setTimeout(resolve, (attempt + 1) * 1000));
+              }
             }
           }
 
