@@ -825,7 +825,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
         {/* =========================================================================
             SECTION: PLATFORM OVERVIEW & ACADEMIC SCOPE
            ========================================================================= */}
-        <LazySection rootMargin="300px" minHeight="380px">
         <section id="platform-overview" className="bg-white border border-slate-200/80 card-containment rounded-3xl p-6 sm:p-8 lg:p-10 shadow-sm space-y-8">
           <div className="space-y-3 max-w-3xl">
             <div className="inline-flex items-center gap-2 bg-[#1E5AFF]/15 text-[#0A1330] px-3.5 py-1 rounded-full text-xs font-black uppercase tracking-wider border border-[#1E5AFF]/30">
@@ -836,7 +835,10 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
               Intelligent MCQ Practice & Test Prep for Matric, FSC & Entry Tests
             </h2>
             <p className="text-sm sm:text-base text-slate-600 leading-relaxed font-normal">
-              Boardly is a dedicated online examination and multiple-choice question (MCQ) mastery platform built specifically for Pakistan’s secondary and higher secondary students. Developed as an educational initiative under{' '}
+              Boardly is a comprehensive online MCQ practice and examination preparation platform engineered specifically for students across Pakistan. Designed to foster active recall and conceptual clarity, Boardly provides an extensive repository of chapter-wise multiple-choice questions, timed mock tests, and instant step-by-step solutions across science and general subjects. Whether you are revising core textbook concepts or testing your problem-solving speed under exam conditions, Boardly helps you identify learning gaps and master your syllabus with confidence.
+            </p>
+            <p className="text-sm sm:text-base text-slate-600 leading-relaxed font-normal">
+              Boardly is an educational initiative developed under{' '}
               <a
                 href="https://shsvirtualacademy.pro"
                 target="_blank"
@@ -846,7 +848,16 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 SHS Virtual Academy (shsvirtualacademy.pro)
                 <ExternalLink className="w-3 h-3 ml-0.5" />
               </a>
-              , Boardly provides structured chapter-by-chapter question banks, realistic mock exams, and instant AI-driven answer derivations to prepare students for top board and university entrance results.
+              , our parent academic organization dedicated to empowering Pakistani learners with modern digital learning tools. While our main academy coordinates curriculum guidance and student mentorship, Boardly serves as the dedicated testing and self-assessment engine. Note that live scheduled lectures and interactive video classes are conducted separately through{' '}
+              <a
+                href="https://schaorlio.me"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[#1E5AFF] font-bold underline hover:text-[#1546CC]"
+              >
+                schaorlio.me
+              </a>
+              , allowing Boardly to focus exclusively on question practice, instant answer derivations, and diagnostic testing.
             </p>
             <div className="p-4 bg-blue-50/80 rounded-2xl border border-blue-100 text-xs text-slate-700 leading-relaxed flex items-start gap-2.5">
               <Sparkles className="w-4 h-4 text-[#1E5AFF] shrink-0 mt-0.5" />
@@ -881,7 +892,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 <ul className="space-y-2 text-xs text-slate-700 font-medium">
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span><strong>Matric (Classes 9 & 10):</strong> Full FBISE SSC coverage across Physics, Chemistry, Biology, Mathematics & Computer Science.</span>
+                    <span><strong>Matric (Classes 9 & 10):</strong> Full FBISE SSC coverage across Physics, Chemistry, Biology, Mathematics, Computer Science, English, Urdu, and Islamiat.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
@@ -984,7 +995,6 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
             </div>
           </div>
         </section>
-        </LazySection>
 
         {/* =========================================================================
             SECTION 3: HOW IT WORKS

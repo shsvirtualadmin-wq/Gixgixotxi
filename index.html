@@ -61,44 +61,87 @@
   </head>
   <body class="bg-[#F8F9FB] text-slate-900 antialiased selection:bg-[#1E5AFF] selection:text-white">
     <div id="root">
-      <!-- Instant First-Paint Branded Skeleton (Rendered before JS execution) -->
-      <div id="initial-preloader" style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; background-color: #F8F9FB; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-        <main style="display: flex; flex-direction: column; align-items: center; max-width: 480px; width: 100%; text-align: center; gap: 16px;">
-          <!-- Logo with subtle pulse -->
-          <div style="width: 56px; height: 56px; border-radius: 16px; background: #0A1330; display: flex; align-items: center; justify-content: center; box-shadow: 0 10px 25px -5px rgba(30, 90, 255, 0.25); border: 2px solid #1E5AFF;">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#1E5AFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
-              <path d="M6 12v5c3 3 9 3 12 0v-5"/>
-            </svg>
-          </div>
-          <div>
-            <h1 style="font-size: 19px; font-weight: 900; color: #0A1330; letter-spacing: -0.2px; margin: 0 0 6px 0; line-height: 1.25;">Boardly — MCQ Practice for FSC Matric & Post FSC Students</h1>
-            <div style="font-size: 11px; font-weight: 700; color: #1E5AFF; text-transform: uppercase; letter-spacing: 1px;">SHS Virtual Academy</div>
-          </div>
-          <!-- Shimmer Progress Bar -->
-          <div style="width: 160px; height: 4px; background: #E2E8F0; border-radius: 9999px; overflow: hidden; position: relative;">
-            <div style="position: absolute; top: 0; left: 0; bottom: 0; width: 50%; background: #1E5AFF; border-radius: 9999px; animation: boardlyPreloadPulse 1.2s infinite ease-in-out;"></div>
-          </div>
+      <!-- Instant First-Paint Branded Skeleton & Semantic Homepage Content (400+ words visible text) -->
+      <div id="initial-preloader" style="min-height: 100vh; background-color: #F8F9FB; padding: 32px 20px; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1E293B;">
+        <main style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px;">
+          
+          <!-- Brand Header -->
+          <header style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E2E8F0; padding-bottom: 16px;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div style="width: 44px; height: 44px; border-radius: 12px; background: #0A1330; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(30, 90, 255, 0.2); border: 2px solid #1E5AFF;">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1E5AFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
+                  <path d="M6 12v5c3 3 9 3 12 0v-5"/>
+                </svg>
+              </div>
+              <div>
+                <div style="font-size: 16px; font-weight: 900; color: #0A1330; letter-spacing: 0.5px; line-height: 1;">BOARDLY</div>
+                <div style="font-size: 10px; font-weight: 700; color: #1E5AFF; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 3px;">SHS Virtual Academy</div>
+              </div>
+            </div>
+            <a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" style="font-size: 12px; font-weight: 700; color: #1E5AFF; text-decoration: none; border: 1px solid #BFDBFE; padding: 6px 14px; border-radius: 9999px; background: #EFF6FF;">
+              shsvirtualacademy.pro &rarr;
+            </a>
+          </header>
 
-          <div id="preloader-timeout-action" style="display: none; margin-top: 8px; text-align: center;">
-            <p style="font-size: 11px; color: #64748B; margin-bottom: 8px;">Taking longer than usual?</p>
-            <button onclick="window.location.reload()" style="background: #1E5AFF; color: #FFFFFF; border: none; padding: 8px 16px; border-radius: 12px; font-size: 11px; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(30, 90, 255, 0.2);">Refresh Page</button>
-          </div>
+          <!-- Hero & What Boardly Is Section -->
+          <section style="display: flex; flex-direction: column; gap: 14px;">
+            <h1 style="font-size: 26px; font-weight: 900; color: #0F172A; letter-spacing: -0.5px; line-height: 1.25; margin: 0;">
+              Boardly — MCQ Practice for FSC Matric & Post FSC Students
+            </h1>
+            <p style="font-size: 15px; line-height: 1.65; color: #334155; margin: 0;">
+              Boardly is a comprehensive online MCQ practice and examination preparation platform engineered specifically for students across Pakistan. Designed to foster active recall and conceptual clarity, Boardly provides an extensive repository of chapter-wise multiple-choice questions, timed mock tests, and instant step-by-step solutions across science and general subjects. Whether you are revising core textbook concepts or testing your problem-solving speed under exam conditions, Boardly helps you identify learning gaps and master your syllabus with confidence.
+            </p>
+            <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0;">
+              Boardly is an educational initiative developed under <a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" style="color: #1E5AFF; font-weight: 700; text-decoration: underline;">SHS Virtual Academy (shsvirtualacademy.pro)</a>, our parent academic organization dedicated to empowering Pakistani learners with modern digital learning tools. While our main academy coordinates curriculum guidance and student mentorship, Boardly serves as the dedicated testing and self-assessment engine. Note that live scheduled lectures and interactive video classes are conducted separately through <a href="https://schaorlio.me" target="_blank" rel="noopener noreferrer" style="color: #1E5AFF; font-weight: 700; text-decoration: underline;">schaorlio.me</a>, allowing Boardly to focus exclusively on question practice, instant answer derivations, and diagnostic testing.
+            </p>
+          </section>
+
+          <!-- Who It's For Section -->
+          <section style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <h2 style="font-size: 18px; font-weight: 800; color: #0F172A; margin: 0;">Who Boardly Is For</h2>
+            <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0;">
+              Our practice modules are structured specifically for secondary, higher secondary, and post-FSC entry test students:
+            </p>
+            <ul style="display: flex; flex-direction: column; gap: 10px; margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.55; color: #334155;">
+              <li><strong>Matric Students (Classes 9 & 10):</strong> Thorough topic-by-topic question banks covering Physics, Chemistry, Biology, Mathematics, Computer Science, English, Urdu, and Islamiat aligned with FBISE and provincial board curricula.</li>
+              <li><strong>FSC Intermediate Students (Classes 11 & 12 / HSSC):</strong> Specialized practice sets for Pre-Medical, Pre-Engineering, ICS, and General Science streams with rigorous numerical problems and theoretical questions.</li>
+              <li><strong>Post-FSC & Entrance Aspirants:</strong> High-yield question simulations for competitive entrance exams, including PMDC MDCAT for medical admissions and UET Taxila TCAT for engineering university entry.</li>
+            </ul>
+          </section>
+
+          <!-- Key Features Section -->
+          <section style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 20px; display: flex; flex-direction: column; gap: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+            <h2 style="font-size: 18px; font-weight: 800; color: #0F172A; margin: 0;">Key Features & Practice Tools</h2>
+            <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0;">
+              Boardly is built with tools designed to make self-study efficient, measurable, and engaging:
+            </p>
+            <ul style="display: flex; flex-direction: column; gap: 10px; margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.55; color: #334155;">
+              <li><strong>Subject-Wise & Chapter-Wise MCQs:</strong> Practice questions organized by chapter and Student Learning Outcomes (SLOs) to systematically cover each topic in your syllabus.</li>
+              <li><strong>Timed Mock Tests & Custom Quizzes:</strong> Simulate real board and entry test conditions with customizable question counts, timer countdowns, and automated score calculations.</li>
+              <li><strong>Instant Detailed Explanations:</strong> Receive immediate answer keys along with step-by-step mathematical derivations and conceptual explanations for every question.</li>
+              <li><strong>AI Study Buddy:</strong> Clarify difficult concepts and ask follow-up questions with our integrated AI learning assistant available around the clock.</li>
+              <li><strong>Performance Analytics:</strong> Monitor your accuracy, review incorrect answers, and track subject-wise progress over time to focus your study sessions where they matter most.</li>
+            </ul>
+          </section>
+
+          <!-- Call to Action -->
+          <section style="background: #0A1330; border-radius: 16px; padding: 24px; color: #FFFFFF; display: flex; flex-direction: column; sm:flex-row; align-items: center; justify-content: space-between; gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 4px; text-align: left; width: 100%;">
+              <h2 style="font-size: 18px; font-weight: 800; margin: 0; color: #FFFFFF;">Ready to Start Practicing?</h2>
+              <p style="font-size: 13px; color: #94A3B8; margin: 0;">Select your class level or entrance exam series to try free chapter MCQs now.</p>
+            </div>
+            <div style="display: flex; gap: 10px; width: 100%; justify-content: flex-start; flex-wrap: wrap;">
+              <a href="/#platform-overview" style="background: #1E5AFF; color: #FFFFFF; text-decoration: none; font-size: 13px; font-weight: 700; padding: 10px 20px; border-radius: 9999px; display: inline-block;">
+                Start Practicing
+              </a>
+              <a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" style="background: rgba(255,255,255,0.1); color: #FFFFFF; text-decoration: none; font-size: 13px; font-weight: 600; padding: 10px 18px; border-radius: 9999px; display: inline-block; border: 1px solid rgba(255,255,255,0.2);">
+                Visit SHS Virtual Academy
+              </a>
+            </div>
+          </section>
+
         </main>
-        <script>
-          setTimeout(function() {
-            var action = document.getElementById('preloader-timeout-action');
-            if (action && document.getElementById('initial-preloader')) {
-              action.style.display = 'block';
-            }
-          }, 8000);
-        </script>
-        <style>
-          @keyframes boardlyPreloadPulse {
-            0% { transform: translateX(-100%); }
-            100% { transform: translateX(250%); }
-          }
-        </style>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
