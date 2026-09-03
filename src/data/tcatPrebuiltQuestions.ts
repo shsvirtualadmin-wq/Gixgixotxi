@@ -62,6 +62,16 @@ export const TCAT_PREBUILT_QUESTIONS: Record<string, Question[]> = {
   Stats: TCAT_STATISTICS_QUESTIONS,
 };
 
+export const ALL_TCAT_QUESTIONS: Question[] = [
+  ...TCAT_MATH_QUESTIONS,
+  ...TCAT_PHYSICS_QUESTIONS,
+  ...TCAT_CHEMISTRY_QUESTIONS,
+  ...TCAT_CS_QUESTIONS,
+  ...TCAT_BIOLOGY_QUESTIONS,
+  ...TCAT_STATISTICS_QUESTIONS,
+  ...TCAT_ENGLISH_QUESTIONS,
+];
+
 /**
  * Returns prebuilt questions for a specific TCAT subject and optional chapter topic.
  */

@@ -624,7 +624,7 @@ export const TCAT_PHYSICS_QUESTIONS: Question[] = [
     topic: 'Electromagnetism',
     difficulty: 'Medium',
     q: 'What is the magnetic field B at the center of a long solenoid having n turns per unit length carrying current I?',
-    options: ['\\mu_0 n I', '\\mu_0 N I', '\\mu_0 I / (2\\pi r)', '2\\pi \\mu_0 n I'],
+    options: ['\\mu_0 n I', '\\mu_0 N I / L', '\\mu_0 I / (2\\pi r)', '2\\pi \\mu_0 n I'],
     correct: 0,
     explain: 'Applying Ampere circuital law to an ideal long solenoid gives B = \\mu_0 n I, where n = N/L.'
   },
