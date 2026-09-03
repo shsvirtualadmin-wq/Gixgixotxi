@@ -4,22 +4,28 @@ import { MDCAT_BIOLOGY_BATCH2_PART1 } from './mdcatBiologyBatch2Part1';
 import { MDCAT_BIOLOGY_BATCH2_PART2 } from './mdcatBiologyBatch2Part2';
 import { MDCAT_BIOLOGY_BATCH3_PART1 } from './mdcatBiologyBatch3Part1';
 import { MDCAT_BIOLOGY_BATCH3_PART2 } from './mdcatBiologyBatch3Part2';
+import { MDCAT_BIOLOGY_BATCH4_PART1 } from './mdcatBiologyBatch4Part1';
+import { MDCAT_BIOLOGY_BATCH4_PART2 } from './mdcatBiologyBatch4Part2';
 
 import { MDCAT_CHEMISTRY_NEW_QUESTIONS } from './mdcatChemistryQuestions';
 import { MDCAT_CHEMISTRY_BATCH2 } from './mdcatChemistryBatch2';
 import { MDCAT_CHEMISTRY_BATCH3 } from './mdcatChemistryBatch3';
+import { MDCAT_CHEMISTRY_BATCH4 } from './mdcatChemistryBatch4';
 
 import { MDCAT_PHYSICS_NEW_QUESTIONS } from './mdcatPhysicsQuestions';
 import { MDCAT_PHYSICS_BATCH2 } from './mdcatPhysicsBatch2';
 import { MDCAT_PHYSICS_BATCH3 } from './mdcatPhysicsBatch3';
+import { MDCAT_PHYSICS_BATCH4 } from './mdcatPhysicsBatch4';
 
 import { MDCAT_ENGLISH_NEW_QUESTIONS } from './mdcatEnglishQuestions';
 import { MDCAT_ENGLISH_BATCH2 } from './mdcatEnglishBatch2';
 import { MDCAT_ENGLISH_BATCH3 } from './mdcatEnglishBatch3';
+import { MDCAT_ENGLISH_BATCH4 } from './mdcatEnglishBatch4';
 
 import { MDCAT_LOGICAL_REASONING_NEW_QUESTIONS } from './mdcatLogicalReasoningQuestions';
 import { MDCAT_LOGICAL_REASONING_BATCH2 } from './mdcatLogicalReasoningBatch2';
 import { MDCAT_LOGICAL_REASONING_BATCH3 } from './mdcatLogicalReasoningBatch3';
+import { MDCAT_LOGICAL_REASONING_BATCH4 } from './mdcatLogicalReasoningBatch4';
 
 function shuffleOptionsAndFixCorrect(q: Question): Question {
   const correctText = q.options[q.correct];
@@ -65,34 +71,50 @@ export const MDCAT_BATCH3_QUESTIONS: Question[] = [
   ...MDCAT_LOGICAL_REASONING_BATCH3
 ];
 
-// Primary 900 Question Repository grouped by Subject according to PMDC Exam Weightage
+// Batch 4 (300 new verified MCQs bringing bank to 1200 total)
+export const MDCAT_BATCH4_QUESTIONS: Question[] = [
+  ...MDCAT_BIOLOGY_BATCH4_PART1,
+  ...MDCAT_BIOLOGY_BATCH4_PART2,
+  ...MDCAT_CHEMISTRY_BATCH4,
+  ...MDCAT_PHYSICS_BATCH4,
+  ...MDCAT_ENGLISH_BATCH4,
+  ...MDCAT_LOGICAL_REASONING_BATCH4
+];
+
+// Primary 1200 Question Repository grouped by Subject according to PMDC Exam Weightage
 export const MDCAT_PREBUILT_QUESTIONS: Record<string, Question[]> = {
   Biology: [
     ...MDCAT_BIOLOGY_NEW_QUESTIONS,
     ...MDCAT_BIOLOGY_BATCH2_PART1,
     ...MDCAT_BIOLOGY_BATCH2_PART2,
     ...MDCAT_BIOLOGY_BATCH3_PART1,
-    ...MDCAT_BIOLOGY_BATCH3_PART2
+    ...MDCAT_BIOLOGY_BATCH3_PART2,
+    ...MDCAT_BIOLOGY_BATCH4_PART1,
+    ...MDCAT_BIOLOGY_BATCH4_PART2
   ],
   Chemistry: [
     ...MDCAT_CHEMISTRY_NEW_QUESTIONS,
     ...MDCAT_CHEMISTRY_BATCH2,
-    ...MDCAT_CHEMISTRY_BATCH3
+    ...MDCAT_CHEMISTRY_BATCH3,
+    ...MDCAT_CHEMISTRY_BATCH4
   ],
   Physics: [
     ...MDCAT_PHYSICS_NEW_QUESTIONS,
     ...MDCAT_PHYSICS_BATCH2,
-    ...MDCAT_PHYSICS_BATCH3
+    ...MDCAT_PHYSICS_BATCH3,
+    ...MDCAT_PHYSICS_BATCH4
   ],
   English: [
     ...MDCAT_ENGLISH_NEW_QUESTIONS,
     ...MDCAT_ENGLISH_BATCH2,
-    ...MDCAT_ENGLISH_BATCH3
+    ...MDCAT_ENGLISH_BATCH3,
+    ...MDCAT_ENGLISH_BATCH4
   ],
   'Logical Reasoning': [
     ...MDCAT_LOGICAL_REASONING_NEW_QUESTIONS,
     ...MDCAT_LOGICAL_REASONING_BATCH2,
-    ...MDCAT_LOGICAL_REASONING_BATCH3
+    ...MDCAT_LOGICAL_REASONING_BATCH3,
+    ...MDCAT_LOGICAL_REASONING_BATCH4
   ]
 };
 

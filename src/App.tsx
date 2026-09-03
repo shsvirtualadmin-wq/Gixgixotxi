@@ -1539,6 +1539,15 @@ export function App() {
           console.log('[Auth Flow] Unregistered user detected. Triggering guided setup wizard...');
           setScreen('guided_wizard');
         }
+      } else {
+        // Registered user on normal session restore / refresh
+        const activeScreen = screenRef.current;
+        const params = new URLSearchParams(window.location.search);
+        const urlScreen = params.get('screen') as ScreenType | null;
+        if (!urlScreen && (activeScreen === 'intro' || activeScreen === 'auth')) {
+          console.log('[Auth Flow] Authenticated user on root/intro screen. Routing to dashboard...');
+          setScreen('dashboard');
+        }
       }
     };
 
@@ -2709,12 +2718,10 @@ export function App() {
 
   const displayName = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0];
 
-  const isIntroScreen = screen === 'intro';
-  const showSplash = !isIntroScreen && (
-    (authLoading && !currentUser) ||
+  const showSplash =
+    authLoading ||
     (profileSyncing && (!userProfile || !userProfile.is_registered)) ||
-    (authTimedOut && !currentUser && !userProfile)
-  );
+    (authTimedOut && !currentUser && !userProfile);
 
   if (showSplash) {
     return (
@@ -2790,8 +2797,8 @@ export function App() {
             <div className="flex flex-col items-center gap-3 w-full pt-1">
               <BrandedLoadingSpinner
                 size="lg"
-                label="Launching Student Dashboard..."
-                sublabel="Syncing curriculum & student profile..."
+                label={currentUser ? "Loading Student Dashboard..." : "Loading Boardly..."}
+                sublabel={currentUser ? "Syncing curriculum & student profile..." : "Checking session & preparing workspace..."}
               />
             </div>
           )}

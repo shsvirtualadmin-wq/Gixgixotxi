@@ -117,233 +117,42 @@
   </head>
   <body class="bg-[#F8F9FB] text-slate-900 antialiased selection:bg-[#1E5AFF] selection:text-white">
     <div id="root">
-      <!-- Instant First-Paint Branded Skeleton & Semantic Homepage Content (800+ words visible text) -->
-      <div id="initial-preloader" style="min-height: 100vh; background-color: #F8F9FB; padding: 32px 20px; font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1E293B;">
-        <main style="max-width: 800px; margin: 0 auto; display: flex; flex-direction: column; gap: 24px;">
+      <!-- Instant First-Paint Neutral Loading Screen (Prevents marketing page flash during initial load & auth resolve) -->
+      <div id="initial-preloader" style="min-height: 100vh; background-color: #F8F9FB; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; font-family: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1E293B;">
+        <div style="max-width: 360px; width: 100%; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 28px; padding: 36px 28px; display: flex; flex-direction: column; align-items: center; text-align: center; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.02);">
           
-          <!-- Brand Header -->
-          <header style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #E2E8F0; padding-bottom: 16px;">
-            <div style="display: flex; align-items: center; gap: 12px;">
-              <div style="width: 44px; height: 44px; border-radius: 12px; background: #0A1330; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(30, 90, 255, 0.2); border: 2px solid #1E5AFF;">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#1E5AFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
-                  <path d="M6 12v5c3 3 9 3 12 0v-5"/>
-                </svg>
-              </div>
-              <div>
-                <div style="font-size: 16px; font-weight: 900; color: #0A1330; letter-spacing: 0.5px; line-height: 1;">BOARDLY</div>
-                <div style="font-size: 10px; font-weight: 700; color: #1E5AFF; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 3px;">SHS Virtual Academy</div>
-              </div>
-            </div>
-            <a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" style="font-size: 12px; font-weight: 700; color: #1E5AFF; text-decoration: none; border: 1px solid #BFDBFE; padding: 6px 14px; border-radius: 9999px; background: #EFF6FF;">
-              shsvirtualacademy.pro &rarr;
-            </a>
-          </header>
+          <!-- Logo Icon -->
+          <div style="width: 52px; height: 52px; border-radius: 16px; background: #0A1330; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 16px rgba(30, 90, 255, 0.22); border: 2px solid #1E5AFF; margin-bottom: 16px;">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1E5AFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
+              <path d="M6 12v5c3 3 9 3 12 0v-5"/>
+            </svg>
+          </div>
 
-          <!-- Hero & Platform Overview -->
-          <section style="display: flex; flex-direction: column; gap: 16px;">
-            <h1 style="font-size: 26px; font-weight: 900; color: #0F172A; letter-spacing: -0.5px; line-height: 1.25; margin: 0;">
-              Boardly — MCQ Practice for FSC Matric & Post FSC Students
-            </h1>
-            <article style="display: flex; flex-direction: column; gap: 8px;">
-              <h2 style="font-size: 17px; font-weight: 800; color: #1E293B; margin: 0;">Self-Paced Diagnostic MCQ Practice & Test Prep</h2>
-              <p style="font-size: 15px; line-height: 1.65; color: #334155; margin: 0;">
-                Boardly is an online MCQ practice and test preparation platform built for Pakistani students. It is designed to foster active recall, conceptual clarity, and disciplined exam habits. Learners access an extensive repository of chapter-wise questions, timed mock tests, and step-by-step solutions across science and general disciplines.
-              </p>
-              <p style="font-size: 15px; line-height: 1.65; color: #334155; margin: 0;">
-                Use the platform to revise textbook chapters, solve past papers, and improve problem-solving speed under realistic conditions. Detailed diagnostic telemetry helps you spot learning gaps early and master your syllabus with confidence.
-              </p>
-            </article>
-            <article style="display: flex; flex-direction: column; gap: 8px;">
-              <h2 style="font-size: 17px; font-weight: 800; color: #1E293B; margin: 0;">Academic Foundation: SHS Virtual Academy & schaorlio.me</h2>
-              <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0;">
-                Boardly is an educational initiative developed and operated under <a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" style="color: #1E5AFF; font-weight: 700; text-decoration: underline;">SHS Virtual Academy (shsvirtualacademy.pro)</a>. Our parent academy is dedicated to empowering Pakistani learners with modern digital study tools. It provides overarching curriculum guidance, academic direction, and student mentorship.
-              </p>
-              <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0;">
-                Meanwhile, Boardly serves as the specialized self-assessment and testing engine. Please note that live scheduled lectures, interactive video classes, and instructor-led mentoring sessions are hosted separately through <a href="https://schaorlio.me" target="_blank" rel="noopener noreferrer" style="color: #1E5AFF; font-weight: 700; text-decoration: underline;">schaorlio.me</a>. This allows Boardly to focus exclusively on high-yield question drills, answer derivations, and diagnostic testing.
-              </p>
-            </article>
-          </section>
+          <div style="font-size: 18px; font-weight: 800; color: #0A1330; letter-spacing: 0.5px; line-height: 1.2;">BOARDLY</div>
+          <div style="font-size: 10px; font-weight: 700; color: #1E5AFF; text-transform: uppercase; letter-spacing: 0.8px; margin-top: 4px; margin-bottom: 24px;">SHS Virtual Academy</div>
 
-          <!-- Who Boardly Is For Section -->
-          <section style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <h2 style="font-size: 18px; font-weight: 800; color: #0F172A; margin: 0;">Specialized Academic & Competitive Exam Tracks</h2>
-            <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0;">
-              Our practice modules and test banks are tailored to the exact requirements of Pakistani curricula. Each track addresses the specific cognitive demands of secondary, intermediate, and university entrance examinations:
-            </p>
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">Matric Students (Classes 9 & 10 / FBISE & Provincial SSC)</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Access comprehensive chapter-wise question banks for Physics, Chemistry, Biology, Mathematics, Computer Science, English, Urdu, and Islamiat. Every question is mapped directly to Federal Board (FBISE) Student Learning Outcomes (SLOs) and provincial standards. This targeted alignment helps 9th and 10th class students build foundational reasoning and problem-solving skills early.
-                </p>
-              </article>
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">Intermediate Students (Classes 11 & 12 / FSC, ICS & HSSC)</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Explore rigorous practice sets for Pre-Medical, Pre-Engineering, ICS, and General Science streams. The bank features high-level numerical derivations, organic reaction mechanisms, calculus integrals, and computer programming logic. All questions match standard intermediate board examination standards.
-                </p>
-              </article>
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">Medical College Entrance Aspirants (PMDC MDCAT)</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Prepare for medical college admission with tests aligned strictly with PMDC syllabus weightings. Practice high-yield questions across Biology, Chemistry, Physics, English, and Logical Reasoning. These timed sets train pattern recognition, option elimination, and high-speed problem solving under exam pressure.
-                </p>
-              </article>
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">Engineering University Entrance Aspirants (UET Taxila TCAT)</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Practice for engineering entry tests using our simulated 100-question, 400-mark examination format strictly adhering to UET Taxila guidelines (zero negative marking). Content focuses heavily on advanced calculus, Newtonian mechanics, electromagnetism, and physical chemistry calculations.
-                </p>
-              </article>
-            </div>
-          </section>
-
-          <!-- How MCQ Testing Works / Core Features Section -->
-          <section style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <h2 style="font-size: 18px; font-weight: 800; color: #0F172A; margin: 0;">Core Testing Features & AI-Powered Practice Tools</h2>
-            <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0;">
-              Boardly replaces passive textbook reading with active testing, instant feedback, and diagnostic analytics:
-            </p>
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">SLO-Aligned Chapter-Wise Question Banks</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Test every textbook chapter systematically after your daily lectures. Questions are classified across three cognitive levels: knowledge, conceptual understanding, and numerical application. This classification guarantees thorough coverage of the complete syllabus.
-                </p>
-              </article>
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">Timed Mock Exam Simulations & Authentic Formats</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Replicate real exam conditions with full-length timed tests. Practice pacing yourself, develop mental stamina, and overcome test anxiety. Built-in countdown timers and realistic layouts prepare you thoroughly for test day.
-                </p>
-              </article>
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">Instant Scoring Telemetry & Pacing Analytics</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Get instant grading with detailed accuracy metrics and pacing indicators. See your average time spent per question to optimize time allocation. For entrance tests like TCAT, scoring strictly follows UET Taxila guidelines with zero negative marking.
-                </p>
-              </article>
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">Step-by-Step Mathematical Derivations & Solutions</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Every question provides a clear, step-by-step solution and formula breakdown. Scientific justifications explain why the correct option applies and why distractors are wrong. This approach ensures you understand core concepts rather than memorizing answers.
-                </p>
-              </article>
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">24/7 AI Study Buddy Tutor for Concept Explanations</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Get on-demand assistance whenever you encounter challenging numericals, definitions, or mechanisms. The integrated AI Study Buddy delivers instant conversational explanations, helpful memory mnemonics, and alternative solution strategies 24/7.
-                </p>
-              </article>
-            </div>
-          </section>
-
-          <!-- Study Strategy Section -->
-          <section style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <h2 style="font-size: 18px; font-weight: 800; color: #0F172A; margin: 0;">How to Use Boardly Effectively for Maximum Exam Retention</h2>
-            <p style="font-size: 14px; line-height: 1.6; color: #475569; margin: 0;">
-              Follow this proven 4-step study cycle to turn passive reading into top exam scores:
-            </p>
-            <div style="display: flex; flex-direction: column; gap: 12px;">
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">Step 1: Study Core Textbook Concepts First</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Review your textbook chapter thoroughly or attend your lectures first. Solid conceptual foundations from school or SHS Virtual Academy make question practice far more effective.
-                </p>
-              </article>
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">Step 2: Take Untimed Chapter-Wise Practice Drills</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Solve 20 to 30 questions in untimed study mode with immediate feedback enabled. This reveals misunderstandings early and reinforces textbook concepts right after reading.
-                </p>
-              </article>
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">Step 3: Simulate Full Timed Mock Examinations</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Attempt full-length timed mock tests under realistic testing conditions. This trains your speed, builds stress tolerance, and sharpens your decision-making for exam day.
-                </p>
-              </article>
-              <article style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 14px;">
-                <h3 style="font-size: 15px; font-weight: 700; color: #0F172A; margin: 0 0 6px 0;">Step 4: Review Mistakes with Step-by-Step AI Explanations</h3>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 0;">
-                  Always review every missed or skipped question carefully. Read the detailed step-by-step derivation or ask Study Buddy AI to clarify difficult steps before moving to the next chapter.
-                </p>
-              </article>
-            </div>
-          </section>
-
-          <!-- Frequently Asked Questions Section (Collapsible Accordions matching FAQ JSON-LD Schema) -->
-          <section style="background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 16px; padding: 22px; display: flex; flex-direction: column; gap: 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-            <div>
-              <h2 style="font-size: 18px; font-weight: 800; color: #0F172A; margin: 0 0 4px 0;">Frequently Asked Questions About Boardly</h2>
-              <p style="font-size: 13px; color: #64748B; margin: 0;">Everything you need to know about Boardly MCQ practice, test tracks, and AI explanations.</p>
-            </div>
-            
-            <div style="display: flex; flex-direction: column; gap: 10px;">
-              <details open style="border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px 14px; background: #F8FAFC;">
-                <summary style="cursor: pointer; user-select: none;">
-                  <h3 style="display: inline; font-size: 15px; font-weight: 700; color: #1E293B; margin: 0;">What is Boardly?</h3>
-                </summary>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 10px 0 0 0;">Boardly is an online MCQ practice and test preparation platform for Pakistani students. It serves Matric (SSC), Intermediate (FSC/ICS), and university entrance test candidates (MDCAT/TCAT). Features include chapter-wise question banks, timed mock exams, step-by-step derivations, and 24/7 AI tutoring for active exam revision.</p>
-              </details>
-
-              <details open style="border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px 14px; background: #F8FAFC;">
-                <summary style="cursor: pointer; user-select: none;">
-                  <h3 style="display: inline; font-size: 15px; font-weight: 700; color: #1E293B; margin: 0;">Which subjects and exams does Boardly cover?</h3>
-                </summary>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 10px 0 0 0;">Boardly covers FBISE and provincial board curricula for SSC (Classes 9 & 10) and HSSC (Classes 11 & 12). Supported subjects include Physics, Chemistry, Biology, Mathematics, Computer Science, English, Urdu, and Islamiat. It also provides dedicated entrance test modules for PMDC MDCAT (Medical) and UET Taxila TCAT (Engineering).</p>
-              </details>
-
-              <details style="border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px 14px; background: #F8FAFC;">
-                <summary style="cursor: pointer; user-select: none;">
-                  <h3 style="display: inline; font-size: 15px; font-weight: 700; color: #1E293B; margin: 0;">Is Boardly free to use?</h3>
-                </summary>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 10px 0 0 0;">Yes, students can practice core chapter question banks, attempt mock exams, and view step-by-step answer derivations for free. Optional Pro upgrades offer extended question banks, advanced diagnostic analytics, and priority AI tutoring. Please note that all Pro memberships are digital purchases subject to a strict no-refunds policy.</p>
-              </details>
-
-              <details style="border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px 14px; background: #F8FAFC;">
-                <summary style="cursor: pointer; user-select: none;">
-                  <h3 style="display: inline; font-size: 15px; font-weight: 700; color: #1E293B; margin: 0;">How is Boardly different from live classes on schaorlio.me?</h3>
-                </summary>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 10px 0 0 0;">Boardly focuses strictly on self-paced MCQ testing, active question drills, and diagnostic analytics. Live video lectures, scheduled classes, and teacher-led mentoring sessions are hosted separately on <a href="https://schaorlio.me" target="_blank" rel="noopener noreferrer" style="color: #1E5AFF; text-decoration: underline;">schaorlio.me</a>.</p>
-              </details>
-
-              <details style="border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px 14px; background: #F8FAFC;">
-                <summary style="cursor: pointer; user-select: none;">
-                  <h3 style="display: inline; font-size: 15px; font-weight: 700; color: #1E293B; margin: 0;">Does Boardly provide explanations for MCQ answers?</h3>
-                </summary>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 10px 0 0 0;">Yes, every question includes a complete step-by-step explanation and formula derivation. You can also chat directly with the 24/7 AI Study Buddy tutor to ask follow-up questions about complex numericals or definitions.</p>
-              </details>
-
-              <details style="border: 1px solid #E2E8F0; border-radius: 12px; padding: 12px 14px; background: #F8FAFC;">
-                <summary style="cursor: pointer; user-select: none;">
-                  <h3 style="display: inline; font-size: 15px; font-weight: 700; color: #1E293B; margin: 0;">Is Boardly part of SHS Virtual Academy?</h3>
-                </summary>
-                <p style="font-size: 13.5px; line-height: 1.6; color: #475569; margin: 10px 0 0 0;">Yes, Boardly is an educational initiative developed and operated under <a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" style="color: #1E5AFF; text-decoration: underline;">SHS Virtual Academy (shsvirtualacademy.pro)</a>. SHS Virtual Academy provides overall curriculum direction, student mentorship, and academic leadership, while Boardly serves as the specialized testing portal.</p>
-              </details>
-            </div>
-          </section>
-
-          <!-- Call to Action -->
-          <section style="background: #0A1330; border-radius: 16px; padding: 24px; color: #FFFFFF; display: flex; flex-direction: column; sm:flex-row; align-items: center; justify-content: space-between; gap: 16px;">
-            <div style="display: flex; flex-direction: column; gap: 4px; text-align: left; width: 100%;">
-              <h2 style="font-size: 18px; font-weight: 800; margin: 0; color: #FFFFFF;">Ready to Start Practicing?</h2>
-              <p style="font-size: 13px; color: #94A3B8; margin: 0;">Select your class level or entrance exam series to try free chapter MCQs now.</p>
-            </div>
-            <div style="display: flex; gap: 10px; width: 100%; justify-content: flex-start; flex-wrap: wrap;">
-              <a href="/#platform-overview" style="background: #1E5AFF; color: #FFFFFF; text-decoration: none; font-size: 13px; font-weight: 700; padding: 10px 20px; border-radius: 9999px; display: inline-block;">
-                Start Practicing
-              </a>
-              <a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" style="background: rgba(255,255,255,0.1); color: #FFFFFF; text-decoration: none; font-size: 13px; font-weight: 600; padding: 10px 18px; border-radius: 9999px; display: inline-block; border: 1px solid rgba(255,255,255,0.2);">
-                Visit SHS Virtual Academy
-              </a>
-            </div>
-          </section>
-
-        </main>
+          <!-- Neutral Loading Spinner & Status -->
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%;">
+            <div style="width: 32px; height: 32px; border: 3px solid #E2E8F0; border-top-color: #1E5AFF; border-radius: 50%; animation: initial-spin 0.8s linear infinite;"></div>
+            <div style="font-size: 13px; font-weight: 600; color: #475569;">Loading Boardly...</div>
+          </div>
+        </div>
+        <style>
+          @keyframes initial-spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        </style>
       </div>
     </div>
+    <noscript>
+      <div style="max-width: 800px; margin: 20px auto; padding: 20px; font-family: sans-serif; color: #1E293B;">
+        <h1>Boardly — MCQ Practice for FSC Matric &amp; Post FSC Students</h1>
+        <p>Self-Paced Diagnostic MCQ Practice &amp; Test Prep by SHS Virtual Academy for FBISE, Punjab, Sindh, KPK, Balochistan, MDCAT and TCAT.</p>
+        <p>Please enable JavaScript to use the full interactive Boardly testing and practice portal.</p>
+      </div>
+    </noscript>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
