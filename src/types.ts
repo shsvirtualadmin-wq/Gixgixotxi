@@ -25,6 +25,7 @@ export interface Question {
   options: string[];
   correct: number;
   topic: string;
+  chapter?: string;
   explain: string;
   difficulty?: QuestionDifficulty;
   subject?: string;

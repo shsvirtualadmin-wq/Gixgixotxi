@@ -278,7 +278,7 @@ export const MDCAT_SUBJECTS: MDCATSubjectConfig[] = [
       },
       {
         id: 'phy-3',
-        name: 'Motion and Force',
+        name: 'Force and Motion',
         subtopics: "Kinematic equations, Newton's laws of motion, friction, projectile motion trajectories, momentum & impulse",
         isHighYield: true
       },
@@ -290,7 +290,7 @@ export const MDCAT_SUBJECTS: MDCATSubjectConfig[] = [
       },
       {
         id: 'phy-5',
-        name: 'Circular Motion',
+        name: 'Rotational and Circular Motion',
         subtopics: 'Angular velocity, centripetal acceleration & force, banking of roads, orbital speed, moment of inertia'
       },
       {
@@ -349,6 +349,21 @@ export const MDCAT_SUBJECTS: MDCATSubjectConfig[] = [
         id: 'phy-16',
         name: 'Nuclear Physics',
         subtopics: 'Radioactive decay law (alpha/beta/gamma), half-life equations, nuclear fission & fusion reactions, binding energy curve'
+      },
+      {
+        id: 'phy-17',
+        name: 'Physics of Solids',
+        subtopics: 'Mechanical properties of solids, stress, strain, Young\'s modulus, band theory of solids, superconductors'
+      },
+      {
+        id: 'phy-18',
+        name: 'Alternating Current',
+        subtopics: 'AC circuits, peak & RMS values, pure R, L, C circuits, RLC series resonance, power in AC circuits'
+      },
+      {
+        id: 'phy-19',
+        name: 'Atomic Spectra',
+        subtopics: 'Bohr model of hydrogen atom, energy level transitions, characteristic & continuous X-rays, laser principles'
       }
     ]
   },

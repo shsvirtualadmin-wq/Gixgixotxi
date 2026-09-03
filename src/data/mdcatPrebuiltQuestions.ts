@@ -6,26 +6,44 @@ import { MDCAT_BIOLOGY_BATCH3_PART1 } from './mdcatBiologyBatch3Part1';
 import { MDCAT_BIOLOGY_BATCH3_PART2 } from './mdcatBiologyBatch3Part2';
 import { MDCAT_BIOLOGY_BATCH4_PART1 } from './mdcatBiologyBatch4Part1';
 import { MDCAT_BIOLOGY_BATCH4_PART2 } from './mdcatBiologyBatch4Part2';
+import { MDCAT_BIOLOGY_BATCH5_PART1 } from './mdcatBiologyBatch5Part1';
+import { MDCAT_BIOLOGY_BATCH5_PART2 } from './mdcatBiologyBatch5Part2';
+import { MDCAT_BIOLOGY_BATCH6_PART1 } from './mdcatBiologyBatch6Part1';
+import { MDCAT_BIOLOGY_BATCH6_PART2 } from './mdcatBiologyBatch6Part2';
+import { MDCAT_BIOLOGY_BATCH7_PART1 } from './mdcatBiologyBatch7Part1';
+import { MDCAT_BIOLOGY_BATCH7_PART2 } from './mdcatBiologyBatch7Part2';
 
 import { MDCAT_CHEMISTRY_NEW_QUESTIONS } from './mdcatChemistryQuestions';
 import { MDCAT_CHEMISTRY_BATCH2 } from './mdcatChemistryBatch2';
 import { MDCAT_CHEMISTRY_BATCH3 } from './mdcatChemistryBatch3';
 import { MDCAT_CHEMISTRY_BATCH4 } from './mdcatChemistryBatch4';
+import { MDCAT_CHEMISTRY_BATCH5 } from './mdcatChemistryBatch5';
+import { MDCAT_CHEMISTRY_BATCH6 } from './mdcatChemistryBatch6';
+import { MDCAT_CHEMISTRY_BATCH7 } from './mdcatChemistryBatch7';
 
 import { MDCAT_PHYSICS_NEW_QUESTIONS } from './mdcatPhysicsQuestions';
 import { MDCAT_PHYSICS_BATCH2 } from './mdcatPhysicsBatch2';
 import { MDCAT_PHYSICS_BATCH3 } from './mdcatPhysicsBatch3';
 import { MDCAT_PHYSICS_BATCH4 } from './mdcatPhysicsBatch4';
+import { MDCAT_PHYSICS_BATCH5 } from './mdcatPhysicsBatch5';
+import { MDCAT_PHYSICS_BATCH6 } from './mdcatPhysicsBatch6';
+import { MDCAT_PHYSICS_BATCH7 } from './mdcatPhysicsBatch7';
 
 import { MDCAT_ENGLISH_NEW_QUESTIONS } from './mdcatEnglishQuestions';
 import { MDCAT_ENGLISH_BATCH2 } from './mdcatEnglishBatch2';
 import { MDCAT_ENGLISH_BATCH3 } from './mdcatEnglishBatch3';
 import { MDCAT_ENGLISH_BATCH4 } from './mdcatEnglishBatch4';
+import { MDCAT_ENGLISH_BATCH5 } from './mdcatEnglishBatch5';
+import { MDCAT_ENGLISH_BATCH6 } from './mdcatEnglishBatch6';
+import { MDCAT_ENGLISH_BATCH7 } from './mdcatEnglishBatch7';
 
 import { MDCAT_LOGICAL_REASONING_NEW_QUESTIONS } from './mdcatLogicalReasoningQuestions';
 import { MDCAT_LOGICAL_REASONING_BATCH2 } from './mdcatLogicalReasoningBatch2';
 import { MDCAT_LOGICAL_REASONING_BATCH3 } from './mdcatLogicalReasoningBatch3';
 import { MDCAT_LOGICAL_REASONING_BATCH4 } from './mdcatLogicalReasoningBatch4';
+import { MDCAT_LOGICAL_REASONING_BATCH5 } from './mdcatLogicalReasoningBatch5';
+import { MDCAT_LOGICAL_REASONING_BATCH6 } from './mdcatLogicalReasoningBatch6';
+import { MDCAT_LOGICAL_REASONING_BATCH7 } from './mdcatLogicalReasoningBatch7';
 
 function shuffleOptionsAndFixCorrect(q: Question): Question {
   const correctText = q.options[q.correct];
@@ -81,7 +99,46 @@ export const MDCAT_BATCH4_QUESTIONS: Question[] = [
   ...MDCAT_LOGICAL_REASONING_BATCH4
 ];
 
-// Primary 1200 Question Repository grouped by Subject according to PMDC Exam Weightage
+// Batch 5 (300 new verified MCQs bringing bank to 1500 total)
+export const MDCAT_BATCH5_QUESTIONS: Question[] = [
+  ...MDCAT_BIOLOGY_BATCH5_PART1,
+  ...MDCAT_BIOLOGY_BATCH5_PART2,
+  ...MDCAT_CHEMISTRY_BATCH5,
+  ...MDCAT_PHYSICS_BATCH5,
+  ...MDCAT_ENGLISH_BATCH5,
+  ...MDCAT_LOGICAL_REASONING_BATCH5
+];
+
+// Batch 6 (300 new verified MCQs bringing bank to 1800 total)
+export const MDCAT_BATCH6_QUESTIONS: Question[] = [
+  ...MDCAT_BIOLOGY_BATCH6_PART1,
+  ...MDCAT_BIOLOGY_BATCH6_PART2,
+  ...MDCAT_CHEMISTRY_BATCH6,
+  ...MDCAT_PHYSICS_BATCH6,
+  ...MDCAT_ENGLISH_BATCH6,
+  ...MDCAT_LOGICAL_REASONING_BATCH6
+];
+
+// Batch 7 (300 new verified MCQs bringing bank to 2100 total)
+export const MDCAT_BATCH7_QUESTIONS: Question[] = [
+  ...MDCAT_BIOLOGY_BATCH7_PART1,
+  ...MDCAT_BIOLOGY_BATCH7_PART2,
+  ...MDCAT_CHEMISTRY_BATCH7,
+  ...MDCAT_PHYSICS_BATCH7,
+  ...MDCAT_ENGLISH_BATCH7,
+  ...MDCAT_LOGICAL_REASONING_BATCH7
+];
+
+function normalizeQuestion(q: Question, fallbackSubject: string): Question {
+  return {
+    ...q,
+    subject: q.subject || fallbackSubject,
+    chapter: q.chapter || q.topic || 'General',
+    topic: q.topic || q.chapter || 'General',
+  };
+}
+
+// Primary 2100 Question Repository grouped by Subject according to PMDC Exam Weightage
 export const MDCAT_PREBUILT_QUESTIONS: Record<string, Question[]> = {
   Biology: [
     ...MDCAT_BIOLOGY_NEW_QUESTIONS,
@@ -90,32 +147,50 @@ export const MDCAT_PREBUILT_QUESTIONS: Record<string, Question[]> = {
     ...MDCAT_BIOLOGY_BATCH3_PART1,
     ...MDCAT_BIOLOGY_BATCH3_PART2,
     ...MDCAT_BIOLOGY_BATCH4_PART1,
-    ...MDCAT_BIOLOGY_BATCH4_PART2
-  ],
+    ...MDCAT_BIOLOGY_BATCH4_PART2,
+    ...MDCAT_BIOLOGY_BATCH5_PART1,
+    ...MDCAT_BIOLOGY_BATCH5_PART2,
+    ...MDCAT_BIOLOGY_BATCH6_PART1,
+    ...MDCAT_BIOLOGY_BATCH6_PART2,
+    ...MDCAT_BIOLOGY_BATCH7_PART1,
+    ...MDCAT_BIOLOGY_BATCH7_PART2
+  ].map(q => normalizeQuestion(q, 'Biology')),
   Chemistry: [
     ...MDCAT_CHEMISTRY_NEW_QUESTIONS,
     ...MDCAT_CHEMISTRY_BATCH2,
     ...MDCAT_CHEMISTRY_BATCH3,
-    ...MDCAT_CHEMISTRY_BATCH4
-  ],
+    ...MDCAT_CHEMISTRY_BATCH4,
+    ...MDCAT_CHEMISTRY_BATCH5,
+    ...MDCAT_CHEMISTRY_BATCH6,
+    ...MDCAT_CHEMISTRY_BATCH7
+  ].map(q => normalizeQuestion(q, 'Chemistry')),
   Physics: [
     ...MDCAT_PHYSICS_NEW_QUESTIONS,
     ...MDCAT_PHYSICS_BATCH2,
     ...MDCAT_PHYSICS_BATCH3,
-    ...MDCAT_PHYSICS_BATCH4
-  ],
+    ...MDCAT_PHYSICS_BATCH4,
+    ...MDCAT_PHYSICS_BATCH5,
+    ...MDCAT_PHYSICS_BATCH6,
+    ...MDCAT_PHYSICS_BATCH7
+  ].map(q => normalizeQuestion(q, 'Physics')),
   English: [
     ...MDCAT_ENGLISH_NEW_QUESTIONS,
     ...MDCAT_ENGLISH_BATCH2,
     ...MDCAT_ENGLISH_BATCH3,
-    ...MDCAT_ENGLISH_BATCH4
-  ],
+    ...MDCAT_ENGLISH_BATCH4,
+    ...MDCAT_ENGLISH_BATCH5,
+    ...MDCAT_ENGLISH_BATCH6,
+    ...MDCAT_ENGLISH_BATCH7
+  ].map(q => normalizeQuestion(q, 'English')),
   'Logical Reasoning': [
     ...MDCAT_LOGICAL_REASONING_NEW_QUESTIONS,
     ...MDCAT_LOGICAL_REASONING_BATCH2,
     ...MDCAT_LOGICAL_REASONING_BATCH3,
-    ...MDCAT_LOGICAL_REASONING_BATCH4
-  ]
+    ...MDCAT_LOGICAL_REASONING_BATCH4,
+    ...MDCAT_LOGICAL_REASONING_BATCH5,
+    ...MDCAT_LOGICAL_REASONING_BATCH6,
+    ...MDCAT_LOGICAL_REASONING_BATCH7
+  ].map(q => normalizeQuestion(q, 'Logical Reasoning'))
 };
 
 // Aliases for robust subject mapping
@@ -189,22 +264,25 @@ function matchesTopic(qTopic: string, targetTopic: string): boolean {
     [['macromolecule', 'environmental', 'polymer', 'smog', 'pollution'], ['macromolecule', 'environmental chemistry', 'macromolecules']],
 
     // Physics
-    [['force and motion', 'momentum', 'newton'], ['force and motion', 'force and motion momentum']],
-    [['work energy', 'power'], ['work energy', 'work energy and power']],
-    [['rotational', 'circular', 'angular'], ['rotational', 'circular motion', 'rotational circular']],
-    [['wave', 'sound', 'light wave', 'doppler', 'standing wave'], ['wave', 'waves', 'waves oscillations']],
-    [['oscillation', 'shm', 'pendulum'], ['oscillation', 'oscillations']],
+    [['force and motion', 'motion and force', 'momentum', 'newton'], ['force and motion', 'motion and force', 'force and motion momentum']],
+    [['work energy', 'power', 'work, energy and power'], ['work energy', 'work energy and power', 'work, energy and power']],
+    [['rotational', 'circular', 'angular', 'circular motion', 'rotational and circular motion'], ['rotational', 'circular motion', 'rotational circular', 'rotational and circular motion']],
+    [['wave', 'sound', 'light wave', 'doppler', 'standing wave', 'waves'], ['wave', 'waves', 'waves oscillations']],
+    [['oscillation', 'shm', 'pendulum', 'oscillations'], ['oscillation', 'oscillations']],
     [['thermodynamics', 'heat engine', 'carnot'], ['thermodynamic', 'thermodynamics']],
-    [['electrostatic', 'coulomb', 'capacitor'], ['electrostatic', 'electrostatics']],
+    [['electrostatic', 'coulomb', 'capacitor', 'electrostatics'], ['electrostatic', 'electrostatics']],
     [['current electricity', 'kirchhoff', 'ohm'], ['current electricity']],
     [['electromagnetism', 'magnetic field', 'ampere', 'lorentz'], ['electromagnetism', 'magnetic fields']],
     [['electromagnetic induction', 'faraday', 'lenz', 'flux'], ['electromagnetic induction']],
     [['alternating current', 'ac circuit', 'resonance'], ['alternating current', 'ac circuits']],
     [['physics of solids', 'deformation', 'elasticity', 'semiconductor band'], ['physics of solids', 'deformation of solids']],
     [['electronics', 'diode', 'transistor', 'op amp'], ['electronic', 'electronics']],
-    [['dawn of modern', 'photoelectric', 'compton', 'de broglie'], ['dawn of modern physics', 'quantum physics']],
+    [['dawn of modern', 'photoelectric', 'compton', 'de broglie', 'dawn of modern physics'], ['dawn of modern physics', 'quantum physics']],
     [['atomic spectra', 'bohr', 'hydrogen spectrum'], ['atomic spectra', 'spectra']],
     [['nuclear physics', 'radioactivity', 'fission', 'half life'], ['nuclear physics', 'radioactivity']],
+    [['measurement', 'measurements', 'physical quantity', 'si unit'], ['measurement', 'measurements']],
+    [['scalar', 'vector', 'scalars and vectors', 'cross product', 'dot product'], ['scalar', 'vector', 'scalars and vectors']],
+    [['fluid dynamic', 'fluid dynamics', 'bernoulli', 'viscosity', 'stokes'], ['fluid dynamic', 'fluid dynamics']],
 
     // English
     [['vocabulary', 'synonym', 'antonym'], ['vocabulary', 'synonyms']],
@@ -253,7 +331,7 @@ export function getMDCATPrebuiltQuestions(subject: string, count: number = 10, t
       cleanTopic === normSub.toLowerCase();
 
     if (!isGeneric) {
-      const topicMatches = fullPool.filter(q => matchesTopic(q.topic || '', cleanTopic));
+      const topicMatches = fullPool.filter(q => matchesTopic(q.chapter || '', cleanTopic) || matchesTopic(q.topic || '', cleanTopic));
       if (topicMatches.length > 0) {
         topicPool = topicMatches;
       }
