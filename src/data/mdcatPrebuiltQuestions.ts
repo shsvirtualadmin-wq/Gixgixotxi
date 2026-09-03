@@ -12,6 +12,10 @@ import { MDCAT_BIOLOGY_BATCH6_PART1 } from './mdcatBiologyBatch6Part1';
 import { MDCAT_BIOLOGY_BATCH6_PART2 } from './mdcatBiologyBatch6Part2';
 import { MDCAT_BIOLOGY_BATCH7_PART1 } from './mdcatBiologyBatch7Part1';
 import { MDCAT_BIOLOGY_BATCH7_PART2 } from './mdcatBiologyBatch7Part2';
+import { MDCAT_BIOLOGY_BATCH8_PART1 } from './mdcatBiologyBatch8Part1';
+import { MDCAT_BIOLOGY_BATCH8_PART2 } from './mdcatBiologyBatch8Part2';
+import { MDCAT_BIOLOGY_BATCH9_PART1 } from './mdcatBiologyBatch9Part1';
+import { MDCAT_BIOLOGY_BATCH9_PART2 } from './mdcatBiologyBatch9Part2';
 
 import { MDCAT_CHEMISTRY_NEW_QUESTIONS } from './mdcatChemistryQuestions';
 import { MDCAT_CHEMISTRY_BATCH2 } from './mdcatChemistryBatch2';
@@ -20,6 +24,8 @@ import { MDCAT_CHEMISTRY_BATCH4 } from './mdcatChemistryBatch4';
 import { MDCAT_CHEMISTRY_BATCH5 } from './mdcatChemistryBatch5';
 import { MDCAT_CHEMISTRY_BATCH6 } from './mdcatChemistryBatch6';
 import { MDCAT_CHEMISTRY_BATCH7 } from './mdcatChemistryBatch7';
+import { MDCAT_CHEMISTRY_BATCH8 } from './mdcatChemistryBatch8';
+import { MDCAT_CHEMISTRY_BATCH9 } from './mdcatChemistryBatch9';
 
 import { MDCAT_PHYSICS_NEW_QUESTIONS } from './mdcatPhysicsQuestions';
 import { MDCAT_PHYSICS_BATCH2 } from './mdcatPhysicsBatch2';
@@ -28,6 +34,8 @@ import { MDCAT_PHYSICS_BATCH4 } from './mdcatPhysicsBatch4';
 import { MDCAT_PHYSICS_BATCH5 } from './mdcatPhysicsBatch5';
 import { MDCAT_PHYSICS_BATCH6 } from './mdcatPhysicsBatch6';
 import { MDCAT_PHYSICS_BATCH7 } from './mdcatPhysicsBatch7';
+import { MDCAT_PHYSICS_BATCH8 } from './mdcatPhysicsBatch8';
+import { MDCAT_PHYSICS_BATCH9 } from './mdcatPhysicsBatch9';
 
 import { MDCAT_ENGLISH_NEW_QUESTIONS } from './mdcatEnglishQuestions';
 import { MDCAT_ENGLISH_BATCH2 } from './mdcatEnglishBatch2';
@@ -36,6 +44,8 @@ import { MDCAT_ENGLISH_BATCH4 } from './mdcatEnglishBatch4';
 import { MDCAT_ENGLISH_BATCH5 } from './mdcatEnglishBatch5';
 import { MDCAT_ENGLISH_BATCH6 } from './mdcatEnglishBatch6';
 import { MDCAT_ENGLISH_BATCH7 } from './mdcatEnglishBatch7';
+import { MDCAT_ENGLISH_BATCH8 } from './mdcatEnglishBatch8';
+import { MDCAT_ENGLISH_BATCH9 } from './mdcatEnglishBatch9';
 
 import { MDCAT_LOGICAL_REASONING_NEW_QUESTIONS } from './mdcatLogicalReasoningQuestions';
 import { MDCAT_LOGICAL_REASONING_BATCH2 } from './mdcatLogicalReasoningBatch2';
@@ -44,6 +54,8 @@ import { MDCAT_LOGICAL_REASONING_BATCH4 } from './mdcatLogicalReasoningBatch4';
 import { MDCAT_LOGICAL_REASONING_BATCH5 } from './mdcatLogicalReasoningBatch5';
 import { MDCAT_LOGICAL_REASONING_BATCH6 } from './mdcatLogicalReasoningBatch6';
 import { MDCAT_LOGICAL_REASONING_BATCH7 } from './mdcatLogicalReasoningBatch7';
+import { MDCAT_LOGICAL_REASONING_BATCH8 } from './mdcatLogicalReasoningBatch8';
+import { MDCAT_LOGICAL_REASONING_BATCH9 } from './mdcatLogicalReasoningBatch9';
 
 function shuffleOptionsAndFixCorrect(q: Question): Question {
   const correctText = q.options[q.correct];
@@ -129,6 +141,26 @@ export const MDCAT_BATCH7_QUESTIONS: Question[] = [
   ...MDCAT_LOGICAL_REASONING_BATCH7
 ];
 
+// Batch 8 (300 new verified MCQs bringing bank to 2400 total)
+export const MDCAT_BATCH8_QUESTIONS: Question[] = [
+  ...MDCAT_BIOLOGY_BATCH8_PART1,
+  ...MDCAT_BIOLOGY_BATCH8_PART2,
+  ...MDCAT_CHEMISTRY_BATCH8,
+  ...MDCAT_PHYSICS_BATCH8,
+  ...MDCAT_ENGLISH_BATCH8,
+  ...MDCAT_LOGICAL_REASONING_BATCH8
+];
+
+// Batch 9 (300 new verified MCQs bringing bank to 2700 total)
+export const MDCAT_BATCH9_QUESTIONS: Question[] = [
+  ...MDCAT_BIOLOGY_BATCH9_PART1,
+  ...MDCAT_BIOLOGY_BATCH9_PART2,
+  ...MDCAT_CHEMISTRY_BATCH9,
+  ...MDCAT_PHYSICS_BATCH9,
+  ...MDCAT_ENGLISH_BATCH9,
+  ...MDCAT_LOGICAL_REASONING_BATCH9
+];
+
 function normalizeQuestion(q: Question, fallbackSubject: string): Question {
   return {
     ...q,
@@ -138,7 +170,7 @@ function normalizeQuestion(q: Question, fallbackSubject: string): Question {
   };
 }
 
-// Primary 2100 Question Repository grouped by Subject according to PMDC Exam Weightage
+// Primary 2700 Question Repository grouped by Subject according to PMDC Exam Weightage
 export const MDCAT_PREBUILT_QUESTIONS: Record<string, Question[]> = {
   Biology: [
     ...MDCAT_BIOLOGY_NEW_QUESTIONS,
@@ -153,7 +185,11 @@ export const MDCAT_PREBUILT_QUESTIONS: Record<string, Question[]> = {
     ...MDCAT_BIOLOGY_BATCH6_PART1,
     ...MDCAT_BIOLOGY_BATCH6_PART2,
     ...MDCAT_BIOLOGY_BATCH7_PART1,
-    ...MDCAT_BIOLOGY_BATCH7_PART2
+    ...MDCAT_BIOLOGY_BATCH7_PART2,
+    ...MDCAT_BIOLOGY_BATCH8_PART1,
+    ...MDCAT_BIOLOGY_BATCH8_PART2,
+    ...MDCAT_BIOLOGY_BATCH9_PART1,
+    ...MDCAT_BIOLOGY_BATCH9_PART2
   ].map(q => normalizeQuestion(q, 'Biology')),
   Chemistry: [
     ...MDCAT_CHEMISTRY_NEW_QUESTIONS,
@@ -162,7 +198,9 @@ export const MDCAT_PREBUILT_QUESTIONS: Record<string, Question[]> = {
     ...MDCAT_CHEMISTRY_BATCH4,
     ...MDCAT_CHEMISTRY_BATCH5,
     ...MDCAT_CHEMISTRY_BATCH6,
-    ...MDCAT_CHEMISTRY_BATCH7
+    ...MDCAT_CHEMISTRY_BATCH7,
+    ...MDCAT_CHEMISTRY_BATCH8,
+    ...MDCAT_CHEMISTRY_BATCH9
   ].map(q => normalizeQuestion(q, 'Chemistry')),
   Physics: [
     ...MDCAT_PHYSICS_NEW_QUESTIONS,
@@ -171,7 +209,9 @@ export const MDCAT_PREBUILT_QUESTIONS: Record<string, Question[]> = {
     ...MDCAT_PHYSICS_BATCH4,
     ...MDCAT_PHYSICS_BATCH5,
     ...MDCAT_PHYSICS_BATCH6,
-    ...MDCAT_PHYSICS_BATCH7
+    ...MDCAT_PHYSICS_BATCH7,
+    ...MDCAT_PHYSICS_BATCH8,
+    ...MDCAT_PHYSICS_BATCH9
   ].map(q => normalizeQuestion(q, 'Physics')),
   English: [
     ...MDCAT_ENGLISH_NEW_QUESTIONS,
@@ -180,7 +220,9 @@ export const MDCAT_PREBUILT_QUESTIONS: Record<string, Question[]> = {
     ...MDCAT_ENGLISH_BATCH4,
     ...MDCAT_ENGLISH_BATCH5,
     ...MDCAT_ENGLISH_BATCH6,
-    ...MDCAT_ENGLISH_BATCH7
+    ...MDCAT_ENGLISH_BATCH7,
+    ...MDCAT_ENGLISH_BATCH8,
+    ...MDCAT_ENGLISH_BATCH9
   ].map(q => normalizeQuestion(q, 'English')),
   'Logical Reasoning': [
     ...MDCAT_LOGICAL_REASONING_NEW_QUESTIONS,
@@ -189,7 +231,9 @@ export const MDCAT_PREBUILT_QUESTIONS: Record<string, Question[]> = {
     ...MDCAT_LOGICAL_REASONING_BATCH4,
     ...MDCAT_LOGICAL_REASONING_BATCH5,
     ...MDCAT_LOGICAL_REASONING_BATCH6,
-    ...MDCAT_LOGICAL_REASONING_BATCH7
+    ...MDCAT_LOGICAL_REASONING_BATCH7,
+    ...MDCAT_LOGICAL_REASONING_BATCH8,
+    ...MDCAT_LOGICAL_REASONING_BATCH9
   ].map(q => normalizeQuestion(q, 'Logical Reasoning'))
 };
 
@@ -331,9 +375,17 @@ export function getMDCATPrebuiltQuestions(subject: string, count: number = 10, t
       cleanTopic === normSub.toLowerCase();
 
     if (!isGeneric) {
-      const topicMatches = fullPool.filter(q => matchesTopic(q.chapter || '', cleanTopic) || matchesTopic(q.topic || '', cleanTopic));
-      if (topicMatches.length > 0) {
-        topicPool = topicMatches;
+      const exactMatches = fullPool.filter(q =>
+        (q.chapter && q.chapter.toLowerCase().trim() === cleanTopic) ||
+        (q.topic && q.topic.toLowerCase().trim() === cleanTopic)
+      );
+      if (exactMatches.length > 0) {
+        topicPool = exactMatches;
+      } else {
+        const topicMatches = fullPool.filter(q => matchesTopic(q.chapter || '', cleanTopic) || matchesTopic(q.topic || '', cleanTopic));
+        if (topicMatches.length > 0) {
+          topicPool = topicMatches;
+        }
       }
     }
   }

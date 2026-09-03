@@ -650,7 +650,7 @@ export const GuidedSetupWizard: React.FC<GuidedSetupWizardProps> = ({
                       <div>
                         <div className="font-bold text-sm text-white">{daysRemaining} Days Until Exam</div>
                         <div className="text-xs text-blue-300">
-                          Recommended Pacing: ~{Math.max(15, Math.ceil(2100 / Math.max(daysRemaining, 1)))} MCQs / day
+                          Recommended Pacing: ~{Math.max(15, Math.ceil(2700 / Math.max(daysRemaining, 1)))} MCQs / day
                         </div>
                       </div>
                     </div>
