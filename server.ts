@@ -4945,12 +4945,12 @@ ${scopeInstruction}${excludeInstruction}`;
     }
   });
 
-  app.post("/api/resources/upload", resourceUpload.single("file"), async (req, res) => {
+  app.post("/api/resources/upload", resourceUpload.single("file") as any, async (req: any, res: any) => {
     try {
       const { title, subject, class: targetClass, category, requesterEmail } = req.body || {};
       const file = req.file;
 
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
+      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req as any);
       const requestedBy = (requesterEmail || tokenUser?.email || "").trim().toLowerCase();
       const isAdmin = isTokenAdmin || isAdminEmail(requestedBy);
 
@@ -5177,7 +5177,7 @@ ${scopeInstruction}${excludeInstruction}`;
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
     res.setHeader("Access-Control-Allow-Headers", "*");
-    avatarUploadMulter.single("avatar")(req, res, (err) => {
+    (avatarUploadMulter.single("avatar") as any)(req, res, (err: any) => {
       if (err) {
         if (err.code === "LIMIT_FILE_SIZE") {
           return res.status(400).json({
@@ -5945,7 +5945,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   });
 
   // API Endpoint: Google Drive Upload (Strict Admin-Only Restriction)
-  app.post("/api/drive-upload", driveUploadMulter.single("file"), async (req: express.Request, res: express.Response) => {
+  app.post("/api/drive-upload", driveUploadMulter.single("file") as any, async (req: any, res: any) => {
     try {
       // 1. Strict Server-Side Admin Role Verification
       const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
@@ -6862,7 +6862,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     (req: express.Request, res: express.Response, next: express.NextFunction) => {
       const contentType = req.headers['content-type'] || '';
       if (contentType.includes('multipart/form-data')) {
-        driveUploadMulter.single('file')(req, res, next);
+        (driveUploadMulter.single('file') as any)(req, res, next);
       } else {
         express.json()(req, res, next);
       }
