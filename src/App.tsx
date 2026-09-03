@@ -14,6 +14,7 @@ import {
 } from './types';
 import { PREBUILT_QUESTIONS, getPrebuiltQuestionsForSubject } from './data/prebuiltQuestions';
 import { generateTCATFullMockBank, getTCATPrebuiltQuestions } from './data/tcatPrebuiltQuestions';
+import { generateMDCATFullMockBank, getMDCATPrebuiltQuestions } from './data/mdcatPrebuiltQuestions';
 import { checkQuestionTopicRelevance } from './utils/topicValidator';
 import { shuffleQuestionOptions } from './lib/shuffle';
 import { getSubjectsForClassAndGroup } from './data/categories';
@@ -2048,10 +2049,11 @@ export function App() {
     const targetSubject = mapSubject(fullParams.subject || selectedSubject || 'Physics');
     const targetTopic = fullParams.customTopic !== undefined ? fullParams.customTopic : customTopic;
 
-    // TCAT uses strictly verified hardcoded banks and must NEVER invoke AI/API background generation
+    // TCAT and MDCAT use strictly verified hardcoded banks and must NEVER invoke AI/API background generation
     const isTcat = fullParams.path === 'tcat' || selectedClass === 'TCAT' || selectedGroup === 'TCAT' || (fullParams.subject || '').toLowerCase().includes('tcat') || targetSubject.toLowerCase().includes('tcat');
-    if (isTcat) {
-      console.log('[MCQ Background Gen] TCAT test detected: strictly bypassing AI generation, relying solely on hardcoded question bank.');
+    const isMdcatTest = isMdcat || fullParams.path === 'mdcat' || selectedClass === 'MDCAT' || selectedGroup === 'MDCAT' || (fullParams.subject || '').toLowerCase().includes('mdcat') || targetSubject.toLowerCase().includes('mdcat');
+    if (isTcat || isMdcatTest) {
+      console.log('[MCQ Background Gen] TCAT/MDCAT test detected: strictly bypassing AI generation, relying solely on hardcoded question bank.');
       return;
     }
 
@@ -2293,6 +2295,18 @@ export function App() {
       if (initialSet.length < targetTotalCount) {
         effectiveTargetTotalCount = initialSet.length;
       }
+    } else if (isMdcat) {
+      // MDCAT Track: Exclusively assemble questions from verified hardcoded bank, zero AI/API generation, zero placeholder filler
+      const isMdcatMock = params.isFullMock || targetSubject.toLowerCase().includes('mdcat full') || targetSubject.toLowerCase().includes('full mock') || targetTotalCount >= 180;
+      if (isMdcatMock) {
+        initialSet = generateMDCATFullMockBank();
+      } else {
+        initialSet = getMDCATPrebuiltQuestions(targetSubject, targetTotalCount, targetTopic);
+      }
+
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
     } else {
       // 1. Instantly assemble initial questions from cache & prebuilt bank so the test screen opens immediately (< 0.5s)
       initialSet = getCachedQuestions(targetSubject, targetTopic) || [];
@@ -2475,8 +2489,8 @@ export function App() {
     setIsGenerating(false);
     setPendingTestParams(null);
 
-    // 2. Launch background generation to fetch fresh AI-generated questions asynchronously (strictly disabled for TCAT)
-    if (!isTcat && effectiveTargetTotalCount > readyQuestions.length) {
+    // 2. Launch background generation to fetch fresh AI-generated questions asynchronously (strictly disabled for TCAT and MDCAT)
+    if (!isTcat && !isMdcat && effectiveTargetTotalCount > readyQuestions.length) {
       startBackgroundGeneration(params, readyQuestions, effectiveTargetTotalCount, isMdcat, activeSessionId);
     }
   };
@@ -3256,11 +3270,20 @@ export function App() {
                       const targetTop = testConfig?.customTopic;
                       const targetCount = testConfig?.questionCount || 10;
                       const isTcat = testConfig?.path === 'tcat' || selectedClass === 'TCAT' || selectedGroup === 'TCAT' || targetSub.toLowerCase().includes('tcat');
+                      const isMdcatTest = testConfig?.path === 'mdcat' || selectedClass === 'MDCAT' || selectedGroup === 'MDCAT' || targetSub.toLowerCase().includes('mdcat');
                       
                       const newSet = [...activeQuestions];
                       if (isTcat) {
                         const tcatPool = getTCATPrebuiltQuestions(targetSub, targetCount, targetTop);
                         for (const q of tcatPool) {
+                          if (newSet.length >= targetCount) break;
+                          if (!newSet.some(existing => (existing.q || '').toLowerCase().trim() === (q.q || '').toLowerCase().trim())) {
+                            newSet.push(q);
+                          }
+                        }
+                      } else if (isMdcatTest) {
+                        const mdcatPool = getMDCATPrebuiltQuestions(targetSub, targetCount, targetTop);
+                        for (const q of mdcatPool) {
                           if (newSet.length >= targetCount) break;
                           if (!newSet.some(existing => (existing.q || '').toLowerCase().trim() === (q.q || '').toLowerCase().trim())) {
                             newSet.push(q);

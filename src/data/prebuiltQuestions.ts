@@ -3522,7 +3522,7 @@ export const PREBUILT_QUESTIONS: Record<string, Question[]> = {
   ]
 };
 
-import { MDCAT_PREBUILT_QUESTIONS, generateMDCATFullMockBank } from './mdcatPrebuiltQuestions';
+import { MDCAT_PREBUILT_QUESTIONS, generateMDCATFullMockBank, getMDCATPrebuiltQuestions } from './mdcatPrebuiltQuestions';
 import { TCAT_PREBUILT_QUESTIONS, generateTCATFullMockBank, getTCATPrebuiltQuestions } from './tcatPrebuiltQuestions';
 
 // Map aliases for prebuilt lookup so queries never fail

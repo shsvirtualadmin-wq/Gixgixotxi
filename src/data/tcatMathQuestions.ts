@@ -4075,5 +4075,455 @@ export const TCAT_MATH_QUESTIONS: Question[] = [
     options: ["2","1","4","0"],
     correct: 0,
     explain: "Volume = scalar triple product [a, b, c] = det([[1, 1, 0], [0, 1, 1], [1, 0, 1]]) = 1(1 - 0) - 1(0 - 1) + 0 = 1 + 1 = 2."
+  },
+  {
+    id: "tcat-math-401",
+    subject: "Mathematics",
+    topic: "Functions and Limits",
+    difficulty: "Easy",
+    q: "Evaluate the algebraic limit: lim(x -> 3) [ (x^2 - 9) / (x - 3) ].",
+    options: [
+      "6",
+      "3",
+      "0",
+      "Does not exist"
+    ],
+    correct: 0,
+    explain: "Factoring the numerator: (x - 3)(x + 3) / (x - 3) = x + 3. As x -> 3, the limit is 3 + 3 = 6."
+  },
+  {
+    id: "tcat-math-402",
+    subject: "Mathematics",
+    topic: "Differentiation",
+    difficulty: "Easy",
+    q: "Find the first derivative of f(x) = 4x^3 - 5x^2 + 7x - 12 with respect to x.",
+    options: [
+      "12x^2 - 10x + 7",
+      "12x^2 - 10x - 5",
+      "4x^2 - 5x + 7",
+      "12x^3 - 10x^2 + 7"
+    ],
+    correct: 0,
+    explain: "Applying the power rule d/dx [x^n] = n*x^(n-1) gives 12x^2 - 10x + 7."
+  },
+  {
+    id: "tcat-math-403",
+    subject: "Mathematics",
+    topic: "Integration",
+    difficulty: "Easy",
+    q: "Evaluate the indefinite integral: ∫ (6x^2 + 2e^x) dx.",
+    options: [
+      "2x^3 + 2e^x + C",
+      "3x^3 + 2e^x + C",
+      "6x^3 + e^x + C",
+      "2x^3 + e^(2x) + C"
+    ],
+    correct: 0,
+    explain: "∫ 6x^2 dx = 6*(x^3/3) = 2x^3, and ∫ 2e^x dx = 2e^x. Thus, 2x^3 + 2e^x + C."
+  },
+  {
+    id: "tcat-math-404",
+    subject: "Mathematics",
+    topic: "Matrices and Determinants",
+    difficulty: "Easy",
+    q: "Calculate the determinant of the 2x2 matrix A = [[5, 3], [2, 4]].",
+    options: [
+      "14",
+      "26",
+      "20",
+      "6"
+    ],
+    correct: 0,
+    explain: "det(A) = (5)(4) - (3)(2) = 20 - 6 = 14."
+  },
+  {
+    id: "tcat-math-405",
+    subject: "Mathematics",
+    topic: "Introduction to Analytic Geometry",
+    difficulty: "Easy",
+    q: "Determine the slope of the straight line defined by the equation 4x - 2y + 7 = 0.",
+    options: [
+      "2",
+      "-2",
+      "1/2",
+      "-1/2"
+    ],
+    correct: 0,
+    explain: "Rearranging into slope-intercept form y = mx + c: 2y = 4x + 7 => y = 2x + 7/2. The slope m = 2."
+  },
+  {
+    id: "tcat-math-406",
+    subject: "Mathematics",
+    topic: "Quadratic Equations",
+    difficulty: "Easy",
+    q: "If the roots of ax^2 + bx + c = 0 are real and equal, what is the value of the discriminant b^2 - 4ac?",
+    options: [
+      "0",
+      "Greater than 0",
+      "Less than 0",
+      "Undefined"
+    ],
+    correct: 0,
+    explain: "A discriminant equal to zero indicates that the quadratic equation possesses two coincident (real and equal) roots."
+  },
+  {
+    id: "tcat-math-407",
+    subject: "Mathematics",
+    topic: "Sequences and Series",
+    difficulty: "Easy",
+    q: "Find the 10th term of an arithmetic progression whose first term is a = 3 and common difference is d = 4.",
+    options: [
+      "39",
+      "43",
+      "36",
+      "40"
+    ],
+    correct: 0,
+    explain: "The n-th term of an AP is a_n = a + (n - 1)d. For n = 10: a_10 = 3 + (9)(4) = 3 + 36 = 39."
+  },
+  {
+    id: "tcat-math-408",
+    subject: "Mathematics",
+    topic: "Vectors",
+    difficulty: "Easy",
+    q: "Compute the scalar (dot) product of vectors u = 2i + 3j - k and v = 4i - j + 5k.",
+    options: [
+      "0",
+      "5",
+      "10",
+      "-1"
+    ],
+    correct: 0,
+    explain: "u . v = (2)(4) + (3)(-1) + (-1)(5) = 8 - 3 - 5 = 0. (The vectors are orthogonal)."
+  },
+  {
+    id: "tcat-math-409",
+    subject: "Mathematics",
+    topic: "Fundamentals of Trigonometry",
+    difficulty: "Easy",
+    q: "What is the exact value of tan(135°)?",
+    options: [
+      "-1",
+      "1",
+      "-√3",
+      "1/√3"
+    ],
+    correct: 0,
+    explain: "tan(135°) = tan(180° - 45°) = -tan(45°) = -1."
+  },
+  {
+    id: "tcat-math-410",
+    subject: "Mathematics",
+    topic: "Permutation Combination and Probability",
+    difficulty: "Easy",
+    q: "Evaluate the combination 7C3 (7 choose 3).",
+    options: [
+      "35",
+      "21",
+      "42",
+      "210"
+    ],
+    correct: 0,
+    explain: "7C3 = 7! / (3! * 4!) = (7 * 6 * 5) / (3 * 2 * 1) = 35."
+  },
+  {
+    id: "tcat-math-411",
+    subject: "Mathematics",
+    topic: "Functions and Limits",
+    difficulty: "Medium",
+    q: "Evaluate the trigonometric limit: lim(x -> 0) [ sin(5x) / (3x) ].",
+    options: [
+      "5/3",
+      "3/5",
+      "1",
+      "0"
+    ],
+    correct: 0,
+    explain: "Using lim(u -> 0) [sin(u)/u] = 1: lim(x -> 0) [(sin(5x)/(5x)) * (5/3)] = 1 * (5/3) = 5/3."
+  },
+  {
+    id: "tcat-math-412",
+    subject: "Mathematics",
+    topic: "Differentiation",
+    difficulty: "Medium",
+    q: "Find the derivative of y = ln(sec(x) + tan(x)) with respect to x.",
+    options: [
+      "sec(x)",
+      "tan(x)",
+      "sec(x)*tan(x)",
+      "1 / (sec(x) + tan(x))"
+    ],
+    correct: 0,
+    explain: "dy/dx = (1 / (sec(x) + tan(x))) * (sec(x)tan(x) + sec^2(x)) = (sec(x)(tan(x) + sec(x))) / (sec(x) + tan(x)) = sec(x)."
+  },
+  {
+    id: "tcat-math-413",
+    subject: "Mathematics",
+    topic: "Integration",
+    difficulty: "Medium",
+    q: "Evaluate the definite integral: ∫ from 0 to 1 of [ x / (x^2 + 1) ] dx.",
+    options: [
+      "(1/2) * ln(2)",
+      "ln(2)",
+      "(1/2) * ln(3)",
+      "2 * ln(2)"
+    ],
+    correct: 0,
+    explain: "Let u = x^2 + 1, then du = 2x dx. The integral becomes (1/2) ∫_1^2 (1/u) du = (1/2) [ln(2) - ln(1)] = (1/2) ln(2)."
+  },
+  {
+    id: "tcat-math-414",
+    subject: "Mathematics",
+    topic: "Introduction to Analytic Geometry",
+    difficulty: "Medium",
+    q: "Find the perpendicular distance from the point P(2, -3) to the straight line 3x - 4y + 7 = 0.",
+    options: [
+      "5",
+      "25",
+      "1",
+      "4"
+    ],
+    correct: 0,
+    explain: "Distance d = |Ax_1 + By_1 + C| / √(A^2 + B^2) = |3(2) - 4(-3) + 7| / √(3^2 + (-4)^2) = |6 + 12 + 7| / 5 = 25 / 5 = 5."
+  },
+  {
+    id: "tcat-math-415",
+    subject: "Mathematics",
+    topic: "Conic Sections",
+    difficulty: "Medium",
+    q: "What are the coordinates of the foci of the ellipse (x^2 / 25) + (y^2 / 9) = 1?",
+    options: [
+      "(±4, 0)",
+      "(0, ±4)",
+      "(±5, 0)",
+      "(±3, 0)"
+    ],
+    correct: 0,
+    explain: "Here a^2 = 25, b^2 = 9. For an ellipse, c^2 = a^2 - b^2 = 25 - 9 = 16, so c = 4. Since a is under x^2, foci lie on the x-axis at (±4, 0)."
+  },
+  {
+    id: "tcat-math-416",
+    subject: "Mathematics",
+    topic: "Vectors",
+    difficulty: "Medium",
+    q: "Find the area of the parallelogram formed by the adjacent vectors a = 2i - j + 2k and b = i + 2j - k.",
+    options: [
+      "5√2",
+      "√89",
+      "3√10",
+      "15"
+    ],
+    correct: 0,
+    explain: "Cross product a x b = det([[i, j, k], [2, -1, 2], [1, 2, -1]]) = -3i + 4j + 5k. Area = |a x b| = √((-3)^2 + 4^2 + 5^2) = √(9 + 16 + 25) = √50 = 5√2."
+  },
+  {
+    id: "tcat-math-417",
+    subject: "Mathematics",
+    topic: "Matrices and Determinants",
+    difficulty: "Medium",
+    q: "If A is an invertible 3x3 matrix with determinant det(A) = 4, what is the determinant of the scalar multiple matrix 2A?",
+    options: [
+      "32",
+      "8",
+      "16",
+      "64"
+    ],
+    correct: 0,
+    explain: "For an n x n matrix, det(k*A) = k^n * det(A). For n = 3: det(2A) = 2^3 * det(A) = 8 * 4 = 32."
+  },
+  {
+    id: "tcat-math-418",
+    subject: "Mathematics",
+    topic: "Sequences and Series",
+    difficulty: "Medium",
+    q: "Find the sum of the infinite geometric series: 12 + 4 + 4/3 + 4/9 + ...",
+    options: [
+      "18",
+      "16",
+      "24",
+      "15"
+    ],
+    correct: 0,
+    explain: "First term a = 12, common ratio r = 4/12 = 1/3. Since |r| < 1, S_inf = a / (1 - r) = 12 / (1 - 1/3) = 12 / (2/3) = 18."
+  },
+  {
+    id: "tcat-math-419",
+    subject: "Mathematics",
+    topic: "Trigonometric Identities",
+    difficulty: "Medium",
+    q: "Simplify the trigonometric expression: [ 1 - cos(2θ) ] / sin(2θ).",
+    options: [
+      "tan(θ)",
+      "cot(θ)",
+      "sin(θ)",
+      "sec(θ)"
+    ],
+    correct: 0,
+    explain: "Using 1 - cos(2θ) = 2sin^2(θ) and sin(2θ) = 2sin(θ)cos(θ): 2sin^2(θ) / [2sin(θ)cos(θ)] = sin(θ)/cos(θ) = tan(θ)."
+  },
+  {
+    id: "tcat-math-420",
+    subject: "Mathematics",
+    topic: "Permutation Combination and Probability",
+    difficulty: "Medium",
+    q: "In how many distinct ways can the letters of the word \"STATISTICS\" be arranged?",
+    options: [
+      "50,400",
+      "100,800",
+      "302,400",
+      "3,628,800"
+    ],
+    correct: 0,
+    explain: "The word \"STATISTICS\" contains 10 letters: S occurs 3 times, T occurs 3 times, I occurs 2 times, A occurs 1 time, C occurs 1 time. Distinct permutations = 10! / (3! * 3! * 2!) = 3,628,800 / (6 * 6 * 2) = 3,628,800 / 72 = 50,400."
+  },
+  {
+    id: "tcat-math-421",
+    subject: "Mathematics",
+    topic: "Differentiation",
+    difficulty: "Hard",
+    q: "Find the slope of the normal to the circle x^2 + y^2 - 4x + 6y - 12 = 0 at the point P(5, 1).",
+    options: [
+      "4/3",
+      "-3/4",
+      "-4/3",
+      "3/4"
+    ],
+    correct: 0,
+    explain: "Implicit differentiation yields 2x + 2y(dy/dx) - 4 + 6(dy/dx) = 0 => dy/dx = (2 - x) / (y + 3). At (5, 1), the tangent slope is m_tan = (2 - 5)/(1 + 3) = -3/4. Therefore, the normal slope is m_norm = -1 / (-3/4) = 4/3."
+  },
+  {
+    id: "tcat-math-422",
+    subject: "Mathematics",
+    topic: "Integration",
+    difficulty: "Hard",
+    q: "Evaluate the definite integral by parts: ∫ from 0 to π/2 of [ x * cos(x) ] dx.",
+    options: [
+      "(π/2) - 1",
+      "π - 1",
+      "(π/2) + 1",
+      "1"
+    ],
+    correct: 0,
+    explain: "∫ x cos(x) dx = x sin(x) - ∫ sin(x) dx = x sin(x) + cos(x). Evaluated from 0 to π/2: [(π/2)(1) + 0] - [0 + 1] = (π/2) - 1."
+  },
+  {
+    id: "tcat-math-423",
+    subject: "Mathematics",
+    topic: "Conic Sections",
+    difficulty: "Hard",
+    q: "Determine the eccentricity of the hyperbola defined by the equation 9x^2 - 16y^2 = 144.",
+    options: [
+      "5/4",
+      "4/5",
+      "5/3",
+      "√7/4"
+    ],
+    correct: 0,
+    explain: "Dividing by 144 gives (x^2 / 16) - (y^2 / 9) = 1. Here a^2 = 16 (so a = 4) and b^2 = 9. For a hyperbola, c^2 = a^2 + b^2 = 16 + 9 = 25, so c = 5. Eccentricity e = c/a = 5/4."
+  },
+  {
+    id: "tcat-math-424",
+    subject: "Mathematics",
+    topic: "Functions and Limits",
+    difficulty: "Hard",
+    q: "Evaluate the limit using L'Hopital's rule: lim(x -> 0) [ (e^(2x) - 1 - 2x) / x^2 ].",
+    options: [
+      "2",
+      "1",
+      "4",
+      "0"
+    ],
+    correct: 0,
+    explain: "Form 0/0. First differentiation: (2e^(2x) - 2) / (2x) = (e^(2x) - 1) / x. Still 0/0. Second differentiation: 2e^(2x) / 1. At x = 0, this evaluates to 2(1)/1 = 2."
+  },
+  {
+    id: "tcat-math-425",
+    subject: "Mathematics",
+    topic: "Vectors",
+    difficulty: "Hard",
+    q: "Find the volume of the parallelepiped whose coterminous edges are defined by vectors u = i + 2j + 3k, v = 2i - j + k, and w = 3i + j + 2k.",
+    options: [
+      "10 cubic units",
+      "16 cubic units",
+      "24 cubic units",
+      "12 cubic units"
+    ],
+    correct: 0,
+    explain: "The volume is the scalar triple product |u . (v x w)| = |det([[1, 2, 3], [2, -1, 1], [3, 1, 2]])| = |1(-2 - 1) - 2(4 - 3) + 3(2 - (-3))| = |-3 - 2 + 15| = 10 cubic units."
+  },
+  {
+    id: "tcat-math-426",
+    subject: "Mathematics",
+    topic: "Matrices and Determinants",
+    difficulty: "Hard",
+    q: "If A is an orthogonal square matrix (A^T * A = I), what are the only possible real values of its determinant det(A)?",
+    options: [
+      "±1",
+      "Only 1",
+      "Only 0",
+      "Any real number except 0"
+    ],
+    correct: 0,
+    explain: "det(A^T * A) = det(I) => det(A^T) * det(A) = 1. Since det(A^T) = det(A), we have (det(A))^2 = 1, meaning det(A) = ±1."
+  },
+  {
+    id: "tcat-math-427",
+    subject: "Mathematics",
+    topic: "Introduction to Analytic Geometry",
+    difficulty: "Hard",
+    q: "Find the condition for the general second-degree homogeneous equation ax^2 + 2hxy + by^2 = 0 to represent two perpendicular straight lines.",
+    options: [
+      "a + b = 0",
+      "h^2 - ab = 0",
+      "a - b = 0",
+      "h = 0"
+    ],
+    correct: 0,
+    explain: "The angle θ between the lines is given by tan(θ) = 2√(h^2 - ab) / (a + b). The lines are perpendicular (θ = 90°) when the denominator vanishes, i.e., a + b = 0 (sum of coefficients of x^2 and y^2 is zero)."
+  },
+  {
+    id: "tcat-math-428",
+    subject: "Mathematics",
+    topic: "Differentiation",
+    difficulty: "Hard",
+    q: "Find the maximum value of the function f(x) = x * e^(-x) for x ≥ 0.",
+    options: [
+      "1/e",
+      "e",
+      "1",
+      "2/e"
+    ],
+    correct: 0,
+    explain: "f'(x) = e^(-x) - x*e^(-x) = e^(-x)(1 - x). Setting f'(x) = 0 gives x = 1. Since f''(1) < 0, this is a local maximum: f(1) = 1 * e^(-1) = 1/e."
+  },
+  {
+    id: "tcat-math-429",
+    subject: "Mathematics",
+    topic: "Integration",
+    difficulty: "Hard",
+    q: "Evaluate the improper integral: ∫ from 0 to ∞ of [ e^(-2x) ] dx.",
+    options: [
+      "1/2",
+      "1",
+      "2",
+      "Diverges"
+    ],
+    correct: 0,
+    explain: "lim(b -> ∞) [- (1/2) e^(-2x)]_0^b = lim(b -> ∞) [- (1/2) e^(-2b) - (-1/2)] = 0 + 1/2 = 1/2."
+  },
+  {
+    id: "tcat-math-430",
+    subject: "Mathematics",
+    topic: "Conic Sections",
+    difficulty: "Hard",
+    q: "Find the equation of the directrix of the parabola y^2 = -12x.",
+    options: [
+      "x = 3",
+      "x = -3",
+      "y = 3",
+      "y = -3"
+    ],
+    correct: 0,
+    explain: "The standard parabola y^2 = -4ax has 4a = 12, so a = 3. Its focus is at (-3, 0) and its vertical directrix is given by x = a, which is x = 3."
   }
 ];

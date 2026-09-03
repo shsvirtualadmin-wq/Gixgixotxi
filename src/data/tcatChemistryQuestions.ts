@@ -4055,5 +4055,455 @@ export const TCAT_CHEMISTRY_QUESTIONS: Question[] = [
     options: ["Chemical equivalent weights (equivalent masses)","Atomic numbers","Molar volumes","Densities"],
     correct: 0,
     explain: "Faraday’s second law specifies that mass deposited m ∝ Equivalent weight (W = M / valence)."
+  },
+  {
+    id: "tcat-chem-401",
+    subject: "Chemistry",
+    topic: "Basic Concepts of Chemistry",
+    difficulty: "Easy",
+    q: "How many moles of molecular oxygen (O2) are contained in 64.0 grams of O2 gas (molar mass of O = 16.0 g/mol)?",
+    options: [
+      "2.0 moles",
+      "4.0 moles",
+      "1.0 mole",
+      "0.5 moles"
+    ],
+    correct: 0,
+    explain: "Molar mass of O2 = 2 * 16.0 = 32.0 g/mol. Moles = mass / molar mass = 64.0 g / 32.0 g/mol = 2.0 moles."
+  },
+  {
+    id: "tcat-chem-402",
+    subject: "Chemistry",
+    topic: "Atomic Structure",
+    difficulty: "Easy",
+    q: "What is the maximum number of electrons that can occupy a subshell characterized by the azimuthal quantum number l = 2 (d subshell)?",
+    options: [
+      "10",
+      "6",
+      "14",
+      "2"
+    ],
+    correct: 0,
+    explain: "The maximum electron capacity of a subshell is 2(2l + 1). For l = 2 (d subshell): 2(2*2 + 1) = 2(5) = 10 electrons."
+  },
+  {
+    id: "tcat-chem-403",
+    subject: "Chemistry",
+    topic: "Gases, Liquids and Solids",
+    difficulty: "Easy",
+    q: "Under constant absolute temperature, the volume of a fixed mass of an ideal gas is inversely proportional to its pressure. This empirical law is known as:",
+    options: [
+      "Boyle's Law",
+      "Charles's Law",
+      "Avogadro's Law",
+      "Gay-Lussac's Law"
+    ],
+    correct: 0,
+    explain: "Boyle's Law states that for a fixed quantity of gas at constant temperature, P * V = constant (pressure and volume are inversely proportional)."
+  },
+  {
+    id: "tcat-chem-404",
+    subject: "Chemistry",
+    topic: "Chemical Bonding",
+    difficulty: "Easy",
+    q: "According to VSEPR theory, what is the spatial molecular geometry of a methane molecule (CH4)?",
+    options: [
+      "Tetrahedral",
+      "Trigonal planar",
+      "Linear",
+      "Octahedral"
+    ],
+    correct: 0,
+    explain: "In CH4, the central carbon atom has 4 bonding pairs and zero lone pairs (sp3 hybridization), producing a regular tetrahedral geometry with bond angles of 109.5°."
+  },
+  {
+    id: "tcat-chem-405",
+    subject: "Chemistry",
+    topic: "Electrochemistry",
+    difficulty: "Easy",
+    q: "In an electrochemical galvanic cell, oxidation occurs at the:",
+    options: [
+      "Anode, which is the negative electrode in a galvanic cell",
+      "Cathode, which is the negative electrode",
+      "Salt bridge",
+      "Potentiometer terminal exclusively"
+    ],
+    correct: 0,
+    explain: "By definition, oxidation always occurs at the anode. In a spontaneous galvanic cell, the anode releases electrons and carries a negative polarity."
+  },
+  {
+    id: "tcat-chem-406",
+    subject: "Chemistry",
+    topic: "Periodic Classification",
+    difficulty: "Easy",
+    q: "Which element possesses the highest electronegativity value on the Pauling scale?",
+    options: [
+      "Fluorine (F)",
+      "Oxygen (O)",
+      "Chlorine (Cl)",
+      "Nitrogen (N)"
+    ],
+    correct: 0,
+    explain: "Fluorine has the highest Pauling electronegativity of approximately 3.98 (often rounded to 4.0), making it the most electronegative element."
+  },
+  {
+    id: "tcat-chem-407",
+    subject: "Chemistry",
+    topic: "Thermochemistry",
+    difficulty: "Easy",
+    q: "A chemical reaction that absorbs thermal energy from its surroundings, resulting in a positive enthalpy change (ΔH > 0), is termed:",
+    options: [
+      "Endothermic",
+      "Exothermic",
+      "Isothermal",
+      "Adiabatic"
+    ],
+    correct: 0,
+    explain: "An endothermic reaction absorbs heat from the surroundings, yielding a positive change in reaction enthalpy (ΔH > 0)."
+  },
+  {
+    id: "tcat-chem-408",
+    subject: "Chemistry",
+    topic: "Hydrocarbons",
+    difficulty: "Easy",
+    q: "What is the IUPAC name of the branched alkane CH3-CH(CH3)-CH2-CH3?",
+    options: [
+      "2-Methylbutane",
+      "Isopentane",
+      "3-Methylbutane",
+      "2,2-Dimethylpropane"
+    ],
+    correct: 0,
+    explain: "The longest carbon chain contains 4 carbons (butane) with a methyl substituent at carbon-2, numbered from the left to give the lowest locant: 2-methylbutane."
+  },
+  {
+    id: "tcat-chem-409",
+    subject: "Chemistry",
+    topic: "Reaction Kinetics",
+    difficulty: "Easy",
+    q: "How does the addition of a positive chemical catalyst increase the rate of a chemical reaction?",
+    options: [
+      "By providing an alternative pathway with a lower activation energy",
+      "By increasing the total enthalpy change (ΔH) of the reaction",
+      "By increasing the average kinetic energy of the reactant molecules",
+      "By consuming the backward reaction products"
+    ],
+    correct: 0,
+    explain: "A catalyst lowers the activation energy barrier by offering an alternative mechanistic route without altering ΔH or equilibrium position."
+  },
+  {
+    id: "tcat-chem-410",
+    subject: "Chemistry",
+    topic: "Chemistry of Life",
+    difficulty: "Easy",
+    q: "What is the characteristic covalent bond that links adjacent amino acid monomers together in a polypeptide chain?",
+    options: [
+      "Peptide bond (amide linkage)",
+      "Glycosidic bond",
+      "Phosphodiester bond",
+      "Ester linkage"
+    ],
+    correct: 0,
+    explain: "A peptide bond (-CO-NH-) is an amide covalent linkage formed by condensation between the α-amino group of one amino acid and the α-carboxyl group of another."
+  },
+  {
+    id: "tcat-chem-411",
+    subject: "Chemistry",
+    topic: "Chemical Equilibrium",
+    difficulty: "Medium",
+    q: "For the Haber ammonia synthesis: N2(g) + 3H2(g) ⇌ 2NH3(g) with ΔH = -92 kJ/mol, which operational adjustment shifts the equilibrium position toward higher yield of NH3?",
+    options: [
+      "Increasing total pressure and decreasing reaction temperature",
+      "Decreasing total pressure and increasing reaction temperature",
+      "Adding an inert gas at constant volume",
+      "Continuously removing N2 from the reactor vessel"
+    ],
+    correct: 0,
+    explain: "By Le Chatelier's principle, increasing pressure shifts toward fewer gaseous moles (4 -> 2, forming NH3), and decreasing temperature favors the exothermic forward reaction."
+  },
+  {
+    id: "tcat-chem-412",
+    subject: "Chemistry",
+    topic: "Reaction Kinetics",
+    difficulty: "Medium",
+    q: "If doubling the concentration of reactant A quadruples the initial reaction rate, what is the partial order of reaction with respect to A?",
+    options: [
+      "Second order (order = 2)",
+      "First order (order = 1)",
+      "Zero order (order = 0)",
+      "Third order (order = 3)"
+    ],
+    correct: 0,
+    explain: "Rate ∝ [A]^n. If Rate' / Rate = 4 when [A]' / [A] = 2, then 2^n = 4 => n = 2 (second order)."
+  },
+  {
+    id: "tcat-chem-413",
+    subject: "Chemistry",
+    topic: "Electrochemistry",
+    difficulty: "Medium",
+    q: "Standard reduction potentials are: E°(Zn2+/Zn) = -0.76 V and E°(Cu2+/Cu) = +0.34 V. What is the standard electromotive force (E°_cell) of the Daniell galvanic cell?",
+    options: [
+      "+1.10 V",
+      "+0.42 V",
+      "-1.10 V",
+      "+0.58 V"
+    ],
+    correct: 0,
+    explain: "E°_cell = E°_cathode - E°_anode = E°(Cu2+/Cu) - E°(Zn2+/Zn) = +0.34 V - (-0.76 V) = +1.10 V."
+  },
+  {
+    id: "tcat-chem-414",
+    subject: "Chemistry",
+    topic: "Chemical Bonding",
+    difficulty: "Medium",
+    q: "What is the molecular geometry and approximate bond angle of chlorine trifluoride (ClF3) predicted by VSEPR theory?",
+    options: [
+      "T-shaped, with bond angles slightly less than 90° (~87.5°)",
+      "Trigonal planar, with bond angles of exactly 120°",
+      "Trigonal pyramidal, with bond angles of 107°",
+      "Regular tetrahedral, with bond angles of 109.5°"
+    ],
+    correct: 0,
+    explain: "Chlorine in ClF3 has 3 bond pairs and 2 equatorial lone pairs (steric number 5). Lone pair-bond pair repulsions bend the axial fluorine atoms toward each other, resulting in a T-shaped geometry with bond angles of ~87.5°."
+  },
+  {
+    id: "tcat-chem-415",
+    subject: "Chemistry",
+    topic: "Thermochemistry",
+    difficulty: "Medium",
+    q: "Given: C(graphite) + O2(g) -> CO2(g) [ΔH = -393.5 kJ] and CO(g) + (1/2)O2(g) -> CO2(g) [ΔH = -283.0 kJ]. Calculate the standard enthalpy of formation of carbon monoxide CO(g).",
+    options: [
+      "-110.5 kJ/mol",
+      "+110.5 kJ/mol",
+      "-676.5 kJ/mol",
+      "-55.2 kJ/mol"
+    ],
+    correct: 0,
+    explain: "By Hess's Law: ΔH_f(CO) = ΔH_1 - ΔH_2 = -393.5 - (-283.0) = -393.5 + 283.0 = -110.5 kJ/mol."
+  },
+  {
+    id: "tcat-chem-416",
+    subject: "Chemistry",
+    topic: "Fundamental Principles of Organic Chemistry",
+    difficulty: "Medium",
+    q: "Which of the following organic compounds exhibits optical isomerism (enantiomerism) due to the presence of a chiral (asymmetric) carbon center?",
+    options: [
+      "2-Chlorobutane",
+      "1-Chlorobutane",
+      "2-Chloropropane",
+      "2-Methylpropane"
+    ],
+    correct: 0,
+    explain: "In 2-chlorobutane, carbon-2 is bonded to 4 distinct groups: -H, -Cl, -CH3, and -CH2CH3, making it a stereogenic (chiral) center."
+  },
+  {
+    id: "tcat-chem-417",
+    subject: "Chemistry",
+    topic: "s and p Block Elements",
+    difficulty: "Medium",
+    q: "Why does orthoboric acid (H3BO3) act as a monobasic Lewis acid in aqueous solution rather than a conventional Arrhenius proton donor?",
+    options: [
+      "It accepts a lone pair from OH- in water, releasing H+ indirectly: B(OH)3 + 2H2O ⇌ [B(OH)4]- + H3O+",
+      "It readily ionizes all three hydrogen protons simultaneously",
+      "Boron possesses an expanded octet with 12 valence electrons",
+      "It hydrolyzes water to generate elemental hydrogen gas"
+    ],
+    correct: 0,
+    explain: "B(OH)3 is an electron-deficient Lewis acid that accepts an electron pair from a water molecule's OH-, releasing a hydronium ion: B(OH)3 + H2O ⇌ [B(OH)4]- + H+."
+  },
+  {
+    id: "tcat-chem-418",
+    subject: "Chemistry",
+    topic: "Gases, Liquids and Solids",
+    difficulty: "Medium",
+    q: "Under what physical thermodynamic conditions do real non-ideal gases most closely approximate the behavior of an ideal gas?",
+    options: [
+      "High temperature and low pressure",
+      "Low temperature and high pressure",
+      "High pressure and low volume",
+      "Absolute zero temperature and high density"
+    ],
+    correct: 0,
+    explain: "At high temperatures, kinetic energy dominates intermolecular attractions, and at low pressures, the molecular volume becomes negligible compared to total container volume."
+  },
+  {
+    id: "tcat-chem-419",
+    subject: "Chemistry",
+    topic: "Hydrocarbons",
+    difficulty: "Medium",
+    q: "What is the major organic product formed when propene (CH3-CH=CH2) reacts with gaseous hydrogen bromide (HBr) in the absence of organic peroxides?",
+    options: [
+      "2-Bromopropane",
+      "1-Bromopropane",
+      "1,2-Dibromopropane",
+      "Cyclopropane"
+    ],
+    correct: 0,
+    explain: "According to Markovnikov's rule, electrophilic addition of HBr proceeds via the more stable secondary carbocation (CH3-CH(+)-CH3), yielding 2-bromopropane as the major product."
+  },
+  {
+    id: "tcat-chem-420",
+    subject: "Chemistry",
+    topic: "Basic Concepts of Chemistry",
+    difficulty: "Medium",
+    q: "Calculate the molality (m) of a solution prepared by dissolving 20.0 grams of sodium hydroxide (NaOH, molar mass = 40.0 g/mol) in 500 grams of pure distilled water.",
+    options: [
+      "1.0 mol/kg",
+      "0.5 mol/kg",
+      "2.0 mol/kg",
+      "0.25 mol/kg"
+    ],
+    correct: 0,
+    explain: "Moles of solute = 20.0 g / 40.0 g/mol = 0.5 mol. Mass of solvent in kg = 500 g / 1000 = 0.5 kg. Molality = 0.5 mol / 0.5 kg = 1.0 m (1.0 mol/kg)."
+  },
+  {
+    id: "tcat-chem-421",
+    subject: "Chemistry",
+    topic: "Chemical Equilibrium",
+    difficulty: "Hard",
+    q: "The solubility product constant K_sp of lead(II) chloride (PbCl2) is 1.6 x 10^-5 at 25°C. Calculate its molar solubility (s) in pure water.",
+    options: [
+      "1.59 x 10^-2 M",
+      "4.0 x 10^-3 M",
+      "2.52 x 10^-2 M",
+      "1.26 x 10^-3 M"
+    ],
+    correct: 0,
+    explain: "PbCl2(s) ⇌ Pb2+ + 2Cl-. K_sp = [Pb2+][Cl-]^2 = (s)(2s)^2 = 4s^3. Thus 4s^3 = 1.6 x 10^-5 => s^3 = 4.0 x 10^-6 => s = (4.0 x 10^-6)^(1/3) ≈ 1.587 x 10^-2 M."
+  },
+  {
+    id: "tcat-chem-422",
+    subject: "Chemistry",
+    topic: "Reaction Kinetics",
+    difficulty: "Hard",
+    q: "A radioactive nuclear decay follows first-order kinetics with a rate constant k = 0.0693 min^-1. What is the half-life (t_1/2) of the nuclide?",
+    options: [
+      "10.0 minutes",
+      "6.93 minutes",
+      "14.4 minutes",
+      "5.0 minutes"
+    ],
+    correct: 0,
+    explain: "For first-order kinetics, t_1/2 = ln(2) / k = 0.69315 / 0.0693 min^-1 = 10.0 minutes."
+  },
+  {
+    id: "tcat-chem-423",
+    subject: "Chemistry",
+    topic: "Electrochemistry",
+    difficulty: "Hard",
+    q: "How many Faradays (F) of electric charge are required to completely electroplate 54.0 grams of solid aluminum from molten Al2O3 (atomic mass of Al = 27.0 g/mol)?",
+    options: [
+      "6.0 F",
+      "2.0 F",
+      "3.0 F",
+      "1.0 F"
+    ],
+    correct: 0,
+    explain: "Al3+ + 3e- -> Al(s). To plate 1 mole of Al requires 3 Faradays. Moles of Al = 54.0 g / 27.0 g/mol = 2.0 mol. Total charge = 2.0 mol * 3 F/mol = 6.0 F."
+  },
+  {
+    id: "tcat-chem-424",
+    subject: "Chemistry",
+    topic: "Atomic Structure",
+    difficulty: "Hard",
+    q: "Calculate the wavelength of radiation emitted when an electron in a hydrogen atom transitions from n = 3 to n = 2 (Rydberg constant R_H = 1.097 x 10^7 m^-1).",
+    options: [
+      "656 nm",
+      "486 nm",
+      "434 nm",
+      "121.6 nm"
+    ],
+    correct: 0,
+    explain: "1/λ = R_H * (1/2^2 - 1/3^2) = R_H * (1/4 - 1/9) = R_H * (5/36) => λ = 36 / (5 * 1.097 x 10^7) = 6.563 x 10^-7 m = 656 nm (the H-alpha Balmer line)."
+  },
+  {
+    id: "tcat-chem-425",
+    subject: "Chemistry",
+    topic: "Chemical Bonding",
+    difficulty: "Hard",
+    q: "According to Molecular Orbital (MO) Theory, what is the bond order and magnetic behavior of the superoxide anion radical (O2^-)?",
+    options: [
+      "Bond order = 1.5, Paramagnetic",
+      "Bond order = 2.0, Diamagnetic",
+      "Bond order = 1.0, Diamagnetic",
+      "Bond order = 2.5, Paramagnetic"
+    ],
+    correct: 0,
+    explain: "Neutral O2 has 16 electrons (bond order 2, 2 unpaired electrons in π*2p). O2^- has 17 electrons: 10 bonding and 7 antibonding electrons. Bond order = (10 - 7)/2 = 1.5. It has 1 unpaired electron, so it is paramagnetic."
+  },
+  {
+    id: "tcat-chem-426",
+    subject: "Chemistry",
+    topic: "Thermochemistry",
+    difficulty: "Hard",
+    q: "For a certain biochemical unfolding process, ΔH° = +45.0 kJ/mol and ΔS° = +150 J/(mol·K). Above what absolute temperature does the process become spontaneous at standard pressure?",
+    options: [
+      "300 K",
+      "450 K",
+      "250 K",
+      "350 K"
+    ],
+    correct: 0,
+    explain: "Spontaneity requires ΔG° = ΔH° - T*ΔS° < 0 => T > ΔH° / ΔS° = (45,000 J/mol) / (150 J/(mol·K)) = 300 K."
+  },
+  {
+    id: "tcat-chem-427",
+    subject: "Chemistry",
+    topic: "Fundamental Principles of Organic Chemistry",
+    difficulty: "Hard",
+    q: "Which mechanistic pathway describes the bimolecular nucleophilic substitution (SN2) of primary alkyl halides?",
+    options: [
+      "Concerted backside nucleophilic attack with complete Walden inversion of stereochemical configuration",
+      "Stepwise ionization forming a planar carbocation intermediate followed by racemization",
+      "Elimination via a transient anti-periplanar carbanion",
+      "Free-radical homolytic cleavage of the carbon-halogen sigma bond"
+    ],
+    correct: 0,
+    explain: "SN2 proceeds via a single-step concerted mechanism where the nucleophile attacks from the backside 180° away from the leaving group, causing complete Walden inversion."
+  },
+  {
+    id: "tcat-chem-428",
+    subject: "Chemistry",
+    topic: "Hydrocarbons",
+    difficulty: "Hard",
+    q: "In the electrophilic aromatic bromination of benzene catalyzed by FeBr3, what is the actual reactive electrophilic intermediate generated?",
+    options: [
+      "Bromonium cation complex ([Br+] or [FeBr4]- complexed)",
+      "Tribromide anion (Br3-)",
+      "Bromide anion (Br-)",
+      "Neutral bromine radical (Br•)"
+    ],
+    correct: 0,
+    explain: "FeBr3 coordinates with Br2 to form [FeBr4]- and polarizes the bromine molecule, generating a highly reactive bromonium ion electrophile (Br+)."
+  },
+  {
+    id: "tcat-chem-429",
+    subject: "Chemistry",
+    topic: "Gases, Liquids and Solids",
+    difficulty: "Hard",
+    q: "In the van der Waals real gas equation [P + a(n/V)^2] * [V - nb] = nRT, what physical molecular property does the parameter \"b\" account for?",
+    options: [
+      "The effective finite excluded volume occupied by the gas molecules themselves",
+      "Intermolecular attractive London dispersion forces",
+      "Dipole-dipole electrostatic repulsions",
+      "The average kinetic rotational energy of the molecules"
+    ],
+    correct: 0,
+    explain: "The van der Waals parameter \"a\" corrects for intermolecular attractive forces, while parameter \"b\" represents the finite volume occupied by the molecules (excluded volume)."
+  },
+  {
+    id: "tcat-chem-430",
+    subject: "Chemistry",
+    topic: "Chemistry of Life",
+    difficulty: "Hard",
+    q: "What is the structural basis for the stabilization of the alpha-helix secondary protein conformation?",
+    options: [
+      "Intrachain hydrogen bonds between the carbonyl oxygen of residue n and the amide proton of residue n+4",
+      "Disulfide bridges linking adjacent cysteine side chains exclusively",
+      "Hydrophobic interactions between aliphatic fatty acid tails",
+      "Ionic salt bridges between lysine and aspartate in beta sheets"
+    ],
+    correct: 0,
+    explain: "The alpha-helix is maintained by regular intrachain hydrogen bonds between the C=O of residue n and the N-H of residue n+4 along the peptide backbone."
   }
 ];

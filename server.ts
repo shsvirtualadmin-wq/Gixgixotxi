@@ -8,7 +8,7 @@ import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import { getGoogleAccessToken } from "./functions/_utils/googleAuth.js";
 import nodemailer from "nodemailer";
-import { generateMDCATFullMockBank } from "./src/data/mdcatPrebuiltQuestions.js";
+import { generateMDCATFullMockBank, getMDCATPrebuiltQuestions, ALL_MDCAT_QUESTIONS } from "./src/data/mdcatPrebuiltQuestions.js";
 import { generateTCATFullMockBank, getTCATPrebuiltQuestions, ALL_TCAT_QUESTIONS } from "./src/data/tcatPrebuiltQuestions.js";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
@@ -3202,35 +3202,73 @@ function formatRemainingTimeString(ms: number): string {
       }
     }
 
-    if (isMdcatFullMock || (isAnyFullMock && rawSubject.toLowerCase().includes("mdcat"))) {
-      console.log(`[Full Mock Request] MDCAT Full Mock (Offset: ${batchOffset}, Count: ${requestedCount})`);
-      const fullBank = generateMDCATFullMockBank();
-      let filteredBank = fullBank;
-      if (excludeStemSet.size > 0) {
-        filteredBank = fullBank.filter(q => !excludeStemSet.has((q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '')));
-      }
+    const isMdcatRequest = isMdcatFullMock ||
+      (isAnyFullMock && rawSubject.toLowerCase().includes("mdcat")) ||
+      pathType === 'mdcat' ||
+      String(classNum) === 'MDCAT' ||
+      String(group) === 'MDCAT' ||
+      rawSubject.toLowerCase().includes("mdcat");
 
-      let questions = filteredBank.slice(batchOffset, batchOffset + requestedCount);
-      if (questions.length === 0 && filteredBank.length > 0) {
-        questions = filteredBank.slice(0, requestedCount);
-      }
+    if (isMdcatRequest) {
+      const isFull = isMdcatFullMock || (isAnyFullMock && rawSubject.toLowerCase().includes("mdcat")) || requestedCount >= 180;
+      if (isFull) {
+        console.log(`[Full Mock Request] MDCAT Full Mock (Offset: ${batchOffset}, Count: ${requestedCount})`);
+        const fullBank = generateMDCATFullMockBank();
+        let filteredBank = fullBank;
+        if (excludeStemSet.size > 0) {
+          filteredBank = fullBank.filter(q => !excludeStemSet.has((q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '')));
+        }
 
-      return res.json({
-        success: true,
-        selectedSubject: "MDCAT Full Mock",
-        subjectSentToGemini: "MDCAT Full Mock",
-        subjectReturned: "MDCAT Full Mock",
-        questions,
-        totalTargetCount: 180,
-        batchOffset,
-        usage: {
-          currentUsage: 0,
-          limit: 100,
-          remaining: 999999,
-          resetDate: getNextMonthResetDate(),
-          isAdmin: true,
-        },
-      });
+        let questions = filteredBank.slice(batchOffset, batchOffset + requestedCount);
+        if (questions.length === 0 && filteredBank.length > 0) {
+          questions = filteredBank.slice(0, requestedCount);
+        }
+
+        return res.json({
+          success: true,
+          selectedSubject: "MDCAT Full Mock",
+          subjectSentToGemini: "MDCAT Full Mock",
+          subjectReturned: "MDCAT Full Mock",
+          questions,
+          totalTargetCount: 180,
+          batchOffset,
+          usage: {
+            currentUsage: 0,
+            limit: 100,
+            remaining: 999999,
+            resetDate: getNextMonthResetDate(),
+            isAdmin: true,
+          },
+        });
+      } else {
+        // MDCAT Chapter or Subject Practice: exclusively pull from verified hardcoded bank, never invoke Gemini
+        const effectiveTopic = customTopic || requestedTopic || chapterName || "";
+        console.log(`[MDCAT Practice Request] ${rawSubject} - ${effectiveTopic} (Count: ${requestedCount})`);
+        const mdcatQuestions = getMDCATPrebuiltQuestions(rawSubject, requestedCount, effectiveTopic);
+        let filtered = mdcatQuestions;
+        if (excludeStemSet.size > 0) {
+          filtered = mdcatQuestions.filter(q => !excludeStemSet.has((q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '')));
+        }
+        if (filtered.length === 0 && mdcatQuestions.length > 0) {
+          filtered = mdcatQuestions;
+        }
+        return res.json({
+          success: true,
+          selectedSubject: rawSubject,
+          subjectSentToGemini: rawSubject,
+          subjectReturned: rawSubject,
+          questions: filtered,
+          totalTargetCount: requestedCount,
+          batchOffset,
+          usage: {
+            currentUsage: 0,
+            limit: 100,
+            remaining: 999999,
+            resetDate: getNextMonthResetDate(),
+            isAdmin: true,
+          },
+        });
+      }
     }
 
     const isTcatRequest = isTcatFullMock ||
@@ -5560,6 +5598,22 @@ ${scopeInstruction}${excludeInstruction}`;
       return res.json({
         success: true,
         explanation: `Option ${String.fromCharCode(65 + (correctOption || 0))} is the verified correct answer according to official TCAT academic standards.`,
+      });
+    }
+
+    // MDCAT Explanations: Exclusively pull verified explanations from hardcoded bank, never invoke Gemini
+    const isMdcat = (subject && String(subject).toLowerCase().includes('mdcat')) || (topic && String(topic).toLowerCase().includes('mdcat'));
+    const matchedMdcat = ALL_MDCAT_QUESTIONS.find(q => (q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '') === normQ);
+    if (matchedMdcat && matchedMdcat.explain) {
+      return res.json({
+        success: true,
+        explanation: matchedMdcat.explain,
+      });
+    }
+    if (isMdcat) {
+      return res.json({
+        success: true,
+        explanation: `Option ${String.fromCharCode(65 + (correctOption || 0))} is the verified correct answer according to official PMDC MDCAT academic standards.`,
       });
     }
 

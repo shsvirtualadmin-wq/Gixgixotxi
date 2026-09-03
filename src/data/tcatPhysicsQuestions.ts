@@ -4079,5 +4079,455 @@ export const TCAT_PHYSICS_QUESTIONS: Question[] = [
     options: ["2 to 3 fast neutrons and approximately 200 MeV of energy","Alpha particles and positrons","Protons and antineutrinos","Zero neutrons"],
     correct: 0,
     explain: "U-235 fission yields middle-mass fission fragments, 2 to 3 fast neutrons that sustain a chain reaction, and ~200 MeV of energy."
+  },
+  {
+    id: "tcat-phy-401",
+    subject: "Physics",
+    topic: "Measurements",
+    difficulty: "Easy",
+    q: "Which of the following physical quantities is classified as a base SI unit in the International System of Units?",
+    options: [
+      "Kelvin",
+      "Joule",
+      "Newton",
+      "Coulomb"
+    ],
+    correct: 0,
+    explain: "Kelvin (K) is one of the seven fundamental SI base units for thermodynamic temperature. Joule, Newton, and Coulomb are derived units."
+  },
+  {
+    id: "tcat-phy-402",
+    subject: "Physics",
+    topic: "Motion and Force",
+    difficulty: "Easy",
+    q: "A 1200 kg vehicle accelerates uniformly from rest to a velocity of 20 m/s in 10 seconds. What is the net force exerted on the vehicle?",
+    options: [
+      "2400 N",
+      "1200 N",
+      "6000 N",
+      "4800 N"
+    ],
+    correct: 0,
+    explain: "Acceleration a = (v - u) / t = (20 - 0) / 10 = 2 m/s^2. Net force F = m*a = 1200 kg * 2 m/s^2 = 2400 N."
+  },
+  {
+    id: "tcat-phy-403",
+    subject: "Physics",
+    topic: "Work and Energy",
+    difficulty: "Easy",
+    q: "How much work is done against gravity to elevate a 5 kg mass vertically to a height of 4 meters (taking g = 9.8 m/s^2)?",
+    options: [
+      "196 J",
+      "98 J",
+      "49 J",
+      "392 J"
+    ],
+    correct: 0,
+    explain: "Work W = m*g*h = 5 kg * 9.8 m/s^2 * 4 m = 196 J."
+  },
+  {
+    id: "tcat-phy-404",
+    subject: "Physics",
+    topic: "Circular Motion",
+    difficulty: "Easy",
+    q: "What happens to the magnitude of the centripetal force acting on an orbiting mass if its linear orbital speed is doubled while the radius remains constant?",
+    options: [
+      "It quadruples (increases by a factor of 4)",
+      "It doubles",
+      "It halves",
+      "It remains unchanged"
+    ],
+    correct: 0,
+    explain: "Centripetal force is F_c = m*v^2 / r. Because F_c is directly proportional to v^2, doubling v increases F_c by (2)^2 = 4 times."
+  },
+  {
+    id: "tcat-phy-405",
+    subject: "Physics",
+    topic: "Electrostatics",
+    difficulty: "Easy",
+    q: "State the SI derived unit of electrical capacitance:",
+    options: [
+      "Farad",
+      "Henry",
+      "Ohm",
+      "Tesla"
+    ],
+    correct: 0,
+    explain: "Capacitance C = Q/V is measured in Farads (F), which corresponds to Coulombs per Volt."
+  },
+  {
+    id: "tcat-phy-406",
+    subject: "Physics",
+    topic: "Current Electricity",
+    difficulty: "Easy",
+    q: "Three resistors of resistances 6 Ω, 3 Ω, and 2 Ω are connected in parallel. What is the equivalent resistance of the combination?",
+    options: [
+      "1 Ω",
+      "11 Ω",
+      "2 Ω",
+      "0.5 Ω"
+    ],
+    correct: 0,
+    explain: "1/R_eq = 1/6 + 1/3 + 1/2 = 1/6 + 2/6 + 3/6 = 6/6 = 1 Ω^-1 => R_eq = 1 Ω."
+  },
+  {
+    id: "tcat-phy-407",
+    subject: "Physics",
+    topic: "Waves",
+    difficulty: "Easy",
+    q: "A sound wave propagating in air has a frequency of 680 Hz. If the speed of sound is 340 m/s, determine its wavelength.",
+    options: [
+      "0.5 m",
+      "2.0 m",
+      "1.5 m",
+      "0.25 m"
+    ],
+    correct: 0,
+    explain: "Using the wave relation v = f * λ: λ = v / f = 340 / 680 = 0.5 m."
+  },
+  {
+    id: "tcat-phy-408",
+    subject: "Physics",
+    topic: "Fluid Dynamics",
+    difficulty: "Easy",
+    q: "Which physical conservation law forms the theoretical foundation of Bernoulli's theorem for fluid flow?",
+    options: [
+      "Law of Conservation of Energy",
+      "Law of Conservation of Linear Momentum",
+      "Law of Conservation of Angular Momentum",
+      "Law of Conservation of Mass"
+    ],
+    correct: 0,
+    explain: "Bernoulli's equation is fundamentally an expression of the law of conservation of mechanical energy applied to ideal flowing fluids."
+  },
+  {
+    id: "tcat-phy-409",
+    subject: "Physics",
+    topic: "Electromagnetism",
+    difficulty: "Easy",
+    q: "The magnetic force acting on a point charge q moving with velocity v in an external magnetic field B is zero when:",
+    options: [
+      "The velocity vector is parallel or antiparallel to the magnetic field",
+      "The velocity vector is perpendicular to the magnetic field",
+      "The charge moves at relativistic speed",
+      "The magnetic field strength is doubled"
+    ],
+    correct: 0,
+    explain: "F = q(v x B) = q*v*B*sin(θ). When v and B are parallel or antiparallel (θ = 0° or 180°), sin(θ) = 0, so the force is zero."
+  },
+  {
+    id: "tcat-phy-410",
+    subject: "Physics",
+    topic: "Nuclear Physics",
+    difficulty: "Easy",
+    q: "What is the composition of an alpha (α) particle emitted during radioactive decay?",
+    options: [
+      "Two protons and two neutrons (helium-4 nucleus)",
+      "A high-energy electron",
+      "A positron and neutrino",
+      "A high-frequency photon"
+    ],
+    correct: 0,
+    explain: "An alpha particle consists of two protons and two neutrons tightly bound, identical to the nucleus of a helium-4 atom."
+  },
+  {
+    id: "tcat-phy-411",
+    subject: "Physics",
+    topic: "Thermodynamics",
+    difficulty: "Medium",
+    q: "An ideal heat engine absorbs 2000 J of thermal energy from a high-temperature reservoir at 500 K and exhausts heat to a low-temperature sink at 300 K. What is its Carnot thermodynamic efficiency?",
+    options: [
+      "40%",
+      "60%",
+      "25%",
+      "50%"
+    ],
+    correct: 0,
+    explain: "Carnot efficiency η = 1 - (T_C / T_H) = 1 - (300 / 500) = 1 - 0.60 = 0.40 or 40%."
+  },
+  {
+    id: "tcat-phy-412",
+    subject: "Physics",
+    topic: "Oscillations",
+    difficulty: "Medium",
+    q: "A simple harmonic oscillator has an amplitude A. At what displacement x from the equilibrium position is its kinetic energy exactly equal to its potential energy?",
+    options: [
+      "A / √2",
+      "A / 2",
+      "A / 4",
+      "A / √3"
+    ],
+    correct: 0,
+    explain: "PE = (1/2)kx^2 and KE = (1/2)k(A^2 - x^2). Setting PE = KE gives x^2 = A^2 - x^2 => 2x^2 = A^2 => x = A / √2."
+  },
+  {
+    id: "tcat-phy-413",
+    subject: "Physics",
+    topic: "Electromagnetic Induction",
+    difficulty: "Medium",
+    q: "A magnetic flux through a stationary coil of 50 turns changes uniformly from 0.8 Wb to 0.2 Wb in 0.1 seconds. Determine the magnitude of the induced electromotive force (EMF).",
+    options: [
+      "300 V",
+      "60 V",
+      "150 V",
+      "500 V"
+    ],
+    correct: 0,
+    explain: "Faraday's law states |EMF| = N * |ΔΦ / Δt| = 50 * |(0.2 - 0.8) / 0.1| = 50 * (0.6 / 0.1) = 50 * 6 = 300 V."
+  },
+  {
+    id: "tcat-phy-414",
+    subject: "Physics",
+    topic: "Alternating Current",
+    difficulty: "Medium",
+    q: "In a series RLC circuit at resonance, the inductive reactance is X_L = 250 Ω and resistance is R = 50 Ω. What is the total electrical impedance of the circuit?",
+    options: [
+      "50 Ω",
+      "250 Ω",
+      "300 Ω",
+      "0 Ω"
+    ],
+    correct: 0,
+    explain: "At electrical resonance, inductive reactance equals capacitive reactance (X_L = X_C). Thus, the net reactance vanishes and impedance Z = R = 50 Ω."
+  },
+  {
+    id: "tcat-phy-415",
+    subject: "Physics",
+    topic: "Physics of Solids",
+    difficulty: "Medium",
+    q: "A steel wire of length 2 m and cross-sectional area 1 x 10^-6 m^2 elongates by 1 mm under an axial tension of 100 N. Calculate the Young's modulus of the steel.",
+    options: [
+      "2.0 x 10^11 Pa",
+      "1.0 x 10^11 Pa",
+      "5.0 x 10^10 Pa",
+      "4.0 x 10^11 Pa"
+    ],
+    correct: 0,
+    explain: "Stress = F/A = 100 / (1 x 10^-6) = 1 x 10^8 Pa. Strain = ΔL / L = (1 x 10^-3) / 2 = 5 x 10^-4. Young's modulus Y = Stress / Strain = 1 x 10^8 / 5 x 10^-4 = 2.0 x 10^11 Pa."
+  },
+  {
+    id: "tcat-phy-416",
+    subject: "Physics",
+    topic: "Dawn of Modern Physics",
+    difficulty: "Medium",
+    q: "The work function of a metallic emitter is 2.5 eV. If incident monochromatic photons carry an energy of 4.1 eV, what is the maximum kinetic energy of the ejected photoelectrons?",
+    options: [
+      "1.6 eV",
+      "6.6 eV",
+      "2.5 eV",
+      "3.3 eV"
+    ],
+    correct: 0,
+    explain: "By Einstein's photoelectric equation: K_max = hf - Φ = 4.1 eV - 2.5 eV = 1.6 eV."
+  },
+  {
+    id: "tcat-phy-417",
+    subject: "Physics",
+    topic: "Atomic Spectra",
+    difficulty: "Medium",
+    q: "Which spectral series of the hydrogen atom produces emission spectral lines lying entirely within the visible electromagnetic spectrum?",
+    options: [
+      "Balmer series",
+      "Lyman series",
+      "Paschen series",
+      "Brackett series"
+    ],
+    correct: 0,
+    explain: "The Balmer series transitions to the n = 2 energy level emit electromagnetic radiation in the visible spectrum."
+  },
+  {
+    id: "tcat-phy-418",
+    subject: "Physics",
+    topic: "Circular Motion",
+    difficulty: "Medium",
+    q: "A solid disk and a hollow ring of identical mass M and outer radius R roll down an inclined plane from rest without slipping. Which reaches the bottom first?",
+    options: [
+      "The solid disk, because of its smaller moment of inertia",
+      "The hollow ring, because of its larger moment of inertia",
+      "Both reach the bottom simultaneously",
+      "The ring reaches first because of higher rotational kinetic energy"
+    ],
+    correct: 0,
+    explain: "Solid disk has I = (1/2)MR^2 whereas a ring has I = MR^2. Smaller rotational inertia yields greater linear acceleration: a = g*sin(θ)/(1 + I/MR^2)."
+  },
+  {
+    id: "tcat-phy-419",
+    subject: "Physics",
+    topic: "Electrostatics",
+    difficulty: "Medium",
+    q: "Two parallel conducting plates separated by a distance d in air store an electrostatic potential difference V. If a dielectric slab with relative permittivity ε_r = 4 is inserted between the isolated plates, what is the new potential difference?",
+    options: [
+      "V / 4",
+      "4V",
+      "V / 2",
+      "2V"
+    ],
+    correct: 0,
+    explain: "For an isolated capacitor, charge Q remains constant. Capacitance increases by factor ε_r (C' = 4C). Therefore, V' = Q / C' = V / 4."
+  },
+  {
+    id: "tcat-phy-420",
+    subject: "Physics",
+    topic: "Nuclear Physics",
+    difficulty: "Medium",
+    q: "A radioactive radioisotope has a half-life of 8 days. If the initial activity of the sample is 640 Bq, what will be its activity after 24 days?",
+    options: [
+      "80 Bq",
+      "160 Bq",
+      "40 Bq",
+      "20 Bq"
+    ],
+    correct: 0,
+    explain: "Number of half-lives n = 24 / 8 = 3. Remaining activity = A_0 / (2^n) = 640 / (2^3) = 640 / 8 = 80 Bq."
+  },
+  {
+    id: "tcat-phy-421",
+    subject: "Physics",
+    topic: "Thermodynamics",
+    difficulty: "Hard",
+    q: "During an adiabatic expansion of an ideal gas with adiabatic index γ = 1.4, the volume increases by a factor of 4. By what factor does the absolute temperature change?",
+    options: [
+      "(1/4)^0.4 ≈ 0.574",
+      "(1/4)^1.4",
+      "4^0.4",
+      "Decreases by exactly half"
+    ],
+    correct: 0,
+    explain: "For an adiabatic process, T * V^(γ - 1) = constant. Thus, T_2 / T_1 = (V_1 / V_2)^(γ - 1) = (1/4)^(1.4 - 1) = (1/4)^0.4 ≈ 0.574."
+  },
+  {
+    id: "tcat-phy-422",
+    subject: "Physics",
+    topic: "Waves",
+    difficulty: "Hard",
+    q: "A stationary sound detector records a frequency of 550 Hz from an approaching ambulance moving at 34 m/s. Taking the speed of sound in air as 340 m/s, find the true emitter frequency.",
+    options: [
+      "495 Hz",
+      "500 Hz",
+      "605 Hz",
+      "510 Hz"
+    ],
+    correct: 0,
+    explain: "By Doppler effect for a source approaching a stationary observer: f' = f * [v / (v - v_s)] => 550 = f * [340 / (340 - 34)] = f * [340 / 306] = f * [10 / 9] => f = 550 * 9 / 10 = 495 Hz."
+  },
+  {
+    id: "tcat-phy-423",
+    subject: "Physics",
+    topic: "Electromagnetism",
+    difficulty: "Hard",
+    q: "A proton enters a uniform perpendicular magnetic field of 0.5 T with a kinetic energy of 3.2 x 10^-13 J. If m_p = 1.67 x 10^-27 kg and q = 1.6 x 10^-19 C, what is the radius of its circular trajectory?",
+    options: [
+      "0.41 m",
+      "0.82 m",
+      "0.20 m",
+      "1.64 m"
+    ],
+    correct: 0,
+    explain: "Momentum p = √(2*m*KE) = √(2 * 1.67 x 10^-27 * 3.2 x 10^-13) = √(1.0688 x 10^-39) ≈ 3.27 x 10^-20 kg·m/s. Radius r = p / (q*B) = (3.27 x 10^-20) / (1.6 x 10^-19 * 0.5) = (3.27 x 10^-20) / (8.0 x 10^-20) ≈ 0.41 m."
+  },
+  {
+    id: "tcat-phy-424",
+    subject: "Physics",
+    topic: "Dawn of Modern Physics",
+    difficulty: "Hard",
+    q: "Calculate the de Broglie wavelength of an electron accelerated from rest across an electric potential difference of 100 Volts (h = 6.63 x 10^-34 J·s, m_e = 9.11 x 10^-31 kg, e = 1.6 x 10^-19 C).",
+    options: [
+      "0.123 nm",
+      "1.23 nm",
+      "0.0123 nm",
+      "12.3 nm"
+    ],
+    correct: 0,
+    explain: "λ = h / √(2*m_e*e*V) = 1.227 / √V nm. For V = 100 V, λ = 1.227 / 10 = 0.1227 nm ≈ 0.123 nm (or 1.23 Å)."
+  },
+  {
+    id: "tcat-phy-425",
+    subject: "Physics",
+    topic: "Electronics",
+    difficulty: "Hard",
+    q: "In an operational amplifier inverting configuration with input resistor R_in = 10 kΩ and feedback resistor R_f = 220 kΩ, what is the closed-loop voltage gain?",
+    options: [
+      "-22",
+      "-0.045",
+      "22",
+      "-220"
+    ],
+    correct: 0,
+    explain: "For an ideal op-amp in an inverting amplifier configuration, the closed-loop voltage gain is A_v = - R_f / R_in = - 220 kΩ / 10 kΩ = -22."
+  },
+  {
+    id: "tcat-phy-426",
+    subject: "Physics",
+    topic: "Fluid Dynamics",
+    difficulty: "Hard",
+    q: "A horizontal pipe carrying water tapers from a cross-sectional area of 40 cm^2 (where speed is 2 m/s and pressure is 2.0 x 10^5 Pa) to a constriction of 10 cm^2. Find the static pressure at the constriction (water density = 1000 kg/m^3).",
+    options: [
+      "1.7 x 10^5 Pa",
+      "1.4 x 10^5 Pa",
+      "2.3 x 10^5 Pa",
+      "1.1 x 10^5 Pa"
+    ],
+    correct: 0,
+    explain: "By continuity: A_1*v_1 = A_2*v_2 => 40*2 = 10*v_2 => v_2 = 8 m/s. By Bernoulli: P_1 + (1/2)ρv_1^2 = P_2 + (1/2)ρv_2^2 => 2.0 x 10^5 + 0.5(1000)(4) = P_2 + 0.5(1000)(64) => 200,000 + 2000 = P_2 + 32,000 => P_2 = 202,000 - 32,000 = 170,000 Pa = 1.7 x 10^5 Pa."
+  },
+  {
+    id: "tcat-phy-427",
+    subject: "Physics",
+    topic: "Oscillations",
+    difficulty: "Hard",
+    q: "A damped harmonic oscillator experiences a resistive damping force proportional to velocity (F_d = -b*v). The quality factor Q of the oscillator is directly proportional to:",
+    options: [
+      "The stored energy divided by the energy dissipated per radian cycle",
+      "The damping coefficient b",
+      "The square of the damping force",
+      "The period of oscillation divided by amplitude"
+    ],
+    correct: 0,
+    explain: "The Q factor quantifies damping and is defined as Q = 2π * (Energy stored / Energy dissipated per cycle) = ω_0 * m / b."
+  },
+  {
+    id: "tcat-phy-428",
+    subject: "Physics",
+    topic: "Nuclear Physics",
+    difficulty: "Hard",
+    q: "The mass of a deuteron nucleus (^2H) is 2.01355 u, while the constituent masses are m_p = 1.00728 u and m_n = 1.00866 u. What is the nuclear binding energy of the deuteron (1 u = 931.5 MeV)?",
+    options: [
+      "2.22 MeV",
+      "1.11 MeV",
+      "4.44 MeV",
+      "8.79 MeV"
+    ],
+    correct: 0,
+    explain: "Mass defect Δm = (1.00728 + 1.00866) - 2.01355 = 2.01594 - 2.01355 = 0.00239 u. Binding energy E_b = 0.00239 * 931.5 MeV ≈ 2.226 MeV ≈ 2.22 MeV."
+  },
+  {
+    id: "tcat-phy-429",
+    subject: "Physics",
+    topic: "Electromagnetic Waves",
+    difficulty: "Hard",
+    q: "The electric field amplitude of a plane electromagnetic wave propagating in free space is E_0 = 300 V/m. What is the amplitude of its corresponding magnetic field B_0 (c = 3.0 x 10^8 m/s)?",
+    options: [
+      "1.0 x 10^-6 T",
+      "9.0 x 10^10 T",
+      "3.0 x 10^-6 T",
+      "1.0 x 10^-4 T"
+    ],
+    correct: 0,
+    explain: "In an electromagnetic wave in vacuum, E_0 / B_0 = c. Thus, B_0 = E_0 / c = 300 / (3.0 x 10^8) = 1.0 x 10^-6 Tesla (1.0 μT)."
+  },
+  {
+    id: "tcat-phy-430",
+    subject: "Physics",
+    topic: "Current Electricity",
+    difficulty: "Hard",
+    q: "A potentiometer wire of length 10 m has a uniform resistance of 20 Ω. It is connected in series with a 480 Ω resistor and a 5 V accumulator. What is the potential gradient along the wire?",
+    options: [
+      "0.02 V/m",
+      "0.2 V/m",
+      "0.05 V/m",
+      "0.5 V/m"
+    ],
+    correct: 0,
+    explain: "Total circuit resistance R_tot = 20 + 480 = 500 Ω. Current I = 5 / 500 = 0.01 A. Voltage drop across the potentiometer wire V_wire = I * R_wire = 0.01 * 20 = 0.2 V. Potential gradient k = V_wire / L = 0.2 V / 10 m = 0.02 V/m."
   }
 ];
