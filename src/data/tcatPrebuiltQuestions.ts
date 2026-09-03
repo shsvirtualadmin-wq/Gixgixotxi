@@ -74,39 +74,72 @@ export const ALL_TCAT_QUESTIONS: Question[] = [
 
 /**
  * Returns prebuilt questions for a specific TCAT subject and optional chapter topic.
+ * Pulls exclusively from verified hardcoded question banks. Never generates placeholder filler.
+ * If a topic has fewer questions than requested, pulls additional real questions from the same subject's other chapters.
  */
 export function getTCATPrebuiltQuestions(subject: string, count: number = 10, topic?: string): Question[] {
   const normSub = Object.keys(TCAT_PREBUILT_QUESTIONS).find(
     (k) => k.toLowerCase() === subject.toLowerCase()
   ) || 'Mathematics';
 
-  let pool = TCAT_PREBUILT_QUESTIONS[normSub] || TCAT_PREBUILT_QUESTIONS['Mathematics'];
+  const fullPool = TCAT_PREBUILT_QUESTIONS[normSub] || TCAT_PREBUILT_QUESTIONS['Mathematics'] || [];
+  let topicPool = fullPool;
 
   if (topic && topic.trim().length > 0) {
     const cleanTopic = topic.toLowerCase().trim();
-    const isGeneric = cleanTopic.includes('syllabus') || cleanTopic.includes('all topic') || cleanTopic.includes('all chapter') || cleanTopic.includes('full mock');
+    const isGeneric = cleanTopic.includes('syllabus') || 
+      (cleanTopic.includes('all') && cleanTopic.includes('chapter')) || 
+      (cleanTopic.includes('all') && cleanTopic.includes('topic')) || 
+      cleanTopic.includes('full mock') ||
+      cleanTopic.includes('full exam') ||
+      cleanTopic === normSub.toLowerCase();
+
     if (!isGeneric) {
-      const topicMatches = pool.filter(q => {
+      const topicMatches = fullPool.filter(q => {
         const qTopic = (q.topic || '').toLowerCase();
         return qTopic.includes(cleanTopic) || cleanTopic.includes(qTopic);
       });
       if (topicMatches.length > 0) {
-        pool = topicMatches;
+        topicPool = topicMatches;
       }
     }
   }
 
-  const shuffledPool = [...pool].sort(() => 0.5 - Math.random());
+  const seenStems = new Set<string>();
   const results: Question[] = [];
 
-  for (let i = 0; i < count; i++) {
-    const raw = shuffledPool[i % shuffledPool.length];
-    const itemWithShuffledOptions = shuffleOptionsAndFixCorrect(raw);
-    results.push({
-      ...itemWithShuffledOptions,
-      subject: normSub,
-      id: `tcat-q-${normSub.toLowerCase().replace(/\s+/g, '-')}-${i + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-    });
+  // Pass 1: Select unique questions from the requested topic pool
+  const shuffledTopicPool = [...topicPool].sort(() => 0.5 - Math.random());
+  for (const raw of shuffledTopicPool) {
+    if (results.length >= count) break;
+    const stem = (raw.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (!seenStems.has(stem)) {
+      seenStems.add(stem);
+      const itemWithShuffledOptions = shuffleOptionsAndFixCorrect(raw);
+      results.push({
+        ...itemWithShuffledOptions,
+        subject: normSub,
+        id: `tcat-q-${normSub.toLowerCase().replace(/\s+/g, '-')}-${results.length + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      });
+    }
+  }
+
+  // Pass 2: If topic has fewer questions than requested, fill the gap with real questions from the same subject's other chapters
+  if (results.length < count && fullPool.length > results.length) {
+    const shuffledFull = [...fullPool].sort(() => 0.5 - Math.random());
+    for (const raw of shuffledFull) {
+      if (results.length >= count) break;
+      const stem = (raw.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (!seenStems.has(stem)) {
+        seenStems.add(stem);
+        const itemWithShuffledOptions = shuffleOptionsAndFixCorrect(raw);
+        results.push({
+          ...itemWithShuffledOptions,
+          subject: normSub,
+          id: `tcat-q-${normSub.toLowerCase().replace(/\s+/g, '-')}-${results.length + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        });
+      }
+    }
   }
 
   return results;
@@ -120,27 +153,35 @@ export function getTCATPrebuiltQuestions(subject: string, count: number = 10, to
  * - ICS Physics: Mathematics (30), Physics (30), Computer Science (30), English (10)
  * - ICS Statistics: Mathematics (30), Statistics (30), Computer Science (30), English (10)
  * - Statistics & Physics: Mathematics (30), Statistics (30), Physics (30), English (10)
- * Total: exactly 100 MCQs, zero duplicate questions within the test.
+ * Total: exactly 100 MCQs, zero duplicate questions within the test, zero placeholder questions.
  */
 export function generateTCATFullMockBank(groupSubjects?: string[] | string): Question[] {
   let sub1 = 'Mathematics';
   let sub2 = 'Physics';
   let sub3 = 'Chemistry';
-  const sub4 = 'English';
+  let sub4 = 'English';
 
   if (Array.isArray(groupSubjects) && groupSubjects.length > 0) {
     sub1 = groupSubjects[0] || 'Mathematics';
     sub2 = groupSubjects[1] || 'Physics';
     sub3 = groupSubjects[2] || 'Chemistry';
+    sub4 = groupSubjects[3] || 'English';
   } else if (typeof groupSubjects === 'string' && groupSubjects.trim()) {
     const rawGroup = groupSubjects.trim().toLowerCase();
-    const matchedGroup = TCAT_GROUPS.find(
-      (g) => g.id.toLowerCase() === rawGroup || g.title.toLowerCase().includes(rawGroup)
-    );
+    const matchedGroup = TCAT_GROUPS.find((g) => {
+      const gid = g.id.toLowerCase();
+      const gtitle = g.title.toLowerCase();
+      return gid === rawGroup ||
+        rawGroup.includes(gid) ||
+        gtitle === rawGroup ||
+        gtitle.includes(rawGroup) ||
+        rawGroup.includes(gtitle);
+    });
     if (matchedGroup && matchedGroup.subjects && matchedGroup.subjects.length >= 3) {
       sub1 = matchedGroup.subjects[0];
       sub2 = matchedGroup.subjects[1];
       sub3 = matchedGroup.subjects[2];
+      sub4 = matchedGroup.subjects[3] || 'English';
     }
   }
 
@@ -196,17 +237,24 @@ export function generateTCATFullMockBank(groupSubjects?: string[] | string): Que
       chIdx++;
     }
 
-    // Fallback top-up if needed
-    let loopIndex = 0;
-    while (selected.length < targetCount && pool.length > 0) {
-      const base = pool[loopIndex % pool.length];
-      const fixed = shuffleOptionsAndFixCorrect(base);
-      selected.push({
-        ...fixed,
-        subject: subjectKey,
-        id: `tcat-mock-${subjectKey.toLowerCase().replace(/\s+/g, '-')}-fill-${selected.length + 1}-${Date.now()}`
-      });
-      loopIndex++;
+    // Top up with unpicked unique questions from pool if targetCount not yet reached
+    if (selected.length < targetCount) {
+      const remaining = pool.filter(q => {
+        const norm = (q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        return !seenStems.has(norm);
+      }).sort(() => 0.5 - Math.random());
+
+      for (const candidate of remaining) {
+        if (selected.length >= targetCount) break;
+        const norm = (candidate.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        seenStems.add(norm);
+        const fixed = shuffleOptionsAndFixCorrect(candidate);
+        selected.push({
+          ...fixed,
+          subject: subjectKey,
+          id: `tcat-mock-${subjectKey.toLowerCase().replace(/\s+/g, '-')}-${selected.length + 1}-${Date.now()}`
+        });
+      }
     }
 
     return selected;

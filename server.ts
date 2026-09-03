@@ -9,7 +9,7 @@ import dotenv from "dotenv";
 import { getGoogleAccessToken } from "./functions/_utils/googleAuth.js";
 import nodemailer from "nodemailer";
 import { generateMDCATFullMockBank } from "./src/data/mdcatPrebuiltQuestions.js";
-import { generateTCATFullMockBank } from "./src/data/tcatPrebuiltQuestions.js";
+import { generateTCATFullMockBank, getTCATPrebuiltQuestions, ALL_TCAT_QUESTIONS } from "./src/data/tcatPrebuiltQuestions.js";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 
 dotenv.config();
@@ -3233,35 +3233,76 @@ function formatRemainingTimeString(ms: number): string {
       });
     }
 
-    if (isTcatFullMock || (isAnyFullMock && rawSubject.toLowerCase().includes("tcat"))) {
-      console.log(`[Full Mock Request] TCAT Full Mock (Offset: ${batchOffset}, Count: ${requestedCount})`);
-      const fullBank = generateTCATFullMockBank(Array.isArray(groupSubjects) && groupSubjects.length > 0 ? groupSubjects : ['Mathematics', 'Physics', 'Chemistry', 'English']);
-      let filteredBank = fullBank;
-      if (excludeStemSet.size > 0) {
-        filteredBank = fullBank.filter(q => !excludeStemSet.has((q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '')));
-      }
+    const isTcatRequest = isTcatFullMock ||
+      (isAnyFullMock && rawSubject.toLowerCase().includes("tcat")) ||
+      pathType === 'tcat' ||
+      String(classNum) === 'TCAT' ||
+      String(group) === 'TCAT' ||
+      rawSubject.toLowerCase().includes("tcat");
 
-      let questions = filteredBank.slice(batchOffset, batchOffset + requestedCount);
-      if (questions.length === 0 && filteredBank.length > 0) {
-        questions = filteredBank.slice(0, requestedCount);
-      }
+    if (isTcatRequest) {
+      const isFull = isTcatFullMock || (isAnyFullMock && rawSubject.toLowerCase().includes("tcat")) || requestedCount >= 100;
+      if (isFull) {
+        console.log(`[Full Mock Request] TCAT Full Mock (Offset: ${batchOffset}, Count: ${requestedCount})`);
+        const fullBank = generateTCATFullMockBank(
+          Array.isArray(groupSubjects) && groupSubjects.length > 0 ? groupSubjects : (chapterName || customTopic || rawSubject)
+        );
+        let filteredBank = fullBank;
+        if (excludeStemSet.size > 0) {
+          filteredBank = fullBank.filter(q => !excludeStemSet.has((q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '')));
+        }
 
-      return res.json({
-        success: true,
-        selectedSubject: "TCAT Full Mock",
-        subjectSentToGemini: "TCAT Full Mock",
-        subjectReturned: "TCAT Full Mock",
-        questions,
-        totalTargetCount: 100,
-        batchOffset,
-        usage: {
-          currentUsage: 0,
-          limit: 100,
-          remaining: 999999,
-          resetDate: getNextMonthResetDate(),
-          isAdmin: true,
-        },
-      });
+        let questions = filteredBank.slice(batchOffset, batchOffset + requestedCount);
+        if (questions.length === 0 && filteredBank.length > 0) {
+          questions = filteredBank.slice(0, requestedCount);
+        }
+
+        return res.json({
+          success: true,
+          selectedSubject: "TCAT Full Mock",
+          subjectSentToGemini: "TCAT Full Mock",
+          subjectReturned: "TCAT Full Mock",
+          questions,
+          totalTargetCount: 100,
+          batchOffset,
+          usage: {
+            currentUsage: 0,
+            limit: 100,
+            remaining: 999999,
+            resetDate: getNextMonthResetDate(),
+            isAdmin: true,
+          },
+        });
+      } else {
+        // TCAT Chapter or Subject Practice: exclusively pull from verified hardcoded bank, never invoke Gemini
+        const effectiveTopic = customTopic || requestedTopic || chapterName || "";
+        console.log(`[TCAT Practice Request] ${rawSubject} - ${effectiveTopic} (Count: ${requestedCount})`);
+        const tcatQuestions = getTCATPrebuiltQuestions(rawSubject, requestedCount, effectiveTopic);
+        let filteredBank = tcatQuestions;
+        if (excludeStemSet.size > 0) {
+          filteredBank = tcatQuestions.filter(q => !excludeStemSet.has((q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '')));
+        }
+        if (filteredBank.length === 0) {
+          filteredBank = tcatQuestions;
+        }
+
+        return res.json({
+          success: true,
+          selectedSubject: rawSubject,
+          subjectSentToGemini: rawSubject,
+          subjectReturned: rawSubject,
+          questions: filteredBank,
+          totalTargetCount: filteredBank.length,
+          batchOffset,
+          usage: {
+            currentUsage: 0,
+            limit: 100,
+            remaining: 999999,
+            resetDate: getNextMonthResetDate(),
+            isAdmin: true,
+          },
+        });
+      }
     }
 
     const isAdmin = isAdminEmail(userEmail);
@@ -5504,6 +5545,23 @@ ${scopeInstruction}${excludeInstruction}`;
   // API Endpoint: Get In-depth Explanation for a question
   app.post("/api/explain-mcq", async (req, res) => {
     const { question, options, selectedOption, correctOption, subject, topic } = req.body;
+
+    // TCAT Explanations: Exclusively pull verified explanations from hardcoded bank, never invoke Gemini
+    const isTcat = (subject && String(subject).toLowerCase().includes('tcat')) || (topic && String(topic).toLowerCase().includes('tcat'));
+    const normQ = String(question || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const matchedTcat = ALL_TCAT_QUESTIONS.find(q => (q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '') === normQ);
+    if (matchedTcat && matchedTcat.explain) {
+      return res.json({
+        success: true,
+        explanation: matchedTcat.explain,
+      });
+    }
+    if (isTcat) {
+      return res.json({
+        success: true,
+        explanation: `Option ${String.fromCharCode(65 + (correctOption || 0))} is the verified correct answer according to official TCAT academic standards.`,
+      });
+    }
 
     const userChoiceStr =
       selectedOption !== null && selectedOption !== undefined && options && options[selectedOption]

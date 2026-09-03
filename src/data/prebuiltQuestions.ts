@@ -3523,7 +3523,7 @@ export const PREBUILT_QUESTIONS: Record<string, Question[]> = {
 };
 
 import { MDCAT_PREBUILT_QUESTIONS, generateMDCATFullMockBank } from './mdcatPrebuiltQuestions';
-import { TCAT_PREBUILT_QUESTIONS, generateTCATFullMockBank } from './tcatPrebuiltQuestions';
+import { TCAT_PREBUILT_QUESTIONS, generateTCATFullMockBank, getTCATPrebuiltQuestions } from './tcatPrebuiltQuestions';
 
 // Map aliases for prebuilt lookup so queries never fail
 PREBUILT_QUESTIONS["Islamiat"] = PREBUILT_QUESTIONS["Islamic Studies"];
@@ -3540,21 +3540,29 @@ export function getPrebuiltQuestionsForSubject(subjectName: string, customTopic?
 
   const clean = subjectName.trim();
   const lower = clean.toLowerCase();
+
+  // Full Mock Exams are comprehensive cross-subject tests (100 or 180 MCQs) and must never be filtered down by topic
+  if (lower.includes('tcat full') || lower.includes('tcat mock')) {
+    return generateTCATFullMockBank(customTopic || subjectName).map(shuffleQuestionOptions);
+  } else if (lower.includes('mdcat full') || lower.includes('full mock')) {
+    return generateMDCATFullMockBank().map(shuffleQuestionOptions);
+  }
+
+  // TCAT Subjects & Chapters: Always delegate to getTCATPrebuiltQuestions for verified questions & zero filler
+  if (TCAT_PREBUILT_QUESTIONS[clean] || TCAT_PREBUILT_QUESTIONS[mapSubject(subjectName)]) {
+    const tcatSub = TCAT_PREBUILT_QUESTIONS[clean] ? clean : mapSubject(subjectName);
+    return getTCATPrebuiltQuestions(tcatSub, 100, customTopic).map(shuffleQuestionOptions);
+  }
+
   let pool: Question[] = [];
 
-  if (lower.includes('tcat full') || lower.includes('tcat mock')) {
-    pool = generateTCATFullMockBank(customTopic || subjectName);
-  } else if (lower.includes('mdcat full') || lower.includes('full mock')) {
-    pool = generateMDCATFullMockBank();
-  } else if (lower.includes('logic') || lower.includes('reasoning')) {
+  if (lower.includes('logic') || lower.includes('reasoning')) {
     pool = MDCAT_PREBUILT_QUESTIONS['Logical Reasoning'] || [];
-  } else if (TCAT_PREBUILT_QUESTIONS[clean]) {
-    pool = TCAT_PREBUILT_QUESTIONS[clean];
   } else if (MDCAT_PREBUILT_QUESTIONS[clean]) {
     pool = MDCAT_PREBUILT_QUESTIONS[clean];
   } else {
     const canon = mapSubject(subjectName);
-    pool = TCAT_PREBUILT_QUESTIONS[canon] || MDCAT_PREBUILT_QUESTIONS[canon] || PREBUILT_QUESTIONS[canon] || PREBUILT_QUESTIONS[subjectName] || [];
+    pool = MDCAT_PREBUILT_QUESTIONS[canon] || PREBUILT_QUESTIONS[canon] || PREBUILT_QUESTIONS[subjectName] || [];
   }
 
   const isSpecificTopic = customTopic && 

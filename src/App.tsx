@@ -13,6 +13,7 @@ import {
   TestMode
 } from './types';
 import { PREBUILT_QUESTIONS, getPrebuiltQuestionsForSubject } from './data/prebuiltQuestions';
+import { generateTCATFullMockBank, getTCATPrebuiltQuestions } from './data/tcatPrebuiltQuestions';
 import { checkQuestionTopicRelevance } from './utils/topicValidator';
 import { shuffleQuestionOptions } from './lib/shuffle';
 import { getSubjectsForClassAndGroup } from './data/categories';
@@ -2046,6 +2047,14 @@ export function App() {
     const activeUser = session?.user || currentUser;
     const targetSubject = mapSubject(fullParams.subject || selectedSubject || 'Physics');
     const targetTopic = fullParams.customTopic !== undefined ? fullParams.customTopic : customTopic;
+
+    // TCAT uses strictly verified hardcoded banks and must NEVER invoke AI/API background generation
+    const isTcat = fullParams.path === 'tcat' || selectedClass === 'TCAT' || selectedGroup === 'TCAT' || (fullParams.subject || '').toLowerCase().includes('tcat') || targetSubject.toLowerCase().includes('tcat');
+    if (isTcat) {
+      console.log('[MCQ Background Gen] TCAT test detected: strictly bypassing AI generation, relying solely on hardcoded question bank.');
+      return;
+    }
+
     let currentQuestions = [...initialQuestions];
 
     while (currentQuestions.length < targetTotalCount && !bgAbort.signal.aborted) {
@@ -2264,153 +2273,143 @@ export function App() {
     const currentReqId = ++mcqRequestIdRef.current;
 
     const targetTotalCount = Math.max(1, params.questionCount || 10);
+    let effectiveTargetTotalCount = targetTotalCount;
     // Initial batch target is 5 questions to guarantee instant UI startup within 10 seconds
     const FIRST_BATCH_READY_THRESHOLD = Math.min(5, targetTotalCount);
 
-    console.log(`[MCQ Progressive Fast Start] Subject: "${targetSubject}", First Batch Target: ${FIRST_BATCH_READY_THRESHOLD}, Total Target: ${targetTotalCount}`);
+    console.log(`[MCQ Progressive Fast Start] Subject: "${targetSubject}", First Batch Target: ${FIRST_BATCH_READY_THRESHOLD}, Total Target: ${targetTotalCount}, isTcat: ${isTcat}`);
 
-    // 1. Instantly assemble initial questions from cache & prebuilt bank so the test screen opens immediately (< 0.5s)
-    let initialSet: Question[] = getCachedQuestions(targetSubject, targetTopic) || [];
-    
-    // If cached set is larger than targetTotalCount, slice it to targetTotalCount
-    if (initialSet.length > targetTotalCount) {
-      initialSet = initialSet.slice(0, targetTotalCount);
-    }
+    let initialSet: Question[] = [];
 
-    // Top up using authentic prebuilt bank if needed
-    if (initialSet.length < FIRST_BATCH_READY_THRESHOLD) {
-      const prebuiltPool = getPrebuiltQuestionsForSubject(targetSubject, targetTopic);
-      const shuffledPrebuilt = [...prebuiltPool].sort(() => 0.5 - Math.random());
-      for (const pbq of shuffledPrebuilt) {
-        if (initialSet.length >= targetTotalCount) break;
-        if (!initialSet.some(q => (q.q || '').toLowerCase().trim() === (pbq.q || '').toLowerCase().trim())) {
-          initialSet.push({
-            ...pbq,
-            id: `q-instant-${initialSet.length + 1}-${Date.now()}`
-          });
-        }
+    // TCAT Track: Exclusively assemble questions from verified hardcoded bank, zero AI/API generation, zero placeholder filler
+    if (isTcat) {
+      const isTcatMock = params.isFullMock || targetSubject.toLowerCase().includes('tcat full') || targetSubject.toLowerCase().includes('tcat mock') || targetTotalCount >= 100;
+      if (isTcatMock) {
+        initialSet = generateTCATFullMockBank(params.groupSubjects || params.chapterName || targetTopic || targetSubject);
+      } else {
+        initialSet = getTCATPrebuiltQuestions(targetSubject, targetTotalCount, targetTopic);
       }
-    }
 
-    // If initialSet is empty (no cache or prebuilt questions), fetch the first batch (5 questions) directly from API
-    if (initialSet.length === 0) {
-      try {
-        console.log(`[MCQ Start] No prebuilt/cached questions for "${targetSubject}" - "${targetTopic}". Fetching live first batch (${FIRST_BATCH_READY_THRESHOLD} questions) from API...`);
-        const fetchCount = FIRST_BATCH_READY_THRESHOLD;
-        let liveSuccess = false;
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else {
+      // 1. Instantly assemble initial questions from cache & prebuilt bank so the test screen opens immediately (< 0.5s)
+      initialSet = getCachedQuestions(targetSubject, targetTopic) || [];
+      
+      // If cached set is larger than targetTotalCount, slice it to targetTotalCount
+      if (initialSet.length > targetTotalCount) {
+        initialSet = initialSet.slice(0, targetTotalCount);
+      }
 
-        for (let liveAttempt = 1; liveAttempt <= 2; liveAttempt++) {
-          if (liveSuccess || abortController.signal.aborted) break;
-          try {
-            const apiStartMs = Date.now();
-            console.log(`[MCQ Start Live Fetch Attempt ${liveAttempt}/2] Requesting ${fetchCount} questions for "${targetSubject}" - "${targetTopic}"`);
-            const fetchRes = await apiFetch('/api/generate-mcqs', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              signal: abortController.signal,
-              body: JSON.stringify({
-                subject: targetSubject,
-                customTopic: targetTopic,
-                subtopic: params.subtopic,
-                chapterName: params.chapterName,
-                path: isMdcat ? 'mdcat' : 'boards',
-                classNum: selectedClass,
-                group: selectedGroup,
-                questionCount: fetchCount,
-                difficulty: params.difficulty,
-                mode: params.mode,
-                userId: activeUser?.id || 'guest',
-                userEmail: activeUser?.email,
-                isFirstBatch: true,
-              }),
+      // Top up using authentic prebuilt bank if needed
+      if (initialSet.length < FIRST_BATCH_READY_THRESHOLD) {
+        const prebuiltPool = getPrebuiltQuestionsForSubject(targetSubject, targetTopic);
+        const shuffledPrebuilt = [...prebuiltPool].sort(() => 0.5 - Math.random());
+        for (const pbq of shuffledPrebuilt) {
+          if (initialSet.length >= targetTotalCount) break;
+          if (!initialSet.some(q => (q.q || '').toLowerCase().trim() === (pbq.q || '').toLowerCase().trim())) {
+            initialSet.push({
+              ...pbq,
+              id: `q-instant-${initialSet.length + 1}-${Date.now()}`
             });
-
-            const apiElapsedMs = Date.now() - apiStartMs;
-            if (fetchRes.ok) {
-              const fetchData = await safeJsonResponse(fetchRes);
-              console.log(`[MCQ Initial Batch Latency] HTTP Roundtrip: ${apiElapsedMs}ms (${(apiElapsedMs / 1000).toFixed(2)}s) | Server Gemini: ${fetchData?.latency?.geminiMs || 'N/A'}ms | Server Total: ${fetchData?.latency?.totalServerMs || 'N/A'}ms | Qs: ${fetchData?.questions?.length || 0}`);
-              if (fetchData?.success && Array.isArray(fetchData.questions) && fetchData.questions.length > 0) {
-                initialSet = fetchData.questions.slice(0, targetTotalCount);
-                liveSuccess = true;
-                break;
-              }
-            } else {
-              const errData = await safeJsonResponse(fetchRes).catch(() => null);
-              console.warn(`[MCQ Live Fetch Non-OK Status ${fetchRes.status} in ${apiElapsedMs}ms]:`, errData);
-            }
-          } catch (attemptErr: any) {
-            console.warn(`[MCQ Live Fetch Attempt ${liveAttempt} Error]:`, attemptErr?.message || attemptErr);
-            if (liveAttempt < 2) {
-              await new Promise((r) => setTimeout(r, 1000));
-            }
           }
         }
-      } catch (liveFetchErr) {
-        console.error('[MCQ Start Live Fetch Error]:', liveFetchErr);
       }
-    }
 
-    if (initialSet.length === 0) {
-      setIsGenerating(false);
-      setGenerationError({
-        isOpen: true,
-        subject: targetSubject,
-        topic: targetTopic,
-        params,
-        errorMessage: 'Unable to formulate verified questions for this specific subtopic right now.',
-      });
-      return;
-    }
+      // If initialSet is empty (no cache or prebuilt questions), fetch the first batch (5 questions) directly from API
+      if (initialSet.length === 0) {
+        try {
+          console.log(`[MCQ Start] No prebuilt/cached questions for "${targetSubject}" - "${targetTopic}". Fetching live first batch (${FIRST_BATCH_READY_THRESHOLD} questions) from API...`);
+          const fetchCount = FIRST_BATCH_READY_THRESHOLD;
+          let liveSuccess = false;
 
-    // If initialSet has fewer than targetTotalCount questions, pad BEFORE the test starts so the student actually sees and answers them
-    if (initialSet.length < targetTotalCount) {
-      const prebuiltPool = getPrebuiltQuestionsForSubject(targetSubject, targetTopic);
-      const shuffledPrebuilt = [...prebuiltPool].sort(() => 0.5 - Math.random());
-      for (const pbq of shuffledPrebuilt) {
-        if (initialSet.length >= targetTotalCount) break;
-        if (!initialSet.some(q => (q.q || '').toLowerCase().trim() === (pbq.q || '').toLowerCase().trim())) {
-          initialSet.push({
-            ...pbq,
-            id: `start-topup-${initialSet.length + 1}-${Date.now()}`
-          });
+          for (let liveAttempt = 1; liveAttempt <= 2; liveAttempt++) {
+            if (liveSuccess || abortController.signal.aborted) break;
+            try {
+              const apiStartMs = Date.now();
+              console.log(`[MCQ Start Live Fetch Attempt ${liveAttempt}/2] Requesting ${fetchCount} questions for "${targetSubject}" - "${targetTopic}"`);
+              const fetchRes = await apiFetch('/api/generate-mcqs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: abortController.signal,
+                body: JSON.stringify({
+                  subject: targetSubject,
+                  customTopic: targetTopic,
+                  subtopic: params.subtopic,
+                  chapterName: params.chapterName,
+                  path: isMdcat ? 'mdcat' : 'boards',
+                  classNum: selectedClass,
+                  group: selectedGroup,
+                  questionCount: fetchCount,
+                  difficulty: params.difficulty,
+                  mode: params.mode,
+                  userId: activeUser?.id || 'guest',
+                  userEmail: activeUser?.email,
+                  isFirstBatch: true,
+                }),
+              });
+
+              const apiElapsedMs = Date.now() - apiStartMs;
+              if (fetchRes.ok) {
+                const fetchData = await safeJsonResponse(fetchRes);
+                console.log(`[MCQ Initial Batch Latency] HTTP Roundtrip: ${apiElapsedMs}ms (${(apiElapsedMs / 1000).toFixed(2)}s) | Server Gemini: ${fetchData?.latency?.geminiMs || 'N/A'}ms | Server Total: ${fetchData?.latency?.totalServerMs || 'N/A'}ms | Qs: ${fetchData?.questions?.length || 0}`);
+                if (fetchData?.success && Array.isArray(fetchData.questions) && fetchData.questions.length > 0) {
+                  initialSet = fetchData.questions.slice(0, targetTotalCount);
+                  liveSuccess = true;
+                  break;
+                }
+              } else {
+                const errData = await safeJsonResponse(fetchRes).catch(() => null);
+                console.warn(`[MCQ Live Fetch Non-OK Status ${fetchRes.status} in ${apiElapsedMs}ms]:`, errData);
+              }
+            } catch (attemptErr: any) {
+              console.warn(`[MCQ Live Fetch Attempt ${liveAttempt} Error]:`, attemptErr?.message || attemptErr);
+              if (liveAttempt < 2) {
+                await new Promise((r) => setTimeout(r, 1000));
+              }
+            }
+          }
+        } catch (liveFetchErr) {
+          console.error('[MCQ Start Live Fetch Error]:', liveFetchErr);
         }
       }
-    }
 
-    if (initialSet.length < targetTotalCount) {
-      const needed = targetTotalCount - initialSet.length;
-      const isUrduOrIslamiat = ['urdu', 'islam', 'din'].some((s) => (targetSubject || '').toLowerCase().includes(s));
-      for (let fIdx = 0; fIdx < needed; fIdx++) {
-        const qNum = initialSet.length + 1;
-        let fq = `[${targetSubject}] Practice Question ${qNum}: Select the correct core principle regarding ${targetTopic || targetSubject}.`;
-        let fOpts = [
-          `Primary rule of ${targetSubject}`,
-          `Secondary principle of ${targetSubject}`,
-          `Standard equation of ${targetTopic || targetSubject}`,
-          `None of the above`
-        ];
-        let fExplain = `Option A is the verified correct answer according to the standard syllabus for ${targetTopic || targetSubject}.`;
-
-        if (isUrduOrIslamiat) {
-          fq = `سوال نمبر ${qNum}: ${targetSubject} کے اہم اور بنیادی اصول کی نشاندہی کریں۔`;
-          fOpts = ["پہلا درست اصول", "دوسرا اصول", "تیسرا اصول", "ان میں سے کوئی نہیں"];
-          fExplain = "نصاب کی روشنی میں آپشن (الف) ہی درست ترین جواب ہے۔";
-        }
-
-        initialSet.push({
-          id: `start-fallback-${qNum}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-          q: fq,
-          options: fOpts,
-          correct: 0,
-          topic: targetTopic || targetSubject,
-          explain: fExplain,
-          difficulty: params.difficulty || 'Exam Standard',
+      if (initialSet.length === 0) {
+        setIsGenerating(false);
+        setGenerationError({
+          isOpen: true,
+          subject: targetSubject,
+          topic: targetTopic,
+          params,
+          errorMessage: 'Unable to formulate verified questions for this specific subtopic right now.',
         });
+        return;
+      }
+
+      // If initialSet has fewer than targetTotalCount questions, pad BEFORE the test starts using authentic questions
+      if (initialSet.length < targetTotalCount) {
+        const prebuiltPool = getPrebuiltQuestionsForSubject(targetSubject, targetTopic);
+        const shuffledPrebuilt = [...prebuiltPool].sort(() => 0.5 - Math.random());
+        for (const pbq of shuffledPrebuilt) {
+          if (initialSet.length >= targetTotalCount) break;
+          if (!initialSet.some(q => (q.q || '').toLowerCase().trim() === (pbq.q || '').toLowerCase().trim())) {
+            initialSet.push({
+              ...pbq,
+              id: `start-topup-${initialSet.length + 1}-${Date.now()}`
+            });
+          }
+        }
+      }
+
+      // If authentic questions are fewer than targetTotalCount, adjust target to actual available count rather than injecting fake questions
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
       }
     }
 
     // Ensure readyQuestions only contains authentic questions
-    const readyQuestions = initialSet.slice(0, targetTotalCount).map(shuffleQuestionOptions);
+    const readyQuestions = initialSet.slice(0, effectiveTargetTotalCount).map(shuffleQuestionOptions);
 
     // Register active session on server FIRST and enforce monthly test limits strictly
     let activeSessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
@@ -2476,9 +2475,9 @@ export function App() {
     setIsGenerating(false);
     setPendingTestParams(null);
 
-    // 2. Launch background generation to fetch fresh AI-generated questions asynchronously
-    if (targetTotalCount > readyQuestions.length) {
-      startBackgroundGeneration(params, readyQuestions, targetTotalCount, isMdcat, activeSessionId);
+    // 2. Launch background generation to fetch fresh AI-generated questions asynchronously (strictly disabled for TCAT)
+    if (!isTcat && effectiveTargetTotalCount > readyQuestions.length) {
+      startBackgroundGeneration(params, readyQuestions, effectiveTargetTotalCount, isMdcat, activeSessionId);
     }
   };
 
@@ -3256,51 +3255,31 @@ export function App() {
                       const targetSub = testConfig?.subject || selectedSubject || 'Physics';
                       const targetTop = testConfig?.customTopic;
                       const targetCount = testConfig?.questionCount || 10;
-                      const topicPool = getPrebuiltQuestionsForSubject(targetSub, targetTop);
-                      const subjectPool = getPrebuiltQuestionsForSubject(targetSub, undefined);
-                      const combinedPool = [...topicPool, ...subjectPool];
-                      const shuffledPrebuilt = [...combinedPool].sort(() => 0.5 - Math.random());
+                      const isTcat = testConfig?.path === 'tcat' || selectedClass === 'TCAT' || selectedGroup === 'TCAT' || targetSub.toLowerCase().includes('tcat');
                       
                       const newSet = [...activeQuestions];
-                      for (const pbq of shuffledPrebuilt) {
-                        if (newSet.length >= targetCount) break;
-                        if (!newSet.some(q => (q.q || '').toLowerCase().trim() === (pbq.q || '').toLowerCase().trim())) {
-                          newSet.push({
-                            ...pbq,
-                            id: `practice-bank-${newSet.length + 1}-${Date.now()}`
-                          });
-                        }
-                      }
-
-                      if (newSet.length < targetCount) {
-                        const needed = targetCount - newSet.length;
-                        const isUrduOrIslamiat = ['urdu', 'islam', 'din'].some((s) => targetSub.toLowerCase().includes(s));
-                        for (let fIdx = 0; fIdx < needed; fIdx++) {
-                          const qNum = newSet.length + 1;
-                          let fq = `[${targetSub}] Practice Question ${qNum}: Select the correct core principle regarding ${targetTop || targetSub}.`;
-                          let fOpts = [
-                            `Primary rule of ${targetSub}`,
-                            `Secondary principle of ${targetSub}`,
-                            `Standard equation of ${targetTop || targetSub}`,
-                            `None of the above`
-                          ];
-                          let fExplain = `Option A is the verified correct answer according to the standard syllabus for ${targetTop || targetSub}.`;
-
-                          if (isUrduOrIslamiat) {
-                            fq = `سوال نمبر ${qNum}: ${targetSub} کے اہم اور بنیادی اصول کی نشاندہی کریں۔`;
-                            fOpts = ["پہلا درست اصول", "دوسرا اصول", "تیسرا اصول", "ان میں سے کوئی نہیں"];
-                            fExplain = "نصاب کی روشنی میں آپشن (الف) ہی درست ترین جواب ہے۔";
+                      if (isTcat) {
+                        const tcatPool = getTCATPrebuiltQuestions(targetSub, targetCount, targetTop);
+                        for (const q of tcatPool) {
+                          if (newSet.length >= targetCount) break;
+                          if (!newSet.some(existing => (existing.q || '').toLowerCase().trim() === (q.q || '').toLowerCase().trim())) {
+                            newSet.push(q);
                           }
-
-                          newSet.push({
-                            id: `practice-fallback-${qNum}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-                            q: fq,
-                            options: fOpts,
-                            correct: 0,
-                            topic: targetTop || targetSub,
-                            explain: fExplain,
-                            difficulty: testConfig?.difficulty || 'Exam Standard',
-                          });
+                        }
+                      } else {
+                        const topicPool = getPrebuiltQuestionsForSubject(targetSub, targetTop);
+                        const subjectPool = getPrebuiltQuestionsForSubject(targetSub, undefined);
+                        const combinedPool = [...topicPool, ...subjectPool];
+                        const shuffledPrebuilt = [...combinedPool].sort(() => 0.5 - Math.random());
+                        
+                        for (const pbq of shuffledPrebuilt) {
+                          if (newSet.length >= targetCount) break;
+                          if (!newSet.some(q => (q.q || '').toLowerCase().trim() === (pbq.q || '').toLowerCase().trim())) {
+                            newSet.push({
+                              ...pbq,
+                              id: `practice-bank-${newSet.length + 1}-${Date.now()}`
+                            });
+                          }
                         }
                       }
                       
