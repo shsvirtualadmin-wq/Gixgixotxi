@@ -3543,7 +3543,7 @@ export function getPrebuiltQuestionsForSubject(subjectName: string, customTopic?
   let pool: Question[] = [];
 
   if (lower.includes('tcat full') || lower.includes('tcat mock')) {
-    pool = generateTCATFullMockBank();
+    pool = generateTCATFullMockBank(customTopic || subjectName);
   } else if (lower.includes('mdcat full') || lower.includes('full mock')) {
     pool = generateMDCATFullMockBank();
   } else if (lower.includes('logic') || lower.includes('reasoning')) {

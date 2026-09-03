@@ -7,7 +7,7 @@ export const CLASS_GROUPS: Record<BoardClass, string[]> = {
   11: ["Pre-Medical", "Pre-Engineering", "ICS"],
   12: ["Pre-Medical", "Pre-Engineering", "ICS"],
   'MDCAT': ["MDCAT"],
-  'TCAT': ["Pre-Engineering", "ICS Math-CS", "General Science Math-Stats", "Chemistry-CS-Math"]
+  'TCAT': ["Pre-Engineering", "ICS (Physics)", "ICS (Statistics)", "Pre-Medical to Engineering", "Statistics & Physics"]
 };
 
 /**
@@ -18,7 +18,22 @@ export function getSubjectsForClassAndGroup(classNum: BoardClass, group: string)
   const normGroup = (group || '').trim().toLowerCase();
 
   if (classNum === 'TCAT' || normGroup === 'tcat') {
-    return ["Mathematics", "Physics", "Chemistry", "Computer Science", "English"];
+    if (normGroup.includes('med')) {
+      return ["Biology", "Physics", "Chemistry", "English"];
+    }
+    if (normGroup.includes('ics-stats') || (normGroup.includes('ics') && normGroup.includes('stat'))) {
+      return ["Mathematics", "Statistics", "Computer Science", "English"];
+    }
+    if (normGroup.includes('ics') || normGroup.includes('cs') || normGroup.includes('computer')) {
+      return ["Mathematics", "Physics", "Computer Science", "English"];
+    }
+    if (normGroup.includes('stat')) {
+      return ["Mathematics", "Statistics", "Physics", "English"];
+    }
+    if (normGroup.includes('eng')) {
+      return ["Mathematics", "Physics", "Chemistry", "English"];
+    }
+    return ["Mathematics", "Physics", "Chemistry", "Computer Science", "Biology", "Statistics", "English"];
   }
 
   if (classNum === 'MDCAT' || normGroup === 'mdcat') {

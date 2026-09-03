@@ -4,6 +4,7 @@ export const CANONICAL_SUBJECTS = [
   'Biology',
   'Mathematics',
   'Computer Science',
+  'Statistics',
   'English',
   'Urdu',
   'Islamiat',
@@ -14,7 +15,7 @@ export type CanonicalSubject = (typeof CANONICAL_SUBJECTS)[number];
 
 /**
  * Single centralized subject mapping function used across the application.
- * Maps any subject input strictly to one of the 9 canonical subjects or 'All Mix'.
+ * Maps any subject input strictly to one of the 10 canonical subjects or 'All Mix'.
  * Absolutely NO fallbacks or routing to another subject.
  */
 export function mapSubject(input: string): CanonicalSubject | 'All Mix' | string {
@@ -25,11 +26,17 @@ export function mapSubject(input: string): CanonicalSubject | 'All Mix' | string
 
   const lower = clean.toLowerCase();
 
+  // Full mock exams should not be converted to a single canonical subject
+  if (lower.includes('tcat full') || lower.includes('tcat mock') || lower.includes('mdcat full') || lower.includes('full mock')) {
+    return clean;
+  }
+
   if (lower.includes('physic')) return 'Physics';
   if (lower.includes('chem')) return 'Chemistry';
   if (lower.includes('bio') || lower.includes('botany') || lower.includes('zoology')) return 'Biology';
   if (lower.includes('math')) return 'Mathematics';
   if (lower.includes('computer') || lower === 'cs' || lower.includes('it')) return 'Computer Science';
+  if (lower.includes('stat')) return 'Statistics';
   if (lower.includes('english') || lower.includes('verbal')) return 'English';
   if (lower.includes('urdu')) return 'Urdu';
   if (lower.includes('islam') || lower.includes('din')) return 'Islamiat';

@@ -174,8 +174,8 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
     if (isTestLimitReached) return;
     triggerHaptic(HAPTIC_PATTERNS.medium);
     const testParams = {
-      subject: isFullMockConfig ? 'TCAT Full Mock' : activeSubject ? activeSubject.name : 'Mathematics',
-      chapterName: selectedTopic ? selectedTopic.name : undefined,
+      subject: isFullMockConfig ? `TCAT Full Mock - ${activeGroup.title}` : activeSubject ? activeSubject.name : 'Mathematics',
+      chapterName: selectedTopic ? selectedTopic.name : isFullMockConfig ? activeGroup.id : undefined,
       questionCount: isFullMockConfig ? 100 : selectedCount,
       durationMinutes: isFullMockConfig ? 100 : selectedDuration,
       difficulty: selectedDifficulty,

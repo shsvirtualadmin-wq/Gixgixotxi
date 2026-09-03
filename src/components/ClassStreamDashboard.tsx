@@ -49,6 +49,8 @@ interface ClassStreamDashboardProps {
     mode: TestMode;
     instantFeedback: boolean;
     bypassCache?: boolean;
+    groupSubjects?: string[];
+    isFullMock?: boolean;
   }) => void;
   onBackToClasses: () => void;
   onOpenHistory?: () => void;
@@ -89,6 +91,8 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = React.m
             difficulty: params.difficulty,
             mode: params.mode,
             instantFeedback: params.mode !== 'ai-custom',
+            groupSubjects: params.groupSubjects,
+            isFullMock: params.isFullMock,
           });
         }}
         onOpenAuth={onOpenAuth || (() => {})}

@@ -45,6 +45,8 @@ export interface TestConfig {
   difficulty: QuestionDifficulty;
   mode: TestMode;
   instantFeedback: boolean;
+  groupSubjects?: string[];
+  isFullMock?: boolean;
 }
 
 export interface UserAnswer {

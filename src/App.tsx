@@ -2236,9 +2236,10 @@ export function App() {
     setCustomTopic(targetTopic);
 
     const isMdcat = selectedClass === 'MDCAT' || selectedGroup === 'MDCAT';
+    const isTcat = selectedClass === 'TCAT' || selectedGroup === 'TCAT' || targetSubject.toLowerCase().includes('tcat');
 
     const config: TestConfig = {
-      path: isMdcat ? 'mdcat' : 'boards',
+      path: isMdcat ? 'mdcat' : isTcat ? 'tcat' : 'boards',
       classNum: selectedClass,
       group: selectedGroup,
       subject: targetSubject,
@@ -2248,6 +2249,8 @@ export function App() {
       difficulty: params.difficulty,
       mode: params.mode,
       instantFeedback: params.instantFeedback,
+      groupSubjects: params.groupSubjects,
+      isFullMock: params.isFullMock,
     };
 
     setTestConfig(config);
@@ -2487,6 +2490,9 @@ export function App() {
     instantFeedback: boolean;
     subject?: string;
     customTopic?: string;
+    chapterName?: string;
+    groupSubjects?: string[];
+    isFullMock?: boolean;
   }) => {
     if (isGenerating) {
       return;
