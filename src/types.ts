@@ -27,6 +27,7 @@ export interface Question {
   topic: string;
   explain: string;
   difficulty?: QuestionDifficulty;
+  subject?: string;
 }
 
 export type TestMode = 'instant' | 'ai-custom';

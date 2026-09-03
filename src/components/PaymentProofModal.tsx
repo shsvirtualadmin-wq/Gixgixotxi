@@ -245,12 +245,10 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
       } else {
         console.error('[PaymentProofModal] Payment proof submission failed:', res.error);
         setConfirmSubmissionError(res.error || 'Failed to log payment proof. Please try again.');
-        setHasConfirmedSubmittedProof(true);
       }
     } catch (err: any) {
       console.error('[PaymentProofModal] Exception in handleConfirmSubmittedProof:', err);
       setConfirmSubmissionError(err?.message || 'An unexpected error occurred.');
-      setHasConfirmedSubmittedProof(true);
     } finally {
       setIsConfirmingSubmission(false);
     }

@@ -1842,6 +1842,7 @@ export function getMDCATPrebuiltQuestions(subject: string, count: number = 10): 
     const itemWithShuffledOptions = shuffleOptionsAndFixCorrect(raw);
     results.push({
       ...itemWithShuffledOptions,
+      subject: normSub,
       id: `mdcat-q-${normSub}-${i + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
     });
   }
@@ -1866,6 +1867,7 @@ export function generateMDCATFullMockBank(): Question[] {
         const fixed = shuffleOptionsAndFixCorrect(qItem);
         selected.push({
           ...fixed,
+          subject: subjectKey,
           id: `mdcat-mock-${subjectKey.toLowerCase()}-${selected.length + 1}-${Date.now()}`
         });
       }
@@ -1878,6 +1880,7 @@ export function generateMDCATFullMockBank(): Question[] {
       const fixed = shuffleOptionsAndFixCorrect(base);
       selected.push({
         ...fixed,
+        subject: subjectKey,
         id: `mdcat-mock-${subjectKey.toLowerCase()}-topup-${selected.length + 1}-${Date.now()}`
       });
       loopIndex++;

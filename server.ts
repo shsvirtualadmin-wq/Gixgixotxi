@@ -66,18 +66,22 @@ const supabaseServer = supabaseUrl && supabaseAnonKey
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null;
 
+let supabaseAdminClientInstance: any = null;
 // Helper to create an admin Supabase client using Service Role Key (bypassing RLS for admin actions)
 function getSupabaseAdminClient() {
   const url = getEnvVar("VITE_SUPABASE_URL", getEnvVar("SUPABASE_URL", "https://wbvzbbnapowwmrjecdyt.supabase.co"));
   const serviceKey = getEnvVar("SUPABASE_SERVICE_ROLE_KEY", getEnvVar("SUPABASE_SERVICE_KEY", getEnvVar("VITE_SUPABASE_SERVICE_ROLE_KEY", "")));
-  const anonKey = getEnvVar("VITE_SUPABASE_ANON_KEY", getEnvVar("SUPABASE_ANON_KEY", ""));
 
-  const keyToUse = serviceKey || anonKey;
-  if (!url || !keyToUse) return null;
+  if (!serviceKey) {
+    throw new Error("[Supabase Admin Security Error] SUPABASE_SERVICE_ROLE_KEY is missing from environment. Administrative operations require a valid service role key and cannot silently degrade to public anonymous key.");
+  }
 
-  return createClient(url, keyToUse, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
+  if (!supabaseAdminClientInstance) {
+    supabaseAdminClientInstance = createClient(url, serviceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+  }
+  return supabaseAdminClientInstance;
 }
 
 // In-memory usage store fallback: period (YYYY-MM) -> userId -> count
@@ -109,7 +113,11 @@ function isAdminEmail(email?: string | null): boolean {
 
 const PAYMENT_RULE_DEPLOYMENT_DATE = '2026-08-01T09:00:00.000Z';
 function isStudentExistingBeforeRule(createdAtStr?: string): boolean {
-  return false;
+  if (!createdAtStr) return false;
+  const createdTime = new Date(createdAtStr).getTime();
+  const ruleTime = new Date(PAYMENT_RULE_DEPLOYMENT_DATE).getTime();
+  if (isNaN(createdTime) || isNaN(ruleTime)) return false;
+  return createdTime < ruleTime;
 }
 
 /**
@@ -156,70 +164,16 @@ function getNextMonthResetDate(): string {
 
 async function checkStudentIsPro(
   userId: string,
-  userEmail?: string,
-  hintPro?: boolean,
-  packageNameHint?: string,
-  userProfileHint?: any
+  userEmail?: string
 ): Promise<boolean> {
-  console.log(`[checkStudentIsPro] Evaluating download-gate check:`, {
+  console.log(`[checkStudentIsPro] Evaluating server-side pro check:`, {
     userId,
     userEmail,
-    hintPro,
-    packageNameHint,
-    hasProfileHint: Boolean(userProfileHint)
   });
 
-  if (hintPro) {
-    console.log(`[checkStudentIsPro] Allowed via hintPro=true`);
-    return true;
-  }
-  if (packageNameHint && !packageNameHint.toLowerCase().includes('free') && packageNameHint.trim().length > 0) {
-    console.log(`[checkStudentIsPro] Allowed via packageNameHint=${packageNameHint}`);
-    return true;
-  }
   if (userEmail && isAdminEmail(userEmail)) {
     console.log(`[checkStudentIsPro] Allowed via admin email`);
     return true;
-  }
-
-  // Evaluate userProfileHint if passed from client
-  if (userProfileHint) {
-    const pIsPro = Boolean(userProfileHint.is_pro);
-    const pStatus = userProfileHint.payment_status || '';
-    const isPaidStatus = pStatus === "Verified & Paid" || pStatus.toLowerCase().includes('verified') || pStatus.toLowerCase().includes('paid');
-    const pPkg = String(userProfileHint.package_name || '').toLowerCase();
-    const hasNonNullPackage = pPkg !== '' && !pPkg.includes('free') && !pPkg.includes('none');
-
-    let subPlans: string[] = [];
-    if (Array.isArray(userProfileHint.subscribed_plans)) {
-      subPlans = userProfileHint.subscribed_plans;
-    } else if (typeof userProfileHint.subscribed_plans === 'string' && userProfileHint.subscribed_plans.trim()) {
-      try {
-        const parsed = JSON.parse(userProfileHint.subscribed_plans);
-        if (Array.isArray(parsed)) subPlans = parsed;
-        else subPlans = [userProfileHint.subscribed_plans];
-      } catch {
-        subPlans = [userProfileHint.subscribed_plans];
-      }
-    }
-    const hasProPlan = subPlans.some((p: any) => p && String(p).toLowerCase() !== 'free');
-    const isActivePlan = String(userProfileHint.plan_status || '').toLowerCase() === 'active' || String(userProfileHint.plan_status || '').toLowerCase().includes('pro');
-    const isExempt = userProfileHint.requires_payment === false || isStudentExistingBeforeRule(userProfileHint.created_at);
-
-    if (pIsPro || isPaidStatus || hasNonNullPackage || hasProPlan || isActivePlan || isExempt) {
-      if (userProfileHint.access_expires) {
-        const expTime = new Date(userProfileHint.access_expires).getTime();
-        if (!isNaN(expTime) && expTime <= Date.now()) {
-          console.log(`[checkStudentIsPro] Profile hint matched pro flags, but access expired on ${userProfileHint.access_expires}`);
-        } else {
-          console.log(`[checkStudentIsPro] Allowed via userProfileHint flags (isPro=${pIsPro}, isPaidStatus=${isPaidStatus}, hasProPlan=${hasProPlan}, hasPkg=${hasNonNullPackage}, isExempt=${isExempt})`);
-          return true;
-        }
-      } else {
-        console.log(`[checkStudentIsPro] Allowed via userProfileHint flags (isPro=${pIsPro}, isPaidStatus=${isPaidStatus}, hasProPlan=${hasProPlan}, hasPkg=${hasNonNullPackage}, isExempt=${isExempt})`);
-        return true;
-      }
-    }
   }
 
   if (!userId || userId === "guest") {
@@ -233,7 +187,12 @@ async function checkStudentIsPro(
   try {
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     let stData: any = null;
-    const db = getSupabaseAdminClient() || supabaseServer;
+    let db: any = null;
+    try {
+      db = getSupabaseAdminClient();
+    } catch {
+      db = supabaseServer;
+    }
 
     if (db && userId && uuidRegex.test(userId)) {
       const { data, error } = await db
@@ -256,25 +215,18 @@ async function checkStudentIsPro(
     }
 
     if (stData) {
-      const pkgName = String(stData.package_name || '').toLowerCase();
-      const hasNonNullPackage = pkgName !== '' && !pkgName.includes('free') && !pkgName.includes('none');
-
-      let subPlans: string[] = [];
-      if (Array.isArray(stData.subscribed_plans)) {
-        subPlans = stData.subscribed_plans;
-      } else if (typeof stData.subscribed_plans === 'string' && stData.subscribed_plans.trim()) {
-        try {
-          const parsed = JSON.parse(stData.subscribed_plans);
-          if (Array.isArray(parsed)) subPlans = parsed;
-          else subPlans = [stData.subscribed_plans];
-        } catch {
-          subPlans = [stData.subscribed_plans];
-        }
+      // Check legacy exemption or explicit waiver
+      const isExempt = stData.requires_payment === false || isStudentExistingBeforeRule(stData.created_at);
+      if (isExempt) {
+        console.log(`[checkStudentIsPro] Allowed via legacy exemption or requires_payment=false`);
+        return true;
       }
 
       const pStatus = String(stData.payment_status || '').trim().toLowerCase();
       const isPaidStatus = pStatus === 'verified & paid' || pStatus === 'verified' || pStatus === 'paid';
-      const rawIsPro = Boolean(stData.is_pro) || isPaidStatus;
+      const planStatus = String(stData.plan_status || '').trim().toLowerCase();
+      const isPlanActive = planStatus === 'active' || planStatus.includes('pro');
+      const rawIsPro = Boolean(stData.is_pro) || isPaidStatus || isPlanActive;
 
       console.log(`[checkStudentIsPro] Database record evaluation:`, {
         stData,
@@ -291,7 +243,7 @@ async function checkStudentIsPro(
             return valid;
           }
         }
-        console.log(`[checkStudentIsPro] Allowed via DB student record`);
+        console.log(`[checkStudentIsPro] Allowed via verified DB student record`);
         return true;
       }
     } else {
@@ -2827,21 +2779,18 @@ function formatRemainingTimeString(ms: number): string {
   // API Endpoint: Server-side check & record PDF download limits
   app.post("/api/check-pdf-download", async (req, res) => {
     try {
-      const { userId, userEmail, isPro: bodyIsPro, packageName: bodyPkgName, userProfile: bodyProfile } = req.body || {};
+      const { userId, userEmail } = req.body || {};
       const { user, isAdmin: verifiedAdmin } = await verifyAuthToken(req);
       const activeUserId = user ? user.id : String(userId || "guest");
       const activeEmail = user ? user.email : (userEmail || undefined);
       const isAdmin = verifiedAdmin || isAdminEmail(activeEmail);
 
-      // Server-side check if user is Paid/Pro or Admin from database or entitlement hint
-      const isPro = isAdmin ? true : await checkStudentIsPro(activeUserId, activeEmail, Boolean(bodyIsPro), bodyPkgName, bodyProfile);
+      // Server-side check if user is Paid/Pro or Admin strictly from verified database record
+      const isPro = isAdmin ? true : await checkStudentIsPro(activeUserId, activeEmail);
 
       console.log(`[/api/check-pdf-download] Entitlement evaluation for activeUser=${activeUserId} (${activeEmail}):`, {
         isAdmin,
         isProResult: isPro,
-        bodyIsPro,
-        bodyPkgName,
-        hasBodyProfile: Boolean(bodyProfile),
       });
 
       // Requirement 1: Free tier users are blocked from downloading PDFs entirely
@@ -3160,46 +3109,6 @@ function formatRemainingTimeString(ms: number): string {
     } catch (err: any) {
       console.error("[/api/finish-test-session error]:", err);
       return res.status(500).json({ success: false, error: err?.message || "Failed to finish test session" });
-    }
-  });
-
-  // API Endpoint: Explicit Test Start Tracker
-  app.post("/api/record-test-start", async (req, res) => {
-    try {
-      const { userId = "guest", userEmail } = req.body || {};
-      const isAdmin = isAdminEmail(userEmail);
-      const studentIsPro = isAdmin ? true : await checkStudentIsPro(userId, userEmail);
-      const currentTestCount = isAdmin ? 0 : await getStudentMonthlyTestCount(userId, userEmail, req);
-
-      if (!isAdmin && !studentIsPro && currentTestCount >= 2) {
-        const resetDateStr = getNextMonthResetDate();
-        const errorMessage = `Free Plan Monthly Limit Reached: You have used all 2 of 2 tests allowed for this calendar month. Your limit resets on ${resetDateStr}, or you can upgrade to Pro for unlimited tests!`;
-        return res.status(403).json({
-          success: false,
-          limitExceeded: true,
-          error: errorMessage,
-          message: errorMessage,
-          currentUsage: currentTestCount,
-          limit: 2,
-          remaining: 0,
-          resetDate: resetDateStr,
-        });
-      }
-
-      let newUsage = currentTestCount;
-      if (!isAdmin && !studentIsPro) {
-        newUsage = recordStudentTestStart(userId, userEmail);
-      }
-
-      return res.json({
-        success: true,
-        currentUsage: newUsage,
-        limit: studentIsPro ? 999999 : 2,
-        remaining: studentIsPro ? 999999 : Math.max(0, 2 - newUsage),
-      });
-    } catch (err: any) {
-      console.error("[/api/record-test-start error]:", err);
-      return res.status(500).json({ success: false, error: err?.message || "Failed to record test start" });
     }
   });
 
@@ -5126,6 +5035,10 @@ ${scopeInstruction}${excludeInstruction}`;
       fileSize: 5 * 1024 * 1024, // 5MB max
     },
     fileFilter: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (file.mimetype === "image/svg+xml" || ext === ".svg") {
+        return cb(new Error("SVG avatar uploads are disabled for security reasons. Please upload a PNG, JPG, WebP, or AVIF image."));
+      }
       const allowedMimes = [
         "image/jpeg",
         "image/jpg",
@@ -5133,10 +5046,9 @@ ${scopeInstruction}${excludeInstruction}`;
         "image/webp",
         "image/gif",
         "image/avif",
-        "image/svg+xml",
       ];
-      if (!allowedMimes.includes(file.mimetype) && !file.mimetype.startsWith("image/")) {
-        return cb(new Error("Invalid file format. Please upload an image file (JPEG, PNG, WebP, GIF, AVIF)."));
+      if (!allowedMimes.includes(file.mimetype)) {
+        return cb(new Error("Invalid file format. Please upload a raster image file (JPEG, PNG, WebP, GIF, AVIF)."));
       }
       cb(null, true);
     },
@@ -5145,12 +5057,17 @@ ${scopeInstruction}${excludeInstruction}`;
   // Serve locally cached avatar files with high-availability caching
   app.get("/api/avatar-file/:filename", (req, res) => {
     const filename = path.basename(req.params.filename);
+    const ext = path.extname(filename).toLowerCase();
+    if (ext === ".svg") {
+      return res.status(403).send("SVG avatars are prohibited.");
+    }
     const filePath = path.join(AVATARS_DIR, filename);
     if (!fs.existsSync(filePath)) {
       return res.status(404).send("Avatar image not found");
     }
     res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
-    const ext = path.extname(filename).toLowerCase();
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("Content-Security-Policy", "default-src 'none'");
     const mimeTypes: Record<string, string> = {
       ".jpg": "image/jpeg",
       ".jpeg": "image/jpeg",
@@ -5158,7 +5075,6 @@ ${scopeInstruction}${excludeInstruction}`;
       ".webp": "image/webp",
       ".gif": "image/gif",
       ".avif": "image/avif",
-      ".svg": "image/svg+xml",
     };
     if (mimeTypes[ext]) {
       res.setHeader("Content-Type", mimeTypes[ext]);
@@ -5220,9 +5136,8 @@ ${scopeInstruction}${excludeInstruction}`;
       const isGif = headerBytes[0] === 0x47 && headerBytes[1] === 0x49 && headerBytes[2] === 0x46;
       const isWebp = file.mimetype === "image/webp" || file.originalname.toLowerCase().endsWith(".webp");
       const isAvif = file.mimetype === "image/avif" || file.originalname.toLowerCase().endsWith(".avif");
-      const isSvg = file.mimetype === "image/svg+xml" || file.originalname.toLowerCase().endsWith(".svg");
 
-      if (!isJpeg && !isPng && !isGif && !isWebp && !isAvif && !isSvg && !file.mimetype.startsWith("image/")) {
+      if (!isJpeg && !isPng && !isGif && !isWebp && !isAvif && !file.mimetype.startsWith("image/")) {
         return res.status(400).json({
           success: false,
           error: "File does not appear to be a valid image. Please select a JPEG, PNG, or WebP photo.",
@@ -5364,6 +5279,105 @@ ${scopeInstruction}${excludeInstruction}`;
     }
   });
 
+  // Helper to check for private, local, and internal IPs/hostnames
+  function isBlockedIpOrHost(hostname: string): boolean {
+    const h = hostname.toLowerCase().trim();
+    if (
+      h === "localhost" ||
+      h === "127.0.0.1" ||
+      h === "::1" ||
+      h === "0.0.0.0" ||
+      h.endsWith(".local") ||
+      h.endsWith(".internal") ||
+      h.endsWith(".localhost") ||
+      h.endsWith(".onion")
+    ) {
+      return true;
+    }
+
+    const ipv4Match = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (ipv4Match) {
+      const [, o1, o2, o3, o4] = ipv4Match.map(Number);
+      if (o1 > 255 || o2 > 255 || o3 > 255 || o4 > 255) return true;
+      if (o1 === 127) return true; // 127.0.0.0/8 loopback
+      if (o1 === 10) return true;  // 10.0.0.0/8 private
+      if (o1 === 172 && o2 >= 16 && o2 <= 31) return true; // 172.16.0.0/12 private
+      if (o1 === 192 && o2 === 168) return true; // 192.168.0.0/16 private
+      if (o1 === 169 && o2 === 254) return true; // 169.254.0.0/16 link-local / cloud metadata
+      if (o1 === 0) return true;
+      if (o1 === 100 && o2 >= 64 && o2 <= 127) return true; // CGNAT
+    }
+
+    if (h.includes(":") || h.startsWith("[") || h.endsWith("]")) {
+      const cleanIpv6 = h.replace(/^\[|\]$/g, "").toLowerCase();
+      if (
+        cleanIpv6 === "::1" ||
+        cleanIpv6 === "::" ||
+        cleanIpv6.startsWith("fc") ||
+        cleanIpv6.startsWith("fd") ||
+        cleanIpv6.startsWith("fe80")
+      ) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  function validateProxyUrl(urlString: string): { valid: boolean; error?: string } {
+    try {
+      const parsed = new URL(urlString);
+      if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+        return { valid: false, error: "Only http and https protocols are permitted." };
+      }
+
+      if (isBlockedIpOrHost(parsed.hostname)) {
+        return { valid: false, error: "Access to private or local network resources is strictly prohibited." };
+      }
+
+      const customR2Domain = (
+        getEnvVar("PUBLIC_R2_DOMAIN") ||
+        getEnvVar("R2_PUBLIC_DOMAIN") ||
+        getEnvVar("VITE_R2_PUBLIC_DOMAIN") ||
+        ""
+      ).replace(/^https?:\/\//, "").replace(/\/.*$/, "").toLowerCase().trim();
+
+      const allowedDomainSuffixes = [
+        "r2.dev",
+        "cloudflarestorage.com",
+        "supabase.co",
+        "supabase.in",
+        "drive.google.com",
+        "docs.google.com",
+        "googleusercontent.com",
+        "googleapis.com",
+        "raw.githubusercontent.com",
+        "github.com",
+        "boardly.pk",
+      ];
+
+      if (customR2Domain) {
+        allowedDomainSuffixes.push(customR2Domain);
+      }
+
+      const host = parsed.hostname.toLowerCase();
+      const isAllowed = allowedDomainSuffixes.some(
+        (suffix) => host === suffix || host.endsWith("." + suffix)
+      );
+
+      if (!isAllowed) {
+        return {
+          valid: false,
+          error: `Host '${parsed.hostname}' is not in the permitted storage domain allowlist.`,
+        };
+      }
+
+      return { valid: true };
+    } catch {
+      return { valid: false, error: "Malformed target URL format." };
+    }
+  }
+
   // Resource PDF Proxy & File Streaming Endpoint to fix R2 Cloud CORS & access issues
   const handleResourcePdfProxy = async (req: express.Request, res: express.Response) => {
     try {
@@ -5403,6 +5417,14 @@ ${scopeInstruction}${excludeInstruction}`;
 
       if (!fetchUrl || !fetchUrl.startsWith("http")) {
         return res.status(400).json({ success: false, error: "Invalid target URL format" });
+      }
+
+      const validation = validateProxyUrl(fetchUrl);
+      if (!validation.valid) {
+        return res.status(403).json({
+          success: false,
+          error: validation.error || "Access to requested resource is restricted.",
+        });
       }
 
       const forwardHeaders: Record<string, string> = {
@@ -5631,7 +5653,7 @@ For account assistance, suspensions, or reactivation inquiries, contact the SHS 
       const isAdmin = verifiedAdmin || isAdminEmail(activeEmail);
 
       if (!isAdmin) {
-        const isPro = await checkStudentIsPro(activeUserId, activeEmail, undefined, undefined, userProfile);
+        const isPro = await checkStudentIsPro(activeUserId, activeEmail);
         if (!isPro) {
           const todayDateStr = new Date().toISOString().slice(0, 10);
           const adminClient = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
@@ -6828,24 +6850,92 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
+  // Rate-limiting and tracking stores for welcome email prevention of flooding attacks
+  const welcomeEmailIpMap = new Map<string, { count: number; resetTime: number }>();
+  const welcomeEmailTargetMap = new Map<string, number>();
+
   // API Endpoint: Send Welcome Email
   app.post("/api/send-welcome-email", async (req: express.Request, res: express.Response) => {
     try {
-      const { name, email, selectedTrack, dreamUniversity } = req.body || {};
-      if (!email) {
-        return res.status(400).json({ success: false, error: "Student email is required." });
+      const clientIp = ((req.headers["x-forwarded-for"] as string) || req.socket.remoteAddress || "unknown").split(",")[0].trim();
+      const now = Date.now();
+
+      // 1. IP rate limiting: max 5 emails per 10 minutes per IP
+      const ipRecord = welcomeEmailIpMap.get(clientIp);
+      if (ipRecord) {
+        if (now > ipRecord.resetTime) {
+          welcomeEmailIpMap.set(clientIp, { count: 1, resetTime: now + 10 * 60 * 1000 });
+        } else if (ipRecord.count >= 5) {
+          return res.status(429).json({ success: false, error: "Too many email requests from this address. Please try again later." });
+        } else {
+          ipRecord.count += 1;
+        }
+      } else {
+        welcomeEmailIpMap.set(clientIp, { count: 1, resetTime: now + 10 * 60 * 1000 });
       }
+
+      const { name, email, selectedTrack, dreamUniversity } = req.body || {};
+      const targetEmail = String(email || "").trim().toLowerCase();
+
+      // 2. Strict email format & header injection prevention
+      const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+$/;
+      if (!targetEmail || targetEmail.length > 100 || !emailRegex.test(targetEmail) || /[\r\n]/.test(targetEmail)) {
+        return res.status(400).json({ success: false, error: "Valid student email address is required." });
+      }
+
+      // 3. Target email rate limiting: max 1 email per target address every 15 minutes
+      const lastSentTime = welcomeEmailTargetMap.get(targetEmail);
+      if (lastSentTime && now - lastSentTime < 15 * 60 * 1000) {
+        return res.status(429).json({ success: false, error: "A welcome email was already sent to this address recently. Please check your inbox or spam folder." });
+      }
+
+      // 4. Authorization check: must be verified user, admin, or registered student
+      const { user, isAdmin } = await verifyAuthToken(req);
+      let isAuthorized = false;
+
+      if (user) {
+        const userEmail = (user.email || "").trim().toLowerCase();
+        if (isAdmin || userEmail === targetEmail) {
+          isAuthorized = true;
+        }
+      }
+
+      if (!isAuthorized) {
+        const db = supabaseServer;
+        if (db) {
+          const { data: studentRecord } = await db
+            .from("students")
+            .select("id, email")
+            .eq("email", targetEmail)
+            .maybeSingle();
+          if (studentRecord) {
+            isAuthorized = true;
+          }
+        }
+      }
+
+      if (!isAuthorized) {
+        return res.status(401).json({
+          success: false,
+          error: "Authorization required: you must be signed in with the corresponding student account to send registration emails.",
+        });
+      }
+
+      welcomeEmailTargetMap.set(targetEmail, now);
+
       const html = generateWelcomeEmail({
-        name: name || "Student",
-        email: email.trim(),
-        selectedTrack,
-        dreamUniversity,
+        name: String(name || "Student").replace(/[<>]/g, "").trim(),
+        email: targetEmail,
+        selectedTrack: String(selectedTrack || "Exam Prep").replace(/[<>]/g, "").trim(),
+        dreamUniversity: String(dreamUniversity || "").replace(/[<>]/g, "").trim(),
       });
+
       const sendRes = await sendEmail({
-        to: email.trim(),
+        to: targetEmail,
         subject: `Welcome to Boardly! Your Registration for ${selectedTrack || 'Exam Prep'} is Confirmed`,
         html,
       });
+
       return res.status(200).json({ success: sendRes.success, error: sendRes.error });
     } catch (err: any) {
       console.error("[api/send-welcome-email error]:", err);

@@ -496,7 +496,7 @@ const TESTIMONIALS_DATA: Testimonial[] = [
     avatarText: 'BA',
     rating: 5,
     quote:
-      'The CS and Math combinations in Boardly TCAT portal allowed me to practice negative marking conditions safely. Highly recommended!',
+      'The CS and Math combinations in Boardly TCAT portal allowed me to practice authentic exam pacing and time management. Highly recommended!',
   },
   {
     id: '7',
@@ -920,7 +920,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span><strong>Timed Mock Simulations:</strong> Customizable question counts, authentic timer countdowns, and negative marking rules.</span>
+                    <span><strong>Timed Mock Simulations:</strong> Customizable question counts, authentic timer countdowns, and real exam conditions.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
@@ -1031,7 +1031,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 </div>
                 <h3 className="font-bold text-base text-slate-900 ">Practice Chapter MCQs</h3>
                 <p className="text-xs text-slate-600  leading-relaxed font-normal">
-                  Attempt chapter-wise tests with real-time timers, negative marking options, and step-by-step AI derivations.
+                  Attempt chapter-wise tests with real-time timers, authentic exam conditions, and step-by-step AI derivations.
                 </p>
               </div>
             </ScrollFadeInCard>
@@ -1313,7 +1313,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                       Mock Test Simulation
                     </td>
                     <td className="p-4 sm:p-5 font-bold text-slate-900  bg-[#1E5AFF]/5 ">
-                      Instant scoring, negative marking & weak topic analytics
+                      Instant scoring, time telemetry & weak topic analytics
                     </td>
                     <td className="p-4 sm:p-5 text-slate-500 ">
                       Manual paper keys delivered days later

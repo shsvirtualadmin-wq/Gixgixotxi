@@ -456,6 +456,16 @@ export function parseMathParts(rawText: string): MathPart[] {
   return result;
 }
 
+export function escapeHtml(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 /**
  * Renders LaTeX content safely using KaTeX. Returns HTML string.
  */
@@ -481,10 +491,10 @@ export function renderKaTeX(latex: string, displayMode: boolean = false): string
     // Trigger background loading if not already initiated
     loadKaTeX();
 
-    // Clean fallback presentation until KaTeX finishes downloading
-    return `<span class="katex-fallback font-mono">${cleanLatex}</span>`;
+    // Clean fallback presentation until KaTeX finishes downloading (strictly HTML-escaped)
+    return `<span class="katex-fallback font-mono">${escapeHtml(cleanLatex)}</span>`;
   } catch (err) {
     console.warn('KaTeX rendering error:', err);
-    return latex;
+    return `<span class="katex-fallback font-mono">${escapeHtml(latex)}</span>`;
   }
 }

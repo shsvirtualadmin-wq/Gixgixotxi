@@ -174,7 +174,7 @@ export function getTrackInfo(
           id: 'chip-mdcat-strategy',
           icon: Lightbulb,
           title: 'MDCAT Exam Strategy',
-          description: 'Time management & negative marking guidance',
+          description: 'Time management & question pacing guidance',
           prompt: 'What are the best time management strategies for the PMDC MDCAT exam?',
         },
       ],

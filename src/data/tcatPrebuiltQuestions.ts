@@ -987,6 +987,7 @@ export function getTCATPrebuiltQuestions(subject: string, count: number = 10): Q
     const itemWithShuffledOptions = shuffleOptionsAndFixCorrect(raw);
     results.push({
       ...itemWithShuffledOptions,
+      subject: normSub,
       id: `tcat-q-${normSub}-${i + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     });
   }
@@ -1016,6 +1017,7 @@ export function generateTCATFullMockBank(groupSubjects: string[] = ['Mathematics
         const fixed = shuffleOptionsAndFixCorrect(qItem);
         selected.push({
           ...fixed,
+          subject: subjectKey,
           id: `tcat-mock-${subjectKey.toLowerCase()}-${selected.length + 1}-${Date.now()}`
         });
       }
@@ -1027,6 +1029,7 @@ export function generateTCATFullMockBank(groupSubjects: string[] = ['Mathematics
       const fixed = shuffleOptionsAndFixCorrect(base);
       selected.push({
         ...fixed,
+        subject: subjectKey,
         id: `tcat-mock-${subjectKey.toLowerCase()}-topup-${selected.length + 1}-${Date.now()}`
       });
       loopIndex++;

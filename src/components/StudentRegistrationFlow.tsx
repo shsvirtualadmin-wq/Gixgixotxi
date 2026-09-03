@@ -693,9 +693,14 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
         : `UET Taxila TCAT (${tcatGroup})`;
 
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData?.session?.access_token;
       await fetch('/api/send-welcome-email', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           name: fullName.trim(),
           email: email.trim(),

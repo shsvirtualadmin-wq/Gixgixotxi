@@ -642,35 +642,17 @@ export function isUserProOrPaid(
     } catch (e) {}
   }
 
-  if (!activeProfile) {
+  if (!activeProfile && user?.id) {
     try {
-      if (user?.id) {
-        const cachedStr = localStorage.getItem(`boardly_profile_${user.id}`);
-        if (cachedStr) activeProfile = JSON.parse(cachedStr);
-      }
-      if (!activeProfile) {
-        const cachedGeneral = localStorage.getItem('boardly_cached_profile');
-        if (cachedGeneral) activeProfile = JSON.parse(cachedGeneral);
-      }
+      const cachedStr = localStorage.getItem(`boardly_profile_${user.id}`);
+      if (cachedStr) activeProfile = JSON.parse(cachedStr);
     } catch (e) {}
   }
 
   if (user?.email && isAdminEmail(user.email)) return true;
   if (activeProfile?.email && isAdminEmail(activeProfile.email)) return true;
 
-  if (user) {
-    const meta = user.user_metadata || {};
-    if (meta.is_pro || meta.isPro) return true;
-    const metaStatus = String(meta.payment_status || '').toLowerCase();
-    if (metaStatus === 'verified & paid' || metaStatus.includes('verified') || metaStatus.includes('paid')) return true;
-    if (meta.package_name && !String(meta.package_name).toLowerCase().includes('free') && String(meta.package_name).trim().length > 0) return true;
-
-    if ((user as any).is_pro || (user as any).isPro) return true;
-    const directStatus = String((user as any).payment_status || '').toLowerCase();
-    if (directStatus === 'verified & paid' || directStatus.includes('verified') || directStatus.includes('paid')) return true;
-    if ((user as any).package_name && !String((user as any).package_name).toLowerCase().includes('free')) return true;
-  }
-
+  // Evaluate verified profile from database (or user-scoped verified profile cache)
   if (activeProfile) {
     if (activeProfile.email && isAdminEmail(activeProfile.email)) return true;
     const access = evaluateStudentAccess(activeProfile, 0, isAdmin);
@@ -681,8 +663,11 @@ export function isUserProOrPaid(
 }
 
 export function isStudentExistingBeforeRule(createdAtStr?: string): boolean {
-  // Always return false so no user is automatically granted Pro access without verified payment
-  return false;
+  if (!createdAtStr) return false;
+  const createdTime = new Date(createdAtStr).getTime();
+  const ruleTime = new Date(PAYMENT_RULE_DEPLOYMENT_DATE).getTime();
+  if (isNaN(createdTime) || isNaN(ruleTime)) return false;
+  return createdTime < ruleTime;
 }
 
 export type User = SupabaseUser;
@@ -1019,7 +1004,7 @@ export async function syncUserProfile(
       profileMemoryCache.set(userId, { profile: finalProfile, timestamp: Date.now() });
       try {
         localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(finalProfile));
-        localStorage.setItem('boardly_cached_profile', JSON.stringify(finalProfile));
+        localStorage.removeItem('boardly_cached_profile');
       } catch {}
 
       return finalProfile;
@@ -1637,7 +1622,7 @@ export async function saveStudentRegistration(
   // Persist locally for instant offline/fallback access
   try {
     localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(profile));
-    localStorage.setItem('boardly_cached_profile', JSON.stringify(profile));
+    localStorage.removeItem('boardly_cached_profile');
   } catch (err) {
     console.warn('Failed to save profile to localStorage:', err);
   }
@@ -1783,7 +1768,7 @@ export async function saveStudentTargetUniversity(
   profileMemoryCache.set(userId, { profile: updatedProfile, timestamp: Date.now() });
   try {
     localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(updatedProfile));
-    localStorage.setItem('boardly_cached_profile', JSON.stringify(updatedProfile));
+    localStorage.removeItem('boardly_cached_profile');
     localStorage.setItem('boardly_target_university', uni);
   } catch {}
 
@@ -1892,7 +1877,7 @@ export async function updateStudentPersonalInfo(
     profileMemoryCache.set(userId, { profile: updatedProfile, timestamp: Date.now() });
     try {
       localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(updatedProfile));
-      localStorage.setItem('boardly_cached_profile', JSON.stringify(updatedProfile));
+      localStorage.removeItem('boardly_cached_profile');
     } catch {}
 
     return { success: true, profile: updatedProfile };
@@ -1909,11 +1894,11 @@ export async function uploadUserAvatar(
 ): Promise<{ success: boolean; avatarUrl?: string; profile?: StudentProfile; message?: string }> {
   try {
     // Client-side basic validation
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/svg+xml'];
-    if (!validTypes.includes(file.type) && !file.type.startsWith('image/')) {
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
+    if (!validTypes.includes(file.type) || !file.type.startsWith('image/') || file.type === 'image/svg+xml') {
       return {
         success: false,
-        message: 'Invalid file type. Please upload a JPEG, PNG, WebP, GIF, or AVIF image.',
+        message: 'Invalid file type. Please upload a JPEG, PNG, WebP, GIF, or AVIF image (SVG files are not permitted).',
       };
     }
 
@@ -1964,7 +1949,7 @@ export async function uploadUserAvatar(
       profileMemoryCache.set(userId, { profile: updatedProf, timestamp: Date.now() });
       try {
         localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(updatedProf));
-        localStorage.setItem('boardly_cached_profile', JSON.stringify(updatedProf));
+        localStorage.removeItem('boardly_cached_profile');
       } catch {}
 
       return {
@@ -2067,7 +2052,7 @@ export async function uploadUserAvatar(
       profileMemoryCache.set(userId, { profile: updatedProf, timestamp: Date.now() });
       try {
         localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(updatedProf));
-        localStorage.setItem('boardly_cached_profile', JSON.stringify(updatedProf));
+        localStorage.removeItem('boardly_cached_profile');
       } catch {}
 
       return {
@@ -2198,7 +2183,7 @@ export async function fetchStudentProfileFromSupabase(
           profileMemoryCache.set(userId, { profile, timestamp: Date.now() });
           try {
             localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(profile));
-            localStorage.setItem('boardly_cached_profile', JSON.stringify(profile));
+            localStorage.removeItem('boardly_cached_profile');
           } catch {}
 
           return profile;
@@ -2206,7 +2191,7 @@ export async function fetchStudentProfileFromSupabase(
           // Check if we have a locally stored profile before declaring it null/wiped
           let localProf: StudentProfile | null = null;
           try {
-            const cachedStr = localStorage.getItem(`boardly_profile_${userId}`) || localStorage.getItem('boardly_cached_profile');
+            const cachedStr = localStorage.getItem(`boardly_profile_${userId}`);
             if (cachedStr) {
               localProf = JSON.parse(cachedStr);
             }
@@ -2234,7 +2219,7 @@ export async function fetchStudentProfileFromSupabase(
 
     // Offline or Supabase unavailable fallback
     try {
-      const cached = localStorage.getItem(`boardly_profile_${userId}`) || localStorage.getItem('boardly_cached_profile');
+      const cached = localStorage.getItem(`boardly_profile_${userId}`);
       if (cached) {
         const parsed = JSON.parse(cached);
         const isParsedAdmin = isAdminEmail(parsed?.email);

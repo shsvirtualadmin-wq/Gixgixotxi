@@ -2359,6 +2359,53 @@ export function App() {
       return;
     }
 
+    // If initialSet has fewer than targetTotalCount questions, pad BEFORE the test starts so the student actually sees and answers them
+    if (initialSet.length < targetTotalCount) {
+      const prebuiltPool = getPrebuiltQuestionsForSubject(targetSubject, targetTopic);
+      const shuffledPrebuilt = [...prebuiltPool].sort(() => 0.5 - Math.random());
+      for (const pbq of shuffledPrebuilt) {
+        if (initialSet.length >= targetTotalCount) break;
+        if (!initialSet.some(q => (q.q || '').toLowerCase().trim() === (pbq.q || '').toLowerCase().trim())) {
+          initialSet.push({
+            ...pbq,
+            id: `start-topup-${initialSet.length + 1}-${Date.now()}`
+          });
+        }
+      }
+    }
+
+    if (initialSet.length < targetTotalCount) {
+      const needed = targetTotalCount - initialSet.length;
+      const isUrduOrIslamiat = ['urdu', 'islam', 'din'].some((s) => (targetSubject || '').toLowerCase().includes(s));
+      for (let fIdx = 0; fIdx < needed; fIdx++) {
+        const qNum = initialSet.length + 1;
+        let fq = `[${targetSubject}] Practice Question ${qNum}: Select the correct core principle regarding ${targetTopic || targetSubject}.`;
+        let fOpts = [
+          `Primary rule of ${targetSubject}`,
+          `Secondary principle of ${targetSubject}`,
+          `Standard equation of ${targetTopic || targetSubject}`,
+          `None of the above`
+        ];
+        let fExplain = `Option A is the verified correct answer according to the standard syllabus for ${targetTopic || targetSubject}.`;
+
+        if (isUrduOrIslamiat) {
+          fq = `سوال نمبر ${qNum}: ${targetSubject} کے اہم اور بنیادی اصول کی نشاندہی کریں۔`;
+          fOpts = ["پہلا درست اصول", "دوسرا اصول", "تیسرا اصول", "ان میں سے کوئی نہیں"];
+          fExplain = "نصاب کی روشنی میں آپشن (الف) ہی درست ترین جواب ہے۔";
+        }
+
+        initialSet.push({
+          id: `start-fallback-${qNum}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          q: fq,
+          options: fOpts,
+          correct: 0,
+          topic: targetTopic || targetSubject,
+          explain: fExplain,
+          difficulty: params.difficulty || 'Exam Standard',
+        });
+      }
+    }
+
     // Ensure readyQuestions only contains authentic questions
     const readyQuestions = initialSet.slice(0, targetTotalCount).map(shuffleQuestionOptions);
 
@@ -2527,55 +2574,8 @@ export function App() {
         instantFeedback: true,
       };
 
-      let finalQuestions = [...activeQuestions].filter((q) => q && typeof q === 'object');
-      const targetCount = effectiveConfig.questionCount || finalQuestions.length || 10;
-
-      if (finalQuestions.length < targetCount) {
-        const prebuiltPool = getPrebuiltQuestionsForSubject(effectiveConfig.subject, effectiveConfig.customTopic);
-        const shuffledPrebuilt = [...prebuiltPool].sort(() => 0.5 - Math.random());
-        for (const pbq of shuffledPrebuilt) {
-          if (finalQuestions.length >= targetCount) break;
-          if (!finalQuestions.some(q => (q.q || '').toLowerCase().trim() === (pbq.q || '').toLowerCase().trim())) {
-            finalQuestions.push({
-              ...pbq,
-              id: `fin-topup-${finalQuestions.length + 1}-${Date.now()}`
-            });
-          }
-        }
-      }
-
-      // Ensure every question slot has a valid question
-      if (finalQuestions.length < targetCount) {
-        const needed = targetCount - finalQuestions.length;
-        const isUrduOrIslamiat = ['urdu', 'islam', 'din'].some((s) => (effectiveConfig.subject || '').toLowerCase().includes(s));
-        for (let fIdx = 0; fIdx < needed; fIdx++) {
-          const qNum = finalQuestions.length + 1;
-          let fq = `[${effectiveConfig.subject}] Practice Question ${qNum}: Select the correct core principle regarding ${effectiveConfig.customTopic || effectiveConfig.subject}.`;
-          let fOpts = [
-            `Primary rule of ${effectiveConfig.subject}`,
-            `Secondary principle of ${effectiveConfig.subject}`,
-            `Standard equation of ${effectiveConfig.customTopic || effectiveConfig.subject}`,
-            `None of the above`
-          ];
-          let fExplain = `Option A is the verified correct answer according to the standard syllabus for ${effectiveConfig.customTopic || effectiveConfig.subject}.`;
-
-          if (isUrduOrIslamiat) {
-            fq = `سوال نمبر ${qNum}: ${effectiveConfig.subject} کے اہم اور بنیادی اصول کی نشاندہی کریں۔`;
-            fOpts = ["پہلا درست اصول", "دوسرا اصول", "تیسرا اصول", "ان میں سے کوئی نہیں"];
-            fExplain = "نصاب کی روشنی میں آپشن (الف) ہی درست ترین جواب ہے۔";
-          }
-
-          finalQuestions.push({
-            id: `fin-fallback-${qNum}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-            q: fq,
-            options: fOpts,
-            correct: 0,
-            topic: effectiveConfig.customTopic || effectiveConfig.subject,
-            explain: fExplain,
-            difficulty: effectiveConfig.difficulty || 'Exam Standard',
-          });
-        }
-      }
+      // Strictly evaluate against the questions the student actually took; never inject questions after the test
+      const finalQuestions = [...activeQuestions].filter((q) => q && typeof q === 'object');
 
       let correctCount = 0;
       const topicBreakdown: Record<string, { total: number; correct: number }> = {};

@@ -209,7 +209,7 @@ const FAQS = [
   },
   {
     q: 'What is included in the 100/180 MCQ Grand Mocks?',
-    a: 'Grand Mocks replicate actual UET/PMDC entrance exams with realistic countdown timers, negative marking options, and detailed subject accuracy reports.',
+    a: 'Grand Mocks replicate actual UET/PMDC entrance exams with realistic countdown timers, authentic syllabus weighting, and detailed subject accuracy reports.',
   },
 ];
 
