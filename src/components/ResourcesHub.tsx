@@ -1119,16 +1119,7 @@ export const ResourcesHub: React.FC<ResourcesHubProps> = ({
         style={{ contain: 'layout style' }}
         className="relative z-10 min-h-[220px]"
       >
-        {isLoading ? (
-          <div
-            className="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center flex flex-col items-center justify-center gap-3 animate-fadeIn"
-          >
-            <Loader2 className="w-7 h-7 text-[#1E5AFF] animate-spin" />
-            <p className="text-xs text-slate-600 font-medium">
-              Loading {activeCategory === 'past_paper' ? 'past papers' : 'MCQs drills'}...
-            </p>
-          </div>
-        ) : filteredResources.length > 0 ? (
+        {isLoading ? null : filteredResources.length > 0 ? (
           <div className="space-y-4">
             <div
               style={{ contain: 'layout style' }}

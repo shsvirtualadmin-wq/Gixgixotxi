@@ -11,7 +11,6 @@ import {
 import { LmsAuthScreen } from './LmsAuthScreen';
 import { LmsDashboard } from './LmsDashboard';
 import { StudentRegistrationFlow } from './StudentRegistrationFlow';
-import { BrandedLoadingSpinner } from './BrandedLoadingSpinner';
 import { X } from 'lucide-react';
 
 interface LmsPortalModalProps {
@@ -144,21 +143,7 @@ export const LmsPortalModal: React.FC<LmsPortalModalProps> = ({
           <X className="w-4 h-4" />
         </button>
 
-        {loading ? (
-          <motion.div
-            initial={{ opacity: 0, scale: 0.94 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.98 }}
-            transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            className="py-12 text-center text-xs font-semibold flex flex-col items-center justify-center gap-3"
-          >
-            <BrandedLoadingSpinner
-              size="lg"
-              label="Launching SHS Student Dashboard..."
-              sublabel="Syncing account details..."
-            />
-          </motion.div>
-        ) : currentUser ? (
+        {loading ? null : currentUser ? (
           <LmsDashboard
             user={currentUser}
             profile={userProfile}

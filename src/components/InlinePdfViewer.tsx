@@ -317,20 +317,6 @@ export const InlinePdfViewer: React.FC<InlinePdfViewerProps> = ({
       ref={containerRef}
       className="relative flex-1 w-full h-full bg-slate-100 overflow-auto flex flex-col items-center select-none"
     >
-      {/* Lightweight Loading Overlay with App Blue Spinner */}
-      {isLoading && (
-        <div className="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-white/95 backdrop-blur-xs">
-          <div className="relative flex items-center justify-center">
-            <Loader2 className="w-9 h-9 text-blue-600 animate-spin" />
-            <div className="absolute w-2.5 h-2.5 bg-blue-600 rounded-full animate-ping" />
-          </div>
-          <div className="text-center space-y-1">
-            <p className="text-xs font-bold text-slate-800">Rendering document preview...</p>
-            <p className="text-[11px] text-slate-500">Loading high-resolution vector pages</p>
-          </div>
-        </div>
-      )}
-
       {/* Clear, Helpful Error State with Retry & Fallbacks */}
       {errorMessage && !isLoading && (
         <div className="m-auto p-6 max-w-md bg-white rounded-2xl border border-rose-200 shadow-md text-center space-y-3.5 my-8">

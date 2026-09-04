@@ -348,22 +348,12 @@ const ChatMessageItem: React.FC<{ msg: ChatMessage; onRetry?: () => void }> = Re
               }
 
               if (!msg.text.trim() && msg.isStreaming) {
-                return (
-                  <div className="flex items-center gap-2 text-blue-300 text-xs font-medium py-1 animate-pulse">
-                    <Sparkles className="w-4 h-4 animate-spin text-blue-400" />
-                    Analyzing your question and generating step-by-step solution...
-                  </div>
-                );
+                return null;
               }
 
               const sanitized = sanitizeStudyBuddyText(msg.text);
               if (!sanitized && msg.isStreaming) {
-                return (
-                  <div className="flex items-center gap-2 text-blue-300 text-xs font-medium py-1 animate-pulse">
-                    <Sparkles className="w-4 h-4 animate-spin text-blue-400" />
-                    Analyzing your question and generating step-by-step solution...
-                  </div>
-                );
+                return null;
               }
 
               return (
@@ -600,6 +590,8 @@ export const StudyBuddyModal: React.FC<StudyBuddyModalProps> = ({
 
     saveMessageToSupabase('user', userPromptText.trim());
 
+    let timeoutId: any = null;
+
     try {
       const apiHistory = messages
         .filter((m) => !m.isError)
@@ -613,11 +605,24 @@ export const StudyBuddyModal: React.FC<StudyBuddyModalProps> = ({
       const { data: { session } } = await supabase.auth.getSession();
       const currentUser = session?.user;
 
+      const abortController = new AbortController();
+      timeoutId = setTimeout(() => {
+        abortController.abort();
+      }, 15000); // 15s max client timeout to prevent silent hangs
+
+      console.log('[Study Buddy] Sending stream request:', {
+        prompt: userPromptText.trim(),
+        messagesCount: apiHistory.length,
+        subject: sessionContext?.subject,
+        hasMcq: !!mcqCtx,
+      });
+
       const response = await apiFetch('/api/study-buddy/stream', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        signal: abortController.signal,
         body: JSON.stringify({
           messages: apiHistory,
           mcqContext: mcqCtx || null,
@@ -780,18 +785,20 @@ export const StudyBuddyModal: React.FC<StudyBuddyModalProps> = ({
       }
 
       if (!finalText.trim()) {
-        const fallbackText = `I'm Study Buddy, your AI study assistant! 🎓 Please ask any study-related question or select an MCQ to explain.`;
-        saveMessageToSupabase('model', fallbackText);
+        const errorText = `⚠️ Unable to retrieve explanation from Study Buddy. Please check your connection and tap retry.`;
         setMessages((prev) =>
           prev.map((m) =>
-            m.id === modelMessageId ? { ...m, text: fallbackText, isStreaming: false } : m
+            m.id === modelMessageId ? { ...m, text: errorText, isError: true, isStreaming: false } : m
           )
         );
       }
     } catch (err: any) {
       console.error('Streaming API error:', err);
+      const isAbort = err?.name === 'AbortError' || String(err?.message || '').includes('aborted');
       const errText = String(err?.message || '');
-      let friendlyMsg = 'Study Buddy is temporarily busy. Please try asking your question again in a moment.';
+      let friendlyMsg = isAbort
+        ? 'Request timed out waiting for Study Buddy. Please tap retry.'
+        : 'Study Buddy is temporarily busy. Please try asking your question again in a moment.';
       if (errText.includes('Failed to fetch') || errText.includes('NetworkError') || errText.includes('network')) {
         friendlyMsg = 'Could not reach Study Buddy. Please check your internet connection and tap retry.';
       }
@@ -803,6 +810,7 @@ export const StudyBuddyModal: React.FC<StudyBuddyModalProps> = ({
         )
       );
     } finally {
+      clearTimeout(timeoutId);
       setIsStreaming(false);
       setMessages((prev) =>
         prev.map((m) =>

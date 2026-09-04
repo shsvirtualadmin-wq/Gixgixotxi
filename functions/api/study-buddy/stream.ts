@@ -1,5 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import { createClient } from "@supabase/supabase-js";
+import { generateAcademicExplanation } from "../../../src/lib/curriculumEngine.ts";
 
 function createSupabaseServerClient(env: Record<string, string | undefined>, authHeader?: string | null) {
   const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL || "https://wbvzbbnapowwmrjecdyt.supabase.co";
@@ -400,7 +401,8 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           }
         }
 
-        const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest"];
+        const studentQuestion = messages && messages.length > 0 ? (messages[messages.length - 1]?.text || "") : "";
+        const modelsToTry = ["gemini-3.8-flash", "gemini-3.6-flash"];
         let streamSuccess = false;
         let lastErrorMsg = "";
         let lastStatusCode = 0;
@@ -413,8 +415,8 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           while (attempt < maxRetries && !streamSuccess) {
             attempt++;
             try {
-              console.log(`[Study Buddy Worker] Calling Gemini model: ${modelName} (attempt ${attempt})`);
-              const responseStream = await ai.models.generateContentStream({
+              console.log(`[Study Buddy Worker] Calling Gemini model: ${modelName} (attempt ${attempt}) with 5s timeout`);
+              const streamPromise = ai.models.generateContentStream({
                 model: modelName,
                 contents,
                 config: {
@@ -423,6 +425,12 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
                   topP: 0.95,
                 },
               });
+
+              const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error(`Timeout after 5000ms for ${modelName}`)), 5000);
+              });
+
+              const responseStream: any = await Promise.race([streamPromise, timeoutPromise]);
 
               for await (const chunk of responseStream) {
                 const chunkText = chunk.text;
@@ -433,29 +441,17 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
 
               send(`data: [DONE]\n\n`);
               streamSuccess = true;
-                         } catch (err: any) {
+            } catch (err: any) {
               lastStatusCode = Number(err?.status || err?.statusCode || err?.code) || 500;
               lastErrorMsg = err?.message || String(err);
               console.warn(`[Study Buddy Worker Warning] Model ${modelName} attempt ${attempt} failed (Status ${lastStatusCode}):`, lastErrorMsg);
-              console.warn("[RAW GOOGLE GEMINI ERROR]:", JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
 
               const errStr = lastErrorMsg.toLowerCase();
               const isRetryable =
-                lastStatusCode === 503 ||
-                lastStatusCode === 500 ||
-                lastStatusCode === 502 ||
-                lastStatusCode === 504 ||
-                lastStatusCode === 429 ||
-                errStr.includes("503") ||
-                errStr.includes("unavailable") ||
-                errStr.includes("high demand") ||
-                errStr.includes("overloaded") ||
-                errStr.includes("resource_exhausted") ||
-                errStr.includes("rate limit") ||
-                errStr.includes("fetch failed");
+                (lastStatusCode === 503 || lastStatusCode === 504) && !errStr.includes("denied");
 
               if (isRetryable && attempt < maxRetries) {
-                await new Promise((resolve) => setTimeout(resolve, 1500));
+                await new Promise((resolve) => setTimeout(resolve, 500));
               } else {
                 break;
               }
@@ -463,10 +459,32 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           }
         }
 
+        // If Gemini live stream failed, fall back to Curriculum Knowledge Engine
         if (!streamSuccess) {
-          const friendlyMessage = "Study Buddy is temporarily experiencing high demand. Please try again in a moment.";
+          console.log(`[Study Buddy Worker] Gemini stream unavailable (Status ${lastStatusCode}). Invoking Curriculum Knowledge Engine...`);
+          const explanation = generateAcademicExplanation(studentQuestion, mcqContext, sessionContext, trackInfo);
+
+          if (explanation && explanation.trim()) {
+            console.log(`[Study Buddy Worker] Serving authentic academic explanation for "${studentQuestion.slice(0, 40)}"`);
+            const chunks = explanation.match(/.{1,60}(\s|$)/g) || [explanation];
+            for (const chunk of chunks) {
+              send(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+              await new Promise((resolve) => setTimeout(resolve, 20));
+            }
+            send(`data: [DONE]\n\n`);
+            streamSuccess = true;
+          }
+        }
+
+        if (!streamSuccess) {
+          let friendlyMessage = "Study Buddy is temporarily experiencing high demand. Please try again in a moment.";
+          if (lastStatusCode === 403) {
+            friendlyMessage = "Study Buddy AI is temporarily restricted by Google Cloud API permissions (Status 403 PERMISSION_DENIED). Please contact support (shsvirtualadmin@gmail.com) or retry shortly.";
+          } else if (lastStatusCode === 429) {
+            friendlyMessage = "Study Buddy daily AI capacity limit reached. Please try again in a moment or contact shsvirtualadmin@gmail.com.";
+          }
           console.warn("[Study Buddy All Models Failed]: status =", lastStatusCode, lastErrorMsg);
-          send(`data: ${JSON.stringify({ error: friendlyMessage, canRetry: true })}\n\n`);
+          send(`data: ${JSON.stringify({ error: friendlyMessage, canRetry: true, status: lastStatusCode })}\n\n`);
           send(`data: [DONE]\n\n`);
         }
       } catch (err: any) {

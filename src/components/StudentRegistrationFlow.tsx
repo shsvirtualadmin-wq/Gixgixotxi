@@ -12,7 +12,6 @@ import {
 } from '../lib/supabase';
 import { useSiteSettings } from '../context/SiteSettingsContext';
 import { UserAvatar } from './UserAvatar';
-import { BrandedLoadingSpinner } from './BrandedLoadingSpinner';
 import {
   CheckCircle2,
   ArrowRight,
@@ -891,15 +890,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
   };
 
   if (isRestoring) {
-    return (
-      <div className="w-full max-w-md mx-auto py-16 text-center space-y-4 animate-fadeIn">
-        <BrandedLoadingSpinner
-          size="lg"
-          label="Loading your registration status..."
-          sublabel="Syncing student profile..."
-        />
-      </div>
-    );
+    return null;
   }
 
   return (

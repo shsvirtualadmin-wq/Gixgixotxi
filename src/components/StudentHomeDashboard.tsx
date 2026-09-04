@@ -638,11 +638,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
               </button>
             )}
           </div>
-        ) : isLoadingProfile ? (
-          <div className="bg-white border border-slate-200 rounded-2xl p-5 text-center text-xs text-slate-500 animate-pulse">
-            Analyzing subject and chapter accuracy...
-          </div>
-        ) : weakAreas.length > 0 ? (
+        ) : isLoadingProfile ? null : weakAreas.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {weakAreas.map((area, idx) => (
               <div

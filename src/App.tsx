@@ -33,7 +33,6 @@ import { IntroScreen } from './components/IntroScreen';
 import { StudentHomeDashboard } from './components/StudentHomeDashboard';
 import { TestScreen } from './components/TestScreen';
 import { ResultsScreen } from './components/ResultsScreen';
-import { BrandedLoadingSpinner } from './components/BrandedLoadingSpinner';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
 import { lazyWithRetry } from './lib/lazyWithRetry';
 import { SiteSettingsProvider } from './context/SiteSettingsContext';
@@ -2199,7 +2198,7 @@ export function App() {
         }
       }
 
-      await new Promise((r) => setTimeout(r, 400));
+      // Next iteration without artificial delay
     }
   };
 
@@ -2794,11 +2793,7 @@ export function App() {
       );
     }
 
-    return (
-      <div className="min-h-dvh h-dvh sm:min-h-screen bg-[#F8F9FB] text-slate-900 flex flex-col items-center justify-center p-4">
-        <div className="w-6 h-6 border-2 border-slate-200 border-t-[#1E5AFF] rounded-full animate-spin" />
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -2962,13 +2957,7 @@ export function App() {
               </div>
             ) : (
               <ChunkErrorBoundary>
-                <React.Suspense
-                  fallback={
-                    <div className="w-full min-h-[50vh] flex flex-col items-center justify-center p-8 text-center animate-ios-spring">
-                      <BrandedLoadingSpinner size="lg" label="Loading Screen..." sublabel="Preparing module assets..." />
-                    </div>
-                  }
-                >
+                <React.Suspense fallback={null}>
                 {(screen === 'intro' || screen === 'dashboard' || screen === 'stats') && (
                   !currentUser ? (
                     <IntroScreen
@@ -3164,20 +3153,7 @@ export function App() {
                     const isDashboardLoading = authLoading || (Boolean(currentUser) && !userProfile && profileSyncing);
 
                     if (isDashboardLoading) {
-                      return (
-                        <div className="w-full max-w-7xl mx-auto p-6 space-y-6 animate-pulse">
-                          <div className="bg-slate-100  border border-slate-200  rounded-3xl p-8 space-y-4">
-                            <div className="h-4 w-32 bg-slate-200  rounded-full" />
-                            <div className="h-8 w-64 bg-slate-200  rounded-xl" />
-                            <div className="h-4 w-96 bg-slate-200  rounded-xl" />
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                            <div className="h-48 bg-slate-100  rounded-2xl border border-slate-200 " />
-                            <div className="h-48 bg-slate-100  rounded-2xl border border-slate-200 " />
-                            <div className="h-48 bg-slate-100  rounded-2xl border border-slate-200 " />
-                          </div>
-                        </div>
-                      );
+                      return null;
                     }
 
                     return (
@@ -3497,44 +3473,6 @@ export function App() {
         screen={screen}
         setScreen={setScreen}
       />
-
-      {/* MCQ Generation Loading Overlay */}
-      {isGenerating && (
-        <div className="fixed inset-0 z-[300] bg-slate-950/75 backdrop-blur-md flex items-center justify-center p-4 animate-ios-spring">
-          <div className="bg-white  border border-slate-200  rounded-3xl p-6 sm:p-8 max-w-sm w-full shadow-2xl flex flex-col items-center text-center gap-4">
-            <BrandedLoadingSpinner
-              size="xl"
-              label="Generating Your MCQs..."
-              sublabel="Crafting curriculum-aligned questions with detailed scientific explanations. Please wait a moment."
-            />
-            <div className="w-full bg-slate-100  rounded-full h-1.5 overflow-hidden mt-1">
-              <div className="bg-[#1E5AFF] h-full animate-pulse w-full" />
-            </div>
-
-            {/* Cancel / Exit Button */}
-            <button
-              type="button"
-              id="cancel-generation-btn"
-              onClick={() => {
-                setLeaveModalConfig({
-                  isOpen: true,
-                  title: 'Leave this page?',
-                  message: 'Question generation is still in progress and will be lost.',
-                  stayLabel: 'Stay',
-                  leaveLabel: 'Leave Anyway',
-                  onConfirm: () => {
-                    handleCancelGeneration();
-                  },
-                });
-              }}
-              className="mt-2 text-xs font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 px-4 py-2 rounded-full transition-all cursor-pointer flex items-center gap-1.5"
-            >
-              <X className="w-3.5 h-3.5" />
-              <span>Cancel & Exit</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* In-App Leave Confirmation Modal */}
       {leaveModalConfig?.isOpen && (

@@ -3,7 +3,6 @@ import { PathType, QuestionDifficulty, TestMode } from '../types';
 import { fetchStudentMcqUsage, StudentMcqUsageInfo, User, StudentProfile, evaluateStudentAccess, isAdminEmail } from '../lib/supabase';
 import { Zap, Check, ShieldCheck, Gauge, AlertTriangle, ArrowLeft, ArrowRight } from 'lucide-react';
 import { triggerHaptic, HAPTIC_PATTERNS } from '../lib/haptics';
-import { BrandedLoadingSpinner } from './BrandedLoadingSpinner';
 
 interface DurationScreenProps {
   stepLabel?: string;
@@ -233,10 +232,7 @@ export const DurationScreen: React.FC<DurationScreenProps> = React.memo(({
           }
         >
           {isGenerating ? (
-            <>
-              <BrandedLoadingSpinner size="xs" />
-              <span>Generating Test Questions...</span>
-            </>
+            <span>Generating Test Questions...</span>
           ) : isTestLimitReached && !isProUser ? (
             <>
               <span>2/2 Free Tests Used — Upgrade to Pro</span>

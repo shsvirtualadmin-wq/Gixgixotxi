@@ -21,7 +21,6 @@ import {
   X,
 } from 'lucide-react';
 import { StudentProfile, User, safeJsonResponse, evaluateStudentAccess } from '../lib/supabase';
-import { BrandedLoadingSpinner } from './BrandedLoadingSpinner';
 import { validatePdfFile } from '../lib/pdfValidator';
 
 export interface DriveFileItem {
@@ -596,22 +595,9 @@ export const PastPapersSection: React.FC<PastPapersSectionProps> = ({
               <FileText className="w-4 h-4 text-rose-500" />
               <span>Available Papers & Resources ({filteredFiles.length})</span>
             </h3>
-            {isLoadingList && (
-              <span className="text-xs text-rose-500 font-semibold flex items-center gap-1.5">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" /> Fetching documents...
-              </span>
-            )}
           </div>
 
-          {isLoadingList ? (
-            <div className="bg-slate-50  border border-slate-200  rounded-2xl p-8 text-center space-y-3">
-              <BrandedLoadingSpinner
-                size="md"
-                label="Loading study resources..."
-                sublabel="Fetching past papers and official guides"
-              />
-            </div>
-          ) : filteredFiles.length > 0 ? (
+          {isLoadingList ? null : filteredFiles.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {filteredFiles.map((file, idx) => {
                 const isCuratedSample = idx < 2 || file.name.toLowerCase().includes('sample') || file.name.toLowerCase().includes('demo');

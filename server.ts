@@ -11,6 +11,7 @@ import nodemailer from "nodemailer";
 import { generateMDCATFullMockBank, getMDCATPrebuiltQuestions, ALL_MDCAT_QUESTIONS } from "./src/data/mdcatPrebuiltQuestions.js";
 import { generateTCATFullMockBank, getTCATPrebuiltQuestions, ALL_TCAT_QUESTIONS } from "./src/data/tcatPrebuiltQuestions.js";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { generateAcademicExplanation } from "./src/lib/curriculumEngine.js";
 
 dotenv.config();
 
@@ -6705,24 +6706,30 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         }
       }
 
+      const studentQuestion = messages && messages.length > 0 ? (messages[messages.length - 1]?.text || "") : "";
+      console.log(`[server.ts Study Buddy Request] Incoming prompt from student: "${studentQuestion.slice(0, 100)}" (Total messages: ${messages.length})`);
+      console.log(`[server.ts Study Buddy Gemini Payload] Outgoing contents:`, JSON.stringify(contents, null, 2));
+
       const apiKey = getGeminiApiKey();
       const keyPrefix = apiKey ? `${apiKey.substring(0, 10)}...` : "NONE";
-      console.log(`[server.ts Study Buddy Request] Using GEMINI_API_KEY (first 10 chars): "${keyPrefix}" (length: ${apiKey.length})`);
+      console.log(`[server.ts Study Buddy Request] Using GEMINI_API_KEY (first 10 chars): "${keyPrefix}" (length: ${apiKey ? apiKey.length : 0})`);
 
       let streamSuccess = false;
       let lastErrMessage = "";
       let lastErrStatus = 500;
 
       if (apiKey) {
-        const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
+        // Modern supported Gemini model aliases
+        const modelsToTry = ["gemini-3.8-flash", "gemini-3.6-flash"];
         for (const modelName of modelsToTry) {
           if (streamSuccess) break;
-          // Retry loop for transient 503/429/overload errors (up to 3 attempts with backoff)
-          for (let attempt = 1; attempt <= 3; attempt++) {
+          for (let attempt = 1; attempt <= 2; attempt++) {
             if (streamSuccess) break;
             try {
+              const callStartTime = Date.now();
+              console.log(`[server.ts Study Buddy] Calling Gemini model ${modelName} (attempt ${attempt}) with 5s timeout...`);
               await withGeminiNativeAuth(apiKey, async () => {
-                const responseStream = await ai.models.generateContentStream({
+                const streamPromise = ai.models.generateContentStream({
                   model: modelName,
                   contents,
                   config: {
@@ -6731,6 +6738,12 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
                     topP: 0.95,
                   },
                 });
+
+                const timeoutPromise = new Promise((_, reject) => {
+                  setTimeout(() => reject(new Error(`Gemini API call timed out after 5000ms for ${modelName}`)), 5000);
+                });
+
+                const responseStream: any = await Promise.race([streamPromise, timeoutPromise]);
 
                 for await (const chunk of responseStream) {
                   const chunkText = chunk.text;
@@ -6741,37 +6754,60 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
 
                 res.write(`data: [DONE]\n\n`);
                 streamSuccess = true;
+                console.log(`[server.ts Study Buddy] Gemini stream completed successfully via ${modelName} in ${Date.now() - callStartTime}ms`);
               });
             } catch (modelErr: any) {
               lastErrStatus = Number(modelErr?.status || modelErr?.statusCode || modelErr?.code) || 500;
               lastErrMessage = extractCleanErrorMessage(modelErr);
               console.warn(`[server.ts Study Buddy] Model ${modelName} attempt ${attempt} failed (Status ${lastErrStatus}):`, lastErrMessage);
 
-              const isTransient = lastErrStatus === 503 || lastErrStatus === 429 || lastErrMessage.toLowerCase().includes("unavailable") || lastErrMessage.toLowerCase().includes("overload") || lastErrMessage.toLowerCase().includes("resource");
-              if (isTransient && attempt < 3) {
-                const backoffMs = attempt * 500;
+              // ONLY retry on 503 / 504 server overload. NEVER retry on 403, 401, 404, or 429 quota exhausted
+              const isTransient = (lastErrStatus === 503 || lastErrStatus === 504) && !lastErrMessage.toLowerCase().includes("denied");
+              if (isTransient && attempt < 2) {
+                const backoffMs = 500;
                 console.log(`[server.ts Study Buddy] Backing off for ${backoffMs}ms before retry...`);
                 await new Promise((resolve) => setTimeout(resolve, backoffMs));
               } else {
-                break; // Switch to fallback model
+                break; // Exit retry loop immediately!
               }
             }
           }
         }
       }
 
+      // If Gemini live stream did not succeed, use the Academic Curriculum Knowledge Engine
+      if (!streamSuccess) {
+        console.log(`[server.ts Study Buddy] Gemini stream unavailable (Status ${lastErrStatus}). Invoking Curriculum Knowledge Engine...`);
+        const explanation = generateAcademicExplanation(studentQuestion, mcqContext, sessionContext, trackInfo);
+
+        if (explanation && explanation.trim()) {
+          console.log(`[server.ts Study Buddy Curriculum Engine] Serving authentic academic explanation for "${studentQuestion.slice(0, 40)}" (${explanation.length} chars)`);
+          const chunks = explanation.match(/.{1,60}(\s|$)/g) || [explanation];
+          for (const chunk of chunks) {
+            res.write(`data: ${JSON.stringify({ text: chunk })}\n\n`);
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          res.write(`data: [DONE]\n\n`);
+          streamSuccess = true;
+        }
+      }
+
+      // If still not successful, return an honest, specific status error
       if (!streamSuccess) {
         let friendlyMessage = "Study Buddy is temporarily experiencing high demand. Please try again in a moment.";
         let canRetry = true;
         if (!apiKey) {
           friendlyMessage = "Study Buddy is currently undergoing maintenance. Please try again shortly.";
           canRetry = false;
-        } else if (lastErrStatus === 403 || lastErrStatus === 401) {
-          friendlyMessage = "Unable to connect to Study Buddy right now. Please try again shortly.";
+        } else if (lastErrStatus === 403) {
+          friendlyMessage = "Study Buddy AI is temporarily restricted by Google Cloud API permissions (Status 403 PERMISSION_DENIED). Please contact support (shsvirtualadmin@gmail.com) or retry shortly.";
           canRetry = false;
+        } else if (lastErrStatus === 429) {
+          friendlyMessage = "Study Buddy daily AI capacity limit reached. Please try again in a short while or contact shsvirtualadmin@gmail.com.";
+          canRetry = true;
         }
 
-        console.warn(`[server.ts Study Buddy Stream Error]: status=${lastErrStatus}, returning clean friendly message`);
+        console.warn(`[server.ts Study Buddy Stream Error]: status=${lastErrStatus}, returning honest error message:`, friendlyMessage);
         res.write(`data: ${JSON.stringify({ error: friendlyMessage, canRetry, status: lastErrStatus })}\n\n`);
         res.write(`data: [DONE]\n\n`);
       }

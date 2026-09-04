@@ -4,7 +4,6 @@ import { Question, UserAnswer, TestConfig } from '../types';
 import { User, StudentProfile } from '../lib/supabase';
 import { SecurityWatermark } from './SecurityWatermark';
 import { downloadQuizPdf } from '../lib/pdfGenerator';
-import { BrandedLoadingSpinner } from './BrandedLoadingSpinner';
 import {
   Bookmark,
   ChevronLeft,
@@ -522,36 +521,29 @@ export const TestScreen: React.FC<TestScreenProps> = React.memo(({
         {/* Scrollable Main Content (Question + Options + Explanation Card with attached Doubt Solver) */}
         <div className="flex-1 overflow-y-auto pr-1 space-y-4 min-h-0">
           {!currentQ ? (
-            <div className="bg-white  border border-black/10  rounded-2xl p-8 sm:p-12 text-center space-y-5 my-auto shadow-sm animate-fadeIn">
-              <BrandedLoadingSpinner
-                size="lg"
-                label={isUrduOrIslamiat ? `سوال ${currentIndex + 1} لوڈ ہو رہا ہے...` : `Preparing Question ${currentIndex + 1} of ${totalQ}`}
-                sublabel={
-                  bgGenError ||
-                  (isUrduOrIslamiat
-                    ? 'امتحانی نصاب کے مطابق سوالات بیک گراؤنڈ میں تیار ہو رہے ہیں۔ چند لمحوں میں سوال ظاہر ہو جائے گا۔'
-                    : 'Syllabus-aligned questions are quietly generating in the background. This question will appear in a moment.')
-                }
-              />
-              <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
-                {onRetryGeneration && (
-                  <button
-                    onClick={onRetryGeneration}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E5AFF] hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
-                  >
-                    <span>{isUrduOrIslamiat ? 'سوال دوبارہ لوڈ کریں' : 'Retry Loading Question'}</span>
-                  </button>
-                )}
-                {onLoadPracticeBank && (
-                  <button
-                    onClick={onLoadPracticeBank}
-                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
-                  >
-                    <span>{isUrduOrIslamiat ? 'پریکٹس بینک سے حاصل کریں' : 'Load Practice Bank'}</span>
-                  </button>
-                )}
+            bgGenError ? (
+              <div className="bg-white border border-black/10 rounded-2xl p-8 sm:p-12 text-center space-y-5 my-auto shadow-sm">
+                <p className="text-xs text-rose-500 font-semibold">{bgGenError}</p>
+                <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+                  {onRetryGeneration && (
+                    <button
+                      onClick={onRetryGeneration}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-[#1E5AFF] hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
+                    >
+                      <span>{isUrduOrIslamiat ? 'سوال دوبارہ لوڈ کریں' : 'Retry Loading Question'}</span>
+                    </button>
+                  )}
+                  {onLoadPracticeBank && (
+                    <button
+                      onClick={onLoadPracticeBank}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm rounded-xl transition-all shadow-md active:scale-95 cursor-pointer"
+                    >
+                      <span>{isUrduOrIslamiat ? 'پریکٹس بینک سے حاصل کریں' : 'Load Practice Bank'}</span>
+                    </button>
+                  )}
+                </div>
               </div>
-            </div>
+            ) : null
           ) : (
             <>
               <div className="bg-white  border border-slate-200  rounded-2xl p-6 sm:p-7 shadow-sm space-y-6">

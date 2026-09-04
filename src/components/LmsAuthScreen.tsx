@@ -484,10 +484,7 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = React.memo(({
               className="w-full bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-extrabold py-3.5 px-6 rounded-xl border border-blue-400/20 flex items-center justify-center gap-2.5 active:scale-[0.98] transition-all cursor-pointer shadow-lg text-sm disabled:opacity-75 disabled:cursor-not-allowed mt-2"
             >
               {loading ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>{mode === 'signin' ? 'Signing In...' : 'Creating Account...'}</span>
-                </div>
+                <span>{mode === 'signin' ? 'Signing In...' : 'Creating Account...'}</span>
               ) : (
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.div

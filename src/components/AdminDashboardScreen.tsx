@@ -30,7 +30,6 @@ import {
 } from '../lib/supabase';
 import { getPrebuiltQuestionsForSubject } from '../data/prebuiltQuestions';
 import { getDynamicQuestionBankStats } from '../lib/questionBankStats';
-import { BrandedLoadingSpinner } from './BrandedLoadingSpinner';
 import {
   ShieldCheck,
   Search,
@@ -1330,15 +1329,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
           </div>
 
           {/* Student Grid / Cards */}
-          {loading ? (
-            <div className="bg-white/80  border border-slate-200  rounded-2xl p-8 sm:p-12 text-center space-y-3 w-full min-w-0">
-              <BrandedLoadingSpinner
-                size="lg"
-                label="Fetching student directory..."
-                sublabel="Loading student records..."
-              />
-            </div>
-          ) : filteredStudents.length === 0 ? (
+          {loading ? null : filteredStudents.length === 0 ? (
             <div className="bg-white/80  border border-slate-200  rounded-2xl p-8 sm:p-12 text-center space-y-3 w-full min-w-0">
               <UserX className="w-10 h-10 text-slate-400 mx-auto" />
               <h3 className="text-sm font-extrabold text-slate-800 ">No Students Found</h3>
@@ -2729,14 +2720,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
               {/* Sub-Tab 1: Test Attempt History */}
               {detailSubTab === 'tests' && (
                 <div className="space-y-3">
-                  {historyLoading ? (
-                    <div className="text-center py-8">
-                      <BrandedLoadingSpinner
-                        size="md"
-                        label="Loading student test history..."
-                      />
-                    </div>
-                  ) : studentHistory.length === 0 ? (
+                  {historyLoading ? null : studentHistory.length === 0 ? (
                     <p className="text-center py-8 text-xs text-slate-400 font-medium">
                       No test attempts recorded for this student yet.
                     </p>
@@ -2786,14 +2770,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
               {/* Sub-Tab 2: AI Study Buddy Chat History */}
               {detailSubTab === 'study_buddy' && (
                 <div className="space-y-3">
-                  {loadingBuddyHistory ? (
-                    <div className="text-center py-8">
-                      <BrandedLoadingSpinner
-                        size="md"
-                        label="Loading AI Study Buddy chat logs..."
-                      />
-                    </div>
-                  ) : selectedStudentBuddyHistory.length === 0 ? (
+                  {loadingBuddyHistory ? null : selectedStudentBuddyHistory.length === 0 ? (
                     <p className="text-center py-8 text-xs text-slate-400 font-medium">
                       No AI Study Buddy messages recorded for this student.
                     </p>
