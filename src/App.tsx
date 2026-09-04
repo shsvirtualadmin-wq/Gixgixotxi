@@ -71,6 +71,7 @@ import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserPro
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
+import { BrandedLoadingSpinner } from './components/BrandedLoadingSpinner';
 
 export type ScreenType =
   | 'intro'
@@ -168,7 +169,8 @@ const getInitialUrlState = (): {
   let initialScreen: ScreenType = 'dashboard';
   if (rawUrlScreen && VALID_SCREENS.includes(rawUrlScreen as ScreenType)) {
     initialScreen = rawUrlScreen as ScreenType;
-  } else {
+  } else if (!params.has('screen')) {
+    // Only check background/offline resumption if no explicit screen parameter was passed in URL
     try {
       // 1. Prioritize active test session resume if present and non-expired
       const savedSession = localStorage.getItem('boardly_active_test_session');
@@ -191,15 +193,20 @@ const getInitialUrlState = (): {
         }
       }
     } catch {}
+  } else {
+    // When ?screen= was explicitly provided but is empty or invalid,
+    // immediately default to 'dashboard'
+    initialScreen = 'dashboard';
   }
 
   // If the URL has an empty or invalid screen parameter (?screen= or ?screen=invalid),
-  // clean up the URL right away so it doesn't stay stuck at empty ?screen=
+  // immediately default to the dashboard route (both URL/state and localStorage)
   if (params.has('screen') && (!rawUrlScreen || !VALID_SCREENS.includes(rawUrlScreen as ScreenType))) {
     try {
       const cleanParams = new URLSearchParams(window.location.search);
-      cleanParams.set('screen', initialScreen);
-      window.history.replaceState({ screen: initialScreen }, '', `?${cleanParams.toString()}`);
+      cleanParams.set('screen', 'dashboard');
+      window.history.replaceState({ screen: 'dashboard' }, '', `?${cleanParams.toString()}`);
+      localStorage.setItem('boardly_active_screen', 'dashboard');
     } catch {}
   }
 
@@ -575,6 +582,25 @@ export function App() {
   const [authTimedOut, setAuthTimedOut] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  // Hard timeout (8-10s) on loading state to prevent infinite spinning
+  useEffect(() => {
+    const masterTimeout = setTimeout(() => {
+      setAuthLoading((prevLoading) => {
+        setProfileSyncing((prevSyncing) => {
+          if (prevLoading || prevSyncing) {
+            console.warn('[Loading Guard] Overall loading state exceeded 8.5s threshold. Forcing retry/error state.');
+            setAuthTimedOut(true);
+            return false;
+          }
+          return prevSyncing;
+        });
+        return false;
+      });
+    }, 8500);
+
+    return () => clearTimeout(masterTimeout);
+  }, []);
+
   const handleRetryAuth = useCallback(async () => {
     setAuthTimedOut(false);
     setAuthError(null);
@@ -583,6 +609,14 @@ export function App() {
       return;
     }
     setAuthLoading(true);
+
+    const retryTimeout = setTimeout(() => {
+      setAuthLoading(false);
+      setProfileSyncing(false);
+      setAuthTimedOut(true);
+      setAuthError('Connection took too long. Please try again or continue to dashboard.');
+    }, 8000);
+
     try {
       const { data, error } = await withTimeout(
         supabase.auth.getSession(),
@@ -599,16 +633,27 @@ export function App() {
 
       if (user) {
         setProfileSyncing(true);
-        const profile = await syncUserProfile(user);
-        setUserProfile(profile);
+        const profile = await withTimeout(
+          syncUserProfile(user),
+          4000,
+          null,
+          'retrySyncUserProfile'
+        );
+        if (profile) {
+          setUserProfile(profile);
+        }
         setProfileSyncing(false);
       } else {
         setUserProfile(null);
       }
+      clearTimeout(retryTimeout);
+      setAuthTimedOut(false);
     } catch (err: any) {
       console.error('[Retry Auth Exception]:', err);
-      setAuthError('Connection took too long. Please try again or continue to portal.');
+      setAuthError('Connection took too long. Please try again or continue to dashboard.');
+      setAuthTimedOut(true);
     } finally {
+      clearTimeout(retryTimeout);
       setAuthLoading(false);
       setProfileSyncing(false);
     }
@@ -1473,7 +1518,12 @@ export function App() {
       }
       let profile: StudentProfile | null = null;
       try {
-        profile = await syncUserProfile(user);
+        profile = await withTimeout(
+          syncUserProfile(user),
+          4000,
+          null,
+          'syncUserProfile'
+        );
         if (isSubscribed && profile) {
           setUserProfile(profile);
         }
@@ -2833,7 +2883,7 @@ export function App() {
                 Connection Taking Longer Than Usual
               </h3>
               <p className="text-xs text-slate-500 leading-relaxed max-w-xs">
-                We're having trouble contacting authentication servers. You can retry connection or continue directly into the portal.
+                {authError || "We're having trouble contacting authentication servers or loading your profile. You can retry connection or continue directly to the dashboard."}
               </p>
             </div>
 
@@ -2851,11 +2901,11 @@ export function App() {
                   setAuthTimedOut(false);
                   setAuthLoading(false);
                   setProfileSyncing(false);
-                  setScreen('intro');
+                  setScreen('dashboard');
                 }}
                 className="w-full py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
               >
-                <span>Continue to Home Screen</span>
+                <span>Continue to Dashboard</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
 
@@ -2876,7 +2926,14 @@ export function App() {
       );
     }
 
-    return null;
+    return (
+      <BrandedLoadingSpinner
+        fullScreen
+        size="md"
+        label="Loading Boardly..."
+        sublabel="Preparing your practice workspace"
+      />
+    );
   }
 
   return (

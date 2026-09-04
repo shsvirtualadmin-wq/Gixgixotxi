@@ -15,6 +15,10 @@ if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 
+if (typeof (window as any).__boardlyClearPreloaderTimer === 'function') {
+  (window as any).__boardlyClearPreloaderTimer();
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
