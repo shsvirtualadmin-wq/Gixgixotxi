@@ -48,6 +48,8 @@ export interface TestConfig {
   instantFeedback: boolean;
   groupSubjects?: string[];
   isFullMock?: boolean;
+  isReviewSet?: boolean;
+  reviewNote?: string;
 }
 
 export interface UserAnswer {

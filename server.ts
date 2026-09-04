@@ -12,6 +12,7 @@ import { generateMDCATFullMockBank, getMDCATPrebuiltQuestions, ALL_MDCAT_QUESTIO
 import { generateTCATFullMockBank, getTCATPrebuiltQuestions, ALL_TCAT_QUESTIONS } from "./src/data/tcatPrebuiltQuestions.js";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { generateAcademicExplanation } from "./src/lib/curriculumEngine.js";
+import { normalizeQuestionStem, deduplicateQuestions } from "./src/lib/shuffle.js";
 
 dotenv.config();
 
@@ -1542,6 +1543,62 @@ async function getStudentWeaknessProfile(
     chapterBreakdown: chapterStats,
     promptContext,
   };
+}
+
+/**
+ * Retrieves all normalized question stems seen by a student across in-memory and Supabase attempts.
+ */
+async function getSeenQuestionStemsForStudent(
+  studentId: string,
+  studentEmail?: string,
+  subject?: string
+): Promise<Set<string>> {
+  const seenStems = new Set<string>();
+  if (!studentId && !studentEmail) return seenStems;
+
+  const normSub = subject ? normalizeSubjectKey(subject).toLowerCase() : undefined;
+  const cleanEmail = studentEmail ? studentEmail.trim().toLowerCase() : (studentId?.includes("@") ? studentId.trim().toLowerCase() : "");
+
+  // 1. In-memory attempts
+  for (const item of inMemoryMCQAttempts) {
+    const matchStudent = item.studentId === studentId || (cleanEmail && item.studentEmail?.toLowerCase() === cleanEmail);
+    if (!matchStudent) continue;
+    if (normSub && item.subject && !item.subject.toLowerCase().includes(normSub) && !normSub.includes(item.subject.toLowerCase())) {
+      continue;
+    }
+    const stem = normalizeQuestionStem(item.questionText || "");
+    if (stem) seenStems.add(stem);
+  }
+
+  // 2. Supabase mcq_attempts table
+  const client = getAuthClient(null) || getSupabaseAdminClient() || supabaseServer;
+  if (client) {
+    try {
+      let query = client.from("mcq_attempts").select("question_text, subject");
+      if (studentId && studentId !== "guest") {
+        query = query.or(`student_id.eq.${studentId}${cleanEmail ? `,student_email.eq.${cleanEmail}` : ""}`);
+      } else if (cleanEmail) {
+        query = query.eq("student_email", cleanEmail);
+      } else {
+        return seenStems;
+      }
+
+      const { data, error } = await query;
+      if (!error && Array.isArray(data)) {
+        for (const row of data) {
+          if (normSub && row.subject && !row.subject.toLowerCase().includes(normSub) && !normSub.includes(row.subject.toLowerCase())) {
+            continue;
+          }
+          const stem = normalizeQuestionStem(row.question_text || "");
+          if (stem) seenStems.add(stem);
+        }
+      }
+    } catch (err: any) {
+      console.warn("[getSeenQuestionStemsForStudent fetch warning]:", err?.message || err);
+    }
+  }
+
+  return seenStems;
 }
 
 export function extractCleanErrorMessage(err: any): string {
@@ -3618,9 +3675,19 @@ function formatRemainingTimeString(ms: number): string {
     const batchOffset = Math.max(0, Number(req.body.batchOffset) || 0);
     const excludeStemSet = new Set<string>(
       Array.isArray(req.body.excludeStems)
-        ? req.body.excludeStems.map((s: any) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, ''))
+        ? req.body.excludeStems.map((s: any) => normalizeQuestionStem(String(s || '')))
         : []
     );
+
+    // Look up previously seen questions for this student across attempts to prioritize fresh unseen questions
+    if (userId && userId !== "guest") {
+      try {
+        const studentSeen = await getSeenQuestionStemsForStudent(String(userId), userEmail, rawSubject);
+        for (const s of studentSeen) excludeStemSet.add(s);
+      } catch (err) {
+        console.warn("[generate-mcqs] Error fetching student seen stems:", err);
+      }
+    }
 
     // CRITICAL: Progressive & Instant Full Mock Generation (MDCAT 180 MCQs / TCAT 100 MCQs)
     const isMdcatFullMock = isFullMock && (rawSubject.toLowerCase().includes("mdcat") || String(classNum) === "MDCAT" || String(group) === "MDCAT");
@@ -3675,16 +3742,14 @@ function formatRemainingTimeString(ms: number): string {
       const isFull = isMdcatFullMock || (isAnyFullMock && rawSubject.toLowerCase().includes("mdcat")) || requestedCount >= 180;
       if (isFull) {
         console.log(`[Full Mock Request] MDCAT Full Mock (Offset: ${batchOffset}, Count: ${requestedCount})`);
-        const fullBank = generateMDCATFullMockBank();
+        const fullBank = deduplicateQuestions(generateMDCATFullMockBank(excludeStemSet));
         let filteredBank = fullBank;
         if (excludeStemSet.size > 0) {
-          filteredBank = fullBank.filter(q => !excludeStemSet.has((q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '')));
+          const unseen = fullBank.filter(q => !excludeStemSet.has(normalizeQuestionStem(q.q || '')));
+          filteredBank = unseen.length >= requestedCount ? unseen : fullBank;
         }
 
-        let questions = filteredBank.slice(batchOffset, batchOffset + requestedCount);
-        if (questions.length === 0 && filteredBank.length > 0) {
-          questions = filteredBank.slice(0, requestedCount);
-        }
+        const questions = filteredBank.slice(0, requestedCount);
 
         return res.json({
           success: true,
@@ -3703,24 +3768,17 @@ function formatRemainingTimeString(ms: number): string {
           },
         });
       } else {
-        // MDCAT Chapter or Subject Practice: exclusively pull from verified hardcoded bank, never invoke Gemini
+        // MDCAT Chapter or Subject Practice: exclusively pull from verified hardcoded bank, prioritizing unseen questions
         const effectiveTopic = customTopic || requestedTopic || chapterName || "";
-        console.log(`[MDCAT Practice Request] ${rawSubject} - ${effectiveTopic} (Count: ${requestedCount})`);
-        const mdcatQuestions = getMDCATPrebuiltQuestions(rawSubject, requestedCount, effectiveTopic);
-        let filtered = mdcatQuestions;
-        if (excludeStemSet.size > 0) {
-          filtered = mdcatQuestions.filter(q => !excludeStemSet.has((q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '')));
-        }
-        if (filtered.length === 0 && mdcatQuestions.length > 0) {
-          filtered = mdcatQuestions;
-        }
+        console.log(`[MDCAT Practice Request] ${rawSubject} - ${effectiveTopic} (Count: ${requestedCount}, Excluded seen: ${excludeStemSet.size})`);
+        const mdcatQuestions = deduplicateQuestions(getMDCATPrebuiltQuestions(rawSubject, requestedCount, effectiveTopic, chapterName, subtopic, excludeStemSet));
         return res.json({
           success: true,
           selectedSubject: rawSubject,
           subjectSentToGemini: rawSubject,
           subjectReturned: rawSubject,
-          questions: filtered,
-          totalTargetCount: requestedCount,
+          questions: mdcatQuestions,
+          totalTargetCount: mdcatQuestions.length,
           batchOffset,
           usage: {
             currentUsage: 0,
@@ -3744,18 +3802,17 @@ function formatRemainingTimeString(ms: number): string {
       const isFull = isTcatFullMock || (isAnyFullMock && rawSubject.toLowerCase().includes("tcat")) || requestedCount >= 100;
       if (isFull) {
         console.log(`[Full Mock Request] TCAT Full Mock (Offset: ${batchOffset}, Count: ${requestedCount})`);
-        const fullBank = generateTCATFullMockBank(
-          Array.isArray(groupSubjects) && groupSubjects.length > 0 ? groupSubjects : (chapterName || customTopic || rawSubject)
-        );
+        const fullBank = deduplicateQuestions(generateTCATFullMockBank(
+          Array.isArray(groupSubjects) && groupSubjects.length > 0 ? groupSubjects : (chapterName || customTopic || rawSubject),
+          excludeStemSet
+        ));
         let filteredBank = fullBank;
         if (excludeStemSet.size > 0) {
-          filteredBank = fullBank.filter(q => !excludeStemSet.has((q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '')));
+          const unseen = fullBank.filter(q => !excludeStemSet.has(normalizeQuestionStem(q.q || '')));
+          filteredBank = unseen.length >= requestedCount ? unseen : fullBank;
         }
 
-        let questions = filteredBank.slice(batchOffset, batchOffset + requestedCount);
-        if (questions.length === 0 && filteredBank.length > 0) {
-          questions = filteredBank.slice(0, requestedCount);
-        }
+        const questions = filteredBank.slice(0, requestedCount);
 
         return res.json({
           success: true,
@@ -3774,25 +3831,17 @@ function formatRemainingTimeString(ms: number): string {
           },
         });
       } else {
-        // TCAT Chapter or Subject Practice: exclusively pull from verified hardcoded bank, never invoke Gemini
+        // TCAT Chapter or Subject Practice: exclusively pull from verified hardcoded bank, prioritizing unseen questions
         const effectiveTopic = customTopic || requestedTopic || chapterName || "";
-        console.log(`[TCAT Practice Request] ${rawSubject} - ${effectiveTopic} (Count: ${requestedCount})`);
-        const tcatQuestions = getTCATPrebuiltQuestions(rawSubject, requestedCount, effectiveTopic);
-        let filteredBank = tcatQuestions;
-        if (excludeStemSet.size > 0) {
-          filteredBank = tcatQuestions.filter(q => !excludeStemSet.has((q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '')));
-        }
-        if (filteredBank.length === 0) {
-          filteredBank = tcatQuestions;
-        }
-
+        console.log(`[TCAT Practice Request] ${rawSubject} - ${effectiveTopic} (Count: ${requestedCount}, Excluded seen: ${excludeStemSet.size})`);
+        const tcatQuestions = deduplicateQuestions(getTCATPrebuiltQuestions(rawSubject, requestedCount, effectiveTopic, chapterName, subtopic, excludeStemSet));
         return res.json({
           success: true,
           selectedSubject: rawSubject,
           subjectSentToGemini: rawSubject,
           subjectReturned: rawSubject,
-          questions: filteredBank,
-          totalTargetCount: filteredBank.length,
+          questions: tcatQuestions,
+          totalTargetCount: tcatQuestions.length,
           batchOffset,
           usage: {
             currentUsage: 0,
@@ -4054,8 +4103,16 @@ ${scopeInstruction}`;
             const requestCountForAttempt = isFirstBatch ? Math.min(needed, 5) : Math.min(needed, 7);
 
             let excludeInstruction = "";
+            const avoidStems: string[] = [];
             if (finalQuestions.length > 0) {
-              excludeInstruction = `\n\nDO NOT generate any of the following questions that were already created:\n${finalQuestions.map((q, idx) => `${idx + 1}. ${q.q}`).join('\n')}`;
+              avoidStems.push(...finalQuestions.map(q => q.q));
+            }
+            if (excludeStemSet.size > 0) {
+              // Include a sample of previously seen question stems so Gemini avoids duplicating them
+              avoidStems.push(...Array.from(excludeStemSet).slice(0, 15));
+            }
+            if (avoidStems.length > 0) {
+              excludeInstruction = `\n\nDO NOT generate or repeat any of the following questions already completed by the student:\n${avoidStems.map((s, idx) => `${idx + 1}. ${s}`).join('\n')}`;
             }
 
             const attemptUserPrompt = `Generate ${requestCountForAttempt} multiple choice questions (MCQs) for:
@@ -4229,9 +4286,14 @@ ${scopeInstruction}${excludeInstruction}`;
         const existingQTexts = new Set(finalQuestions.map(q => q.q.toLowerCase().trim()));
         candidates = candidates.filter(c => !existingQTexts.has((c.question_text || c.q || '').toLowerCase().trim()));
 
-        // Shuffle and fill
-        candidates.sort(() => Math.random() - 0.5);
-        for (const c of candidates) {
+        // Prioritize unseen questions over previously seen ones
+        const unseenCandidates = candidates.filter(c => !excludeStemSet.has(normalizeQuestionStem(c.question_text || c.q || '')));
+        const seenCandidates = candidates.filter(c => excludeStemSet.has(normalizeQuestionStem(c.question_text || c.q || '')));
+        unseenCandidates.sort(() => Math.random() - 0.5);
+        seenCandidates.sort(() => Math.random() - 0.5);
+        const prioritizedCandidates = [...unseenCandidates, ...seenCandidates];
+
+        for (const c of prioritizedCandidates) {
           if (finalQuestions.length >= requestedCount) break;
           finalQuestions.push({
             id: c.id || `local-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -4613,6 +4675,45 @@ ${scopeInstruction}${excludeInstruction}`;
     } catch (err: any) {
       console.error("[api/save-test-result error]:", err);
       return res.status(500).json({ success: false, error: err?.message || "Failed to save test result" });
+    }
+  });
+
+  // API Endpoint: Query questions seen by a student across attempts (for repeat prioritization)
+  app.get("/api/student-seen-questions", async (req, res) => {
+    try {
+      const studentId = String(req.query.studentId || "");
+      const studentEmail = String(req.query.studentEmail || "");
+      const subject = req.query.subject ? String(req.query.subject) : undefined;
+      const seen = await getSeenQuestionStemsForStudent(studentId, studentEmail, subject);
+      return res.json({
+        success: true,
+        seenStems: Array.from(seen),
+        total: seen.size,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to get seen questions" });
+    }
+  });
+
+  // API Endpoint: Record seen questions for a student
+  app.post("/api/log-seen-questions", async (req, res) => {
+    try {
+      const { studentId = "guest", studentEmail = "", subject = "Practice", chapter = "", questions = [] } = req.body || {};
+      if (Array.isArray(questions) && questions.length > 0) {
+        const formattedAttempts = questions.map((q: any, idx: number) => ({
+          questionId: q.id || `seen-${Date.now()}-${idx}`,
+          questionText: q.q || q.questionText || "",
+          chapter: chapter || q.topic || "General",
+          isCorrect: true,
+          selectedAnswer: 0,
+          correctAnswer: 0,
+          timeTakenSeconds: 15,
+        }));
+        await logStudentMcqAttempts(studentId, studentEmail, subject, formattedAttempts);
+      }
+      return res.json({ success: true });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to log seen questions" });
     }
   });
 

@@ -1,6 +1,7 @@
 import { Question, BoardClass } from '../types';
 import { mapSubject } from '../utils/subjectMapper';
-import { shuffleQuestionOptions } from '../lib/shuffle';
+import { shuffleQuestionOptions, deduplicateQuestions, normalizeQuestionStem } from '../lib/shuffle';
+import { selectPrioritizedQuestions } from '../lib/seenQuestionsTracker';
 import { checkQuestionTopicRelevance } from '../utils/topicValidator';
 
 export const PREBUILT_QUESTIONS: Record<string, Question[]> = {
@@ -3541,7 +3542,8 @@ export function getPrebuiltQuestionsForSubject(
   customTopic?: string,
   classNum?: BoardClass,
   chapterName?: string,
-  subtopic?: string
+  subtopic?: string,
+  seenStemsInput?: Set<string> | string[]
 ): Question[] {
   if (!subjectName) return [];
 
@@ -3550,23 +3552,27 @@ export function getPrebuiltQuestionsForSubject(
   const isTcat = classNum === 'TCAT' || lower.includes('tcat');
   const isMdcat = classNum === 'MDCAT' || lower.includes('mdcat');
 
+  const seenSet = seenStemsInput instanceof Set
+    ? seenStemsInput
+    : new Set(Array.isArray(seenStemsInput) ? seenStemsInput.map(s => normalizeQuestionStem(s)) : []);
+
   // Full Mock Exams are comprehensive cross-subject tests (100 or 180 MCQs) and must never be filtered down by topic
   if (lower.includes('tcat full') || lower.includes('tcat mock')) {
-    return generateTCATFullMockBank(customTopic || subjectName).map(shuffleQuestionOptions);
+    return generateTCATFullMockBank(customTopic || subjectName, seenSet).map(shuffleQuestionOptions);
   } else if (lower.includes('mdcat full') || lower.includes('full mock')) {
-    return generateMDCATFullMockBank().map(shuffleQuestionOptions);
+    return generateMDCATFullMockBank(seenSet).map(shuffleQuestionOptions);
   }
 
   // TCAT Subjects & Chapters
   if (isTcat) {
     const tcatSub = (TCAT_PREBUILT_QUESTIONS[clean] ? clean : mapSubject(subjectName)) || clean;
-    return getTCATPrebuiltQuestions(tcatSub, 100, customTopic, chapterName, subtopic).map(shuffleQuestionOptions);
+    return getTCATPrebuiltQuestions(tcatSub, 100, customTopic, chapterName, subtopic, seenSet).map(shuffleQuestionOptions);
   }
 
   // MDCAT Subjects & Chapters
   if (isMdcat) {
     const mdcatSub = (MDCAT_PREBUILT_QUESTIONS[clean] ? clean : mapSubject(subjectName)) || clean;
-    return getMDCATPrebuiltQuestions(mdcatSub, 100, customTopic, chapterName, subtopic).map(shuffleQuestionOptions);
+    return getMDCATPrebuiltQuestions(mdcatSub, 100, customTopic, chapterName, subtopic, seenSet).map(shuffleQuestionOptions);
   }
 
   let pool: Question[] = [];
@@ -3597,12 +3603,19 @@ export function getPrebuiltQuestionsForSubject(
     );
 
     if (filteredPool.length > 0) {
-      // Return exclusively filtered questions — zero off-topic leakage!
-      return filteredPool.map(shuffleQuestionOptions);
+      // Prioritize unseen questions if seenSet is provided
+      const prioritized = seenSet.size > 0
+        ? selectPrioritizedQuestions(filteredPool, seenSet, filteredPool.length).selected
+        : filteredPool;
+      return deduplicateQuestions(prioritized.map(shuffleQuestionOptions));
     }
-    // Graceful fallback if no question matched the strict validator
-    return pool.map(shuffleQuestionOptions);
+    // If no questions match the specific subtopic/chapter, return empty array to prevent off-topic leakage
+    return [];
   }
 
-  return pool.map(shuffleQuestionOptions);
+  const prioritized = seenSet.size > 0
+    ? selectPrioritizedQuestions(pool, seenSet, pool.length).selected
+    : pool;
+
+  return deduplicateQuestions(prioritized.map(shuffleQuestionOptions));
 }

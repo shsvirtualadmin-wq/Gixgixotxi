@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { triggerHaptic, HAPTIC_PATTERNS } from '../lib/haptics';
 import { Question, UserAnswer, TestConfig } from '../types';
+import { deduplicateQuestions } from '../lib/shuffle';
 import { User, StudentProfile } from '../lib/supabase';
 import { SecurityWatermark } from './SecurityWatermark';
 import { downloadQuizPdf } from '../lib/pdfGenerator';
@@ -14,7 +15,8 @@ import {
   X,
   Download,
   ArrowRight,
-  Sparkles
+  Sparkles,
+  RefreshCw
 } from 'lucide-react';
 
 import { saveBookmark, removeBookmark } from '../lib/bookmarks';
@@ -107,12 +109,15 @@ export const TestScreen: React.FC<TestScreenProps> = React.memo(({
 
   const questionStartTimeRef = useRef<number>(Date.now());
 
-  const effectiveQuestions = (config?.questionCount && config.questionCount > 0 && questions.length > config.questionCount)
-    ? questions.slice(0, config.questionCount)
-    : questions;
+  const effectiveQuestions = useMemo(() => {
+    const deduped = deduplicateQuestions(questions);
+    return (config?.questionCount && config.questionCount > 0 && deduped.length > config.questionCount)
+      ? deduped.slice(0, config.questionCount)
+      : deduped;
+  }, [questions, config?.questionCount]);
 
   const currentQ = effectiveQuestions[currentIndex];
-  const targetTotalQ = config?.questionCount || effectiveQuestions.length || 10;
+  const targetTotalQ = config?.questionCount ? Math.min(config.questionCount, effectiveQuestions.length) : (effectiveQuestions.length || 10);
   const totalQ = Math.max(1, targetTotalQ);
   const currentAnswer = userAnswers[currentIndex];
   const isAnswered = Boolean(currentAnswer && currentAnswer.selectedOption !== null);
@@ -514,6 +519,13 @@ export const TestScreen: React.FC<TestScreenProps> = React.memo(({
               >
                 Dismiss
               </button>
+            </div>
+          )}
+
+          {config?.isReviewSet && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-900 text-xs font-medium">
+              <RefreshCw className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <span>{config.reviewNote || "You've seen all available questions for this topic — showing a mixed review set"}</span>
             </div>
           )}
         </div>

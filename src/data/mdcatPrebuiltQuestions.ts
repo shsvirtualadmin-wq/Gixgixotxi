@@ -1,4 +1,6 @@
 import { Question } from '../types';
+import { normalizeQuestionStem, deduplicateQuestions } from '../lib/shuffle';
+import { selectPrioritizedQuestions } from '../lib/seenQuestionsTracker';
 import { MDCAT_BIOLOGY_NEW_QUESTIONS } from './mdcatBiologyQuestions';
 import { MDCAT_BIOLOGY_BATCH2_PART1 } from './mdcatBiologyBatch2Part1';
 import { MDCAT_BIOLOGY_BATCH2_PART2 } from './mdcatBiologyBatch2Part2';
@@ -434,7 +436,8 @@ export function getMDCATPrebuiltQuestions(
   count: number = 10,
   topic?: string,
   chapterName?: string,
-  subtopic?: string
+  subtopic?: string,
+  seenStemsInput?: Set<string> | string[]
 ): Question[] {
   const normSub = Object.keys(MDCAT_PREBUILT_QUESTIONS).find(
     k => k.toLowerCase() === subject.toLowerCase()
@@ -483,47 +486,47 @@ export function getMDCATPrebuiltQuestions(
     targetPool = fullPool;
   }
 
-  const seenStems = new Set<string>();
+  const seenSet = seenStemsInput instanceof Set
+    ? seenStemsInput
+    : new Set(Array.isArray(seenStemsInput) ? seenStemsInput.map(s => normalizeQuestionStem(s)) : []);
+
+  // Prioritize unseen questions over seen questions
+  const prioritized = selectPrioritizedQuestions(targetPool, seenSet, count);
   const results: Question[] = [];
 
-  // Select unique questions from the strictly scoped pool
-  const shuffledTargetPool = [...targetPool].sort(() => 0.5 - Math.random());
-  for (const raw of shuffledTargetPool) {
-    if (results.length >= count) break;
-    const stem = (raw.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (!seenStems.has(stem)) {
-      seenStems.add(stem);
-      const itemWithShuffledOptions = shuffleOptionsAndFixCorrect(raw);
-      results.push({
-        ...itemWithShuffledOptions,
-        subject: normSub,
-        id: `mdcat-q-${normSub.toLowerCase().replace(/\s+/g, '-')}-${results.length + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
-      });
-    }
+  for (const raw of prioritized.selected) {
+    const itemWithShuffledOptions = shuffleOptionsAndFixCorrect(raw);
+    results.push({
+      ...itemWithShuffledOptions,
+      subject: normSub,
+      id: `mdcat-q-${normSub.toLowerCase().replace(/\s+/g, '-')}-${results.length + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
+    });
   }
 
   // If subtopic or chapter has fewer questions than requested count, we deliberately do NOT
   // pull random questions from unrelated chapters. Returning only authentic scoped questions
-  // guarantees 100% topic precision.
-
-  return results;
+  // guarantees 100% topic precision and zero duplicates.
+  return deduplicateQuestions(results);
 }
 
-export function generateMDCATFullMockBank(): Question[] {
+export function generateMDCATFullMockBank(seenStemsInput?: Set<string> | string[]): Question[] {
   // Official PMDC MDCAT Exam Structure: 180 MCQs total
   // 81 Biology (45%), 45 Chemistry (25%), 36 Physics (20%), 9 English (5%), 9 Logical Reasoning (5%)
   const seenStems = new Set<string>();
+  const studentSeen = seenStemsInput instanceof Set
+    ? seenStemsInput
+    : new Set(Array.isArray(seenStemsInput) ? seenStemsInput.map(s => normalizeQuestionStem(s)) : []);
 
   function selectUnique(subjectKey: string, targetCount: number): Question[] {
     const pool = MDCAT_PREBUILT_QUESTIONS[subjectKey] || [];
-    const shuffled = [...pool].sort(() => 0.5 - Math.random());
+    const prioritized = selectPrioritizedQuestions(pool, studentSeen, targetCount);
     const selected: Question[] = [];
 
-    for (const qItem of shuffled) {
-      if (selected.length >= targetCount) break;
-      const norm = (qItem.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (!seenStems.has(norm)) {
+    for (const qItem of prioritized.selected) {
+      const norm = normalizeQuestionStem(qItem.q || '');
+      if (norm && !seenStems.has(norm)) {
         seenStems.add(norm);
+        studentSeen.add(norm);
         const fixed = shuffleOptionsAndFixCorrect(qItem);
         selected.push({
           ...fixed,
@@ -531,19 +534,6 @@ export function generateMDCATFullMockBank(): Question[] {
           id: `mdcat-mock-${subjectKey.toLowerCase().replace(/\s+/g, '-')}-${selected.length + 1}-${Date.now()}`
         });
       }
-    }
-
-    // Top up safely if needed without duplicates
-    let loopIndex = 0;
-    while (selected.length < targetCount && pool.length > 0) {
-      const base = pool[loopIndex % pool.length];
-      const fixed = shuffleOptionsAndFixCorrect(base);
-      selected.push({
-        ...fixed,
-        subject: subjectKey,
-        id: `mdcat-mock-${subjectKey.toLowerCase().replace(/\s+/g, '-')}-topup-${selected.length + 1}-${Date.now()}`
-      });
-      loopIndex++;
     }
 
     return selected;

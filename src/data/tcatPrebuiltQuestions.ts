@@ -1,4 +1,6 @@
 import { Question } from '../types';
+import { normalizeQuestionStem, deduplicateQuestions } from '../lib/shuffle';
+import { selectPrioritizedQuestions } from '../lib/seenQuestionsTracker';
 import { TCAT_MATH_QUESTIONS } from './tcatMathQuestions';
 import { TCAT_PHYSICS_QUESTIONS } from './tcatPhysicsQuestions';
 import { TCAT_CHEMISTRY_QUESTIONS } from './tcatChemistryQuestions';
@@ -174,7 +176,8 @@ export function getTCATPrebuiltQuestions(
   count: number = 10,
   topic?: string,
   chapterName?: string,
-  subtopic?: string
+  subtopic?: string,
+  seenStemsInput?: Set<string> | string[]
 ): Question[] {
   const normSub = Object.keys(TCAT_PREBUILT_QUESTIONS).find(
     (k) => k.toLowerCase() === subject.toLowerCase()
@@ -222,27 +225,25 @@ export function getTCATPrebuiltQuestions(
     targetPool = fullPool;
   }
 
-  const seenStems = new Set<string>();
+  const seenSet = seenStemsInput instanceof Set
+    ? seenStemsInput
+    : new Set(Array.isArray(seenStemsInput) ? seenStemsInput.map(s => normalizeQuestionStem(s)) : []);
+
+  // Prioritize unseen questions over seen questions
+  const prioritized = selectPrioritizedQuestions(targetPool, seenSet, count);
   const results: Question[] = [];
 
-  // Select unique questions from the strictly scoped pool
-  const shuffledTargetPool = [...targetPool].sort(() => 0.5 - Math.random());
-  for (const raw of shuffledTargetPool) {
-    if (results.length >= count) break;
-    const stem = (raw.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (!seenStems.has(stem)) {
-      seenStems.add(stem);
-      const itemWithShuffledOptions = shuffleOptionsAndFixCorrect(raw);
-      results.push({
-        ...itemWithShuffledOptions,
-        subject: normSub,
-        id: `tcat-q-${normSub.toLowerCase().replace(/\s+/g, '-')}-${results.length + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      });
-    }
+  for (const raw of prioritized.selected) {
+    const itemWithShuffledOptions = shuffleOptionsAndFixCorrect(raw);
+    results.push({
+      ...itemWithShuffledOptions,
+      subject: normSub,
+      id: `tcat-q-${normSub.toLowerCase().replace(/\s+/g, '-')}-${results.length + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    });
   }
 
-  // Never pad from outside this chapter/subtopic pool to guarantee 100% topic precision
-  return results;
+  // Never pad from outside this chapter/subtopic pool to guarantee 100% topic precision and zero duplicates
+  return deduplicateQuestions(results);
 }
 
 /**
@@ -255,7 +256,10 @@ export function getTCATPrebuiltQuestions(
  * - Statistics & Physics: Mathematics (30), Statistics (30), Physics (30), English (10)
  * Total: exactly 100 MCQs, zero duplicate questions within the test, zero placeholder questions.
  */
-export function generateTCATFullMockBank(groupSubjects?: string[] | string): Question[] {
+export function generateTCATFullMockBank(
+  groupSubjects?: string[] | string,
+  seenStemsInput?: Set<string> | string[]
+): Question[] {
   let sub1 = 'Mathematics';
   let sub2 = 'Physics';
   let sub3 = 'Chemistry';
@@ -286,69 +290,24 @@ export function generateTCATFullMockBank(groupSubjects?: string[] | string): Que
   }
 
   const seenStems = new Set<string>();
+  const studentSeen = seenStemsInput instanceof Set
+    ? seenStemsInput
+    : new Set(Array.isArray(seenStemsInput) ? seenStemsInput.map(s => normalizeQuestionStem(s)) : []);
 
   function selectProportional(subjectKey: string, targetCount: number): Question[] {
     const pool = TCAT_PREBUILT_QUESTIONS[subjectKey] || TCAT_PREBUILT_QUESTIONS['Mathematics'] || [];
     if (pool.length === 0) return [];
 
-    // Group questions by chapter topic for even representation
-    const chapterMap = new Map<string, Question[]>();
-    for (const q of pool) {
-      const ch = q.topic || 'General';
-      if (!chapterMap.has(ch)) {
-        chapterMap.set(ch, []);
-      }
-      chapterMap.get(ch)!.push(q);
-    }
-
-    // Shuffle within each chapter
-    for (const [, list] of chapterMap) {
-      list.sort(() => 0.5 - Math.random());
-    }
-
-    const chapters = Array.from(chapterMap.keys()).sort(() => 0.5 - Math.random());
+    // Prioritize unseen questions for this student
+    const prioritized = selectPrioritizedQuestions(pool, studentSeen, targetCount);
     const selected: Question[] = [];
 
-    // Round-robin selection across chapters to guarantee all chapters are represented
-    let chIdx = 0;
-    let attempts = 0;
-    const maxAttempts = pool.length * 3;
-
-    while (selected.length < targetCount && attempts < maxAttempts) {
-      attempts++;
-      const currentChapter = chapters[chIdx % chapters.length];
-      const chQuestions = chapterMap.get(currentChapter) || [];
-
-      for (let i = 0; i < chQuestions.length; i++) {
-        const candidate = chQuestions[i];
-        const norm = candidate.q.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (!seenStems.has(norm)) {
-          seenStems.add(norm);
-          chQuestions.splice(i, 1); // remove so it's not picked again
-          const fixed = shuffleOptionsAndFixCorrect(candidate);
-          selected.push({
-            ...fixed,
-            subject: subjectKey,
-            id: `tcat-mock-${subjectKey.toLowerCase().replace(/\s+/g, '-')}-${selected.length + 1}-${Date.now()}`
-          });
-          break;
-        }
-      }
-      chIdx++;
-    }
-
-    // Top up with unpicked unique questions from pool if targetCount not yet reached
-    if (selected.length < targetCount) {
-      const remaining = pool.filter(q => {
-        const norm = (q.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-        return !seenStems.has(norm);
-      }).sort(() => 0.5 - Math.random());
-
-      for (const candidate of remaining) {
-        if (selected.length >= targetCount) break;
-        const norm = (candidate.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    for (const raw of prioritized.selected) {
+      const norm = normalizeQuestionStem(raw.q || '');
+      if (norm && !seenStems.has(norm)) {
         seenStems.add(norm);
-        const fixed = shuffleOptionsAndFixCorrect(candidate);
+        studentSeen.add(norm);
+        const fixed = shuffleOptionsAndFixCorrect(raw);
         selected.push({
           ...fixed,
           subject: subjectKey,
