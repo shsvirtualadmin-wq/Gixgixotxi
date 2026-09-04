@@ -1068,6 +1068,7 @@ export async function saveTestToSupabase(
   }
 
   // 1. Primary Save: Call server API /api/save-test-result
+  let serverSaved = false;
   try {
     const apiRes = await apiFetch('/api/save-test-result', {
       method: 'POST',
@@ -1087,15 +1088,16 @@ export async function saveTestToSupabase(
       }),
     });
     const apiData = await safeJsonResponse(apiRes);
-    if (apiData) {
+    if (apiData?.success) {
+      serverSaved = true;
       console.log('[saveTestToSupabase API response]:', apiData);
     }
   } catch (apiErr) {
     console.warn('Failed to call /api/save-test-result:', apiErr);
   }
 
-  // 2. Client-side direct Supabase save if configured & user authenticated
-  if (isSupabaseConfigured) {
+  // 2. Client-side fallback save ONLY if server API failed/offline (prevents duplicate test_results rows)
+  if (!serverSaved && isSupabaseConfigured) {
     try {
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       const validUid = uuidRegex.test(uid) ? uid : null;
@@ -1117,7 +1119,7 @@ export async function saveTestToSupabase(
         });
 
         if (insertErr) {
-          console.warn('[saveTestToSupabase client insert error]:', insertErr.message);
+          console.warn('[saveTestToSupabase client fallback insert error]:', insertErr.message);
         }
       }
 
@@ -1136,11 +1138,11 @@ export async function saveTestToSupabase(
         }));
         const { error: mcqErr } = await supabase.from('mcq_attempts').insert(rowsToInsert);
         if (mcqErr) {
-          console.warn('[saveTestToSupabase client mcq_attempts insert warning]:', mcqErr.message);
+          console.warn('[saveTestToSupabase client mcq_attempts fallback warning]:', mcqErr.message);
         }
       }
     } catch (err) {
-      console.warn('Failed direct client Supabase insert in saveTestToSupabase:', err);
+      console.warn('Failed direct client Supabase fallback insert in saveTestToSupabase:', err);
     }
   }
 }

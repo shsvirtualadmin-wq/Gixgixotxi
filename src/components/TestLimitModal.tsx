@@ -19,7 +19,8 @@ export const TestLimitModal: React.FC<TestLimitModalProps> = ({
   onUpgradeClick,
   onSubmitPaymentProofClick,
 }) => {
-  if (!isOpen) return null;
+  // Never render the limit modal if user has completed fewer than 2 tests
+  if (!isOpen || currentUsage < 2) return null;
 
   const calculatedResetDate = resetDate || (() => {
     const d = new Date();

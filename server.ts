@@ -418,7 +418,7 @@ async function getStudentMonthlyTestCount(userId: string, userEmail: string | un
     if (authClient) {
       let query = authClient
         .from("test_results")
-        .select("id", { count: "exact", head: true })
+        .select("id, created_at")
         .gte("created_at", startOfMonthIso);
 
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -433,9 +433,22 @@ async function getStudentMonthlyTestCount(userId: string, userEmail: string | un
         query = query.ilike("student_email", cleanEmail);
       }
 
-      const { count, error } = await query;
-      if (!error && typeof count === 'number') {
-        dbTestCount = count;
+      const { data: testRows, error } = await query;
+      if (!error && Array.isArray(testRows)) {
+        // Deduplicate rows with identical/near-identical timestamps (accidental double-inserts within 5s)
+        const sorted = testRows
+          .map(r => new Date(r.created_at).getTime())
+          .filter(t => !isNaN(t))
+          .sort((a, b) => a - b);
+        let uniqueCount = 0;
+        let lastTime = 0;
+        for (const t of sorted) {
+          if (t - lastTime > 5000) {
+            uniqueCount++;
+            lastTime = t;
+          }
+        }
+        dbTestCount = uniqueCount;
       } else if (error) {
         console.warn("[getStudentMonthlyTestCount] Supabase test_results query warning:", error.message);
       }
@@ -461,33 +474,30 @@ async function getStudentMonthlyTestCount(userId: string, userEmail: string | un
   const recordedAttempts = isRealUser ? (inMemoryTestAttemptStore[period]?.[userId] || 0) : 0;
   const recordedAttemptsEmail = cleanEmail ? (inMemoryTestAttemptStore[period]?.[cleanEmail] || 0) : 0;
 
-  return Math.max(dbTestCount, studentDbTestsUsed, recordedAttempts, recordedAttemptsEmail);
+  const inMemoryCompletedCount = inMemoryTestResults.filter(r => {
+    const matchesUser = (isRealUser && r.student_id === userId) || (cleanEmail && r.student_email?.toLowerCase() === cleanEmail);
+    if (!matchesUser) return false;
+    const rDate = new Date(r.created_at);
+    return !isNaN(rDate.getTime()) && rDate >= new Date(startOfMonthIso);
+  }).length;
+
+  return Math.max(dbTestCount, studentDbTestsUsed, recordedAttempts, recordedAttemptsEmail, inMemoryCompletedCount);
 }
 
 function recordStudentTestStart(userId: string, userEmail: string | undefined): number {
+  // Tests are counted towards the monthly quota strictly upon completion in /api/save-test-result
   const period = getCurrentMonthPeriod();
-  if (!inMemoryTestAttemptStore[period]) {
-    inMemoryTestAttemptStore[period] = {};
-  }
   const cleanEmail = userEmail ? userEmail.trim().toLowerCase() : null;
   const isRealUser = Boolean(userId && userId !== "guest");
 
   let current = 0;
-  if (isRealUser && inMemoryTestAttemptStore[period][userId]) {
+  if (isRealUser && inMemoryTestAttemptStore[period]?.[userId]) {
     current = Math.max(current, inMemoryTestAttemptStore[period][userId]);
   }
-  if (cleanEmail && inMemoryTestAttemptStore[period][cleanEmail]) {
+  if (cleanEmail && inMemoryTestAttemptStore[period]?.[cleanEmail]) {
     current = Math.max(current, inMemoryTestAttemptStore[period][cleanEmail]);
   }
-
-  const updated = current + 1;
-  if (isRealUser) {
-    inMemoryTestAttemptStore[period][userId] = updated;
-  }
-  if (cleanEmail) {
-    inMemoryTestAttemptStore[period][cleanEmail] = updated;
-  }
-  return updated;
+  return current;
 }
 
 async function getStudentMonthlyUsage(userId: string, userEmail: string | undefined, req: express.Request | null): Promise<number> {
@@ -4468,6 +4478,21 @@ ${scopeInstruction}${excludeInstruction}`;
       inMemoryTestResults.unshift(newResultItem);
       if (inMemoryTestResults.length > 500) {
         inMemoryTestResults.pop();
+      }
+
+      // Authoritative in-memory tracking upon test completion
+      const currentPeriod = getCurrentMonthPeriod();
+      if (!inMemoryTestAttemptStore[currentPeriod]) {
+        inMemoryTestAttemptStore[currentPeriod] = {};
+      }
+      if (studentId && studentId !== "guest") {
+        const prevCount = inMemoryTestAttemptStore[currentPeriod][studentId] || 0;
+        inMemoryTestAttemptStore[currentPeriod][studentId] = prevCount + 1;
+      }
+      if (studentEmail) {
+        const cleanEmail = studentEmail.trim().toLowerCase();
+        const prevEmailCount = inMemoryTestAttemptStore[currentPeriod][cleanEmail] || 0;
+        inMemoryTestAttemptStore[currentPeriod][cleanEmail] = prevEmailCount + 1;
       }
 
       let supabaseSuccess = false;

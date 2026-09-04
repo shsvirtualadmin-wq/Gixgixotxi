@@ -88,8 +88,13 @@ export const ModalProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     setPaymentOverrides({});
   }, []);
 
-  const openTestLimitModal = useCallback((resetDate = '', currentUsage = 0) => {
-    setTestLimitData({ resetDate, currentUsage });
+  const openTestLimitModal = useCallback((resetDate = '', currentUsage = 2) => {
+    // Defense-in-depth: Never open test limit modal if student has completed fewer than 2 tests
+    if (typeof currentUsage === 'number' && currentUsage < 2) {
+      console.warn(`[openTestLimitModal suppressed]: Student has completed ${currentUsage}/2 tests. Limit not reached.`);
+      return;
+    }
+    setTestLimitData({ resetDate, currentUsage: Math.max(currentUsage, 2) });
     setShowTestLimitModal(true);
   }, []);
   const closeTestLimitModal = useCallback(() => setShowTestLimitModal(false), []);

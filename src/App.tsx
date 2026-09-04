@@ -2438,7 +2438,8 @@ export function App() {
         }
         const resetDate = startData?.resetDate || testLimitResetDate;
         if (startData?.resetDate) setTestLimitResetDate(startData.resetDate);
-        openTestLimitModal(resetDate, currentMonthlyTestCount);
+        const usageToPass = Math.max(currentMonthlyTestCount, startData?.currentUsage ?? 0);
+        openTestLimitModal(resetDate, usageToPass);
         return;
       }
 
@@ -2449,11 +2450,7 @@ export function App() {
       console.warn('[executeStartTest start-test-session call warning]:', startErr);
     }
 
-    // Update local counter immediately for non-Pro students
-    if (!isPaymentApprovedOrExempt) {
-      setMcqUsageCount((prev) => Math.max(prev + 1, 1));
-    }
-
+    // Note: Completed test count is tracked only upon completion in handleFinishTest, not on start
     isExitingTestRef.current = false;
     setActiveTestSessionId(activeSessionId);
     setActiveQuestions(readyQuestions);
@@ -2554,11 +2551,12 @@ export function App() {
           setScreen('auth');
           return;
         }
-        if (!checkRes.ok || checkData?.allowed === false || checkData?.limitExceeded) {
+        if (checkRes.status === 403 && (checkData?.limitExceeded === true || checkData?.allowed === false)) {
           setIsGenerating(false);
           const resetDate = checkData?.resetDate || testLimitResetDate;
           if (checkData?.resetDate) setTestLimitResetDate(checkData.resetDate);
-          openTestLimitModal(resetDate, currentMonthlyTestCount);
+          const usageToPass = Math.max(currentMonthlyTestCount, checkData?.currentUsage ?? 0);
+          openTestLimitModal(resetDate, usageToPass);
           return;
         }
       } catch (checkErr) {
