@@ -1,5 +1,5 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { RefreshCw, Sparkles, AlertCircle } from 'lucide-react';
+import { Sparkles, LayoutDashboard } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
@@ -39,30 +39,11 @@ export class ChunkErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('[ChunkErrorBoundary caught error]:', error, errorInfo);
-
-    const msg = error?.message || '';
-    const isChunk =
-      msg.includes('Failed to fetch dynamically imported module') ||
-      msg.includes('Loading chunk') ||
-      msg.includes('dynamically imported module') ||
-      error?.name === 'ChunkLoadError';
-
-    if (isChunk) {
-      const lastReload = sessionStorage.getItem('global_chunk_error_reload');
-      const now = Date.now();
-
-      // Perform a one-time automated page reload if not performed in the last 20 seconds
-      if (!lastReload || now - Number(lastReload) > 20000) {
-        sessionStorage.setItem('global_chunk_error_reload', String(now));
-        console.log('[ChunkErrorBoundary] Reloading application to pull updated deployment assets...');
-        window.location.reload();
-      }
-    }
   }
 
-  handleManualReload = () => {
-    sessionStorage.removeItem('global_chunk_error_reload');
-    window.location.reload();
+  handleGoToDashboard = () => {
+    this.setState({ hasError: false, isChunkError: false, errorMessage: '' });
+    window.location.href = '/?screen=dashboard';
   };
 
   render() {
@@ -80,21 +61,19 @@ export class ChunkErrorBoundary extends Component<Props, State> {
 
             <div className="space-y-2">
               <h3 className="text-xl font-bold text-slate-900">
-                {this.state.isChunkError ? 'New Version Available' : 'Something went wrong'}
+                Ready to Continue
               </h3>
               <p className="text-sm text-slate-500 leading-relaxed">
-                {this.state.isChunkError
-                  ? 'A new update was just deployed. Please refresh to load the latest version.'
-                  : 'An error occurred while displaying this screen.'}
+                We encountered a brief transition issue. Let's return to your dashboard to continue practicing.
               </p>
             </div>
 
             <button
-              onClick={this.handleManualReload}
+              onClick={this.handleGoToDashboard}
               className="w-full py-3.5 px-6 bg-[#1E5AFF] hover:bg-blue-700 text-white font-bold rounded-2xl shadow-lg shadow-blue-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer active:scale-98"
             >
-              <RefreshCw className="w-4 h-4" />
-              <span>Refresh Application</span>
+              <LayoutDashboard className="w-4 h-4" />
+              <span>Continue to Dashboard</span>
             </button>
           </div>
         </div>
@@ -104,3 +83,4 @@ export class ChunkErrorBoundary extends Component<Props, State> {
     return this.props.children;
   }
 }
+

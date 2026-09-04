@@ -67,6 +67,9 @@ const PlanSelectionScreen = lazyWithRetry(() => import('./components/PlanSelecti
 const PricingPage = lazyWithRetry(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })), 'Pricing');
 const StudentProfileView = lazyWithRetry(() => import('./components/StudentProfileView').then(m => ({ default: m.StudentProfileView })), 'StudentProfileView');
 
+import { preloadStudentCoreScreens, preloadAllAppScreens, preloadAdminScreen } from './lib/preloader';
+import { prefetchAdminDashboardData } from './components/AdminDashboardScreen';
+
 import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
@@ -578,27 +581,22 @@ export function App() {
   });
 
   const [profileSyncing, setProfileSyncing] = useState<boolean>(false);
-  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [authLoading, setAuthLoading] = useState<boolean>(() => !userProfile);
   const [authTimedOut, setAuthTimedOut] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Hard timeout (8-10s) on loading state to prevent infinite spinning
+  // Preload screen chunks immediately so any student or admin navigation takes 0-1 seconds
   useEffect(() => {
-    const masterTimeout = setTimeout(() => {
-      setAuthLoading((prevLoading) => {
-        setProfileSyncing((prevSyncing) => {
-          if (prevLoading || prevSyncing) {
-            console.warn('[Loading Guard] Overall loading state exceeded 8.5s threshold. Forcing retry/error state.');
-            setAuthTimedOut(true);
-            return false;
-          }
-          return prevSyncing;
-        });
-        return false;
-      });
-    }, 8500);
+    preloadStudentCoreScreens();
+    preloadAllAppScreens();
 
-    return () => clearTimeout(masterTimeout);
+    // Fast-unblock safety guard (1.5s max): guarantees instant access without blocking loaders
+    const fastLoadGuard = setTimeout(() => {
+      setAuthLoading(false);
+      setProfileSyncing(false);
+    }, 1500);
+
+    return () => clearTimeout(fastLoadGuard);
   }, []);
 
   const handleRetryAuth = useCallback(async () => {
@@ -1512,6 +1510,12 @@ export function App() {
     const processAuthUser = async (user: User, sourceEvent: string) => {
       const isUserAdmin = Boolean(user.email && isAdminEmail(user.email));
 
+      // If user is admin, preload admin chunk and prefetch data immediately in background
+      if (isUserAdmin) {
+        preloadAdminScreen();
+        prefetchAdminDashboardData(user.email || '');
+      }
+
       // 1. Run profile sync FIRST so that new users (Google OAuth or Email) get created in 'students' table
       if (!userProfile) {
         setProfileSyncing(true);
@@ -1631,14 +1635,12 @@ export function App() {
       };
     }
 
-    // 1. Initial Session Check on app load with explicit safety timeout (3500ms max)
+    // 1. Initial Session Check on app load with fast safety timeout (1500ms max)
     let splashTimeoutTimer: any = setTimeout(() => {
       if (!isSubscribed) return;
-      console.warn('[Splash Screen Safety Timeout] Initial session check exceeded threshold. Releasing splash lock to allow user recovery.');
-      setAuthTimedOut(true);
       setAuthLoading(false);
       setProfileSyncing(false);
-    }, 3500);
+    }, 1500);
 
     withTimeout(
       supabase.auth.getSession(),
@@ -2865,67 +2867,9 @@ export function App() {
   const displayName = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0];
 
   const showSplash =
-    authLoading ||
-    (profileSyncing && (!userProfile || !userProfile.is_registered)) ||
-    (authTimedOut && !currentUser && !userProfile);
+    authLoading && !userProfile && !currentUser;
 
   if (showSplash) {
-    if (authTimedOut || authError) {
-      return (
-        <div className="min-h-dvh h-dvh sm:min-h-screen bg-[#F8F9FB] text-slate-900 flex flex-col items-center justify-center p-4 relative">
-          <div className="rounded-2xl p-6 sm:p-8 max-w-sm w-full flex flex-col items-center gap-4 text-center shadow-lg border border-slate-200 bg-white">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-
-            <div className="space-y-1.5">
-              <h3 className="font-['Space_Grotesk'] font-bold text-base text-slate-900">
-                Connection Taking Longer Than Usual
-              </h3>
-              <p className="text-xs text-slate-500 leading-relaxed max-w-xs">
-                {authError || "We're having trouble contacting authentication servers or loading your profile. You can retry connection or continue directly to the dashboard."}
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 w-full pt-2">
-              <button
-                onClick={handleRetryAuth}
-                className="w-full py-2.5 px-4 bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-bold rounded-xl text-xs shadow-sm active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span>Retry Connection</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setAuthTimedOut(false);
-                  setAuthLoading(false);
-                  setProfileSyncing(false);
-                  setScreen('dashboard');
-                }}
-                className="w-full py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span>Continue to Dashboard</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={() => {
-                  setAuthTimedOut(false);
-                  setAuthLoading(false);
-                  setProfileSyncing(false);
-                  setScreen('auth');
-                }}
-                className="text-[11px] font-semibold text-[#1E5AFF] hover:underline pt-1 cursor-pointer"
-              >
-                Sign In with Email / Password
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
     return (
       <BrandedLoadingSpinner
         fullScreen
@@ -3107,7 +3051,14 @@ export function App() {
               </div>
             ) : (
               <ChunkErrorBoundary>
-                <React.Suspense fallback={null}>
+                <React.Suspense
+                  fallback={
+                    <div className="flex-1 min-h-[50vh] flex flex-col items-center justify-center py-16 px-4 animate-fadeIn">
+                      <div className="w-8 h-8 rounded-full border-3 border-slate-200 border-t-[#1E5AFF] animate-spin mb-2" />
+                      <span className="text-[11px] font-semibold text-slate-400">Opening view...</span>
+                    </div>
+                  }
+                >
                 {(screen === 'intro' || screen === 'dashboard' || screen === 'stats') && (
                   !currentUser ? (
                     <IntroScreen
