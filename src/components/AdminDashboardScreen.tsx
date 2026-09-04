@@ -30,7 +30,6 @@ import {
 } from '../lib/supabase';
 import { getPrebuiltQuestionsForSubject } from '../data/prebuiltQuestions';
 import { BrandedLoadingSpinner } from './BrandedLoadingSpinner';
-import { AdminBulkMcqImportTab } from './AdminBulkMcqImportTab';
 import {
   ShieldCheck,
   Search,
@@ -86,20 +85,8 @@ import {
 
 interface AdminDashboardScreenProps {
   currentUser: User | null;
-  initialTab?: 'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress' | 'study_buddy' | 'audit' | 'bulk_import';
+  initialTab?: 'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress';
   onBack: () => void;
-}
-
-export interface AuditResultItem {
-  id: string;
-  subject: string;
-  topic: string;
-  questionText: string;
-  options: string[];
-  correctIndex: number;
-  status: 'clean' | 'flagged';
-  issues: string[];
-  source: string;
 }
 
 export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.memo(({
@@ -107,7 +94,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
   initialTab = 'students',
   onBack,
 }) => {
-  const [activeTab, setActiveTab] = useState<'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress' | 'study_buddy' | 'audit' | 'bulk_import'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress'>(initialTab);
 
   useEffect(() => {
     if (initialTab) {
@@ -155,15 +142,13 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
   const [progressSubjectFilter, setProgressSubjectFilter] = useState<string>('All');
   const [selectedStudentForProgress, setSelectedStudentForProgress] = useState<StudentProfile | null>(null);
   const [studentWeaknessProfiles, setStudentWeaknessProfiles] = useState<StudentWeaknessProfileData[]>([]);
-
-  // MCQ Audit State
-  const [auditSubjectFilter, setAuditSubjectFilter] = useState<string>('All');
-  const [auditStatusFilter, setAuditStatusFilter] = useState<'all' | 'flagged' | 'clean'>('all');
-  const [isAuditing, setIsAuditing] = useState<boolean>(false);
-  const [auditResults, setAuditResults] = useState<AuditResultItem[]>([]);
-  const [dismissedFlagIds, setDismissedFlagIds] = useState<string[]>([]);
-  const [sanitizedCount, setSanitizedCount] = useState<number>(0);
   const [avatarLoadError, setAvatarLoadError] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!selectedStudentForProgress && students.length > 0) {
+      setSelectedStudentForProgress(students[0]);
+    }
+  }, [students, selectedStudentForProgress]);
 
   // Admin Override state for student class/stream
   const [editStudentGrade, setEditStudentGrade] = useState<string>('');
@@ -657,114 +642,9 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
     }
   };
 
-  const runCrossReferenceAudit = () => {
-    setIsAuditing(true);
-
-    const auditSubjects = [
-      'Physics',
-      'Chemistry',
-      'Biology',
-      'Mathematics',
-      'Computer Science',
-      'English',
-      'Urdu',
-      'Pakistan Studies',
-      'Islamic Studies',
-    ];
-
-    const results: AuditResultItem[] = [];
-
-    auditSubjects.forEach((subKey) => {
-      const questions = getPrebuiltQuestionsForSubject(subKey);
-
-      questions.forEach((q, idx) => {
-        const issues: string[] = [];
-        const qText = q.q || '';
-        const qLower = qText.toLowerCase();
-
-        // 1. Cross-Subject Mismatch check
-        const isHumanitiesOrLanguage = ['Urdu', 'English', 'Pakistan Studies', 'Islamic Studies'].includes(subKey);
-        const hasPhysicsOrStemKeywords =
-          qLower.includes('vector quantity') ||
-          qLower.includes('classical mechanics') ||
-          qLower.includes("newton's") ||
-          qLower.includes('harmonic motion') ||
-          qLower.includes('magnetic flux') ||
-          qLower.includes('capacitance') ||
-          qLower.includes('mitochondria') ||
-          qLower.includes('derivative');
-
-        if (isHumanitiesOrLanguage && hasPhysicsOrStemKeywords) {
-          issues.push(`Subject Mismatch: STEM/Physics formula question found under ${subKey} subject tag.`);
-        }
-
-        const isStemSubject = ['Physics', 'Chemistry', 'Biology', 'Mathematics'].includes(subKey);
-        const hasUrduLiteratureKeywords =
-          qText.includes('مسدسِ حالی') || qText.includes('اسم نکرہ') || qText.includes('صاحبِ دیوان');
-
-        if (isStemSubject && hasUrduLiteratureKeywords) {
-          issues.push(`Subject Mismatch: Urdu language question tagged under STEM subject ${subKey}.`);
-        }
-
-        // 2. Choice & Index validation
-        if (!q.options || !Array.isArray(q.options) || q.options.length !== 4) {
-          issues.push(`Option Count Error: Expected 4 choices, found ${q.options?.length || 0}.`);
-        }
-
-        if (typeof q.correct !== 'number' || q.correct < 0 || q.correct > 3) {
-          issues.push(`Answer Index Error: Correct answer index (${q.correct}) is out of bounds (0-3).`);
-        }
-
-        // 3. Question length / stem check
-        if (!qText || qText.trim().length < 8) {
-          issues.push(`Question Stem Incomplete: Question text is empty or too short.`);
-        }
-
-        results.push({
-          id: q.id || `audit-q-${subKey}-${idx + 1}`,
-          subject: subKey,
-          topic: q.topic || 'General Curriculum',
-          questionText: qText,
-          options: q.options || [],
-          correctIndex: q.correct ?? 0,
-          status: issues.length > 0 ? 'flagged' : 'clean',
-          issues,
-          source: 'Prebuilt MCQ Bank',
-        });
-      });
-    });
-
-    setAuditResults(results);
-    setTimeout(() => {
-      setIsAuditing(false);
-    }, 300);
-  };
-
   useEffect(() => {
     loadData();
-    runCrossReferenceAudit();
   }, [isAdmin]);
-
-  const handleSanitizeAllMismatches = () => {
-    const flaggedIds = auditResults.filter((r) => r.status === 'flagged').map((r) => r.id);
-    setDismissedFlagIds((prev) => Array.from(new Set([...prev, ...flaggedIds])));
-    setSanitizedCount((prev) => prev + flaggedIds.length);
-  };
-
-  const handleExportAuditCSV = () => {
-    if (auditResults.length === 0) return;
-    const headers = ['Question ID', 'Subject', 'Topic', 'Audit Status', 'Detected Issues', 'Question Text'];
-    const rows = auditResults.map((r) => [
-      `"${r.id}"`,
-      `"${r.subject}"`,
-      `"${r.topic.replace(/"/g, '""')}"`,
-      `"${r.status.toUpperCase()}"`,
-      `"${r.issues.join(' | ').replace(/"/g, '""')}"`,
-      `"${r.questionText.replace(/"/g, '""')}"`,
-    ]);
-    const csvContent = [headers.join(','), ...rows.map((row) => row.join(','))].join('\n');
-    downloadCSV(csvContent, `MCQ_CrossReference_Audit_${Date.now()}.csv`);
-  };
 
   const handleExportStudentsCSV = () => {
     if (students.length === 0) return;
@@ -800,20 +680,6 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
     ]);
     const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
     downloadCSV(csvContent, `Boardly_Test_Results_${Date.now()}.csv`);
-  };
-
-  const handleExportStudyBuddyCSV = () => {
-    if (allStudyBuddyHistory.length === 0) return;
-    const headers = ['Log ID', 'Student ID', 'Role', 'Message Text', 'Timestamp'];
-    const rows = allStudyBuddyHistory.map((m) => [
-      `"${m.id}"`,
-      `"${m.student_id}"`,
-      `"${m.role.toUpperCase()}"`,
-      `"${m.message_text.replace(/"/g, '""')}"`,
-      `"${new Date(m.created_at).toLocaleString()}"`,
-    ]);
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    downloadCSV(csvContent, `Boardly_AI_StudyBuddy_Logs_${Date.now()}.csv`);
   };
 
   const downloadCSV = (content: string, filename: string) => {
@@ -951,7 +817,13 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
   };
 
   const calculateSubjectProgress = (studentId: string) => {
-    const studentTests = allTestResults.filter((t) => t.student_id === studentId);
+    const student = students.find((s) => s.id === studentId);
+    const studentTests = allTestResults.filter(
+      (t) =>
+        t.student_id === studentId ||
+        (student?.email && t.student_email && t.student_email.toLowerCase() === student.email.toLowerCase()) ||
+        (student?.email && t.student_id && t.student_id.toLowerCase() === student.email.toLowerCase())
+    );
     const standardSubjects = [
       'Physics',
       'Chemistry',
@@ -1155,10 +1027,6 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
     totalTests > 0
       ? Math.round((allTestResults.filter((t) => t.percentage >= 50).length / totalTests) * 100)
       : 0;
-
-  const activeAuditCount = auditResults.filter(
-    (r) => r.status === 'flagged' && !dismissedFlagIds.includes(r.id)
-  ).length;
 
   // Google account profile picture from admin login credentials
   const adminStudentProfile = students.find(
@@ -1371,27 +1239,9 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
               label: 'Progress',
               icon: BarChart2,
             },
-            {
-              value: 'study_buddy',
-              label: 'AI Logs',
-              icon: Bot,
-              badge: allStudyBuddyHistory.length,
-            },
-            {
-              value: 'audit',
-              label: 'MCQ Audit',
-              icon: ListChecks,
-              badge: activeAuditCount > 0 ? activeAuditCount : undefined,
-              badgeClassName: activeAuditCount > 0 ? 'bg-rose-500 text-white animate-pulse' : undefined,
-            },
-            {
-              value: 'bulk_import',
-              label: 'Bulk Import',
-              icon: UploadCloud,
-            },
           ]}
           value={activeTab}
-          onChange={(tab) => setActiveTab(tab)}
+          onChange={(tab) => setActiveTab(tab as any)}
           theme="light"
           size="md"
           className="w-full shadow-sm"
@@ -1769,7 +1619,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
               <table className="w-full text-left text-xs text-slate-700 ">
                 <thead className="bg-slate-50  border-b border-slate-200  text-[11px] font-black uppercase text-slate-500 ">
                   <tr>
-                    <th className="px-4 py-3">Student ID</th>
+                    <th className="px-4 py-3">Student</th>
                     <th className="px-4 py-3">Subject</th>
                     <th className="px-4 py-3">Class / Path</th>
                     <th className="px-4 py-3">Score</th>
@@ -1789,8 +1639,26 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                   ) : (
                     filteredTests.map((test) => (
                       <tr key={test.id} className="hover:bg-slate-50  transition-all">
-                        <td className="px-4 py-3 font-mono text-[11px] text-slate-500 ">
-                          {test.student_id.substring(0, 12)}...
+                        <td className="px-4 py-3">
+                          {(() => {
+                            const student = students.find(
+                              (s) =>
+                                s.id === test.student_id ||
+                                (test.student_email && s.email && s.email.toLowerCase() === test.student_email.toLowerCase())
+                            );
+                            const name = test.student_name || student?.name;
+                            const email = test.student_email || student?.email;
+                            return (
+                              <div>
+                                <div className="font-bold text-slate-900 text-xs">
+                                  {name || `Student ${test.student_id.substring(0, 8)}`}
+                                </div>
+                                <div className="font-mono text-[10px] text-slate-400">
+                                  {email || test.student_id}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td className="px-4 py-3 font-bold text-slate-900 ">
                           {test.subject}
@@ -1945,161 +1813,6 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
             })()
           )}
         </div>
-      )}
-
-      {/* TAB CONTENT 4: AI STUDY BUDDY CHAT LOGS */}
-      {activeTab === 'study_buddy' && (
-        <div className="space-y-4">
-          <div className="bg-white/80  border border-slate-200  rounded-2xl p-4 shadow-lg flex flex-col md:flex-row items-center justify-between gap-3">
-            <div className="relative w-full md:w-80">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={studyBuddySearch}
-                onChange={(e) => setStudyBuddySearch(e.target.value)}
-                placeholder="Search AI Study Buddy messages..."
-                className="w-full bg-slate-100  border border-slate-200  rounded-xl pl-9 pr-8 py-2 text-xs text-slate-900  placeholder-slate-400 focus:outline-none"
-              />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleExportStudyBuddyCSV}
-              className="px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-md"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export AI Chat Logs CSV</span>
-            </button>
-          </div>
-
-          <div className="bg-white/80  border border-slate-200  rounded-2xl p-4 shadow-lg space-y-3">
-            {filteredStudyBuddyHistory.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 font-medium">
-                No AI Study Buddy chat logs found.
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-[600px] overflow-y-auto pr-1">
-                {filteredStudyBuddyHistory.map((msg) => {
-                  const isUser = msg.role === 'user';
-                  const student = students.find((s) => s.id === msg.student_id);
-
-                  return (
-                    <div
-                      key={msg.id}
-                      className={`p-3.5 rounded-2xl border text-xs space-y-1.5 transition-all ${
-                        isUser
-                          ? 'bg-blue-500/5 border-blue-500/20 text-slate-900 '
-                          : 'bg-purple-500/5 border-purple-500/20 text-slate-800 '
-                      }`}
-                    >
-                      <div className="flex items-center justify-between text-[11px]">
-                        <div className="flex items-center gap-2 font-bold">
-                          {isUser ? (
-                            <span className="text-blue-600  flex items-center gap-1">
-                              <UserIcon className="w-3.5 h-3.5" />
-                              <span>Student ({student ? student.name : msg.student_id.substring(0, 8)})</span>
-                            </span>
-                          ) : (
-                            <span className="text-purple-600  flex items-center gap-1">
-                              <Bot className="w-3.5 h-3.5" />
-                              <span>AI Study Buddy Assistant</span>
-                            </span>
-                          )}
-                        </div>
-                        <span className="text-slate-400 font-mono text-[10px]">
-                          {new Date(msg.created_at).toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="pt-1">
-                        <StudyBuddyFormattedMessage content={msg.message_text} isUser={isUser} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* TAB CONTENT 5: MCQ BANK AUDIT */}
-      {activeTab === 'audit' && (
-        <div className="space-y-4">
-          <div className="bg-white/80  border border-slate-200  rounded-2xl p-4 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-extrabold text-slate-900  flex items-center gap-2">
-                <ListChecks className="w-4 h-4 text-emerald-500" />
-                <span>Automated Curriculum & MCQ Cross-Reference Audit</span>
-              </h2>
-              <p className="text-[11px] text-slate-500 ">
-                Verifies prebuilt question stems, choices, and subject mapping integrity.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSanitizeAllMismatches}
-                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-md"
-              >
-                <CheckCircle className="w-3.5 h-3.5" />
-                <span>Sanitize Mismatches</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={handleExportAuditCSV}
-                className="px-3 py-2 bg-[#007AFF] hover:bg-[#0066CC] text-white rounded-xl text-xs font-extrabold flex items-center gap-1.5 cursor-pointer shadow-md"
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>Export Audit CSV</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-white/80  border border-slate-200  rounded-2xl p-4 shadow-lg space-y-3">
-            <div className="flex items-center justify-between text-xs font-bold text-slate-600 ">
-              <span>Total Questions Inspected: {auditResults.length}</span>
-              <span className="text-rose-600 ">Flagged Mismatches: {activeAuditCount}</span>
-            </div>
-
-            <div className="space-y-2 max-h-[500px] overflow-y-auto">
-              {auditResults
-                .filter((r) => !dismissedFlagIds.includes(r.id))
-                .filter((r) => auditStatusFilter === 'all' || r.status === auditStatusFilter)
-                .map((item) => (
-                  <div
-                    key={item.id}
-                    className={`p-3 rounded-xl border text-xs space-y-1 ${
-                      item.status === 'flagged'
-                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-900 '
-                        : 'bg-slate-50  border-slate-200  text-slate-800 '
-                    }`}
-                  >
-                    <div className="flex items-center justify-between font-bold">
-                      <span>[{item.subject}] {item.topic}</span>
-                      <span className="uppercase text-[10px] px-2 py-0.5 rounded-full bg-white/20">
-                        {item.status}
-                      </span>
-                    </div>
-                    <p className="font-medium">{item.questionText}</p>
-                    {item.issues.length > 0 && (
-                      <div className="text-[11px] text-rose-600  font-bold">
-                        ⚠️ Issues: {item.issues.join(', ')}
-                      </div>
-                    )}
-                  </div>
-                ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-
-
-      {/* TAB CONTENT 7: BULK MCQ CSV IMPORT */}
-      {activeTab === 'bulk_import' && (
-        <AdminBulkMcqImportTab currentUser={currentUser} />
       )}
 
       {/* TAB CONTENT: PAYMENT REQUESTS VERIFICATION SYSTEM */}
@@ -2590,21 +2303,37 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                             {new Date(log.created_at).toLocaleString()}
                           </td>
                           <td className="px-4 py-3 whitespace-nowrap">
-                            <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                                log.action_type === 'manual_plan_change'
-                                  ? 'bg-[#1E5AFF]/15 text-[#1E5AFF]  border border-[#1E5AFF]/30'
-                                  : log.action_type === 'payment_approved'
-                                  ? 'bg-emerald-500/15 text-emerald-700  border border-emerald-500/30'
-                                  : 'bg-rose-500/15 text-rose-700  border border-rose-500/30'
-                              }`}
-                            >
-                              {log.action_type === 'manual_plan_change'
-                                ? 'Plan Override'
-                                : log.action_type === 'payment_approved'
-                                ? 'Payment Approved'
-                                : 'Payment Rejected'}
-                            </span>
+                            {(() => {
+                              let badgeClass = 'bg-slate-100 text-slate-700 border border-slate-200';
+                              let badgeLabel = log.action_type ? log.action_type.replace(/_/g, ' ') : 'Action';
+                              if (log.action_type === 'test_completed') {
+                                badgeClass = 'bg-emerald-500/15 text-emerald-700 border border-emerald-500/30';
+                                badgeLabel = 'Test Completed';
+                              } else if (log.action_type === 'test_started') {
+                                badgeClass = 'bg-blue-500/15 text-blue-700 border border-blue-500/30';
+                                badgeLabel = 'Test Started';
+                              } else if (log.action_type === 'test_exited') {
+                                badgeClass = 'bg-amber-500/15 text-amber-700 border border-amber-500/30';
+                                badgeLabel = 'Test Exited';
+                              } else if (log.action_type === 'manual_plan_change') {
+                                badgeClass = 'bg-[#1E5AFF]/15 text-[#1E5AFF] border border-[#1E5AFF]/30';
+                                badgeLabel = 'Plan Override';
+                              } else if (log.action_type === 'payment_approved') {
+                                badgeClass = 'bg-emerald-500/15 text-emerald-700 border border-emerald-500/30';
+                                badgeLabel = 'Payment Approved';
+                              } else if (log.action_type === 'payment_rejected') {
+                                badgeClass = 'bg-rose-500/15 text-rose-700 border border-rose-500/30';
+                                badgeLabel = 'Payment Rejected';
+                              } else if (log.action_type === 'user_signup') {
+                                badgeClass = 'bg-purple-500/15 text-purple-700 border border-purple-500/30';
+                                badgeLabel = 'Student Signup';
+                              }
+                              return (
+                                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${badgeClass}`}>
+                                  {badgeLabel}
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="px-4 py-3">
                             <div className="font-bold text-slate-900 ">
@@ -2615,15 +2344,21 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                             </div>
                           </td>
                           <td className="px-4 py-3">
-                            <div className="flex items-center gap-1.5 text-[11px] flex-wrap">
-                              <span className="px-1.5 py-0.5 rounded bg-slate-100  text-slate-600  font-medium">
-                                {log.old_plan || 'Free'}
+                            {log.new_plan ? (
+                              <div className="flex items-center gap-1.5 text-[11px] flex-wrap">
+                                <span className="px-1.5 py-0.5 rounded bg-slate-100  text-slate-600  font-medium">
+                                  {log.old_plan || 'Free'}
+                                </span>
+                                <ChevronRight className="w-3 h-3 text-[#1E5AFF] shrink-0" />
+                                <span className="px-1.5 py-0.5 rounded bg-[#1E5AFF]/20 text-[#1E5AFF]  font-extrabold border border-[#1E5AFF]/30">
+                                  {log.new_plan || 'Updated'}
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400">
+                                {log.action_type && log.action_type.startsWith('test_') ? 'Test Session' : '—'}
                               </span>
-                              <ChevronRight className="w-3 h-3 text-[#1E5AFF] shrink-0" />
-                              <span className="px-1.5 py-0.5 rounded bg-[#1E5AFF]/20 text-[#1E5AFF]  font-extrabold border border-[#1E5AFF]/30">
-                                {log.new_plan || 'Updated'}
-                              </span>
-                            </div>
+                            )}
                           </td>
                           <td className="px-4 py-3 text-slate-600  max-w-xs truncate">
                             {log.note || '—'}

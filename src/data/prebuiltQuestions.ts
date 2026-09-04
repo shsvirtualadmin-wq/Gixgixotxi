@@ -1,4 +1,4 @@
-import { Question } from '../types';
+import { Question, BoardClass } from '../types';
 import { mapSubject } from '../utils/subjectMapper';
 import { shuffleQuestionOptions } from '../lib/shuffle';
 import { checkQuestionTopicRelevance } from '../utils/topicValidator';

@@ -837,6 +837,7 @@ const inMemoryMCQAttempts: MCQAttemptItem[] = [];
 export interface SavedTestResultItem {
   id: string;
   student_id: string;
+  student_name?: string;
   student_email?: string;
   subject: string;
   path_label: string;
@@ -3778,7 +3779,7 @@ ${scopeInstruction}${excludeInstruction}`;
             correct: typeof c.correct_option === 'number' ? c.correct_option : Number(c.correct ?? 0),
             explain: c.explanation || c.explain || '',
             topic: c.chapter || c.subtopic || subject,
-            subject: subject,
+            difficulty: 'medium',
           });
         }
       } catch (localFallbackErr) {

@@ -104,8 +104,6 @@ export const ScrollReveal: React.FC<ScrollRevealProps> = ({
     transform: isVisible ? 'translate3d(0, 0, 0)' : `translate3d(0, ${distance}px, 0)`,
     opacity: isVisible ? 1 : 0.05,
     willChange: isVisible ? 'auto' : 'transform, opacity',
-    contentVisibility: 'auto',
-    containIntrinsicSize: 'auto 120px',
     ...style,
   };
 

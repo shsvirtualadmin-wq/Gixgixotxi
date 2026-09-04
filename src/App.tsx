@@ -326,7 +326,7 @@ export function App() {
   const initialUrlState = useRef(getInitialUrlState()).current;
 
   const [screen, setScreen] = useState<ScreenType>(initialUrlState.screen);
-  const [adminTab, setAdminTab] = useState<'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress' | 'study_buddy' | 'audit' | 'bulk_import'>('students');
+  const [adminTab, setAdminTab] = useState<'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress'>('students');
 
   const [selectedClass, setSelectedClass] = useState<BoardClass | undefined>(() => {
     if (initialUrlState.selectedClass) return initialUrlState.selectedClass;
@@ -704,6 +704,7 @@ export function App() {
           config: testConfig,
         }),
       }).then(res => safeJsonResponse(res)).then(data => {
+        if (isExitingTestRef.current) return;
         if (data?.success && data?.userAnswers && Object.keys(data.userAnswers).length > 0) {
           setTestSessionProgress(prev => {
             if (!prev) return prev;
@@ -1831,6 +1832,9 @@ export function App() {
 
     try {
       localStorage.removeItem('boardly_active_test_session');
+      sessionStorage.removeItem('boardly_active_test_session');
+      localStorage.removeItem('boardly_active_test_answers');
+      localStorage.removeItem('boardly_active_test_time');
       localStorage.setItem('boardly_active_screen', currentUser ? 'dashboard' : 'intro');
     } catch {}
 
@@ -1838,12 +1842,21 @@ export function App() {
     setActiveQuestions([]);
     setTestConfig(null);
     setActiveTestSessionId(null);
+    setTestResult(null);
 
-    if (currentUser) {
-      setScreen('dashboard');
-    } else {
-      setScreen('intro');
-    }
+    const targetScreen = currentUser ? 'dashboard' : 'intro';
+    setScreen(targetScreen);
+
+    try {
+      const newUrl = new URL(window.location.href);
+      if (newUrl.searchParams.get('screen') === 'test') {
+        newUrl.searchParams.delete('screen');
+        if (targetScreen !== 'intro') {
+          newUrl.searchParams.set('screen', targetScreen);
+        }
+        window.history.replaceState({ screen: targetScreen }, '', newUrl.toString());
+      }
+    } catch {}
 
     apiFetch('/api/finish-test-session', {
       method: 'POST',
@@ -2871,8 +2884,8 @@ export function App() {
         }}
         onNavigateAdmin={(tab) => {
           confirmExitTestIfActive(() => {
-            if (tab) {
-              setAdminTab(tab);
+            if (tab && ['students', 'payment_requests', 'activity_logs', 'tests', 'progress'].includes(tab)) {
+              setAdminTab(tab as any);
             } else {
               setAdminTab('students');
             }

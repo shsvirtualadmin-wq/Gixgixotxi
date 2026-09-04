@@ -60,10 +60,6 @@ const ResourceCardComponent: React.FC<ResourceCardProps> = ({
   return (
     <div
       id={`resource-card-${item.id}`}
-      style={{
-        contentVisibility: 'auto',
-        containIntrinsicSize: 'auto 168px',
-      }}
       className={`bg-white hover:bg-slate-50/80 border ${
         isSelected
           ? 'border-[#1E5AFF] ring-1 ring-[#1E5AFF]/30 bg-blue-50/30'
