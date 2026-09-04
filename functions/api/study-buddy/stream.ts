@@ -464,16 +464,15 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         }
 
         if (!streamSuccess) {
-          const detailMsg = `Gemini API Error [Status ${lastStatusCode || 500}]: ${lastErrorMsg || "Unable to reach Gemini AI"}`;
-          console.warn("[Study Buddy All Models Failed]:", detailMsg);
-          send(`data: ${JSON.stringify({ error: detailMsg })}\n\n`);
+          const friendlyMessage = "Study Buddy is temporarily experiencing high demand. Please try again in a moment.";
+          console.warn("[Study Buddy All Models Failed]: status =", lastStatusCode, lastErrorMsg);
+          send(`data: ${JSON.stringify({ error: friendlyMessage, canRetry: true })}\n\n`);
           send(`data: [DONE]\n\n`);
         }
       } catch (err: any) {
         console.warn("[api/study-buddy/stream outer error]:", err?.message || err);
-        console.warn("[RAW GOOGLE GEMINI FATAL ERROR]:", JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
-        const detailMsg = `Gemini API Error [Status ${err?.status || 500}]: ${err?.message || "Failed to stream response from Gemini."}`;
-        send(`data: ${JSON.stringify({ error: detailMsg })}\n\n`);
+        const friendlyMessage = "Study Buddy is temporarily busy. Please try asking your question again in a moment.";
+        send(`data: ${JSON.stringify({ error: friendlyMessage, canRetry: true })}\n\n`);
         send(`data: [DONE]\n\n`);
       } finally {
         globalThis.fetch = originalFetch;

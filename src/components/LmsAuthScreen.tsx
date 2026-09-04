@@ -62,10 +62,38 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = React.memo(({
     };
   }, []);
 
-  // Detect email verification callback parameters from URL on load
+  // Detect email verification callback or auth error parameters from URL on load
   useEffect(() => {
     const hash = window.location.hash || '';
     const search = window.location.search || '';
+
+    // Check for OAuth / Auth error parameters (e.g. ?error=access_denied&error_description=...)
+    const searchParams = new URLSearchParams(search);
+    const hashParams = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+
+    const errorParam = searchParams.get('error') || hashParams.get('error');
+    const errorDesc = searchParams.get('error_description') || hashParams.get('error_description');
+
+    if (errorParam) {
+      const decodedDesc = errorDesc ? decodeURIComponent(errorDesc.replace(/\+/g, ' ')) : null;
+      let friendlyError = 'Authentication was cancelled or failed. Please try signing in again.';
+      if (errorParam === 'access_denied') {
+        friendlyError = decodedDesc || 'Access denied. The sign-in request was rejected or cancelled.';
+      } else if (decodedDesc) {
+        friendlyError = decodedDesc;
+      }
+      setError(friendlyError);
+      localStorage.removeItem('shs_oauth_redirect');
+      sessionStorage.removeItem('shs_oauth_redirect');
+      setLoading(false);
+      setGoogleLoading(false);
+
+      // Clean error params from address bar without reloading
+      if (window.history && window.history.replaceState) {
+        window.history.replaceState(null, '', window.location.pathname);
+      }
+      return;
+    }
 
     if (
       hash.includes('type=signup') ||
@@ -227,7 +255,7 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = React.memo(({
     timeoutRef.current = setTimeout(() => {
       setGoogleLoading(false);
       setError('Google sign-in is taking longer than expected. Please check your network connection or pop-up blocker and try again.');
-    }, 15000);
+    }, 5000);
 
     try {
       localStorage.setItem('shs_oauth_redirect', 'true');

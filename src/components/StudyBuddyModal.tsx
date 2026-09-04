@@ -287,7 +287,7 @@ function generateNewConversationId(): string {
   return `conv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 }
 
-const ChatMessageItem: React.FC<{ msg: ChatMessage }> = React.memo(({ msg }) => {
+const ChatMessageItem: React.FC<{ msg: ChatMessage; onRetry?: () => void }> = React.memo(({ msg, onRetry }) => {
   const isUser = msg.role === 'user';
   return (
     <div
@@ -322,6 +322,31 @@ const ChatMessageItem: React.FC<{ msg: ChatMessage }> = React.memo(({ msg }) => 
           </div>
           <div className="p-4 sm:p-5 rounded-2xl rounded-tl-xs bg-[#131B29] border border-blue-500/20 text-slate-100 shadow-lg space-y-2">
             {(() => {
+              if (msg.text.startsWith('⚠️')) {
+                const cleanErrMsg = msg.text
+                  .replace(/^⚠️\s*/, '')
+                  .replace(/Gemini API Error\s*(\[[^\]]*\]|\([^\)]*\))?\s*:\s*/gi, '')
+                  .trim();
+                return (
+                  <div className="flex flex-col gap-2.5">
+                    <div className="flex items-start gap-2 text-amber-300 text-xs sm:text-sm font-medium leading-relaxed bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+                      <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <span>{cleanErrMsg || 'Study Buddy is temporarily experiencing high demand. Please try again.'}</span>
+                    </div>
+                    {onRetry && (
+                      <button
+                        type="button"
+                        onClick={onRetry}
+                        className="self-start inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600/20 hover:bg-blue-600/35 text-blue-300 border border-blue-500/30 text-xs font-semibold transition-all cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        Retry Question
+                      </button>
+                    )}
+                  </div>
+                );
+              }
+
               if (!msg.text.trim() && msg.isStreaming) {
                 return (
                   <div className="flex items-center gap-2 text-blue-300 text-xs font-medium py-1 animate-pulse">
@@ -667,7 +692,10 @@ export const StudyBuddyModal: React.FC<StudyBuddyModalProps> = ({
               if (parsed.rateLimited) {
                 setRateLimitError(parsed.error);
               }
-              accumulatedText = `⚠️ ${parsed.error}`;
+              const clean = String(parsed.error)
+                .replace(/Gemini API Error\s*(\[[^\]]*\]|\([^\)]*\))?\s*:\s*/gi, '')
+                .trim();
+              accumulatedText = `⚠️ ${clean || 'Study Buddy is temporarily experiencing high demand. Please try again in a moment.'}`;
             } else if (parsed.text) {
               accumulatedText += parsed.text;
             }
@@ -762,11 +790,15 @@ export const StudyBuddyModal: React.FC<StudyBuddyModalProps> = ({
       }
     } catch (err: any) {
       console.error('Streaming API error:', err);
-      const errText = err?.message || 'Something went wrong while streaming answer.';
+      const errText = String(err?.message || '');
+      let friendlyMsg = 'Study Buddy is temporarily busy. Please try asking your question again in a moment.';
+      if (errText.includes('Failed to fetch') || errText.includes('NetworkError') || errText.includes('network')) {
+        friendlyMsg = 'Could not reach Study Buddy. Please check your internet connection and tap retry.';
+      }
       setMessages((prev) =>
         prev.map((m) =>
           m.id === modelMessageId
-            ? { ...m, text: `⚠️ Connection Error: ${errText}`, isError: true, isStreaming: false }
+            ? { ...m, text: `⚠️ ${friendlyMsg}`, isError: true, isStreaming: false }
             : m
         )
       );
@@ -926,9 +958,17 @@ export const StudyBuddyModal: React.FC<StudyBuddyModalProps> = ({
           ) : (
             /* ACTIVE MESSAGES LIST */
             <>
-              {messages.map((msg) => (
-                <ChatMessageItem key={msg.id} msg={msg} />
-              ))}
+              {messages.map((msg) => {
+                const isError = msg.text.startsWith('⚠️');
+                const lastUserMsg = isError ? [...messages].reverse().find((m) => m.role === 'user') : undefined;
+                return (
+                  <ChatMessageItem
+                    key={msg.id}
+                    msg={msg}
+                    onRetry={lastUserMsg ? () => handleSendStream(lastUserMsg.text) : undefined}
+                  />
+                );
+              })}
               <div ref={messagesEndRef} />
             </>
           )}

@@ -215,23 +215,30 @@ async function checkStudentIsPro(
     }
 
     if (stData) {
-      // Check legacy exemption or explicit waiver
-      const isExempt = stData.requires_payment === false || isStudentExistingBeforeRule(stData.created_at);
-      if (isExempt) {
-        console.log(`[checkStudentIsPro] Allowed via legacy exemption or requires_payment=false`);
-        return true;
-      }
-
       const pStatus = String(stData.payment_status || '').trim().toLowerCase();
       const isPaidStatus = pStatus === 'verified & paid' || pStatus === 'verified' || pStatus === 'paid';
       const planStatus = String(stData.plan_status || '').trim().toLowerCase();
-      const isPlanActive = planStatus === 'active' || planStatus.includes('pro');
-      const rawIsPro = Boolean(stData.is_pro) || isPaidStatus || isPlanActive;
+      const isProTier = stData.plan_tier === 'pro';
+      const isProFlag = Boolean(stData.is_pro);
+      const isVerifiedProPlan = planStatus === 'verified_pro';
+
+      // Check if subscribed_plans array contains pro
+      const hasProPlanInArray = Array.isArray(stData.subscribed_plans) && stData.subscribed_plans.some((p: any) => {
+        const pl = String(p).toLowerCase();
+        return pl !== 'free' && ['pro', 'boardly_pro', 'premium', 'fsc', 'mdcat', 'tcat'].includes(pl);
+      });
+
+      const rawIsPro = isProTier || isProFlag || isPaidStatus || isVerifiedProPlan || hasProPlanInArray;
 
       console.log(`[checkStudentIsPro] Database record evaluation:`, {
-        stData,
-        rawIsPro,
+        userId,
+        userEmail,
+        isProTier,
+        isProFlag,
         isPaidStatus,
+        isVerifiedProPlan,
+        hasProPlanInArray,
+        rawIsPro,
       });
 
       if (rawIsPro) {
@@ -3610,42 +3617,29 @@ function formatRemainingTimeString(ms: number): string {
 
     // Server-side Payment & Subscription Status Enforcement
     const isAdminUser = isAdminEmail(userEmail);
-    if (userId && userId !== "guest" && !isAdminUser) {
-      let studentRecord: any = null;
-      const supabaseClient = getSupabaseAdminClient() || getAuthClient(req);
-      if (supabaseClient) {
-        try {
-          const { data } = await supabaseClient
-            .from("students")
-            .select("*")
-            .eq("id", userId)
-            .maybeSingle();
-          studentRecord = data;
-        } catch (dbErr) {
-          console.warn("[Server Payment Check DB Error]:", dbErr);
-        }
-      }
-
-      if (studentRecord) {
-        const isExistingStudent = isStudentExistingBeforeRule(studentRecord.created_at);
-        const isExemptOrVerified = isExistingStudent || studentRecord.requires_payment === false || studentRecord.payment_status === 'Verified & Paid';
-        const isFreePlanOnly = studentRecord.payment_status === 'Free Plan' || (Array.isArray(studentRecord.subscribed_plans) && studentRecord.subscribed_plans.length === 1 && studentRecord.subscribed_plans[0] === 'free');
-
-        // Check 1: Non-free paid plan selected, but status is not Verified & Paid (unpaid / pending verification / rejected)
-        if (!isExemptOrVerified && !isFreePlanOnly) {
+    if (!isAdminUser) {
+      const isPro = await checkStudentIsPro(String(userId || "guest"), userEmail);
+      if (!isPro) {
+        // Free-tier Quota Check: max 2 practice tests/month
+        const testsTaken = await getStudentMonthlyTestCount(String(userId || "guest"), userEmail, req);
+        if (testsTaken >= 2) {
+          const resetDateStr = getNextMonthResetDate();
+          const msg = `You've used your 2 free tests this month — upgrade to continue. Limit resets on ${resetDateStr}.`;
           return res.status(403).json({
             success: false,
-            locked: true,
-            paymentRequired: true,
-            paymentStatus: studentRecord.payment_status || 'Unpaid',
-            error: `Payment Verification Required: Access to paid plans requires an active and verified subscription. Your payment status is '${studentRecord.payment_status || 'Unpaid'}'. Please submit payment proof for approval.`,
-            message: `Payment Verification Required: Access to paid plans requires an active and verified subscription.`
+            limitExceeded: true,
+            error: msg,
+            message: msg,
+            currentUsage: testsTaken,
+            limit: 2,
+            remaining: 0,
+            resetDate: resetDateStr,
           });
         }
 
-        // Check 2: Grand Mock Exams (100/180 MCQs) are strictly Pro-only across all tracks
+        // Check 2: Grand Mock Exams (100/180 MCQs) are strictly Pro-only
         const isGrandMockRequested = isMdcatFullMock || isTcatFullMock || isAnyFullMock || requestedCount >= 100;
-        if (isFreePlanOnly && isGrandMockRequested) {
+        if (isGrandMockRequested) {
           return res.status(403).json({
             success: false,
             locked: true,
@@ -6695,55 +6689,73 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       let lastErrStatus = 500;
 
       if (apiKey) {
-        const modelsToTry = ["gemini-3.6-flash", "gemini-flash-latest"];
+        const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash"];
         for (const modelName of modelsToTry) {
           if (streamSuccess) break;
-          try {
-            await withGeminiNativeAuth(apiKey, async () => {
-              const responseStream = await ai.models.generateContentStream({
-                model: modelName,
-                contents,
-                config: {
-                  systemInstruction: dynamicSystemInstruction,
-                  temperature: 0.2,
-                  topP: 0.95,
-                },
-              });
+          // Retry loop for transient 503/429/overload errors (up to 3 attempts with backoff)
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            if (streamSuccess) break;
+            try {
+              await withGeminiNativeAuth(apiKey, async () => {
+                const responseStream = await ai.models.generateContentStream({
+                  model: modelName,
+                  contents,
+                  config: {
+                    systemInstruction: dynamicSystemInstruction,
+                    temperature: 0.2,
+                    topP: 0.95,
+                  },
+                });
 
-              for await (const chunk of responseStream) {
-                const chunkText = chunk.text;
-                if (chunkText) {
-                  res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+                for await (const chunk of responseStream) {
+                  const chunkText = chunk.text;
+                  if (chunkText) {
+                    res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+                  }
                 }
-              }
 
-              res.write(`data: [DONE]\n\n`);
-              streamSuccess = true;
-            });
-          } catch (modelErr: any) {
-            lastErrStatus = Number(modelErr?.status || modelErr?.statusCode || modelErr?.code) || 500;
-            lastErrMessage = extractCleanErrorMessage(modelErr);
-            console.warn(`[server.ts Study Buddy] Model ${modelName} stream failed (Status ${lastErrStatus}):`, lastErrMessage);
-            console.warn("[RAW GOOGLE GEMINI ERROR]:", JSON.stringify(modelErr, Object.getOwnPropertyNames(modelErr), 2));
+                res.write(`data: [DONE]\n\n`);
+                streamSuccess = true;
+              });
+            } catch (modelErr: any) {
+              lastErrStatus = Number(modelErr?.status || modelErr?.statusCode || modelErr?.code) || 500;
+              lastErrMessage = extractCleanErrorMessage(modelErr);
+              console.warn(`[server.ts Study Buddy] Model ${modelName} attempt ${attempt} failed (Status ${lastErrStatus}):`, lastErrMessage);
+
+              const isTransient = lastErrStatus === 503 || lastErrStatus === 429 || lastErrMessage.toLowerCase().includes("unavailable") || lastErrMessage.toLowerCase().includes("overload") || lastErrMessage.toLowerCase().includes("resource");
+              if (isTransient && attempt < 3) {
+                const backoffMs = attempt * 500;
+                console.log(`[server.ts Study Buddy] Backing off for ${backoffMs}ms before retry...`);
+                await new Promise((resolve) => setTimeout(resolve, backoffMs));
+              } else {
+                break; // Switch to fallback model
+              }
+            }
           }
         }
       }
 
       if (!streamSuccess) {
-        const cleanMsg = lastErrMessage || (apiKey ? "Unable to connect to Gemini AI" : "Gemini API Key missing from server environment");
-        const detailMsg = `Gemini API Error (Status ${lastErrStatus}): ${cleanMsg}`;
-        console.warn("[server.ts Study Buddy Stream Error]:", detailMsg);
-        res.write(`data: ${JSON.stringify({ error: detailMsg })}\n\n`);
+        let friendlyMessage = "Study Buddy is temporarily experiencing high demand. Please try again in a moment.";
+        let canRetry = true;
+        if (!apiKey) {
+          friendlyMessage = "Study Buddy is currently undergoing maintenance. Please try again shortly.";
+          canRetry = false;
+        } else if (lastErrStatus === 403 || lastErrStatus === 401) {
+          friendlyMessage = "Unable to connect to Study Buddy right now. Please try again shortly.";
+          canRetry = false;
+        }
+
+        console.warn(`[server.ts Study Buddy Stream Error]: status=${lastErrStatus}, returning clean friendly message`);
+        res.write(`data: ${JSON.stringify({ error: friendlyMessage, canRetry, status: lastErrStatus })}\n\n`);
         res.write(`data: [DONE]\n\n`);
       }
 
       return res.end();
     } catch (err: any) {
       console.warn("[api/study-buddy/stream route error]:", err);
-      console.warn("[RAW GOOGLE GEMINI ROUTE ERROR]:", JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
-      const cleanMsg = extractCleanErrorMessage(err);
-      const detailMsg = `Gemini API Error (Status ${err?.status || 500}): ${cleanMsg}`;
-      res.write(`data: ${JSON.stringify({ error: detailMsg })}\n\n`);
+      const friendlyMessage = "Study Buddy is temporarily busy. Please try asking your question again in a moment.";
+      res.write(`data: ${JSON.stringify({ error: friendlyMessage, canRetry: true })}\n\n`);
       res.write(`data: [DONE]\n\n`);
       return res.end();
     }

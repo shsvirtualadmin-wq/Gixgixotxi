@@ -89,64 +89,33 @@ export function sanitizeStudyBuddyText(rawText: string): string {
   text = text.replace(/\\\[([\s\S]*?)\\\]/g, (_m, g) => `\n\n$$\n${g.trim()}\n$$\n\n`);
   text = text.replace(/\\\(([\s\S]*?)\\\)/g, (_m, g) => `$${g.trim()}$`);
 
-  // 7. Fix concatenated heading words (e.g. "FeaturesIncludes" -> "Features Includes" or "TrialIncludes" -> "Trial Includes")
-  text = text.replace(/([a-z0-9])([A-Z][a-z]{2,})/g, '$1 $2');
-  text = text.replace(/(Features|Plan|Trial|Access|Benefits|Details|Overview)(Includes|Provides|Offers|Gives|Has|Contains|Allows|Full)/g, '$1 $2');
-
-  // 8. Ensure all markdown headings (#{1,6}) start on a new line with space after #
+  // 7. Ensure markdown headings have space after '#' and start on new lines
   text = text.replace(/([^\n])\s*(#{1,6})([^\s#\n])/g, '$1\n\n$2 $3');
-  text = text.replace(/([^\n])\s*(#{1,6}\s+)/g, '$1\n\n$2');
-  text = text.replace(/^(#{1,6})([^\s#])/gm, '$1 $2');
-
-  // 9. Convert inline pseudo-headings like "## Heading: Body text" to "## Heading\n\nBody text"
-  text = text.replace(/^(#{1,6}\s+[^:\n]+):\s*([^\n]+)$/gm, '$1\n\n$2');
-
-  // 10. Convert standalone inline bold pseudo-headings (not inside bullet/numbered list items) like "**Heading:** Body" into real "## Heading\n\nBody"
-  text = text.replace(/(?:^|\n)\s*(?!\*|-|\+|\d+\.)\*\*([^*:\n]{2,60})\*\*\s*:?\s*(?=\n|[A-Z])/g, (_match, title) => {
-    const cleanTitle = title.trim();
-    if (cleanTitle.length >= 2) {
-      return `\n\n## ${cleanTitle}\n\n`;
-    }
-    return _match;
-  });
-
-  // 11. Convert standalone un-bolded section titles with colons (not inside list items) like "Free Trial Features: Includes..." into real headings
-  text = text.replace(/(?:^|\n)\s*(?!\*|-|\+|\d+\.)([A-Z][A-Za-z0-9\s\-\/\&]{2,40})\s*:\s*(?=[A-Z0-9])/g, (_match, title) => {
-    const cleanTitle = title.trim();
-    const lower = cleanTitle.toLowerCase();
-    if (['note', 'warning', 'tip', 'for example', 'example', 'http', 'https'].includes(lower)) {
-      return _match;
-    }
-    if (cleanTitle.includes(' ') || cleanTitle.length >= 4) {
-      return `\n\n## ${cleanTitle}\n\n`;
-    }
-    return _match;
-  });
-
-  // 12. Ensure a blank line after every heading before body text
+  text = text.replace(/^(#{1,6})([^\s#\n])/gm, '$1 $2');
   text = text.replace(/^(#{1,6}\s+[^\n]+)\n([^\n#\s])/gm, '$1\n\n$2');
 
-  // 13. Normalize multi-newlines (collapse 3+ newlines to 2)
+  // 8. Normalize multi-newlines (collapse 3+ newlines to 2)
   text = text.replace(/\n{3,}/g, '\n\n');
 
   return text.trim();
 }
 
 /**
- * Safety check to detect if text is unparsed JSON, garbled control chars, or broken artifacts.
+ * Safety check to detect if text is unparsed raw JSON errors or system artifacts.
  */
 export function isGarbledResponse(text: string): boolean {
-  if (!text) return false;
+  if (!text || typeof text !== 'string') return false;
 
-  const cleaned = sanitizeStudyBuddyText(text);
+  const trimmed = text.trim();
+  if (!trimmed) return false;
 
-  // Check 1: Looks like unparsed raw JSON object/array
-  if (/^\s*[\{\[]\s*"(candidates|contents|parts|error|status|statusCode|response|explanation)"/i.test(cleaned)) {
+  // Check 1: Looks like unparsed raw Gemini JSON error object
+  if (/^\s*\{\s*"error"\s*:\s*\{/i.test(trimmed)) {
     return true;
   }
 
-  // Check 2: Contains literal unparsed unicode escape chains like \u0627\u0644\u0633
-  if (/(\\u[0-9a-fA-F]{4}){3,}/.test(text)) {
+  // Check 2: Raw RPC or API error payload with no actual message
+  if (/^\s*\{\s*"(candidates|contents|parts|statusCode)"\s*:\s*\[/i.test(trimmed)) {
     return true;
   }
 
