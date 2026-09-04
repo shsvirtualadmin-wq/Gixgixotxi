@@ -167,16 +167,17 @@ export const TestScreen: React.FC<TestScreenProps> = React.memo(({
     }
   }, [initialCurrentIndex]);
 
-  // Report active session state to parent whenever index, answers, or timer changes
+  // Report active session state to parent whenever index or answers change (prevents re-rendering App on every 500ms timer tick)
   useEffect(() => {
     if (onSessionStateChange) {
+      const remainingSecs = Math.max(0, Math.ceil((endTimeRef.current - Date.now()) / 1000));
       onSessionStateChange({
         currentIndex,
         userAnswers,
-        timeLeftSeconds,
+        timeLeftSeconds: remainingSecs,
       });
     }
-  }, [currentIndex, userAnswers, timeLeftSeconds, onSessionStateChange]);
+  }, [currentIndex, userAnswers, onSessionStateChange]);
 
   // Auto-fallback timer: If currentQ is missing for > 2s, automatically trigger onLoadPracticeBank to populate question
   useEffect(() => {

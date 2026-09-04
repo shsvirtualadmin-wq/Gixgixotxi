@@ -31,7 +31,7 @@ export const MathText: React.FC<MathTextProps> = React.memo(({
     }
   }, [hasMath, katexReady]);
 
-  const containerClasses = `${block ? 'block' : 'inline-wrap'} ${
+  const containerClasses = `${block ? 'block' : 'inline'} ${
     isUrduOrIslamiat ? 'font-["Noto_Nastaliq_Urdu","Noto_Sans_Arabic",serif]' : ''
   } ${className}`;
 
@@ -46,7 +46,7 @@ export const MathText: React.FC<MathTextProps> = React.memo(({
             return (
               <span
                 key={index}
-                className="inline-block align-middle my-0.5 py-0.5 px-1 max-w-full overflow-x-auto text-current leading-normal"
+                className="inline-block align-middle my-0.5 py-0.5 px-0.5 max-w-full text-current leading-normal overflow-visible math-inline-wrapper"
                 dangerouslySetInnerHTML={{ __html: html }}
               />
             );
@@ -61,7 +61,7 @@ export const MathText: React.FC<MathTextProps> = React.memo(({
           return (
             <span
               key={index}
-              className="block my-1.5 text-center overflow-x-auto"
+              className="block my-1.5 text-center overflow-x-auto overflow-y-hidden max-w-full"
               dangerouslySetInnerHTML={{ __html: html }}
             />
           );
@@ -70,7 +70,7 @@ export const MathText: React.FC<MathTextProps> = React.memo(({
         return (
           <span
             key={index}
-            className="inline-block align-middle my-0.5 py-0.5 px-1 max-w-full overflow-x-auto text-current leading-normal"
+            className="inline-block align-middle my-0.5 py-0.5 px-0.5 max-w-full text-current leading-normal overflow-visible math-inline-wrapper"
             dangerouslySetInnerHTML={{ __html: html }}
           />
         );

@@ -1,34 +1,18 @@
-let katexModule: any = null;
-let katexCssLoaded = false;
-let katexLoadPromise: Promise<any> | null = null;
+import katex from 'katex';
+
+let katexModule: any = katex;
+let katexCssLoaded = true;
+let katexLoadPromise: Promise<any> = Promise.resolve(katex);
 
 /**
- * Dynamically loads KaTeX engine and injects KaTeX styles only when math formulas are rendered.
+ * Ensures KaTeX engine is loaded and available.
  */
 export function loadKaTeX(): Promise<any> {
-  if (katexModule) return Promise.resolve(katexModule);
-  if (katexLoadPromise) return katexLoadPromise;
-
-  if (!katexCssLoaded && typeof document !== 'undefined') {
-    katexCssLoaded = true;
-    import('katex/dist/katex.min.css').catch(() => {});
-  }
-
-  katexLoadPromise = import('katex')
-    .then((mod) => {
-      katexModule = mod.default || mod;
-      return katexModule;
-    })
-    .catch((err) => {
-      console.warn('[loadKaTeX] Failed to load KaTeX dynamic module:', err);
-      return null;
-    });
-
-  return katexLoadPromise;
+  return Promise.resolve(katexModule || katex);
 }
 
 export function isKaTeXLoaded(): boolean {
-  return Boolean(katexModule);
+  return true;
 }
 
 interface Chunk {
@@ -97,6 +81,9 @@ export function formatChemicalFormulas(str: string): string {
 export function formatLatexContent(rawLatex: string): string {
   if (!rawLatex) return '';
   let s = rawLatex.trim();
+
+  // Normalize unicode minus, en-dash, em-dash to standard ASCII minus
+  s = s.replace(/[−–—]/g, '-');
 
   // Normalize double-escaped commands like \\begin, \\end, \\displaystyle, \\frac
   s = s.replace(/\\\\(displaystyle|begin|end|frac|sqrt|pmatrix|bmatrix|vmatrix|matrix|array|text|mathrm|lim|int|sum|prod|alpha|beta|gamma|delta|theta|pi|lambda|mu|sigma|omega|Delta|Gamma)/g, '\\$1');
@@ -169,9 +156,37 @@ export function formatLatexContent(rawLatex: string): string {
   s = s.replace(/\bd\/dt\b/g, '\\frac{d}{dt}');
   s = s.replace(/\bdf\/dx\b/g, '\\frac{df}{dx}');
 
-  // 13. Numerical or parenthesized slash fractions
-  s = s.replace(/\(([^)]+)\)\/([a-zA-Z0-9\^\{\}\+\-\*\\]+)/g, '\\frac{$1}{$2}');
-  s = s.replace(/(?<![\w\\])([+-]?\d+)\/(\d+)(?![\w\\])/g, '\\frac{$1}{$2}');
+  // 13. Numerical, polynomial, and parenthesized slash fractions -> convert to stacked \frac
+  // 13a. Function / Function e.g. P(x)/Q(x)
+  s = s.replace(/(?<![\w\\])([a-zA-Z]\([a-zA-Z0-9,\s\+\-]+\))\s*\/\s*([a-zA-Z]\([a-zA-Z0-9,\s\+\-]+\))(?![\w\\])/g, '\\frac{$1}{$2}');
+
+  // 13b. Bracketed/parenthesized fractions with optional exponent:
+  // e.g. (2x + 3) / [(x - 1)(x^2 + 1)], (Ax + B) / [(x - 1)(x + 2)]
+  s = s.replace(/\(([^\(\)]+)\)\s*\/\s*\[([^\[\]]+)\]((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, '\\frac{$1}{[$2]$3}');
+  s = s.replace(/([a-zA-Z0-9\^\{\}\+\-\*\\]+)\s*\/\s*\[([^\[\]]+)\]((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, '\\frac{$1}{[$2]$3}');
+
+  // 13c. (numer) / (denom) with optional exponent: e.g. (x + 1) / (x - 2)^2
+  s = s.replace(/\(([^\(\)]+)\)\s*\/\s*\(([^\(\)]+)\)((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, '\\frac{$1}{($2)$3}');
+
+  // 13d. simple numer / (denom) with optional exponent: e.g. A / (x - 1)^2, 1 / (x + 2)
+  s = s.replace(/([a-zA-Z0-9\^\{\}\+\-\*\\]+)\s*\/\s*\(([^\(\)]+)\)((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, '\\frac{$1}{($2)$3}');
+
+  // 13e. (numer) / simple denom: e.g. (x + 1) / 2
+  s = s.replace(/\(([^\(\)]+)\)\s*\/\s*([a-zA-Z0-9\^\{\}\+\-\*\\]+)/g, '\\frac{$1}{$2}');
+
+  // 13f. LaTeX command / number or symbol: e.g. \pi / 2, \sqrt{3} / 2
+  s = s.replace(/(\\[a-zA-Z]+(?:\{[^\}]+\})?)\s*\/\s*([a-zA-Z0-9\^\{\}\+\-\*\\]+)/g, '\\frac{$1}{$2}');
+
+  // 13g. Single variable/symbol / term: e.g. A / x, B / x^2, 1 / x, 3 / x
+  s = s.replace(/(?<![\w\\)])([a-zA-Z]|\d+)\s*\/\s*([a-zA-Z][a-zA-Z0-9\^\{\}\+\-\*]*)(?![\w\\(])/g, '\\frac{$1}{$2}');
+
+  // 13h. Numerical fractions: e.g. 3/2, -1/3, 1 / 3, +5/2
+  s = s.replace(/(?<![\w\\)])([+-]?\d+)\s*\/\s*(\d+)(?![\w\\(])/g, '\\frac{$1}{$2}');
+
+  // Ensure fractions in standalone options or expressions get \displaystyle for clean stacked notation
+  if (!s.includes('\\displaystyle') && (/^\\frac|[\+\-=]\s*\\frac|\\frac\{[^\}]+\}\{[^\}]+\}$/.test(s) || /\\begin\{(?:pmatrix|bmatrix|vmatrix|matrix|array)\}/.test(s))) {
+    s = '\\displaystyle ' + s;
+  }
 
   // 14. Units formatting inside math
   s = s.replace(/\b(m\/s\^2|m\/s²)\b/g, '\\text{ m/s}^2');
@@ -358,6 +373,21 @@ function autoDetectAndConvertMath(text: string): string {
     return `$${formatLatexContent(match)}$`;
   });
 
+  // 9. Multi-term partial fraction equations e.g. 1 / [(x - 1)(x + 2)] = A / (x - 1) + B / (x + 2)
+  result = replaceOutsideMath(result, /((?:(?:\([^\(\)]+\)|\[[^\[\]]+\]|[0-9a-zA-Z\^\{\}]+)\s*\/\s*(?:\[[^\[\]]+\]|\([^\(\)]+\)|[a-zA-Z][a-zA-Z0-9\^\{\}]*)\s*(?:[+=]\s*))+[0-9a-zA-Z\(\)\[\]\^\{\}\+\-\*]+\s*\/\s*(?:\[[^\[\]]+\]|\([^\(\)]+\)|[a-zA-Z][a-zA-Z0-9\^\{\}]*))/g, (m) => {
+    return `$${formatLatexContent(m)}$`;
+  });
+
+  // 10. Single algebraic fraction with bracketed or parenthesized denominator: e.g. (Ax + B) / [(x - 1)(x + 2)], 1 / [(x - 1)(x + 2)]
+  result = replaceOutsideMath(result, /(?:(?:\([^\(\)]+\)|\[[^\[\]]+\]|[0-9a-zA-Z\^\{\}]+)\s*\/\s*(?:\[[^\[\]]+\]|\([^\(\)]+\)))/g, (m) => {
+    return `$${formatLatexContent(m)}$`;
+  });
+
+  // 11. Standalone numerical slash fractions in text: e.g. 3/2, 1/2, -1/3 (excluding dates like 12/25/2024 or URLs)
+  result = replaceOutsideMath(result, /(?<!\d\/)(?<![\w\\/])([+-]?\d+)\s*\/\s*(\d+)(?![\w\\/])(?!\/\d)/g, (_m, a, b) => {
+    return `$${formatLatexContent(`\\frac{${a}}{${b}}`)}$`;
+  });
+
   return result;
 }
 
@@ -476,11 +506,14 @@ export function renderKaTeX(latex: string, displayMode: boolean = false): string
       let html = katexModule.renderToString(cleanLatex, {
         displayMode,
         throwOnError: false,
-        output: 'htmlAndMathml',
+        output: 'html',
         strict: false,
       });
 
-      // Remove any accidental red error cursor character '|' from katex-error elements if present
+      // 1. Remove phantom nulldelimiter elements that leave stray cursor or vertical bar artifacts
+      html = html.replace(/<span class="m(?:open|close) nulldelimiter"><\/span>/g, '');
+
+      // 2. Remove any accidental red error cursor character '|' from katex-error elements if present
       if (html.includes('katex-error')) {
         html = html.replace(/(<span class="katex-error"[^>]*>.*?)\|(<\/span>)/g, '$1$2');
       }
