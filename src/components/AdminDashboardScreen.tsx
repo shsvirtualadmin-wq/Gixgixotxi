@@ -738,7 +738,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
     setLoadingBuddyHistory(true);
     try {
       const [history, buddyLogs] = await Promise.all([
-        fetchStudentTestResultsFromSupabase(student.id),
+        fetchStudentTestResultsFromSupabase(student.id, student.email),
         fetchStudentStudyBuddyHistoryFromSupabase(student.id),
       ]);
       setStudentHistory(history);

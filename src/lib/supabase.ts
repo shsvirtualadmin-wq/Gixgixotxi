@@ -1041,7 +1041,8 @@ export async function saveTestToSupabase(
   uid: string,
   historyItem: HistoryItem,
   testResult: TestResult,
-  userEmail?: string
+  userEmail?: string,
+  sessionId?: string
 ): Promise<void> {
   const nowIso = new Date().toISOString();
 
@@ -1085,6 +1086,7 @@ export async function saveTestToSupabase(
         timeTakenSeconds: testResult.timeTakenSeconds,
         dateStr: historyItem.dateStr,
         attempts,
+        sessionId: sessionId || (testResult as any)?.sessionId || (testResult?.config as any)?.sessionId,
       }),
     });
     const apiData = await safeJsonResponse(apiRes);
@@ -1475,14 +1477,35 @@ export async function fetchAllTestResultsFromSupabase(): Promise<AdminTestResult
   }
 }
 
-export async function fetchStudentTestResultsFromSupabase(studentId: string): Promise<AdminTestResult[]> {
+export async function fetchStudentTestResultsFromSupabase(studentId: string, studentEmail?: string): Promise<AdminTestResult[]> {
+  const cleanEmail = studentEmail ? studentEmail.trim().toLowerCase() : (studentId.includes('@') ? studentId.trim().toLowerCase() : '');
+
+  // 1. Try fetching via all-test-results endpoint (merges server memory, persistent sessions, and DB)
+  try {
+    const allResults = await fetchAllTestResultsFromSupabase();
+    if (Array.isArray(allResults) && allResults.length > 0) {
+      const filtered = allResults.filter((r) => {
+        if (r.student_id === studentId) return true;
+        if (cleanEmail && r.student_email && r.student_email.trim().toLowerCase() === cleanEmail) return true;
+        if (cleanEmail && r.student_id && r.student_id.trim().toLowerCase() === cleanEmail) return true;
+        return false;
+      });
+      if (filtered.length > 0) return filtered;
+    }
+  } catch (apiErr) {
+    console.warn('Failed to query student test results via all-results cache:', apiErr);
+  }
+
+  // 2. Direct Supabase query fallback
   if (!isSupabaseConfigured) return [];
   try {
-    const { data, error } = await supabase
-      .from('test_results')
-      .select('*')
-      .eq('student_id', studentId)
-      .order('created_at', { ascending: false });
+    let query = supabase.from('test_results').select('*');
+    if (cleanEmail && studentId && studentId !== cleanEmail) {
+      query = query.or(`student_id.eq.${studentId},student_email.eq.${cleanEmail}`);
+    } else {
+      query = query.eq('student_id', studentId);
+    }
+    const { data, error } = await query.order('created_at', { ascending: false });
 
     if (error) {
       console.warn('Supabase fetch student test results error:', error.message);
@@ -1499,6 +1522,8 @@ export async function fetchStudentTestResultsFromSupabase(studentId: string): Pr
       return {
         id: String(row.id),
         student_id: row.student_id || studentId,
+        student_email: row.student_email || cleanEmail,
+        student_name: row.student_name || row.student_email || '',
         subject: row.subject || 'General',
         path_label: row.path_label || 'General',
         score,

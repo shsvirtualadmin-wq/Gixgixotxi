@@ -2810,7 +2810,8 @@ export function App() {
 
       // Save to Supabase and log MCQ attempts for student weakness profile in background
       const studentIdToLog = currentUser?.id || 'guest-student-1';
-      saveTestToSupabase(studentIdToLog, historyItem, result, currentUser?.email)
+      const sessionToPass = activeTestSessionId || undefined;
+      saveTestToSupabase(studentIdToLog, historyItem, result, currentUser?.email, sessionToPass)
         .then(() => fetchUserTestHistoryFromSupabase(studentIdToLog, currentUser?.email))
         .then((updatedHistory) => {
           if (updatedHistory && Array.isArray(updatedHistory) && updatedHistory.length > 0) {

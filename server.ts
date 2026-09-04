@@ -1296,6 +1296,96 @@ const inMemoryTestResults: SavedTestResultItem[] = [
   },
 ];
 
+export interface ServerTestSessionRecord {
+  id: string;
+  session_id: string;
+  student_id: string;
+  student_email?: string;
+  student_name?: string;
+  subject: string;
+  path_label: string;
+  status: 'in_progress' | 'submitted' | 'abandoned';
+  total_questions: number;
+  total?: number;
+  mcqs_attempted: number;
+  score?: number;
+  percentage?: number;
+  duration?: string;
+  time_taken_seconds?: number;
+  date_str?: string;
+  created_at: string;
+  updated_at?: string;
+  submitted_at?: string;
+  test_result_id?: string;
+  questions_count?: number;
+}
+
+const TEST_SESSIONS_FILE_PATH = path.join(process.cwd(), "data", "test_sessions.json");
+const persistentTestSessions = new Map<string, ServerTestSessionRecord>();
+
+function loadPersistentSessions() {
+  try {
+    if (fs.existsSync(TEST_SESSIONS_FILE_PATH)) {
+      const content = fs.readFileSync(TEST_SESSIONS_FILE_PATH, "utf-8");
+      if (content) {
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed)) {
+          for (const s of parsed) {
+            if (s && (s.session_id || s.id)) {
+              const sid = s.session_id || s.id;
+              persistentTestSessions.set(sid, s);
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[loadPersistentSessions warning]:", err);
+  }
+
+  // Seed baseline sessions from inMemoryTestResults if not already present
+  for (const item of inMemoryTestResults) {
+    const sessId = `sess-${item.id}`;
+    if (!persistentTestSessions.has(sessId) && !Array.from(persistentTestSessions.values()).some(s => s.test_result_id === item.id)) {
+      persistentTestSessions.set(sessId, {
+        id: sessId,
+        session_id: sessId,
+        student_id: item.student_id,
+        student_email: item.student_email,
+        student_name: item.student_name || item.student_email || item.student_id,
+        subject: item.subject,
+        path_label: item.path_label,
+        status: 'submitted',
+        total_questions: item.total,
+        total: item.total,
+        mcqs_attempted: item.total,
+        score: item.score,
+        percentage: item.percentage,
+        duration: item.duration,
+        time_taken_seconds: item.time_taken_seconds || 0,
+        date_str: item.date_str,
+        created_at: item.created_at,
+        updated_at: item.created_at,
+        submitted_at: item.created_at,
+        test_result_id: item.id,
+        questions_count: item.total,
+      });
+    }
+  }
+}
+
+function savePersistentSessions() {
+  try {
+    const list = Array.from(persistentTestSessions.values());
+    fs.writeFileSync(TEST_SESSIONS_FILE_PATH, JSON.stringify(list, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("[savePersistentSessions warning]:", err);
+  }
+}
+
+// Initial load on server start
+loadPersistentSessions();
+
 async function logStudentMcqAttempts(
   studentId: string,
   studentEmail: string | undefined,
@@ -3529,6 +3619,35 @@ function formatRemainingTimeString(ms: number): string {
 
       saveActiveTestSession(session);
 
+      // Record in persistent test sessions
+      try {
+        const sessionRecord: ServerTestSessionRecord = {
+          id: sessionId,
+          session_id: sessionId,
+          student_id: String(userId),
+          student_email: userEmail ? String(userEmail) : undefined,
+          student_name: userEmail ? String(userEmail).split('@')[0] : (userId !== 'guest' ? String(userId) : 'Guest Student'),
+          subject: config?.subject || 'Practice Test',
+          path_label: config?.path === 'mdcat' ? 'MDCAT' : (config?.path === 'tcat' ? 'ECAT/NUMS' : (config?.classNum ? `Class ${config.classNum}` : 'Board Exams')),
+          status: 'in_progress',
+          total_questions: Array.isArray(questions) ? questions.length : (config?.questionCount || 10),
+          total: Array.isArray(questions) ? questions.length : (config?.questionCount || 10),
+          mcqs_attempted: 0,
+          score: 0,
+          percentage: 0,
+          duration: `${config?.durationMinutes || 10}m 0s`,
+          time_taken_seconds: 0,
+          date_str: new Date().toLocaleDateString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          questions_count: Array.isArray(questions) ? questions.length : (config?.questionCount || 10),
+        };
+        persistentTestSessions.set(sessionId, sessionRecord);
+        savePersistentSessions();
+      } catch (sessErr) {
+        console.warn("[start-test-session persistent record warning]:", sessErr);
+      }
+
       return res.json({
         success: true,
         sessionId,
@@ -3631,6 +3750,21 @@ function formatRemainingTimeString(ms: number): string {
         session.updatedAt = Date.now();
 
         saveActiveTestSession(session);
+
+        // Update persistent session mcqs_attempted
+        try {
+          const sid = session.sessionId;
+          const existingPersist = persistentTestSessions.get(sid);
+          if (existingPersist && existingPersist.status !== 'submitted') {
+            const attemptedCount = session.userAnswers ? Object.keys(session.userAnswers).length : 0;
+            existingPersist.mcqs_attempted = attemptedCount;
+            existingPersist.updated_at = new Date().toISOString();
+            savePersistentSessions();
+          }
+        } catch (persErr) {
+          console.warn("[update-test-session persistent record warning]:", persErr);
+        }
+
         return res.json({ success: true, updated: true, userAnswers: session.userAnswers, session });
       }
 
@@ -3646,6 +3780,21 @@ function formatRemainingTimeString(ms: number): string {
     try {
       const { userId, userEmail, sessionId } = req.body || {};
       clearActiveTestSession(userId, userEmail, sessionId);
+
+      // If session was left incomplete / exited, update status to abandoned if not submitted
+      if (sessionId) {
+        try {
+          const existingPersist = persistentTestSessions.get(sessionId);
+          if (existingPersist && existingPersist.status === 'in_progress') {
+            existingPersist.status = 'abandoned';
+            existingPersist.updated_at = new Date().toISOString();
+            savePersistentSessions();
+          }
+        } catch (persErr) {
+          console.warn("[finish-test-session persistent record warning]:", persErr);
+        }
+      }
+
       return res.json({ success: true, cleared: true });
     } catch (err: any) {
       console.error("[/api/finish-test-session error]:", err);
@@ -4678,6 +4827,61 @@ ${scopeInstruction}${excludeInstruction}`;
         console.warn("[save-test-result activity log warning]:", logErr);
       }
 
+      // Update or create persistent test session record
+      try {
+        const { sessionId } = req.body || {};
+        let matchedSession: ServerTestSessionRecord | undefined;
+        if (sessionId && persistentTestSessions.has(sessionId)) {
+          matchedSession = persistentTestSessions.get(sessionId);
+        } else {
+          matchedSession = Array.from(persistentTestSessions.values()).find(
+            (s) => s.status === 'in_progress' && (s.student_id === studentId || (studentEmail && s.student_email?.toLowerCase() === studentEmail.toLowerCase()))
+          );
+        }
+
+        if (matchedSession) {
+          matchedSession.status = 'submitted';
+          matchedSession.score = numScore;
+          matchedSession.total = numTotal;
+          matchedSession.total_questions = numTotal;
+          matchedSession.percentage = computedPct;
+          matchedSession.mcqs_attempted = Array.isArray(attempts) && attempts.length > 0 ? attempts.length : numTotal;
+          matchedSession.duration = String(duration);
+          matchedSession.time_taken_seconds = Number(timeTakenSeconds) || 0;
+          matchedSession.submitted_at = nowIso;
+          matchedSession.updated_at = nowIso;
+          matchedSession.test_result_id = newResultItem.id;
+        } else {
+          const newSid = sessionId || `sess-${newResultItem.id}`;
+          persistentTestSessions.set(newSid, {
+            id: newSid,
+            session_id: newSid,
+            student_id: String(studentId),
+            student_email: studentEmail,
+            student_name: studentEmail ? studentEmail.split('@')[0] : (studentId !== 'guest' ? String(studentId) : 'Student'),
+            subject: subject || "Practice Test",
+            path_label: pathLabel || "General",
+            status: 'submitted',
+            total_questions: numTotal,
+            total: numTotal,
+            mcqs_attempted: Array.isArray(attempts) && attempts.length > 0 ? attempts.length : numTotal,
+            score: numScore,
+            percentage: computedPct,
+            duration: String(duration),
+            time_taken_seconds: Number(timeTakenSeconds) || 0,
+            date_str: dateStr,
+            created_at: nowIso,
+            updated_at: nowIso,
+            submitted_at: nowIso,
+            test_result_id: newResultItem.id,
+            questions_count: numTotal,
+          });
+        }
+        savePersistentSessions();
+      } catch (sessSyncErr) {
+        console.warn("[save-test-result session sync warning]:", sessSyncErr);
+      }
+
       return res.json({
         success: true,
         savedItem: newResultItem,
@@ -4889,6 +5093,31 @@ ${scopeInstruction}${excludeInstruction}`;
         }
       }
 
+      // 3. Query persistent test sessions that are submitted
+      for (const sess of persistentTestSessions.values()) {
+        if (sess.status === 'submitted') {
+          const resId = sess.test_result_id || sess.id;
+          if (!resultsMap.has(resId)) {
+            resultsMap.set(resId, {
+              id: resId,
+              student_id: sess.student_id || sess.student_email || "unknown",
+              student_email: sess.student_email || "",
+              student_name: sess.student_name || sess.student_email || sess.student_id,
+              subject: sess.subject || "General",
+              path_label: sess.path_label || "General",
+              score: sess.score || 0,
+              total: sess.total || sess.total_questions || 10,
+              percentage: sess.percentage || 0,
+              duration: sess.duration || "0m",
+              time_taken_seconds: sess.time_taken_seconds || 0,
+              date_str: sess.date_str || (sess.submitted_at ? new Date(sess.submitted_at).toLocaleDateString() : new Date(sess.created_at).toLocaleDateString()),
+              created_at: sess.submitted_at || sess.created_at || new Date().toISOString(),
+              hidden_from_student: false,
+            });
+          }
+        }
+      }
+
       const allResults = Array.from(resultsMap.values()).sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
@@ -4897,6 +5126,19 @@ ${scopeInstruction}${excludeInstruction}`;
     } catch (err: any) {
       console.error("[/api/admin/all-test-results error]:", err);
       return res.status(500).json({ success: false, error: err?.message || "Failed to fetch admin test results" });
+    }
+  });
+
+  // API Endpoint: Admin Fetch All Test Sessions (In-Progress, Submitted, Abandoned)
+  app.get("/api/admin/all-test-sessions", async (req, res) => {
+    try {
+      const sessions = Array.from(persistentTestSessions.values()).sort(
+        (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
+      return res.json({ success: true, count: sessions.length, sessions });
+    } catch (err: any) {
+      console.error("[/api/admin/all-test-sessions error]:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Failed to fetch test sessions" });
     }
   });
 
