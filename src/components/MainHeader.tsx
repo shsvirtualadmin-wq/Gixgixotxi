@@ -51,6 +51,7 @@ interface MainHeaderProps {
   historyCount?: number;
   onOpenHistory?: () => void;
   onOpenLmsPortal?: () => void;
+  onNavigateProfile?: () => void;
   onStartFree?: () => void;
   onSignOut?: () => void;
   onNavigateDashboard?: () => void;
@@ -156,6 +157,7 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
   historyCount = 0,
   onOpenHistory,
   onOpenLmsPortal,
+  onNavigateProfile,
   onStartFree,
   onSignOut,
   onNavigateDashboard,
@@ -356,10 +358,12 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                 <span>Subscription / Plan</span>
               </button>
               <button
-                onClick={() => onOpenLmsPortal?.()}
+                onClick={() => (onNavigateProfile ? onNavigateProfile() : onOpenLmsPortal?.())}
                 className="hover:text-[#1E5AFF] transition-colors cursor-pointer flex items-center gap-1.5"
+                title="View Student Profile"
               >
-                <span>Account Settings</span>
+                <User className="w-3.5 h-3.5 text-[#1E5AFF]" />
+                <span>Profile</span>
               </button>
             </>
           )}
@@ -407,12 +411,15 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
               </button>
               <button
                 onClick={() => {
-                  if (onOpenLmsPortal) onOpenLmsPortal();
+                  if (onNavigateProfile) onNavigateProfile();
+                  else if (onOpenLmsPortal) onOpenLmsPortal();
                   else if (onNavigateAdmin) onNavigateAdmin('students');
                 }}
                 className="hover:text-[#1E5AFF] transition-colors cursor-pointer flex items-center gap-1.5"
+                title="Admin Profile & Settings"
               >
-                <span>Account Settings</span>
+                <User className="w-3.5 h-3.5 text-[#1E5AFF]" />
+                <span>Profile</span>
               </button>
             </>
           )}
@@ -423,9 +430,9 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
           {/* Option B: Muted User Account Badge in Utility Bar */}
           {!isLoggedOut && currentUser?.email && (
             <div
-              onClick={onOpenLmsPortal}
+              onClick={() => (onNavigateProfile ? onNavigateProfile() : onOpenLmsPortal?.())}
               className="hidden lg:flex items-center gap-2 pl-1.5 pr-3 py-1 rounded-full bg-slate-200/80  border border-slate-300  text-slate-700  text-xs font-medium shadow-xs cursor-pointer hover:border-[#1E5AFF] transition-all"
-              title={`Logged in as ${currentUser.email}`}
+              title={`Logged in as ${currentUser.email} - Click to view profile`}
             >
               <UserAvatar user={currentUser} profile={userProfile} size="xs" />
               <span className="max-w-[120px] truncate text-slate-800  font-semibold">{userProfile?.name || currentUser.email}</span>
@@ -708,13 +715,14 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    if (onOpenLmsPortal) onOpenLmsPortal();
+                    if (onNavigateProfile) onNavigateProfile();
+                    else if (onOpenLmsPortal) onOpenLmsPortal();
                   }}
                   className="text-left py-2.5 px-3 hover:bg-slate-100  rounded-xl flex items-center justify-between cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-2.5">
                     <User className="w-4 h-4 text-[#1E5AFF]" />
-                    <span>Account Settings</span>
+                    <span>Profile</span>
                   </div>
                 </button>
               </>
@@ -804,14 +812,15 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    if (onOpenLmsPortal) onOpenLmsPortal();
+                    if (onNavigateProfile) onNavigateProfile();
+                    else if (onOpenLmsPortal) onOpenLmsPortal();
                     else if (onNavigateAdmin) onNavigateAdmin('students');
                   }}
                   className="text-left py-2.5 px-3 hover:bg-slate-100  rounded-xl flex items-center justify-between cursor-pointer transition-colors"
                 >
                   <div className="flex items-center gap-2.5">
                     <User className="w-4 h-4 text-[#1E5AFF]" />
-                    <span>Account Settings</span>
+                    <span>Profile</span>
                   </div>
                 </button>
               </>

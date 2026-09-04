@@ -4,6 +4,7 @@ import {
   supabase,
   isSupabaseConfigured,
   formatSupabaseAuthError,
+  User,
 } from '../lib/supabase';
 import {
   AlertCircle,
@@ -24,7 +25,7 @@ import { useSiteSettings } from '../context/SiteSettingsContext';
 import { SegmentedControl } from './SegmentedControl';
 
 interface LmsAuthScreenProps {
-  onSuccess?: () => void;
+  onSuccess?: (user?: User) => void;
   selectedGradeContext?: string;
   onBack?: () => void;
   initialMode?: 'signin' | 'signup';
@@ -159,7 +160,7 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = React.memo(({
       if (data?.session || data?.user) {
         setInfoMsg('Successfully signed in! Redirecting...');
         if (onSuccess) {
-          onSuccess();
+          onSuccess(data.user || data.session?.user);
         }
       }
     } catch (err: any) {
@@ -223,7 +224,7 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = React.memo(({
         // Direct session created (email confirmation disabled in Supabase)
         setInfoMsg('Account created and signed in successfully!');
         if (onSuccess) {
-          onSuccess();
+          onSuccess(data.user || data.session?.user);
         }
       } else if (data?.user) {
         // Confirmation required by default in Supabase

@@ -65,13 +65,14 @@ const ClassStreamDashboard = lazyWithRetry(() => import('./components/ClassStrea
 const PaymentRequiredScreen = lazyWithRetry(() => import('./components/PaymentRequiredScreen').then(m => ({ default: m.PaymentRequiredScreen })), 'PaymentRequired');
 const PlanSelectionScreen = lazyWithRetry(() => import('./components/PlanSelectionScreen').then(m => ({ default: m.PlanSelectionScreen })), 'PlanSelection');
 const PricingPage = lazyWithRetry(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })), 'Pricing');
+const StudentProfileView = lazyWithRetry(() => import('./components/StudentProfileView').then(m => ({ default: m.StudentProfileView })), 'StudentProfileView');
 
 import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
 
-type ScreenType =
+export type ScreenType =
   | 'intro'
   | 'guided_wizard'
   | 'plan_selection'
@@ -87,7 +88,28 @@ type ScreenType =
   | 'auth'
   | 'test'
   | 'results'
-  | 'admin';
+  | 'admin'
+  | 'profile';
+
+export const VALID_SCREENS: ScreenType[] = [
+  'dashboard',
+  'intro',
+  'profile',
+  'admin',
+  'guided_wizard',
+  'plan_selection',
+  'pricing',
+  'payment_required',
+  'grades_flow',
+  'group',
+  'subjects',
+  'stats',
+  'subject',
+  'duration',
+  'auth',
+  'test',
+  'results',
+];
 
 export function checkIsStudentProOrPaid(
   profile: StudentProfile | null | undefined,
@@ -140,14 +162,12 @@ const getInitialUrlState = (): {
   }
 
   const params = new URLSearchParams(window.location.search);
-  const urlScreen = params.get('screen') as ScreenType | null;
-  const validScreens: ScreenType[] = [
-    'intro', 'guided_wizard', 'plan_selection', 'payment_required', 'grades_flow', 'group', 'dashboard', 'subjects', 'stats', 'subject', 'duration', 'auth', 'test', 'results', 'admin'
-  ];
+  const rawUrlScreen = params.get('screen')?.trim();
 
-  let initialScreen: ScreenType = 'intro';
-  if (urlScreen && validScreens.includes(urlScreen)) {
-    initialScreen = urlScreen;
+  // Hard fallback: default is 'dashboard' if screen is missing, empty, or invalid
+  let initialScreen: ScreenType = 'dashboard';
+  if (rawUrlScreen && VALID_SCREENS.includes(rawUrlScreen as ScreenType)) {
+    initialScreen = rawUrlScreen as ScreenType;
   } else {
     try {
       // 1. Prioritize active test session resume if present and non-expired
@@ -164,12 +184,22 @@ const getInitialUrlState = (): {
           initialScreen = 'test';
         }
       }
-      if (initialScreen === 'intro') {
-        const saved = localStorage.getItem('boardly_active_screen');
-        if (saved && validScreens.includes(saved as ScreenType)) {
+      if (initialScreen === 'dashboard') {
+        const saved = localStorage.getItem('boardly_active_screen')?.trim();
+        if (saved && VALID_SCREENS.includes(saved as ScreenType)) {
           initialScreen = saved as ScreenType;
         }
       }
+    } catch {}
+  }
+
+  // If the URL has an empty or invalid screen parameter (?screen= or ?screen=invalid),
+  // clean up the URL right away so it doesn't stay stuck at empty ?screen=
+  if (params.has('screen') && (!rawUrlScreen || !VALID_SCREENS.includes(rawUrlScreen as ScreenType))) {
+    try {
+      const cleanParams = new URLSearchParams(window.location.search);
+      cleanParams.set('screen', initialScreen);
+      window.history.replaceState({ screen: initialScreen }, '', `?${cleanParams.toString()}`);
     } catch {}
   }
 
@@ -233,12 +263,13 @@ const buildUrl = (
   grp?: string,
   sub?: string
 ) => {
+  const safeScreen: ScreenType = (scr && VALID_SCREENS.includes(scr)) ? scr : 'dashboard';
   const params = new URLSearchParams();
-  if (scr !== 'intro') {
-    params.set('screen', scr);
-  }
+  // Always set a non-empty, validated screen parameter
+  params.set('screen', safeScreen);
+
   // Only persist class/group/subject query params during specific test flow screens where they represent user-selected test routes
-  const isTestFlowScreen = scr === 'subject' || scr === 'group' || scr === 'duration' || scr === 'test' || scr === 'results';
+  const isTestFlowScreen = safeScreen === 'subject' || safeScreen === 'group' || safeScreen === 'duration' || safeScreen === 'test' || safeScreen === 'results';
   if (isTestFlowScreen) {
     if (cls) {
       params.set('class', String(cls));
@@ -1314,14 +1345,18 @@ export function App() {
       }
 
       // 4. Update screen and parameter states from history state object
-      if (state && state.screen) {
-        setScreen(state.screen);
-        if (state.selectedClass !== undefined) setSelectedClass(state.selectedClass);
-        if (state.selectedGroup !== undefined) setSelectedGroup(state.selectedGroup);
-        if (state.selectedSubject !== undefined) setSelectedSubject(state.selectedSubject);
-      } else {
-        handleGlobalBackInternal();
-      }
+      const urlParams = new URLSearchParams(window.location.search);
+      const rawUrlScreen = urlParams.get('screen')?.trim();
+      const resolvedScreen = (state?.screen && VALID_SCREENS.includes(state.screen))
+        ? state.screen
+        : (rawUrlScreen && VALID_SCREENS.includes(rawUrlScreen as ScreenType))
+          ? (rawUrlScreen as ScreenType)
+          : 'dashboard';
+
+      setScreen(resolvedScreen);
+      if (state?.selectedClass !== undefined) setSelectedClass(state.selectedClass);
+      if (state?.selectedGroup !== undefined) setSelectedGroup(state.selectedGroup);
+      if (state?.selectedSubject !== undefined) setSelectedSubject(state.selectedSubject);
     };
 
     let capListener: any = null;
@@ -1516,13 +1551,23 @@ export function App() {
           setScreen('guided_wizard');
         }
       } else {
-        // Registered user on normal session restore / refresh
+        // Registered or Admin user on normal session restore / refresh / sign-in
         const activeScreen = screenRef.current;
         const params = new URLSearchParams(window.location.search);
-        const urlScreen = params.get('screen') as ScreenType | null;
-        if (!urlScreen && (activeScreen === 'intro' || activeScreen === 'auth')) {
-          console.log('[Auth Flow] Authenticated user on root/intro screen. Routing to dashboard...');
-          setScreen('dashboard');
+        const rawUrlScreen = params.get('screen')?.trim();
+        const isAuthOrIntroOrEmpty =
+          activeScreen === 'intro' ||
+          activeScreen === 'auth' ||
+          !rawUrlScreen ||
+          rawUrlScreen === 'intro' ||
+          rawUrlScreen === 'auth' ||
+          !VALID_SCREENS.includes(rawUrlScreen as ScreenType);
+
+        if (isAuthOrIntroOrEmpty) {
+          console.log('[Auth Flow] Authenticated user on root/intro/auth screen. Routing to dashboard...');
+          const target = nextScreenAfterAuthRef.current || 'dashboard';
+          setScreen(target);
+          setNextScreenAfterAuth(null);
         }
       }
     };
@@ -2860,6 +2905,16 @@ export function App() {
         historyCount={history.length}
         onOpenHistory={() => openHistoryModal()}
         onOpenLmsPortal={() => openLmsModal()}
+        onNavigateProfile={() => {
+          confirmExitTestIfActive(() => {
+            if (currentUser) {
+              setScreen('profile');
+            } else {
+              setScreen('auth');
+            }
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          });
+        }}
         onStartFree={() => {
           confirmExitTestIfActive(() => {
             setScreen('grades_flow');
@@ -3431,7 +3486,64 @@ export function App() {
                     </div>
                   )
                 )}
-                {!['intro', 'dashboard', 'stats', 'guided_wizard', 'pricing', 'plan_selection', 'payment_required', 'grades_flow', 'group', 'auth', 'subjects', 'subject', 'duration', 'test', 'results', 'admin'].includes(screen) && (
+                {screen === 'profile' && (
+                  currentUser ? (
+                    <div className="max-w-4xl mx-auto w-full py-4 sm:py-8 px-2 sm:px-4">
+                      <div className="mb-4 flex items-center justify-between">
+                        <button
+                          onClick={() => setScreen('dashboard')}
+                          className="inline-flex items-center gap-2 text-xs sm:text-sm font-bold text-slate-600 hover:text-slate-900 bg-white border border-slate-200/80 px-3.5 py-2 rounded-xl shadow-xs transition-colors cursor-pointer"
+                        >
+                          <ArrowRight className="w-4 h-4 rotate-180" />
+                          <span>Back to Dashboard</span>
+                        </button>
+                      </div>
+                      <div className="bg-white border border-slate-200/80 rounded-2xl sm:rounded-3xl shadow-sm p-4 sm:p-8">
+                        <StudentProfileView
+                          user={currentUser}
+                          profile={userProfile || {
+                            id: currentUser.id,
+                            email: currentUser.email || '',
+                            name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'Student',
+                            grade: 'Class 11',
+                            stream: 'Pre-Engineering',
+                            sign_up_method: 'Email/Password',
+                            created_at: new Date().toISOString(),
+                            updated_at: new Date().toISOString(),
+                          }}
+                          onRefreshProfile={() => refreshUserProfile()}
+                          onStartPractice={() => setScreen('subjects')}
+                          onSignOut={async () => {
+                            await supabase.auth.signOut();
+                            clearProfileCache();
+                            try {
+                              localStorage.removeItem('boardly_cached_user');
+                              localStorage.removeItem('boardly_cached_profile');
+                            } catch {}
+                            setCurrentUser(null);
+                            setUserProfile(null);
+                            setScreen('intro');
+                          }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="max-w-md mx-auto w-full py-8 px-4">
+                      <LmsAuthScreen
+                        onSuccess={(user) => {
+                          if (user) {
+                            setCurrentUser(user);
+                            setScreen('profile');
+                          } else {
+                            setScreen('dashboard');
+                          }
+                        }}
+                        onBack={() => setScreen('dashboard')}
+                      />
+                    </div>
+                  )
+                )}
+                {!['intro', 'dashboard', 'stats', 'guided_wizard', 'pricing', 'plan_selection', 'payment_required', 'grades_flow', 'group', 'auth', 'subjects', 'subject', 'duration', 'test', 'results', 'admin', 'profile'].includes(screen) && (
                   !currentUser ? (
                     <IntroScreen
                       onContinue={() => setScreen('auth')}

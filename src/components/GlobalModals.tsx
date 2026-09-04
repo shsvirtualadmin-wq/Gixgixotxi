@@ -71,7 +71,7 @@ export const GlobalModals: React.FC<GlobalModalsProps> = React.memo(({
     showTestLimitModal,
     closeTestLimitModal,
     showStudyBuddy,
-    toggleStudyBuddy,
+    closeStudyBuddy,
     testResult,
     paymentOverrides,
     testLimitData,
@@ -85,7 +85,7 @@ export const GlobalModals: React.FC<GlobalModalsProps> = React.memo(({
       {/* Study Buddy Chatbot */}
       <StudyBuddyModal
         isOpen={showStudyBuddy}
-        onClose={toggleStudyBuddy}
+        onClose={closeStudyBuddy}
         preloadedContext={studyBuddyContext}
         onClearPreloadedContext={() => setStudyBuddyContext(null)}
         studentProfile={userProfile}
@@ -102,7 +102,13 @@ export const GlobalModals: React.FC<GlobalModalsProps> = React.memo(({
           currentUser={currentUser}
           userProfile={userProfile}
           isTestLimitReached={isTestLimitReached}
-          onClose={closeLmsModal}
+          onClose={() => {
+            closeLmsModal();
+            closeStudyBuddy();
+            if (screen === 'profile') {
+              setScreen('dashboard');
+            }
+          }}
           onRefreshProfile={() => refreshUserProfile()}
           onStartPractice={() => {
             closeLmsModal();
