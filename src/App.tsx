@@ -657,18 +657,18 @@ export function App() {
   const isStudentProOrPaid = userProfile?.is_pro === true || userProfile?.payment_status === 'Verified & Paid';
   const isPaymentApprovedOrExempt = isAdmin || isStudentProOrPaid;
 
-  // Synchronize selectedClass & selectedGroup strictly with student's profile grade & stream
+  // Synchronize selectedClass & selectedGroup with student's profile grade & stream if not set yet
   useEffect(() => {
     if (userProfile && isRegisteredStudent && !isAdmin) {
       const defaultInfo = getStudentDefaultClassAndGroup(userProfile);
-      if (selectedClass !== defaultInfo.classNum) {
+      if (selectedClass === undefined) {
         setSelectedClass(defaultInfo.classNum);
       }
-      if (selectedGroup !== defaultInfo.group) {
+      if (selectedGroup === undefined) {
         setSelectedGroup(defaultInfo.group);
       }
     }
-  }, [userProfile, isRegisteredStudent, isAdmin]);
+  }, [userProfile, isRegisteredStudent, isAdmin, selectedClass, selectedGroup]);
 
   // Keep local storage and backend server synchronized with active test progress
   useEffect(() => {
@@ -2724,85 +2724,65 @@ export function App() {
     (authTimedOut && !currentUser && !userProfile);
 
   if (showSplash) {
+    if (authTimedOut || authError) {
+      return (
+        <div className="min-h-dvh h-dvh sm:min-h-screen bg-[#F8F9FB] text-slate-900 flex flex-col items-center justify-center p-4 relative">
+          <div className="rounded-2xl p-6 sm:p-8 max-w-sm w-full flex flex-col items-center gap-4 text-center shadow-lg border border-slate-200 bg-white">
+            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="font-['Space_Grotesk'] font-bold text-base text-slate-900">
+                Connection Taking Longer Than Usual
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed max-w-xs">
+                We're having trouble contacting authentication servers. You can retry connection or continue directly into the portal.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2 w-full pt-2">
+              <button
+                onClick={handleRetryAuth}
+                className="w-full py-2.5 px-4 bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-bold rounded-xl text-xs shadow-sm active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>Retry Connection</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  setAuthTimedOut(false);
+                  setAuthLoading(false);
+                  setProfileSyncing(false);
+                  setScreen('intro');
+                }}
+                className="w-full py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>Continue to Home Screen</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                onClick={() => {
+                  setAuthTimedOut(false);
+                  setAuthLoading(false);
+                  setProfileSyncing(false);
+                  setScreen('auth');
+                }}
+                className="text-[11px] font-semibold text-[#1E5AFF] hover:underline pt-1 cursor-pointer"
+              >
+                Sign In with Email / Password
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="min-h-dvh h-dvh sm:min-h-screen bg-[#F8F9FB] text-slate-900 flex flex-col items-center justify-center p-4 relative overflow-hidden">
-        {/* Glowing ambient background blur with hardware-accelerated continuous ease */}
-        <motion.div
-          initial={{ opacity: 0.1, scale: 0.8 }}
-          animate={{ opacity: [0.15, 0.3, 0.15], scale: [0.9, 1.1, 0.9] }}
-          transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute w-80 h-80 bg-blue-500/15 rounded-full blur-3xl pointer-events-none"
-        />
-
-        <motion.div
-          initial={{ opacity: 0, scale: 0.92, y: 16 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.96, y: -10 }}
-          transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
-          className="rounded-[32px] p-8 max-w-sm w-full flex flex-col items-center gap-5 text-center shadow-2xl border border-slate-200/80 bg-white/90 backdrop-blur-xl relative z-10"
-        >
-          <HeaderLogo isIntro={false} currentUserEmail={currentUser?.email} />
-          
-          {authTimedOut || authError ? (
-            <div className="flex flex-col items-center gap-4 w-full pt-1 animate-fadeIn">
-              <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
-                <AlertTriangle className="w-6 h-6" />
-              </div>
-
-              <div className="space-y-1.5">
-                <h3 className="font-['Space_Grotesk'] font-bold text-base text-slate-900">
-                  Connection Taking Longer Than Usual
-                </h3>
-                <p className="text-xs text-slate-500 leading-relaxed max-w-xs">
-                  We're having trouble contacting authentication servers. You can retry connection or continue directly into the portal.
-                </p>
-              </div>
-
-              <div className="flex flex-col gap-2 w-full pt-2">
-                <button
-                  onClick={handleRetryAuth}
-                  className="w-full py-3 px-4 bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-bold rounded-2xl text-xs shadow-md active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <RefreshCw className="w-4 h-4" />
-                  <span>Retry Connection</span>
-                </button>
-
-                <button
-                  onClick={() => {
-                    setAuthTimedOut(false);
-                    setAuthLoading(false);
-                    setProfileSyncing(false);
-                    setScreen('intro');
-                  }}
-                  className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <span>Continue to Home Screen</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  onClick={() => {
-                    setAuthTimedOut(false);
-                    setAuthLoading(false);
-                    setProfileSyncing(false);
-                    setScreen('auth');
-                  }}
-                  className="text-[11px] font-semibold text-[#1E5AFF] hover:underline pt-1 cursor-pointer"
-                >
-                  Sign In with Email / Password
-                </button>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center gap-3 w-full pt-1">
-              <BrandedLoadingSpinner
-                size="lg"
-                label={currentUser ? "Loading Student Dashboard..." : "Loading Boardly..."}
-                sublabel={currentUser ? "Syncing curriculum & student profile..." : "Checking session & preparing workspace..."}
-              />
-            </div>
-          )}
-        </motion.div>
+      <div className="min-h-dvh h-dvh sm:min-h-screen bg-[#F8F9FB] text-slate-900 flex flex-col items-center justify-center p-4">
+        <div className="w-6 h-6 border-2 border-slate-200 border-t-[#1E5AFF] rounded-full animate-spin" />
       </div>
     );
   }

@@ -117,27 +117,9 @@
   </head>
   <body class="bg-[#F8F9FB] text-slate-900 antialiased selection:bg-[#1E5AFF] selection:text-white">
     <div id="root">
-      <!-- Instant First-Paint Neutral Loading Screen (Prevents marketing page flash during initial load & auth resolve) -->
-      <div id="initial-preloader" style="min-height: 100vh; background-color: #F8F9FB; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; font-family: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; color: #1E293B;">
-        <div style="max-width: 360px; width: 100%; background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 28px; padding: 36px 28px; display: flex; flex-direction: column; align-items: center; text-align: center; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.02);">
-          
-          <!-- Logo Icon -->
-          <div style="width: 52px; height: 52px; border-radius: 16px; background: #0A1330; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 16px rgba(30, 90, 255, 0.22); border: 2px solid #1E5AFF; margin-bottom: 16px;">
-            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#1E5AFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M22 10v6M2 10l10-5 10 5-10 5z"/>
-              <path d="M6 12v5c3 3 9 3 12 0v-5"/>
-            </svg>
-          </div>
-
-          <div style="font-size: 18px; font-weight: 800; color: #0A1330; letter-spacing: 0.5px; line-height: 1.2;">BOARDLY</div>
-          <div style="font-size: 10px; font-weight: 700; color: #1E5AFF; text-transform: uppercase; letter-spacing: 0.8px; margin-top: 4px; margin-bottom: 24px;">SHS Virtual Academy</div>
-
-          <!-- Neutral Loading Spinner & Status -->
-          <div style="display: flex; flex-direction: column; align-items: center; gap: 12px; width: 100%;">
-            <div style="width: 32px; height: 32px; border: 3px solid #E2E8F0; border-top-color: #1E5AFF; border-radius: 50%; animation: initial-spin 0.8s linear infinite;"></div>
-            <div style="font-size: 13px; font-weight: 600; color: #475569;">Loading Boardly...</div>
-          </div>
-        </div>
+      <!-- Minimal lightweight loader -->
+      <div id="initial-preloader" style="min-height: 100vh; background-color: #F8F9FB; display: flex; flex-direction: column; align-items: center; justify-content: center;">
+        <div style="width: 28px; height: 28px; border: 3px solid #E2E8F0; border-top-color: #1E5AFF; border-radius: 50%; animation: initial-spin 0.6s linear infinite;"></div>
         <style>
           @keyframes initial-spin {
             0% { transform: rotate(0deg); }

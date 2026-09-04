@@ -1400,6 +1400,18 @@ export interface AdminTestResult {
 }
 
 export async function fetchAllTestResultsFromSupabase(): Promise<AdminTestResult[]> {
+  try {
+    const apiRes = await apiFetch('/api/admin/all-test-results');
+    if (apiRes.ok) {
+      const data = await safeJsonResponse(apiRes);
+      if (data?.success && Array.isArray(data.results)) {
+        return data.results;
+      }
+    }
+  } catch (apiErr) {
+    console.warn('Failed to fetch test results from /api/admin/all-test-results:', apiErr);
+  }
+
   if (!isSupabaseConfigured) return [];
   try {
     const { data, error } = await supabase
@@ -1422,6 +1434,8 @@ export async function fetchAllTestResultsFromSupabase(): Promise<AdminTestResult
       return {
         id: String(row.id),
         student_id: row.student_id || '',
+        student_email: row.student_email || '',
+        student_name: row.student_name || row.student_email || '',
         subject: row.subject || 'General',
         path_label: row.path_label || 'General',
         score,

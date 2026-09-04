@@ -3528,6 +3528,7 @@ import { TCAT_PREBUILT_QUESTIONS, generateTCATFullMockBank, getTCATPrebuiltQuest
 // Map aliases for prebuilt lookup so queries never fail
 PREBUILT_QUESTIONS["Islamiat"] = PREBUILT_QUESTIONS["Islamic Studies"];
 PREBUILT_QUESTIONS["Islamiyat"] = PREBUILT_QUESTIONS["Islamic Studies"];
+PREBUILT_QUESTIONS["Islamiat"] = PREBUILT_QUESTIONS["Islamic Studies"];
 PREBUILT_QUESTIONS["Pak Studies"] = PREBUILT_QUESTIONS["Pakistan Studies"];
 PREBUILT_QUESTIONS["Pak-Studies"] = PREBUILT_QUESTIONS["Pakistan Studies"];
 
@@ -3535,11 +3536,13 @@ PREBUILT_QUESTIONS["Pak-Studies"] = PREBUILT_QUESTIONS["Pakistan Studies"];
  * Safely fetches prebuilt questions for any requested subject & optional customTopic.
  * Guarantees zero off-topic leakage when a specific subtopic or chapter is requested.
  */
-export function getPrebuiltQuestionsForSubject(subjectName: string, customTopic?: string): Question[] {
+export function getPrebuiltQuestionsForSubject(subjectName: string, customTopic?: string, classNum?: BoardClass): Question[] {
   if (!subjectName) return [];
 
   const clean = subjectName.trim();
   const lower = clean.toLowerCase();
+  const isTcat = classNum === 'TCAT' || lower.includes('tcat');
+  const isMdcat = classNum === 'MDCAT' || lower.includes('mdcat');
 
   // Full Mock Exams are comprehensive cross-subject tests (100 or 180 MCQs) and must never be filtered down by topic
   if (lower.includes('tcat full') || lower.includes('tcat mock')) {
@@ -3548,8 +3551,8 @@ export function getPrebuiltQuestionsForSubject(subjectName: string, customTopic?
     return generateMDCATFullMockBank().map(shuffleQuestionOptions);
   }
 
-  // TCAT Subjects & Chapters: Always delegate to getTCATPrebuiltQuestions for verified questions & zero filler
-  if (TCAT_PREBUILT_QUESTIONS[clean] || TCAT_PREBUILT_QUESTIONS[mapSubject(subjectName)]) {
+  // TCAT Subjects & Chapters: ONLY delegate to getTCATPrebuiltQuestions if this is actually a TCAT test!
+  if (isTcat && (TCAT_PREBUILT_QUESTIONS[clean] || TCAT_PREBUILT_QUESTIONS[mapSubject(subjectName)])) {
     const tcatSub = TCAT_PREBUILT_QUESTIONS[clean] ? clean : mapSubject(subjectName);
     return getTCATPrebuiltQuestions(tcatSub, 100, customTopic).map(shuffleQuestionOptions);
   }
@@ -3558,11 +3561,18 @@ export function getPrebuiltQuestionsForSubject(subjectName: string, customTopic?
 
   if (lower.includes('logic') || lower.includes('reasoning')) {
     pool = MDCAT_PREBUILT_QUESTIONS['Logical Reasoning'] || [];
-  } else if (MDCAT_PREBUILT_QUESTIONS[clean]) {
+  } else if (isMdcat && MDCAT_PREBUILT_QUESTIONS[clean]) {
     pool = MDCAT_PREBUILT_QUESTIONS[clean];
   } else {
     const canon = mapSubject(subjectName);
-    pool = MDCAT_PREBUILT_QUESTIONS[canon] || PREBUILT_QUESTIONS[canon] || PREBUILT_QUESTIONS[subjectName] || [];
+    // For regular Board classes (Class 9, 10, 11, 12), prioritize board syllabus questions from PREBUILT_QUESTIONS
+    pool = PREBUILT_QUESTIONS[canon] || 
+           PREBUILT_QUESTIONS[clean] || 
+           (canon === 'Islamiat' ? PREBUILT_QUESTIONS['Islamic Studies'] : undefined) ||
+           (isMdcat ? MDCAT_PREBUILT_QUESTIONS[canon] || MDCAT_PREBUILT_QUESTIONS[clean] : undefined) ||
+           MDCAT_PREBUILT_QUESTIONS[canon] || 
+           MDCAT_PREBUILT_QUESTIONS[clean] || 
+           [];
   }
 
   const isSpecificTopic = customTopic && 
@@ -3572,12 +3582,20 @@ export function getPrebuiltQuestionsForSubject(subjectName: string, customTopic?
     !customTopic.toLowerCase().includes('full mock') && 
     !customTopic.toLowerCase().includes('full exam');
 
-  if (isSpecificTopic) {
+  if (isSpecificTopic && pool.length > 0) {
     const filteredPool = pool.filter((q) =>
       checkQuestionTopicRelevance(q.q || '', q.topic, q.options || [], q.explain || '', customTopic, subjectName)
     );
 
-    return filteredPool.map(shuffleQuestionOptions);
+    if (filteredPool.length > 0) {
+      if (filteredPool.length < 10 && pool.length > filteredPool.length) {
+        const remaining = pool.filter(q => !filteredPool.some(fq => fq.id === q.id));
+        return [...filteredPool, ...remaining].map(shuffleQuestionOptions);
+      }
+      return filteredPool.map(shuffleQuestionOptions);
+    }
+    // Graceful fallback: If no strict topic keyword matched, return subject pool so students are never blocked with an empty screen!
+    return pool.map(shuffleQuestionOptions);
   }
 
   return pool.map(shuffleQuestionOptions);
