@@ -877,6 +877,7 @@ export interface ServerStudentItem {
   is_pro: boolean;
   package_name?: string;
   subscribed_plans?: string[];
+  tests_used_this_month?: number;
   payment_status?: string;
   status: 'active' | 'suspended';
   created_at: string;
@@ -4490,8 +4491,8 @@ ${scopeInstruction}${excludeInstruction}`;
         const prevCount = inMemoryTestAttemptStore[currentPeriod][studentId] || 0;
         inMemoryTestAttemptStore[currentPeriod][studentId] = prevCount + 1;
       }
-      if (studentEmail) {
-        const cleanEmail = studentEmail.trim().toLowerCase();
+      const cleanEmail = studentEmail ? studentEmail.trim().toLowerCase() : (studentId.includes("@") ? studentId.trim().toLowerCase() : "");
+      if (cleanEmail) {
         const prevEmailCount = inMemoryTestAttemptStore[currentPeriod][cleanEmail] || 0;
         inMemoryTestAttemptStore[currentPeriod][cleanEmail] = prevEmailCount + 1;
       }
@@ -4536,16 +4537,30 @@ ${scopeInstruction}${excludeInstruction}`;
           } else {
             supabaseSuccess = true;
             console.log(`[api/save-test-result]: Successfully saved test result to Supabase for student ${studentId}`);
-            if (validStudentUuid) {
-              try {
-                const client = getAuthClient(req || null) || getSupabaseAdminClient() || supabaseServer;
-                if (client) {
-                  const { data: currentSt } = await client.from("students").select("tests_used_this_month").eq("id", validStudentUuid).maybeSingle();
-                  const nextUsed = (Number(currentSt?.tests_used_this_month) || 0) + 1;
-                  await client.from("students").update({ tests_used_this_month: nextUsed }).eq("id", validStudentUuid);
+            try {
+              const client = getAuthClient(req || null) || getSupabaseAdminClient() || supabaseServer;
+              if (client) {
+                let stQuery = client.from("students").select("id, tests_used_this_month");
+                if (validStudentUuid) {
+                  stQuery = stQuery.eq("id", validStudentUuid);
+                } else if (cleanEmail) {
+                  stQuery = stQuery.eq("email", cleanEmail);
+                } else if (studentId && studentId !== "guest") {
+                  stQuery = stQuery.eq("id", studentId);
                 }
-              } catch (syncErr) {
-                console.warn("[save-test-result] student tests_used sync warning:", syncErr);
+                const { data: currentSt } = await stQuery.maybeSingle();
+                if (currentSt) {
+                  const nextUsed = (Number(currentSt.tests_used_this_month) || 0) + 1;
+                  await client.from("students").update({ tests_used_this_month: nextUsed }).eq("id", currentSt.id);
+                }
+              }
+            } catch (syncErr) {
+              console.warn("[save-test-result] student tests_used sync warning:", syncErr);
+            }
+
+            for (const s of inMemoryStudents) {
+              if (s.id === studentId || (cleanEmail && s.email.toLowerCase() === cleanEmail)) {
+                s.tests_used_this_month = (s.tests_used_this_month || 0) + 1;
               }
             }
           }
@@ -5368,6 +5383,7 @@ ${scopeInstruction}${excludeInstruction}`;
                 subscribed_plans: Array.isArray(row.subscribed_plans) ? row.subscribed_plans : (existing?.subscribed_plans || []),
                 payment_status: row.payment_status || existing?.payment_status || (row.is_pro ? "approved" : "free"),
                 status: row.status || existing?.status || "active",
+                tests_used_this_month: Number(row.tests_used_this_month ?? row.mcq_count_this_month ?? existing?.tests_used_this_month ?? 0),
                 created_at: row.created_at || existing?.created_at || new Date().toISOString(),
                 updated_at: row.updated_at || existing?.updated_at || new Date().toISOString(),
               };
@@ -5397,6 +5413,7 @@ ${scopeInstruction}${excludeInstruction}`;
             subscribed_plans: [t.path_label || "Exam Prep"],
             payment_status: "approved",
             status: "active",
+            tests_used_this_month: 1,
             created_at: t.created_at,
             updated_at: t.created_at,
           };
@@ -5408,6 +5425,18 @@ ${scopeInstruction}${excludeInstruction}`;
       // Return unique list deduplicated by id
       const uniqueStudents = Array.from(
         new Map(Array.from(studentMap.values()).map(s => [s.id, s])).values()
+      );
+
+      // Read attempt counts from the exact same source of truth the student dashboard uses (getStudentMonthlyTestCount)
+      await Promise.all(
+        uniqueStudents.map(async (st) => {
+          try {
+            const count = await getStudentMonthlyTestCount(st.id, st.email, req);
+            st.tests_used_this_month = Math.max(count, Number(st.tests_used_this_month || 0));
+          } catch (cntErr) {
+            st.tests_used_this_month = Number(st.tests_used_this_month || 0);
+          }
+        })
       );
 
       uniqueStudents.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());

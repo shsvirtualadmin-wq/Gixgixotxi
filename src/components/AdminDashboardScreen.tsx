@@ -910,7 +910,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
       breakdown: filteredBreakdown,
       totalAttempted,
       overallAccuracy,
-      totalTestsTaken: studentTests.length,
+      totalTestsTaken: Math.max(studentTests.length, Number(student?.tests_used_this_month || 0)),
     };
   };
 
@@ -1425,7 +1425,16 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                       <div className="flex flex-wrap items-center gap-1.5 pt-1 min-w-0">
                         {/* Current Active Subscription Plan Badge & Test Limit Info */}
                         {(() => {
-                          const studentTests = allTestResults.filter(t => t.student_id === student.id).length;
+                          const matchingTestResults = allTestResults.filter(
+                            (t) =>
+                              t.student_id === student.id ||
+                              (student.email && t.student_email && t.student_email.toLowerCase() === student.email.toLowerCase()) ||
+                              (student.email && t.student_id && t.student_id.toLowerCase() === student.email.toLowerCase())
+                          );
+                          const studentTests = Math.max(
+                            Number(student.tests_used_this_month || 0),
+                            matchingTestResults.length
+                          );
                           const access = evaluateStudentAccess(student, studentTests);
 
                           let planColor = 'bg-slate-500/10 text-slate-700  border-slate-500/20';
@@ -1450,8 +1459,8 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                                 <Activity className="w-3 h-3 text-amber-500 shrink-0" />
                                 <span>
                                   {access.isPro
-                                    ? `Unlimited (${studentTests} Taken)`
-                                    : `${studentTests} / 2 Monthly Tests Used`}
+                                    ? `Unlimited (${access.currentMonthlyTests} Taken)`
+                                    : `${access.currentMonthlyTests} / 2 Monthly Tests Used`}
                                 </span>
                               </span>
 
