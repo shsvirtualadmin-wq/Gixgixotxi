@@ -582,7 +582,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
             >
               <Zap className="w-4 h-4 text-[#0A0A0A] fill-[#0A0A0A]" />
               <span>
-                {isTestLimitReached ? "2/2 free MCQs used this month" : `${userProfile?.grade || 'Class 11'} ${userProfile?.stream || 'Pre-Engineering'} Practice Test`}
+                {isTestLimitReached ? "2/2 free tests used this month" : `${userProfile?.grade || 'Class 11'} ${userProfile?.stream || 'Pre-Engineering'} Practice Test`}
               </span>
             </button>
           )}

@@ -398,6 +398,14 @@ async function getStudentMonthlyTestCount(userId: string, userEmail: string | un
   let dbTestCount = 0;
   let studentDbTestsUsed = 0;
 
+  const cleanEmail = userEmail ? userEmail.trim().toLowerCase() : null;
+  const isRealUser = Boolean(userId && userId !== "guest");
+
+  // If unauthenticated guest without email, return 0 (guests will be prompted to sign in before starting tests)
+  if (!isRealUser && !cleanEmail) {
+    return 0;
+  }
+
   try {
     const authClient = getSupabaseAdminClient() || getAuthClient(req || null) || supabaseServer;
     if (authClient) {
@@ -407,9 +415,8 @@ async function getStudentMonthlyTestCount(userId: string, userEmail: string | un
         .gte("created_at", startOfMonthIso);
 
       const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-      const cleanEmail = userEmail ? userEmail.trim().toLowerCase() : null;
 
-      if (userId && uuidRegex.test(userId)) {
+      if (isRealUser && uuidRegex.test(userId)) {
         if (cleanEmail) {
           query = query.or(`student_id.eq.${userId},student_email.ilike.${cleanEmail}`);
         } else {
@@ -417,8 +424,6 @@ async function getStudentMonthlyTestCount(userId: string, userEmail: string | un
         }
       } else if (cleanEmail) {
         query = query.ilike("student_email", cleanEmail);
-      } else if (userId) {
-        query = query.or(`student_id.eq.${userId},student_email.ilike.${userId}`);
       }
 
       const { count, error } = await query;
@@ -429,14 +434,12 @@ async function getStudentMonthlyTestCount(userId: string, userEmail: string | un
       }
 
       // Check students table tests_used_this_month column
-      if (userId || cleanEmail) {
+      if (isRealUser || cleanEmail) {
         let stQuery = authClient.from("students").select("tests_used_this_month, mcq_count_this_month");
-        if (userId && uuidRegex.test(userId)) {
+        if (isRealUser && uuidRegex.test(userId)) {
           stQuery = stQuery.eq("id", userId);
         } else if (cleanEmail) {
           stQuery = stQuery.eq("email", cleanEmail);
-        } else if (userId) {
-          stQuery = stQuery.eq("id", userId);
         }
         const { data: stRow } = await stQuery.maybeSingle();
         if (stRow) {
@@ -448,8 +451,7 @@ async function getStudentMonthlyTestCount(userId: string, userEmail: string | un
     console.warn("[getStudentMonthlyTestCount] Supabase exception:", err);
   }
 
-  const cleanEmail = userEmail ? userEmail.trim().toLowerCase() : null;
-  const recordedAttempts = inMemoryTestAttemptStore[period]?.[userId] || 0;
+  const recordedAttempts = isRealUser ? (inMemoryTestAttemptStore[period]?.[userId] || 0) : 0;
   const recordedAttemptsEmail = cleanEmail ? (inMemoryTestAttemptStore[period]?.[cleanEmail] || 0) : 0;
 
   return Math.max(dbTestCount, studentDbTestsUsed, recordedAttempts, recordedAttemptsEmail);
@@ -460,9 +462,24 @@ function recordStudentTestStart(userId: string, userEmail: string | undefined): 
   if (!inMemoryTestAttemptStore[period]) {
     inMemoryTestAttemptStore[period] = {};
   }
-  const current = inMemoryTestAttemptStore[period][userId] || 0;
+  const cleanEmail = userEmail ? userEmail.trim().toLowerCase() : null;
+  const isRealUser = Boolean(userId && userId !== "guest");
+
+  let current = 0;
+  if (isRealUser && inMemoryTestAttemptStore[period][userId]) {
+    current = Math.max(current, inMemoryTestAttemptStore[period][userId]);
+  }
+  if (cleanEmail && inMemoryTestAttemptStore[period][cleanEmail]) {
+    current = Math.max(current, inMemoryTestAttemptStore[period][cleanEmail]);
+  }
+
   const updated = current + 1;
-  inMemoryTestAttemptStore[period][userId] = updated;
+  if (isRealUser) {
+    inMemoryTestAttemptStore[period][userId] = updated;
+  }
+  if (cleanEmail) {
+    inMemoryTestAttemptStore[period][cleanEmail] = updated;
+  }
   return updated;
 }
 
@@ -3093,6 +3110,20 @@ async function startServer() {
         });
       }
 
+      // If unauthenticated guest without email, advise authentication
+      if (activeUserId === "guest" && !activeEmail) {
+        return res.json({
+          success: true,
+          allowed: false,
+          requiresAuth: true,
+          message: "Please sign in or create a free account to take practice tests.",
+          currentUsage: 0,
+          limit: 2,
+          remaining: 2,
+          resetDate: resetDateStr,
+        });
+      }
+
       const testsTaken = await getStudentMonthlyTestCount(activeUserId, activeEmail, req);
       if (testsTaken >= 2) {
         const msg = `You've used your 2 free tests this month — upgrade to continue. Limit resets on ${resetDateStr}.`;
@@ -3353,6 +3384,22 @@ function formatRemainingTimeString(ms: number): string {
 
       const currentTestCount = isAdmin ? 0 : await getStudentMonthlyTestCount(userId, userEmail, req);
 
+      const isGrandMock = Boolean(
+        config?.isFullMock ||
+        (config?.questionCount && Number(config.questionCount) >= 100) ||
+        (config?.subject && String(config.subject).toLowerCase().includes("full mock"))
+      );
+
+      // Enforce Pro-only for Grand Mocks (100/180 MCQs)
+      if (!isAdmin && !studentIsPro && isGrandMock) {
+        return res.status(403).json({
+          success: false,
+          grandMockRestricted: true,
+          error: "Full 100/180 MCQ Grand Mocks are a Pro feature — upgrade to Boardly Pro to access full entrance exam simulations.",
+          message: "Full Grand Mocks require Pro",
+        });
+      }
+
       // Enforce free-tier limit: max 2 tests/month
       if (!isAdmin && !studentIsPro && currentTestCount >= 2) {
         const resetDateStr = getNextMonthResetDate();
@@ -3371,7 +3418,7 @@ function formatRemainingTimeString(ms: number): string {
 
       // Record test start for free user
       let newUsage = currentTestCount;
-      if (!isAdmin && !studentIsPro) {
+      if (!isAdmin && !studentIsPro && userId && userId !== "guest") {
         newUsage = recordStudentTestStart(userId, userEmail);
       }
 
@@ -3596,14 +3643,16 @@ function formatRemainingTimeString(ms: number): string {
           });
         }
 
-        // Check 2: Free Plan user trying to access paid entrance exam tracks (MDCAT/TCAT)
-        if (isFreePlanOnly && (isMdcatFullMock || isTcatFullMock || rawSubject.toLowerCase().includes("mdcat") || rawSubject.toLowerCase().includes("tcat"))) {
+        // Check 2: Grand Mock Exams (100/180 MCQs) are strictly Pro-only across all tracks
+        const isGrandMockRequested = isMdcatFullMock || isTcatFullMock || isAnyFullMock || requestedCount >= 100;
+        if (isFreePlanOnly && isGrandMockRequested) {
           return res.status(403).json({
             success: false,
             locked: true,
+            grandMockRestricted: true,
             paymentRequired: true,
-            error: "Paid Subscription Required: MDCAT and TCAT entrance prep requires a paid plan. Please upgrade your plan.",
-            message: "Paid Subscription Required: MDCAT and TCAT entrance prep requires a paid plan."
+            error: "Grand Mock Exams (100/180 MCQs) are locked on the Free Starter plan. Upgrade to Boardly Pro for full entrance exam simulations.",
+            message: "Grand Mock Exams require a Pro subscription. Please upgrade to Pro."
           });
         }
       }
@@ -4202,11 +4251,8 @@ ${scopeInstruction}${excludeInstruction}`;
       }
     }
 
-    // 2. Register student test start in server store upon successful question generation
-    let newUsage = currentTestCount;
-    if (finalQuestions.length > 0 && !isAdmin && !studentIsPro && !isBackgroundBatch && !hasActiveSession) {
-      newUsage = recordStudentTestStart(userId, userEmail);
-    }
+    // Question generation does not consume test allowance directly; active test start is tracked in /api/start-test-session
+    const newUsage = currentTestCount;
 
     // Ensure all questions have randomized option positions and corrected answer indices
     finalQuestions = finalQuestions.map(shuffleQuestionOptions);
@@ -4470,6 +4516,18 @@ ${scopeInstruction}${excludeInstruction}`;
           } else {
             supabaseSuccess = true;
             console.log(`[api/save-test-result]: Successfully saved test result to Supabase for student ${studentId}`);
+            if (validStudentUuid) {
+              try {
+                const client = getAuthClient(req || null) || getSupabaseAdminClient() || supabaseServer;
+                if (client) {
+                  const { data: currentSt } = await client.from("students").select("tests_used_this_month").eq("id", validStudentUuid).maybeSingle();
+                  const nextUsed = (Number(currentSt?.tests_used_this_month) || 0) + 1;
+                  await client.from("students").update({ tests_used_this_month: nextUsed }).eq("id", validStudentUuid);
+                }
+              } catch (syncErr) {
+                console.warn("[save-test-result] student tests_used sync warning:", syncErr);
+              }
+            }
           }
         } catch (dbErr: any) {
           console.warn("[api/save-test-result Supabase exception]:", dbErr?.message || dbErr);

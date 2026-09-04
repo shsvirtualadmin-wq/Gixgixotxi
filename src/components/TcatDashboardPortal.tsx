@@ -874,15 +874,20 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
 
                 <button
                   type="button"
-                  disabled={isTestLimitReached}
-                  onClick={handleConfirmStartTest}
+                  onClick={() => {
+                    if (isTestLimitReached) {
+                      if (onUpgradeClick) onUpgradeClick();
+                      return;
+                    }
+                    handleConfirmStartTest();
+                  }}
                   className={isTestLimitReached
-                    ? "flex-1 bg-slate-200  text-slate-400  font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 cursor-not-allowed border border-slate-300  opacity-80"
-                    : "flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white  font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer border border-cyan-300/30"
+                    ? "flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer border border-amber-400"
+                    : "flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer border border-cyan-300/30"
                   }
                 >
                   <Zap className="w-4 h-4 fill-current" />
-                  <span>{isTestLimitReached ? '2/2 free MCQs used this month' : currentUser ? 'Start Practice Test' : 'Sign In & Start Test'}</span>
+                  <span>{isTestLimitReached ? '2/2 free tests used — Upgrade to Pro' : currentUser ? 'Start Practice Test' : 'Sign In & Start Test'}</span>
                 </button>
               </div>
             </motion.div>

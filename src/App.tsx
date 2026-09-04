@@ -106,40 +106,7 @@ export function checkIsStudentProOrPaid(
   return false;
 }
 
-export function isTrackAllowedForUser(
-  profile: StudentProfile | null,
-  targetClass: BoardClass | undefined,
-  isAdmin: boolean
-): boolean {
-  if (isAdmin) return true;
-  if (!profile) return false;
-
-  const isPro = checkIsStudentProOrPaid(profile, isAdmin);
-  if (isPro) {
-    return true;
-  }
-
-  const plans = (profile.subscribed_plans || []).map(p => String(p).toLowerCase());
-
-  if (plans.includes('boardly_pro') || plans.includes('pro')) {
-    return true;
-  }
-
-  if (!targetClass || targetClass === 9 || targetClass === 10) {
-    return plans.includes('matric');
-  }
-  if (targetClass === 11 || targetClass === 12) {
-    return plans.includes('fsc');
-  }
-  if (targetClass === 'TCAT') {
-    return plans.includes('tcat');
-  }
-  if (targetClass === 'MDCAT') {
-    return plans.includes('mdcat');
-  }
-
-  return false;
-}
+export { isTrackAllowedForUser } from './lib/supabase';
 
 const getInitialUrlState = (): {
   screen: ScreenType;
@@ -2462,9 +2429,13 @@ export function App() {
       });
       const startData = await safeJsonResponse(startRes);
 
-      if (startRes.status === 403 || startData?.limitExceeded) {
+      if (startRes.status === 403 || startData?.limitExceeded || startData?.grandMockRestricted) {
         console.warn('[executeStartTest - Server Limit Exceeded]:', startData?.error || startData?.message);
         setIsGenerating(false);
+        if (startData?.grandMockRestricted) {
+          setScreen('plan_selection');
+          return;
+        }
         const resetDate = startData?.resetDate || testLimitResetDate;
         if (startData?.resetDate) setTestLimitResetDate(startData.resetDate);
         openTestLimitModal(resetDate, currentMonthlyTestCount);
@@ -2476,6 +2447,11 @@ export function App() {
       }
     } catch (startErr) {
       console.warn('[executeStartTest start-test-session call warning]:', startErr);
+    }
+
+    // Update local counter immediately for non-Pro students
+    if (!isPaymentApprovedOrExempt) {
+      setMcqUsageCount((prev) => Math.max(prev + 1, 1));
     }
 
     isExitingTestRef.current = false;
@@ -2533,6 +2509,27 @@ export function App() {
       return;
     }
 
+    // Require sign-in before starting tests so free allowances are tracked to real accounts
+    if (!currentUser) {
+      setIsGenerating(false);
+      setPendingTestParams(params);
+      setScreen('auth');
+      return;
+    }
+
+    // Grand Mock Exams (100/180 MCQs) are strictly Pro-only
+    const isGrandMock = Boolean(
+      params.isFullMock ||
+      (params.questionCount && params.questionCount >= 100) ||
+      (params.subject && params.subject.toLowerCase().includes('full mock'))
+    );
+    if (isGrandMock && !isPaymentApprovedOrExempt) {
+      setIsGenerating(false);
+      setScreen('plan_selection');
+      return;
+    }
+
+    // Pre-flight check against local count
     if (!isPaymentApprovedOrExempt && currentMonthlyTestCount >= 2) {
       setIsGenerating(false);
       openTestLimitModal(testLimitResetDate, currentMonthlyTestCount);
@@ -2546,11 +2543,17 @@ export function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            userId: currentUser?.id || 'guest',
-            userEmail: currentUser?.email,
+            userId: currentUser.id,
+            userEmail: currentUser.email,
           }),
         });
         const checkData = await safeJsonResponse(checkRes);
+        if (checkData?.requiresAuth) {
+          setIsGenerating(false);
+          setPendingTestParams(params);
+          setScreen('auth');
+          return;
+        }
         if (!checkRes.ok || checkData?.allowed === false || checkData?.limitExceeded) {
           setIsGenerating(false);
           const resetDate = checkData?.resetDate || testLimitResetDate;
@@ -3234,6 +3237,7 @@ export function App() {
                     onBack={() => setScreen('subject')}
                     isGenerating={isGenerating}
                     isTestLimitReached={isTestLimitReached}
+                    onUpgradeClick={() => setScreen('plan_selection')}
                   />
                 )}
                 {screen === 'test' && (

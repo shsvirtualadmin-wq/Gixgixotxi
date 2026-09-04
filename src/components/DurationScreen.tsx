@@ -25,6 +25,7 @@ interface DurationScreenProps {
   onBack: () => void;
   isGenerating?: boolean;
   isTestLimitReached?: boolean;
+  onUpgradeClick?: () => void;
 }
 
 export const DurationScreen: React.FC<DurationScreenProps> = React.memo(({
@@ -38,6 +39,7 @@ export const DurationScreen: React.FC<DurationScreenProps> = React.memo(({
   onBack,
   isGenerating = false,
   isTestLimitReached = false,
+  onUpgradeClick,
 }) => {
   const [selectedDuration, setSelectedDuration] = useState<number>(10);
   const [selectedQuestions, setSelectedQuestions] = useState<number>(10);
@@ -208,16 +210,26 @@ export const DurationScreen: React.FC<DurationScreenProps> = React.memo(({
       {/* Action Button */}
       <div className="pt-2 space-y-3">
         {isTestLimitReached && !isProUser && (
-          <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-center text-xs font-bold text-amber-700 ">
-            2/2 free MCQs used this month. Contact admin to upgrade your plan to Pro for unlimited tests.
+          <div className="p-3.5 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-center text-xs font-bold text-amber-700">
+            2/2 free tests used this month. Upgrade to Boardly Pro for unlimited tests and grand mocks.
           </div>
         )}
         <button
-          onClick={handleStart}
-          disabled={isGenerating || (isTestLimitReached && !isProUser)}
+          onClick={() => {
+            if (isTestLimitReached && !isProUser) {
+              if (onUpgradeClick) {
+                onUpgradeClick();
+              } else {
+                handleStart();
+              }
+              return;
+            }
+            handleStart();
+          }}
+          disabled={isGenerating}
           className={isTestLimitReached && !isProUser
-            ? "w-full bg-slate-300  text-slate-500  font-extrabold py-4 px-6 rounded-full cursor-not-allowed opacity-80 flex items-center justify-center gap-2 text-base border border-slate-300 "
-            : "w-full bg-slate-900 hover:bg-slate-800   text-white  font-extrabold py-4 px-6 rounded-full transition-all active:scale-98 shadow-md flex items-center justify-center gap-2 text-base cursor-pointer disabled:opacity-50"
+            ? "w-full bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-extrabold py-4 px-6 rounded-full transition-all active:scale-98 shadow-md flex items-center justify-center gap-2 text-base cursor-pointer"
+            : "w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold py-4 px-6 rounded-full transition-all active:scale-98 shadow-md flex items-center justify-center gap-2 text-base cursor-pointer disabled:opacity-50"
           }
         >
           {isGenerating ? (
@@ -226,7 +238,10 @@ export const DurationScreen: React.FC<DurationScreenProps> = React.memo(({
               <span>Generating Test Questions...</span>
             </>
           ) : isTestLimitReached && !isProUser ? (
-            <span>2/2 free MCQs used this month</span>
+            <>
+              <span>2/2 Free Tests Used — Upgrade to Pro</span>
+              <ArrowRight className="w-5 h-5 stroke-[2.5]" />
+            </>
           ) : (
             <>
               <span>Start Practice Test</span>
