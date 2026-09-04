@@ -2210,6 +2210,7 @@ export function App() {
     instantFeedback: boolean;
     subject?: string;
     customTopic?: string;
+    topic?: string;
     subtopic?: string;
     chapterName?: string;
     isFullMock?: boolean;
@@ -2228,7 +2229,13 @@ export function App() {
     const activeUser = session?.user || currentUser;
 
     const targetSubject = mapSubject(params.subject || selectedSubject || 'Physics');
-    const targetTopic = params.customTopic !== undefined ? params.customTopic : customTopic;
+    const targetTopic = params.customTopic !== undefined
+      ? params.customTopic
+      : (params.topic !== undefined
+          ? params.topic
+          : (params.chapterName
+              ? (params.subtopic ? `${params.chapterName} - ${params.subtopic}` : params.chapterName)
+              : customTopic));
 
     // Immediately sync state for downstream consumers
     setSelectedSubject(targetSubject);
@@ -2277,7 +2284,7 @@ export function App() {
       if (isTcatMock) {
         initialSet = generateTCATFullMockBank(params.groupSubjects || params.chapterName || targetTopic || targetSubject);
       } else {
-        initialSet = getTCATPrebuiltQuestions(targetSubject, targetTotalCount, targetTopic);
+        initialSet = getTCATPrebuiltQuestions(targetSubject, targetTotalCount, targetTopic, params.chapterName, params.subtopic);
       }
 
       if (initialSet.length < targetTotalCount) {
@@ -2289,7 +2296,7 @@ export function App() {
       if (isMdcatMock) {
         initialSet = generateMDCATFullMockBank();
       } else {
-        initialSet = getMDCATPrebuiltQuestions(targetSubject, targetTotalCount, targetTopic);
+        initialSet = getMDCATPrebuiltQuestions(targetSubject, targetTotalCount, targetTopic, params.chapterName, params.subtopic);
       }
 
       if (initialSet.length < targetTotalCount) {
@@ -2306,7 +2313,7 @@ export function App() {
 
       // Top up using authentic prebuilt bank if needed
       if (initialSet.length < FIRST_BATCH_READY_THRESHOLD) {
-        const prebuiltPool = getPrebuiltQuestionsForSubject(targetSubject, targetTopic);
+        const prebuiltPool = getPrebuiltQuestionsForSubject(targetSubject, targetTopic, selectedClass, params.chapterName, params.subtopic);
         const shuffledPrebuilt = [...prebuiltPool].sort(() => 0.5 - Math.random());
         for (const pbq of shuffledPrebuilt) {
           if (initialSet.length >= targetTotalCount) break;
@@ -2497,6 +2504,8 @@ export function App() {
     instantFeedback: boolean;
     subject?: string;
     customTopic?: string;
+    topic?: string;
+    subtopic?: string;
     chapterName?: string;
     groupSubjects?: string[];
     isFullMock?: boolean;
@@ -2567,7 +2576,13 @@ export function App() {
     setIsGenerating(true);
 
     const targetSub = mapSubject(params.subject || selectedSubject || 'Physics');
-    const targetTop = params.customTopic !== undefined ? params.customTopic : customTopic;
+    const targetTop = params.customTopic !== undefined
+      ? params.customTopic
+      : (params.topic !== undefined
+          ? params.topic
+          : (params.chapterName
+              ? (params.subtopic ? `${params.chapterName} - ${params.subtopic}` : params.chapterName)
+              : customTopic));
     const fullParams = { ...params, subject: targetSub, customTopic: targetTop };
 
     setSelectedSubject(targetSub);

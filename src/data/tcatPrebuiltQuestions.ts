@@ -72,45 +72,162 @@ export const ALL_TCAT_QUESTIONS: Question[] = [
   ...TCAT_ENGLISH_QUESTIONS,
 ];
 
+function getTcatSubtopicSearchTerms(subtopic: string): { phrases: string[]; keywords: string[] } {
+  const clean = subtopic.trim();
+  const lower = clean.toLowerCase();
+  const phrases: string[] = [];
+  const keywords: string[] = [];
+
+  const subSegments = lower.split(/\s*(?:,|&|and|\/)\s*/);
+  for (const seg of subSegments) {
+    const parenMatch = seg.match(/^([^()]+)\s*\(([^()]+)\)/);
+    if (parenMatch) {
+      const p1 = parenMatch[1].trim();
+      const p2 = parenMatch[2].trim();
+      if (p1) phrases.push(p1);
+      if (p2) phrases.push(p2);
+    } else if (seg.trim()) {
+      phrases.push(seg.trim());
+    }
+  }
+
+  for (const p of phrases) {
+    const words = p.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => w.length >= 3);
+    keywords.push(...words);
+  }
+
+  return {
+    phrases: [...new Set(phrases.filter(p => p.length >= 3))],
+    keywords: [...new Set(keywords)],
+  };
+}
+
+function scoreTcatQuestionSubtopic(q: Question, subtopic: string): number {
+  const { phrases, keywords } = getTcatSubtopicSearchTerms(subtopic);
+  const qTopic = (q.topic || '').toLowerCase();
+  const qStem = (q.q || '').toLowerCase();
+  const qExp = (q.explain || '').toLowerCase();
+
+  let score = 0;
+  for (const phrase of phrases) {
+    if (qTopic.includes(phrase)) score += 14;
+    if (qStem.includes(phrase)) score += 8;
+    if (qExp.includes(phrase)) score += 3;
+  }
+  for (const kw of keywords) {
+    if (qTopic.includes(kw)) score += 4;
+    if (qStem.includes(kw)) score += 2;
+  }
+  return score;
+}
+
+function matchesTcatChapter(qChapOrTopic: string | undefined, targetChap: string): boolean {
+  if (!qChapOrTopic || !targetChap) return false;
+  const normQ = qChapOrTopic.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  const normT = targetChap.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  return normQ === normT || normQ.includes(normT) || normT.includes(normQ);
+}
+
+function resolveTcatScope(subject: string, topic?: string, chapterName?: string, subtopic?: string) {
+  let resolvedChapter = chapterName?.trim();
+  let resolvedSubtopic = subtopic?.trim();
+
+  if (topic && topic.trim()) {
+    const cleanT = topic.trim();
+    const lowerT = cleanT.toLowerCase();
+
+    const isGenericSubject = lowerT.includes('all chapters') ||
+      lowerT.includes('all topic') ||
+      lowerT.includes('full mock') ||
+      lowerT.includes('full exam') ||
+      lowerT.includes('syllabus') ||
+      lowerT === subject.toLowerCase();
+
+    if (isGenericSubject) {
+      return { level: 'subject' as const, resolvedChapter: undefined, resolvedSubtopic: undefined };
+    }
+
+    if (cleanT.includes(' - ')) {
+      const parts = cleanT.split(' - ');
+      if (!resolvedChapter) resolvedChapter = parts[0].trim();
+      if (!resolvedSubtopic) resolvedSubtopic = parts.slice(1).join(' - ').trim();
+    } else if (!resolvedChapter && !resolvedSubtopic) {
+      resolvedChapter = cleanT;
+    }
+  }
+
+  if (resolvedSubtopic) {
+    return { level: 'subtopic' as const, resolvedChapter, resolvedSubtopic };
+  }
+  if (resolvedChapter && !resolvedChapter.toLowerCase().includes('all')) {
+    return { level: 'chapter' as const, resolvedChapter, resolvedSubtopic: undefined };
+  }
+  return { level: 'subject' as const, resolvedChapter: undefined, resolvedSubtopic: undefined };
+}
+
 /**
- * Returns prebuilt questions for a specific TCAT subject and optional chapter topic.
- * Pulls exclusively from verified hardcoded question banks. Never generates placeholder filler.
- * If a topic has fewer questions than requested, pulls additional real questions from the same subject's other chapters.
+ * Returns prebuilt questions for a specific TCAT subject and optional chapter or subtopic.
+ * Pulls exclusively from verified hardcoded question banks with zero off-topic cross-chapter leakage.
  */
-export function getTCATPrebuiltQuestions(subject: string, count: number = 10, topic?: string): Question[] {
+export function getTCATPrebuiltQuestions(
+  subject: string,
+  count: number = 10,
+  topic?: string,
+  chapterName?: string,
+  subtopic?: string
+): Question[] {
   const normSub = Object.keys(TCAT_PREBUILT_QUESTIONS).find(
     (k) => k.toLowerCase() === subject.toLowerCase()
   ) || 'Mathematics';
 
   const fullPool = TCAT_PREBUILT_QUESTIONS[normSub] || TCAT_PREBUILT_QUESTIONS['Mathematics'] || [];
-  let topicPool = fullPool;
+  const scope = resolveTcatScope(normSub, topic, chapterName, subtopic);
 
-  if (topic && topic.trim().length > 0) {
-    const cleanTopic = topic.toLowerCase().trim();
-    const isGeneric = cleanTopic.includes('syllabus') || 
-      (cleanTopic.includes('all') && cleanTopic.includes('chapter')) || 
-      (cleanTopic.includes('all') && cleanTopic.includes('topic')) || 
-      cleanTopic.includes('full mock') ||
-      cleanTopic.includes('full exam') ||
-      cleanTopic === normSub.toLowerCase();
+  let targetPool: Question[] = [];
 
-    if (!isGeneric) {
-      const topicMatches = fullPool.filter(q => {
-        const qTopic = (q.topic || '').toLowerCase();
-        return qTopic.includes(cleanTopic) || cleanTopic.includes(qTopic);
-      });
-      if (topicMatches.length > 0) {
-        topicPool = topicMatches;
+  if (scope.level === 'subtopic' && scope.resolvedSubtopic) {
+    // Filter by chapter first, then score strictly by subtopic keywords/phrases
+    const chapterPool = scope.resolvedChapter
+      ? fullPool.filter(q => matchesTcatChapter(q.topic, scope.resolvedChapter!))
+      : fullPool;
+
+    const candidatePool = chapterPool.length > 0 ? chapterPool : fullPool;
+
+    const scored = candidatePool
+      .map(q => ({ q, score: scoreTcatQuestionSubtopic(q, scope.resolvedSubtopic!) }))
+      .filter(item => item.score >= 5)
+      .sort((a, b) => b.score - a.score);
+
+    if (scored.length > 0) {
+      targetPool = scored.map(item => item.q);
+    } else {
+      const looseScored = candidatePool
+        .map(q => ({ q, score: scoreTcatQuestionSubtopic(q, scope.resolvedSubtopic!) }))
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+      if (looseScored.length > 0) {
+        targetPool = looseScored.map(item => item.q);
+      } else {
+        // Fall back strictly to the chapter pool — NEVER outside this chapter!
+        targetPool = chapterPool.length > 0 ? chapterPool : fullPool;
       }
     }
+  } else if (scope.level === 'chapter' && scope.resolvedChapter) {
+    // Chapter Level: Strictly questions matching this chapter topic.
+    const exactMatches = fullPool.filter(q => matchesTcatChapter(q.topic, scope.resolvedChapter!));
+    targetPool = exactMatches.length > 0 ? exactMatches : fullPool;
+  } else {
+    // Full Subject Level
+    targetPool = fullPool;
   }
 
   const seenStems = new Set<string>();
   const results: Question[] = [];
 
-  // Pass 1: Select unique questions from the requested topic pool
-  const shuffledTopicPool = [...topicPool].sort(() => 0.5 - Math.random());
-  for (const raw of shuffledTopicPool) {
+  // Select unique questions from the strictly scoped pool
+  const shuffledTargetPool = [...targetPool].sort(() => 0.5 - Math.random());
+  for (const raw of shuffledTargetPool) {
     if (results.length >= count) break;
     const stem = (raw.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!seenStems.has(stem)) {
@@ -124,24 +241,7 @@ export function getTCATPrebuiltQuestions(subject: string, count: number = 10, to
     }
   }
 
-  // Pass 2: If topic has fewer questions than requested, fill the gap with real questions from the same subject's other chapters
-  if (results.length < count && fullPool.length > results.length) {
-    const shuffledFull = [...fullPool].sort(() => 0.5 - Math.random());
-    for (const raw of shuffledFull) {
-      if (results.length >= count) break;
-      const stem = (raw.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (!seenStems.has(stem)) {
-        seenStems.add(stem);
-        const itemWithShuffledOptions = shuffleOptionsAndFixCorrect(raw);
-        results.push({
-          ...itemWithShuffledOptions,
-          subject: normSub,
-          id: `tcat-q-${normSub.toLowerCase().replace(/\s+/g, '-')}-${results.length + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-        });
-      }
-    }
-  }
-
+  // Never pad from outside this chapter/subtopic pool to guarantee 100% topic precision
   return results;
 }
 

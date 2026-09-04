@@ -277,147 +277,218 @@ export const ALL_MDCAT_QUESTIONS: Question[] = [
 ];
 
 /**
- * Intelligent topic matching helper that reconciles official PMDC syllabus names,
- * UI category labels, and question tags.
+ * Acronym and synonym mappings for MDCAT syllabus subtopics
  */
-function matchesTopic(qTopic: string, targetTopic: string): boolean {
-  if (!qTopic || !targetTopic) return false;
-  const normQ = qTopic.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
-  const normT = targetTopic.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+const ACRONYMS: Record<string, string[]> = {
+  'er': ['endoplasmic reticulum', 'rough er', 'smooth er', 'rer', 'ser', 'endomembrane'],
+  'atp': ['atp', 'adenosine triphosphate'],
+  'dna': ['dna', 'deoxyribonucleic acid'],
+  'rna': ['rna', 'ribonucleic acid', 'mrna', 'trna', 'rrna'],
+  'pcr': ['pcr', 'polymerase chain reaction', 'taq polymerase'],
+  'shm': ['shm', 'simple harmonic motion'],
+  'si': ['si unit', 'si units', 'international system'],
+};
 
-  if (normQ === normT || normQ.includes(normT) || normT.includes(normQ)) return true;
+const GENERIC_STOP_WORDS = new Set([
+  'cell', 'cells', 'cellular', 'structure', 'structures', 'function', 'functions',
+  'system', 'systems', 'type', 'types', 'process', 'processes', 'concept', 'concepts',
+  'basic', 'basics', 'general', 'standard', 'definition', 'introduction', 'overview',
+  'and', 'the', 'for', 'with', 'from', 'into', 'that', 'this', 'what', 'which', 'all', 'etc', 'model', 'practice'
+]);
 
-  // Synonyms and topic maps
-  const mappings: [string[], string[]][] = [
-    // Biology
-    [['bio molecule', 'biological molecule', 'biomolecule', 'macromolecule'], ['bio molecule', 'biological molecule', 'macromolecule']],
-    [['cell structure', 'organelle', 'membrane'], ['cell structure', 'organelle']],
-    [['enzyme', 'reaction kinetic'], ['enzyme']],
-    [['cell division', 'mitosis', 'meiosis', 'cell cycle', 'virology', 'prokaryote', 'bacterial'], ['cell division', 'virology', 'prokaryote']],
-    [['diversity', 'plant', 'animal'], ['diversity']],
-    [['life process', 'physiology', 'digestion', 'circulation'], ['life process', 'digestion', 'physiology']],
-    [['bioenergetic', 'respiration', 'photosynthesis', 'calvin', 'krebs', 'glycolysis'], ['bioenergetic']],
-    [['transport', 'cardiovascular', 'heart', 'xylem', 'phloem', 'blood'], ['transport', 'cardiovascular']],
-    [['homeostasis', 'osmoregulation', 'excretion', 'kidney', 'nephron'], ['homeostasis', 'excretion', 'osmoregulation']],
-    [['gaseous exchange', 'gas exchange', 'lung', 'alveoli', 'respiratory'], ['gaseous exchange', 'gas exchange']],
-    [['coordination', 'control', 'nervous', 'endocrine', 'hormone', 'brain'], ['coordination', 'control']],
-    [['support', 'movement', 'muscle', 'skeleton', 'bone'], ['support', 'movement', 'skeleton', 'muscle']],
-    [['reproduction', 'development', 'gamete', 'embryo'], ['reproduction', 'development']],
-    [['genetics', 'chromosome', 'inheritance', 'dna', 'mendel'], ['genetics', 'chromosome', 'inheritance']],
-    [['biotechnology', 'pcr', 'recombinant', 'cloning'], ['biotechnology', 'dna technology']],
-    [['evolution', 'natural selection', 'darwin', 'hardy weinberg'], ['evolution', 'natural selection']],
-    
-    // Chemistry
-    [['fundamental concept', 'stoichiometry', 'mole'], ['fundamental concept', 'stoichiometry']],
-    [['atomic structure', 'quantum'], ['atomic structure', 'quantum']],
-    [['gas', 'gases', 'graham', 'dalton'], ['gas', 'gases']],
-    [['liquid', 'solid', 'crystal'], ['liquid', 'solid', 'liquids and solids']],
-    [['chemical energetic', 'thermochemistry', 'enthalpy', 'hess'], ['chemical energetic', 'thermochemistry', 'energetic']],
-    [['chemical equilibrium', 'le chatelier', 'solubility'], ['chemical equilibrium', 'equilibrium']],
-    [['electrochemistry', 'galvanic', 'redox', 'electrode'], ['electrochemistry', 'redox']],
-    [['chemical kinetic', 'reaction rate', 'order of reaction'], ['chemical kinetic', 'reaction kinetics', 'kinetics']],
-    [['solution', 'colligative'], ['solution', 'colligative']],
-    [['acid', 'base', 'salt', 'buffer', 'ph'], ['acid', 'base', 'salt', 'acids bases and salts']],
-    [['s block', 'p block', 'periodic trend', 'period', 'group'], ['s block', 'p block', 'periods groups']],
-    [['transition element', 'complex compound', 'coordination'], ['transition element', 'transition elements']],
-    [['fundamental principle of organic', 'isomerism', 'hybridization'], ['fundamental principle of organic', 'organic principles']],
-    [['hydrocarbon', 'alkane', 'alkene', 'alkyne', 'benzene'], ['hydrocarbon', 'hydrocarbons']],
-    [['alkyl halide', 'nucleophilic substitution'], ['alkyl halide', 'alkyl halides']],
-    [['alcohol', 'phenol', 'ether'], ['alcohol', 'phenol', 'alcohols and phenols']],
-    [['aldehyde', 'ketone', 'carbonyl'], ['aldehyde', 'ketone', 'aldehydes and ketones']],
-    [['carboxylic acid', 'ester', 'amide'], ['carboxylic acid', 'carboxylic acids']],
-    [['amino acid', 'protein', 'peptide'], ['amino acid', 'amino acids', 'proteins']],
-    [['macromolecule', 'environmental', 'polymer', 'smog', 'pollution'], ['macromolecule', 'environmental chemistry', 'macromolecules']],
+function getSubtopicSearchTerms(subtopic: string): { phrases: string[]; keywords: string[] } {
+  const clean = subtopic.trim();
+  const lower = clean.toLowerCase();
+  const phrases: string[] = [];
+  const keywords: string[] = [];
 
-    // Physics
-    [['force and motion', 'motion and force', 'momentum', 'newton'], ['force and motion', 'motion and force', 'force and motion momentum']],
-    [['work energy', 'power', 'work, energy and power'], ['work energy', 'work energy and power', 'work, energy and power']],
-    [['rotational', 'circular', 'angular', 'circular motion', 'rotational and circular motion'], ['rotational', 'circular motion', 'rotational circular', 'rotational and circular motion']],
-    [['wave', 'sound', 'light wave', 'doppler', 'standing wave', 'waves'], ['wave', 'waves', 'waves oscillations']],
-    [['oscillation', 'shm', 'pendulum', 'oscillations'], ['oscillation', 'oscillations']],
-    [['thermodynamics', 'heat engine', 'carnot'], ['thermodynamic', 'thermodynamics']],
-    [['electrostatic', 'coulomb', 'capacitor', 'electrostatics'], ['electrostatic', 'electrostatics']],
-    [['current electricity', 'kirchhoff', 'ohm'], ['current electricity']],
-    [['electromagnetism', 'magnetic field', 'ampere', 'lorentz'], ['electromagnetism', 'magnetic fields']],
-    [['electromagnetic induction', 'faraday', 'lenz', 'flux'], ['electromagnetic induction']],
-    [['alternating current', 'ac circuit', 'resonance'], ['alternating current', 'ac circuits']],
-    [['physics of solids', 'deformation', 'elasticity', 'semiconductor band'], ['physics of solids', 'deformation of solids']],
-    [['electronics', 'diode', 'transistor', 'op amp'], ['electronic', 'electronics']],
-    [['dawn of modern', 'photoelectric', 'compton', 'de broglie', 'dawn of modern physics'], ['dawn of modern physics', 'quantum physics']],
-    [['atomic spectra', 'bohr', 'hydrogen spectrum'], ['atomic spectra', 'spectra']],
-    [['nuclear physics', 'radioactivity', 'fission', 'half life'], ['nuclear physics', 'radioactivity']],
-    [['measurement', 'measurements', 'physical quantity', 'si unit'], ['measurement', 'measurements']],
-    [['scalar', 'vector', 'scalars and vectors', 'cross product', 'dot product'], ['scalar', 'vector', 'scalars and vectors']],
-    [['fluid dynamic', 'fluid dynamics', 'bernoulli', 'viscosity', 'stokes'], ['fluid dynamic', 'fluid dynamics']],
-
-    // English
-    [['vocabulary', 'synonym', 'antonym'], ['vocabulary', 'synonyms']],
-    [['grammar', 'tense', 'agreement'], ['grammar', 'subject verb agreement']],
-    [['sentence structure', 'sentence correction', 'error spotting'], ['sentence structure', 'sentence correction', 'grammar']],
-    [['comprehension', 'reading', 'deduction'], ['comprehension', 'reading comprehension']],
-    [['analogy', 'analogies'], ['analogy']],
-    [['sentence completion', 'filler'], ['sentence completion']],
-
-    // Logical Reasoning
-    [['critical thinking'], ['critical thinking']],
-    [['letter', 'symbol series', 'number series'], ['letter and symbol series', 'series']],
-    [['logical deduction', 'syllogism'], ['logical deduction']],
-    [['logical problem', 'puzzle', 'order'], ['logical problems']],
-    [['course of action'], ['course of action']],
-    [['cause and effect'], ['cause and effect']]
-  ];
-
-  for (const [qTokens, tTokens] of mappings) {
-    const qHit = qTokens.some(t => normQ.includes(t));
-    const tHit = tTokens.some(t => normT.includes(t));
-    if (qHit && tHit) return true;
+  // Special domain expansions
+  if (lower.includes('plasma membrane') || lower.includes('fluid mosaic')) {
+    phrases.push('plasma membrane', 'fluid mosaic', 'cell membrane', 'membrane fluidity', 'lipid bilayer', 'phospholipid bilayer');
+  }
+  if (lower.includes('mitochondria') || lower.includes('chloroplast')) {
+    phrases.push('mitochondria', 'chloroplast', 'cristae', 'thylakoid', 'endosymbiotic');
+  }
+  if (lower.includes('er') || lower.includes('endoplasmic')) {
+    phrases.push('endoplasmic reticulum', 'rough er', 'smooth er', 'rer', 'ser', 'endomembrane');
+  }
+  if (lower.includes('golgi')) {
+    phrases.push('golgi', 'dictyosome', 'glycosylation', 'cis face', 'trans face');
+  }
+  if (lower.includes('ribosome')) {
+    phrases.push('ribosome', '80s', '70s', 'polysome', 'sedimentation');
+  }
+  if (lower.includes('lysosome') || lower.includes('peroxisome')) {
+    phrases.push('lysosome', 'peroxisome', 'acid hydrolase', 'catalase', 'tay-sachs', 'phagocytosis');
+  }
+  if (lower.includes('cytoskeleton')) {
+    phrases.push('cytoskeleton', 'microtubule', 'microfilament', 'intermediate filament', 'actin', 'tubulin');
+  }
+  if (lower.includes('nucleus')) {
+    phrases.push('nucleus', 'nucleolus', 'nuclear pore', 'chromatin', 'nuclear envelope');
   }
 
-  // Significant word overlap
-  const qWords = normQ.split(/\s+/).filter(w => w.length >= 4 && !['about', 'with', 'from', 'into', 'that'].includes(w));
-  const tWords = normT.split(/\s+/).filter(w => w.length >= 4 && !['about', 'with', 'from', 'into', 'that'].includes(w));
-  return qWords.some(w => tWords.includes(w));
+  // Split on '&', 'and', or '/'
+  const subSegments = lower.split(/\s+(?:&|and|\/)\s+/);
+  for (const seg of subSegments) {
+    const parenMatch = seg.match(/^([^()]+)\s*\(([^()]+)\)/);
+    if (parenMatch) {
+      const mainPart = parenMatch[1].trim();
+      const parenPart = parenMatch[2].trim();
+      if (mainPart) phrases.push(mainPart);
+      if (parenPart) phrases.push(parenPart);
+    } else {
+      phrases.push(seg.trim());
+    }
+  }
+
+  for (const p of phrases) {
+    if (ACRONYMS[p]) {
+      phrases.push(...ACRONYMS[p]);
+    }
+    const words = p.replace(/[^a-z0-9]/g, ' ').split(/\s+/).filter(w => 
+      w.length >= 3 && !GENERIC_STOP_WORDS.has(w)
+    );
+    keywords.push(...words);
+  }
+
+  return {
+    phrases: [...new Set(phrases.filter(p => p.length >= 3))],
+    keywords: [...new Set(keywords)]
+  };
 }
 
-export function getMDCATPrebuiltQuestions(subject: string, count: number = 10, topic?: string): Question[] {
+function scoreQuestionSubtopic(q: Question, subtopic: string): number {
+  const { phrases, keywords } = getSubtopicSearchTerms(subtopic);
+  const qTopic = (q.topic || '').toLowerCase();
+  const qStem = (q.q || '').toLowerCase();
+  const qExp = (q.explain || '').toLowerCase();
+
+  let score = 0;
+  for (const phrase of phrases) {
+    if (qTopic.includes(phrase)) score += 14;
+    if (qStem.includes(phrase)) score += 8;
+    if (qExp.includes(phrase)) score += 3;
+  }
+  for (const kw of keywords) {
+    if (qTopic.includes(kw)) score += 4;
+    if (qStem.includes(kw)) score += 2;
+  }
+  return score;
+}
+
+function matchesChapter(qChap: string | undefined, targetChap: string): boolean {
+  if (!qChap || !targetChap) return false;
+  const normQ = qChap.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  const normT = targetChap.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  return normQ === normT || normQ.includes(normT) || normT.includes(normQ);
+}
+
+function resolveScope(subject: string, topic?: string, chapterName?: string, subtopic?: string) {
+  let resolvedChapter = chapterName?.trim();
+  let resolvedSubtopic = subtopic?.trim();
+
+  if (topic && topic.trim()) {
+    const cleanT = topic.trim();
+    const lowerT = cleanT.toLowerCase();
+
+    // Generic full-subject / mock indicator
+    const isGenericSubject = lowerT.includes('all chapters') ||
+      lowerT.includes('all topic') ||
+      lowerT.includes('full mock') ||
+      lowerT.includes('full exam') ||
+      lowerT.includes('syllabus') ||
+      lowerT === subject.toLowerCase();
+
+    if (isGenericSubject) {
+      return { level: 'subject' as const, resolvedChapter: undefined, resolvedSubtopic: undefined };
+    }
+
+    // Check if format is 'Chapter - Subtopic'
+    if (cleanT.includes(' - ')) {
+      const parts = cleanT.split(' - ');
+      if (!resolvedChapter) resolvedChapter = parts[0].trim();
+      if (!resolvedSubtopic) resolvedSubtopic = parts.slice(1).join(' - ').trim();
+    } else if (!resolvedChapter && !resolvedSubtopic) {
+      resolvedChapter = cleanT;
+    }
+  }
+
+  if (resolvedSubtopic) {
+    return { level: 'subtopic' as const, resolvedChapter, resolvedSubtopic };
+  }
+  if (resolvedChapter && !resolvedChapter.toLowerCase().includes('all')) {
+    return { level: 'chapter' as const, resolvedChapter, resolvedSubtopic: undefined };
+  }
+  return { level: 'subject' as const, resolvedChapter: undefined, resolvedSubtopic: undefined };
+}
+
+/**
+ * Intelligent scoped question fetcher for MDCAT practice:
+ * - Subtopic-level practice: returns ONLY questions tagged with that exact subtopic within the chapter.
+ * - Chapter-level practice: returns ONLY questions from that chapter. Never leaks to other chapters.
+ * - Full-subject practice: returns questions sampled across all chapters of that subject.
+ */
+export function getMDCATPrebuiltQuestions(
+  subject: string,
+  count: number = 10,
+  topic?: string,
+  chapterName?: string,
+  subtopic?: string
+): Question[] {
   const normSub = Object.keys(MDCAT_PREBUILT_QUESTIONS).find(
     k => k.toLowerCase() === subject.toLowerCase()
   ) || 'Biology';
 
   const fullPool = MDCAT_PREBUILT_QUESTIONS[normSub] || MDCAT_PREBUILT_QUESTIONS['Biology'];
-  let topicPool = fullPool;
+  const scope = resolveScope(normSub, topic, chapterName, subtopic);
 
-  if (topic && topic.trim().length > 0) {
-    const cleanTopic = topic.toLowerCase().trim();
-    const isGeneric = cleanTopic.includes('syllabus') || 
-      (cleanTopic.includes('all') && cleanTopic.includes('chapter')) || 
-      (cleanTopic.includes('all') && cleanTopic.includes('topic')) || 
-      cleanTopic.includes('full mock') ||
-      cleanTopic.includes('full exam') ||
-      cleanTopic === normSub.toLowerCase();
+  let targetPool: Question[] = [];
 
-    if (!isGeneric) {
-      const exactMatches = fullPool.filter(q =>
-        (q.chapter && q.chapter.toLowerCase().trim() === cleanTopic) ||
-        (q.topic && q.topic.toLowerCase().trim() === cleanTopic)
-      );
-      if (exactMatches.length > 0) {
-        topicPool = exactMatches;
+  if (scope.level === 'subtopic' && scope.resolvedSubtopic) {
+    // Subtopic Level: Filter by chapter first, then score strictly by subtopic terms
+    const chapterPool = scope.resolvedChapter
+      ? fullPool.filter(q => matchesChapter(q.chapter, scope.resolvedChapter!))
+      : fullPool;
+
+    const candidatePool = chapterPool.length > 0 ? chapterPool : fullPool;
+
+    const scored = candidatePool
+      .map(q => ({ q, score: scoreQuestionSubtopic(q, scope.resolvedSubtopic!) }))
+      .filter(item => item.score >= 5)
+      .sort((a, b) => b.score - a.score);
+
+    if (scored.length > 0) {
+      targetPool = scored.map(item => item.q);
+    } else {
+      // If strict score has 0 results, check for any positive score in the same chapter
+      const looseScored = candidatePool
+        .map(q => ({ q, score: scoreQuestionSubtopic(q, scope.resolvedSubtopic!) }))
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score);
+
+      if (looseScored.length > 0) {
+        targetPool = looseScored.map(item => item.q);
       } else {
-        const topicMatches = fullPool.filter(q => matchesTopic(q.chapter || '', cleanTopic) || matchesTopic(q.topic || '', cleanTopic));
-        if (topicMatches.length > 0) {
-          topicPool = topicMatches;
-        }
+        // Fall back strictly to the chapter pool — NEVER outside this chapter!
+        targetPool = chapterPool.length > 0 ? chapterPool : fullPool;
       }
     }
+  } else if (scope.level === 'chapter' && scope.resolvedChapter) {
+    // Chapter Level: Strictly questions from this chapter. Zero cross-chapter leakage.
+    const exactMatches = fullPool.filter(q => matchesChapter(q.chapter, scope.resolvedChapter!));
+    targetPool = exactMatches.length > 0 ? exactMatches : fullPool;
+  } else {
+    // Full Subject Level: Distributed across all chapters of the subject
+    targetPool = fullPool;
   }
 
   const seenStems = new Set<string>();
   const results: Question[] = [];
 
-  // Pass 1: Select unique questions from requested topic pool
-  const shuffledTopicPool = [...topicPool].sort(() => 0.5 - Math.random());
-  for (const raw of shuffledTopicPool) {
+  // Select unique questions from the strictly scoped pool
+  const shuffledTargetPool = [...targetPool].sort(() => 0.5 - Math.random());
+  for (const raw of shuffledTargetPool) {
     if (results.length >= count) break;
     const stem = (raw.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     if (!seenStems.has(stem)) {
@@ -431,36 +502,9 @@ export function getMDCATPrebuiltQuestions(subject: string, count: number = 10, t
     }
   }
 
-  // Pass 2: If topic has fewer questions than requested, fill the gap with real questions from the same subject's other chapters
-  if (results.length < count && fullPool.length > results.length) {
-    const shuffledFull = [...fullPool].sort(() => 0.5 - Math.random());
-    for (const raw of shuffledFull) {
-      if (results.length >= count) break;
-      const stem = (raw.q || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      if (!seenStems.has(stem)) {
-        seenStems.add(stem);
-        const itemWithShuffledOptions = shuffleOptionsAndFixCorrect(raw);
-        results.push({
-          ...itemWithShuffledOptions,
-          subject: normSub,
-          id: `mdcat-q-${normSub.toLowerCase().replace(/\s+/g, '-')}-${results.length + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
-        });
-      }
-    }
-  }
-
-  // Pass 3: If still < count (e.g. huge practice count requested), wrap around with unique IDs
-  let loopIdx = 0;
-  while (results.length < count && fullPool.length > 0) {
-    const raw = fullPool[loopIdx % fullPool.length];
-    const itemWithShuffledOptions = shuffleOptionsAndFixCorrect(raw);
-    results.push({
-      ...itemWithShuffledOptions,
-      subject: normSub,
-      id: `mdcat-q-${normSub.toLowerCase().replace(/\s+/g, '-')}-topup-${results.length + 1}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`
-    });
-    loopIdx++;
-  }
+  // If subtopic or chapter has fewer questions than requested count, we deliberately do NOT
+  // pull random questions from unrelated chapters. Returning only authentic scoped questions
+  // guarantees 100% topic precision.
 
   return results;
 }

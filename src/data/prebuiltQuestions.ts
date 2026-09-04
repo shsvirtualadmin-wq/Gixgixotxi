@@ -3533,10 +3533,16 @@ PREBUILT_QUESTIONS["Pak Studies"] = PREBUILT_QUESTIONS["Pakistan Studies"];
 PREBUILT_QUESTIONS["Pak-Studies"] = PREBUILT_QUESTIONS["Pakistan Studies"];
 
 /**
- * Safely fetches prebuilt questions for any requested subject & optional customTopic.
+ * Safely fetches prebuilt questions for any requested subject & optional customTopic/chapter/subtopic.
  * Guarantees zero off-topic leakage when a specific subtopic or chapter is requested.
  */
-export function getPrebuiltQuestionsForSubject(subjectName: string, customTopic?: string, classNum?: BoardClass): Question[] {
+export function getPrebuiltQuestionsForSubject(
+  subjectName: string,
+  customTopic?: string,
+  classNum?: BoardClass,
+  chapterName?: string,
+  subtopic?: string
+): Question[] {
   if (!subjectName) return [];
 
   const clean = subjectName.trim();
@@ -3551,50 +3557,50 @@ export function getPrebuiltQuestionsForSubject(subjectName: string, customTopic?
     return generateMDCATFullMockBank().map(shuffleQuestionOptions);
   }
 
-  // TCAT Subjects & Chapters: ONLY delegate to getTCATPrebuiltQuestions if this is actually a TCAT test!
-  if (isTcat && (TCAT_PREBUILT_QUESTIONS[clean] || TCAT_PREBUILT_QUESTIONS[mapSubject(subjectName)])) {
-    const tcatSub = TCAT_PREBUILT_QUESTIONS[clean] ? clean : mapSubject(subjectName);
-    return getTCATPrebuiltQuestions(tcatSub, 100, customTopic).map(shuffleQuestionOptions);
+  // TCAT Subjects & Chapters
+  if (isTcat) {
+    const tcatSub = (TCAT_PREBUILT_QUESTIONS[clean] ? clean : mapSubject(subjectName)) || clean;
+    return getTCATPrebuiltQuestions(tcatSub, 100, customTopic, chapterName, subtopic).map(shuffleQuestionOptions);
+  }
+
+  // MDCAT Subjects & Chapters
+  if (isMdcat) {
+    const mdcatSub = (MDCAT_PREBUILT_QUESTIONS[clean] ? clean : mapSubject(subjectName)) || clean;
+    return getMDCATPrebuiltQuestions(mdcatSub, 100, customTopic, chapterName, subtopic).map(shuffleQuestionOptions);
   }
 
   let pool: Question[] = [];
 
   if (lower.includes('logic') || lower.includes('reasoning')) {
     pool = MDCAT_PREBUILT_QUESTIONS['Logical Reasoning'] || [];
-  } else if (isMdcat && MDCAT_PREBUILT_QUESTIONS[clean]) {
-    pool = MDCAT_PREBUILT_QUESTIONS[clean];
   } else {
     const canon = mapSubject(subjectName);
     // For regular Board classes (Class 9, 10, 11, 12), prioritize board syllabus questions from PREBUILT_QUESTIONS
     pool = PREBUILT_QUESTIONS[canon] || 
            PREBUILT_QUESTIONS[clean] || 
            (canon === 'Islamiat' ? PREBUILT_QUESTIONS['Islamic Studies'] : undefined) ||
-           (isMdcat ? MDCAT_PREBUILT_QUESTIONS[canon] || MDCAT_PREBUILT_QUESTIONS[clean] : undefined) ||
-           MDCAT_PREBUILT_QUESTIONS[canon] || 
-           MDCAT_PREBUILT_QUESTIONS[clean] || 
            [];
   }
 
-  const isSpecificTopic = customTopic && 
-    !customTopic.toLowerCase().includes('syllabus') && 
-    !customTopic.toLowerCase().includes('all topic') && 
-    !customTopic.toLowerCase().includes('all chapter') && 
-    !customTopic.toLowerCase().includes('full mock') && 
-    !customTopic.toLowerCase().includes('full exam');
+  const effectiveTopic = subtopic ? (chapterName ? `${chapterName} - ${subtopic}` : subtopic) : (customTopic || chapterName);
+
+  const isSpecificTopic = effectiveTopic && 
+    !effectiveTopic.toLowerCase().includes('syllabus') && 
+    !effectiveTopic.toLowerCase().includes('all topic') && 
+    !effectiveTopic.toLowerCase().includes('all chapter') && 
+    !effectiveTopic.toLowerCase().includes('full mock') && 
+    !effectiveTopic.toLowerCase().includes('full exam');
 
   if (isSpecificTopic && pool.length > 0) {
     const filteredPool = pool.filter((q) =>
-      checkQuestionTopicRelevance(q.q || '', q.topic, q.options || [], q.explain || '', customTopic, subjectName)
+      checkQuestionTopicRelevance(q.q || '', q.topic, q.options || [], q.explain || '', effectiveTopic, subjectName)
     );
 
     if (filteredPool.length > 0) {
-      if (filteredPool.length < 10 && pool.length > filteredPool.length) {
-        const remaining = pool.filter(q => !filteredPool.some(fq => fq.id === q.id));
-        return [...filteredPool, ...remaining].map(shuffleQuestionOptions);
-      }
+      // Return exclusively filtered questions — zero off-topic leakage!
       return filteredPool.map(shuffleQuestionOptions);
     }
-    // Graceful fallback: If no strict topic keyword matched, return subject pool so students are never blocked with an empty screen!
+    // Graceful fallback if no question matched the strict validator
     return pool.map(shuffleQuestionOptions);
   }
 

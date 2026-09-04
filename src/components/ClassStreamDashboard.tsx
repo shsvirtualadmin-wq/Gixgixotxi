@@ -43,6 +43,9 @@ interface ClassStreamDashboardProps {
   onStartTest: (params: {
     subject: string;
     customTopic?: string;
+    topic?: string;
+    subtopic?: string;
+    chapterName?: string;
     durationMinutes: number;
     questionCount: number;
     difficulty: QuestionDifficulty;
@@ -83,9 +86,13 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = React.m
         history={history}
         isTestLimitReached={isTestLimitReached}
         onStartTcatTest={(params) => {
+          const effectiveTopic = params.topic || (params.subtopic ? `${params.chapterName ? params.chapterName + ' - ' : ''}${params.subtopic}` : params.chapterName);
           onStartTest({
             subject: params.subject,
-            customTopic: params.chapterName,
+            customTopic: effectiveTopic,
+            topic: effectiveTopic,
+            subtopic: params.subtopic,
+            chapterName: params.chapterName,
             durationMinutes: params.durationMinutes,
             questionCount: params.questionCount,
             difficulty: params.difficulty,

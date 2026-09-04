@@ -54,6 +54,9 @@ interface TcatDashboardPortalProps {
   onStartTcatTest: (params: {
     subject: string;
     chapterName?: string;
+    customTopic?: string;
+    topic?: string;
+    subtopic?: string;
     questionCount: number;
     durationMinutes: number;
     difficulty: QuestionDifficulty;
@@ -130,23 +133,18 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
   };
 
   const handleOpenTopicTestModal = (topic: TCATTopic, subtopicName?: string) => {
-    if (subtopicName) {
-      setSelectedTopic({
-        ...topic,
-        name: `${topic.name} - ${subtopicName}`
-      });
-    } else {
-      setSelectedTopic(topic);
-    }
+    setSelectedTopic(topic);
+    setSelectedSubtopicItem(subtopicName || null);
     setIsFullMockConfig(false);
-    setSelectedCount(20);
-    setSelectedDuration(20);
+    setSelectedCount(subtopicName ? 10 : 20);
+    setSelectedDuration(subtopicName ? 10 : 20);
     setShowConfigModal(true);
   };
 
   const handleOpenSubjectTestModal = (subject: TCATSubjectConfig) => {
     setSelectedSubjectName(subject.name);
     setSelectedTopic(null);
+    setSelectedSubtopicItem(null);
     setIsFullMockConfig(false);
     setSelectedCount(subject.mcqCount);
     setSelectedDuration(subject.mcqCount);
@@ -165,6 +163,7 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
     setIsFullMockConfig(true);
     setSelectedSubjectName(null);
     setSelectedTopic(null);
+    setSelectedSubtopicItem(null);
     setSelectedCount(100);
     setSelectedDuration(100);
     setShowConfigModal(true);
@@ -176,6 +175,9 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
     const testParams = {
       subject: isFullMockConfig ? `TCAT Full Mock - ${activeGroup.title}` : activeSubject ? activeSubject.name : 'Mathematics',
       chapterName: selectedTopic ? selectedTopic.name : isFullMockConfig ? activeGroup.id : undefined,
+      customTopic: selectedTopic ? (selectedSubtopicItem ? `${selectedTopic.name} - ${selectedSubtopicItem}` : selectedTopic.name) : undefined,
+      topic: selectedTopic ? (selectedSubtopicItem ? `${selectedTopic.name} - ${selectedSubtopicItem}` : selectedTopic.name) : undefined,
+      subtopic: selectedSubtopicItem || undefined,
       questionCount: isFullMockConfig ? 100 : selectedCount,
       durationMinutes: isFullMockConfig ? 100 : selectedDuration,
       difficulty: selectedDifficulty,
@@ -733,17 +735,33 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
                 <div>
                   <span className="text-xs font-black uppercase tracking-wider text-cyan-700  flex items-center gap-1">
                     <Sparkles className="w-3.5 h-3.5" />
-                    {isFullMockConfig ? 'TCAT 100-MCQ Full Mock Test' : 'TCAT Topic Practice'}
+                    {isFullMockConfig
+                      ? 'TCAT 100-MCQ Full Mock Test'
+                      : selectedSubtopicItem
+                      ? 'Subtopic Focused Practice'
+                      : 'TCAT Chapter Practice'}
                   </span>
                   <h3 className="font-['Space_Grotesk'] font-extrabold text-lg text-slate-900  mt-1">
                     {isFullMockConfig
                       ? `TCAT Full Mock (${activeGroup.title})`
+                      : selectedSubtopicItem
+                      ? selectedSubtopicItem
                       : selectedTopic
                       ? selectedTopic.name
                       : activeSubject
                       ? `${activeSubject.name} Practice`
                       : 'TCAT Practice Test'}
                   </h3>
+                  {selectedSubtopicItem && selectedTopic && (
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Chapter: {selectedTopic.name} • Subject: {activeSubject?.name || 'TCAT'}
+                    </p>
+                  )}
+                  {!selectedSubtopicItem && selectedTopic && (
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Full Chapter Practice • Subject: {activeSubject?.name || 'TCAT'}
+                    </p>
+                  )}
                 </div>
                 <button
                   onClick={() => setShowConfigModal(false)}
