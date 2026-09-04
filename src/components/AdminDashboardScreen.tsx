@@ -89,61 +89,6 @@ interface AdminDashboardScreenProps {
   onBack: () => void;
 }
 
-export interface AdminCachedData {
-  students: StudentProfile[];
-  allTestResults: AdminTestResult[];
-  allStudyBuddyHistory: StudyBuddyMessage[];
-  paymentRequests: PaymentRequest[];
-  activityLogs: AdminActivityLog[];
-  studentWeaknessProfiles: StudentWeaknessProfileData[];
-  timestamp: number;
-}
-
-let globalAdminCache: AdminCachedData | null = null;
-
-try {
-  if (typeof window !== 'undefined') {
-    const stored = sessionStorage.getItem('boardly_admin_cache_v2');
-    if (stored) {
-      const parsed = JSON.parse(stored);
-      if (parsed && Array.isArray(parsed.students)) {
-        globalAdminCache = parsed;
-      }
-    }
-  }
-} catch {}
-
-/**
- * Pre-fetches admin dashboard dataset in the background so opening the admin panel is instantaneous.
- */
-export async function prefetchAdminDashboardData(email?: string): Promise<void> {
-  try {
-    const detectedEmail = email || '';
-    const [studentList, testList, weaknessList, buddyList, paymentList, logsList] = await Promise.all([
-      fetchAllStudentsFromSupabase(),
-      fetchAllTestResultsFromSupabase(),
-      fetchAllStudentWeaknessProfiles(),
-      fetchAllStudyBuddyHistoryFromSupabase(),
-      fetchAllPaymentRequestsFromSupabase(detectedEmail),
-      fetchAdminActivityLogsFromSupabase(detectedEmail),
-    ]);
-    globalAdminCache = {
-      students: studentList,
-      allTestResults: testList,
-      studentWeaknessProfiles: weaknessList,
-      allStudyBuddyHistory: buddyList,
-      paymentRequests: paymentList,
-      activityLogs: logsList,
-      timestamp: Date.now(),
-    };
-    try {
-      sessionStorage.setItem('boardly_admin_cache_v2', JSON.stringify(globalAdminCache));
-    } catch {}
-  } catch (err) {
-    console.warn('[Admin Prefetch Warning]:', err);
-  }
-}
-
 export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.memo(({
   currentUser,
   initialTab = 'students',
@@ -156,15 +101,15 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
       setActiveTab(initialTab);
     }
   }, [initialTab]);
-  const [students, setStudents] = useState<StudentProfile[]>(() => globalAdminCache?.students || []);
-  const [allTestResults, setAllTestResults] = useState<AdminTestResult[]>(() => globalAdminCache?.allTestResults || []);
-  const [allStudyBuddyHistory, setAllStudyBuddyHistory] = useState<StudyBuddyMessage[]>(() => globalAdminCache?.allStudyBuddyHistory || []);
-  const [loading, setLoading] = useState<boolean>(() => !globalAdminCache);
+  const [students, setStudents] = useState<StudentProfile[]>([]);
+  const [allTestResults, setAllTestResults] = useState<AdminTestResult[]>([]);
+  const [allStudyBuddyHistory, setAllStudyBuddyHistory] = useState<StudyBuddyMessage[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   // Payment Requests State & Filters
-  const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>(() => globalAdminCache?.paymentRequests || []);
+  const [paymentRequests, setPaymentRequests] = useState<PaymentRequest[]>([]);
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [paymentSearchQuery, setPaymentSearchQuery] = useState<string>('');
   const [reviewingRequestId, setReviewingRequestId] = useState<string | null>(null);
@@ -178,7 +123,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
   const [studentPlanFilter, setStudentPlanFilter] = useState<string>('All');
 
   // Admin Activity Logs & Manual Plan Change State
-  const [activityLogs, setActivityLogs] = useState<AdminActivityLog[]>(() => globalAdminCache?.activityLogs || []);
+  const [activityLogs, setActivityLogs] = useState<AdminActivityLog[]>([]);
   const [activitySearchQuery, setActivitySearchQuery] = useState<string>('');
   const [selectedStudentForPlan, setSelectedStudentForPlan] = useState<StudentProfile | null>(null);
   const [selectedPlansForChange, setSelectedPlansForChange] = useState<string[]>(['free']);
@@ -196,7 +141,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
   const [progressGradeFilter, setProgressGradeFilter] = useState<string>('All');
   const [progressSubjectFilter, setProgressSubjectFilter] = useState<string>('All');
   const [selectedStudentForProgress, setSelectedStudentForProgress] = useState<StudentProfile | null>(null);
-  const [studentWeaknessProfiles, setStudentWeaknessProfiles] = useState<StudentWeaknessProfileData[]>(() => globalAdminCache?.studentWeaknessProfiles || []);
+  const [studentWeaknessProfiles, setStudentWeaknessProfiles] = useState<StudentWeaknessProfileData[]>([]);
   const [avatarLoadError, setAvatarLoadError] = useState<boolean>(false);
 
   useEffect(() => {
@@ -267,9 +212,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
 
   const loadData = async () => {
     if (!isAdmin) return;
-    if (!globalAdminCache || globalAdminCache.students.length === 0) {
-      setLoading(true);
-    }
+    setLoading(true);
     setError(null);
     try {
       const [studentList, testList, weaknessList, buddyList, paymentList, logsList] = await Promise.all([
@@ -287,25 +230,10 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
       setPaymentRequests(paymentList);
       setActivityLogs(logsList);
 
-      globalAdminCache = {
-        students: studentList,
-        allTestResults: testList,
-        studentWeaknessProfiles: weaknessList,
-        allStudyBuddyHistory: buddyList,
-        paymentRequests: paymentList,
-        activityLogs: logsList,
-        timestamp: Date.now(),
-      };
-      try {
-        sessionStorage.setItem('boardly_admin_cache_v2', JSON.stringify(globalAdminCache));
-      } catch {}
-
       runAuditAndRevertUnverifiedPro(studentList, paymentList);
     } catch (err: any) {
       console.error('Failed to fetch admin data from database:', err);
-      if (!globalAdminCache || globalAdminCache.students.length === 0) {
-        setError('Failed to load live admin data from database.');
-      }
+      setError('Failed to load live admin data from database.');
     } finally {
       setLoading(false);
     }
@@ -1401,26 +1329,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
           </div>
 
           {/* Student Grid / Cards */}
-          {loading && students.length === 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 w-full min-w-0">
-              {[1, 2, 3, 4, 5, 6].map((idx) => (
-                <div key={idx} className="bg-white/80 border border-slate-200 rounded-2xl p-4 sm:p-5 shadow-sm animate-pulse space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-slate-200 shrink-0" />
-                    <div className="flex-1 space-y-1.5 min-w-0">
-                      <div className="h-3.5 bg-slate-200 rounded w-3/4" />
-                      <div className="h-2.5 bg-slate-100 rounded w-1/2" />
-                    </div>
-                  </div>
-                  <div className="h-8 bg-slate-100 rounded-xl" />
-                  <div className="flex items-center justify-between pt-1">
-                    <div className="h-3 bg-slate-100 rounded w-1/3" />
-                    <div className="h-3 bg-slate-100 rounded w-1/4" />
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : filteredStudents.length === 0 ? (
+          {loading ? null : filteredStudents.length === 0 ? (
             <div className="bg-white/80  border border-slate-200  rounded-2xl p-8 sm:p-12 text-center space-y-3 w-full min-w-0">
               <UserX className="w-10 h-10 text-slate-400 mx-auto" />
               <h3 className="text-sm font-extrabold text-slate-800 ">No Students Found</h3>

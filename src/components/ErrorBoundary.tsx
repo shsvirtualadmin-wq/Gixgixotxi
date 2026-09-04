@@ -77,6 +77,13 @@ export class ErrorBoundary extends Component<Props, State> {
                 <LayoutDashboard className="w-4 h-4" />
                 <span>Return to Dashboard</span>
               </button>
+              <button
+                onClick={this.handleFullReset}
+                className="w-full flex items-center justify-center gap-2 bg-slate-100  hover:bg-slate-200  text-slate-800  font-bold py-2.5 px-4 rounded-xl text-xs transition-all cursor-pointer"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Reset Session & Reload</span>
+              </button>
             </div>
           </div>
         </div>
