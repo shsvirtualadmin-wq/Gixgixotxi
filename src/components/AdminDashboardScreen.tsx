@@ -29,6 +29,7 @@ import {
   evaluateStudentAccess,
 } from '../lib/supabase';
 import { getPrebuiltQuestionsForSubject } from '../data/prebuiltQuestions';
+import { getDynamicQuestionBankStats } from '../lib/questionBankStats';
 import { BrandedLoadingSpinner } from './BrandedLoadingSpinner';
 import {
   ShieldCheck,
@@ -1023,6 +1024,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
       ? Math.round(allTestResults.reduce((acc, curr) => acc + curr.percentage, 0) / totalTests)
       : 0;
   const totalMCQsAnswered = allTestResults.reduce((acc, curr) => acc + (curr.total || 0), 0);
+  const questionBankStats = React.useMemo(() => getDynamicQuestionBankStats(), []);
   const passingRate =
     totalTests > 0
       ? Math.round((allTestResults.filter((t) => t.percentage >= 50).length / totalTests) * 100)
@@ -1128,25 +1130,27 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
           </div>
         </div>
 
-        {/* Stat 2: Tests Completed */}
+        {/* Stat 2: Total Question Bank & Tests Completed */}
         <div className="bg-white/80  border border-slate-200  rounded-2xl p-4 sm:p-5 shadow-lg relative overflow-hidden group hover:border-amber-500/30 transition-all min-w-0">
           <div className="flex items-center justify-between min-w-0">
-            <span className="text-xs font-bold text-slate-500  truncate">Tests Attempted</span>
+            <span className="text-xs font-bold text-slate-500  truncate">Total Question Bank</span>
             <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
               <FileText className="w-4 h-4" />
             </div>
           </div>
           <div className="mt-3 flex items-baseline justify-between gap-1 flex-wrap min-w-0">
             <span className="text-2xl sm:text-3xl font-black text-slate-900  tracking-tight">
-              {totalTests}
+              {questionBankStats.totalBankMCQs.toLocaleString()}
             </span>
             <span className="text-[11px] font-extrabold text-amber-600 ">
-              {totalMCQsAnswered} total MCQs
+              {totalTests} tests ({totalMCQsAnswered} attempted)
             </span>
           </div>
           <div className="mt-2 text-[10.5px] text-slate-400  font-medium flex items-center gap-1 min-w-0 truncate">
             <Activity className="w-3 h-3 text-amber-500 shrink-0" />
-            <span className="truncate">Across 9th-12th & Entrance</span>
+            <span className="truncate">
+              {questionBankStats.mdcatCount.toLocaleString()} MDCAT • {questionBankStats.tcatCount.toLocaleString()} TCAT • {questionBankStats.boardCount.toLocaleString()} Board
+            </span>
           </div>
         </div>
 
@@ -1200,7 +1204,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
 
       {/* Responsive Admin Tab Navigation using Unified SegmentedControl */}
       <div className="w-full overflow-hidden">
-        <SegmentedControl<'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress' | 'study_buddy' | 'audit' | 'bulk_import'>
+        <SegmentedControl<'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress'>
           id="admin-main-segmented-tabs"
           options={[
             {
@@ -1720,9 +1724,26 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <select
                 value={selectedStudentForProgress?.id || ''}
-                onChange={(e) => {
-                  const s = students.find((st) => st.id === e.target.value);
+                onChange={async (e) => {
+                  const studentId = e.target.value;
+                  const s = students.find((st) => st.id === studentId);
                   setSelectedStudentForProgress(s || null);
+                  if (s) {
+                    try {
+                      const [freshTests, freshWeakness] = await Promise.all([
+                        fetchAllTestResultsFromSupabase(),
+                        fetchAllStudentWeaknessProfiles(detectedEmail),
+                      ]);
+                      if (freshTests && freshTests.length > 0) {
+                        setAllTestResults(freshTests);
+                      }
+                      if (freshWeakness && freshWeakness.length > 0) {
+                        setStudentWeaknessProfiles(freshWeakness);
+                      }
+                    } catch (fetchErr) {
+                      console.warn('Real-time student data fetch warning:', fetchErr);
+                    }
+                  }
                 }}
                 className="w-full sm:w-64 bg-slate-100  border border-slate-200  rounded-xl px-3 py-2 text-xs font-bold text-slate-900  focus:outline-none cursor-pointer"
               >
@@ -1747,8 +1768,28 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
           ) : (
             (() => {
               const prog = calculateSubjectProgress(selectedStudentForProgress.id);
+              const studentWeaknesses = studentWeaknessProfiles.filter(
+                (p) =>
+                  p.studentId === selectedStudentForProgress.id ||
+                  (selectedStudentForProgress.email && p.studentId.toLowerCase() === selectedStudentForProgress.email.toLowerCase())
+              );
+              const allWeakTopics = studentWeaknesses.flatMap(w => w.weakestTopics || []);
+
+              const studentRecentTests = allTestResults.filter(
+                (t) =>
+                  t.student_id === selectedStudentForProgress.id ||
+                  (selectedStudentForProgress.email && t.student_email?.toLowerCase() === selectedStudentForProgress.email.toLowerCase()) ||
+                  (selectedStudentForProgress.email && t.student_id?.toLowerCase() === selectedStudentForProgress.email.toLowerCase())
+              ).slice(0, 8);
+
+              const studentBuddyMsgs = allStudyBuddyHistory.filter(
+                (m) =>
+                  m.student_id === selectedStudentForProgress.id ||
+                  (selectedStudentForProgress.email && m.student_id.toLowerCase() === selectedStudentForProgress.email.toLowerCase())
+              ).slice(0, 6);
+
               return (
-                <div className="space-y-4">
+                <div className="space-y-5">
                   {/* Student Summary Bar */}
                   <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                     <div>
@@ -1771,43 +1812,123 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                   </div>
 
                   {/* Subject Breakdown Cards Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {prog.breakdown.map((b) => (
-                      <div
-                        key={b.subject}
-                        className="bg-white/80  border border-slate-200  rounded-2xl p-4 shadow-md space-y-2"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-extrabold text-xs text-slate-900 ">{b.subject}</span>
-                          <span
-                            className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
-                              b.accuracy >= 75
-                                ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                                : b.accuracy >= 50
-                                ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
-                                : 'bg-rose-500/10 text-rose-500 border-rose-500/20'
-                            }`}
-                          >
-                            {b.accuracy}% Accuracy
-                          </span>
-                        </div>
+                  <div>
+                    <h4 className="text-xs font-black uppercase text-slate-500 tracking-wider mb-2">Subject Performance</h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {prog.breakdown.map((b) => (
+                        <div
+                          key={b.subject}
+                          className="bg-white/80  border border-slate-200  rounded-2xl p-4 shadow-md space-y-2"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-extrabold text-xs text-slate-900 ">{b.subject}</span>
+                            <span
+                              className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                                b.accuracy >= 75
+                                  ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                                  : b.accuracy >= 50
+                                  ? 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                                  : 'bg-rose-500/10 text-rose-500 border-rose-500/20'
+                              }`}
+                            >
+                              {b.accuracy}% Accuracy
+                            </span>
+                          </div>
 
-                        <div className="w-full bg-slate-100  h-1.5 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full rounded-full ${
-                              b.accuracy >= 75 ? 'bg-emerald-500' : b.accuracy >= 50 ? 'bg-amber-500' : 'bg-rose-500'
-                            }`}
-                            style={{ width: `${b.accuracy}%` }}
-                          />
-                        </div>
+                          <div className="w-full bg-slate-100  h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${
+                                b.accuracy >= 75 ? 'bg-emerald-500' : b.accuracy >= 50 ? 'bg-amber-500' : 'bg-rose-500'
+                              }`}
+                              style={{ width: `${b.accuracy}%` }}
+                            />
+                          </div>
 
-                        <div className="flex items-center justify-between text-[11px] text-slate-500  pt-1">
-                          <span>{b.correctMCQs} / {b.totalMCQs} MCQs Correct</span>
-                          <span>{b.testsCount} tests</span>
+                          <div className="flex items-center justify-between text-[11px] text-slate-500  pt-1">
+                            <span>{b.correctMCQs} / {b.totalMCQs} MCQs Correct</span>
+                            <span>{b.testsCount} tests</span>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </div>
+
+                  {/* Weak Topics Analysis (if any identified) */}
+                  {allWeakTopics.length > 0 && (
+                    <div className="bg-rose-500/5 border border-rose-500/20 rounded-2xl p-4 space-y-2">
+                      <div className="flex items-center gap-2 text-rose-600 font-extrabold text-xs">
+                        <AlertTriangle className="w-4 h-4" />
+                        <span>Identified Weak Topics Requiring Revision</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
+                        {allWeakTopics.map((wt, idx) => (
+                          <div key={idx} className="bg-white p-2.5 rounded-xl border border-rose-200 text-xs">
+                            <div className="font-bold text-slate-900 truncate">{wt.chapter}</div>
+                            <div className="text-[11px] text-rose-600 font-extrabold mt-0.5">
+                              {wt.accuracy}% Accuracy ({wt.correct}/{wt.total} correct)
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Recent Tests Completed */}
+                  {studentRecentTests.length > 0 && (
+                    <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-xs font-black uppercase text-slate-700 tracking-wider flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-blue-500" />
+                          <span>Recent Test Submissions ({studentRecentTests.length})</span>
+                        </h4>
+                      </div>
+                      <div className="divide-y divide-slate-100">
+                        {studentRecentTests.map((t) => (
+                          <div key={t.id} className="py-2.5 flex items-center justify-between text-xs">
+                            <div>
+                              <span className="font-extrabold text-slate-900">{t.subject}</span>
+                              <span className="text-[11px] text-slate-400 ml-2">{t.path_label} • {t.duration}</span>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <span className="text-[11px] text-slate-400">{t.date_str}</span>
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                                  t.percentage >= 70
+                                    ? 'bg-emerald-500/10 text-emerald-600'
+                                    : t.percentage >= 50
+                                    ? 'bg-amber-500/10 text-amber-600'
+                                    : 'bg-rose-500/10 text-rose-600'
+                                }`}
+                              >
+                                {t.score}/{t.total} ({t.percentage}%)
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* AI Study Buddy History */}
+                  {studentBuddyMsgs.length > 0 && (
+                    <div className="bg-purple-500/5 border border-purple-500/20 rounded-2xl p-4 space-y-3">
+                      <h4 className="text-xs font-black uppercase text-purple-700 tracking-wider flex items-center gap-1.5">
+                        <Bot className="w-3.5 h-3.5 text-purple-600" />
+                        <span>Recent AI Study Buddy Inquiries</span>
+                      </h4>
+                      <div className="space-y-2">
+                        {studentBuddyMsgs.map((m) => (
+                          <div key={m.id} className="bg-white p-2.5 rounded-xl border border-purple-100 text-xs">
+                            <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 mb-1">
+                              <span>{m.role === 'user' ? 'Student Question' : 'AI Explanation'}</span>
+                              <span>{new Date(m.created_at).toLocaleDateString()}</span>
+                            </div>
+                            <p className="text-slate-800 line-clamp-2">{m.message_text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               );
             })()

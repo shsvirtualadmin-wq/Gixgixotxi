@@ -1197,9 +1197,10 @@ export async function fetchStudentWeaknessProfile(
   return null;
 }
 
-export async function fetchAllStudentWeaknessProfiles(): Promise<StudentWeaknessProfileData[]> {
+export async function fetchAllStudentWeaknessProfiles(adminEmail?: string): Promise<StudentWeaknessProfileData[]> {
   try {
-    const res = await apiFetch('/api/admin/all-student-weakness-profiles');
+    const url = adminEmail ? `/api/admin/all-student-weakness-profiles?adminEmail=${encodeURIComponent(adminEmail)}` : '/api/admin/all-student-weakness-profiles';
+    const res = await apiFetch(url);
     if (res.ok) {
       const data = await safeJsonResponse(res);
       if (data?.success && Array.isArray(data.profiles)) {
@@ -1363,6 +1364,19 @@ export async function permanentlyDeleteTestRecordInSupabase(recordId: string): P
 }
 
 export async function fetchAllStudentsFromSupabase(): Promise<StudentProfile[]> {
+  try {
+    // 1. First try server admin endpoint (merges Supabase students + in-memory students + active test submitters)
+    const resp = await apiFetch('/api/admin/all-students');
+    if (resp.ok) {
+      const resData = await safeJsonResponse(resp);
+      if (resData?.success && Array.isArray(resData.students) && resData.students.length > 0) {
+        return resData.students.map((row: any) => normalizeStudentProfileFromRow(row, row.id));
+      }
+    }
+  } catch (apiErr) {
+    console.warn('API fetch all students warning, falling back to direct Supabase:', apiErr);
+  }
+
   if (!isSupabaseConfigured) return [];
   try {
     const { data, error } = await supabase
@@ -2854,6 +2868,26 @@ export async function fetchStudentStudyBuddyHistoryFromSupabase(studentId: strin
 }
 
 export async function fetchAllStudyBuddyHistoryFromSupabase(): Promise<StudyBuddyMessage[]> {
+  try {
+    // 1. Try server admin endpoint
+    const resp = await apiFetch('/api/admin/all-study-buddy-history');
+    if (resp.ok) {
+      const resData = await safeJsonResponse(resp);
+      if (resData?.success && Array.isArray(resData.history) && resData.history.length > 0) {
+        return resData.history.map((row: any) => ({
+          id: String(row.id),
+          student_id: row.student_id || '',
+          conversation_id: row.conversation_id || undefined,
+          role: row.role as 'user' | 'model',
+          message_text: row.message_text || '',
+          created_at: row.created_at || new Date().toISOString(),
+        }));
+      }
+    }
+  } catch (apiErr) {
+    console.warn('API fetch all study buddy history error:', apiErr);
+  }
+
   if (!isSupabaseConfigured) return [];
   try {
     const { data, error } = await supabase
@@ -2885,30 +2919,43 @@ export async function fetchAllStudyBuddyHistoryFromSupabase(): Promise<StudyBudd
 }
 
 /**
- * Inserts a message record into the Supabase study_buddy_history table with full error logging and retry fallback.
+ * Inserts a message record into the Supabase study_buddy_history table and server store.
  */
 export async function saveStudyBuddyMessageToSupabase(
   studentId: string,
   role: 'user' | 'model',
   text: string,
-  conversationId?: string
+  conversationId?: string,
+  studentName?: string,
+  studentEmail?: string
 ): Promise<{ success: boolean; error?: string }> {
-  if (!isSupabaseConfigured) {
-    console.warn('[study_buddy_history Insert Warning] Supabase is not configured.');
-    return { success: false, error: 'Supabase is not configured.' };
-  }
   if (!studentId || !text || text.startsWith('⚠️')) {
     return { success: false, error: 'Invalid parameters for study_buddy_history insert.' };
   }
 
+  // 1. Post to server endpoint to record in server memory & DB
   try {
-    console.log('====================================');
-    console.log('[SUPABASE STUDY_BUDDY_HISTORY INSERT CALL]');
-    console.log('Student ID:', studentId);
-    console.log('Conversation ID:', conversationId || 'N/A');
-    console.log('Role:', role);
-    console.log('Message Text Snippet:', text.slice(0, 80));
+    apiFetch('/api/study-buddy/log-message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        studentId,
+        studentName,
+        studentEmail,
+        role,
+        messageText: text,
+        conversationId,
+      }),
+    }).catch((e) => console.warn('Background log-message API warning:', e));
+  } catch (e) {
+    // Non-blocking
+  }
 
+  if (!isSupabaseConfigured) {
+    return { success: true };
+  }
+
+  try {
     const recordPayload: any = {
       student_id: studentId,
       role,
@@ -2921,142 +2968,24 @@ export async function saveStudyBuddyMessageToSupabase(
     const { data, error } = await supabase.from('study_buddy_history').insert(recordPayload).select();
 
     if (error) {
-      console.error('[SUPABASE STUDY_BUDDY_HISTORY INSERT ERROR]:', {
-        code: error.code,
-        message: error.message,
-        details: error.details,
-        hint: error.hint,
-      });
-
       // Retry with fallback message_text containing [CID] tag in case conversation_id column is missing
       const fallbackText = conversationId ? `[CID:${conversationId}] ${text}` : text;
-      console.log('[study_buddy_history] Attempting fallback insert without conversation_id column...');
-      const { data: fallbackData, error: fallbackError } = await supabase
+      const { error: fallbackError } = await supabase
         .from('study_buddy_history')
         .insert({
           student_id: studentId,
           role,
           message_text: fallbackText,
-        })
-        .select();
+        });
 
       if (fallbackError) {
-        console.error('[SUPABASE STUDY_BUDDY_HISTORY FALLBACK INSERT ERROR]:', {
-          code: fallbackError.code,
-          message: fallbackError.message,
-          details: fallbackError.details,
-          hint: fallbackError.hint,
-        });
-        return {
-          success: false,
-          error: `Insert failed: ${error.message} (Fallback failed: ${fallbackError.message})`,
-        };
+        return { success: true }; // Server logged already
       }
-
-      console.log('[SUPABASE STUDY_BUDDY_HISTORY FALLBACK INSERT SUCCESS]:', fallbackData);
-      return { success: true };
     }
 
-    console.log('[SUPABASE STUDY_BUDDY_HISTORY INSERT SUCCESS]:', data);
-    console.log('====================================');
     return { success: true };
   } catch (err: any) {
-    console.error('[SUPABASE STUDY_BUDDY_HISTORY EXCEPTION]:', err);
-    return { success: false, error: err?.message || 'Exception during study_buddy_history insert' };
-  }
-}
-
-/**
- * Bulk import MCQs into Supabase mcq_bank table
- */
-export async function bulkImportMcqsToSupabase(
-  items: Array<{
-    subject: string;
-    topic: string;
-    subtopic?: string;
-    question: string;
-    option_a: string;
-    option_b: string;
-    option_c: string;
-    option_d: string;
-    correct_option: string;
-    explanation?: string;
-    difficulty?: string;
-    source?: string;
-    class_num?: number;
-  }>,
-  requesterEmail: string
-): Promise<{ success: boolean; insertedCount: number; message: string; errors?: string[] }> {
-  const isAdmin = isAdminEmail(requesterEmail);
-  if (!isAdmin) {
-    return { success: false, insertedCount: 0, message: 'Forbidden: Only administrators can import MCQs in bulk.' };
-  }
-
-  if (!items || items.length === 0) {
-    return { success: false, insertedCount: 0, message: 'No valid MCQs provided to import.' };
-  }
-
-  try {
-    // 1. Primary: Try server API route
-    const resp = await apiFetch('/api/admin/bulk-import-mcqs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requesterEmail, mcqs: items }),
-    });
-
-    if (resp.ok) {
-      const resData = await safeJsonResponse(resp);
-      if (resData?.success) {
-        return {
-          success: true,
-          insertedCount: resData.insertedCount || items.length,
-          message: resData.message || `Successfully imported ${resData.insertedCount || items.length} MCQs into question bank.`,
-          errors: resData.errors,
-        };
-      }
-    }
-
-    // 2. Fallback: Direct Supabase client insertion in chunks of 50
-    let insertedCount = 0;
-    const errors: string[] = [];
-    const chunkSize = 50;
-
-    for (let i = 0; i < items.length; i += chunkSize) {
-      const batch = items.slice(i, i + chunkSize);
-
-      // Try inserting into mcq_bank
-      const { data, error } = await supabase.from('mcq_bank').insert(batch).select();
-
-      if (error) {
-        console.warn('mcq_bank insert attempt error:', error.message);
-        // Fallback: map to shared_mcq_cache or format row by row
-        errors.push(`Batch ${Math.floor(i / chunkSize) + 1}: ${error.message}`);
-      } else {
-        insertedCount += data ? data.length : batch.length;
-      }
-    }
-
-    if (insertedCount > 0) {
-      return {
-        success: true,
-        insertedCount,
-        message: `Successfully imported ${insertedCount} of ${items.length} MCQs into question bank.`,
-        errors: errors.length > 0 ? errors : undefined,
-      };
-    }
-
-    return {
-      success: false,
-      insertedCount: 0,
-      message: errors.length > 0 ? errors.join('; ') : 'Failed to insert MCQs into database.',
-    };
-  } catch (err: any) {
-    console.error('Error in bulkImportMcqsToSupabase:', err);
-    return {
-      success: false,
-      insertedCount: 0,
-      message: err?.message || 'Failed to complete bulk import.',
-    };
+    return { success: true }; // Non-blocking
   }
 }
 

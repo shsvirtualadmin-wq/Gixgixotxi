@@ -59,7 +59,7 @@ interface MainHeaderProps {
   onNavigatePractice?: () => void;
   onOpenStudyBuddy?: () => void;
   onNavigateSubscription?: () => void;
-  onNavigateAdmin?: (tab?: 'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress' | 'study_buddy' | 'audit' | 'bulk_import') => void;
+  onNavigateAdmin?: (tab?: 'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress') => void;
 }
 
 export function getCategoryDisplayLabel(
