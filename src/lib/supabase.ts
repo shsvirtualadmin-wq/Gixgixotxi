@@ -848,9 +848,9 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
     ? subscribedPlans
     : (isPro ? ['boardly_pro'] : ['free']);
 
-  const planTier: 'free' | 'pro' = data.plan_tier
-    ? (data.plan_tier === 'pro' ? 'pro' : 'free')
-    : (isPro ? 'pro' : 'free');
+  const planTier: 'free' | 'pro' = isPro
+    ? 'pro'
+    : (data.plan_tier === 'pro' ? 'pro' : 'free');
 
   return {
     id: data.id || fallbackUserId || '',
@@ -1182,11 +1182,16 @@ export interface StudentWeaknessProfileData {
 
 export async function fetchStudentWeaknessProfile(
   studentId: string,
-  subject?: string
+  subject?: string,
+  studentEmail?: string
 ): Promise<StudentWeaknessProfileData | null> {
-  if (!studentId) return null;
+  if (!studentId && !studentEmail) return null;
   try {
-    const res = await apiFetch(`/api/student-weakness-profile?studentId=${encodeURIComponent(studentId)}${subject ? `&subject=${encodeURIComponent(subject)}` : ''}`);
+    const params = new URLSearchParams();
+    if (studentId) params.append('studentId', studentId);
+    if (studentEmail) params.append('studentEmail', studentEmail);
+    if (subject) params.append('subject', subject);
+    const res = await apiFetch(`/api/student-weakness-profile?${params.toString()}`);
     if (res.ok) {
       const data = await safeJsonResponse(res);
       if (data?.success && data?.profile) {

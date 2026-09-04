@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { triggerHaptic, HAPTIC_PATTERNS } from '../lib/haptics';
 import { TestResult } from '../types';
@@ -25,6 +25,7 @@ import {
   Home,
   ChevronLeft,
   Lock,
+  Target,
 } from 'lucide-react';
 
 import { MCQContext } from './StudyBuddyModal';
@@ -68,8 +69,33 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = React.memo(({
     userProfile?: StudentProfile | null;
   } | null>(null);
 
-  const isProStudent = userProfile?.plan_tier === 'pro' || (userProfile ? evaluateStudentAccess(userProfile).isPro : false);
+  const isProStudent = isUserProOrPaid(currentUser, userProfile);
   const { score, total, percentage, timeTakenSeconds, topicBreakdown, questions, userAnswers, timestamp, config } = result;
+
+  const weakTopics = useMemo(() => {
+    if (!topicBreakdown) return [];
+    return (Object.entries(topicBreakdown) as [string, { total: number; correct: number }][])
+      .map(([topic, stats]) => {
+        const accuracy = Math.round((stats.correct / Math.max(1, stats.total)) * 100);
+        let message = 'Needs practice — lower accuracy detected';
+        if (accuracy <= 25) {
+          message = 'High priority — immediate practice recommended';
+        } else if (accuracy <= 40) {
+          message = 'Targeted practice needed to reach passing grade';
+        } else {
+          message = 'Close to target — extra review will help';
+        }
+        return {
+          topic,
+          accuracy,
+          correct: stats.correct,
+          total: stats.total,
+          message,
+        };
+      })
+      .filter((item) => item.accuracy < 50)
+      .sort((a, b) => a.accuracy - b.accuracy);
+  }, [topicBreakdown]);
 
   const handleDownloadPdf = async () => {
     setRestrictionInfo(null);
@@ -380,6 +406,80 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = React.memo(({
                   </div>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* Areas to Improve & Weakness Detection Card */}
+        <div className="bg-white border border-black/10 rounded-2xl p-5 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="font-['Space_Grotesk'] text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <Target className="w-3.5 h-3.5 text-rose-500" />
+              <span>Areas to Improve &amp; Weakness Detection</span>
+            </h3>
+            <span className="text-[10px] font-bold bg-rose-50 text-rose-600 border border-rose-200 px-2.5 py-0.5 rounded-full">
+              Cutoff: &lt;50% Accuracy
+            </span>
+          </div>
+
+          {!isProStudent ? (
+            <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0 text-amber-500">
+                  <Lock className="w-5 h-5" />
+                </div>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-sm text-slate-900">
+                    Weakness Detection is a Pro Feature
+                  </h4>
+                  <p className="text-xs text-slate-500">
+                    Free Starter tier displays basic overall test scores only. Upgrade to Pro for chapter-level weakness analysis &amp; targeted retries.
+                  </p>
+                </div>
+              </div>
+              {onUpgradeClick && (
+                <button
+                  type="button"
+                  onClick={onUpgradeClick}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition-all shrink-0 cursor-pointer shadow-sm"
+                >
+                  Upgrade to Pro
+                </button>
+              )}
+            </div>
+          ) : weakTopics.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {weakTopics.map((item, idx) => (
+                <div
+                  key={item.topic || idx}
+                  className="bg-white border border-rose-200 rounded-xl p-3.5 shadow-sm space-y-2 flex flex-col justify-between"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200">
+                        Weak Chapter
+                      </span>
+                      <span className="text-xs font-black text-rose-600">
+                        {item.accuracy}% ({item.correct}/{item.total})
+                      </span>
+                    </div>
+                    <h5 className="font-bold text-sm text-slate-900 truncate">
+                      {item.topic}
+                    </h5>
+                    <p className="text-[11px] text-slate-500">
+                      {item.message}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-emerald-50/80 border border-emerald-200 rounded-xl p-4 flex items-center gap-3 text-emerald-900 shadow-sm">
+              <Sparkles className="w-5 h-5 text-emerald-600 shrink-0" />
+              <div className="text-xs">
+                <p className="font-bold">Great performance! No weak areas detected in this test.</p>
+                <p className="text-[11px] text-emerald-700">All attempted topics and chapters scored 50% or higher.</p>
+              </div>
             </div>
           )}
         </div>

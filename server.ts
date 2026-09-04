@@ -199,7 +199,7 @@ async function checkStudentIsPro(
     if (db && userId && uuidRegex.test(userId)) {
       const { data, error } = await db
         .from("students")
-        .select("is_pro, package_name, payment_status, plan_status, access_expires, subscribed_plans, updated_at, created_at, requires_payment")
+        .select("is_pro, plan_tier, package_name, payment_status, plan_status, access_expires, subscribed_plans, updated_at, created_at, requires_payment")
         .eq("id", userId)
         .maybeSingle();
       if (error) console.warn("[checkStudentIsPro] Supabase query by id error:", error);
@@ -209,7 +209,7 @@ async function checkStudentIsPro(
     if (db && !stData && userEmail) {
       const { data, error } = await db
         .from("students")
-        .select("is_pro, package_name, payment_status, plan_status, access_expires, subscribed_plans, updated_at, created_at, requires_payment")
+        .select("is_pro, plan_tier, package_name, payment_status, plan_status, access_expires, subscribed_plans, updated_at, created_at, requires_payment")
         .eq("email", userEmail)
         .maybeSingle();
       if (error) console.warn("[checkStudentIsPro] Supabase query by email error:", error);
@@ -1393,33 +1393,44 @@ export interface StudentWeaknessProfile {
 
 async function getStudentWeaknessProfile(
   studentId: string,
-  subject?: string
+  subject?: string,
+  studentEmail?: string
 ): Promise<StudentWeaknessProfile> {
   const normSub = subject ? normalizeSubjectKey(subject) : undefined;
+  const cleanEmail = studentEmail
+    ? studentEmail.trim().toLowerCase()
+    : (studentId?.includes("@") ? studentId.trim().toLowerCase() : undefined);
   let allAttempts: MCQAttemptItem[] = [];
 
   // 1. Get in-memory attempts
   const memFiltered = inMemoryMCQAttempts.filter((a) => {
-    const matchesUser = a.studentId === studentId;
+    const matchesUser =
+      (studentId && a.studentId === studentId) ||
+      (cleanEmail && a.studentEmail && a.studentEmail.toLowerCase() === cleanEmail) ||
+      (cleanEmail && a.studentId && a.studentId.toLowerCase() === cleanEmail);
     const matchesSub = normSub ? a.subject.toLowerCase() === normSub.toLowerCase() : true;
     return matchesUser && matchesSub;
   });
   allAttempts.push(...memFiltered);
 
   // 2. Query Supabase attempts
-  if (supabaseServer && studentId) {
+  if (supabaseServer && (studentId || cleanEmail)) {
     try {
-      let query = supabaseServer
-        .from("mcq_attempts")
-        .select("*")
-        .eq("student_id", studentId)
-        .order("created_at", { ascending: true });
+      let query = supabaseServer.from("mcq_attempts").select("*");
+
+      if (cleanEmail && studentId && !studentId.includes("@")) {
+        query = query.or(`student_id.eq.${studentId},student_email.eq.${cleanEmail}`);
+      } else if (cleanEmail) {
+        query = query.or(`student_id.eq.${cleanEmail},student_email.eq.${cleanEmail}`);
+      } else {
+        query = query.eq("student_id", studentId);
+      }
 
       if (normSub) {
         query = query.eq("subject", normSub);
       }
 
-      const { data, error } = await query;
+      const { data, error } = await query.order("created_at", { ascending: true });
       if (!error && Array.isArray(data) && data.length > 0) {
         const dbAttempts: MCQAttemptItem[] = data.map((row: any) => ({
           id: String(row.id),
@@ -4382,13 +4393,14 @@ ${scopeInstruction}${excludeInstruction}`;
   app.get("/api/student-weakness-profile", async (req, res) => {
     try {
       const studentId = String(req.query.studentId || "");
+      const studentEmail = req.query.email || req.query.studentEmail ? String(req.query.email || req.query.studentEmail) : undefined;
       const subject = req.query.subject ? String(req.query.subject) : undefined;
 
-      if (!studentId) {
-        return res.status(400).json({ success: false, error: "Missing studentId query parameter" });
+      if (!studentId && !studentEmail) {
+        return res.status(400).json({ success: false, error: "Missing studentId or email query parameter" });
       }
 
-      const profile = await getStudentWeaknessProfile(studentId, subject);
+      const profile = await getStudentWeaknessProfile(studentId, subject, studentEmail);
       return res.json({ success: true, profile });
     } catch (err: any) {
       console.error("[api/student-weakness-profile error]:", err);

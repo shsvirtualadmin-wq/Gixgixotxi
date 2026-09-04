@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { MDCAT_SUBJECTS, MDCATSubjectConfig, MDCATChapter, getMDCATSubjectById, parseSubtopics } from '../data/mdcatSyllabus';
 import { UserAnswer, QuestionDifficulty, TestMode, HistoryItem } from '../types';
-import { User, StudentProfile, evaluateStudentAccess } from '../lib/supabase';
+import { User, StudentProfile, evaluateStudentAccess, isUserProOrPaid } from '../lib/supabase';
 import { InstitutionBadge } from './InstitutionBadge';
 import { BoardlyProBadge } from './BoardlyProBadge';
 
@@ -69,7 +69,7 @@ export const MdcatDashboardPortal: React.FC<MdcatDashboardPortalProps> = React.m
   onBackToMainScreen,
   onUpgradeClick,
 }) => {
-  const isProStudent = isAdmin || userProfile?.plan_tier === 'pro' || (userProfile ? evaluateStudentAccess(userProfile).isPro : false);
+  const isProStudent = isUserProOrPaid(currentUser, userProfile, isAdmin);
   const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
   const [activeChapterForSubtopics, setActiveChapterForSubtopics] = useState<MDCATChapter | null>(null);
   const [selectedChapter, setSelectedChapter] = useState<MDCATChapter | null>(null);

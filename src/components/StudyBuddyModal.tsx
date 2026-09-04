@@ -385,7 +385,7 @@ export const StudyBuddyModal: React.FC<StudyBuddyModalProps> = ({
   hideFloatingButton,
   onUpgradeClick,
 }) => {
-  const isStudentPro = studentProfile?.plan_tier === 'pro' || (studentProfile ? evaluateStudentAccess(studentProfile).isPro : false);
+  const isStudentPro = studentProfile ? evaluateStudentAccess(studentProfile).isPro : false;
   const todayDateStr = new Date().toISOString().slice(0, 10);
   const lastMsgDate = studentProfile?.last_ai_message_date || '';
   const aiMsgsUsedToday = lastMsgDate === todayDateStr ? Number(studentProfile?.ai_messages_used_today || 0) : 0;

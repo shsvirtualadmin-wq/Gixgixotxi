@@ -21,7 +21,7 @@ import {
   Award,
   Check
 } from 'lucide-react';
-import { User, StudentProfile, fetchStudentWeaknessProfile, StudentWeaknessProfileData, evaluateStudentAccess } from '../lib/supabase';
+import { User, StudentProfile, fetchStudentWeaknessProfile, StudentWeaknessProfileData, evaluateStudentAccess, isUserProOrPaid } from '../lib/supabase';
 import { HistoryItem } from '../types';
 import { InstitutionBadge, renderTargetUniversityBadge } from './InstitutionBadge';
 import { TargetUniversityModal } from './TargetUniversityModal';
@@ -160,6 +160,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
   monthlyTestCount = 0,
   onUpgradeClick,
 }) => {
+  const isProStudent = isUserProOrPaid(currentUser, userProfile, isAdmin);
   const [weaknessProfile, setWeaknessProfile] = useState<StudentWeaknessProfileData | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState<boolean>(true);
   const [showUniModal, setShowUniModal] = useState<boolean>(false);
@@ -167,9 +168,11 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
   // Fetch logged-in student's weakness profile securely via API
   useEffect(() => {
     let isMounted = true;
-    if (currentUser?.id) {
+    const effectiveId = currentUser?.id || userProfile?.id;
+    const effectiveEmail = currentUser?.email || userProfile?.email;
+    if (effectiveId || effectiveEmail) {
       setIsLoadingProfile(true);
-      fetchStudentWeaknessProfile(currentUser.id)
+      fetchStudentWeaknessProfile(effectiveId || effectiveEmail || '', undefined, effectiveEmail)
         .then((data) => {
           if (isMounted) {
             setWeaknessProfile(data);
@@ -185,7 +188,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
     return () => {
       isMounted = false;
     };
-  }, [currentUser?.id]);
+  }, [currentUser?.id, currentUser?.email, userProfile?.id, userProfile?.email]);
 
   // Calculate subject/chapter accuracy map combining API profile and student history
   const weakAreas = React.useMemo(() => {
@@ -613,7 +616,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
           </span>
         </div>
 
-        {!isAdmin && userProfile?.plan_tier === 'free' ? (
+        {!isProStudent ? (
           <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0 text-amber-500">

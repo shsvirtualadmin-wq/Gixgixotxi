@@ -20,7 +20,7 @@ import {
   Lock,
   X,
 } from 'lucide-react';
-import { StudentProfile, User, safeJsonResponse, evaluateStudentAccess } from '../lib/supabase';
+import { StudentProfile, User, safeJsonResponse, evaluateStudentAccess, isUserProOrPaid } from '../lib/supabase';
 import { validatePdfFile } from '../lib/pdfValidator';
 
 export interface DriveFileItem {
@@ -50,7 +50,7 @@ export const PastPapersSection: React.FC<PastPapersSectionProps> = ({
   currentUser,
   onUpgradeClick,
 }) => {
-  const isPro = isAdmin || userProfile?.plan_tier === 'pro' || (userProfile ? evaluateStudentAccess(userProfile).isPro : false);
+  const isPro = isUserProOrPaid(currentUser, userProfile, isAdmin);
   const [files, setFiles] = useState<DriveFileItem[]>([]);
   const [isLoadingList, setIsLoadingList] = useState<boolean>(true);
   const [isUploading, setIsUploading] = useState<boolean>(false);

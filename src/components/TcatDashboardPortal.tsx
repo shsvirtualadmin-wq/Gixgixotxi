@@ -41,7 +41,7 @@ import {
   getTCATGroupCombination
 } from '../data/tcatSyllabus';
 import { QuestionDifficulty, TestMode, HistoryItem } from '../types';
-import { User, StudentProfile, evaluateStudentAccess } from '../lib/supabase';
+import { User, StudentProfile, evaluateStudentAccess, isUserProOrPaid } from '../lib/supabase';
 import { InstitutionBadge } from './InstitutionBadge';
 import { BoardlyProBadge } from './BoardlyProBadge';
 
@@ -82,7 +82,7 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
   onBackToMainScreen,
   onUpgradeClick,
 }) => {
-  const isProStudent = isAdmin || userProfile?.plan_tier === 'pro' || (userProfile ? evaluateStudentAccess(userProfile).isPro : false);
+  const isProStudent = isUserProOrPaid(currentUser, userProfile, isAdmin);
   // Active FSc Group Combination (default: pre-engineering)
   const [selectedGroupId, setSelectedGroupId] = useState<string>('pre-engineering');
   const [selectedSubjectName, setSelectedSubjectName] = useState<string | null>(null);

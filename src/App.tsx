@@ -67,7 +67,7 @@ const PlanSelectionScreen = lazyWithRetry(() => import('./components/PlanSelecti
 const PricingPage = lazyWithRetry(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })), 'Pricing');
 const StudentProfileView = lazyWithRetry(() => import('./components/StudentProfileView').then(m => ({ default: m.StudentProfileView })), 'StudentProfileView');
 
-import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile } from './lib/supabase';
+import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
@@ -118,20 +118,7 @@ export function checkIsStudentProOrPaid(
 ): boolean {
   if (isAdmin) return true;
   if (!profile) return false;
-
-  const rawIsPro = Boolean(profile.is_pro) || profile.payment_status === 'Verified & Paid';
-
-  if (rawIsPro) {
-    if (profile.access_expires) {
-      const expTime = new Date(profile.access_expires).getTime();
-      if (!isNaN(expTime)) {
-        return expTime > Date.now();
-      }
-    }
-    return true;
-  }
-
-  return false;
+  return evaluateStudentAccess(profile, 0, isAdmin).isPro;
 }
 
 export { isTrackAllowedForUser } from './lib/supabase';
@@ -701,8 +688,8 @@ export function App() {
     userProfile?.payment_status === 'Pending Verification' ||
     userProfile?.plan_status === 'pending_verification';
 
-  // Access Gating Rule: Only Admins OR students whose payment_status is 'Verified & Paid' or is_pro is true have Pro access!
-  const isStudentProOrPaid = userProfile?.is_pro === true || userProfile?.payment_status === 'Verified & Paid';
+  // Access Gating Rule: Only Admins OR students whose evaluated access isPro is true have Pro access!
+  const isStudentProOrPaid = userProfile ? evaluateStudentAccess(userProfile, 0, isAdmin).isPro : false;
   const isPaymentApprovedOrExempt = isAdmin || isStudentProOrPaid;
 
   // Synchronize selectedClass & selectedGroup with student's profile grade & stream if not set yet
