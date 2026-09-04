@@ -1188,7 +1188,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
           </div>
           <div className="mt-3 flex items-baseline justify-between gap-1 flex-wrap min-w-0">
             <span className="text-2xl sm:text-3xl font-black text-slate-900  tracking-tight">
-              {allStudyBuddyHistory.length}
+              {allStudyBuddyHistory.filter((m) => m.role === 'user').length}
             </span>
             <span className="text-[11px] font-extrabold text-purple-600 ">
               Logged Queries

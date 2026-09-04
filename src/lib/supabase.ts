@@ -1423,58 +1423,68 @@ export interface AdminTestResult {
 }
 
 export async function fetchAllTestResultsFromSupabase(): Promise<AdminTestResult[]> {
+  const map = new Map<string, AdminTestResult>();
+
+  // 1. Fetch from Server endpoint (/api/admin/all-test-results)
   try {
     const apiRes = await apiFetch('/api/admin/all-test-results');
     if (apiRes.ok) {
       const data = await safeJsonResponse(apiRes);
       if (data?.success && Array.isArray(data.results)) {
-        return data.results;
+        for (const r of data.results) {
+          if (r && r.id) map.set(String(r.id), r);
+        }
       }
     }
   } catch (apiErr) {
     console.warn('Failed to fetch test results from /api/admin/all-test-results:', apiErr);
   }
 
-  if (!isSupabaseConfigured) return [];
-  try {
-    const { data, error } = await supabase
-      .from('test_results')
-      .select('*')
-      .order('created_at', { ascending: false });
+  // 2. Also fetch directly from client Supabase if configured to merge any direct client writes
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('test_results')
+        .select('*')
+        .order('created_at', { ascending: false });
 
-    if (error) {
-      console.warn('Supabase fetch test results error:', error.message);
-      return [];
+      if (!error && Array.isArray(data)) {
+        for (const row of data) {
+          const id = String(row.id);
+          if (!map.has(id)) {
+            const score = Number(row.score ?? 0);
+            const total = Number(row.total ?? 0);
+            const calcPct = total > 0 ? Math.round((score / total) * 100) : 0;
+            const rawPct = row.percentage !== null && row.percentage !== undefined && !isNaN(Number(row.percentage)) ? Number(row.percentage) : null;
+            const percentage = rawPct && rawPct > 0 ? rawPct : (calcPct > 0 ? calcPct : (rawPct ?? 0));
+
+            map.set(id, {
+              id,
+              student_id: row.student_id || '',
+              student_email: row.student_email || '',
+              student_name: row.student_name || row.student_email || '',
+              subject: row.subject || 'General',
+              path_label: row.path_label || 'General',
+              score,
+              total,
+              percentage,
+              duration: row.duration || '0m 0s',
+              time_taken_seconds: row.time_taken_seconds,
+              date_str: row.date_str || new Date(row.created_at).toLocaleDateString(),
+              created_at: row.created_at || new Date().toISOString(),
+              hidden_from_student: Boolean(row.hidden_from_student),
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Direct Supabase fetch test results error:', err);
     }
-
-    return (data || []).map((row: any) => {
-      const score = Number(row.score ?? 0);
-      const total = Number(row.total ?? 0);
-      const calcPct = total > 0 ? Math.round((score / total) * 100) : 0;
-      const rawPct = row.percentage !== null && row.percentage !== undefined && !isNaN(Number(row.percentage)) ? Number(row.percentage) : null;
-      const percentage = rawPct && rawPct > 0 ? rawPct : (calcPct > 0 ? calcPct : (rawPct ?? 0));
-
-      return {
-        id: String(row.id),
-        student_id: row.student_id || '',
-        student_email: row.student_email || '',
-        student_name: row.student_name || row.student_email || '',
-        subject: row.subject || 'General',
-        path_label: row.path_label || 'General',
-        score,
-        total,
-        percentage,
-        duration: row.duration || '0m 0s',
-        time_taken_seconds: row.time_taken_seconds,
-        date_str: row.date_str || new Date(row.created_at).toLocaleDateString(),
-        created_at: row.created_at || new Date().toISOString(),
-        hidden_from_student: Boolean(row.hidden_from_student),
-      };
-    });
-  } catch (err) {
-    console.error('Failed to fetch all test results from Supabase:', err);
-    return [];
   }
+
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
 }
 
 export async function fetchStudentTestResultsFromSupabase(studentId: string, studentEmail?: string): Promise<AdminTestResult[]> {
@@ -2900,54 +2910,65 @@ export async function fetchStudentStudyBuddyHistoryFromSupabase(studentId: strin
 }
 
 export async function fetchAllStudyBuddyHistoryFromSupabase(): Promise<StudyBuddyMessage[]> {
+  const map = new Map<string, StudyBuddyMessage>();
+
   try {
     // 1. Try server admin endpoint
     const resp = await apiFetch('/api/admin/all-study-buddy-history');
     if (resp.ok) {
       const resData = await safeJsonResponse(resp);
-      if (resData?.success && Array.isArray(resData.history) && resData.history.length > 0) {
-        return resData.history.map((row: any) => ({
-          id: String(row.id),
-          student_id: row.student_id || '',
-          conversation_id: row.conversation_id || undefined,
-          role: row.role as 'user' | 'model',
-          message_text: row.message_text || '',
-          created_at: row.created_at || new Date().toISOString(),
-        }));
+      if (resData?.success && Array.isArray(resData.history)) {
+        for (const row of resData.history) {
+          if (row && row.id) {
+            map.set(String(row.id), {
+              id: String(row.id),
+              student_id: row.student_id || '',
+              conversation_id: row.conversation_id || undefined,
+              role: (row.role === 'model' ? 'model' : 'user') as 'user' | 'model',
+              message_text: row.message_text || '',
+              created_at: row.created_at || new Date().toISOString(),
+            });
+          }
+        }
       }
     }
   } catch (apiErr) {
     console.warn('API fetch all study buddy history error:', apiErr);
   }
 
-  if (!isSupabaseConfigured) return [];
-  try {
-    const { data, error } = await supabase
-      .from('study_buddy_history')
-      .select('id, student_id, conversation_id, role, message_text, created_at')
-      .order('created_at', { ascending: false })
-      .limit(300);
+  // 2. Direct Supabase fallback/merge
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('study_buddy_history')
+        .select('id, student_id, conversation_id, role, message_text, created_at')
+        .order('created_at', { ascending: false })
+        .limit(500);
 
-    if (error) {
-      console.warn('Supabase fetch all study_buddy_history error:', error.message);
-      return [];
+      if (!error && Array.isArray(data)) {
+        for (const row of data) {
+          const rowId = String(row.id);
+          if (!map.has(rowId)) {
+            const { convId, cleanText } = parseStudyBuddyRow(row);
+            map.set(rowId, {
+              id: rowId,
+              student_id: row.student_id || '',
+              conversation_id: convId || undefined,
+              role: (row.role === 'model' ? 'model' : 'user') as 'user' | 'model',
+              message_text: cleanText,
+              created_at: row.created_at || new Date().toISOString(),
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Supabase fetch all study buddy history error:', err);
     }
-
-    return (data || []).map((row: any) => {
-      const { convId, cleanText } = parseStudyBuddyRow(row);
-      return {
-        id: String(row.id),
-        student_id: row.student_id || '',
-        conversation_id: convId || undefined,
-        role: row.role as 'user' | 'model',
-        message_text: cleanText,
-        created_at: row.created_at || new Date().toISOString(),
-      };
-    });
-  } catch (err) {
-    console.error('Failed to fetch all study buddy history:', err);
-    return [];
   }
+
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
 }
 
 /**

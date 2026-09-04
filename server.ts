@@ -969,88 +969,37 @@ export interface ServerStudyBuddyLogItem {
   conversation_id?: string;
 }
 
-const inMemoryStudyBuddyLogs: ServerStudyBuddyLogItem[] = [
-  {
-    id: "sb-log-01",
-    student_id: "std-ayesha-01",
-    student_name: "Ayesha Khan",
-    student_email: "ayesha.khan.mdcat@gmail.com",
-    role: "user",
-    message_text: "How do I distinguish between competitive and allosteric enzyme inhibitors in MDCAT biology questions?",
-    created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-    conversation_id: "conv-ayesha-1",
-  },
-  {
-    id: "sb-log-02",
-    student_id: "std-ayesha-01",
-    student_name: "Ayesha Khan",
-    student_email: "ayesha.khan.mdcat@gmail.com",
-    role: "model",
-    message_text: "Competitive inhibitors bind directly to the active site and can be overcome by increasing substrate concentration (Km increases, Vmax unchanged), whereas non-competitive/allosteric inhibitors bind to a separate allosteric site and decrease Vmax without altering Km.",
-    created_at: new Date(Date.now() - 3 * 86400000 + 4000).toISOString(),
-    conversation_id: "conv-ayesha-1",
-  },
-  {
-    id: "sb-log-03",
-    student_id: "std-hamza-02",
-    student_name: "Hamza Ahmed",
-    student_email: "hamza.tcat.prep@gmail.com",
-    role: "user",
-    message_text: "Can you explain Lenz's Law and how to determine the direction of induced current in a moving magnetic loop?",
-    created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-    conversation_id: "conv-hamza-1",
-  },
-  {
-    id: "sb-log-04",
-    student_id: "std-hamza-02",
-    student_name: "Hamza Ahmed",
-    student_email: "hamza.tcat.prep@gmail.com",
-    role: "model",
-    message_text: "Lenz's Law states that the induced electromotive force (EMF) and resulting current always produce a magnetic field that opposes the change in magnetic flux that caused it. Use the right-hand grip rule once you determine which direction of magnetic field is needed to resist the change.",
-    created_at: new Date(Date.now() - 2 * 86400000 + 5000).toISOString(),
-    conversation_id: "conv-hamza-1",
-  },
-  {
-    id: "sb-log-05",
-    student_id: "std-zainab-03",
-    student_name: "Zainab Tariq",
-    student_email: "zainab.tariq.fsc@gmail.com",
-    role: "user",
-    message_text: "What is the difference between SN1 and SN2 reaction mechanisms in 2nd year organic chemistry?",
-    created_at: new Date(Date.now() - 1 * 86400000).toISOString(),
-    conversation_id: "conv-zainab-1",
-  },
-  {
-    id: "sb-log-06",
-    student_id: "std-bilal-04",
-    student_name: "Bilal Raza",
-    student_email: "bilal.raza.11th@gmail.com",
-    role: "user",
-    message_text: "How does the fetch-decode-execute cycle coordinate with the Program Counter and Instruction Register in CPU architecture?",
-    created_at: new Date(Date.now() - 18 * 3600000).toISOString(),
-    conversation_id: "conv-bilal-1",
-  },
-  {
-    id: "sb-log-07",
-    student_id: "std-khadija-05",
-    student_name: "Khadija Jameel",
-    student_email: "dj.khadijajameel19@gmail.com",
-    role: "user",
-    message_text: "Explain the photophosphorylation pathway in chloroplast thylakoid membranes during light-dependent reactions of photosynthesis.",
-    created_at: new Date(Date.now() - 8 * 3600000).toISOString(),
-    conversation_id: "conv-khadija-1",
-  },
-  {
-    id: "sb-log-08",
-    student_id: "std-khadija-05",
-    student_name: "Khadija Jameel",
-    student_email: "dj.khadijajameel19@gmail.com",
-    role: "model",
-    message_text: "In non-cyclic photophosphorylation, light excites electrons in Photosystem II (P680). Photolysis of water releases protons and O2 while replenishing PSII electrons. The high-energy electrons flow down the ETS generating a proton gradient across the thylakoid membrane for ATP synthesis (via ATP synthase), finally reducing NADP+ to NADPH at Photosystem I (P700).",
-    created_at: new Date(Date.now() - 8 * 3600000 + 6000).toISOString(),
-    conversation_id: "conv-khadija-1",
-  },
-];
+const STUDY_BUDDY_LOGS_FILE_PATH = path.join(process.cwd(), "data", "study_buddy_logs.json");
+const inMemoryStudyBuddyLogs: ServerStudyBuddyLogItem[] = [];
+
+function loadPersistentStudyBuddyLogs() {
+  try {
+    if (fs.existsSync(STUDY_BUDDY_LOGS_FILE_PATH)) {
+      const content = fs.readFileSync(STUDY_BUDDY_LOGS_FILE_PATH, "utf-8");
+      if (content) {
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed)) {
+          inMemoryStudyBuddyLogs.length = 0;
+          for (const item of parsed) {
+            if (item && item.id) inMemoryStudyBuddyLogs.push(item);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[loadPersistentStudyBuddyLogs warning]:", err);
+  }
+}
+
+export function savePersistentStudyBuddyLogs() {
+  try {
+    fs.writeFileSync(STUDY_BUDDY_LOGS_FILE_PATH, JSON.stringify(inMemoryStudyBuddyLogs, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("[savePersistentStudyBuddyLogs warning]:", err);
+  }
+}
+
+loadPersistentStudyBuddyLogs();
 
 const inMemoryMCQAttempts: MCQAttemptItem[] = [
   // Ayesha Khan
@@ -1098,203 +1047,37 @@ export interface SavedTestResultItem {
   hidden_from_student?: boolean;
 }
 
-const inMemoryTestResults: SavedTestResultItem[] = [
-  {
-    id: "test-res-ayesha-bio-1",
-    student_id: "std-ayesha-01",
-    student_name: "Ayesha Khan",
-    student_email: "ayesha.khan.mdcat@gmail.com",
-    subject: "Biology",
-    path_label: "MDCAT Medical",
-    score: 28,
-    total: 30,
-    percentage: 93,
-    duration: "18m 45s",
-    time_taken_seconds: 1125,
-    date_str: new Date(Date.now() - 2 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-  },
-  {
-    id: "test-res-ayesha-chem-1",
-    student_id: "std-ayesha-01",
-    student_name: "Ayesha Khan",
-    student_email: "ayesha.khan.mdcat@gmail.com",
-    subject: "Chemistry",
-    path_label: "MDCAT Medical",
-    score: 24,
-    total: 30,
-    percentage: 80,
-    duration: "24m 10s",
-    time_taken_seconds: 1450,
-    date_str: new Date(Date.now() - 4 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 4 * 86400000).toISOString(),
-  },
-  {
-    id: "test-res-ayesha-phy-1",
-    student_id: "std-ayesha-01",
-    student_name: "Ayesha Khan",
-    student_email: "ayesha.khan.mdcat@gmail.com",
-    subject: "Physics",
-    path_label: "MDCAT Medical",
-    score: 21,
-    total: 30,
-    percentage: 70,
-    duration: "25m 30s",
-    time_taken_seconds: 1530,
-    date_str: new Date(Date.now() - 6 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 6 * 86400000).toISOString(),
-  },
-  {
-    id: "test-res-hamza-math-1",
-    student_id: "std-hamza-02",
-    student_name: "Hamza Ahmed",
-    student_email: "hamza.tcat.prep@gmail.com",
-    subject: "Mathematics",
-    path_label: "TCAT Engineering",
-    score: 27,
-    total: 30,
-    percentage: 90,
-    duration: "29m 15s",
-    time_taken_seconds: 1755,
-    date_str: new Date(Date.now() - 1 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 1 * 86400000).toISOString(),
-  },
-  {
-    id: "test-res-hamza-phy-1",
-    student_id: "std-hamza-02",
-    student_name: "Hamza Ahmed",
-    student_email: "hamza.tcat.prep@gmail.com",
-    subject: "Physics",
-    path_label: "TCAT Engineering",
-    score: 26,
-    total: 30,
-    percentage: 87,
-    duration: "24m 00s",
-    time_taken_seconds: 1440,
-    date_str: new Date(Date.now() - 3 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-  },
-  {
-    id: "test-res-hamza-chem-1",
-    student_id: "std-hamza-02",
-    student_name: "Hamza Ahmed",
-    student_email: "hamza.tcat.prep@gmail.com",
-    subject: "Chemistry",
-    path_label: "TCAT Engineering",
-    score: 22,
-    total: 30,
-    percentage: 73,
-    duration: "21m 40s",
-    time_taken_seconds: 1300,
-    date_str: new Date(Date.now() - 5 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-  },
-  {
-    id: "test-res-zainab-bio-1",
-    student_id: "std-zainab-03",
-    student_name: "Zainab Tariq",
-    student_email: "zainab.tariq.fsc@gmail.com",
-    subject: "Biology",
-    path_label: "12th Pre-Medical",
-    score: 25,
-    total: 30,
-    percentage: 83,
-    duration: "20m 10s",
-    time_taken_seconds: 1210,
-    date_str: new Date(Date.now() - 3 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-  },
-  {
-    id: "test-res-zainab-phy-1",
-    student_id: "std-zainab-03",
-    student_name: "Zainab Tariq",
-    student_email: "zainab.tariq.fsc@gmail.com",
-    subject: "Physics",
-    path_label: "12th Pre-Medical",
-    score: 19,
-    total: 30,
-    percentage: 63,
-    duration: "27m 45s",
-    time_taken_seconds: 1665,
-    date_str: new Date(Date.now() - 6 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 6 * 86400000).toISOString(),
-  },
-  {
-    id: "test-res-bilal-cs-1",
-    student_id: "std-bilal-04",
-    student_name: "Bilal Raza",
-    student_email: "bilal.raza.11th@gmail.com",
-    subject: "Computer Science",
-    path_label: "11th ICS",
-    score: 27,
-    total: 30,
-    percentage: 90,
-    duration: "19m 20s",
-    time_taken_seconds: 1160,
-    date_str: new Date(Date.now() - 2 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 2 * 86400000).toISOString(),
-  },
-  {
-    id: "test-res-bilal-math-1",
-    student_id: "std-bilal-04",
-    student_name: "Bilal Raza",
-    student_email: "bilal.raza.11th@gmail.com",
-    subject: "Mathematics",
-    path_label: "11th ICS",
-    score: 22,
-    total: 30,
-    percentage: 73,
-    duration: "28m 30s",
-    time_taken_seconds: 1710,
-    date_str: new Date(Date.now() - 5 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
-  },
-  {
-    id: "test-res-khadija-bio-1",
-    student_id: "std-khadija-05",
-    student_name: "Khadija Jameel",
-    student_email: "dj.khadijajameel19@gmail.com",
-    subject: "Biology",
-    path_label: "MDCAT Mastery",
-    score: 29,
-    total: 30,
-    percentage: 97,
-    duration: "17m 50s",
-    time_taken_seconds: 1070,
-    date_str: new Date(Date.now() - 1 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 1 * 86400000).toISOString(),
-  },
-  {
-    id: "test-res-khadija-chem-1",
-    student_id: "std-khadija-05",
-    student_name: "Khadija Jameel",
-    student_email: "dj.khadijajameel19@gmail.com",
-    subject: "Chemistry",
-    path_label: "MDCAT Mastery",
-    score: 27,
-    total: 30,
-    percentage: 90,
-    duration: "20m 15s",
-    time_taken_seconds: 1215,
-    date_str: new Date(Date.now() - 3 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 3 * 86400000).toISOString(),
-  },
-  {
-    id: "test-res-khadija-phy-1",
-    student_id: "std-khadija-05",
-    student_name: "Khadija Jameel",
-    student_email: "dj.khadijajameel19@gmail.com",
-    subject: "Physics",
-    path_label: "MDCAT Mastery",
-    score: 26,
-    total: 30,
-    percentage: 87,
-    duration: "22m 30s",
-    time_taken_seconds: 1350,
-    date_str: new Date(Date.now() - 7 * 86400000).toLocaleDateString(),
-    created_at: new Date(Date.now() - 7 * 86400000).toISOString(),
-  },
-];
+const TEST_RESULTS_FILE_PATH = path.join(process.cwd(), "data", "test_results.json");
+const inMemoryTestResults: SavedTestResultItem[] = [];
+
+function loadPersistentTestResults() {
+  try {
+    if (fs.existsSync(TEST_RESULTS_FILE_PATH)) {
+      const content = fs.readFileSync(TEST_RESULTS_FILE_PATH, "utf-8");
+      if (content) {
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed)) {
+          inMemoryTestResults.length = 0;
+          for (const item of parsed) {
+            if (item && item.id) inMemoryTestResults.push(item);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[loadPersistentTestResults warning]:", err);
+  }
+}
+
+export function savePersistentTestResults() {
+  try {
+    fs.writeFileSync(TEST_RESULTS_FILE_PATH, JSON.stringify(inMemoryTestResults, null, 2), "utf-8");
+  } catch (err) {
+    console.warn("[savePersistentTestResults warning]:", err);
+  }
+}
+
+loadPersistentTestResults();
 
 export interface ServerTestSessionRecord {
   id: string;
@@ -4704,6 +4487,7 @@ ${scopeInstruction}${excludeInstruction}`;
       if (inMemoryTestResults.length > 500) {
         inMemoryTestResults.pop();
       }
+      savePersistentTestResults();
 
       // Authoritative in-memory tracking upon test completion
       const currentPeriod = getCurrentMonthPeriod();
@@ -4723,7 +4507,8 @@ ${scopeInstruction}${excludeInstruction}`;
       let supabaseSuccess = false;
       let supabaseErrorMsg: string | null = null;
 
-      if (getAuthClient(req || null)) {
+      const targetDbClient = getAuthClient(req || null) || getSupabaseAdminClient() || supabaseServer;
+      if (targetDbClient) {
         try {
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           const validStudentUuid = uuidRegex.test(studentId) ? studentId : null;
@@ -4742,7 +4527,7 @@ ${scopeInstruction}${excludeInstruction}`;
             created_at: nowIso,
           };
 
-          const { error } = await getAuthClient(req || null)?.from("test_results").insert(rowToInsert);
+          const { error } = await targetDbClient.from("test_results").insert(rowToInsert);
           if (error) {
             console.warn("[api/save-test-result Supabase insert error]:", error.message);
             supabaseErrorMsg = error.message;
@@ -5860,13 +5645,27 @@ ${scopeInstruction}${excludeInstruction}`;
         return res.status(400).json({ success: false, error: "Missing messageText" });
       }
 
+      const cleanText = String(messageText).trim();
+      const targetRole = role === 'model' ? 'model' : 'user';
+
+      // Deduplicate if already logged by stream within last 15 seconds
+      const isDuplicate = inMemoryStudyBuddyLogs.some(
+        (l) =>
+          l.role === targetRole &&
+          l.message_text.trim() === cleanText &&
+          Math.abs(Date.now() - new Date(l.created_at).getTime()) < 15000
+      );
+      if (isDuplicate) {
+        return res.json({ success: true, message: "Already logged" });
+      }
+
       const newLogItem: ServerStudyBuddyLogItem = {
         id: `sb-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         student_id: studentId || "anonymous",
         student_name: studentName || studentEmail || "Student",
         student_email: studentEmail || "",
-        role: role === 'model' ? 'model' : 'user',
-        message_text: String(messageText).trim(),
+        role: targetRole,
+        message_text: cleanText,
         created_at: new Date().toISOString(),
         conversation_id: conversationId || undefined,
       };
@@ -5875,6 +5674,7 @@ ${scopeInstruction}${excludeInstruction}`;
       if (inMemoryStudyBuddyLogs.length > 500) {
         inMemoryStudyBuddyLogs.pop();
       }
+      savePersistentStudyBuddyLogs();
 
       // Also try writing to Supabase
       const supabaseAdmin = getSupabaseAdminClient() || supabaseServer;
@@ -6909,6 +6709,7 @@ For account assistance, suspensions, or reactivation inquiries, contact the SHS 
         };
         inMemoryStudyBuddyLogs.unshift(logEntry);
         if (inMemoryStudyBuddyLogs.length > 500) inMemoryStudyBuddyLogs.pop();
+        savePersistentStudyBuddyLogs();
 
         const db = getSupabaseAdminClient() || supabaseServer;
         if (db) {
