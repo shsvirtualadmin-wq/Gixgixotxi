@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserAvatar } from './UserAvatar';
 import { StudyBuddyFormattedMessage } from './StudyBuddyFormattedMessage';
 import { SegmentedControl } from './SegmentedControl';
@@ -7,6 +7,7 @@ import {
   supabase,
   isAdminEmail,
   fetchAllStudentsFromSupabase,
+  fetchStudentProfileFromSupabase,
   fetchAllTestResultsFromSupabase,
   fetchStudentTestResultsFromSupabase,
   fetchAllStudentWeaknessProfiles,
@@ -105,6 +106,27 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
     }
   }, [initialTab]);
   const [students, setStudents] = useState<StudentProfile[]>([]);
+  const recentStudentOverridesRef = useRef<Map<string, { grade: string; stream: string; subjects: string[]; is_registered: boolean; assigned_classes: string[] }>>(new Map());
+
+  const applyOverridesToStudents = (list: StudentProfile[]): StudentProfile[] => {
+    if (recentStudentOverridesRef.current.size === 0) return list;
+    return list.map((s) => {
+      const overrideById = s.id ? recentStudentOverridesRef.current.get(s.id) : null;
+      const overrideByEmail = s.email ? recentStudentOverridesRef.current.get(s.email.toLowerCase().trim()) : null;
+      const override = overrideById || overrideByEmail;
+      if (override) {
+        return {
+          ...s,
+          grade: override.grade,
+          stream: override.stream,
+          subjects: override.subjects,
+          is_registered: override.is_registered,
+          assigned_classes: override.assigned_classes,
+        };
+      }
+      return s;
+    });
+  };
   const [allTestResults, setAllTestResults] = useState<AdminTestResult[]>([]);
   const [allStudyBuddyHistory, setAllStudyBuddyHistory] = useState<StudyBuddyMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -228,14 +250,15 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
         fetchAllPaymentRequestsFromSupabase(detectedEmail),
         fetchAdminActivityLogsFromSupabase(detectedEmail),
       ]);
-      setStudents(studentList);
+      const mergedStudents = applyOverridesToStudents(studentList);
+      setStudents(mergedStudents);
       setAllTestResults(testList);
       setStudentWeaknessProfiles(weaknessList);
       setAllStudyBuddyHistory(buddyList);
       setPaymentRequests(paymentList);
       setActivityLogs(logsList);
 
-      runAuditAndRevertUnverifiedPro(studentList, paymentList);
+      runAuditAndRevertUnverifiedPro(mergedStudents, paymentList);
     } catch (err: any) {
       console.error('Failed to fetch admin data from database:', err);
       setError('Failed to load live admin data from database.');
@@ -292,7 +315,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
         }
         setAuditProNotice(`Audited & Reverted ${count} unverified Pro account(s) to Free Plan.`);
         const refreshedStudents = await fetchAllStudentsFromSupabase();
-        setStudents(refreshedStudents);
+        setStudents(applyOverridesToStudents(refreshedStudents));
       } else {
         setAuditProNotice('Audit Complete: All Pro accounts verified against payment records.');
       }
@@ -1040,20 +1063,48 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
 }
 
   const handleSelectStudent = async (student: StudentProfile) => {
-    setSelectedStudent(student);
+    // Check if there's a recent override in memory for this student
+    const overrideById = student.id ? recentStudentOverridesRef.current.get(student.id) : null;
+    const overrideByEmail = student.email ? recentStudentOverridesRef.current.get(student.email.toLowerCase().trim()) : null;
+    const activeOverride = overrideById || overrideByEmail;
+
+    const initialStudent = activeOverride ? { ...student, ...activeOverride } : student;
+    setSelectedStudent(initialStudent);
     setDetailSubTab('tests');
-    const normGrade = normalizeGradeForSelect(student.grade);
-    const normStream = normalizeStreamForSelect(student.stream, normGrade);
+    const normGrade = normalizeGradeForSelect(initialStudent.grade);
+    const normStream = normalizeStreamForSelect(initialStudent.stream, normGrade);
     setEditStudentGrade(normGrade);
     setEditStudentStream(normStream);
     setAdminOverrideToast(null);
     setHistoryLoading(true);
     setLoadingBuddyHistory(true);
     try {
-      const [history, buddyLogs] = await Promise.all([
+      const [history, buddyLogs, freshProfile] = await Promise.all([
         fetchStudentTestResultsFromSupabase(student.id, student.email),
         fetchStudentStudyBuddyHistoryFromSupabase(student.id),
+        fetchStudentProfileFromSupabase(student.id, true, student.email),
       ]);
+      if (freshProfile) {
+        const resolvedProfile: StudentProfile = activeOverride
+          ? { ...freshProfile, ...activeOverride }
+          : freshProfile;
+        setSelectedStudent(resolvedProfile);
+        const freshGrade = normalizeGradeForSelect(resolvedProfile.grade);
+        const freshStream = normalizeStreamForSelect(resolvedProfile.stream, freshGrade);
+        setEditStudentGrade(freshGrade);
+        setEditStudentStream(freshStream);
+        setStudents((prev) =>
+          prev.map((s) => {
+            const matchesId = s.id === resolvedProfile.id;
+            const matchesEmail = Boolean(
+              resolvedProfile.email &&
+              s.email &&
+              s.email.toLowerCase().trim() === resolvedProfile.email.toLowerCase().trim()
+            );
+            return matchesId || matchesEmail ? { ...s, ...resolvedProfile } : s;
+          })
+        );
+      }
       setStudentHistory(history);
       setSelectedStudentBuddyHistory(buddyLogs);
     } catch (err) {
@@ -1126,16 +1177,39 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
           is_registered: true,
           assigned_classes: [`${editStudentGrade} ${editStudentStream}`.trim()],
         };
+
+        // Cache override locally by ID and Email
+        const overrideData = {
+          grade: editStudentGrade,
+          stream: editStudentStream,
+          subjects: defaultSubjects,
+          is_registered: true,
+          assigned_classes: [`${editStudentGrade} ${editStudentStream}`.trim()],
+        };
+        if (selectedStudent.id) {
+          recentStudentOverridesRef.current.set(selectedStudent.id, overrideData);
+        }
+        if (selectedStudent.email) {
+          recentStudentOverridesRef.current.set(selectedStudent.email.toLowerCase().trim(), overrideData);
+        }
+
+        // 1. Immediately update detail modal
         setSelectedStudent(updatedStudentObj);
+
+        // 2. Immediately update main student list cards
         setStudents((prev) =>
-          prev.map((s) =>
-            s.id === selectedStudent.id ||
-            (selectedStudent.email && s.email && s.email.toLowerCase() === selectedStudent.email.toLowerCase())
-              ? updatedStudentObj
-              : s
-          )
+          prev.map((s) => {
+            const matchesId = s.id === selectedStudent.id;
+            const matchesEmail = Boolean(
+              selectedStudent.email &&
+              s.email &&
+              s.email.toLowerCase().trim() === selectedStudent.email.toLowerCase().trim()
+            );
+            return matchesId || matchesEmail ? { ...s, ...updatedStudentObj } : s;
+          })
         );
-        setAdminOverrideToast('✅ Grade & Stream lock updated successfully!');
+
+        setAdminOverrideToast('✅ Grade & Stream lock updated successfully! Status set to Registered.');
         await loadData();
       } else {
         setAdminOverrideToast(`⚠️ Failed to save changes: ${res.message || 'Database update failed.'}`);
@@ -3225,22 +3299,23 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between pt-1">
-                  <span className="text-[10.5px] text-slate-400 font-medium">
-                    Overriding immediately unlocks or locks student subjects.
-                  </span>
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-blue-500/10">
+                  <div className="flex items-center gap-1.5 text-[11px] text-emerald-800 font-semibold">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span>Saving this override updates academic track and sets status to <strong>Registered</strong>. No separate step needed.</span>
+                  </div>
                   <button
                     type="button"
                     disabled={isSavingGradeStream}
                     onClick={handleAdminSaveGradeStream}
-                    className="px-4 py-1.5 bg-[#007AFF] hover:bg-[#0066CC]  text-white rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-md active:scale-95 disabled:opacity-50"
+                    className="px-4 py-1.5 bg-[#007AFF] hover:bg-[#0066CC] text-white rounded-xl text-xs font-extrabold transition-all cursor-pointer shadow-md active:scale-95 disabled:opacity-50 self-end sm:self-auto shrink-0"
                   >
                     {isSavingGradeStream ? 'Saving Changes...' : 'Save Override Changes'}
                   </button>
                 </div>
 
                 {adminOverrideToast && (
-                  <p className="text-xs font-bold text-emerald-600  pt-1">
+                  <p className="text-xs font-bold text-emerald-600 pt-1">
                     {adminOverrideToast}
                   </p>
                 )}

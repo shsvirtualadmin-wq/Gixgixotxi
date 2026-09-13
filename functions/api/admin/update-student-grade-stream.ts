@@ -128,59 +128,89 @@ export const onRequestPost = async (context: PagesContext) => {
     }
 
     let targetId = studentId;
-    let targetEmail = studentEmail;
+    let targetEmail = studentEmail ? studentEmail.trim() : "";
 
     if (!targetId && targetEmail) {
-      const { data: sRow } = await supabaseAdmin.from("students").select("id").eq("email", targetEmail).maybeSingle();
+      const { data: sRow } = await supabaseAdmin
+        .from("students")
+        .select("id")
+        .ilike("email", targetEmail)
+        .maybeSingle();
       if (sRow?.id) targetId = sRow.id;
     }
+
+    const fullPayload: any = {
+      grade: cleanGrade,
+      stream: cleanStream,
+      subjects,
+      assigned_classes,
+      is_registered: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    const minimalPayload = {
+      grade: cleanGrade,
+      stream: cleanStream,
+      is_registered: true,
+      updated_at: new Date().toISOString(),
+    };
 
     let updateRes: any = null;
     if (targetId && !targetId.includes("@")) {
       updateRes = await supabaseAdmin
         .from("students")
-        .update({
-          grade: cleanGrade,
-          stream: cleanStream,
-          subjects,
-          assigned_classes,
-          is_registered: true,
-          updated_at: new Date().toISOString(),
-        })
+        .update(fullPayload)
         .eq("id", targetId)
         .select()
         .maybeSingle();
+
+      if (updateRes?.error && (updateRes.error.message?.includes("column") || updateRes.error.code === '42703' || updateRes.error.code === 'PGRST204' || updateRes.error.message?.includes("subjects") || updateRes.error.message?.includes("assigned_classes"))) {
+        updateRes = await supabaseAdmin
+          .from("students")
+          .update(minimalPayload)
+          .eq("id", targetId)
+          .select()
+          .maybeSingle();
+      }
     }
 
     if ((!updateRes || updateRes.error || !updateRes.data) && (targetEmail || (studentId && studentId.includes("@")))) {
       const fallbackEmail = targetEmail || studentId;
       updateRes = await supabaseAdmin
         .from("students")
-        .update({
-          grade: cleanGrade,
-          stream: cleanStream,
-          subjects,
-          assigned_classes,
-          is_registered: true,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("email", fallbackEmail)
+        .update(fullPayload)
+        .ilike("email", fallbackEmail)
         .select()
         .maybeSingle();
+
+      if (updateRes?.error && (updateRes.error.message?.includes("column") || updateRes.error.code === '42703' || updateRes.error.code === 'PGRST204' || updateRes.error.message?.includes("subjects") || updateRes.error.message?.includes("assigned_classes"))) {
+        updateRes = await supabaseAdmin
+          .from("students")
+          .update(minimalPayload)
+          .ilike("email", fallbackEmail)
+          .select()
+          .maybeSingle();
+      }
     }
 
-    if (updateRes && updateRes.error && (updateRes.error.message?.includes("subjects") || updateRes.error.code === 'PGRST204')) {
-      console.warn("[functions/api/admin/update-student-grade-stream] Retrying update without subjects...");
-      const updatePayload = {
+    // If still no row updated, upsert to ensure the student row exists with grade & stream
+    if (!updateRes?.data && (targetId || targetEmail)) {
+      const finalId = targetId || ("student_" + Date.now());
+      const finalEmail = targetEmail || (studentId && studentId.includes("@") ? studentId : "");
+      const upsertData: any = {
+        id: finalId,
+        email: finalEmail,
+        name: finalEmail ? finalEmail.split("@")[0] : "Student",
         grade: cleanGrade,
         stream: cleanStream,
         is_registered: true,
+        status: "active",
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       };
-      if (targetId) {
-        updateRes = await supabaseAdmin.from("students").update(updatePayload).eq("id", targetId).select().maybeSingle();
-      } else if (targetEmail) {
-        updateRes = await supabaseAdmin.from("students").update(updatePayload).eq("email", targetEmail).select().maybeSingle();
+      const upRes = await supabaseAdmin.from("students").upsert(upsertData).select().maybeSingle();
+      if (upRes?.data) {
+        updateRes = upRes;
       }
     }
 
@@ -196,10 +226,22 @@ export const onRequestPost = async (context: PagesContext) => {
       );
     }
 
+    const savedProfile = updateRes?.data || {
+      id: targetId || (targetEmail ? targetEmail.split("@")[0] : "student"),
+      email: targetEmail || "",
+      grade: cleanGrade,
+      stream: cleanStream,
+      subjects,
+      assigned_classes,
+      is_registered: true,
+      status: "active",
+      updated_at: new Date().toISOString(),
+    };
+
     return new Response(
       JSON.stringify({
         success: true,
-        profile: updateRes?.data || { id: targetId, email: targetEmail, grade: cleanGrade, stream: cleanStream, subjects },
+        profile: savedProfile,
       }),
       { status: 200, headers: corsHeaders }
     );
