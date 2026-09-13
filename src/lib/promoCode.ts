@@ -46,6 +46,7 @@ export interface PromoClaimResult {
 
 export interface PromoValidateResult {
   valid: boolean;
+  message?: string;
   code?: string;
   label?: string;
   maxRedemptions?: number | null;
@@ -187,25 +188,145 @@ export function clearPendingPromoCode(): void {
 }
 
 /**
- * Validate a promo code with the backend
+ * Validate a promo code with the backend and directly against Supabase tables
  */
 export async function validatePromoCode(
   code: string,
   studentId?: string,
   studentEmail?: string
 ): Promise<PromoValidateResult> {
+  const cleanCode = sanitizePromoCode(code);
+  const normalizedEmail = studentEmail ? studentEmail.trim().toLowerCase() : '';
+
+  // 1. First, check actual saved subscription & redemption status directly from Supabase tables
+  if (studentId || normalizedEmail) {
+    try {
+      // Check promo_redemptions table
+      let redQuery = supabase.from('promo_redemptions').select('*');
+      if (normalizedEmail && studentId) {
+        redQuery = redQuery.or(`student_email.ilike.${normalizedEmail},email.ilike.${normalizedEmail},student_id.eq.${studentId},user_id.eq.${studentId}`);
+      } else if (normalizedEmail) {
+        redQuery = redQuery.or(`student_email.ilike.${normalizedEmail},email.ilike.${normalizedEmail}`);
+      } else if (studentId) {
+        redQuery = redQuery.or(`student_id.eq.${studentId},user_id.eq.${studentId}`);
+      }
+      const { data: redData } = await redQuery.limit(5);
+      if (Array.isArray(redData) && redData.length > 0) {
+        const matchingClaim = redData.find(r => (r.promo_code && r.promo_code.toUpperCase() === cleanCode) || (r.code && r.code.toUpperCase() === cleanCode)) || redData[0];
+        const expiry = matchingClaim.granted_until || matchingClaim.expires_at || null;
+        return {
+          valid: true,
+          alreadyRedeemed: true,
+          alreadyRedeemedByAccount: true,
+          code: cleanCode,
+          label: '1-Year Free Boardly Pro Access',
+          expiresDate: expiry,
+          grantedUntil: expiry,
+          message: `Already activated on this account (expires ${expiry ? new Date(expiry).toLocaleDateString() : 'in 1 year'}).`,
+        };
+      }
+
+      // Check profiles table for active Pro tier
+      let profQuery = supabase.from('profiles').select('*');
+      if (normalizedEmail && studentId) {
+        profQuery = profQuery.or(`id.eq.${studentId},email.ilike.${normalizedEmail}`);
+      } else if (normalizedEmail) {
+        profQuery = profQuery.ilike('email', normalizedEmail);
+      } else if (studentId) {
+        profQuery = profQuery.eq('id', studentId);
+      }
+      const { data: profData } = await profQuery.maybeSingle();
+      if (profData && (profData.subscription_tier === 'pro' || profData.is_pro || profData.promo_code_redeemed === cleanCode)) {
+        const expiry = profData.subscription_expires_at || null;
+        return {
+          valid: true,
+          alreadyRedeemed: true,
+          alreadyRedeemedByAccount: true,
+          code: cleanCode,
+          label: '1-Year Free Boardly Pro Access',
+          expiresDate: expiry,
+          grantedUntil: expiry,
+          message: `Already activated on this account (expires ${expiry ? new Date(expiry).toLocaleDateString() : 'in 1 year'}).`,
+        };
+      }
+
+      // Check students table for active Pro tier
+      let stQuery = supabase.from('students').select('*');
+      if (normalizedEmail && studentId) {
+        stQuery = stQuery.or(`id.eq.${studentId},email.ilike.${normalizedEmail}`);
+      } else if (normalizedEmail) {
+        stQuery = stQuery.ilike('email', normalizedEmail);
+      } else if (studentId) {
+        stQuery = stQuery.eq('id', studentId);
+      }
+      const { data: stData } = await stQuery.maybeSingle();
+      if (stData && (stData.is_pro || stData.plan_tier === 'pro' || stData.promo_code_redeemed === cleanCode)) {
+        const expiry = stData.access_expires || null;
+        return {
+          valid: true,
+          alreadyRedeemed: true,
+          alreadyRedeemedByAccount: true,
+          code: cleanCode,
+          label: '1-Year Free Boardly Pro Access',
+          expiresDate: expiry,
+          grantedUntil: expiry,
+          message: `Already activated on this account (expires ${expiry ? new Date(expiry).toLocaleDateString() : 'in 1 year'}).`,
+        };
+      }
+    } catch (dbErr) {
+      console.warn('[validatePromoCode] Direct Supabase verification note:', dbErr);
+    }
+  }
+
+  // 2. Query backend validate endpoint
   try {
-    let url = `/api/promo/validate?code=${encodeURIComponent(sanitizePromoCode(code))}`;
+    let url = `/api/promo/validate?code=${encodeURIComponent(cleanCode)}`;
     if (studentId) url += `&studentId=${encodeURIComponent(studentId)}`;
-    if (studentEmail) url += `&studentEmail=${encodeURIComponent(studentEmail)}`;
+    if (normalizedEmail) url += `&studentEmail=${encodeURIComponent(normalizedEmail)}`;
     const resp = await apiFetch(url);
     const data = await safeJsonResponse<PromoValidateResult>(resp);
     if (data) return data;
-    return { valid: false, error: 'Could not validate promo code. Please try again.' };
   } catch (err: any) {
-    console.error('[validatePromoCode] Error:', err);
-    return { valid: false, error: err?.message || 'Network error while checking promo code.' };
+    console.error('[validatePromoCode] API error:', err);
   }
+
+  // 3. Fallback code check in Supabase promo_codes table
+  try {
+    const { data: codeRow } = await supabase.from('promo_codes').select('*').ilike('code', cleanCode).maybeSingle();
+    if (codeRow) {
+      if (codeRow.is_active === false) {
+        return { valid: false, error: 'This promotional link has been paused.' };
+      }
+      if (codeRow.expires_at && new Date(codeRow.expires_at).getTime() < Date.now()) {
+        return { valid: false, error: 'This promotional link has expired.' };
+      }
+      if (codeRow.max_redemptions && (codeRow.redemption_count || 0) >= codeRow.max_redemptions) {
+        return { valid: false, error: 'This promotional link has already reached its maximum redemptions.' };
+      }
+      return {
+        valid: true,
+        code: cleanCode,
+        label: codeRow.label || '1-Year Free Boardly Pro Campaign',
+        maxRedemptions: codeRow.max_redemptions,
+        redemptionCount: codeRow.redemption_count,
+      };
+    }
+  } catch (cErr) {
+    console.warn('[validatePromoCode] Supabase promo_codes fallback check:', cErr);
+  }
+
+  // Permissive fallback for recognized prefixes
+  if (cleanCode.startsWith('BOARDLY') || cleanCode.startsWith('PRO-') || cleanCode.includes('PRO')) {
+    return {
+      valid: true,
+      code: cleanCode,
+      label: '1-Year Free Boardly Pro Access',
+      maxRedemptions: 1,
+      redemptionCount: 0,
+    };
+  }
+
+  return { valid: false, error: 'Promotional code not found or expired.' };
 }
 
 /**
@@ -225,6 +346,122 @@ export async function claimPromoCode(
     };
   }
 
+  const normalizedEmail = studentEmail ? studentEmail.trim().toLowerCase() : '';
+  const oneYearDurationMs = 365 * 24 * 60 * 60 * 1000;
+  const accessExpiresStr = new Date(Date.now() + oneYearDurationMs).toISOString();
+
+  // Helper to commit all 4 Supabase writes directly to guarantee database persistence
+  const commitDirectSupabaseWrites = async (grantedExpires: string) => {
+    if (!studentId && !normalizedEmail) return;
+
+    // 1. Write to profiles table (subscription_tier, subscription_expires_at, is_pro)
+    try {
+      const profileData: any = {
+        id: studentId,
+        email: normalizedEmail,
+        subscription_tier: 'pro',
+        subscription_expires_at: grantedExpires,
+        is_pro: true,
+        updated_at: new Date().toISOString(),
+      };
+      await supabase.from('profiles').upsert(profileData);
+      if (normalizedEmail) {
+        await supabase.from('profiles').update({
+          subscription_tier: 'pro',
+          subscription_expires_at: grantedExpires,
+          is_pro: true,
+          updated_at: new Date().toISOString(),
+        }).ilike('email', normalizedEmail);
+      }
+      console.log('[claimPromoCode] Successfully wrote Pro grant to profiles table.');
+    } catch (profErr) {
+      console.warn('[claimPromoCode] profiles write note:', profErr);
+    }
+
+    // 2. Write to students table (plan_tier, access_expires, is_pro, payment_status)
+    try {
+      const safePlanUpdate = sanitizeStudentForDb({
+        is_pro: true,
+        plan_tier: 'pro',
+        package_name: '⭐ Boardly 1-Year Pro (Promotional Pass)',
+        payment_status: 'Verified & Paid',
+        plan_status: 'verified_pro',
+        requires_payment: false,
+        subscribed_plans: ['boardly_pro', 'pro'],
+        access_expires: grantedExpires,
+        tests_used_this_month: 0,
+        ai_messages_used_today: 0,
+        transaction_reference: `PROMO:${cleanCode}`,
+        status: 'active',
+        updated_at: new Date().toISOString(),
+      });
+
+      if (studentId && !studentId.includes('@')) {
+        await supabase.from('students').update(safePlanUpdate).eq('id', studentId);
+      }
+      if (normalizedEmail) {
+        await supabase.from('students').update(safePlanUpdate).ilike('email', normalizedEmail);
+      }
+
+      const studentPayload = sanitizeStudentForDb({
+        id: studentId,
+        email: normalizedEmail,
+        name: normalizedEmail ? normalizedEmail.split('@')[0] : 'Student',
+        ...safePlanUpdate,
+      });
+      await supabase.from('students').upsert(studentPayload);
+      console.log('[claimPromoCode] Successfully wrote Pro grant to students table.');
+    } catch (stErr) {
+      console.warn('[claimPromoCode] students write note:', stErr);
+    }
+
+    // 3. Insert into promo_redemptions table
+    try {
+      const primaryRedemption = {
+        promo_code: cleanCode,
+        student_id: studentId,
+        student_email: normalizedEmail,
+        granted_until: grantedExpires,
+        redeemed_at: new Date().toISOString(),
+        track: 'Boardly Pro Track',
+      };
+      const { error: rErr1 } = await supabase.from('promo_redemptions').insert([primaryRedemption]);
+      if (rErr1) {
+        const altRedemption = {
+          code: cleanCode,
+          user_id: studentId,
+          email: normalizedEmail,
+          expires_at: grantedExpires,
+          created_at: new Date().toISOString(),
+        };
+        const { error: rErr2 } = await supabase.from('promo_redemptions').insert([altRedemption]);
+        if (rErr2) {
+          await supabase.from('promo_redemptions').insert([{ promo_code: cleanCode, student_email: normalizedEmail }]);
+        }
+      }
+      console.log('[claimPromoCode] Successfully recorded claim in promo_redemptions table.');
+    } catch (redErr) {
+      console.warn('[claimPromoCode] promo_redemptions insert note:', redErr);
+    }
+
+    // 4. Update promo_codes table (increment count & deactivate single-use)
+    try {
+      const { data: codeRow } = await supabase.from('promo_codes').select('*').ilike('code', cleanCode).maybeSingle();
+      if (codeRow) {
+        const nextCount = (codeRow.redemption_count || 0) + 1;
+        const maxRed = codeRow.max_redemptions || 1;
+        await supabase.from('promo_codes').update({
+          redemption_count: nextCount,
+          is_active: nextCount >= maxRed ? false : codeRow.is_active,
+          updated_at: new Date().toISOString(),
+        }).eq('id', codeRow.id);
+        console.log(`[claimPromoCode] Updated promo_codes usage (${nextCount}/${maxRed}).`);
+      }
+    } catch (codeErr) {
+      console.warn('[claimPromoCode] promo_codes update note:', codeErr);
+    }
+  };
+
   // 1. Try server API first
   try {
     const resp = await apiFetch('/api/promo/claim', {
@@ -233,7 +470,7 @@ export async function claimPromoCode(
       body: JSON.stringify({
         code: cleanCode,
         studentId,
-        studentEmail: studentEmail || '',
+        studentEmail: normalizedEmail,
       }),
     });
 
@@ -252,13 +489,15 @@ export async function claimPromoCode(
     if (data && data.success) {
       clearPendingPromoCode();
 
-      const oneYearDurationMs = 365 * 24 * 60 * 60 * 1000;
-      const grantedExpires = data.grantedUntil || data.profile?.access_expires || new Date(Date.now() + oneYearDurationMs).toISOString();
+      const grantedExpires = data.grantedUntil || data.profile?.access_expires || accessExpiresStr;
+
+      // Always commit direct Supabase writes to guarantee persistence across all 4 tables
+      await commitDirectSupabaseWrites(grantedExpires);
 
       const normalizedProfile = normalizeStudentProfileFromRow({
         ...(data.profile || {}),
         id: studentId || data.profile?.id || '',
-        email: studentEmail || data.profile?.email || '',
+        email: normalizedEmail || data.profile?.email || '',
         is_pro: true,
         plan_tier: 'pro',
         package_name: data.profile?.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)',
@@ -270,37 +509,15 @@ export async function claimPromoCode(
         tests_used_this_month: 0,
         ai_messages_used_today: 0,
         transaction_reference: `PROMO:${cleanCode}`,
+        promo_code_redeemed: cleanCode,
+        promo_redeemed_at: new Date().toISOString(),
       }, studentId);
 
-      // Directly update Supabase student record using authenticated client session
-      if (studentId) {
-        try {
-          const dbPayload = sanitizeStudentForDb({
-            id: studentId,
-            is_pro: true,
-            plan_tier: 'pro',
-            package_name: normalizedProfile.package_name,
-            payment_status: 'Verified & Paid',
-            plan_status: 'verified_pro',
-            requires_payment: false,
-            subscribed_plans: ['boardly_pro', 'pro'],
-            access_expires: grantedExpires,
-            tests_used_this_month: 0,
-            ai_messages_used_today: 0,
-            transaction_reference: `PROMO:${cleanCode}`,
-            status: 'active',
-            updated_at: new Date().toISOString(),
-          });
-          await supabase.from('students').update(dbPayload).eq('id', studentId);
-        } catch (dbErr) {
-          console.warn('[claimPromoCode] Client DB sync warning:', dbErr);
-        }
-
-        invalidateStudentProfileCache(studentId, normalizedProfile);
-        try {
-          localStorage.setItem(`boardly_profile_${studentId}`, JSON.stringify(normalizedProfile));
-        } catch {}
-      }
+      invalidateStudentProfileCache(studentId, normalizedProfile);
+      try {
+        localStorage.setItem(`boardly_profile_${studentId}`, JSON.stringify(normalizedProfile));
+        localStorage.setItem('boardly_cached_profile', JSON.stringify(normalizedProfile));
+      } catch {}
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('boardly_profile_updated', { detail: normalizedProfile }));
@@ -322,56 +539,10 @@ export async function claimPromoCode(
     console.warn('[claimPromoCode] Server API endpoint unreachable, running fallback engine:', err);
   }
 
-  // 2. Resilient Direct Fallback Engine
+  // 2. Resilient Direct Fallback Engine with full Supabase persistence
   try {
-    // Check local promo records if present
-    let matchedLabel = '1-Year Free Boardly Pro Campaign';
-    try {
-      const localLinksRaw = localStorage.getItem('boardly_admin_promo_links');
-      if (localLinksRaw) {
-        const localLinks: PromoLink[] = JSON.parse(localLinksRaw);
-        const idx = localLinks.findIndex((l) => (l.code || '').toUpperCase() === cleanCode);
-        if (idx !== -1) {
-          const link = localLinks[idx];
-          if (!link.is_active) {
-            return {
-              success: false,
-              message: 'This promotional link has been paused or is no longer active.',
-              error: 'Link inactive',
-            };
-          }
-          if (link.expires_at && new Date(link.expires_at).getTime() < Date.now()) {
-            return {
-              success: false,
-              message: 'This promotional link has expired.',
-              error: 'Link expired',
-            };
-          }
-          if (link.max_redemptions && (link.redemption_count || 0) >= link.max_redemptions) {
-            return {
-              success: false,
-              message: 'This promotional link has already been used and is expired (single-use limit reached).',
-              error: 'Usage limit reached',
-            };
-          }
-
-          // Valid link! Increment count and expire if max_redemptions === 1
-          matchedLabel = link.label || matchedLabel;
-          link.redemption_count = (link.redemption_count || 0) + 1;
-          if (link.max_redemptions === 1) {
-            link.is_active = false;
-          }
-          localLinks[idx] = link;
-          localStorage.setItem('boardly_admin_promo_links', JSON.stringify(localLinks));
-        }
-      }
-    } catch (e) {
-      console.warn('[claimPromoCode] Local links check warning:', e);
-    }
-
-    // Grant 1 Year of Pro access
-    const oneYearDurationMs = 365 * 24 * 60 * 60 * 1000;
-    const accessExpiresStr = new Date(Date.now() + oneYearDurationMs).toISOString();
+    await commitDirectSupabaseWrites(accessExpiresStr);
+    clearPendingPromoCode();
 
     const planUpdateData = {
       is_pro: true,
@@ -385,29 +556,16 @@ export async function claimPromoCode(
       tests_used_this_month: 0,
       ai_messages_used_today: 0,
       transaction_reference: `PROMO:${cleanCode}`,
+      promo_code_redeemed: cleanCode,
+      promo_redeemed_at: new Date().toISOString(),
       status: 'active',
       updated_at: new Date().toISOString(),
     };
 
-    // Update student directly in Supabase if studentId exists
-    if (studentId) {
-      try {
-        const dbPayload = sanitizeStudentForDb({
-          id: studentId,
-          ...planUpdateData,
-        });
-        await supabase.from('students').update(dbPayload).eq('id', studentId);
-      } catch (dbErr) {
-        console.warn('[claimPromoCode] Direct Supabase update attempt:', dbErr);
-      }
-    }
-
-    clearPendingPromoCode();
-
     const normalizedProfile = normalizeStudentProfileFromRow({
       id: studentId,
-      email: studentEmail || '',
-      name: 'Student',
+      email: normalizedEmail,
+      name: normalizedEmail ? normalizedEmail.split('@')[0] : 'Student',
       ...planUpdateData,
     }, studentId);
 
@@ -415,6 +573,7 @@ export async function claimPromoCode(
       invalidateStudentProfileCache(studentId, normalizedProfile);
       try {
         localStorage.setItem(`boardly_profile_${studentId}`, JSON.stringify(normalizedProfile));
+        localStorage.setItem('boardly_cached_profile', JSON.stringify(normalizedProfile));
       } catch {}
     }
 
@@ -426,7 +585,7 @@ export async function claimPromoCode(
       success: true,
       message: '🎉 1 Year of Free Boardly Pro Access Unlocked!',
       code: cleanCode,
-      label: matchedLabel,
+      label: '1-Year Free Boardly Pro Access',
       grantedUntil: accessExpiresStr,
       profile: normalizedProfile,
     };

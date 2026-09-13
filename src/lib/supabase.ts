@@ -2319,6 +2319,43 @@ export async function fetchStudentProfileFromSupabase(
           }
         }
 
+        // Cross-check profiles table to synchronize subscription_tier & Pro status
+        try {
+          if (dbRow) {
+            const { data: profData } = await supabase
+              .from('profiles')
+              .select('*')
+              .or(`id.eq.${dbRow.id}${dbRow.email ? `,email.ilike.${dbRow.email}` : ''}`)
+              .maybeSingle();
+            if (profData && (profData.subscription_tier === 'pro' || profData.is_pro)) {
+              dbRow.is_pro = true;
+              dbRow.plan_tier = 'pro';
+              dbRow.access_expires = profData.subscription_expires_at || dbRow.access_expires;
+              if (profData.promo_code_redeemed) dbRow.promo_code_redeemed = profData.promo_code_redeemed;
+            }
+          } else {
+            const { data: profData } = await supabase
+              .from('profiles')
+              .select('*')
+              .or(`id.eq.${userId}${userEmail ? `,email.ilike.${userEmail}` : ''}`)
+              .maybeSingle();
+            if (profData) {
+              dbRow = {
+                id: profData.id || userId,
+                email: profData.email || userEmail || '',
+                name: profData.name || profData.full_name || 'Student',
+                is_pro: profData.subscription_tier === 'pro' || Boolean(profData.is_pro),
+                plan_tier: profData.subscription_tier === 'pro' ? 'pro' : 'free',
+                access_expires: profData.subscription_expires_at,
+                promo_code_redeemed: profData.promo_code_redeemed,
+                status: 'active',
+              };
+            }
+          }
+        } catch (profCrossErr) {
+          console.warn('[fetchStudentProfileFromSupabase] profiles table cross-check note:', profCrossErr);
+        }
+
         if (dbRow) {
           const profile = normalizeStudentProfileFromRow(dbRow, userId);
 

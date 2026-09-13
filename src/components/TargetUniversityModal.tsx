@@ -22,6 +22,7 @@ interface TargetUniversityModalProps {
 }
 
 const MEDICAL_UNIVERSITIES = [
+  { name: 'Aga Khan University (AKU) Medical College, Karachi', instId: 'aku' },
   { name: 'King Edward Medical University (KEMU), Lahore', instId: 'uhs' },
   { name: 'Rawalpindi Medical University (RMU), Rawalpindi', instId: 'szabmu' },
   { name: 'Allama Iqbal Medical College (AIMC), Lahore', instId: 'uhs' },
@@ -48,6 +49,7 @@ const ENGINEERING_UNIVERSITIES = [
   { name: 'HITEC University, Taxila', instId: 'hitec' },
   { name: 'Mehran University of Engineering and Technology (MUET), Jamshoro', instId: 'muet' },
   { name: 'IBA Karachi', instId: 'iba' },
+  { name: 'NUML (National University of Modern Languages), Islamabad', instId: 'numl' },
   { name: 'Air University / IST Islamabad', instId: 'uet' },
 ];
 

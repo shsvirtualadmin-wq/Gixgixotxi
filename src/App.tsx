@@ -653,20 +653,22 @@ export function App() {
       const userAlreadyPro = Boolean(
         userProfile?.is_pro ||
         userProfile?.plan_tier === 'pro' ||
+        userProfile?.plan_status === 'verified_pro' ||
+        (userProfile?.subscribed_plans && userProfile.subscribed_plans.includes('pro')) ||
         userProfile?.promo_code_redeemed === promoCode ||
-        userProfile?.transaction_reference === `PROMO:${promoCode}`
+        (userProfile?.transaction_reference && String(userProfile.transaction_reference).includes('PROMO:'))
       );
 
-      // Requirement 6: If the code has already been redeemed by this account, opening the link again
-      // should show something like "Already activated — expires <date>" instead of showing the unlock screen or activation prompt again.
-      if (valResult.alreadyRedeemedByAccount || valResult.alreadyRedeemed || (userAlreadyPro && valResult.valid === false && valResult.error?.includes('used'))) {
+      // If user is already Pro or promo has already been redeemed:
+      // Show "Already Activated — Pro valid until <date>" instead of showing the Activate prompt again!
+      if (userAlreadyPro || valResult.alreadyRedeemedByAccount || valResult.alreadyRedeemed) {
         promoProcessedCodeRef.current = promoCode;
         clearPendingPromoCode();
         if (window.location.pathname.startsWith('/claim') || window.location.search.includes('code=')) {
           window.history.replaceState(null, '', window.location.pathname === '/claim' ? '/' : window.location.pathname);
         }
 
-        const existingExpiry = valResult.expiresDate || valResult.grantedUntil || userProfile?.access_expires;
+        const existingExpiry = userProfile?.access_expires || valResult.expiresDate || valResult.grantedUntil;
         setPromoModalMode('already_active');
         setPromoModalData({
           code: promoCode,

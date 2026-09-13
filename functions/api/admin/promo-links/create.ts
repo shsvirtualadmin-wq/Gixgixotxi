@@ -1,6 +1,21 @@
+import { createClient } from "@supabase/supabase-js";
+
 interface PagesContext {
   request: Request;
   env: Record<string, string | undefined>;
+}
+
+function getSupabaseAdminClient(env: Record<string, string | undefined>) {
+  const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL || "https://wbvzbbnapowwmrjecdyt.supabase.co";
+  const serviceKey =
+    env.SUPABASE_SERVICE_ROLE_KEY ||
+    env.SUPABASE_SERVICE_KEY ||
+    env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
+    env.VITE_SUPABASE_ANON_KEY ||
+    env.SUPABASE_ANON_KEY ||
+    "";
+  if (!url || !serviceKey) return null;
+  return createClient(url, serviceKey);
 }
 
 const ADMIN_EMAILS = [
@@ -108,6 +123,27 @@ export const onRequestPost = async (context: PagesContext) => {
       expires_at: expiresAt,
       redemptions: [],
     };
+
+    const supabaseAdmin = getSupabaseAdminClient(env);
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin.from("promo_codes").upsert({
+          code: finalCode,
+          label: newLink.label,
+          discount_type: newLink.discount_type,
+          duration_months: newLink.duration_months,
+          max_redemptions: newLink.max_redemptions,
+          redemption_count: 0,
+          is_active: true,
+          created_by: requestedBy,
+          created_at: newLink.created_at,
+          expires_at: newLink.expires_at,
+          updated_at: new Date().toISOString(),
+        });
+      } catch (dbErr) {
+        console.warn("[create] promo_codes DB insert note:", dbErr);
+      }
+    }
 
     return new Response(JSON.stringify({ success: true, link: newLink }), {
       status: 201,

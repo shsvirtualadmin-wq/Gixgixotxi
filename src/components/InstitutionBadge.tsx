@@ -147,17 +147,89 @@ export const INSTITUTIONS: Record<string, Institution> = {
     logoUrl: '/logos/academic/muet.png',
     description: 'Pre-admission test for Sindh engineering and technology.',
   },
+  mehran: {
+    id: 'muet',
+    name: 'Mehran University of Engineering and Technology (MUET Jamshoro)',
+    shortName: 'MUET Jamshoro',
+    category: 'university',
+    bgGradient: 'from-[#3A0A14] to-[#800020]',
+    textColor: 'text-rose-300',
+    borderColor: 'border-rose-400/30',
+    badgeInitials: 'MUET',
+    logoUrl: '/logos/academic/muet.png',
+    description: 'Pre-admission test for Sindh engineering and technology.',
+  },
   iba: {
     id: 'iba',
-    name: 'Institute of Business Administration',
+    name: 'Institute of Business Administration (IBA)',
     shortName: 'IBA Karachi',
     category: 'university',
     bgGradient: 'from-[#0D1B3E] to-[#1E3A8A]',
     textColor: 'text-blue-300',
     borderColor: 'border-blue-400/30',
     badgeInitials: 'IBA',
-    logoUrl: '/logos/iba.svg',
+    logoUrl: '/logos/academic/iba.png',
     description: 'Aptitude Test in Math, English & Analytical Reasoning.',
+  },
+  'iba-karachi': {
+    id: 'iba',
+    name: 'Institute of Business Administration (IBA Karachi)',
+    shortName: 'IBA Karachi',
+    category: 'university',
+    bgGradient: 'from-[#0D1B3E] to-[#1E3A8A]',
+    textColor: 'text-blue-300',
+    borderColor: 'border-blue-400/30',
+    badgeInitials: 'IBA',
+    logoUrl: '/logos/academic/iba.png',
+    description: 'Aptitude Test in Math, English & Analytical Reasoning.',
+  },
+  aku: {
+    id: 'aku',
+    name: 'Aga Khan University (AKU) Medical College',
+    shortName: 'AKU Medical',
+    category: 'university',
+    bgGradient: 'from-[#003B23] to-[#005A36]',
+    textColor: 'text-emerald-300',
+    borderColor: 'border-emerald-400/30',
+    badgeInitials: 'AKU',
+    logoUrl: '/logos/academic/aku.png',
+    description: 'Premier MBBS & health sciences entrance test.',
+  },
+  agakhan: {
+    id: 'aku',
+    name: 'Aga Khan University (AKU) Medical College',
+    shortName: 'AKU Medical',
+    category: 'university',
+    bgGradient: 'from-[#003B23] to-[#005A36]',
+    textColor: 'text-emerald-300',
+    borderColor: 'border-emerald-400/30',
+    badgeInitials: 'AKU',
+    logoUrl: '/logos/academic/aku.png',
+    description: 'Premier MBBS & health sciences entrance test.',
+  },
+  'aga-khan': {
+    id: 'aku',
+    name: 'Aga Khan University (AKU) Medical College',
+    shortName: 'AKU Medical',
+    category: 'university',
+    bgGradient: 'from-[#003B23] to-[#005A36]',
+    textColor: 'text-emerald-300',
+    borderColor: 'border-emerald-400/30',
+    badgeInitials: 'AKU',
+    logoUrl: '/logos/academic/aku.png',
+    description: 'Premier MBBS & health sciences entrance test.',
+  },
+  numl: {
+    id: 'numl',
+    name: 'National University of Modern Languages',
+    shortName: 'NUML',
+    category: 'university',
+    bgGradient: 'from-[#0C3D4D] to-[#155E75]',
+    textColor: 'text-cyan-300',
+    borderColor: 'border-cyan-400/30',
+    badgeInitials: 'NUML',
+    logoUrl: '/logos/academic/numl.png',
+    description: 'Undergraduate computing, languages & management sciences entrance test.',
   },
   uhs: {
     id: 'uhs',
@@ -377,13 +449,27 @@ interface InstitutionBadgeProps {
 export const R2_FALLBACK_URLS: Record<string, string> = {
   pieas: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000748c8211bb5e3cfb31849396.png',
   usat: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000175082118793959c6c498063.png',
+  'hec-usat': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000175082118793959c6c498063.png',
+  'hec usat': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000175082118793959c6c498063.png',
   lums: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f29c8211bbac0ae9800006de.png',
   comsats: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000008a848208ad6e5ff38e3d1998.png',
+  cui: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000008a848208ad6e5ff38e3d1998.png',
   nat: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000008a848208ad6e5ff38e3d1998.png',
   hitec: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_0000000011a08208bd16b443318357b1.png',
   nutech: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_0000000098c08211934c88fe8706c744.png',
   muet: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
-  ned: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000287482088f11d13f9c658cf4.png',
+  mehran: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
+  'mehran-uet': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
+  'mehran uet': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
+  ned: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
+  aku: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000722c8207814e3b5131030edc.png',
+  agakhan: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000722c8207814e3b5131030edc.png',
+  'aga-khan': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000722c8207814e3b5131030edc.png',
+  'aga khan': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000722c8207814e3b5131030edc.png',
+  iba: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000736c82118bb66504edef22ad.png',
+  'iba-karachi': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000736c82118bb66504edef22ad.png',
+  'iba karachi': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000736c82118bb66504edef22ad.png',
+  numl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000001f108208b064cbd5b8dc77f5.png',
 };
 
 export const InstitutionBadge: React.FC<InstitutionBadgeProps> = ({
@@ -394,7 +480,8 @@ export const InstitutionBadge: React.FC<InstitutionBadgeProps> = ({
   onClick,
   selected = false,
 }) => {
-  const inst = INSTITUTIONS[id.toLowerCase()] || {
+  const normKey = (id || '').toLowerCase().trim();
+  const inst = INSTITUTIONS[normKey] || {
     id,
     name: id.toUpperCase(),
     shortName: id.toUpperCase(),
@@ -405,20 +492,29 @@ export const InstitutionBadge: React.FC<InstitutionBadgeProps> = ({
     badgeInitials: id.slice(0, 4).toUpperCase(),
   };
 
-  const primaryLogo = inst.logoUrl || R2_FALLBACK_URLS[id.toLowerCase()];
+  const canonicalId = inst.id ? inst.id.toLowerCase() : normKey;
+  const primaryLogo = inst.logoUrl || `/logos/academic/${canonicalId}.png`;
   const [currentSrc, setCurrentSrc] = React.useState<string | undefined>(primaryLogo);
   const [imgError, setImgError] = React.useState(false);
+  const [fallbackAttempt, setFallbackAttempt] = React.useState(0);
 
   React.useEffect(() => {
-    const nextLogo = inst.logoUrl || R2_FALLBACK_URLS[id.toLowerCase()];
+    const nextLogo = inst.logoUrl || `/logos/academic/${canonicalId}.png`;
     setCurrentSrc(nextLogo);
     setImgError(false);
-  }, [id, inst.logoUrl]);
+    setFallbackAttempt(0);
+  }, [id, canonicalId, inst.logoUrl]);
 
   const handleImageError = () => {
-    const fallbackUrl = R2_FALLBACK_URLS[id.toLowerCase()];
-    if (fallbackUrl && currentSrc !== fallbackUrl) {
-      setCurrentSrc(fallbackUrl);
+    const remoteUrl = R2_FALLBACK_URLS[normKey] || R2_FALLBACK_URLS[canonicalId];
+    if (fallbackAttempt === 0) {
+      // Try alternate local path
+      setFallbackAttempt(1);
+      setCurrentSrc(`/logos/${canonicalId}.png`);
+    } else if (fallbackAttempt === 1 && remoteUrl) {
+      // Try remote R2 URL
+      setFallbackAttempt(2);
+      setCurrentSrc(remoteUrl);
     } else {
       setImgError(true);
     }
@@ -513,6 +609,8 @@ export function renderTargetUniversityBadge(targetUniStr?: string, size: 'sm' | 
   else if (lower.includes('nutech')) instId = 'nutech';
   else if (lower.includes('muet') || lower.includes('mehran')) instId = 'muet';
   else if (lower.includes('iba')) instId = 'iba';
+  else if (lower.includes('aku') || lower.includes('aga khan')) instId = 'aku';
+  else if (lower.includes('numl')) instId = 'numl';
   else if (lower.includes('duhs') || lower.includes('dow')) instId = 'duhs';
   else if (lower.includes('kmu') || lower.includes('khyber')) instId = 'kmu';
 

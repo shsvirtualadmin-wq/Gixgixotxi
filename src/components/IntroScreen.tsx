@@ -390,21 +390,49 @@ const TRUSTED_INSTITUTIONS_MARQUEE: TrustedInstitution[] = [
     name: 'NED University Karachi',
     shortName: 'NED',
     localLogoUrl: '/logos/academic/ned.png',
-    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000287482088f11d13f9c658cf4.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
     fallbackInitials: 'NED',
+  },
+  {
+    id: 'iba',
+    name: 'IBA Karachi',
+    shortName: 'IBA Karachi',
+    localLogoUrl: '/logos/academic/iba.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000736c82118bb66504edef22ad.png',
+    fallbackInitials: 'IBA',
+  },
+  {
+    id: 'aku',
+    name: 'Aga Khan University',
+    shortName: 'AKU Medical',
+    localLogoUrl: '/logos/academic/aku.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000722c8207814e3b5131030edc.png',
+    fallbackInitials: 'AKU',
+  },
+  {
+    id: 'numl',
+    name: 'NUML Islamabad',
+    shortName: 'NUML',
+    localLogoUrl: '/logos/academic/numl.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000001f108208b064cbd5b8dc77f5.png',
+    fallbackInitials: 'NUML',
   },
 ];
 
 const MARQUEE_ITEMS = [...TRUSTED_INSTITUTIONS_MARQUEE, ...TRUSTED_INSTITUTIONS_MARQUEE];
 
 const CarouselLogoItem: React.FC<{ inst: TrustedInstitution }> = React.memo(({ inst }) => {
-  const [currentSrc, setCurrentSrc] = useState<string>(inst.remoteLogoUrl || inst.localLogoUrl);
+  const [currentSrc, setCurrentSrc] = useState<string>(inst.localLogoUrl || inst.remoteLogoUrl);
   const [hasFailed, setHasFailed] = useState(false);
 
   const handleError = () => {
-    if (currentSrc === inst.remoteLogoUrl && inst.localLogoUrl) {
-      // Try local fallback if remote is not available
-      setCurrentSrc(inst.localLogoUrl);
+    if (currentSrc === inst.localLogoUrl && inst.remoteLogoUrl) {
+      // Try remote fallback if local is not available
+      setCurrentSrc(inst.remoteLogoUrl);
+    } else if (currentSrc.includes('/logos/academic/')) {
+      setCurrentSrc(currentSrc.replace('/logos/academic/', '/logos/'));
+    } else if (inst.remoteLogoUrl && currentSrc !== inst.remoteLogoUrl) {
+      setCurrentSrc(inst.remoteLogoUrl);
     } else {
       setHasFailed(true);
     }
@@ -419,7 +447,7 @@ const CarouselLogoItem: React.FC<{ inst: TrustedInstitution }> = React.memo(({ i
             alt={`${inst.name} Logo`}
             className="w-full h-full object-contain max-w-full max-h-full block filter drop-shadow-xs transition-transform duration-300"
             style={{ objectFit: 'contain' }}
-            loading="lazy"
+            loading="eager"
             decoding="async"
             referrerPolicy="no-referrer"
             onError={handleError}
@@ -456,14 +484,28 @@ const CardLogoImage: React.FC<{
 }) => {
   const [currentSrc, setCurrentSrc] = useState(src);
   const [failed, setFailed] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     setCurrentSrc(src);
     setFailed(false);
+    setAttempt(0);
   }, [src]);
 
   const handleError = () => {
-    if (fallbackSrc && currentSrc !== fallbackSrc) {
+    if (attempt === 0) {
+      setAttempt(1);
+      if (src.includes('/logos/academic/')) {
+        setCurrentSrc(src.replace('/logos/academic/', '/logos/'));
+      } else if (src.startsWith('/logos/')) {
+        setCurrentSrc(src.replace('/logos/', '/logos/academic/'));
+      } else if (fallbackSrc) {
+        setCurrentSrc(fallbackSrc);
+      } else {
+        setFailed(true);
+      }
+    } else if (attempt === 1 && fallbackSrc && currentSrc !== fallbackSrc) {
+      setAttempt(2);
       setCurrentSrc(fallbackSrc);
     } else {
       setFailed(true);
@@ -485,7 +527,7 @@ const CardLogoImage: React.FC<{
         alt={alt}
         className="max-w-full max-h-full object-contain filter drop-shadow-xs transition-transform duration-300 group-hover:scale-105"
         style={{ objectFit: 'contain' }}
-        loading="lazy"
+        loading="eager"
         decoding="async"
         referrerPolicy="no-referrer"
         onError={handleError}
@@ -1443,7 +1485,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 id: 'iba',
                 categoryBadge: 'IBA Karachi',
                 categoryBadgeClass: 'bg-[#8B0000]/15 text-[#8B0000]',
-                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/iba-logo.png',
+                logoSrc: '/logos/academic/iba.png',
+                fallbackSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000736c82118bb66504edef22ad.png',
                 logoAlt: 'IBA Karachi Logo',
                 fallbackText: 'IBA',
                 bgClass: 'bg-[#8B0000]',
@@ -1461,7 +1504,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 id: 'aku',
                 categoryBadge: 'AKU Medical',
                 categoryBadgeClass: 'bg-[#005A36]/15 text-[#005A36]',
-                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/aku-logo.png',
+                logoSrc: '/logos/academic/aku.png',
+                fallbackSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000722c8207814e3b5131030edc.png',
                 logoAlt: 'Aga Khan University Logo',
                 fallbackText: 'AKU',
                 bgClass: 'bg-[#005A36]',
@@ -1517,7 +1561,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 id: 'numl',
                 categoryBadge: 'NUML Islamabad',
                 categoryBadgeClass: 'bg-[#155E75]/15 text-[#155E75]',
-                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/numl-logo.png',
+                logoSrc: '/logos/academic/numl.png',
+                fallbackSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000001f108208b064cbd5b8dc77f5.png',
                 logoAlt: 'NUML Official Logo',
                 fallbackText: 'NUML',
                 bgClass: 'bg-[#155E75]',

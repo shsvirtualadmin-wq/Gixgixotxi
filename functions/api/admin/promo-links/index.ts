@@ -1,6 +1,21 @@
+import { createClient } from "@supabase/supabase-js";
+
 interface PagesContext {
   request: Request;
   env: Record<string, string | undefined>;
+}
+
+function getSupabaseAdminClient(env: Record<string, string | undefined>) {
+  const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL || "https://wbvzbbnapowwmrjecdyt.supabase.co";
+  const serviceKey =
+    env.SUPABASE_SERVICE_ROLE_KEY ||
+    env.SUPABASE_SERVICE_KEY ||
+    env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
+    env.VITE_SUPABASE_ANON_KEY ||
+    env.SUPABASE_ANON_KEY ||
+    "";
+  if (!url || !serviceKey) return null;
+  return createClient(url, serviceKey);
 }
 
 const ADMIN_EMAILS = [
@@ -30,7 +45,7 @@ export const onRequestOptions = async () => {
 };
 
 export const onRequestGet = async (context: PagesContext) => {
-  const { request } = context;
+  const { request, env } = context;
   const url = new URL(request.url);
 
   const corsHeaders = {
@@ -48,7 +63,63 @@ export const onRequestGet = async (context: PagesContext) => {
     );
   }
 
-  // Return active fallback link for promo manager
+  const supabaseAdmin = getSupabaseAdminClient(env);
+  if (supabaseAdmin) {
+    try {
+      const { data: dbCodes, error: codesErr } = await supabaseAdmin
+        .from("promo_codes")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (!codesErr && Array.isArray(dbCodes) && dbCodes.length > 0) {
+        // Fetch all redemptions
+        let allRedemptions: any[] = [];
+        try {
+          const { data: rData } = await supabaseAdmin.from("promo_redemptions").select("*");
+          if (Array.isArray(rData)) allRedemptions = rData;
+        } catch {}
+
+        const mappedLinks = dbCodes.map((c: any) => {
+          const codeUpper = (c.code || "").toUpperCase();
+          const redemptionsForCode = allRedemptions.filter(
+            (r: any) => (r.promo_code || r.code || "").toUpperCase() === codeUpper
+          );
+
+          return {
+            id: c.id || "promo_" + codeUpper,
+            code: codeUpper,
+            label: c.label || "1-Year Free Pro Campaign",
+            discount_type: c.discount_type || "1_year_free_pro",
+            duration_months: c.duration_months || 12,
+            max_redemptions: c.max_redemptions,
+            redemption_count: c.redemption_count || redemptionsForCode.length || 0,
+            is_active: c.is_active !== false,
+            created_by: c.created_by || "admin",
+            created_at: c.created_at || new Date().toISOString(),
+            expires_at: c.expires_at || null,
+            redemptions: redemptionsForCode.map((r: any) => ({
+              id: r.id,
+              student_id: r.student_id || r.user_id,
+              student_name: r.student_name || "Student",
+              student_email: r.student_email || r.email,
+              redeemed_at: r.redeemed_at || r.created_at,
+              granted_until: r.granted_until || r.expires_at,
+              track: r.track || "General Track",
+            })),
+          };
+        });
+
+        return new Response(JSON.stringify({ success: true, links: mappedLinks }), {
+          status: 200,
+          headers: corsHeaders,
+        });
+      }
+    } catch (dbErr) {
+      console.warn("[promo-links] DB query note:", dbErr);
+    }
+  }
+
+  // Fallback default link if DB table is empty
   const defaultLinks = [
     {
       id: "promo_1y_free_official",
@@ -71,3 +142,4 @@ export const onRequestGet = async (context: PagesContext) => {
     headers: corsHeaders,
   });
 };
+

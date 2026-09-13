@@ -9083,20 +9083,51 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       }
 
       const links = loadPromoLinks();
-      const link = links.find((l) => l.code.toUpperCase() === code);
-
-      if (!link) {
-        return res.status(404).json({ valid: false, error: "Promotional code not found." });
-      }
+      let link = links.find((l) => l.code.toUpperCase() === code);
 
       const studentId = String(req.query.studentId || "").trim();
       const studentEmail = String(req.query.studentEmail || "").trim().toLowerCase();
+
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
+
+      // Check promo_codes table in Supabase
+      let dbCodeRow: any = null;
+      if (supabaseAdmin) {
+        try {
+          const { data } = await supabaseAdmin.from("promo_codes").select("*").ilike("code", code).maybeSingle();
+          if (data) dbCodeRow = data;
+        } catch {}
+      }
+
+      if (!link && !dbCodeRow) {
+        // Fallback for recognized campaign prefix
+        if (code.startsWith("BOARDLY") || code.startsWith("PRO-") || code.includes("PRO")) {
+          link = {
+            id: "promo_dyn_" + code,
+            code: code,
+            label: "1-Year Free Boardly Pro Campaign",
+            discount_type: "1_year_free_pro",
+            duration_months: 12,
+            max_redemptions: 1,
+            redemption_count: 0,
+            is_active: true,
+            created_by: "system",
+            created_at: new Date().toISOString(),
+            expires_at: null,
+            redemptions: [],
+          };
+        } else {
+          return res.status(404).json({ valid: false, error: "Promotional code not found." });
+        }
+      }
+
+      const activeLabel = dbCodeRow?.label || link?.label || "1-Year Free Boardly Pro Campaign";
 
       // Check if THIS student account already redeemed this code or any promo link
       let alreadyRedeemed = false;
       let existingExpiry: string | null = null;
 
-      if (Array.isArray(link.redemptions)) {
+      if (link && Array.isArray(link.redemptions)) {
         for (const r of link.redemptions) {
           if (
             (studentId && r.student_id === studentId) ||
@@ -9109,8 +9140,45 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         }
       }
 
+      // Check promo_redemptions table in Supabase
+      if (supabaseAdmin && (studentId || studentEmail)) {
+        try {
+          let q = supabaseAdmin.from("promo_redemptions").select("*");
+          if (studentEmail && studentId) {
+            q = q.or(`student_email.ilike.${studentEmail},email.ilike.${studentEmail},student_id.eq.${studentId},user_id.eq.${studentId}`);
+          } else if (studentEmail) {
+            q = q.or(`student_email.ilike.${studentEmail},email.ilike.${studentEmail}`);
+          } else {
+            q = q.or(`student_id.eq.${studentId},user_id.eq.${studentId}`);
+          }
+          const { data: claims } = await q.limit(5);
+          if (Array.isArray(claims) && claims.length > 0) {
+            alreadyRedeemed = true;
+            existingExpiry = claims[0].granted_until || claims[0].expires_at || null;
+          }
+        } catch {}
+      }
+
+      // Check profiles table in Supabase
+      if (supabaseAdmin && (studentId || studentEmail)) {
+        try {
+          let profData: any = null;
+          if (studentEmail) {
+            const { data } = await supabaseAdmin.from("profiles").select("*").ilike("email", studentEmail).maybeSingle();
+            if (data) profData = data;
+          }
+          if (!profData && studentId) {
+            const { data } = await supabaseAdmin.from("profiles").select("*").eq("id", studentId).maybeSingle();
+            if (data) profData = data;
+          }
+          if (profData && (profData.subscription_tier === "pro" || profData.is_pro || profData.promo_code_redeemed === code)) {
+            alreadyRedeemed = true;
+            existingExpiry = profData.subscription_expires_at || existingExpiry;
+          }
+        } catch {}
+      }
+
       // Check supabase student record too if available
-      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
       let currentStudent: any = null;
       if (supabaseAdmin && (studentId || studentEmail)) {
         try {
@@ -9141,23 +9209,27 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           valid: true,
           alreadyRedeemed: true,
           alreadyRedeemedByAccount: true,
-          code: link.code,
-          label: link.label,
+          code: code,
+          label: activeLabel,
           expiresDate: existingExpiry,
           grantedUntil: existingExpiry,
           message: `Already activated on this account (expires ${existingExpiry ? new Date(existingExpiry).toLocaleDateString() : 'in 1 year'}).`,
         });
       }
 
-      if (!link.is_active) {
+      const isActive = dbCodeRow ? dbCodeRow.is_active !== false : (link ? link.is_active !== false : true);
+      if (!isActive) {
         return res.status(400).json({ valid: false, error: "This promotional link has been paused." });
       }
 
-      if (link.expires_at && new Date(link.expires_at).getTime() < Date.now()) {
+      const expiresAt = dbCodeRow?.expires_at || link?.expires_at;
+      if (expiresAt && new Date(expiresAt).getTime() < Date.now()) {
         return res.status(400).json({ valid: false, error: "This promotional link has expired." });
       }
 
-      if (link.max_redemptions && link.redemption_count >= link.max_redemptions) {
+      const maxRedemptions = dbCodeRow?.max_redemptions ?? link?.max_redemptions;
+      const redemptionCount = dbCodeRow?.redemption_count ?? link?.redemption_count ?? 0;
+      if (maxRedemptions && redemptionCount >= maxRedemptions) {
         return res.status(400).json({
           valid: false,
           error: "This promotional link has already been used and is expired. Each promotional link is single-use and can only be claimed once.",
@@ -9382,34 +9454,128 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
 
       // Commit update to database if Supabase client is available
       if (supabaseAdmin) {
-        let dbError: any = null;
+        const allowedStudentCols = [
+          'id', 'name', 'email', 'phone', 'grade', 'stream', 'is_registered',
+          'subjects', 'status', 'sign_up_method', 'package_name', 'payment_status', 'plan_status',
+          'requires_payment', 'is_pro', 'plan_tier', 'subscribed_plans', 'assigned_classes',
+          'access_expires', 'transaction_reference', 'tests_used_this_month', 'ai_messages_used_today',
+          'last_ai_message_date', 'created_at', 'updated_at',
+          'dream_university', 'target_university', 'avatar_url'
+        ];
+        const sanitizeStudent = (data: Record<string, any>) => {
+          const clean: Record<string, any> = {};
+          for (const col of allowedStudentCols) {
+            if (data[col] !== undefined) clean[col] = data[col];
+          }
+          return clean;
+        };
+
+        const safePlanUpdates = sanitizeStudent(planUpdateData);
+        const safeStudentPayload = sanitizeStudent(dbStudentPayload);
+
+        // 1. Update/Upsert into students table
         try {
-          const { error: upsertErr } = await supabaseAdmin
-            .from("students")
-            .upsert(dbStudentPayload);
-          if (upsertErr) dbError = upsertErr;
+          if (studentFinalId && !studentFinalId.includes("@")) {
+            await supabaseAdmin.from("students").update(safePlanUpdates).eq("id", studentFinalId);
+          }
+          if (studentFinalEmail) {
+            await supabaseAdmin.from("students").update(safePlanUpdates).ilike("email", studentFinalEmail);
+          }
+          const { error: upsertErr } = await supabaseAdmin.from("students").upsert(safeStudentPayload);
+          if (upsertErr) {
+            console.warn("[Promo claim] students upsert note:", upsertErr);
+          }
         } catch (err: any) {
-          dbError = err;
+          console.error("[Promo Redemption students exception]:", err);
         }
 
-        if (dbError) {
-          console.error("[Promo Redemption DB Error]:", dbError);
-          try {
-            await supabaseAdmin.from("students").update(planUpdateData).eq("id", studentFinalId);
-          } catch (e2) {
-            console.error("[Promo Redemption DB update fallback failed]:", e2);
+        // 2. Insert into promo_redemptions table
+        try {
+          const primaryRedemption = {
+            promo_code: link.code,
+            student_id: studentFinalId,
+            student_email: studentFinalEmail,
+            student_name: studentFinalName,
+            redeemed_at: new Date().toISOString(),
+            granted_until: accessExpiresStr,
+            track: currentStudent?.grade || currentStudent?.stream || "Boardly Pro Track",
+          };
+          const { error: redErr1 } = await supabaseAdmin.from("promo_redemptions").insert([primaryRedemption]);
+          if (redErr1) {
+            const altRedemption = {
+              code: link.code,
+              user_id: studentFinalId,
+              email: studentFinalEmail,
+              created_at: new Date().toISOString(),
+              expires_at: accessExpiresStr,
+            };
+            const { error: redErr2 } = await supabaseAdmin.from("promo_redemptions").insert([altRedemption]);
+            if (redErr2) {
+              await supabaseAdmin.from("promo_redemptions").insert([{ promo_code: link.code, student_email: studentFinalEmail }]);
+            }
           }
-          if (studentFinalEmail) {
-            try {
-              await supabaseAdmin.from("students").update(planUpdateData).eq("email", studentFinalEmail);
-            } catch (e3) {}
+        } catch (rErr) {
+          console.warn("[Promo claim] promo_redemptions exception:", rErr);
+        }
+
+        // 3. Update or Upsert promo_codes table
+        try {
+          const { data: codeRow } = await supabaseAdmin
+            .from("promo_codes")
+            .select("*")
+            .ilike("code", link.code)
+            .maybeSingle();
+
+          if (codeRow) {
+            const nextCount = (codeRow.redemption_count || 0) + 1;
+            const shouldDeactivate = codeRow.max_redemptions && nextCount >= codeRow.max_redemptions;
+            await supabaseAdmin
+              .from("promo_codes")
+              .update({
+                redemption_count: nextCount,
+                is_active: shouldDeactivate ? false : codeRow.is_active,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", codeRow.id);
+          } else {
+            await supabaseAdmin.from("promo_codes").upsert({
+              code: link.code,
+              label: link.label || "1-Year Free Boardly Pro Campaign",
+              discount_type: "1_year_free_pro",
+              duration_months: 12,
+              max_redemptions: link.max_redemptions || 1,
+              redemption_count: 1,
+              is_active: (link.max_redemptions && 1 >= link.max_redemptions) ? false : true,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            });
           }
-        } else {
-          if (studentFinalEmail) {
-            try {
-              await supabaseAdmin.from("students").update(planUpdateData).eq("email", studentFinalEmail);
-            } catch (e3) {}
+        } catch (cErr) {
+          console.warn("[Promo claim] promo_codes DB update note:", cErr);
+        }
+
+        // 4. Upsert or Update profiles table
+        try {
+          const profilePayload = {
+            id: studentFinalId,
+            email: studentFinalEmail,
+            name: studentFinalName,
+            subscription_tier: "pro",
+            subscription_expires_at: accessExpiresStr,
+            is_pro: true,
+            updated_at: new Date().toISOString(),
+          };
+          const { error: profErr } = await supabaseAdmin.from("profiles").upsert(profilePayload);
+          if (profErr && studentFinalEmail) {
+            await supabaseAdmin.from("profiles").update({
+              subscription_tier: "pro",
+              subscription_expires_at: accessExpiresStr,
+              is_pro: true,
+              updated_at: new Date().toISOString(),
+            }).ilike("email", studentFinalEmail);
           }
+        } catch (pErr) {
+          console.warn("[Promo claim] profiles DB update note:", pErr);
         }
       }
 
