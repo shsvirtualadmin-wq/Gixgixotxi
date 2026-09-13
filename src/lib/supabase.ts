@@ -553,8 +553,8 @@ export function evaluateStudentAccess(
   const pStatus = String(profile.payment_status || '').trim().toLowerCase();
   const isExplicitPaid = pStatus === 'verified & paid' || pStatus === 'verified' || pStatus === 'paid';
   const hasProPlanKey = Array.isArray(profile.subscribed_plans) && profile.subscribed_plans.some(p => {
-    const pl = String(p).toLowerCase();
-    return pl !== 'free' && ['pro', 'fsc', 'mdcat', 'tcat', 'matric', 'premium', 'boardly_pro'].includes(pl);
+    const pl = String(p).toLowerCase().trim();
+    return Boolean(pl) && pl !== 'free' && pl !== 'none';
   });
   const hasProPkgName = Boolean(profile.package_name && !profile.package_name.toLowerCase().includes('free'));
   const hasProTier = profile.plan_tier === 'pro';
@@ -3804,6 +3804,7 @@ export async function updateStudentPlanInSupabase(params: {
 
     const updatePayload: any = {
       subscribed_plans: finalIsPro ? params.subscribedPlans : ['free'],
+      assigned_classes: params.assignedClasses || [],
       package_name: finalIsPro ? params.packageName : 'Free Plan',
       is_pro: finalIsPro,
       plan_tier: finalIsPro ? 'pro' : 'free',

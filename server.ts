@@ -8861,6 +8861,111 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         }
       }
 
+      if (!dbUpdatePayload.grade && Array.isArray(subscribedPlans) && subscribedPlans.length > 0) {
+        const p = String(subscribedPlans[0]).toLowerCase();
+        if (p === 'net') {
+          dbUpdatePayload.grade = 'NET';
+          dbUpdatePayload.stream = 'NUST NET Engineering & Computing';
+          dbUpdatePayload.target_university = 'NUST Islamabad';
+        } else if (p === 'fast') {
+          dbUpdatePayload.grade = 'FAST';
+          dbUpdatePayload.stream = 'FAST-NU CS & Engineering';
+          dbUpdatePayload.target_university = 'FAST-NUCES';
+        } else if (p === 'mdcat') {
+          dbUpdatePayload.grade = 'MDCAT';
+          dbUpdatePayload.stream = 'MDCAT Stream';
+          dbUpdatePayload.target_university = 'King Edward / UHS / PMDC';
+        } else if (p === 'tcat') {
+          dbUpdatePayload.grade = 'TCAT';
+          dbUpdatePayload.stream = 'TCAT Stream';
+          dbUpdatePayload.target_university = 'UET Taxila';
+        } else if (p === 'ecat') {
+          dbUpdatePayload.grade = 'ECAT';
+          dbUpdatePayload.stream = 'ECAT Engineering Group';
+          dbUpdatePayload.target_university = 'UET Lahore';
+        } else if (p === 'etea') {
+          dbUpdatePayload.grade = 'ETEA';
+          dbUpdatePayload.stream = 'ETEA Engineering Group';
+          dbUpdatePayload.target_university = 'UET Peshawar';
+        } else if (p === 'nums') {
+          dbUpdatePayload.grade = 'NUMS';
+          dbUpdatePayload.stream = 'NUMS Medical Entry Test';
+          dbUpdatePayload.target_university = 'Army Medical College (NUMS)';
+        } else if (p === 'giki') {
+          dbUpdatePayload.grade = 'GIKI';
+          dbUpdatePayload.stream = 'GIKI Engineering Entrance';
+          dbUpdatePayload.target_university = 'GIKI Topi';
+        } else if (p === 'usat') {
+          dbUpdatePayload.grade = 'USAT';
+          dbUpdatePayload.stream = 'USAT-E (Pre-Engineering)';
+          dbUpdatePayload.target_university = 'HEC Recognized Universities';
+        } else if (p === 'ned') {
+          dbUpdatePayload.grade = 'NED';
+          dbUpdatePayload.stream = 'NED Pre-Engineering';
+          dbUpdatePayload.target_university = 'NED University Karachi';
+        } else if (p === 'pieas') {
+          dbUpdatePayload.grade = 'PIEAS';
+          dbUpdatePayload.stream = 'PIEAS Pre-Engineering';
+          dbUpdatePayload.target_university = 'PIEAS Islamabad';
+        } else if (p === 'nat') {
+          dbUpdatePayload.grade = 'NAT';
+          dbUpdatePayload.stream = 'NAT-IE (Pre-Engineering)';
+          dbUpdatePayload.target_university = 'COMSATS / Air / Bahria / IIUI / IST';
+        } else if (p === 'iba') {
+          dbUpdatePayload.grade = 'IBA';
+          dbUpdatePayload.stream = 'Undergraduate Aptitude';
+          dbUpdatePayload.target_university = 'IBA Karachi';
+        } else if (p === 'aku') {
+          dbUpdatePayload.grade = 'AKU';
+          dbUpdatePayload.stream = 'AKU MBBS & Nursing';
+          dbUpdatePayload.target_university = 'Aga Khan University';
+        } else if (p === 'muet') {
+          dbUpdatePayload.grade = 'MUET';
+          dbUpdatePayload.stream = 'MUET Pre-Engineering';
+          dbUpdatePayload.target_university = 'MUET Jamshoro';
+        } else if (p === 'lums') {
+          dbUpdatePayload.grade = 'LUMS';
+          dbUpdatePayload.stream = 'LCAT Aptitude Stream';
+          dbUpdatePayload.target_university = 'LUMS Lahore';
+        } else if (p === 'numl') {
+          dbUpdatePayload.grade = 'NUML';
+          dbUpdatePayload.stream = 'Engineering & CS';
+          dbUpdatePayload.target_university = 'NUML Islamabad';
+        } else if (p === 'hitec') {
+          dbUpdatePayload.grade = 'HITEC';
+          dbUpdatePayload.stream = 'Engineering Stream';
+          dbUpdatePayload.target_university = 'HITEC University Taxila';
+        } else if (p === 'nutech') {
+          dbUpdatePayload.grade = 'NUTECH';
+          dbUpdatePayload.stream = 'NUET Engineering Stream';
+          dbUpdatePayload.target_university = 'NUTECH Islamabad';
+        } else if (p === 'fbise_9') {
+          dbUpdatePayload.grade = '9th';
+          dbUpdatePayload.stream = 'Science';
+        } else if (p === 'fbise_10') {
+          dbUpdatePayload.grade = '10th';
+          dbUpdatePayload.stream = 'Science';
+        } else if (p.includes('11') && p.includes('med')) {
+          dbUpdatePayload.grade = '11th';
+          dbUpdatePayload.stream = 'Pre-Medical Stream';
+        } else if (p.includes('11') && p.includes('ics')) {
+          dbUpdatePayload.grade = '11th';
+          dbUpdatePayload.stream = 'ICS Stream';
+        } else if (p.includes('11')) {
+          dbUpdatePayload.grade = '11th';
+          dbUpdatePayload.stream = 'Pre-Engineering Stream';
+        } else if (p.includes('12') && p.includes('med')) {
+          dbUpdatePayload.grade = '12th';
+          dbUpdatePayload.stream = 'Pre-Medical Stream';
+        } else if (p.includes('12') && p.includes('ics')) {
+          dbUpdatePayload.grade = '12th';
+          dbUpdatePayload.stream = 'ICS Stream';
+        } else if (p.includes('12')) {
+          dbUpdatePayload.grade = '12th';
+          dbUpdatePayload.stream = 'Pre-Engineering Stream';
+        }
+      }
+
       if (finalIsPro) {
         dbUpdatePayload.tests_used_this_month = 0;
         dbUpdatePayload.ai_messages_used_today = 0;

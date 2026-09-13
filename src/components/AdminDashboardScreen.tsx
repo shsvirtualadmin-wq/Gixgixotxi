@@ -137,6 +137,8 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
   const [isSavingPlan, setIsSavingPlan] = useState<boolean>(false);
   const [planToast, setPlanToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [viewingProofUrl, setViewingProofUrl] = useState<string | null>(null);
+  const [planCategoryFilter, setPlanCategoryFilter] = useState<string>('All');
+  const [planSearchQuery, setPlanSearchQuery] = useState<string>('');
 
   // Student Progress breakdown state
   const [progressSearch, setProgressSearch] = useState<string>('');
@@ -330,34 +332,282 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
     'NUTECH Islamabad',
   ];
 
+interface AdminSubscriptionPlanOption {
+  key: string;
+  name: string;
+  price: string;
+  category: 'Universal & Free' | 'FBISE Board Plans' | 'Medical Entry' | 'Engineering & CS Entrance';
+  tag?: string;
+  defaultClass?: string;
+}
+
+const ADMIN_SUBSCRIPTION_PLANS: AdminSubscriptionPlanOption[] = [
+  // 1. Universal & Free
+  {
+    key: 'free',
+    name: 'Free Access',
+    price: 'Rs. 0 / Standard Limits',
+    category: 'Universal & Free',
+    tag: 'Standard',
+  },
+  {
+    key: 'boardly_pro',
+    name: '⭐ Boardly All-Access Pro Pass',
+    price: 'Rs. 1,499 / Month',
+    category: 'Universal & Free',
+    tag: 'All Tracks Included',
+  },
+
+  // 2. FBISE Board Plans (9th - 12th)
+  {
+    key: 'matric',
+    name: '⭐ Matric General Plan (9th & 10th)',
+    price: 'Rs. 499 / Month',
+    category: 'FBISE Board Plans',
+    tag: 'Class 9 & 10',
+    defaultClass: 'FBISE 9',
+  },
+  {
+    key: 'fbise_9',
+    name: '⭐ FBISE Class 9 Plan',
+    price: 'Rs. 499 / Month',
+    category: 'FBISE Board Plans',
+    tag: 'SSC-I',
+    defaultClass: 'FBISE 9',
+  },
+  {
+    key: 'fbise_10',
+    name: '⭐ FBISE Class 10 Plan',
+    price: 'Rs. 499 / Month',
+    category: 'FBISE Board Plans',
+    tag: 'SSC-II',
+    defaultClass: 'FBISE 10',
+  },
+  {
+    key: 'fsc',
+    name: '⭐ FSc General Plan (11th & 12th)',
+    price: 'Rs. 999 / Month',
+    category: 'FBISE Board Plans',
+    tag: 'Intermediate',
+    defaultClass: 'FBISE 11 Pre-Engineering',
+  },
+  {
+    key: 'fbise_11_pre_eng',
+    name: '⭐ FBISE 11 Pre-Engineering Plan',
+    price: 'Rs. 999 / Month',
+    category: 'FBISE Board Plans',
+    tag: 'HSSC-I Eng',
+    defaultClass: 'FBISE 11 Pre-Engineering',
+  },
+  {
+    key: 'fbise_11_pre_med',
+    name: '⭐ FBISE 11 Pre-Medical Plan',
+    price: 'Rs. 999 / Month',
+    category: 'FBISE Board Plans',
+    tag: 'HSSC-I Med',
+    defaultClass: 'FBISE 11 Pre-Medical',
+  },
+  {
+    key: 'fbise_11_ics',
+    name: '⭐ FBISE 11 ICS Plan',
+    price: 'Rs. 999 / Month',
+    category: 'FBISE Board Plans',
+    tag: 'HSSC-I ICS',
+    defaultClass: 'FBISE 11 ICS',
+  },
+  {
+    key: 'fbise_12_pre_eng',
+    name: '⭐ FBISE 12 Pre-Engineering Plan',
+    price: 'Rs. 999 / Month',
+    category: 'FBISE Board Plans',
+    tag: 'HSSC-II Eng',
+    defaultClass: 'FBISE 12 Pre-Engineering',
+  },
+  {
+    key: 'fbise_12_pre_med',
+    name: '⭐ FBISE 12 Pre-Medical Plan',
+    price: 'Rs. 999 / Month',
+    category: 'FBISE Board Plans',
+    tag: 'HSSC-II Med',
+    defaultClass: 'FBISE 12 Pre-Medical',
+  },
+  {
+    key: 'fbise_12_ics',
+    name: '⭐ FBISE 12 ICS Plan',
+    price: 'Rs. 999 / Month',
+    category: 'FBISE Board Plans',
+    tag: 'HSSC-II ICS',
+    defaultClass: 'FBISE 12 ICS',
+  },
+
+  // 3. Medical Entry Tests
+  {
+    key: 'mdcat',
+    name: '⭐ MDCAT Medical Entrance Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Medical Entry',
+    tag: 'PMDC Standard',
+    defaultClass: 'MDCAT',
+  },
+  {
+    key: 'nums',
+    name: '⭐ NUMS Medical Entry Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Medical Entry',
+    tag: 'AMC Standard',
+    defaultClass: 'NUMS (Medical)',
+  },
+  {
+    key: 'aku',
+    name: '⭐ Aga Khan University (AKU) Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Medical Entry',
+    tag: 'AKU MBBS',
+    defaultClass: 'Aga Khan University (AKU)',
+  },
+
+  // 4. Engineering, CS & Aptitude Entrance Tests
+  {
+    key: 'net',
+    name: '⭐ NUST NET Entrance Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'NUST Entry',
+    defaultClass: 'NUST (NET)',
+  },
+  {
+    key: 'fast',
+    name: '⭐ FAST-NU NAT Entrance Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'FAST-NUCES',
+    defaultClass: 'FAST-NU (NAT)',
+  },
+  {
+    key: 'tcat',
+    name: '⭐ TCAT Plan (UET Taxila)',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'UET Taxila',
+    defaultClass: 'TCAT',
+  },
+  {
+    key: 'ecat',
+    name: '⭐ ECAT Plan (UET Lahore)',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'UET Lahore',
+    defaultClass: 'ECAT (UET Lahore)',
+  },
+  {
+    key: 'etea',
+    name: '⭐ ETEA Engineering Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'UET Peshawar',
+    defaultClass: 'ETEA (KPK Engineering)',
+  },
+  {
+    key: 'giki',
+    name: '⭐ GIKI Engineering Entrance Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'GIKI Topi',
+    defaultClass: 'GIKI (Engineering)',
+  },
+  {
+    key: 'usat',
+    name: '⭐ HEC USAT Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'HEC Recognized',
+    defaultClass: 'USAT (HEC)',
+  },
+  {
+    key: 'ned',
+    name: '⭐ NED University Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'NED Karachi',
+    defaultClass: 'NED University',
+  },
+  {
+    key: 'pieas',
+    name: '⭐ PIEAS Written Test Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'PIEAS Islamabad',
+    defaultClass: 'PIEAS',
+  },
+  {
+    key: 'nat',
+    name: '⭐ NTS NAT Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'NTS National',
+    defaultClass: 'NTS NAT',
+  },
+  {
+    key: 'iba',
+    name: '⭐ IBA Karachi Aptitude Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'IBA Karachi',
+    defaultClass: 'IBA Karachi',
+  },
+  {
+    key: 'muet',
+    name: '⭐ MUET Jamshoro Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'Mehran UET',
+    defaultClass: 'MUET Jamshoro',
+  },
+  {
+    key: 'lums',
+    name: '⭐ LUMS Plan (LCAT / SBASSE)',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'LUMS Lahore',
+    defaultClass: 'LUMS',
+  },
+  {
+    key: 'numl',
+    name: '⭐ NUML University Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'NUML Islamabad',
+    defaultClass: 'NUML',
+  },
+  {
+    key: 'hitec',
+    name: '⭐ HITEC University Taxila Plan',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'HITEC Taxila',
+    defaultClass: 'HITEC University Taxila',
+  },
+  {
+    key: 'nutech',
+    name: '⭐ NUTECH Plan (NUET)',
+    price: 'Rs. 1,499 / Month',
+    category: 'Engineering & CS Entrance',
+    tag: 'NUTECH Islamabad',
+    defaultClass: 'NUTECH Islamabad',
+  },
+];
+
 const getPlanDefaultDisplayName = (planKey: string): string => {
+  const found = ADMIN_SUBSCRIPTION_PLANS.find(p => p.key === planKey);
+  if (found) return found.name;
   if (planKey === 'free') return 'Free Plan';
-  if (planKey === 'matric') return '⭐ Matric Pro';
-  if (planKey === 'fsc') return '⭐ FSc Pro';
-  if (planKey === 'tcat') return '⭐ TCAT Pro';
-  if (planKey === 'mdcat') return '⭐ MDCAT Pro';
-  if (planKey === 'net') return '⭐ NUST NET Pro';
-  if (planKey === 'fast') return '⭐ FAST-NU NAT Pro';
-  if (planKey === 'ecat') return '⭐ ECAT Pro';
-  if (planKey === 'etea') return '⭐ ETEA Pro';
-  if (planKey === 'nums') return '⭐ NUMS Medical Pro';
-  if (planKey === 'giki') return '⭐ GIKI Pro';
-  if (planKey === 'usat') return '⭐ HEC USAT Pro';
-  if (planKey === 'ned') return '⭐ NED University Pro';
-  if (planKey === 'pieas') return '⭐ PIEAS Pro';
-  if (planKey === 'nat') return '⭐ NTS NAT Pro';
-  if (planKey === 'iba') return '⭐ IBA Karachi Pro';
-  if (planKey === 'aku') return '⭐ AKU Medical Pro';
-  if (planKey === 'muet') return '⭐ MUET Jamshoro Pro';
-  if (planKey === 'lums') return '⭐ LUMS Pro';
-  if (planKey === 'numl') return '⭐ NUML Pro';
-  if (planKey === 'hitec') return '⭐ HITEC Taxila Pro';
-  if (planKey === 'nutech') return '⭐ NUTECH Pro';
   return `⭐ ${planKey.toUpperCase()} Pro`;
 };
 
   const handleOpenPlanModal = (student: StudentProfile) => {
     setSelectedStudentForPlan(student);
+    setPlanCategoryFilter('All');
+    setPlanSearchQuery('');
     const existingPlans = student.subscribed_plans && student.subscribed_plans.length > 0 ? student.subscribed_plans : ['free'];
     const activePlan = existingPlans[0] || 'free';
     // Default to single active plan selection
@@ -404,7 +654,7 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
     }
   };
 
-  const handleTogglePlanOption = (planKey: string) => {
+  const handleTogglePlanOption = (planKey: string, defaultClass?: string) => {
     // Single plan selection rule: Only one plan should be selected at a time
     setSelectedPlansForChange([planKey]);
     if (planKey === 'free') {
@@ -413,6 +663,15 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
       setIsProForChange(true);
     }
     setCustomPackageName(getPlanDefaultDisplayName(planKey));
+
+    if (defaultClass) {
+      setSelectedAssignedClassesForChange((prev) => {
+        if (!prev.includes(defaultClass)) {
+          return [...prev, defaultClass];
+        }
+        return prev;
+      });
+    }
   };
 
   const handleSaveStudentPlan = async () => {
@@ -1084,6 +1343,20 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
     }
 
     return matchQuery && matchGrade && matchStatus && matchPlan;
+  });
+
+  // Filter subscription plans for Manage Subscription Plan modal
+  const filteredSubscriptionPlans = ADMIN_SUBSCRIPTION_PLANS.filter((plan) => {
+    const matchesCategory =
+      planCategoryFilter === 'All' || plan.category === planCategoryFilter;
+    const q = planSearchQuery.trim().toLowerCase();
+    const matchesQuery =
+      !q ||
+      plan.name.toLowerCase().includes(q) ||
+      plan.key.toLowerCase().includes(q) ||
+      (plan.tag && plan.tag.toLowerCase().includes(q)) ||
+      (plan.defaultClass && plan.defaultClass.toLowerCase().includes(q));
+    return matchesCategory && matchesQuery;
   });
 
   // Filter tests
@@ -3289,120 +3562,121 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
 
             {/* Select Subscription Preset / Track Options */}
             <div className="space-y-3">
-              <label className="text-xs font-extrabold text-slate-900  block">
-                Subscription Plan (Select One):
-              </label>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                <div>
+                  <label className="text-xs font-extrabold text-slate-900 block">
+                    Subscription Plan (Select One):
+                  </label>
+                  <p className="text-[11px] text-slate-500">
+                    Select the student's assigned track plan or all-access pass.
+                  </p>
+                </div>
+                <div className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full border border-slate-200 self-start sm:self-auto">
+                  {filteredSubscriptionPlans.length} plans available
+                </div>
+              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {/* Preset 1: Free Plan */}
-                <button
-                  type="button"
-                  onClick={() => handleTogglePlanOption('free')}
-                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                    selectedPlansForChange.includes('free') && selectedPlansForChange.length === 1
-                      ? 'bg-slate-100  border-slate-400  ring-2 ring-slate-400'
-                      : 'bg-slate-50  border-slate-200  hover:border-slate-300'
-                  }`}
-                >
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900 ">Free Access</div>
-                    <div className="text-[10px] text-slate-500 ">Rs. 0 / Standard Limits</div>
-                  </div>
-                  {selectedPlansForChange.includes('free') && selectedPlansForChange.length === 1 ? (
-                    <CheckCircle2 className="w-4 h-4 text-slate-700  shrink-0" />
-                  ) : (
-                    <div className="w-4 h-4 rounded-full border border-slate-300  shrink-0" />
-                  )}
-                </button>
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                {(['All', 'Universal & Free', 'FBISE Board Plans', 'Medical Entry', 'Engineering & CS Entrance'] as const).map((cat) => {
+                  const count = cat === 'All'
+                    ? ADMIN_SUBSCRIPTION_PLANS.length
+                    : ADMIN_SUBSCRIPTION_PLANS.filter(p => p.category === cat).length;
+                  const isActive = planCategoryFilter === cat;
+                  return (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setPlanCategoryFilter(cat)}
+                      className={`text-[10px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap transition-colors cursor-pointer border ${
+                        isActive
+                          ? 'bg-[#1E5AFF] text-white border-[#1E5AFF]'
+                          : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {cat === 'FBISE Board Plans' ? 'FBISE (9-12)' : cat === 'Engineering & CS Entrance' ? 'Engineering & CS' : cat} ({count})
+                    </button>
+                  );
+                })}
+              </div>
 
-                {/* Preset 2: Matric Plan */}
-                <button
-                  type="button"
-                  onClick={() => handleTogglePlanOption('matric')}
-                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                    selectedPlansForChange.includes('matric')
-                      ? 'bg-blue-500/10  border-blue-500 ring-2 ring-blue-500/50'
-                      : 'bg-slate-50  border-slate-200  hover:border-blue-400/50'
-                  }`}
-                >
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900  flex items-center gap-1">
-                      <span>Matric Plan</span>
-                    </div>
-                    <div className="text-[10px] text-blue-600  font-bold">Rs. 499 / Month</div>
-                  </div>
-                  {selectedPlansForChange.includes('matric') ? (
-                    <CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" />
-                  ) : (
-                    <div className="w-4 h-4 rounded-full border border-slate-300  shrink-0" />
-                  )}
-                </button>
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  value={planSearchQuery}
+                  onChange={(e) => setPlanSearchQuery(e.target.value)}
+                  placeholder="Search plan or university (e.g., NUST, MDCAT, AKU, FBISE, GIKI, Free)..."
+                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-white rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-[#1E5AFF]/30 text-slate-900 placeholder:text-slate-400"
+                />
+                {planSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setPlanSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
 
-                {/* Preset 3: FSc Plan */}
-                <button
-                  type="button"
-                  onClick={() => handleTogglePlanOption('fsc')}
-                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                    selectedPlansForChange.includes('fsc')
-                      ? 'bg-indigo-500/10  border-indigo-500 ring-2 ring-indigo-500/50'
-                      : 'bg-slate-50  border-slate-200  hover:border-indigo-400/50'
-                  }`}
-                >
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900 ">FSc Plan</div>
-                    <div className="text-[10px] text-indigo-600  font-bold">Rs. 999 / Month</div>
+              {/* Scrollable Plan Options Grid */}
+              <div className="max-h-72 overflow-y-auto p-1.5 bg-slate-50/70 rounded-2xl border border-slate-200 space-y-1.5">
+                {filteredSubscriptionPlans.length === 0 ? (
+                  <div className="text-center py-6 text-xs text-slate-500">
+                    No subscription plans match "{planSearchQuery}".
                   </div>
-                  {selectedPlansForChange.includes('fsc') ? (
-                    <CheckCircle2 className="w-4 h-4 text-indigo-500 shrink-0" />
-                  ) : (
-                    <div className="w-4 h-4 rounded-full border border-slate-300  shrink-0" />
-                  )}
-                </button>
-
-                {/* Preset 4: TCAT / UET Taxila */}
-                <button
-                  type="button"
-                  onClick={() => handleTogglePlanOption('tcat')}
-                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between gap-2 ${
-                    selectedPlansForChange.includes('tcat')
-                      ? 'bg-[#1E5AFF]/10  border-[#1E5AFF] ring-2 ring-[#1E5AFF]/50'
-                      : 'bg-slate-50  border-slate-200  hover:border-[#1E5AFF]/50'
-                  }`}
-                >
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900 ">TCAT / ECAT</div>
-                    <div className="text-[10px] text-[#1E5AFF]  font-bold">Rs. 1,499 / Month</div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {filteredSubscriptionPlans.map((plan) => {
+                      const isSelected = selectedPlansForChange.includes(plan.key);
+                      return (
+                        <button
+                          key={plan.key}
+                          type="button"
+                          onClick={() => handleTogglePlanOption(plan.key, plan.defaultClass)}
+                          className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex items-center justify-between gap-2 ${
+                            isSelected
+                              ? 'bg-[#1E5AFF]/10 border-[#1E5AFF] ring-2 ring-[#1E5AFF]/40'
+                              : 'bg-white border-slate-200 hover:border-[#1E5AFF]/40 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className="text-xs font-bold text-slate-900 truncate">
+                                {plan.name.replace(/^⭐\s*/, '')}
+                              </span>
+                              {plan.tag && (
+                                <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider shrink-0 ${
+                                  isSelected
+                                    ? 'bg-[#1E5AFF] text-white'
+                                    : plan.category === 'Medical Entry'
+                                      ? 'bg-emerald-100 text-emerald-700'
+                                      : plan.category === 'Universal & Free' && plan.key !== 'free'
+                                        ? 'bg-purple-100 text-purple-700'
+                                        : 'bg-slate-100 text-slate-600'
+                                }`}>
+                                  {plan.tag}
+                                </span>
+                              )}
+                            </div>
+                            <div className={`text-[10px] font-bold mt-0.5 ${
+                              plan.key === 'free' ? 'text-slate-500' : 'text-[#1E5AFF]'
+                            }`}>
+                              {plan.price}
+                            </div>
+                          </div>
+                          {isSelected ? (
+                            <CheckCircle2 className="w-4 h-4 text-[#1E5AFF] shrink-0" />
+                          ) : (
+                            <div className="w-4 h-4 rounded-full border border-slate-300 shrink-0" />
+                          )}
+                        </button>
+                      );
+                    })}
                   </div>
-                  {selectedPlansForChange.includes('tcat') ? (
-                    <CheckCircle2 className="w-4 h-4 text-[#1E5AFF] shrink-0" />
-                  ) : (
-                    <div className="w-4 h-4 rounded-full border border-slate-300  shrink-0" />
-                  )}
-                </button>
-
-                {/* Preset 5: MDCAT Medical */}
-                <button
-                  type="button"
-                  onClick={() => handleTogglePlanOption('mdcat')}
-                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex items-center justify-between gap-2 sm:col-span-2 ${
-                    selectedPlansForChange.includes('mdcat')
-                      ? 'bg-emerald-500/10  border-emerald-500 ring-2 ring-emerald-500/50'
-                      : 'bg-slate-50  border-slate-200  hover:border-emerald-400/50'
-                  }`}
-                >
-                  <div>
-                    <div className="text-xs font-extrabold text-slate-900  flex items-center gap-1.5">
-                      <span>MDCAT Medical Entrance Plan</span>
-                      <span className="text-[9px] bg-emerald-500 text-white font-black px-1.5 py-0.2 rounded-full uppercase">PMDC Standard</span>
-                    </div>
-                    <div className="text-[10px] text-emerald-600  font-bold">Rs. 1,499 / Month</div>
-                  </div>
-                  {selectedPlansForChange.includes('mdcat') ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                  ) : (
-                    <div className="w-4 h-4 rounded-full border border-slate-300  shrink-0" />
-                  )}
-                </button>
+                )}
               </div>
             </div>
 
