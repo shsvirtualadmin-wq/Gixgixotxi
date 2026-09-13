@@ -51,7 +51,10 @@ export const MathText: React.FC<MathTextProps> = React.memo(({
               />
             );
           }
-          return <React.Fragment key={index}>{part.content}</React.Fragment>;
+          const cleanText = part.content
+            .replace(/(?<![\\a-zA-Z0-9_])->|-->(?![\\a-zA-Z0-9_])/g, '→')
+            .replace(/(?<=\b[a-zA-Z0-9]\b)\s*\*\s*(?=\b[a-zA-Z0-9]\b)/g, ' × ');
+          return <React.Fragment key={index}>{cleanText}</React.Fragment>;
         }
 
         const isDisplay = part.type === 'display-math';

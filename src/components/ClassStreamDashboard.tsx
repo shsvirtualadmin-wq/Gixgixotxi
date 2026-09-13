@@ -144,13 +144,33 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = React.m
 
   const rawTrackStr = `${String(classNum)} ${String(group)}`.toUpperCase();
   const matchedEntranceTrack: EntranceTrackType | null = (() => {
+    const directKeys: EntranceTrackType[] = [
+      'NET', 'FAST', 'ECAT', 'ETEA', 'NUMS', 'GIKI', 'USAT',
+      'NED', 'PIEAS', 'NAT', 'IBA', 'AKU', 'MUET', 'LUMS',
+      'NUML', 'HITEC', 'NUTECH'
+    ];
+    const upperClass = String(classNum).toUpperCase();
+    const upperGroup = String(group).toUpperCase();
+    for (const key of directKeys) {
+      if (upperClass === key || upperGroup === key) return key;
+    }
     if (rawTrackStr.includes('NET') || rawTrackStr.includes('NUST')) return 'NET';
-    if (rawTrackStr.includes('FAST') || rawTrackStr.includes('NAT')) return 'FAST';
-    if (rawTrackStr.includes('ECAT')) return 'ECAT';
-    if (rawTrackStr.includes('ETEA')) return 'ETEA';
-    if (rawTrackStr.includes('NUMS')) return 'NUMS';
+    if (rawTrackStr.includes('FAST-NU') || (rawTrackStr.includes('FAST') && !rawTrackStr.includes('NTS'))) return 'FAST';
+    if (rawTrackStr.includes('ECAT') || rawTrackStr.includes('UET LAHORE')) return 'ECAT';
+    if (rawTrackStr.includes('ETEA') || rawTrackStr.includes('UET PESHAWAR')) return 'ETEA';
+    if (rawTrackStr.includes('NUMS') || rawTrackStr.includes('ARMY MEDICAL')) return 'NUMS';
     if (rawTrackStr.includes('GIKI')) return 'GIKI';
-    if (rawTrackStr.includes('USAT')) return 'USAT';
+    if (rawTrackStr.includes('USAT') || rawTrackStr.includes('HEC')) return 'USAT';
+    if (rawTrackStr.includes('NED')) return 'NED';
+    if (rawTrackStr.includes('PIEAS')) return 'PIEAS';
+    if (rawTrackStr.includes('NTS') || rawTrackStr.includes(' NAT')) return 'NAT';
+    if (rawTrackStr.includes('IBA')) return 'IBA';
+    if (rawTrackStr.includes('AKU') || rawTrackStr.includes('AGA KHAN')) return 'AKU';
+    if (rawTrackStr.includes('MUET') || rawTrackStr.includes('MEHRAN')) return 'MUET';
+    if (rawTrackStr.includes('LUMS') || rawTrackStr.includes('LCAT')) return 'LUMS';
+    if (rawTrackStr.includes('NUML')) return 'NUML';
+    if (rawTrackStr.includes('HITEC')) return 'HITEC';
+    if (rawTrackStr.includes('NUTECH') || rawTrackStr.includes('NUET')) return 'NUTECH';
     return null;
   })();
 
@@ -483,12 +503,10 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = React.m
 
       {/* TAB CONTENT AREA */}
 
-      {/* TAB 1: SUBJECT CARDS & CHAPTER/SUBTOPIC DRILLDOWN */}
+      {/* TAB 1: FULL SUBJECT-WISE MOCK TESTS */}
       {activeTab === 'subjects' && (
         <div className="flex flex-col gap-4 animate-ios-spring">
-          {!selectedFbiseSubject ? (
-            /* LEVEL 0: Subject Cards Overview */
-            <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-sm font-black uppercase text-slate-500  tracking-wider">
@@ -549,36 +567,14 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = React.m
                         </div>
                       </div>
 
-                      <div className="mt-4 pt-3 border-t border-slate-100  flex flex-col gap-2">
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            onClick={() => handleLaunchPractice(subject)}
-                            className="py-2 px-2.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600  border border-emerald-500/30 text-xs font-extrabold flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer"
-                            title={`Quick Practice ${subject}`}
-                          >
-                            <Play className="w-3 h-3 fill-emerald-500" />
-                            <span>Practice MCQs</span>
-                          </button>
-
-                          <button
-                            onClick={() => handleLaunchMock(subject)}
-                            className="py-2 px-2.5 rounded-xl bg-slate-100  hover:bg-slate-200  text-slate-800  border border-slate-200  text-xs font-extrabold flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer"
-                            title={`Full Subject Mock ${subject}`}
-                          >
-                            <Award className="w-3 h-3 text-amber-500" />
-                            <span>Mock</span>
-                          </button>
-                        </div>
-
+                      <div className="mt-4 pt-3 border-t border-slate-100">
                         <button
-                          onClick={() => {
-                            setSelectedFbiseSubject(subject);
-                            setSelectedFbiseChapter(null);
-                          }}
-                          className="w-full py-2.5 px-3 rounded-xl bg-slate-900  hover:bg-slate-800  text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-xs"
+                          onClick={() => handleLaunchMock(subject)}
+                          className="w-full py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-extrabold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-xs"
+                          title={`Launch Full Subject Mock for ${subject}`}
                         >
-                          <span>View Chapters ({chapters.length})</span>
-                          <ChevronRight className="w-3.5 h-3.5 text-emerald-400" />
+                          <Award className="w-3.5 h-3.5 text-amber-400" />
+                          <span>Full Subject Mock Test</span>
                         </button>
                       </div>
                     </div>
@@ -586,248 +582,8 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = React.m
                 })}
               </div>
             </div>
-          ) : selectedFbiseSubject && selectedFbiseChapter ? (
-            /* LEVEL 2: Subtopic Level View */
-            <div className="space-y-4 animate-fade-in">
-              <div className="bg-white  border border-slate-200  rounded-[24px] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setSelectedFbiseChapter(null)}
-                    className="p-2.5 rounded-xl bg-slate-100  hover:bg-slate-200  text-slate-700  transition-all active:scale-95 cursor-pointer shrink-0"
-                    title="Back to Subject Chapter List"
-                  >
-                    <ArrowLeft className="w-4 h-4" />
-                  </button>
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[11px] font-black px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600  border border-emerald-500/20">
-                        Class {classNum} {selectedFbiseSubject}
-                      </span>
-                      <span className="text-slate-400 text-xs">•</span>
-                      <span className="text-xs font-bold text-emerald-600 ">
-                        {selectedFbiseChapter.name}
-                      </span>
-                      {selectedFbiseChapter.isHighYield && (
-                        <span className="bg-rose-500/10 text-rose-600  border border-rose-500/20 text-[10px] font-black uppercase px-2 py-0.5 rounded-md flex items-center gap-1">
-                          <Flame className="w-3 h-3 fill-rose-500" />
-                          High Yield
-                        </span>
-                      )}
-                    </div>
-                    <h2 className="font-extrabold text-lg text-slate-900  mt-1">
-                      Subtopics in {selectedFbiseChapter.name}
-                    </h2>
-                    <p className="text-xs text-slate-500  mt-0.5">
-                      Select a subtopic below to drill into focused MCQs or practice the complete chapter
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleLaunchPractice(selectedFbiseSubject, selectedFbiseChapter.name)}
-                  className="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-sm shrink-0"
-                >
-                  <Play className="w-3.5 h-3.5 fill-white" />
-                  <span>Practice Full Chapter</span>
-                </button>
-              </div>
-
-              {/* Practice Full Chapter Hero Card */}
-              <div className="bg-gradient-to-r from-emerald-500/10 via-emerald-500/5 to-transparent border border-emerald-500/20 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="p-3 rounded-2xl bg-emerald-500/20 text-emerald-600  shrink-0">
-                    <Target className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-extrabold text-emerald-600  uppercase tracking-wider flex items-center gap-1">
-                      <Sparkles className="w-3 h-3" /> Full Chapter Assessment
-                    </div>
-                    <h3 className="font-bold text-sm text-slate-900  mt-0.5">
-                      Practice All Subtopics Combined
-                    </h3>
-                    <p className="text-xs text-slate-500  mt-0.5">
-                      Generates questions covering all subtopics of "{selectedFbiseChapter.name}".
-                    </p>
-                  </div>
-                </div>
-
-                <button
-                  onClick={() => handleLaunchPractice(selectedFbiseSubject, selectedFbiseChapter.name)}
-                  className="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold px-5 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shrink-0 shadow-sm"
-                >
-                  <Play className="w-3.5 h-3.5 fill-white" />
-                  <span>Practice Full Chapter</span>
-                </button>
-              </div>
-
-              {/* Subtopic Grid */}
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="font-extrabold text-sm text-slate-900  flex items-center gap-2">
-                    <BookOpen className="w-4 h-4 text-emerald-500" />
-                    Select Subtopic ({parseSubtopicsList(selectedFbiseChapter.subtopics).length})
-                  </h3>
-                  <span className="text-[11px] text-slate-500 ">
-                    Drill into specific subtopic MCQs
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {parseSubtopicsList(selectedFbiseChapter.subtopics).map((subtopic, subIdx) => (
-                    <div
-                      key={subIdx}
-                      className="bg-white  border border-slate-200  hover:border-emerald-500  rounded-2xl p-4 transition-all duration-200 flex flex-col justify-between space-y-3 group"
-                    >
-                      <div className="space-y-1.5">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600  bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
-                            Subtopic {String(subIdx + 1).padStart(2, '0')}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-medium">
-                            FBISE Class {classNum}
-                          </span>
-                        </div>
-
-                        <h4 className="font-bold text-sm text-slate-900  group-hover:text-emerald-600  transition-colors pt-1">
-                          {subtopic}
-                        </h4>
-                      </div>
-
-                      <div className="pt-2 flex items-center justify-between border-t border-slate-100 ">
-                        <span className="text-[11px] text-slate-500  font-medium">
-                          Targeted Practice
-                        </span>
-                        <button
-                          onClick={() => handleLaunchPractice(selectedFbiseSubject, `${selectedFbiseChapter.name} - ${subtopic}`)}
-                          className="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-xs"
-                        >
-                          <Play className="w-3 h-3 fill-white" />
-                          <span>Practice This Subtopic</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* LEVEL 1: Chapter Level View */
-            selectedFbiseSubject && (
-              <div className="space-y-4 animate-fade-in">
-                {/* Header */}
-                <div className="bg-white  border border-slate-200  rounded-[24px] p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => {
-                        setSelectedFbiseSubject(null);
-                        setSelectedFbiseChapter(null);
-                      }}
-                      className="p-2.5 rounded-xl bg-slate-100  hover:bg-slate-200  text-slate-700  transition-all active:scale-95 cursor-pointer shrink-0"
-                      title="Back to Subject Grid"
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                    </button>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h2 className="font-extrabold text-lg text-slate-900 ">
-                          {selectedFbiseSubject} Syllabus Chapters
-                        </h2>
-                        <span className="text-xs font-black px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600  border border-emerald-500/20">
-                          Class {classNum} • {group}
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-500  mt-0.5">
-                        {getFBISEChaptersForSubject(classNum, selectedFbiseSubject).length} official FBISE chapters available. Tap 'Explore Subtopics' to view subtopics or practice.
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    onClick={() => handleLaunchPractice(selectedFbiseSubject, `All ${selectedFbiseSubject} Chapters`)}
-                    className="bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-sm shrink-0"
-                  >
-                    <Play className="w-3.5 h-3.5 fill-white" />
-                    <span>Practice All {selectedFbiseSubject} Chapters</span>
-                  </button>
-                </div>
-
-                {/* Chapter Cards List */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-                  {getFBISEChaptersForSubject(classNum, selectedFbiseSubject).map((chapter, idx) => {
-                    const subtopicList = parseSubtopicsList(chapter.subtopics);
-                    const previewSubtopics = subtopicList.slice(0, 3);
-                    const remainingCount = subtopicList.length - 3;
-
-                    return (
-                      <div
-                        key={chapter.id}
-                        className="bg-white  border border-slate-200  hover:border-emerald-500  rounded-2xl p-4 transition-all duration-200 flex flex-col justify-between space-y-3 group"
-                      >
-                        <div className="space-y-2">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              <span className="w-7 h-7 rounded-lg bg-slate-100  text-emerald-600  font-bold text-xs flex items-center justify-center shrink-0">
-                                {String(idx + 1).padStart(2, '0')}
-                              </span>
-                              <h3 className="font-bold text-sm text-slate-900  group-hover:text-emerald-600  transition-colors">
-                                {chapter.name}
-                              </h3>
-                            </div>
-
-                            {chapter.isHighYield && (
-                              <span className="bg-rose-500/10 text-rose-600  border border-rose-500/20 text-[10px] font-black uppercase px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-                                <Flame className="w-3 h-3 fill-rose-500" />
-                                High Yield
-                              </span>
-                            )}
-                          </div>
-
-                          {/* Subtopics Preview */}
-                          <div className="pl-9 flex flex-wrap gap-1.5 pt-1">
-                            {previewSubtopics.map((sub, sIdx) => (
-                              <span
-                                key={sIdx}
-                                className="text-[10px] font-semibold text-slate-600  bg-slate-100  px-2 py-0.5 rounded-md truncate max-w-[150px]"
-                              >
-                                {sub}
-                              </span>
-                            ))}
-                            {remainingCount > 0 && (
-                              <span className="text-[10px] font-bold text-emerald-600  bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
-                                +{remainingCount} more
-                              </span>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="pt-2 pl-9 flex items-center justify-between border-t border-slate-100  gap-2">
-                          <button
-                            onClick={() => setSelectedFbiseChapter(chapter)}
-                            className="flex-1 py-2 px-3 rounded-xl bg-slate-100  hover:bg-slate-200  text-slate-800  font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                          >
-                            <span>Explore Subtopics ({subtopicList.length})</span>
-                            <ChevronRight className="w-3.5 h-3.5 text-emerald-500" />
-                          </button>
-
-                          <button
-                            onClick={() => handleLaunchPractice(selectedFbiseSubject, chapter.name)}
-                            className="py-2 px-3 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600  border border-emerald-500/30 text-xs font-extrabold flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer shrink-0"
-                            title={`Practice ${chapter.name}`}
-                          >
-                            <Play className="w-3 h-3 fill-emerald-500" />
-                            <span>Practice Chapter</span>
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )
-          )}
-        </div>
+          </div>
       )}
-
       {/* TAB 2: MOCK EXAMS */}
       {activeTab === 'mock' && (
         <div className="bg-white  border border-slate-200  rounded-[24px] p-4 sm:p-5 animate-ios-spring flex flex-col gap-4">

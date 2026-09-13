@@ -2306,7 +2306,7 @@ export function App() {
     }
   };
 
-  const handleSelectClass = (cNum: BoardClass) => {
+  const handleSelectClass = (cNum: BoardClass, targetGroup?: string) => {
     sessionStorage.setItem('shs_intended_class', String(cNum));
     localStorage.setItem('shs_intended_class', String(cNum));
 
@@ -2326,7 +2326,31 @@ export function App() {
       setScreen('subjects');
       return;
     }
+
+    // All university entrance tracks go directly to their dedicated dashboard portal
+    const entranceTracks: BoardClass[] = [
+      'NET', 'FAST', 'ECAT', 'ETEA', 'NUMS', 'GIKI', 'USAT',
+      'NED', 'PIEAS', 'NAT', 'IBA', 'AKU', 'MUET', 'LUMS',
+      'NUML', 'HITEC', 'NUTECH'
+    ];
+    if (entranceTracks.includes(cNum)) {
+      setSelectedClass(cNum);
+      const grp = targetGroup || String(cNum);
+      setSelectedGroup(grp);
+      sessionStorage.setItem('shs_intended_group', grp);
+      localStorage.setItem('shs_intended_group', grp);
+      setScreen('subjects');
+      return;
+    }
+
     setSelectedClass(cNum);
+    if (targetGroup && (cNum === 9 || cNum === 10)) {
+      setSelectedGroup(targetGroup);
+      sessionStorage.setItem('shs_intended_group', targetGroup);
+      localStorage.setItem('shs_intended_group', targetGroup);
+      setScreen('subjects');
+      return;
+    }
     setScreen('group');
   };
 

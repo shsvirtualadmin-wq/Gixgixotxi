@@ -356,10 +356,8 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
         </div>
       </div>
 
-      {/* Main Content Area */}
-      {!selectedSubjectName ? (
-        /* Overview: Subject Cards for Active Combination */
-        <div className="space-y-6">
+      {/* Main Content Area: Subject Cards for Active Combination */}
+      <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="font-['Space_Grotesk'] font-extrabold text-xl text-slate-900  flex items-center gap-2">
@@ -412,36 +410,14 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
                   </div>
                 </div>
 
-                <div className="pt-4 flex flex-col gap-2">
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => handleOpenSubjectTestModal(subject)}
-                      className="bg-cyan-500/15  hover:bg-cyan-500/25 text-cyan-700  border border-cyan-500/40 font-extrabold py-2 px-2.5 rounded-xl text-xs flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer"
-                      title={`Quick Practice ${subject.name}`}
-                    >
-                      <Play className="w-3.5 h-3.5 fill-cyan-700 " />
-                      <span>Practice MCQs</span>
-                    </button>
-
-                    <button
-                      onClick={() => handleOpenSubjectTestModal(subject)}
-                      className="bg-blue-500/15  hover:bg-blue-500/25 text-blue-700  border border-blue-500/40 font-extrabold py-2 px-2.5 rounded-xl text-xs flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer"
-                      title={`Full Subject Mock ${subject.name}`}
-                    >
-                      <Award className="w-3.5 h-3.5 text-blue-700 " />
-                      <span>Mock</span>
-                    </button>
-                  </div>
-
+                <div className="pt-4">
                   <button
-                    onClick={() => {
-                      setSelectedSubjectName(subject.name);
-                      setActiveTopicForSubtopics(null);
-                    }}
-                    className="w-full bg-slate-100  hover:bg-slate-200  border border-slate-200  text-slate-800  font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                    onClick={() => handleOpenSubjectTestModal(subject)}
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-xs"
+                    title={`Launch Full Subject Mock Test for ${subject.name}`}
                   >
-                    <span>View Chapters ({subject.topics.length})</span>
-                    <ChevronRight className="w-3.5 h-3.5 text-cyan-600 " />
+                    <Award className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Full Subject Mock Test</span>
                   </button>
                 </div>
               </div>
@@ -477,250 +453,6 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
             </div>
           </div>
         </div>
-      ) : activeSubject && activeTopicForSubtopics ? (
-        /* LEVEL 2: Subtopics Selection View for Selected Chapter */
-        <div className="space-y-5 animate-fade-in">
-          <div className="bg-white/80  border border-slate-200  rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 backdrop-blur-md">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => {
-                  setActiveTopicForSubtopics(null);
-                  setSelectedSubtopicItem(null);
-                }}
-                className="p-2.5 rounded-xl bg-slate-100  hover:bg-slate-200  border border-slate-200  text-slate-700  hover:text-slate-900  transition-all active:scale-95 cursor-pointer shrink-0"
-                title="Back to Subject Chapters List"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full border ${activeSubject.badgeColor}`}>
-                    {activeSubject.name}
-                  </span>
-                  <span className="text-slate-400 text-xs">•</span>
-                  <span className="text-xs font-bold text-cyan-600 ">
-                    Chapter {activeSubject.topics.findIndex((t) => t.id === activeTopicForSubtopics.id) + 1}
-                  </span>
-                  {activeTopicForSubtopics.isHighYield && (
-                    <span className="bg-cyan-500/20 text-cyan-700  border border-cyan-500/30 text-[10px] font-black uppercase px-2 py-0.5 rounded-md flex items-center gap-1">
-                      <Flame className="w-3 h-3 text-cyan-600  fill-cyan-600 " />
-                      High Yield
-                    </span>
-                  )}
-                </div>
-                <h2 className="font-['Space_Grotesk'] font-extrabold text-xl text-slate-900  mt-1">
-                  {activeTopicForSubtopics.name}
-                </h2>
-                <p className="text-xs text-slate-500  mt-0.5">
-                  Select a specific subtopic below for targeted practice or launch practice for the entire chapter.
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => handleOpenTopicTestModal(activeTopicForSubtopics)}
-              className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-md shrink-0"
-            >
-              <Play className="w-3.5 h-3.5 fill-slate-950" />
-              <span>Practice Full Chapter</span>
-            </button>
-          </div>
-
-          <div className="bg-gradient-to-r from-cyan-500/10 via-blue-500/5 to-transparent    border border-cyan-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-600  shrink-0">
-                <Compass className="w-6 h-6 text-cyan-600 " />
-              </div>
-              <div>
-                <div className="text-xs font-extrabold text-cyan-700  uppercase tracking-wider flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" /> Full Chapter Assessment
-                </div>
-                <h3 className="font-['Space_Grotesk'] font-bold text-base text-slate-900  mt-0.5">
-                  Practice All Subtopics Combined
-                </h3>
-                <p className="text-xs text-slate-500  mt-0.5">
-                  Generates questions covering all subtopics of "{activeTopicForSubtopics.name}" combined.
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => handleOpenTopicTestModal(activeTopicForSubtopics)}
-              className="w-full sm:w-auto bg-cyan-500/15  hover:bg-cyan-500/25 text-cyan-700  border border-cyan-500/50 font-extrabold px-5 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shrink-0"
-            >
-              <Play className="w-4 h-4 fill-cyan-700 " />
-              <span>Practice Full Chapter</span>
-            </button>
-          </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-['Space_Grotesk'] font-extrabold text-base text-slate-900  flex items-center gap-2">
-                <BookOpen className="w-4 h-4 text-cyan-600 " />
-                Select Subtopic ({activeTopicForSubtopics.subtopics.split(',').length})
-              </h3>
-              <span className="text-[11px] text-slate-500  font-medium">
-                Tap any subtopic to drill down with targeted MCQs
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {activeTopicForSubtopics.subtopics.split(',').map((subItem, subIdx) => {
-                const cleanSub = subItem.trim();
-                return (
-                  <div
-                    key={subIdx}
-                    className="bg-white/80  border border-slate-200  hover:border-cyan-500/40 rounded-2xl p-4 transition-all duration-200 flex flex-col justify-between space-y-3 group backdrop-blur-md"
-                  >
-                    <div className="space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-wider text-cyan-700  bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-md">
-                          Subtopic {String(subIdx + 1).padStart(2, '0')}
-                        </span>
-                        <span className="text-[10px] text-slate-500 font-medium">
-                          TCAT {activeSubject.name}
-                        </span>
-                      </div>
-
-                      <h4 className="font-['Space_Grotesk'] font-bold text-sm text-slate-900  group-hover:text-cyan-600  transition-colors pt-1">
-                        {cleanSub}
-                      </h4>
-                    </div>
-
-                    <div className="pt-2 flex items-center justify-between border-t border-slate-200 ">
-                      <span className="text-[11px] text-slate-500  font-medium">
-                        Focused Subtopic Drill
-                      </span>
-                      <button
-                        onClick={() => handleOpenTopicTestModal(activeTopicForSubtopics, cleanSub)}
-                        className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold text-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
-                      >
-                        <Play className="w-3 h-3 fill-slate-950" />
-                        <span>Practice This Subtopic</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      ) : (
-        /* LEVEL 1: Chapter/Topic List View for Selected Subject */
-        activeSubject && (
-          <div className="space-y-5 animate-fade-in">
-            {/* Subject Header */}
-            <div className="bg-white/80  border border-slate-200  rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 backdrop-blur-md">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    setSelectedSubjectName(null);
-                    setActiveTopicForSubtopics(null);
-                  }}
-                  className="p-2.5 rounded-xl bg-slate-100  hover:bg-slate-200  border border-slate-200  text-slate-700  hover:text-slate-900  transition-all active:scale-95 cursor-pointer"
-                  title="Back to Subject Grid"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-['Space_Grotesk'] font-extrabold text-xl text-slate-900 ">
-                      {activeSubject.name} Syllabus Chapters
-                    </h2>
-                    <span className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${activeSubject.badgeColor}`}>
-                      {activeSubject.mcqCount} MCQs ({activeSubject.weightagePercent}%)
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500  mt-0.5">
-                    {activeSubject.topics.length} official TCAT chapters available. Tap 'Explore Subtopics' to view subtopics or practice.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => handleOpenSubjectTestModal(activeSubject)}
-                className="bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-md shrink-0"
-              >
-                <Play className="w-3.5 h-3.5 fill-slate-950" />
-                <span>Practice All {activeSubject.name} Chapters</span>
-              </button>
-            </div>
-
-            {/* Chapter Items List */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {activeSubject.topics.map((topic, idx) => {
-                const subtopicPills = topic.subtopics.split(',').map((s) => s.trim());
-                const previewPills = subtopicPills.slice(0, 3);
-                const remainingCount = subtopicPills.length - 3;
-
-                return (
-                  <div
-                    key={topic.id}
-                    className="bg-white/80  border border-slate-200/80  hover:border-cyan-500/40 rounded-2xl p-4 transition-all duration-200 flex flex-col justify-between space-y-3 group backdrop-blur-md"
-                  >
-                    <div className="space-y-2">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="w-7 h-7 rounded-lg bg-slate-100  border border-slate-200  text-cyan-600  font-bold text-xs flex items-center justify-center shrink-0">
-                            {String(idx + 1).padStart(2, '0')}
-                          </span>
-                          <h3 className="font-['Space_Grotesk'] font-bold text-sm text-slate-900  group-hover:text-cyan-600  transition-colors">
-                            {topic.name}
-                          </h3>
-                        </div>
-
-                        {topic.isHighYield && (
-                          <span className="bg-cyan-500/20 text-cyan-700  border border-cyan-500/30 text-[10px] font-black uppercase px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-                            <Flame className="w-3 h-3 text-cyan-600  fill-cyan-600 " />
-                            High Yield
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Subtopic Previews */}
-                      <div className="pl-9 flex flex-wrap gap-1.5 pt-1">
-                        {previewPills.map((sub, sIdx) => (
-                          <span
-                            key={sIdx}
-                            className="text-[10px] font-semibold text-slate-700  bg-slate-100  border border-slate-200  px-2 py-0.5 rounded-md truncate max-w-[150px]"
-                          >
-                            {sub}
-                          </span>
-                        ))}
-                        {remainingCount > 0 && (
-                          <span className="text-[10px] font-bold text-cyan-700  bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-md">
-                            +{remainingCount} more
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="pt-2 pl-9 flex items-center justify-between border-t border-slate-200  gap-2">
-                      <button
-                        onClick={() => setActiveTopicForSubtopics(topic)}
-                        className="flex-1 bg-slate-100  hover:bg-slate-200  border border-slate-200  text-slate-800  font-bold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                      >
-                        <span>Explore Subtopics ({subtopicPills.length})</span>
-                        <ChevronRight className="w-3.5 h-3.5 text-cyan-600 " />
-                      </button>
-
-                      <button
-                        onClick={() => handleOpenTopicTestModal(topic)}
-                        className="bg-cyan-500/15  hover:bg-cyan-500/30 text-cyan-700  border border-cyan-500/40 font-extrabold py-2 px-3 rounded-xl text-xs flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer"
-                        title={`Practice ${topic.name}`}
-                      >
-                        <Play className="w-3.5 h-3.5 fill-cyan-700 " />
-                        <span>Practice Chapter</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )
-      )}
-
       {/* Test Config Launcher Modal */}
       <AnimatePresence>
         {showConfigModal && (

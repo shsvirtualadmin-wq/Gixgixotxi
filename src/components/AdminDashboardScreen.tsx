@@ -31,6 +31,7 @@ import {
 } from '../lib/supabase';
 import { getPrebuiltQuestionsForSubject } from '../data/prebuiltQuestions';
 import { getDynamicQuestionBankStats } from '../lib/questionBankStats';
+import { AVAILABLE_ASSIGNABLE_CLASSES } from '../data/portalMasterTracks';
 import {
   ShieldCheck,
   Search,
@@ -301,36 +302,6 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
       setIsAuditingPro(false);
     }
   };
-
-  const AVAILABLE_ASSIGNABLE_CLASSES = [
-    'FBISE 9',
-    'FBISE 10',
-    'FBISE 11 Pre-Engineering',
-    'FBISE 11 Pre-Medical',
-    'FBISE 11 ICS',
-    'FBISE 12 Pre-Engineering',
-    'FBISE 12 Pre-Medical',
-    'FBISE 12 ICS',
-    'MDCAT',
-    'TCAT',
-    'NUST (NET)',
-    'FAST-NU (NAT)',
-    'ECAT (UET Lahore)',
-    'ETEA (KPK Engineering)',
-    'NUMS (Medical)',
-    'GIKI (Engineering)',
-    'USAT (HEC)',
-    'NED University',
-    'PIEAS',
-    'NTS NAT',
-    'IBA Karachi',
-    'Aga Khan University (AKU)',
-    'MUET Jamshoro',
-    'LUMS',
-    'NUML',
-    'HITEC University Taxila',
-    'NUTECH Islamabad',
-  ];
 
 interface AdminSubscriptionPlanOption {
   key: string;

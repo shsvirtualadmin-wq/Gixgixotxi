@@ -287,10 +287,8 @@ export const MdcatDashboardPortal: React.FC<MdcatDashboardPortalProps> = React.m
         </div>
       </div>
 
-      {/* Main Content Area */}
-      {!selectedSubjectId ? (
-        /* Overview: 5 Subject Cards & Breakdown */
-        <div className="space-y-6">
+      {/* Main Content Area: 5 Subject Cards Overview */}
+      <div className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="font-['Space_Grotesk'] font-extrabold text-xl text-slate-900  flex items-center gap-2">
@@ -343,25 +341,14 @@ export const MdcatDashboardPortal: React.FC<MdcatDashboardPortalProps> = React.m
                   </div>
                 </div>
 
-                <div className="pt-4 flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      setSelectedSubjectId(subject.id);
-                      setActiveChapterForSubtopics(null);
-                    }}
-                    className="flex-1 bg-slate-100  hover:bg-slate-200  border border-slate-200  text-slate-800  font-bold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                  >
-                    <span>View Chapters ({subject.chapters.length})</span>
-                    <ChevronRight className="w-3.5 h-3.5 text-amber-500 " />
-                  </button>
-
+                <div className="pt-4">
                   <button
                     onClick={() => handleOpenSubjectTestModal(subject)}
-                    className="bg-amber-500/15  hover:bg-amber-500/25 text-amber-700  border border-amber-500/40 font-extrabold py-2.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1 transition-all active:scale-95 cursor-pointer"
-                    title={`Quick Practice ${subject.name}`}
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-xs"
+                    title={`Launch Full Subject Mock Test for ${subject.name}`}
                   >
-                    <Play className="w-3.5 h-3.5 fill-amber-600 " />
-                    <span>Practice</span>
+                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Full Subject Mock Test</span>
                   </button>
                 </div>
               </div>
@@ -397,250 +384,6 @@ export const MdcatDashboardPortal: React.FC<MdcatDashboardPortalProps> = React.m
             </div>
           </div>
         </div>
-      ) : activeSubject && activeChapterForSubtopics ? (
-        /* LEVEL 2: Subtopics Selection View for Selected Chapter */
-        <div className="space-y-5 animate-fade-in">
-          {/* Level 2 Navigation Header */}
-          <div className="bg-[#141417] border border-slate-800 rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => {
-                  setActiveChapterForSubtopics(null);
-                  setSelectedSubtopic(null);
-                }}
-                className="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all active:scale-95 cursor-pointer shrink-0"
-                title="Back to Subject Chapter List"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`text-[11px] font-black px-2.5 py-0.5 rounded-full border ${activeSubject.badgeColor}`}>
-                    {activeSubject.name}
-                  </span>
-                  <span className="text-slate-500 text-xs">•</span>
-                  <span className="text-xs font-bold text-amber-400">
-                    Chapter {activeSubject.chapters.findIndex((c) => c.id === activeChapterForSubtopics.id) + 1}
-                  </span>
-                  {activeChapterForSubtopics.isHighYield && (
-                    <span className="bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] font-black uppercase px-2 py-0.5 rounded-md flex items-center gap-1">
-                      <Flame className="w-3 h-3 text-rose-400 fill-rose-400" />
-                      High Yield
-                    </span>
-                  )}
-                </div>
-                <h2 className="font-['Space_Grotesk'] font-extrabold text-xl text-white mt-1">
-                  {activeChapterForSubtopics.name}
-                </h2>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Select a specific subtopic below for targeted practice or launch practice for the entire chapter.
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => handleOpenChapterTestModal(activeChapterForSubtopics)}
-              className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-md shrink-0"
-            >
-              <Play className="w-3.5 h-3.5 fill-black" />
-              <span>Practice Full Chapter</span>
-            </button>
-          </div>
-
-          {/* Practice Full Chapter Hero Banner */}
-          <div className="bg-gradient-to-r from-[#18181F] via-[#15151B] to-[#121217] border border-amber-500/30 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-md">
-            <div className="flex items-center gap-3">
-              <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-400 shrink-0">
-                <Target className="w-6 h-6 text-amber-400" />
-              </div>
-              <div>
-                <div className="text-xs font-extrabold text-amber-400 uppercase tracking-wider flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" /> Full Chapter Assessment
-                </div>
-                <h3 className="font-['Space_Grotesk'] font-bold text-base text-white mt-0.5">
-                  Practice All Subtopics Combined
-                </h3>
-                <p className="text-xs text-slate-400 mt-0.5">
-                  Generates questions covering all subtopics of "{activeChapterForSubtopics.name}" combined.
-                </p>
-              </div>
-            </div>
-
-            <button
-              onClick={() => handleOpenChapterTestModal(activeChapterForSubtopics)}
-              className="w-full sm:w-auto bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 font-extrabold px-5 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shrink-0"
-            >
-              <Play className="w-4 h-4 fill-amber-300" />
-              <span>Practice Full Chapter</span>
-            </button>
-          </div>
-
-          {/* Subtopics Section Grid */}
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="font-['Space_Grotesk'] font-extrabold text-base text-white flex items-center gap-2">
-                <ListFilter className="w-4 h-4 text-amber-400" />
-                Select Subtopic ({parseSubtopics(activeChapterForSubtopics.subtopics).length})
-              </h3>
-              <span className="text-[11px] text-slate-400 font-medium">
-                Tap any topic to launch AI-scoped questions
-              </span>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {parseSubtopics(activeChapterForSubtopics.subtopics).map((subtopicItem, subIdx) => (
-                <div
-                  key={subIdx}
-                  className="bg-[#141417] border border-slate-800 hover:border-amber-500/40 rounded-2xl p-4 transition-all duration-200 flex flex-col justify-between space-y-3 group"
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-md">
-                        Topic {String(subIdx + 1).padStart(2, '0')}
-                      </span>
-                      <span className="text-[10px] text-slate-500 font-medium">
-                        PMDC {activeSubject.name}
-                      </span>
-                    </div>
-
-                    <h4 className="font-['Space_Grotesk'] font-bold text-sm text-white group-hover:text-amber-300 transition-colors pt-1">
-                      {subtopicItem}
-                    </h4>
-                  </div>
-
-                  <div className="pt-2 flex items-center justify-between border-t border-slate-800/60">
-                    <span className="text-[11px] text-slate-400 font-medium">
-                      Subtopic Granularity
-                    </span>
-                    <button
-                      onClick={() => handleOpenSubtopicTestModal(activeChapterForSubtopics, subtopicItem)}
-                      className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold text-xs px-3.5 py-1.5 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shadow-sm"
-                    >
-                      <Play className="w-3 h-3 fill-black" />
-                      <span>Practice Topic</span>
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      ) : (
-        /* LEVEL 1: Chapter List View for Selected Subject */
-        activeSubject && (
-          <div className="space-y-5 animate-fade-in">
-            {/* Subject Header */}
-            <div className="bg-[#141417] border border-slate-800 rounded-3xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    setSelectedSubjectId(null);
-                    setActiveChapterForSubtopics(null);
-                  }}
-                  className="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white transition-all active:scale-95 cursor-pointer"
-                  title="Back to Subject Grid"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="font-['Space_Grotesk'] font-extrabold text-xl text-white">
-                      {activeSubject.name} Syllabus
-                    </h2>
-                    <span className={`text-xs font-black px-2.5 py-0.5 rounded-full border ${activeSubject.badgeColor}`}>
-                      {activeSubject.mcqCount} MCQs ({activeSubject.weightagePercent}%)
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-400 mt-0.5">
-                    {activeSubject.chapters.length} PMDC syllabus chapters available. Tap any chapter to view subtopics or practice.
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => handleOpenSubjectTestModal(activeSubject)}
-                className="bg-amber-500 hover:bg-amber-400 text-black font-extrabold py-2.5 px-4 rounded-xl text-xs flex items-center justify-center gap-2 transition-all active:scale-95 cursor-pointer shadow-md shrink-0"
-              >
-                <Play className="w-3.5 h-3.5 fill-black" />
-                <span>Practice All {activeSubject.name} Chapters</span>
-              </button>
-            </div>
-
-            {/* Chapter Items List */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {activeSubject.chapters.map((chapter, idx) => {
-                const subtopicList = parseSubtopics(chapter.subtopics);
-                return (
-                  <div
-                    key={chapter.id}
-                    className="bg-[#141417] border border-slate-800/80 hover:border-amber-500/40 rounded-2xl p-4 transition-all duration-200 flex flex-col justify-between space-y-3 group"
-                  >
-                    <div
-                      className="space-y-2.5 cursor-pointer"
-                      onClick={() => setActiveChapterForSubtopics(chapter)}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="w-7 h-7 rounded-lg bg-slate-900 border border-slate-800 text-amber-400 font-bold text-xs flex items-center justify-center shrink-0">
-                            {String(idx + 1).padStart(2, '0')}
-                          </span>
-                          <h3 className="font-['Space_Grotesk'] font-bold text-sm text-slate-100 group-hover:text-amber-300 transition-colors">
-                            {chapter.name}
-                          </h3>
-                        </div>
-
-                        {chapter.isHighYield && (
-                          <span className="bg-rose-500/20 text-rose-400 border border-rose-500/30 text-[10px] font-black uppercase px-2 py-0.5 rounded-md flex items-center gap-1 shrink-0">
-                            <Flame className="w-3 h-3 text-rose-400 fill-rose-400" />
-                            High Yield
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Subtopic Preview Pills */}
-                      <div className="pl-9 flex flex-wrap gap-1.5">
-                        {subtopicList.slice(0, 3).map((st, i) => (
-                          <span
-                            key={i}
-                            className="bg-slate-900/80 text-slate-300 border border-slate-800 text-[11px] px-2 py-0.5 rounded-md"
-                          >
-                            {st}
-                          </span>
-                        ))}
-                        {subtopicList.length > 3 && (
-                          <span className="text-amber-400 font-bold text-[11px] bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/20">
-                            +{subtopicList.length - 3} more
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="pt-2 pl-9 flex items-center justify-between border-t border-slate-800/50 gap-2">
-                      <button
-                        onClick={() => setActiveChapterForSubtopics(chapter)}
-                        className="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-amber-300 font-bold text-xs px-3 py-1.5 rounded-xl flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
-                      >
-                        <ListFilter className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Explore Subtopics ({subtopicList.length})</span>
-                      </button>
-
-                      <button
-                        onClick={() => handleOpenChapterTestModal(chapter)}
-                        className="bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-extrabold text-xs px-3 py-1.5 rounded-xl flex items-center gap-1 transition-all active:scale-95 cursor-pointer"
-                        title="Practice entire chapter"
-                      >
-                        <Play className="w-3 h-3 fill-amber-300" />
-                        <span>Practice Chapter</span>
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )
-      )}
-
       {/* Test Config Launcher Modal */}
       <AnimatePresence>
         {showConfigModal && (
