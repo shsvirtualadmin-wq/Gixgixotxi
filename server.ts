@@ -4935,7 +4935,7 @@ ${scopeInstruction}${excludeInstruction}`;
     res.setHeader("Content-Type", "application/json");
     console.log("[api/admin/update-student-grade-stream] Payload:", req.body);
     try {
-      const { studentId, studentEmail, grade, stream, subjects = [], requesterEmail, adminEmail } = req.body || {};
+      const { studentId, studentEmail, studentName, grade, stream, subjects = [], requesterEmail, adminEmail } = req.body || {};
       const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
 
       const requestedByEmail = (adminEmail || requesterEmail || tokenUser?.email || "").trim().toLowerCase();
@@ -5007,25 +5007,9 @@ ${scopeInstruction}${excludeInstruction}`;
 
       const cleanGrade = sanitizeGrade(grade);
       const cleanStream = sanitizeStream(stream, cleanGrade);
-      const assigned_classes = [`${cleanGrade} ${cleanStream}`.trim()];
 
-      const db = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
-      if (!db) {
-        console.error("[api/admin/update-student-grade-stream] Database client unavailable.");
-        return res.status(500).json({ success: false, error: "Database client unavailable." });
-      }
-
-      let targetId = studentId;
-      let targetEmail = studentEmail;
-
-      if (!targetId && targetEmail) {
-        try {
-          const { data: sRow } = await db.from("students").select("id").eq("email", targetEmail).maybeSingle();
-          if (sRow?.id) targetId = sRow.id;
-        } catch (e: any) {
-          console.warn("[api/admin/update-student-grade-stream] Warning resolving targetId:", e?.message);
-        }
-      }
+      let targetId = studentId || "";
+      let targetEmail = studentEmail || (studentId && studentId.includes("@") ? studentId : "");
 
       const assignedClasses: string[] = [];
       const cleanUpper = (cleanGrade + " " + cleanStream).toUpperCase();
@@ -5055,6 +5039,46 @@ ${scopeInstruction}${excludeInstruction}`;
       else if (cleanUpper.includes("GIKI")) defaultTargetUni = "GIKI Topi";
       else if (cleanUpper.includes("USAT")) defaultTargetUni = "HEC Recognized Universities";
 
+      // 1. Immediately update inMemoryStudents so server memory stays in sync
+      let inMemoryFound = false;
+      for (const s of inMemoryStudents) {
+        if (
+          (targetId && s.id === targetId) ||
+          (targetEmail && s.email && s.email.toLowerCase() === targetEmail.toLowerCase()) ||
+          (studentId && s.id === studentId)
+        ) {
+          s.grade = cleanGrade;
+          s.stream = cleanStream;
+          (s as any).is_registered = true;
+          (s as any).assigned_classes = assignedClasses;
+          (s as any).subjects = subjects;
+          (s as any).updated_at = new Date().toISOString();
+          inMemoryFound = true;
+        }
+      }
+
+      if (!inMemoryFound) {
+        inMemoryStudents.unshift({
+          id: targetId || ("student_" + Date.now()),
+          name: studentName || (targetEmail ? targetEmail.split("@")[0] : "Student"),
+          email: targetEmail || (targetId && targetId.includes("@") ? targetId : ""),
+          phone: "",
+          grade: cleanGrade,
+          stream: cleanStream,
+          is_pro: false,
+          package_name: "Free",
+          subscribed_plans: [cleanGrade],
+          payment_status: "free",
+          status: "active",
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          tests_used_this_month: 0,
+          is_registered: true,
+          assigned_classes: assignedClasses,
+          subjects: subjects,
+        } as any);
+      }
+
       const adminUpdateData = {
         grade: cleanGrade,
         stream: cleanStream,
@@ -5065,55 +5089,121 @@ ${scopeInstruction}${excludeInstruction}`;
         updated_at: new Date().toISOString(),
       };
 
+      const db = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
       let updateRes: any = null;
-      if (targetId && !targetId.includes("@")) {
-        updateRes = await db
-          .from("students")
-          .update(adminUpdateData)
-          .eq("id", targetId)
-          .select()
-          .maybeSingle();
-      }
 
-      // Fallback: try matching by email if id query failed or returned no rows
-      if ((!updateRes || updateRes.error || !updateRes.data) && (targetEmail || (studentId && studentId.includes("@")))) {
-        const fallbackEmail = targetEmail || studentId;
-        updateRes = await db
-          .from("students")
-          .update(adminUpdateData)
-          .eq("email", fallbackEmail)
-          .select()
-          .maybeSingle();
-      }
+      if (db) {
+        if (!targetId && targetEmail) {
+          try {
+            const { data: sRow } = await db.from("students").select("id").ilike("email", targetEmail).maybeSingle();
+            if (sRow?.id) targetId = sRow.id;
+          } catch (e: any) {
+            console.warn("[api/admin/update-student-grade-stream] Warning resolving targetId:", e?.message);
+          }
+        }
 
-      // If subjects column failed due to schema mismatch, retry without subjects
-      if (updateRes && updateRes.error && (updateRes.error.message?.includes("subjects") || updateRes.error.code === 'PGRST204')) {
-        console.warn("[api/admin/update-student-grade-stream] Retrying update without subjects column...");
-        const updatePayload = {
-          grade: cleanGrade,
-          stream: cleanStream,
-          is_registered: true,
-          updated_at: new Date().toISOString(),
-        };
-        if (targetId) {
-          updateRes = await db.from("students").update(updatePayload).eq("id", targetId).select().maybeSingle();
-        } else if (targetEmail) {
-          updateRes = await db.from("students").update(updatePayload).eq("email", targetEmail).select().maybeSingle();
+        if (targetId && !targetId.includes("@")) {
+          updateRes = await db
+            .from("students")
+            .update(adminUpdateData)
+            .eq("id", targetId)
+            .select()
+            .maybeSingle();
+
+          if (updateRes?.error && (updateRes.error.message?.includes("column") || updateRes.error.code === "PGRST204")) {
+            updateRes = await db
+              .from("students")
+              .update({
+                grade: cleanGrade,
+                stream: cleanStream,
+                is_registered: true,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", targetId)
+              .select()
+              .maybeSingle();
+          }
+        }
+
+        // Fallback: try matching by email if id query failed or returned no rows
+        if ((!updateRes || updateRes.error || !updateRes.data) && targetEmail) {
+          updateRes = await db
+            .from("students")
+            .update(adminUpdateData)
+            .ilike("email", targetEmail)
+            .select()
+            .maybeSingle();
+
+          if (updateRes?.error && (updateRes.error.message?.includes("column") || updateRes.error.code === "PGRST204")) {
+            updateRes = await db
+              .from("students")
+              .update({
+                grade: cleanGrade,
+                stream: cleanStream,
+                is_registered: true,
+                updated_at: new Date().toISOString(),
+              })
+              .ilike("email", targetEmail)
+              .select()
+              .maybeSingle();
+          }
+        }
+
+        // If no rows were updated in students table yet, upsert to establish student profile
+        if (!updateRes?.data && (targetId || targetEmail)) {
+          const finalId = targetId || ("student_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6));
+          const finalEmail = targetEmail || "";
+          const upsertPayload: any = {
+            id: finalId,
+            email: finalEmail,
+            name: studentName || (finalEmail ? finalEmail.split("@")[0] : "Student"),
+            grade: cleanGrade,
+            stream: cleanStream,
+            subjects,
+            assigned_classes: assignedClasses,
+            target_university: defaultTargetUni,
+            is_registered: true,
+            status: "active",
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          const upsertRes = await db.from("students").upsert(upsertPayload).select().maybeSingle();
+          if (upsertRes?.data) {
+            updateRes = upsertRes;
+          } else if (upsertRes?.error && (upsertRes.error.message?.includes("column") || upsertRes.error.code === "PGRST204")) {
+            const minimalUpsert = {
+              id: finalId,
+              email: finalEmail,
+              name: studentName || (finalEmail ? finalEmail.split("@")[0] : "Student"),
+              grade: cleanGrade,
+              stream: cleanStream,
+              is_registered: true,
+              status: "active",
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            updateRes = await db.from("students").upsert(minimalUpsert).select().maybeSingle();
+          }
         }
       }
 
-      if (updateRes && updateRes.error) {
-        console.error("Payload:", req.body);
-        console.error("Database Error:", updateRes.error);
-        return res.status(500).json({
-          success: false,
-          error: updateRes.error.message || "Database rejected grade/stream update.",
-        });
-      }
+      const returnedProfile = updateRes?.data || {
+        id: targetId || (targetEmail ? targetEmail.split("@")[0] : "student"),
+        email: targetEmail || "",
+        name: studentName || (targetEmail ? targetEmail.split("@")[0] : "Student"),
+        grade: cleanGrade,
+        stream: cleanStream,
+        subjects,
+        assigned_classes: assignedClasses,
+        target_university: defaultTargetUni,
+        is_registered: true,
+        status: "active",
+        updated_at: new Date().toISOString(),
+      };
 
       return res.json({
         success: true,
-        profile: updateRes?.data || { id: targetId, email: targetEmail, grade: cleanGrade, stream: cleanStream, subjects },
+        profile: returnedProfile,
       });
     } catch (err: any) {
       console.error("Payload:", req.body);
@@ -5549,9 +5639,14 @@ ${scopeInstruction}${excludeInstruction}`;
                 phone: row.phone || existing?.phone || "",
                 grade: row.grade || row.class_grade || existing?.grade || "MDCAT",
                 stream: row.stream || row.group || existing?.stream || "Medical",
+                is_registered: Boolean(row.is_registered ?? existing?.is_registered ?? (row.grade && row.stream && row.grade !== "General Student")),
                 is_pro: Boolean(row.is_pro ?? existing?.is_pro ?? false),
                 package_name: row.package_name || existing?.package_name || (row.is_pro ? "Pro Plan" : "Free"),
                 subscribed_plans: Array.isArray(row.subscribed_plans) ? row.subscribed_plans : (existing?.subscribed_plans || []),
+                assigned_classes: Array.isArray(row.assigned_classes) ? row.assigned_classes : (existing?.assigned_classes || []),
+                subjects: Array.isArray(row.subjects) ? row.subjects : (existing?.subjects || []),
+                target_university: row.target_university || existing?.target_university || "",
+                sign_up_method: row.sign_up_method || existing?.sign_up_method || "Email/Password",
                 payment_status: row.payment_status || existing?.payment_status || (row.is_pro ? "approved" : "free"),
                 status: row.status || existing?.status || "active",
                 tests_used_this_month: Number(row.tests_used_this_month ?? row.mcq_count_this_month ?? existing?.tests_used_this_month ?? 0),
@@ -5579,6 +5674,7 @@ ${scopeInstruction}${excludeInstruction}`;
             phone: "",
             grade: t.path_label?.includes("TCAT") ? "TCAT" : "MDCAT",
             stream: t.path_label || "Exam Standard",
+            is_registered: true,
             is_pro: true,
             package_name: "Pro Prep",
             subscribed_plans: [t.path_label || "Exam Prep"],

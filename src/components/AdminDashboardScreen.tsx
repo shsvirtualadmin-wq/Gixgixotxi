@@ -1113,20 +1113,30 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
         editStudentGrade,
         editStudentStream,
         defaultSubjects,
-        currentUser?.email || 'shsvirtualadmin@gmail.com'
+        currentUser?.email || 'shsvirtualadmin@gmail.com',
+        selectedStudent.email,
+        selectedStudent.name
       );
       if (res.success) {
-        const updatedStudentObj: StudentProfile = res.profile || {
-          ...selectedStudent,
+        const updatedStudentObj: StudentProfile = {
+          ...(res.profile || selectedStudent),
           grade: editStudentGrade,
           stream: editStudentStream,
           subjects: defaultSubjects,
           is_registered: true,
+          assigned_classes: [`${editStudentGrade} ${editStudentStream}`.trim()],
         };
         setSelectedStudent(updatedStudentObj);
-        setStudents((prev) => prev.map((s) => s.id === selectedStudent.id ? updatedStudentObj : s));
+        setStudents((prev) =>
+          prev.map((s) =>
+            s.id === selectedStudent.id ||
+            (selectedStudent.email && s.email && s.email.toLowerCase() === selectedStudent.email.toLowerCase())
+              ? updatedStudentObj
+              : s
+          )
+        );
         setAdminOverrideToast('✅ Grade & Stream lock updated successfully!');
-        loadData();
+        await loadData();
       } else {
         setAdminOverrideToast(`⚠️ Failed to save changes: ${res.message || 'Database update failed.'}`);
       }
@@ -1831,10 +1841,45 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                           );
                         })()}
 
-                        <span className="text-[10px] font-bold bg-blue-500/10 text-[#007AFF]  border border-blue-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1 max-w-full truncate">
-                          <GraduationCap className="w-3 h-3 shrink-0" />
-                          <span className="truncate">{student.grade || 'Unregistered'}</span>
-                        </span>
+                        {/* Class / Academic Stream Track Badge */}
+                        {student.grade && student.grade !== 'General Student' && student.grade !== 'Unregistered' ? (
+                          <span
+                            className="text-[10px] font-bold bg-blue-500/10 text-[#007AFF] border border-blue-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1 max-w-full truncate"
+                            title={`${student.grade}${student.stream ? ` • ${student.stream}` : ''}`}
+                          >
+                            <GraduationCap className="w-3 h-3 shrink-0 text-[#007AFF]" />
+                            <span className="truncate">
+                              {student.grade}{student.stream ? ` • ${student.stream}` : ''}
+                            </span>
+                          </span>
+                        ) : (
+                          <span
+                            className="text-[10px] font-medium bg-slate-500/10 text-slate-500 border border-slate-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1 max-w-full truncate"
+                            title="No class track currently assigned"
+                          >
+                            <GraduationCap className="w-3 h-3 shrink-0 text-slate-400" />
+                            <span className="truncate">No Track Assigned</span>
+                          </span>
+                        )}
+
+                        {/* Registration Status Badge */}
+                        {Boolean(student.is_registered || (student.grade && student.grade !== 'General Student' && student.stream)) ? (
+                          <span
+                            className="text-[10px] font-extrabold bg-emerald-500/10 text-emerald-800 border border-emerald-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1 shrink-0"
+                            title="Student is registered with locked class track"
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600 shrink-0" />
+                            <span>Registered</span>
+                          </span>
+                        ) : (
+                          <span
+                            className="text-[10px] font-bold bg-amber-500/10 text-amber-800 border border-amber-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1 shrink-0"
+                            title="Student has not completed grade/stream onboarding registration yet"
+                          >
+                            <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span>Registration Pending</span>
+                          </span>
+                        )}
 
                         <span className="text-[10px] font-bold bg-purple-500/10 text-purple-700  border border-purple-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1 max-w-full truncate">
                           <Key className="w-3 h-3 shrink-0" />
@@ -2101,7 +2146,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                 <option value="">Select Student to View Breakdown...</option>
                 {students.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name} ({s.grade || 'Unregistered'})
+                    {s.name} ({s.grade && s.grade !== 'General Student' ? s.grade : 'No Track Assigned'})
                   </option>
                 ))}
               </select>
@@ -2146,7 +2191,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                     <div>
                       <h3 className="text-lg font-black">{selectedStudentForProgress.name}</h3>
                       <p className="text-xs text-blue-100 font-medium">
-                        {selectedStudentForProgress.email} • {selectedStudentForProgress.grade || 'Unregistered'} ({selectedStudentForProgress.stream || 'No Stream'})
+                        {selectedStudentForProgress.email} • {selectedStudentForProgress.grade && selectedStudentForProgress.grade !== 'General Student' ? selectedStudentForProgress.grade : 'No Track'} ({selectedStudentForProgress.stream || 'No Stream'})
                       </p>
                     </div>
 
@@ -2940,8 +2985,26 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                       {selectedStudent.status || 'Active'}
                     </span>
                   </h3>
-                  <p className="text-xs text-slate-500  font-medium font-mono">
-                    {selectedStudent.email} {selectedStudent.phone ? `• ${selectedStudent.phone}` : ''}
+                  <p className="text-xs text-slate-500 font-medium font-mono flex flex-wrap items-center gap-2 pt-0.5">
+                    <span>{selectedStudent.email} {selectedStudent.phone ? `• ${selectedStudent.phone}` : ''}</span>
+                    {selectedStudent.grade && selectedStudent.grade !== 'General Student' ? (
+                      <span className="text-[10px] font-bold text-[#007AFF] bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">
+                        {selectedStudent.grade}{selectedStudent.stream ? ` • ${selectedStudent.stream}` : ''}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-medium text-slate-400 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">
+                        No Track Assigned
+                      </span>
+                    )}
+                    {Boolean(selectedStudent.is_registered || (selectedStudent.grade && selectedStudent.grade !== 'General Student' && selectedStudent.stream)) ? (
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        Registered
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full">
+                        Registration Pending
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>

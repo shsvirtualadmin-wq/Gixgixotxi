@@ -2654,7 +2654,9 @@ export async function updateStudentGradeAndStreamInSupabase(
   grade: string,
   stream: string,
   subjects: string[] = [],
-  requesterEmail?: string
+  requesterEmail?: string,
+  studentEmail?: string,
+  studentName?: string
 ): Promise<{ success: boolean; profile?: StudentProfile; message?: string }> {
   const isAdmin = isAdminEmail(requesterEmail);
 
@@ -2665,11 +2667,15 @@ export async function updateStudentGradeAndStreamInSupabase(
     };
   }
 
+  const effectiveEmail = studentEmail || (studentId && studentId.includes('@') ? studentId : undefined);
+
   try {
-    // Clear local & memory cache for student
+    // Clear local & memory cache for student by both ID and Email
     clearProfileCache(studentId);
+    if (effectiveEmail) clearProfileCache(effectiveEmail);
     try {
       localStorage.removeItem(`boardly_profile_${studentId}`);
+      if (effectiveEmail) localStorage.removeItem(`boardly_profile_${effectiveEmail}`);
       localStorage.removeItem('boardly_cached_profile');
     } catch {}
 
@@ -2680,7 +2686,8 @@ export async function updateStudentGradeAndStreamInSupabase(
         requesterEmail,
         adminEmail: requesterEmail,
         studentId,
-        studentEmail: studentId.includes('@') ? studentId : undefined,
+        studentEmail: effectiveEmail,
+        studentName,
         grade,
         stream,
         subjects,
@@ -2691,6 +2698,7 @@ export async function updateStudentGradeAndStreamInSupabase(
     if (resp.ok && resData && resData.success && resData.profile) {
       const updatedProfile = normalizeStudentProfileFromRow(resData.profile, studentId);
       invalidateStudentProfileCache(studentId, updatedProfile);
+      if (effectiveEmail) invalidateStudentProfileCache(effectiveEmail, updatedProfile);
       return { success: true, profile: updatedProfile };
     }
 
@@ -2710,7 +2718,7 @@ export async function updateStudentGradeAndStreamInSupabase(
         .select()
         .maybeSingle();
 
-      if (directRes.error) {
+      if (directRes.error && (directRes.error.message?.includes('subjects') || directRes.error.code === 'PGRST204')) {
         directRes = await supabase
           .from('students')
           .update({
@@ -2724,9 +2732,40 @@ export async function updateStudentGradeAndStreamInSupabase(
           .maybeSingle();
       }
 
+      // If id matching yielded no row but we have an email, try email matching
+      if ((!directRes?.data || directRes?.error) && effectiveEmail && fieldToMatch !== 'email') {
+        directRes = await supabase
+          .from('students')
+          .update({
+            grade,
+            stream,
+            subjects,
+            is_registered: true,
+            updated_at: new Date().toISOString(),
+          })
+          .ilike('email', effectiveEmail)
+          .select()
+          .maybeSingle();
+
+        if (directRes.error && (directRes.error.message?.includes('subjects') || directRes.error.code === 'PGRST204')) {
+          directRes = await supabase
+            .from('students')
+            .update({
+              grade,
+              stream,
+              is_registered: true,
+              updated_at: new Date().toISOString(),
+            })
+            .ilike('email', effectiveEmail)
+            .select()
+            .maybeSingle();
+        }
+      }
+
       if (!directRes.error && directRes.data) {
         const updatedProfile = normalizeStudentProfileFromRow(directRes.data, studentId);
         invalidateStudentProfileCache(studentId, updatedProfile);
+        if (effectiveEmail) invalidateStudentProfileCache(effectiveEmail, updatedProfile);
         return { success: true, profile: updatedProfile };
       }
     }
