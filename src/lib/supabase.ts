@@ -1016,19 +1016,66 @@ export async function syncUserProfile(
         if (!existing.avatar_url && avatarUrl) {
           updates.avatar_url = avatarUrl;
         }
+        // Only trigger database update if actual student properties changed to avoid changing updated_at between refreshes
         if (Object.keys(updates).length > 0) {
           await supabase.from('students').update(updates).eq('id', existing.id || user.id);
         }
 
         let combinedRow = { ...existing, ...updates };
 
-        // Cross-check profiles table for subscription_tier = 'pro'
+        // Cross-check promo_redemptions table for active Pro grant
         try {
-          const { data: profData } = await supabase
-            .from('profiles')
-            .select('*')
-            .or(`id.eq.${existing.id || user.id}${user.email ? `,email.ilike.${user.email.trim()}` : ''}`)
-            .maybeSingle();
+          let redData: any = null;
+          const searchUid = existing.id || user.id;
+          if (searchUid && !searchUid.includes('@')) {
+            const { data: r1 } = await supabase
+              .from('promo_redemptions')
+              .select('*')
+              .eq('student_id', searchUid)
+              .maybeSingle();
+            if (r1) redData = r1;
+          }
+          if (!redData && user.email) {
+            const { data: r2 } = await supabase
+              .from('promo_redemptions')
+              .select('*')
+              .ilike('student_email', user.email.trim().toLowerCase())
+              .maybeSingle();
+            if (r2) redData = r2;
+          }
+          if (redData && redData.granted_until && new Date(redData.granted_until).getTime() > Date.now()) {
+            combinedRow.is_pro = true;
+            combinedRow.plan_tier = 'pro';
+            combinedRow.access_expires = redData.granted_until;
+            combinedRow.payment_status = 'Verified & Paid';
+            combinedRow.plan_status = 'verified_pro';
+            combinedRow.requires_payment = false;
+            combinedRow.promo_code_redeemed = redData.promo_code || combinedRow.promo_code_redeemed;
+          }
+        } catch (redErr) {
+          console.warn('[syncUserProfile] promo_redemptions cross-check note:', redErr);
+        }
+
+        // Cross-check profiles table safely for subscription_tier = 'pro'
+        try {
+          let profData: any = null;
+          const searchUid = existing.id || user.id;
+          if (searchUid && !searchUid.includes('@')) {
+            const { data: p1 } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', searchUid)
+              .maybeSingle();
+            if (p1) profData = p1;
+          }
+          if (!profData && user.email) {
+            const { data: p2 } = await supabase
+              .from('profiles')
+              .select('*')
+              .ilike('email', user.email.trim().toLowerCase())
+              .maybeSingle();
+            if (p2) profData = p2;
+          }
 
           if (profData && (profData.subscription_tier === 'pro' || profData.is_pro)) {
             combinedRow.is_pro = true;
@@ -1043,37 +1090,52 @@ export async function syncUserProfile(
 
         finalProfile = normalizeStudentProfileFromRow(combinedRow, user.id);
       } else {
-        // Insert new student record
-        const requiresPay = !isAdmin;
-        const newDefaultProfile: StudentProfile = {
-          ...defaultProfile,
-          requires_payment: requiresPay,
-          payment_status: isAdmin ? 'Verified & Paid' : 'Unpaid',
-          status: requiresPay ? 'pending admin approval' : 'active',
-        };
+        // Guard against transient query misses: If local storage already has a registered/pro profile,
+        // do NOT overwrite the database with an empty unpaid default.
+        let localExisting: StudentProfile | null = null;
+        try {
+          const cachedRaw = localStorage.getItem(`boardly_profile_${userId}`) || localStorage.getItem('boardly_cached_profile');
+          if (cachedRaw) localExisting = JSON.parse(cachedRaw);
+        } catch {}
 
-        const { data: inserted, error: insertErr } = await supabase
-          .from('students')
-          .upsert(sanitizeStudentForDb(newDefaultProfile))
-          .select()
-          .single();
-
-        if (insertErr) {
-          console.warn('Failed to insert student into Supabase:', insertErr.message);
-          finalProfile = newDefaultProfile;
+        if (localExisting && (localExisting.is_registered || localExisting.is_pro || localExisting.grade)) {
+          console.log(`[syncUserProfile] Student record missing on network query; retaining local profile for ${userId}`);
+          finalProfile = localExisting;
         } else {
-          finalProfile = normalizeStudentProfileFromRow(inserted || newDefaultProfile, user.id);
+          // Insert new student record for genuine brand new signups
+          const requiresPay = !isAdmin;
+          const newDefaultProfile: StudentProfile = {
+            ...defaultProfile,
+            requires_payment: requiresPay,
+            payment_status: isAdmin ? 'Verified & Paid' : 'Unpaid',
+            status: requiresPay ? 'pending admin approval' : 'active',
+          };
+
+          const { data: inserted, error: insertErr } = await supabase
+            .from('students')
+            .upsert(sanitizeStudentForDb(newDefaultProfile))
+            .select()
+            .single();
+
+          if (insertErr) {
+            console.warn('Failed to insert student into Supabase:', insertErr.message);
+            finalProfile = newDefaultProfile;
+          } else {
+            finalProfile = normalizeStudentProfileFromRow(inserted || newDefaultProfile, user.id);
+          }
         }
       }
 
-      // Check if local storage has an active Pro grant with valid non-expired date
+      // Pro Persistence Guard: Check dedicated Pro grant cache or local profile
       try {
-        const cachedRaw = localStorage.getItem(`boardly_profile_${userId}`);
+        const dedicatedGrant = localStorage.getItem(`boardly_active_pro_grant_${userId}`) ||
+          (user.email ? localStorage.getItem(`boardly_active_pro_grant_${user.email.toLowerCase().trim()}`) : null);
+        const cachedRaw = dedicatedGrant || localStorage.getItem(`boardly_profile_${userId}`);
         if (cachedRaw) {
           const cachedJson = JSON.parse(cachedRaw);
           if (cachedJson?.is_pro && cachedJson.access_expires && new Date(cachedJson.access_expires).getTime() > Date.now()) {
             if (!finalProfile.is_pro) {
-              console.log(`[syncUserProfile] Preserving active Pro grant from local profile for ${userId}`);
+              console.log(`[syncUserProfile] Preserving active Pro grant from local storage for ${userId}`);
               finalProfile = {
                 ...finalProfile,
                 is_pro: true,
@@ -1083,7 +1145,16 @@ export async function syncUserProfile(
                 payment_status: 'Verified & Paid',
                 plan_status: 'verified_pro',
                 requires_payment: false,
+                subscribed_plans: ['boardly_pro', 'pro'],
               };
+              // Heal remote Supabase students table in background if out of sync
+              supabase.from('students').update({
+                is_pro: true,
+                plan_tier: 'pro',
+                access_expires: cachedJson.access_expires,
+                payment_status: 'Verified & Paid',
+                plan_status: 'verified_pro',
+              }).eq('id', user.id).then(() => {}, () => {});
             }
           }
         }
@@ -2363,33 +2434,77 @@ export async function fetchStudentProfileFromSupabase(
           }
         }
 
+        // Cross-check promo_redemptions table to guarantee Pro status if redeemed
+        try {
+          let redRow: any = null;
+          if (userId && !userId.includes('@')) {
+            const { data: r1 } = await supabase
+              .from('promo_redemptions')
+              .select('*')
+              .eq('student_id', userId)
+              .maybeSingle();
+            if (r1) redRow = r1;
+          }
+          if (!redRow && (userEmail || dbRow?.email)) {
+            const searchEmail = (userEmail || dbRow?.email || '').trim().toLowerCase();
+            const { data: r2 } = await supabase
+              .from('promo_redemptions')
+              .select('*')
+              .ilike('student_email', searchEmail)
+              .maybeSingle();
+            if (r2) redRow = r2;
+          }
+
+          if (redRow && redRow.granted_until && new Date(redRow.granted_until).getTime() > Date.now()) {
+            if (!dbRow) {
+              dbRow = {
+                id: userId,
+                email: userEmail || redRow.student_email || '',
+                name: redRow.student_name || 'Student',
+                status: 'active',
+                is_registered: true,
+              };
+            }
+            dbRow.is_pro = true;
+            dbRow.plan_tier = 'pro';
+            dbRow.access_expires = redRow.granted_until;
+            dbRow.payment_status = 'Verified & Paid';
+            dbRow.plan_status = 'verified_pro';
+            dbRow.requires_payment = false;
+            dbRow.promo_code_redeemed = redRow.promo_code;
+          }
+        } catch (redCheckErr) {
+          console.warn('[fetchStudentProfileFromSupabase] promo_redemptions check note:', redCheckErr);
+        }
+
         // Cross-check profiles table to synchronize subscription_tier & Pro status
         try {
-          if (dbRow) {
-            const { data: profData } = await supabase
-              .from('profiles')
-              .select('*')
-              .or(`id.eq.${dbRow.id}${dbRow.email ? `,email.ilike.${dbRow.email}` : ''}`)
-              .maybeSingle();
-            if (profData && (profData.subscription_tier === 'pro' || profData.is_pro)) {
+          let profData: any = null;
+          const searchUid = dbRow?.id || (!userId.includes('@') ? userId : null);
+          const searchEmail = (userEmail || dbRow?.email || '').trim().toLowerCase();
+
+          if (searchUid) {
+            const { data: p1 } = await supabase.from('profiles').select('*').eq('id', searchUid).maybeSingle();
+            if (p1) profData = p1;
+          }
+          if (!profData && searchEmail) {
+            const { data: p2 } = await supabase.from('profiles').select('*').ilike('email', searchEmail).maybeSingle();
+            if (p2) profData = p2;
+          }
+
+          if (profData && (profData.subscription_tier === 'pro' || profData.is_pro)) {
+            if (dbRow) {
               dbRow.is_pro = true;
               dbRow.plan_tier = 'pro';
               dbRow.access_expires = profData.subscription_expires_at || dbRow.access_expires;
               if (profData.promo_code_redeemed) dbRow.promo_code_redeemed = profData.promo_code_redeemed;
-            }
-          } else {
-            const { data: profData } = await supabase
-              .from('profiles')
-              .select('*')
-              .or(`id.eq.${userId}${userEmail ? `,email.ilike.${userEmail}` : ''}`)
-              .maybeSingle();
-            if (profData) {
+            } else {
               dbRow = {
                 id: profData.id || userId,
                 email: profData.email || userEmail || '',
                 name: profData.name || profData.full_name || 'Student',
-                is_pro: profData.subscription_tier === 'pro' || Boolean(profData.is_pro),
-                plan_tier: profData.subscription_tier === 'pro' ? 'pro' : 'free',
+                is_pro: true,
+                plan_tier: 'pro',
                 access_expires: profData.subscription_expires_at,
                 promo_code_redeemed: profData.promo_code_redeemed,
                 status: 'active',
@@ -2401,7 +2516,41 @@ export async function fetchStudentProfileFromSupabase(
         }
 
         if (dbRow) {
-          const profile = normalizeStudentProfileFromRow(dbRow, userId);
+          let profile = normalizeStudentProfileFromRow(dbRow, userId);
+
+          // Pro Persistence Guard: Check if student has active non-expired Pro grant in local storage
+          try {
+            const dedicatedGrant = localStorage.getItem(`boardly_active_pro_grant_${userId}`) ||
+              (userEmail ? localStorage.getItem(`boardly_active_pro_grant_${userEmail.toLowerCase().trim()}`) : null);
+            const cachedRaw = dedicatedGrant || localStorage.getItem(`boardly_profile_${userId}`);
+            if (cachedRaw) {
+              const cachedJson = JSON.parse(cachedRaw);
+              if (cachedJson?.is_pro && cachedJson.access_expires && new Date(cachedJson.access_expires).getTime() > Date.now()) {
+                if (!profile.is_pro) {
+                  console.log(`[fetchStudentProfileFromSupabase] Preserving active Pro grant for ${userId}`);
+                  profile = {
+                    ...profile,
+                    is_pro: true,
+                    plan_tier: 'pro',
+                    access_expires: cachedJson.access_expires,
+                    package_name: cachedJson.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)',
+                    payment_status: 'Verified & Paid',
+                    plan_status: 'verified_pro',
+                    requires_payment: false,
+                    subscribed_plans: ['boardly_pro', 'pro'],
+                  };
+                  // Re-assert in remote Supabase students table in background
+                  supabase.from('students').update({
+                    is_pro: true,
+                    plan_tier: 'pro',
+                    access_expires: cachedJson.access_expires,
+                    payment_status: 'Verified & Paid',
+                    plan_status: 'verified_pro',
+                  }).eq('id', userId).then(() => {}, () => {});
+                }
+              }
+            }
+          } catch (guardErr) {}
 
           // Update memory & local caches
           profileMemoryCache.set(userId, { profile, timestamp: Date.now() });

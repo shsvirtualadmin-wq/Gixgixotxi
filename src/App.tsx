@@ -1270,6 +1270,8 @@ export function App() {
     isGenerating,
   ]);
 
+  const lastFocusSyncRef = useRef<number>(0);
+
   const refreshUserProfile = async (uid?: string, email?: string) => {
     const id = uid || currentUser?.id;
     const userEmail = email || currentUser?.email;
@@ -1281,6 +1283,24 @@ export function App() {
     if (profile) {
       setUserProfile((prev) => {
         if (!prev) return profile;
+        // Pro Persistence Guard: If student has an active Pro grant with future expiration,
+        // strictly prevent any background sync or transient remote fetch from demoting them to Free.
+        if (prev.is_pro && prev.access_expires && new Date(prev.access_expires).getTime() > Date.now()) {
+          if (!profile.is_pro) {
+            console.log('[refreshUserProfile] Preserving active Pro subscription status against stale remote read');
+            return {
+              ...profile,
+              is_pro: true,
+              plan_tier: 'pro',
+              access_expires: prev.access_expires,
+              package_name: prev.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)',
+              payment_status: 'Verified & Paid',
+              plan_status: 'verified_pro',
+              requires_payment: false,
+              subscribed_plans: prev.subscribed_plans?.length ? prev.subscribed_plans : ['boardly_pro', 'pro'],
+            };
+          }
+        }
         // Deep comparison prevents unnecessary state reference churn and component flicker
         if (JSON.stringify(prev) === JSON.stringify(profile)) {
           return prev;
@@ -1298,18 +1318,20 @@ export function App() {
     }
   }, [currentUser?.id, currentUser?.email]);
 
-  // Live profile re-sync on window focus / tab visibility change
+  // Throttled profile re-sync on window focus / tab visibility change (max once per 30s)
   useEffect(() => {
     const handleFocusSync = () => {
       if (currentUser?.id) {
-        refreshUserProfile(currentUser.id, currentUser.email);
+        const now = Date.now();
+        if (now - lastFocusSyncRef.current > 30000) {
+          lastFocusSyncRef.current = now;
+          refreshUserProfile(currentUser.id, currentUser.email);
+        }
       }
     };
     window.addEventListener('focus', handleFocusSync);
-    document.addEventListener('visibilitychange', handleFocusSync);
     return () => {
       window.removeEventListener('focus', handleFocusSync);
-      document.removeEventListener('visibilitychange', handleFocusSync);
     };
   }, [currentUser?.id, currentUser?.email]);
 

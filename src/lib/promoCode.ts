@@ -418,8 +418,24 @@ export async function claimPromoCode(
         if (!errById && Array.isArray(resById) && resById.length > 0) {
           studentWriteSuccess = true;
           updatedStudentRows = resById;
-        } else if (errById) {
-          studentWriteError = errById;
+        } else {
+          // Minimal fallback update
+          const { data: minRes, error: minErr } = await supabase
+            .from('students')
+            .update({
+              is_pro: true,
+              plan_tier: 'pro',
+              access_expires: grantedExpires,
+              payment_status: 'Verified & Paid',
+            })
+            .eq('id', studentId)
+            .select('id, email, is_pro, plan_tier, access_expires, plan_status');
+          if (!minErr && Array.isArray(minRes) && minRes.length > 0) {
+            studentWriteSuccess = true;
+            updatedStudentRows = minRes;
+          } else if (errById) {
+            studentWriteError = errById;
+          }
         }
       }
 
@@ -435,8 +451,24 @@ export async function claimPromoCode(
         if (!errByEmail && Array.isArray(resByEmail) && resByEmail.length > 0) {
           studentWriteSuccess = true;
           updatedStudentRows = resByEmail;
-        } else if (errByEmail && !studentWriteError) {
-          studentWriteError = errByEmail;
+        } else {
+          // Minimal fallback update
+          const { data: minResE, error: minErrE } = await supabase
+            .from('students')
+            .update({
+              is_pro: true,
+              plan_tier: 'pro',
+              access_expires: grantedExpires,
+              payment_status: 'Verified & Paid',
+            })
+            .ilike('email', normalizedEmail)
+            .select('id, email, is_pro, plan_tier, access_expires, plan_status');
+          if (!minErrE && Array.isArray(minResE) && minResE.length > 0) {
+            studentWriteSuccess = true;
+            updatedStudentRows = minResE;
+          } else if (errByEmail && !studentWriteError) {
+            studentWriteError = errByEmail;
+          }
         }
       }
 
@@ -579,6 +611,26 @@ export async function claimPromoCode(
       try {
         localStorage.setItem(`boardly_profile_${studentId}`, JSON.stringify(normalizedProfile));
         localStorage.setItem('boardly_cached_profile', JSON.stringify(normalizedProfile));
+        if (studentId) {
+          localStorage.setItem(`boardly_active_pro_grant_${studentId}`, JSON.stringify({
+            is_pro: true,
+            plan_tier: 'pro',
+            access_expires: grantedExpires,
+            package_name: normalizedProfile.package_name,
+            code: cleanCode,
+            redeemed_at: new Date().toISOString(),
+          }));
+        }
+        if (normalizedEmail) {
+          localStorage.setItem(`boardly_active_pro_grant_${normalizedEmail}`, JSON.stringify({
+            is_pro: true,
+            plan_tier: 'pro',
+            access_expires: grantedExpires,
+            package_name: normalizedProfile.package_name,
+            code: cleanCode,
+            redeemed_at: new Date().toISOString(),
+          }));
+        }
       } catch {}
 
       if (typeof window !== 'undefined') {
@@ -636,6 +688,26 @@ export async function claimPromoCode(
       try {
         localStorage.setItem(`boardly_profile_${studentId}`, JSON.stringify(normalizedProfile));
         localStorage.setItem('boardly_cached_profile', JSON.stringify(normalizedProfile));
+        localStorage.setItem(`boardly_active_pro_grant_${studentId}`, JSON.stringify({
+          is_pro: true,
+          plan_tier: 'pro',
+          access_expires: accessExpiresStr,
+          package_name: normalizedProfile.package_name,
+          code: cleanCode,
+          redeemed_at: new Date().toISOString(),
+        }));
+      } catch {}
+    }
+    if (normalizedEmail) {
+      try {
+        localStorage.setItem(`boardly_active_pro_grant_${normalizedEmail}`, JSON.stringify({
+          is_pro: true,
+          plan_tier: 'pro',
+          access_expires: accessExpiresStr,
+          package_name: normalizedProfile.package_name,
+          code: cleanCode,
+          redeemed_at: new Date().toISOString(),
+        }));
       } catch {}
     }
 

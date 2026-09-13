@@ -350,6 +350,21 @@ export const onRequestPost = async (context: PagesContext) => {
           if (emailErr) console.warn("[claim] update student by email note:", emailErr);
         }
 
+        // 8b-2. Minimal core fallback update
+        const coreUpdate = {
+          is_pro: true,
+          plan_tier: "pro",
+          access_expires: accessExpiresStr,
+          payment_status: "Verified & Paid",
+          plan_status: "verified_pro",
+        };
+        if (finalId && !finalId.includes("@")) {
+          await supabaseAdmin.from("students").update(coreUpdate).eq("id", finalId);
+        }
+        if (finalEmail) {
+          await supabaseAdmin.from("students").update(coreUpdate).ilike("email", finalEmail);
+        }
+
         // 8c. Upsert student record to guarantee row existence and Pro columns
         const studentCleanPayload = sanitizeStudentForPostgres({
           id: finalId,
