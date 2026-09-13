@@ -2331,6 +2331,22 @@ export async function fetchStudentProfileFromSupabase(
 
           return profile;
         } else {
+          // Check backend server profile endpoint before declaring student not found
+          try {
+            const sResp = await apiFetch(`/api/student-profile?id=${encodeURIComponent(userId)}&email=${encodeURIComponent(userEmail || '')}`);
+            const sData = await safeJsonResponse<{ profile?: any }>(sResp);
+            if (sData?.profile) {
+              const serverNormalized = normalizeStudentProfileFromRow(sData.profile, userId);
+              profileMemoryCache.set(userId, { profile: serverNormalized, timestamp: Date.now() });
+              try {
+                localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(serverNormalized));
+              } catch {}
+              return serverNormalized;
+            }
+          } catch (serverFetchErr) {
+            console.warn('[fetchStudentProfileFromSupabase] Server profile query fallback error:', serverFetchErr);
+          }
+
           // Check if we have a locally stored profile before declaring it null/wiped
           let localProf: StudentProfile | null = null;
           try {
@@ -2340,8 +2356,8 @@ export async function fetchStudentProfileFromSupabase(
             }
           } catch (e) {}
 
-          if (localProf && localProf.is_registered) {
-            console.log(`[Supabase Profile] Student ${userId} not found in DB table yet, but found registered profile in localStorage. Retaining local profile.`);
+          if (localProf && (localProf.is_registered || localProf.is_pro || localProf.plan_tier === 'pro')) {
+            console.log(`[Supabase Profile] Retaining local profile for student ${userId} (is_registered=${localProf.is_registered}, is_pro=${localProf.is_pro}).`);
             profileMemoryCache.set(userId, { profile: localProf, timestamp: Date.now() });
             return localProf;
           }
@@ -2359,6 +2375,20 @@ export async function fetchStudentProfileFromSupabase(
         console.warn('Failed to query Supabase directly for profile, falling back to local cache:', err);
       }
     }
+
+    // Secondary fallback: query server profile endpoint directly
+    try {
+      const sResp = await apiFetch(`/api/student-profile?id=${encodeURIComponent(userId)}&email=${encodeURIComponent(userEmail || '')}`);
+      const sData = await safeJsonResponse<{ profile?: any }>(sResp);
+      if (sData?.profile) {
+        const serverNormalized = normalizeStudentProfileFromRow(sData.profile, userId);
+        profileMemoryCache.set(userId, { profile: serverNormalized, timestamp: Date.now() });
+        try {
+          localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(serverNormalized));
+        } catch {}
+        return serverNormalized;
+      }
+    } catch {}
 
     // Offline or Supabase unavailable fallback
     try {

@@ -38,6 +38,7 @@ export interface PromoClaimResult {
   code?: string;
   label?: string;
   grantedUntil?: string;
+  expiresAt?: string | null;
   profile?: StudentProfile;
   error?: string;
   alreadyRedeemed?: boolean;
@@ -51,7 +52,11 @@ export interface PromoValidateResult {
   redemptionCount?: number;
   remainingRedemptions?: number | null;
   expiresAt?: string | null;
+  expiresDate?: string | null;
+  grantedUntil?: string;
   error?: string;
+  alreadyRedeemed?: boolean;
+  alreadyRedeemedByAccount?: boolean;
 }
 
 const STORAGE_KEY = 'boardly_pending_promo_code';
@@ -184,9 +189,16 @@ export function clearPendingPromoCode(): void {
 /**
  * Validate a promo code with the backend
  */
-export async function validatePromoCode(code: string): Promise<PromoValidateResult> {
+export async function validatePromoCode(
+  code: string,
+  studentId?: string,
+  studentEmail?: string
+): Promise<PromoValidateResult> {
   try {
-    const resp = await apiFetch(`/api/promo/validate?code=${encodeURIComponent(sanitizePromoCode(code))}`);
+    let url = `/api/promo/validate?code=${encodeURIComponent(sanitizePromoCode(code))}`;
+    if (studentId) url += `&studentId=${encodeURIComponent(studentId)}`;
+    if (studentEmail) url += `&studentEmail=${encodeURIComponent(studentEmail)}`;
+    const resp = await apiFetch(url);
     const data = await safeJsonResponse<PromoValidateResult>(resp);
     if (data) return data;
     return { valid: false, error: 'Could not validate promo code. Please try again.' };
@@ -226,6 +238,17 @@ export async function claimPromoCode(
     });
 
     const data = await safeJsonResponse<PromoClaimResult>(resp);
+    if (data && data.alreadyRedeemed) {
+      return {
+        success: false,
+        alreadyRedeemed: true,
+        code: cleanCode,
+        grantedUntil: data.grantedUntil || data.expiresAt,
+        message: data.message || data.error || 'Already activated on this account.',
+        error: data.error,
+      };
+    }
+
     if (data && data.success) {
       clearPendingPromoCode();
 

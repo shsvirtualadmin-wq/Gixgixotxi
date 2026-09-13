@@ -9089,6 +9089,66 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         return res.status(404).json({ valid: false, error: "Promotional code not found." });
       }
 
+      const studentId = String(req.query.studentId || "").trim();
+      const studentEmail = String(req.query.studentEmail || "").trim().toLowerCase();
+
+      // Check if THIS student account already redeemed this code or any promo link
+      let alreadyRedeemed = false;
+      let existingExpiry: string | null = null;
+
+      if (Array.isArray(link.redemptions)) {
+        for (const r of link.redemptions) {
+          if (
+            (studentId && r.student_id === studentId) ||
+            (studentEmail && r.student_email && r.student_email.trim().toLowerCase() === studentEmail)
+          ) {
+            alreadyRedeemed = true;
+            existingExpiry = r.granted_until || null;
+            break;
+          }
+        }
+      }
+
+      // Check supabase student record too if available
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
+      let currentStudent: any = null;
+      if (supabaseAdmin && (studentId || studentEmail)) {
+        try {
+          if (studentId && !studentId.includes("@")) {
+            const { data } = await supabaseAdmin.from("students").select("*").eq("id", studentId).maybeSingle();
+            if (data) currentStudent = data;
+          }
+          if (!currentStudent && studentEmail) {
+            const { data } = await supabaseAdmin.from("students").select("*").eq("email", studentEmail).maybeSingle();
+            if (data) currentStudent = data;
+          }
+        } catch (e) {}
+      }
+
+      if (!alreadyRedeemed && currentStudent) {
+        if (
+          currentStudent.promo_code_redeemed === code ||
+          (currentStudent.transaction_reference && currentStudent.transaction_reference === `PROMO:${code}`) ||
+          (currentStudent.is_pro && currentStudent.access_expires && hasStudentAlreadyRedeemedPromo(studentId, studentEmail, links, currentStudent))
+        ) {
+          alreadyRedeemed = true;
+          existingExpiry = currentStudent.access_expires || null;
+        }
+      }
+
+      if (alreadyRedeemed) {
+        return res.status(200).json({
+          valid: true,
+          alreadyRedeemed: true,
+          alreadyRedeemedByAccount: true,
+          code: link.code,
+          label: link.label,
+          expiresDate: existingExpiry,
+          grantedUntil: existingExpiry,
+          message: `Already activated on this account (expires ${existingExpiry ? new Date(existingExpiry).toLocaleDateString() : 'in 1 year'}).`,
+        });
+      }
+
       if (!link.is_active) {
         return res.status(400).json({ valid: false, error: "This promotional link has been paused." });
       }
@@ -9108,6 +9168,8 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
 
       return res.status(200).json({
         valid: true,
+        alreadyRedeemed: false,
+        alreadyRedeemedByAccount: false,
         code: link.code,
         label: link.label,
         maxRedemptions: link.max_redemptions,
@@ -9118,6 +9180,75 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     } catch (err: any) {
       console.error("Error validating promo code:", err);
       return res.status(500).json({ valid: false, error: "Server error validating promo code." });
+    }
+  });
+
+  // API Endpoint: Get Student Profile (with guaranteed Pro status if redeemed)
+  app.get("/api/student-profile", async (req: express.Request, res: express.Response) => {
+    try {
+      const id = String(req.query.id || "").trim();
+      const email = String(req.query.email || "").trim().toLowerCase();
+      if (!id && !email) {
+        return res.status(400).json({ error: "Student id or email required" });
+      }
+
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
+      let studentRecord: any = null;
+
+      if (supabaseAdmin) {
+        if (id && !id.includes("@")) {
+          const { data } = await supabaseAdmin.from("students").select("*").eq("id", id).maybeSingle();
+          if (data) studentRecord = data;
+        }
+        if (!studentRecord && email) {
+          const { data } = await supabaseAdmin.from("students").select("*").eq("email", email).maybeSingle();
+          if (data) studentRecord = data;
+        }
+      }
+
+      // Check promo links redemptions as secondary source of truth
+      const links = loadPromoLinks();
+      for (const link of links) {
+        if (Array.isArray(link.redemptions)) {
+          const redemption = link.redemptions.find(
+            (r) => (id && r.student_id === id) || (email && r.student_email?.toLowerCase() === email)
+          );
+          if (redemption && redemption.granted_until) {
+            const expTime = new Date(redemption.granted_until).getTime();
+            if (expTime > Date.now()) {
+              if (!studentRecord) {
+                studentRecord = {
+                  id: id || redemption.student_id,
+                  email: email || redemption.student_email,
+                  name: redemption.student_name || "Student",
+                  grade: "Class 11",
+                  stream: "Pre-Engineering",
+                };
+              }
+              studentRecord.is_pro = true;
+              studentRecord.plan_tier = "pro";
+              studentRecord.package_name = "⭐ Boardly 1-Year Pro (Promotional Pass)";
+              studentRecord.payment_status = "Verified & Paid";
+              studentRecord.plan_status = "verified_pro";
+              studentRecord.requires_payment = false;
+              studentRecord.access_expires = redemption.granted_until;
+              studentRecord.transaction_reference = `PROMO:${link.code}`;
+              studentRecord.promo_code_redeemed = link.code;
+              studentRecord.promo_redeemed_at = redemption.redeemed_at;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!studentRecord) {
+        return res.status(404).json({ error: "Student not found" });
+      }
+
+      return res.status(200).json({ profile: studentRecord });
+    } catch (err: any) {
+      console.error("Error in /api/student-profile:", err);
+      return res.status(500).json({ error: "Server error fetching student profile." });
     }
   });
 
@@ -9181,10 +9312,26 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       // STRICT SERVER-SIDE ANTI-EXPLOIT / ANTI-STACKING CHECK
       // Check if student already redeemed ANY promo link previously
       if (hasStudentAlreadyRedeemedPromo(studentId, studentEmail, links, currentStudent)) {
-        return res.status(400).json({
+        let existingExpiry = currentStudent?.access_expires;
+        for (const l of links) {
+          const r = l.redemptions?.find(
+            (red) =>
+              (studentId && red.student_id === studentId) ||
+              (studentEmail && red.student_email?.toLowerCase() === studentEmail.toLowerCase())
+          );
+          if (r?.granted_until) {
+            existingExpiry = r.granted_until;
+            break;
+          }
+        }
+        return res.status(200).json({
           success: false,
           alreadyRedeemed: true,
-          error: "This student account has already redeemed a 1-Year Free Pro promotional link. Promotional passes are limited to one per student account."
+          code: link.code,
+          label: link.label,
+          grantedUntil: existingExpiry,
+          expiresDate: existingExpiry,
+          error: `This student account has already redeemed a 1-Year Free Pro promotional link (expires ${existingExpiry ? new Date(existingExpiry).toLocaleDateString() : 'in 1 year'}). Promotional passes are limited to one per student account.`
         });
       }
 
@@ -9251,6 +9398,17 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
             await supabaseAdmin.from("students").update(planUpdateData).eq("id", studentFinalId);
           } catch (e2) {
             console.error("[Promo Redemption DB update fallback failed]:", e2);
+          }
+          if (studentFinalEmail) {
+            try {
+              await supabaseAdmin.from("students").update(planUpdateData).eq("email", studentFinalEmail);
+            } catch (e3) {}
+          }
+        } else {
+          if (studentFinalEmail) {
+            try {
+              await supabaseAdmin.from("students").update(planUpdateData).eq("email", studentFinalEmail);
+            } catch (e3) {}
           }
         }
       }

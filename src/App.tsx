@@ -76,13 +76,14 @@ const PaymentRequiredScreen = lazyWithRetry(() => import('./components/PaymentRe
 const PlanSelectionScreen = lazyWithRetry(() => import('./components/PlanSelectionScreen').then(m => ({ default: m.PlanSelectionScreen })), 'PlanSelection');
 const PricingPage = lazyWithRetry(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })), 'Pricing');
 import { StudentProfileView } from './components/StudentProfileView';
-import { PromoCelebrationModal } from './components/PromoCelebrationModal';
+import { PromoCelebrationModal, PromoModalMode } from './components/PromoCelebrationModal';
 import {
   extractPromoCodeFromUrl,
   storePendingPromoCode,
   getStoredPendingPromoCode,
   clearPendingPromoCode,
   claimPromoCode,
+  validatePromoCode,
 } from './lib/promoCode';
 
 import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess } from './lib/supabase';
@@ -622,53 +623,169 @@ export function App() {
 
   // 1-Year Free Pro Promotional Link Modal States
   const [promoModalOpen, setPromoModalOpen] = useState<boolean>(false);
+  const [promoModalMode, setPromoModalMode] = useState<PromoModalMode>('confirm');
+  const [promoIsActivating, setPromoIsActivating] = useState<boolean>(false);
   const [promoModalData, setPromoModalData] = useState<{
     trackLabel?: string;
     expiresDate?: string | null;
     code?: string;
     campaignLabel?: string;
+    studentEmail?: string;
+    errorMessage?: string;
   } | null>(null);
 
-  // Auto-claim 1-Year Free Pro Promo Link for logged-in students who open a claim link
+  const promoProcessedCodeRef = useRef<string | null>(null);
+
+  // Step 1: Detect promo code on page load / claim link, validate, and show Confirmation Prompt
   useEffect(() => {
     if (!currentUser) return;
     const promoCode = extractPromoCodeFromUrl() || getStoredPendingPromoCode();
     if (!promoCode) return;
 
-    let isMounted = true;
-    console.log(`[Promo Engine] Detecting promo code "${promoCode}" for active user ${currentUser.email}...`);
+    if (promoProcessedCodeRef.current === promoCode && promoModalOpen) return;
 
-    claimPromoCode(promoCode, currentUser.id, currentUser.email).then((result) => {
+    let isMounted = true;
+    console.log(`[Promo Engine] Checking promo code "${promoCode}" for student ${currentUser.email}...`);
+
+    validatePromoCode(promoCode, currentUser.id, currentUser.email).then((valResult) => {
       if (!isMounted) return;
-      if (result.success && result.profile) {
-        setUserProfile(result.profile);
-        localStorage.setItem('boardly_cached_profile', JSON.stringify(result.profile));
-        localStorage.setItem(`boardly_profile_${currentUser.id}`, JSON.stringify(result.profile));
+
+      const userAlreadyPro = Boolean(
+        userProfile?.is_pro ||
+        userProfile?.plan_tier === 'pro' ||
+        userProfile?.promo_code_redeemed === promoCode ||
+        userProfile?.transaction_reference === `PROMO:${promoCode}`
+      );
+
+      // Requirement 6: If the code has already been redeemed by this account, opening the link again
+      // should show something like "Already activated — expires <date>" instead of showing the unlock screen or activation prompt again.
+      if (valResult.alreadyRedeemedByAccount || valResult.alreadyRedeemed || (userAlreadyPro && valResult.valid === false && valResult.error?.includes('used'))) {
+        promoProcessedCodeRef.current = promoCode;
         clearPendingPromoCode();
-        setPromoModalData({
-          trackLabel: result.profile.grade || result.profile.stream || 'Boardly Pro Track',
-          expiresDate: result.grantedUntil,
-          code: result.code || promoCode,
-          campaignLabel: result.label,
-        });
-        setPromoModalOpen(true);
-        // Requirement 2: Take them straight to their own dashboard
-        setScreen('dashboard');
         if (window.location.pathname.startsWith('/claim') || window.location.search.includes('code=')) {
           window.history.replaceState(null, '', window.location.pathname === '/claim' ? '/' : window.location.pathname);
         }
-      } else if (result.alreadyRedeemed) {
-        clearPendingPromoCode();
-        console.log('[Promo Engine] Account already redeemed a 1-year promo pass.');
+
+        const existingExpiry = valResult.expiresDate || valResult.grantedUntil || userProfile?.access_expires;
+        setPromoModalMode('already_active');
+        setPromoModalData({
+          code: promoCode,
+          campaignLabel: valResult.label || '1-Year Free Pro Pass',
+          expiresDate: existingExpiry,
+          trackLabel: userProfile?.grade || userProfile?.stream || 'Boardly Pro Track',
+          studentEmail: currentUser.email || undefined,
+        });
+        setPromoModalOpen(true);
+        return;
       }
+
+      if (!valResult.valid) {
+        promoProcessedCodeRef.current = promoCode;
+        clearPendingPromoCode();
+        if (window.location.pathname.startsWith('/claim') || window.location.search.includes('code=')) {
+          window.history.replaceState(null, '', window.location.pathname === '/claim' ? '/' : window.location.pathname);
+        }
+        setPromoModalMode('error');
+        setPromoModalData({
+          code: promoCode,
+          errorMessage: valResult.error || 'This promotional link is invalid or has expired.',
+        });
+        setPromoModalOpen(true);
+        return;
+      }
+
+      // Requirement 1: Show confirmation screen first ("You've received a 1-Year Free Pro code. Activate it now?")
+      // with two clear actions: "Activate" and "Cancel"
+      promoProcessedCodeRef.current = promoCode;
+      setPromoModalMode('confirm');
+      setPromoModalData({
+        code: promoCode,
+        campaignLabel: valResult.label || '1-Year Free Boardly Pro Campaign',
+        trackLabel: userProfile?.grade || userProfile?.stream || 'Your Enrolled Track',
+        studentEmail: currentUser.email || undefined,
+      });
+      setPromoModalOpen(true);
     }).catch((err) => {
-      console.warn('[Promo Engine] Failed auto-claiming for logged-in user:', err);
+      console.warn('[Promo Engine] Validation error:', err);
     });
 
     return () => {
       isMounted = false;
     };
-  }, [currentUser]);
+  }, [currentUser, userProfile?.is_pro, userProfile?.access_expires]);
+
+  // Requirement 2: Only when the student taps "Activate" should the backend actually apply the Pro grant
+  const handleActivatePromo = useCallback(async () => {
+    if (!currentUser || !promoModalData?.code) return;
+    const codeToClaim = promoModalData.code;
+    setPromoIsActivating(true);
+
+    try {
+      console.log(`[Promo Engine] Student confirmed activation. Claiming "${codeToClaim}" for ${currentUser.email}...`);
+      const result = await claimPromoCode(codeToClaim, currentUser.id, currentUser.email);
+
+      if (result.success && result.profile) {
+        // Update profile in memory and caches
+        setUserProfile(result.profile);
+        localStorage.setItem('boardly_cached_profile', JSON.stringify(result.profile));
+        localStorage.setItem(`boardly_profile_${currentUser.id}`, JSON.stringify(result.profile));
+        clearPendingPromoCode();
+
+        if (window.location.pathname.startsWith('/claim') || window.location.search.includes('code=')) {
+          window.history.replaceState(null, '', window.location.pathname === '/claim' ? '/' : window.location.pathname);
+        }
+
+        // Requirement 3: Then show the "1 Year Free Pro Unlocked!" screen with expiry date
+        setPromoModalMode('success');
+        setPromoModalData({
+          trackLabel: result.profile.grade || result.profile.stream || 'Boardly Pro Track',
+          expiresDate: result.grantedUntil || result.profile.access_expires,
+          code: result.code || codeToClaim,
+          campaignLabel: result.label || promoModalData.campaignLabel,
+          studentEmail: currentUser.email || undefined,
+        });
+      } else if (result.alreadyRedeemed) {
+        clearPendingPromoCode();
+        if (window.location.pathname.startsWith('/claim') || window.location.search.includes('code=')) {
+          window.history.replaceState(null, '', window.location.pathname === '/claim' ? '/' : window.location.pathname);
+        }
+        setPromoModalMode('already_active');
+        setPromoModalData({
+          code: codeToClaim,
+          expiresDate: result.grantedUntil || userProfile?.access_expires,
+          campaignLabel: result.label || promoModalData.campaignLabel,
+          trackLabel: userProfile?.grade || userProfile?.stream || 'Boardly Pro Track',
+          studentEmail: currentUser.email || undefined,
+        });
+      } else {
+        setPromoModalMode('error');
+        setPromoModalData((prev) => ({
+          ...prev,
+          errorMessage: result.error || 'Failed to activate promotional code. Please try again.',
+        }));
+      }
+    } catch (err: any) {
+      console.error('[Promo Engine] Activation error:', err);
+      setPromoModalMode('error');
+      setPromoModalData((prev) => ({
+        ...prev,
+        errorMessage: err?.message || 'A network error occurred while activating your promotional pass.',
+      }));
+    } finally {
+      setPromoIsActivating(false);
+    }
+  }, [currentUser, promoModalData, userProfile]);
+
+  // Requirement 4: If the student taps 'Cancel', do not apply the grant and dismiss/redirect to dashboard
+  const handleCancelPromo = useCallback(() => {
+    console.log('[Promo Engine] Student cancelled promo activation.');
+    clearPendingPromoCode();
+    setPromoModalOpen(false);
+    if (window.location.pathname.startsWith('/claim') || window.location.search.includes('code=')) {
+      window.history.replaceState(null, '', window.location.pathname === '/claim' ? '/' : window.location.pathname);
+    }
+    setScreen('dashboard');
+  }, []);
 
   const handleRetryAuth = useCallback(async () => {
     setAuthTimedOut(false);
@@ -1618,35 +1735,10 @@ export function App() {
         }
       }
 
-      // 1.1 Check & Auto-Claim Pending Promo Link (1-Year Free Pro) right after registration / login
+      // 1.1 Preserve pending promo code so the two-step confirmation prompt is shown to the authenticated student
       const pendingPromo = getStoredPendingPromoCode() || extractPromoCodeFromUrl();
       if (pendingPromo) {
-        try {
-          console.log(`[Promo Engine] Auto-claiming promo code "${pendingPromo}" for authenticated student ${user.email}...`);
-          const claimResult = await claimPromoCode(pendingPromo, user.id, user.email);
-          console.log('[Promo Engine] Auto-claim response:', claimResult);
-          if (claimResult.success && claimResult.profile) {
-            profile = claimResult.profile;
-            if (isSubscribed) {
-              setUserProfile(claimResult.profile);
-            }
-            localStorage.setItem('boardly_cached_profile', JSON.stringify(claimResult.profile));
-            localStorage.setItem(`boardly_profile_${user.id}`, JSON.stringify(claimResult.profile));
-            clearPendingPromoCode();
-            setPromoModalData({
-              trackLabel: claimResult.profile.grade || claimResult.profile.stream || 'Boardly Pro Track',
-              expiresDate: claimResult.grantedUntil,
-              code: claimResult.code || pendingPromo,
-              campaignLabel: claimResult.label,
-            });
-            setPromoModalOpen(true);
-          } else if (claimResult.alreadyRedeemed) {
-            clearPendingPromoCode();
-            console.log('[Promo Engine] Student account has already redeemed a 1-year promo link.');
-          }
-        } catch (promoErr) {
-          console.error('[Promo Engine] Error auto-claiming pending promo:', promoErr);
-        }
+        storePendingPromoCode(pendingPromo);
       }
 
       // Sync student's previously seen questions from server database in the background
@@ -3998,14 +4090,20 @@ export function App() {
         </div>
       )}
 
-      {/* 1-Year Free Pro Promotional Pass Celebration Modal */}
+      {/* 1-Year Free Pro Promotional Pass Two-Step Confirmation / Celebration Modal */}
       <PromoCelebrationModal
         isOpen={promoModalOpen}
         onClose={() => setPromoModalOpen(false)}
+        mode={promoModalMode}
+        isLoading={promoIsActivating}
         trackLabel={promoModalData?.trackLabel}
         expiresDate={promoModalData?.expiresDate}
         code={promoModalData?.code}
         campaignLabel={promoModalData?.campaignLabel}
+        studentEmail={promoModalData?.studentEmail || currentUser?.email || undefined}
+        errorMessage={promoModalData?.errorMessage}
+        onActivate={handleActivatePromo}
+        onCancel={handleCancelPromo}
         onGoToDashboard={() => {
           setPromoModalOpen(false);
           setScreen('dashboard');
