@@ -40,9 +40,10 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
 
   // Generator Modal State
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [newLabel, setNewLabel] = useState('');
   const [customCode, setCustomCode] = useState('');
-  const [maxRedemptionsType, setMaxRedemptionsType] = useState<'unlimited' | '1' | '10' | '50' | 'custom'>('unlimited');
+  const [maxRedemptionsType, setMaxRedemptionsType] = useState<'1' | 'unlimited' | '10' | 'custom'>('1');
   const [customMaxCount, setCustomMaxCount] = useState<string>('25');
   const [expiryOption, setExpiryOption] = useState<'never' | '30' | '90' | '365'>('never');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,7 +55,12 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
     setLoading(true);
     setError(null);
     try {
-      const resp = await apiFetch(`/api/admin/promo-links?adminEmail=${encodeURIComponent(currentUser?.email || '')}`);
+      const adminMail = (currentUser?.email || 'shsvirtualadmin@gmail.com').trim().toLowerCase();
+      const resp = await apiFetch(`/api/admin/promo-links?adminEmail=${encodeURIComponent(adminMail)}`, {
+        headers: {
+          'x-admin-email': adminMail,
+        },
+      });
       const data = await safeJsonResponse<{ success: boolean; links: PromoLink[]; error?: string }>(resp);
       if (data?.success && Array.isArray(data.links)) {
         setLinks(data.links);
@@ -76,66 +82,105 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
   const generateRandomCode = () => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     let rand = '';
-    for (let i = 0; i < 5; i++) {
-      rand += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setCustomCode(`BOARDLY-1Y-${rand}`);
+    let code = '';
+    let attempts = 0;
+    do {
+      rand = '';
+      for (let i = 0; i < 5; i++) {
+        rand += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      code = `BOARDLY-1Y-${rand}`;
+      attempts++;
+    } while (links.some((l) => (l.code || '').toUpperCase() === code) && attempts < 25);
+    setCustomCode(code);
   };
 
   const handleOpenCreateModal = () => {
     setNewLabel('1-Year Free Pro Campaign');
     generateRandomCode();
-    setMaxRedemptionsType('unlimited');
+    setMaxRedemptionsType('1');
     setCustomMaxCount('25');
     setExpiryOption('never');
+    setModalError(null);
     setShowCreateModal(true);
   };
 
   const handleCreateLink = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newLabel.trim()) {
-      setError('Please provide a campaign label or name.');
+      setModalError('Please provide a campaign label or name.');
+      return;
+    }
+
+    const cleanCode = (customCode.trim() || '').toUpperCase().replace(/[^A-Z0-9_-]/g, '');
+    if (cleanCode && links.some((l) => (l.code || '').toUpperCase() === cleanCode)) {
+      setModalError(`Promo code "${cleanCode}" already exists. Please choose a different code or click "Randomize".`);
       return;
     }
 
     setIsSubmitting(true);
     setError(null);
+    setModalError(null);
 
-    let maxRedemptions: number | null = null;
+    let maxRedemptions: number | null = 1; // Default to 1-Time Use
     if (maxRedemptionsType === '1') maxRedemptions = 1;
+    else if (maxRedemptionsType === 'unlimited') maxRedemptions = null;
     else if (maxRedemptionsType === '10') maxRedemptions = 10;
-    else if (maxRedemptionsType === '50') maxRedemptions = 50;
     else if (maxRedemptionsType === 'custom') {
       const num = parseInt(customMaxCount, 10);
-      maxRedemptions = isNaN(num) || num <= 0 ? null : num;
+      maxRedemptions = isNaN(num) || num <= 0 ? 1 : num;
     }
+
+    const effectiveAdminEmail = (currentUser?.email || 'shsvirtualadmin@gmail.com').trim().toLowerCase();
 
     const payload = {
       label: newLabel.trim(),
-      customCode: customCode.trim() || undefined,
+      customCode: cleanCode || undefined,
       maxRedemptions,
       expiresDays: expiryOption === 'never' ? null : parseInt(expiryOption, 10),
-      adminEmail: currentUser?.email || 'shsvirtualadmin@gmail.com',
+      adminEmail: effectiveAdminEmail,
     };
 
     try {
       const resp = await apiFetch('/api/admin/promo-links/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-email': effectiveAdminEmail,
+        },
         body: JSON.stringify(payload),
       });
 
-      const data = await safeJsonResponse<{ success: boolean; link: PromoLink; error?: string }>(resp);
-      if (data?.success && data.link) {
-        setLinks((prev) => [data.link, ...prev]);
+      let data: { success?: boolean; link?: PromoLink; error?: string } | null = null;
+      try {
+        const text = await resp.text();
+        if (text && text.trim()) {
+          data = JSON.parse(text);
+        }
+      } catch (parseErr) {
+        console.warn('Could not parse response JSON:', parseErr);
+      }
+
+      if (resp.ok && data?.success && data.link) {
+        setLinks((prev) => [data!.link!, ...prev]);
         setShowCreateModal(false);
+        setModalError(null);
+        setError(null);
         setSuccessToast(`Promo link created successfully! Code: ${data.link.code}`);
         setTimeout(() => setSuccessToast(null), 5000);
       } else {
-        setError(data?.error || 'Failed to create promo link.');
+        const errorMsg =
+          data?.error ||
+          (!resp.ok
+            ? `Server error (${resp.status}): Failed to create promo link. Please try again.`
+            : 'Failed to create promo link.');
+        setModalError(errorMsg);
+        setError(errorMsg);
       }
     } catch (err: any) {
-      setError(err?.message || 'Error creating promo link.');
+      const errorMsg = err?.message || 'Network error while creating promo link.';
+      setModalError(errorMsg);
+      setError(errorMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -350,15 +395,18 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
 
             let statusLabel = 'Active';
             let statusClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-            if (!link.is_active) {
+            if (isExhausted) {
+              statusLabel = link.max_redemptions === 1 ? 'Used & Expired (1-Time)' : 'Exhausted & Expired';
+              statusClass = 'bg-rose-50 text-rose-700 border-rose-200';
+            } else if (!link.is_active) {
               statusLabel = 'Paused';
               statusClass = 'bg-slate-100 text-slate-600 border-slate-200';
             } else if (isExpired) {
-              statusLabel = 'Expired';
+              statusLabel = 'Time Expired';
               statusClass = 'bg-rose-50 text-rose-700 border-rose-200';
-            } else if (isExhausted) {
-              statusLabel = 'Exhausted';
-              statusClass = 'bg-amber-50 text-amber-700 border-amber-200';
+            } else if (link.max_redemptions === 1) {
+              statusLabel = 'Active (1-Time Use)';
+              statusClass = 'bg-blue-50 text-blue-700 border-blue-200';
             }
 
             return (
@@ -459,6 +507,13 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
                     <div className="flex items-center gap-1.5">
                       <Sparkles className="w-3.5 h-3.5 text-amber-500" />
                       <span className="font-medium text-slate-700">Grants 1 Year Free Pro</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <Tag className="w-3.5 h-3.5 text-blue-500" />
+                      <span className="font-medium text-slate-700">
+                        {link.max_redemptions === 1 ? 'One-time usable (expires once claimed)' : link.max_redemptions ? `Max ${link.max_redemptions} claims` : 'Multi-use'}
+                      </span>
                     </div>
 
                     {link.expires_at && (
@@ -608,9 +663,11 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
 
               {/* Max Redemptions Limit */}
               <div>
-                <label className="block font-bold text-slate-700 mb-1.5">Max Redemptions Limit</label>
+                <label className="block font-bold text-slate-700 mb-1.5">
+                  Redemption Limit & Expiration
+                </label>
                 <div className="grid grid-cols-4 gap-1.5 mb-2">
-                  {(['unlimited', '1', '10', 'custom'] as const).map((opt) => (
+                  {(['1', 'unlimited', '10', 'custom'] as const).map((opt) => (
                     <button
                       key={opt}
                       type="button"
@@ -621,10 +678,16 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
                           : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
                       }`}
                     >
-                      {opt === 'unlimited' ? 'Unlimited' : opt === '1' ? 'Single Use' : opt === '10' ? '10 Uses' : 'Custom'}
+                      {opt === '1' ? '⚡ 1-Time Use' : opt === 'unlimited' ? 'Unlimited' : opt === '10' ? '10 Uses' : 'Custom'}
                     </button>
                   ))}
                 </div>
+
+                {maxRedemptionsType === '1' && (
+                  <p className="text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 p-2 rounded-lg mt-1 font-medium">
+                    ✓ <strong>One-time usable:</strong> This link will automatically expire and deactivate as soon as the first student redeems it.
+                  </p>
+                )}
 
                 {maxRedemptionsType === 'custom' && (
                   <input
@@ -655,6 +718,19 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
                   Once redeemed, the student receives 1 full year of Pro access from the redemption date.
                 </p>
               </div>
+
+              {/* In-Modal Error Notice */}
+              {modalError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center justify-between text-xs text-rose-800 font-medium animate-fadeIn">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>{modalError}</span>
+                  </div>
+                  <button type="button" onClick={() => setModalError(null)} className="text-rose-500 hover:text-rose-700">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="flex items-center gap-2 pt-2">
