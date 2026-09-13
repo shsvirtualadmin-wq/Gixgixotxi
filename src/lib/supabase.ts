@@ -85,10 +85,18 @@ export function withTimeout<T>(
  */
 export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
-  const { data: { session } } = await supabase.auth.getSession();
-  
-  if (session?.access_token && !headers.has('Authorization')) {
-    headers.set('Authorization', `Bearer ${session.access_token}`);
+  try {
+    const sessionRes = await withTimeout(
+      supabase.auth.getSession(),
+      1200,
+      { data: { session: null }, error: null },
+      'apiFetch.getSession'
+    );
+    if (sessionRes?.data?.session?.access_token && !headers.has('Authorization')) {
+      headers.set('Authorization', `Bearer ${sessionRes.data.session.access_token}`);
+    }
+  } catch {
+    // Proceed without bearer token if auth session lookup times out
   }
 
   return fetch(input, {

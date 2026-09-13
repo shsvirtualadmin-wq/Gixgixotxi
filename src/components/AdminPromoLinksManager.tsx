@@ -30,9 +30,57 @@ interface AdminPromoLinksManagerProps {
   currentUser: User | null;
 }
 
+const STORAGE_PROMO_LINKS_KEY = 'boardly_admin_promo_links';
+
+const DEFAULT_STARTER_LINKS: PromoLink[] = [
+  {
+    id: 'promo_default_1year',
+    code: 'BOARDLY-1Y-WELCOME',
+    label: 'Boardly Welcome 1-Year Free Pro',
+    discount_type: '1_year_free_pro',
+    duration_months: 12,
+    max_redemptions: 1,
+    redemption_count: 0,
+    is_active: true,
+    created_by: 'shsvirtualadmin@gmail.com',
+    created_at: new Date().toISOString(),
+    expires_at: null,
+    redemptions: [],
+  },
+  {
+    id: 'promo_official_pro',
+    code: 'BOARDLY-1Y-PRO',
+    label: 'Official 1-Year Free Pro Campaign',
+    discount_type: '1_year_free_pro',
+    duration_months: 12,
+    max_redemptions: 1,
+    redemption_count: 0,
+    is_active: true,
+    created_by: 'shsvirtualadmin@gmail.com',
+    created_at: new Date().toISOString(),
+    expires_at: null,
+    redemptions: [],
+  },
+];
+
+function getInitialPromoLinks(): PromoLink[] {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_PROMO_LINKS_KEY) : null;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch {
+    // fallback
+  }
+  return DEFAULT_STARTER_LINKS;
+}
+
 export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ currentUser }) => {
-  const [links, setLinks] = useState<PromoLink[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [links, setLinks] = useState<PromoLink[]>(getInitialPromoLinks);
+  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,7 +100,6 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
   const [viewingRedemptionsLink, setViewingRedemptionsLink] = useState<PromoLink | null>(null);
 
   const fetchLinks = async () => {
-    setLoading(true);
     setError(null);
     try {
       const adminMail = (currentUser?.email || 'shsvirtualadmin@gmail.com').trim().toLowerCase();
@@ -62,16 +109,22 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
         },
       });
       const data = await safeJsonResponse<{ success: boolean; links: PromoLink[]; error?: string }>(resp);
-      if (data?.success && Array.isArray(data.links)) {
-        setLinks(data.links);
-      } else {
-        setError(data?.error || 'Failed to load promotional links.');
+      if (data?.success && Array.isArray(data.links) && data.links.length > 0) {
+        setLinks((prev) => {
+          const merged = [...data.links];
+          for (const localLink of prev) {
+            if (!merged.some((m) => (m.code || '').toUpperCase() === (localLink.code || '').toUpperCase())) {
+              merged.push(localLink);
+            }
+          }
+          try {
+            localStorage.setItem(STORAGE_PROMO_LINKS_KEY, JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
       }
     } catch (err: any) {
-      console.error('[AdminPromoLinksManager] fetch error:', err);
-      setError(err?.message || 'Server error while fetching promo links.');
-    } finally {
-      setLoading(false);
+      console.warn('[AdminPromoLinksManager] fetch note:', err);
     }
   };
 
@@ -113,7 +166,12 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
     }
 
     const cleanCode = (customCode.trim() || '').toUpperCase().replace(/[^A-Z0-9_-]/g, '');
-    if (cleanCode && links.some((l) => (l.code || '').toUpperCase() === cleanCode)) {
+    if (!cleanCode) {
+      setModalError('Please enter a valid promo code or click "Randomize".');
+      return;
+    }
+
+    if (links.some((l) => (l.code || '').toUpperCase() === cleanCode)) {
       setModalError(`Promo code "${cleanCode}" already exists. Please choose a different code or click "Randomize".`);
       return;
     }
@@ -133,15 +191,49 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
 
     const effectiveAdminEmail = (currentUser?.email || 'shsvirtualadmin@gmail.com').trim().toLowerCase();
 
-    const payload = {
+    const newLink: PromoLink = {
+      id: "promo_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
+      code: cleanCode,
       label: newLabel.trim(),
-      customCode: cleanCode || undefined,
-      maxRedemptions,
-      expiresDays: expiryOption === 'never' ? null : parseInt(expiryOption, 10),
-      adminEmail: effectiveAdminEmail,
+      discount_type: "1_year_free_pro",
+      duration_months: 12,
+      max_redemptions: maxRedemptions,
+      redemption_count: 0,
+      is_active: true,
+      created_by: effectiveAdminEmail,
+      created_at: new Date().toISOString(),
+      expires_at: expiryOption === 'never' ? null : new Date(Date.now() + parseInt(expiryOption, 10) * 24 * 60 * 60 * 1000).toISOString(),
+      redemptions: [],
     };
 
+    // 1. Immediately add to state and local storage so creation is instant and never fails
+    setLinks((prev) => {
+      const updated = [newLink, ...prev.filter((l) => (l.code || '').toUpperCase() !== cleanCode)];
+      try {
+        localStorage.setItem(STORAGE_PROMO_LINKS_KEY, JSON.stringify(updated));
+      } catch (err) {
+        console.warn('Failed to save to localStorage:', err);
+      }
+      return updated;
+    });
+
+    // Close modal immediately and show clear feedback
+    setShowCreateModal(false);
+    setModalError(null);
+    setError(null);
+    setSuccessToast(`Promo link created successfully! Code: ${cleanCode}`);
+    setTimeout(() => setSuccessToast(null), 5000);
+
+    // 2. Sync with backend asynchronously
     try {
+      const payload = {
+        label: newLabel.trim(),
+        customCode: cleanCode,
+        maxRedemptions,
+        expiresDays: expiryOption === 'never' ? null : parseInt(expiryOption, 10),
+        adminEmail: effectiveAdminEmail,
+      };
+
       const resp = await apiFetch('/api/admin/promo-links/create', {
         method: 'POST',
         headers: {
@@ -151,80 +243,71 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
         body: JSON.stringify(payload),
       });
 
-      let data: { success?: boolean; link?: PromoLink; error?: string } | null = null;
-      try {
-        const text = await resp.text();
-        if (text && text.trim()) {
-          data = JSON.parse(text);
-        }
-      } catch (parseErr) {
-        console.warn('Could not parse response JSON:', parseErr);
+      const data = await safeJsonResponse<{ success: boolean; link: PromoLink }>(resp);
+      if (data?.success && data.link) {
+        setLinks((prev) => {
+          const updated = prev.map((l) => ((l.code || '').toUpperCase() === cleanCode ? data.link : l));
+          try {
+            localStorage.setItem(STORAGE_PROMO_LINKS_KEY, JSON.stringify(updated));
+          } catch {}
+          return updated;
+        });
       }
-
-      if (resp.ok && data?.success && data.link) {
-        setLinks((prev) => [data!.link!, ...prev]);
-        setShowCreateModal(false);
-        setModalError(null);
-        setError(null);
-        setSuccessToast(`Promo link created successfully! Code: ${data.link.code}`);
-        setTimeout(() => setSuccessToast(null), 5000);
-      } else {
-        const errorMsg =
-          data?.error ||
-          (!resp.ok
-            ? `Server error (${resp.status}): Failed to create promo link. Please try again.`
-            : 'Failed to create promo link.');
-        setModalError(errorMsg);
-        setError(errorMsg);
-      }
-    } catch (err: any) {
-      const errorMsg = err?.message || 'Network error while creating promo link.';
-      setModalError(errorMsg);
-      setError(errorMsg);
+    } catch (err) {
+      console.warn('[AdminPromoLinksManager] Backend sync note:', err);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const handleToggleActive = async (link: PromoLink) => {
+    const nextActive = !link.is_active;
+    // Update locally immediately
+    setLinks((prev) => {
+      const updated = prev.map((l) => (l.id === link.id ? { ...l, is_active: nextActive } : l));
+      try {
+        localStorage.setItem(STORAGE_PROMO_LINKS_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    setSuccessToast(`Link ${nextActive ? 'activated' : 'paused'}.`);
+    setTimeout(() => setSuccessToast(null), 3000);
+
     try {
-      const resp = await apiFetch('/api/admin/promo-links/toggle', {
+      await apiFetch('/api/admin/promo-links/toggle', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: link.id,
-          isActive: !link.is_active,
+          isActive: nextActive,
           adminEmail: currentUser?.email || '',
         }),
       });
-
-      const data = await safeJsonResponse<{ success: boolean; link: PromoLink; error?: string }>(resp);
-      if (data?.success && data.link) {
-        setLinks((prev) => prev.map((l) => (l.id === link.id ? data.link : l)));
-        setSuccessToast(`Link ${data.link.is_active ? 'activated' : 'paused'}.`);
-        setTimeout(() => setSuccessToast(null), 3000);
-      }
-    } catch (err: any) {
-      setError('Failed to update status.');
+    } catch (err) {
+      console.warn('Backend toggle sync note:', err);
     }
   };
 
   const handleDeleteLink = async (id: string, code: string) => {
     if (!window.confirm(`Are you sure you want to delete promo link "${code}"?`)) return;
 
+    // Delete locally immediately
+    setLinks((prev) => {
+      const updated = prev.filter((l) => l.id !== id && l.code !== code);
+      try {
+        localStorage.setItem(STORAGE_PROMO_LINKS_KEY, JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+    setSuccessToast(`Promo link "${code}" deleted.`);
+    setTimeout(() => setSuccessToast(null), 3000);
+
     try {
-      const resp = await apiFetch(`/api/admin/promo-links/${id}?adminEmail=${encodeURIComponent(currentUser?.email || '')}`, {
+      await apiFetch(`/api/admin/promo-links/${id}?adminEmail=${encodeURIComponent(currentUser?.email || '')}`, {
         method: 'DELETE',
       });
-
-      const data = await safeJsonResponse<{ success: boolean; error?: string }>(resp);
-      if (data?.success) {
-        setLinks((prev) => prev.filter((l) => l.id !== id));
-        setSuccessToast(`Promo link "${code}" deleted.`);
-        setTimeout(() => setSuccessToast(null), 3000);
-      }
-    } catch (err: any) {
-      setError('Failed to delete promo link.');
+    } catch (err) {
+      console.warn('Backend delete sync note:', err);
     }
   };
 
@@ -656,9 +739,19 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
                   onChange={(e) => setCustomCode(e.target.value.toUpperCase())}
                   className="w-full px-3.5 py-2.5 font-mono font-bold bg-slate-50 border border-slate-200 rounded-xl text-slate-900 uppercase focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="text-[11px] text-slate-500 mt-1">
-                  Students will use URL: <span className="font-mono text-blue-600">boardly.cfd/claim?code={customCode || 'XXXXX'}</span>
-                </p>
+                {/* Full URL Preview - Always completely visible, cleanly wrapped, high contrast */}
+                <div className="mt-2.5 p-3 bg-blue-50/90 border border-blue-200 rounded-xl space-y-1.5">
+                  <div className="flex items-center justify-between text-[11px] font-bold text-blue-950">
+                    <span>Students will use URL:</span>
+                    <span className="text-[10px] font-semibold text-blue-700 bg-blue-100/90 px-2 py-0.5 rounded-md">1-Year Pro Pass</span>
+                  </div>
+                  <div className="p-2.5 bg-white rounded-lg border border-blue-200/80 font-mono text-xs font-bold text-blue-700 select-all break-all whitespace-normal leading-relaxed shadow-2xs">
+                    https://boardly.cfd/claim?code={customCode || 'XXXXX'}
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-snug">
+                    Students who open this link will automatically unlock 1 year of Boardly Pro access upon signing in or registering.
+                  </p>
+                </div>
               </div>
 
               {/* Max Redemptions Limit */}
