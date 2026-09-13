@@ -379,6 +379,10 @@ export async function claimPromoCode(
     }
 
     // 2. Write to students table (plan_tier, access_expires, is_pro, payment_status)
+    let studentWriteSuccess = false;
+    let studentWriteError: any = null;
+    let updatedStudentRows: any[] = [];
+
     try {
       const safePlanUpdate = sanitizeStudentForDb({
         is_pro: true,
@@ -396,23 +400,81 @@ export async function claimPromoCode(
         updated_at: new Date().toISOString(),
       });
 
+      console.log('[claimPromoCode] Attempting Supabase update on "students" table with payload:', {
+        targetStudentId: studentId,
+        targetEmail: normalizedEmail,
+        safePlanUpdate,
+      });
+
+      // Strategy A: Update by ID with select return
       if (studentId && !studentId.includes('@')) {
-        await supabase.from('students').update(safePlanUpdate).eq('id', studentId);
-      }
-      if (normalizedEmail) {
-        await supabase.from('students').update(safePlanUpdate).ilike('email', normalizedEmail);
+        const { data: resById, error: errById } = await supabase
+          .from('students')
+          .update(safePlanUpdate)
+          .eq('id', studentId)
+          .select('id, email, is_pro, plan_tier, access_expires, plan_status');
+
+        console.log('[claimPromoCode] Update by ID result:', { data: resById, error: errById });
+        if (!errById && Array.isArray(resById) && resById.length > 0) {
+          studentWriteSuccess = true;
+          updatedStudentRows = resById;
+        } else if (errById) {
+          studentWriteError = errById;
+        }
       }
 
-      const studentPayload = sanitizeStudentForDb({
-        id: studentId,
-        email: normalizedEmail,
-        name: normalizedEmail ? normalizedEmail.split('@')[0] : 'Student',
-        ...safePlanUpdate,
-      });
-      await supabase.from('students').upsert(studentPayload);
-      console.log('[claimPromoCode] Successfully wrote Pro grant to students table.');
+      // Strategy B: Update by Email with select return
+      if (normalizedEmail) {
+        const { data: resByEmail, error: errByEmail } = await supabase
+          .from('students')
+          .update(safePlanUpdate)
+          .ilike('email', normalizedEmail)
+          .select('id, email, is_pro, plan_tier, access_expires, plan_status');
+
+        console.log('[claimPromoCode] Update by Email result:', { data: resByEmail, error: errByEmail });
+        if (!errByEmail && Array.isArray(resByEmail) && resByEmail.length > 0) {
+          studentWriteSuccess = true;
+          updatedStudentRows = resByEmail;
+        } else if (errByEmail && !studentWriteError) {
+          studentWriteError = errByEmail;
+        }
+      }
+
+      // Strategy C: Upsert student payload if row doesn't exist yet or wasn't updated
+      if (!studentWriteSuccess) {
+        const studentPayload = sanitizeStudentForDb({
+          id: studentId,
+          email: normalizedEmail,
+          name: normalizedEmail ? normalizedEmail.split('@')[0] : 'Student',
+          ...safePlanUpdate,
+        });
+        const { data: resUpsert, error: errUpsert } = await supabase
+          .from('students')
+          .upsert(studentPayload)
+          .select('id, email, is_pro, plan_tier, access_expires, plan_status');
+
+        console.log('[claimPromoCode] Upsert result:', { data: resUpsert, error: errUpsert });
+        if (!errUpsert && Array.isArray(resUpsert) && resUpsert.length > 0) {
+          studentWriteSuccess = true;
+          updatedStudentRows = resUpsert;
+        } else if (errUpsert) {
+          studentWriteError = errUpsert;
+        }
+      }
+
+      if (studentWriteSuccess) {
+        console.log('[claimPromoCode] Successfully verified write to students table. Updated rows:', updatedStudentRows);
+      } else {
+        console.error('[claimPromoCode] Failed to update students table in Supabase. Details:', {
+          studentWriteError,
+          hint: studentWriteError?.hint || 'Check if RLS policies on "students" permit UPDATE/UPSERT by authenticated users.',
+          code: studentWriteError?.code,
+          message: studentWriteError?.message,
+        });
+      }
     } catch (stErr) {
-      console.warn('[claimPromoCode] students write note:', stErr);
+      console.error('[claimPromoCode] Exception during students table write:', stErr);
+      studentWriteError = stErr;
     }
 
     // 3. Insert into promo_redemptions table

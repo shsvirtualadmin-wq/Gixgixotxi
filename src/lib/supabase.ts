@@ -1020,7 +1020,28 @@ export async function syncUserProfile(
           await supabase.from('students').update(updates).eq('id', existing.id || user.id);
         }
 
-        finalProfile = normalizeStudentProfileFromRow({ ...existing, ...updates }, user.id);
+        let combinedRow = { ...existing, ...updates };
+
+        // Cross-check profiles table for subscription_tier = 'pro'
+        try {
+          const { data: profData } = await supabase
+            .from('profiles')
+            .select('*')
+            .or(`id.eq.${existing.id || user.id}${user.email ? `,email.ilike.${user.email.trim()}` : ''}`)
+            .maybeSingle();
+
+          if (profData && (profData.subscription_tier === 'pro' || profData.is_pro)) {
+            combinedRow.is_pro = true;
+            combinedRow.plan_tier = 'pro';
+            combinedRow.access_expires = profData.subscription_expires_at || combinedRow.access_expires;
+            combinedRow.payment_status = 'Verified & Paid';
+            combinedRow.plan_status = 'verified_pro';
+          }
+        } catch (profCrossErr) {
+          console.warn('[syncUserProfile] profiles table cross-check note:', profCrossErr);
+        }
+
+        finalProfile = normalizeStudentProfileFromRow(combinedRow, user.id);
       } else {
         // Insert new student record
         const requiresPay = !isAdmin;
@@ -1044,6 +1065,29 @@ export async function syncUserProfile(
           finalProfile = normalizeStudentProfileFromRow(inserted || newDefaultProfile, user.id);
         }
       }
+
+      // Check if local storage has an active Pro grant with valid non-expired date
+      try {
+        const cachedRaw = localStorage.getItem(`boardly_profile_${userId}`);
+        if (cachedRaw) {
+          const cachedJson = JSON.parse(cachedRaw);
+          if (cachedJson?.is_pro && cachedJson.access_expires && new Date(cachedJson.access_expires).getTime() > Date.now()) {
+            if (!finalProfile.is_pro) {
+              console.log(`[syncUserProfile] Preserving active Pro grant from local profile for ${userId}`);
+              finalProfile = {
+                ...finalProfile,
+                is_pro: true,
+                plan_tier: 'pro',
+                access_expires: cachedJson.access_expires,
+                package_name: cachedJson.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)',
+                payment_status: 'Verified & Paid',
+                plan_status: 'verified_pro',
+                requires_payment: false,
+              };
+            }
+          }
+        }
+      } catch (cachedErr) {}
 
       // Save to memory cache & localStorage
       profileMemoryCache.set(userId, { profile: finalProfile, timestamp: Date.now() });
