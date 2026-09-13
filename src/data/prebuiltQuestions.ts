@@ -3525,6 +3525,26 @@ export const PREBUILT_QUESTIONS: Record<string, Question[]> = {
 
 import { MDCAT_PREBUILT_QUESTIONS, generateMDCATFullMockBank, getMDCATPrebuiltQuestions } from './mdcatPrebuiltQuestions';
 import { TCAT_PREBUILT_QUESTIONS, generateTCATFullMockBank, getTCATPrebuiltQuestions } from './tcatPrebuiltQuestions';
+import {
+  generateNetFullMockBank,
+  generateFastFullMockBank,
+  generateEcatFullMockBank,
+  generateEteaFullMockBank,
+  generateNumsFullMockBank,
+  generateGikiFullMockBank,
+  generateUsatFullMockBank,
+  generateNedFullMockBank,
+  generatePieasFullMockBank,
+  generateNatFullMockBank,
+  generateIbaFullMockBank,
+  generateAkuFullMockBank,
+  generateMuetFullMockBank,
+  generateLumsFullMockBank,
+  generateNumlFullMockBank,
+  generateHitecFullMockBank,
+  generateNutechFullMockBank,
+  getEntranceExamQuestions,
+} from './entranceExamQuestions';
 
 // Map aliases for prebuilt lookup so queries never fail
 PREBUILT_QUESTIONS["Islamiat"] = PREBUILT_QUESTIONS["Islamic Studies"];
@@ -3549,18 +3569,87 @@ export function getPrebuiltQuestionsForSubject(
 
   const clean = subjectName.trim();
   const lower = clean.toLowerCase();
-  const isTcat = classNum === 'TCAT' || lower.includes('tcat');
-  const isMdcat = classNum === 'MDCAT' || lower.includes('mdcat');
+  const classStr = String(classNum || '').toUpperCase();
+  const isTcat = classStr === 'TCAT' || lower.includes('tcat');
+  const isMdcat = classStr === 'MDCAT' || lower.includes('mdcat');
 
   const seenSet = seenStemsInput instanceof Set
     ? seenStemsInput
     : new Set(Array.isArray(seenStemsInput) ? seenStemsInput.map(s => normalizeQuestionStem(s)) : []);
 
-  // Full Mock Exams are comprehensive cross-subject tests (100 or 180 MCQs) and must never be filtered down by topic
+  // Entrance Exam Full Mock Exams (Comprehensive cross-subject 75-200 MCQs)
+  if (lower.includes('muet full') || lower.includes('muet grand') || (lower.includes('muet') && lower.includes('mock'))) {
+    return generateMuetFullMockBank(customTopic || chapterName || 'Pre-Engineering', seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('net full') || (lower.includes('net') && lower.includes('mock'))) {
+    return generateNetFullMockBank(seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('fast full') || (lower.includes('fast') && lower.includes('mock'))) {
+    return generateFastFullMockBank(seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('ecat full') || (lower.includes('ecat') && lower.includes('mock'))) {
+    return generateEcatFullMockBank(customTopic || chapterName || 'Pre-Engineering', seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('etea full') || (lower.includes('etea') && lower.includes('mock'))) {
+    return generateEteaFullMockBank(customTopic || chapterName || 'Engineering (Chemistry)', seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('nums full') || (lower.includes('nums') && lower.includes('mock'))) {
+    return generateNumsFullMockBank(seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('giki full') || (lower.includes('giki') && lower.includes('mock'))) {
+    return generateGikiFullMockBank(seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('usat full') || (lower.includes('usat') && lower.includes('mock'))) {
+    return generateUsatFullMockBank(customTopic || chapterName || 'USAT-E', seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('ned full') || (lower.includes('ned') && lower.includes('mock'))) {
+    return generateNedFullMockBank(seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('pieas full') || (lower.includes('pieas') && lower.includes('mock'))) {
+    return generatePieasFullMockBank(customTopic || chapterName || 'Pre-Engineering', seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('nat full') || (lower.includes('nat') && lower.includes('mock'))) {
+    return generateNatFullMockBank(customTopic || chapterName || 'NAT-IE', seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('iba full') || (lower.includes('iba') && lower.includes('mock'))) {
+    return generateIbaFullMockBank(seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('aku full') || (lower.includes('aku') && lower.includes('mock'))) {
+    return generateAkuFullMockBank(seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('lums full') || (lower.includes('lums') && lower.includes('mock'))) {
+    return generateLumsFullMockBank(customTopic || chapterName || 'LCAT', seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('numl full') || (lower.includes('numl') && lower.includes('mock'))) {
+    return generateNumlFullMockBank(customTopic || chapterName || 'Engineering & CS', seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('hitec full') || (lower.includes('hitec') && lower.includes('mock'))) {
+    return generateHitecFullMockBank(customTopic || chapterName || 'Engineering', seenSet).map(shuffleQuestionOptions);
+  }
+  if (lower.includes('nutech full') || (lower.includes('nutech') && lower.includes('mock'))) {
+    return generateNutechFullMockBank(customTopic || chapterName || 'Engineering', seenSet).map(shuffleQuestionOptions);
+  }
   if (lower.includes('tcat full') || lower.includes('tcat mock')) {
     return generateTCATFullMockBank(customTopic || subjectName, seenSet).map(shuffleQuestionOptions);
-  } else if (lower.includes('mdcat full') || lower.includes('full mock')) {
+  }
+  if (lower.includes('mdcat full') || (lower.includes('mdcat') && lower.includes('mock'))) {
     return generateMDCATFullMockBank(seenSet).map(shuffleQuestionOptions);
+  }
+
+  // Entrance Track Subject-Level Practice / Drill (matching via classStr, customTopic, chapterName, or subject)
+  const ENTRANCE_TRACK_NAMES = ['NET', 'FAST', 'ECAT', 'ETEA', 'NUMS', 'GIKI', 'USAT', 'NED', 'PIEAS', 'NAT', 'IBA', 'AKU', 'MUET', 'LUMS', 'NUML', 'HITEC', 'NUTECH'];
+  const matchedTrackFromContext = ENTRANCE_TRACK_NAMES.find(t => 
+    classStr === t || 
+    lower.includes(t.toLowerCase()) || 
+    (customTopic && customTopic.toUpperCase().includes(t)) || 
+    (chapterName && chapterName.toUpperCase().includes(t))
+  );
+
+  if (matchedTrackFromContext) {
+    const entranceQs = getEntranceExamQuestions(matchedTrackFromContext, clean, 100, seenSet);
+    if (entranceQs.length > 0) {
+      return entranceQs.map(shuffleQuestionOptions);
+    }
   }
 
   // TCAT Subjects & Chapters

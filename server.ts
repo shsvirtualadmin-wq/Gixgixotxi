@@ -10,6 +10,26 @@ import { getGoogleAccessToken } from "./functions/_utils/googleAuth.js";
 import nodemailer from "nodemailer";
 import { generateMDCATFullMockBank, getMDCATPrebuiltQuestions, ALL_MDCAT_QUESTIONS } from "./src/data/mdcatPrebuiltQuestions.js";
 import { generateTCATFullMockBank, getTCATPrebuiltQuestions, ALL_TCAT_QUESTIONS } from "./src/data/tcatPrebuiltQuestions.js";
+import {
+  generateNetFullMockBank,
+  generateFastFullMockBank,
+  generateEcatFullMockBank,
+  generateEteaFullMockBank,
+  generateNumsFullMockBank,
+  generateGikiFullMockBank,
+  generateUsatFullMockBank,
+  generateNedFullMockBank,
+  generatePieasFullMockBank,
+  generateNatFullMockBank,
+  generateIbaFullMockBank,
+  generateAkuFullMockBank,
+  generateMuetFullMockBank,
+  generateLumsFullMockBank,
+  generateNumlFullMockBank,
+  generateHitecFullMockBank,
+  generateNutechFullMockBank,
+  getEntranceExamQuestions,
+} from "./src/data/entranceExamQuestions.js";
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { generateAcademicExplanation } from "./src/lib/curriculumEngine.js";
 import { normalizeQuestionStem, deduplicateQuestions } from "./src/lib/shuffle.js";
@@ -3788,6 +3808,181 @@ function formatRemainingTimeString(ms: number): string {
           subjectReturned: rawSubject,
           questions: tcatQuestions,
           totalTargetCount: tcatQuestions.length,
+          batchOffset,
+          usage: {
+            currentUsage: 0,
+            limit: 100,
+            remaining: 999999,
+            resetDate: getNextMonthResetDate(),
+            isAdmin: true,
+          },
+        });
+      }
+    }
+
+    // Entrance Exam Tracks (MUET, NET, FAST, ECAT, ETEA, NUMS, GIKI, USAT, NED, PIEAS, NAT, IBA, AKU, LUMS, NUML, HITEC, NUTECH)
+    const rawSubLower = rawSubject.toLowerCase();
+    const groupLower = String(group || "").toLowerCase();
+    const classStrLower = String(classNum || "").toLowerCase();
+    const topicStrLower = String(customTopic || requestedTopic || "").toLowerCase();
+    const effectiveIsFullMock = isAnyFullMock || isFullMock || rawSubLower.includes("full mock") || rawSubLower.includes("grand mock") || topicStrLower.includes("full mock") || topicStrLower.includes("grand mock");
+
+    interface EntranceTrackDefinition {
+      name: string;
+      matcher: boolean;
+      mockCount: number;
+      getMockBank: () => any[];
+    }
+
+    const entranceTracks: EntranceTrackDefinition[] = [
+      {
+        name: 'MUET',
+        matcher: rawSubLower.includes('muet') || groupLower.includes('muet') || classStrLower === 'muet',
+        mockCount: 100,
+        getMockBank: () => {
+          const stream = Array.isArray(groupSubjects)
+            ? (groupSubjects.some((s: any) => String(s).toLowerCase().includes('bio')) ? 'Pre-Medical' : (groupSubjects.some((s: any) => String(s).toLowerCase().includes('comp') || String(s).toLowerCase().includes('cs')) ? 'ICS' : 'Pre-Engineering'))
+            : (chapterName || customTopic || 'Pre-Engineering');
+          return generateMuetFullMockBank(stream, excludeStemSet);
+        }
+      },
+      {
+        name: 'NET',
+        matcher: rawSubLower.includes('net') || groupLower.includes('net') || classStrLower === 'net',
+        mockCount: 200,
+        getMockBank: () => generateNetFullMockBank(excludeStemSet)
+      },
+      {
+        name: 'FAST',
+        matcher: rawSubLower.includes('fast') || groupLower.includes('fast') || classStrLower === 'fast',
+        mockCount: 120,
+        getMockBank: () => generateFastFullMockBank(excludeStemSet)
+      },
+      {
+        name: 'ECAT',
+        matcher: rawSubLower.includes('ecat') || groupLower.includes('ecat') || classStrLower === 'ecat',
+        mockCount: 100,
+        getMockBank: () => generateEcatFullMockBank(Array.isArray(groupSubjects) ? groupSubjects.join(' ') : (chapterName || customTopic || 'Pre-Engineering'), excludeStemSet)
+      },
+      {
+        name: 'ETEA',
+        matcher: rawSubLower.includes('etea') || groupLower.includes('etea') || classStrLower === 'etea',
+        mockCount: 100,
+        getMockBank: () => generateEteaFullMockBank(Array.isArray(groupSubjects) ? groupSubjects.join(' ') : (chapterName || customTopic || 'Engineering (Chemistry)'), excludeStemSet)
+      },
+      {
+        name: 'NUMS',
+        matcher: rawSubLower.includes('nums') || groupLower.includes('nums') || classStrLower === 'nums',
+        mockCount: 150,
+        getMockBank: () => generateNumsFullMockBank(excludeStemSet)
+      },
+      {
+        name: 'GIKI',
+        matcher: rawSubLower.includes('giki') || groupLower.includes('giki') || classStrLower === 'giki',
+        mockCount: 80,
+        getMockBank: () => generateGikiFullMockBank(excludeStemSet)
+      },
+      {
+        name: 'USAT',
+        matcher: rawSubLower.includes('usat') || groupLower.includes('usat') || classStrLower === 'usat',
+        mockCount: 100,
+        getMockBank: () => generateUsatFullMockBank(Array.isArray(groupSubjects) ? groupSubjects.join(' ') : (chapterName || customTopic || 'USAT-E'), excludeStemSet)
+      },
+      {
+        name: 'NED',
+        matcher: rawSubLower.includes('ned') || groupLower.includes('ned') || classStrLower === 'ned',
+        mockCount: 100,
+        getMockBank: () => generateNedFullMockBank(excludeStemSet)
+      },
+      {
+        name: 'PIEAS',
+        matcher: rawSubLower.includes('pieas') || groupLower.includes('pieas') || classStrLower === 'pieas',
+        mockCount: 100,
+        getMockBank: () => generatePieasFullMockBank(Array.isArray(groupSubjects) ? groupSubjects.join(' ') : (chapterName || customTopic || 'Pre-Engineering'), excludeStemSet)
+      },
+      {
+        name: 'NAT',
+        matcher: rawSubLower.includes('nat') || groupLower.includes('nat') || classStrLower === 'nat',
+        mockCount: 90,
+        getMockBank: () => generateNatFullMockBank(Array.isArray(groupSubjects) ? groupSubjects.join(' ') : (chapterName || customTopic || 'NAT-IE'), excludeStemSet)
+      },
+      {
+        name: 'IBA',
+        matcher: rawSubLower.includes('iba') || groupLower.includes('iba') || classStrLower === 'iba',
+        mockCount: 100,
+        getMockBank: () => generateIbaFullMockBank(excludeStemSet)
+      },
+      {
+        name: 'AKU',
+        matcher: rawSubLower.includes('aku') || groupLower.includes('aku') || classStrLower === 'aku',
+        mockCount: 100,
+        getMockBank: () => generateAkuFullMockBank(excludeStemSet)
+      },
+      {
+        name: 'LUMS',
+        matcher: rawSubLower.includes('lums') || groupLower.includes('lums') || classStrLower === 'lums',
+        mockCount: 100,
+        getMockBank: () => generateLumsFullMockBank(Array.isArray(groupSubjects) ? groupSubjects.join(' ') : (chapterName || customTopic || 'LCAT'), excludeStemSet)
+      },
+      {
+        name: 'NUML',
+        matcher: rawSubLower.includes('numl') || groupLower.includes('numl') || classStrLower === 'numl',
+        mockCount: 75,
+        getMockBank: () => generateNumlFullMockBank(Array.isArray(groupSubjects) ? groupSubjects.join(' ') : (chapterName || customTopic || 'Engineering & CS'), excludeStemSet)
+      },
+      {
+        name: 'HITEC',
+        matcher: rawSubLower.includes('hitec') || groupLower.includes('hitec') || classStrLower === 'hitec',
+        mockCount: 100,
+        getMockBank: () => generateHitecFullMockBank(Array.isArray(groupSubjects) ? groupSubjects.join(' ') : (chapterName || customTopic || 'Engineering'), excludeStemSet)
+      },
+      {
+        name: 'NUTECH',
+        matcher: rawSubLower.includes('nutech') || groupLower.includes('nutech') || classStrLower === 'nutech',
+        mockCount: 100,
+        getMockBank: () => generateNutechFullMockBank(Array.isArray(groupSubjects) ? groupSubjects.join(' ') : (chapterName || customTopic || 'Engineering'), excludeStemSet)
+      },
+    ];
+
+    const matchedEntranceTrack = entranceTracks.find(t => t.matcher);
+    if (matchedEntranceTrack) {
+      const isFull = effectiveIsFullMock || requestedCount >= 50;
+      if (isFull) {
+        console.log(`[Entrance Mock Request] ${matchedEntranceTrack.name} Full Mock (Offset: ${batchOffset}, Count: ${requestedCount})`);
+        const fullBank = deduplicateQuestions(matchedEntranceTrack.getMockBank());
+        let filteredBank = fullBank;
+        if (excludeStemSet.size > 0) {
+          const unseen = fullBank.filter((q: any) => !excludeStemSet.has(normalizeQuestionStem(q.q || '')));
+          filteredBank = unseen.length >= requestedCount ? unseen : fullBank;
+        }
+        const questions = filteredBank.slice(0, requestedCount);
+        return res.json({
+          success: true,
+          selectedSubject: `${matchedEntranceTrack.name} Full Mock`,
+          subjectSentToGemini: `${matchedEntranceTrack.name} Full Mock`,
+          subjectReturned: `${matchedEntranceTrack.name} Full Mock`,
+          questions,
+          totalTargetCount: matchedEntranceTrack.mockCount,
+          batchOffset,
+          usage: {
+            currentUsage: 0,
+            limit: 100,
+            remaining: 999999,
+            resetDate: getNextMonthResetDate(),
+            isAdmin: true,
+          },
+        });
+      } else {
+        // Entrance Track Subject / Chapter Practice
+        console.log(`[Entrance Practice Request] ${matchedEntranceTrack.name} - ${rawSubject} (Count: ${requestedCount}, Excluded seen: ${excludeStemSet.size})`);
+        const entranceQuestions = deduplicateQuestions(getEntranceExamQuestions(matchedEntranceTrack.name as any, rawSubject, requestedCount, excludeStemSet));
+        return res.json({
+          success: true,
+          selectedSubject: rawSubject,
+          subjectSentToGemini: rawSubject,
+          subjectReturned: rawSubject,
+          questions: entranceQuestions,
+          totalTargetCount: entranceQuestions.length,
           batchOffset,
           usage: {
             currentUsage: 0,

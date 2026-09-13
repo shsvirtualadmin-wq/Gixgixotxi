@@ -23,6 +23,16 @@ import {
   generateNumsFullMockBank,
   generateGikiFullMockBank,
   generateUsatFullMockBank,
+  generateNedFullMockBank,
+  generatePieasFullMockBank,
+  generateNatFullMockBank,
+  generateIbaFullMockBank,
+  generateAkuFullMockBank,
+  generateMuetFullMockBank,
+  generateLumsFullMockBank,
+  generateNumlFullMockBank,
+  generateHitecFullMockBank,
+  generateNutechFullMockBank,
   getEntranceExamQuestions,
 } from './data/entranceExamQuestions';
 import {
@@ -2601,18 +2611,38 @@ export function App() {
     setSelectedSubject(targetSubject);
     setCustomTopic(targetTopic);
 
-    const isMdcat = selectedClass === 'MDCAT' || selectedGroup === 'MDCAT';
-    const isTcat = selectedClass === 'TCAT' || selectedGroup === 'TCAT' || targetSubject.toLowerCase().includes('tcat');
-    const isNet = selectedClass === 'NET' || selectedGroup === 'NET' || targetSubject.toLowerCase().includes('net') || String(params.customTopic || '').toLowerCase().includes('net');
-    const isFast = selectedClass === 'FAST' || selectedGroup === 'FAST' || targetSubject.toLowerCase().includes('fast') || String(params.customTopic || '').toLowerCase().includes('fast');
-    const isEcat = selectedClass === 'ECAT' || selectedGroup === 'ECAT' || targetSubject.toLowerCase().includes('ecat') || String(params.customTopic || '').toLowerCase().includes('ecat');
-    const isEtea = selectedClass === 'ETEA' || selectedGroup === 'ETEA' || targetSubject.toLowerCase().includes('etea') || String(params.customTopic || '').toLowerCase().includes('etea');
-    const isNums = selectedClass === 'NUMS' || selectedGroup === 'NUMS' || targetSubject.toLowerCase().includes('nums') || String(params.customTopic || '').toLowerCase().includes('nums');
-    const isGiki = selectedClass === 'GIKI' || selectedGroup === 'GIKI' || targetSubject.toLowerCase().includes('giki') || String(params.customTopic || '').toLowerCase().includes('giki');
-    const isUsat = selectedClass === 'USAT' || selectedGroup === 'USAT' || targetSubject.toLowerCase().includes('usat') || String(params.customTopic || '').toLowerCase().includes('usat');
+    const subLower = targetSubject.toLowerCase();
+    const topicLower = String(params.customTopic || params.topic || '').toLowerCase();
+    const chapterLower = String(params.chapterName || '').toLowerCase();
+    const classStr = String(selectedClass || '').toUpperCase();
+    const groupStr = String(selectedGroup || '').toUpperCase();
+
+    const isMdcat = classStr === 'MDCAT' || groupStr === 'MDCAT' || subLower.includes('mdcat') || topicLower.includes('mdcat') || chapterLower.includes('mdcat');
+    const isTcat = classStr === 'TCAT' || groupStr === 'TCAT' || subLower.includes('tcat') || topicLower.includes('tcat') || chapterLower.includes('tcat');
+    const isNet = classStr === 'NET' || groupStr.includes('NET') || subLower.includes('net') || topicLower.includes('net') || chapterLower.includes('net');
+    const isFast = classStr === 'FAST' || groupStr.includes('FAST') || subLower.includes('fast') || topicLower.includes('fast') || chapterLower.includes('fast');
+    const isEcat = classStr === 'ECAT' || groupStr.includes('ECAT') || subLower.includes('ecat') || topicLower.includes('ecat') || chapterLower.includes('ecat');
+    const isEtea = classStr === 'ETEA' || groupStr.includes('ETEA') || subLower.includes('etea') || topicLower.includes('etea') || chapterLower.includes('etea');
+    const isNums = classStr === 'NUMS' || groupStr.includes('NUMS') || subLower.includes('nums') || topicLower.includes('nums') || chapterLower.includes('nums');
+    const isGiki = classStr === 'GIKI' || groupStr.includes('GIKI') || subLower.includes('giki') || topicLower.includes('giki') || chapterLower.includes('giki');
+    const isUsat = classStr === 'USAT' || groupStr.includes('USAT') || subLower.includes('usat') || topicLower.includes('usat') || chapterLower.includes('usat');
+    const isNed = classStr === 'NED' || groupStr.includes('NED') || subLower.includes('ned') || topicLower.includes('ned') || chapterLower.includes('ned');
+    const isPieas = classStr === 'PIEAS' || groupStr.includes('PIEAS') || subLower.includes('pieas') || topicLower.includes('pieas') || chapterLower.includes('pieas');
+    const isNat = classStr === 'NAT' || groupStr.includes('NAT') || subLower.includes('nat') || topicLower.includes('nat') || chapterLower.includes('nat');
+    const isIba = classStr === 'IBA' || groupStr.includes('IBA') || subLower.includes('iba') || topicLower.includes('iba') || chapterLower.includes('iba');
+    const isAku = classStr === 'AKU' || groupStr.includes('AKU') || subLower.includes('aku') || topicLower.includes('aku') || chapterLower.includes('aku');
+    const isMuet = classStr === 'MUET' || groupStr.includes('MUET') || subLower.includes('muet') || topicLower.includes('muet') || chapterLower.includes('muet');
+    const isLums = classStr === 'LUMS' || groupStr.includes('LUMS') || subLower.includes('lums') || topicLower.includes('lums') || chapterLower.includes('lums');
+    const isNuml = classStr === 'NUML' || groupStr.includes('NUML') || subLower.includes('numl') || topicLower.includes('numl') || chapterLower.includes('numl');
+    const isHitec = classStr === 'HITEC' || groupStr.includes('HITEC') || subLower.includes('hitec') || topicLower.includes('hitec') || chapterLower.includes('hitec');
+    const isNutech = classStr === 'NUTECH' || groupStr.includes('NUTECH') || subLower.includes('nutech') || topicLower.includes('nutech') || chapterLower.includes('nutech');
+
+    const isAnyEntranceTrack = isMdcat || isTcat || isNet || isFast || isEcat || isEtea || isNums || isGiki || isUsat || isNed || isPieas || isNat || isIba || isAku || isMuet || isLums || isNuml || isHitec || isNutech;
+
+    const configPath: any = isMdcat ? 'mdcat' : isTcat ? 'tcat' : isNet ? 'net' : isFast ? 'fast' : isEcat ? 'ecat' : isEtea ? 'etea' : isNums ? 'nums' : isGiki ? 'giki' : isUsat ? 'usat' : isNed ? 'ned' : isPieas ? 'pieas' : isNat ? 'nat' : isIba ? 'iba' : isAku ? 'aku' : isMuet ? 'muet' : isLums ? 'lums' : isNuml ? 'numl' : isHitec ? 'hitec' : isNutech ? 'nutech' : 'boards';
 
     let config: TestConfig = {
-      path: isMdcat ? 'mdcat' : isTcat ? 'tcat' : isNet ? 'net' : isFast ? 'fast' : isEcat ? 'ecat' : isEtea ? 'etea' : isNums ? 'nums' : isGiki ? 'giki' : isUsat ? 'usat' : 'boards',
+      path: configPath,
       classNum: selectedClass,
       group: selectedGroup,
       subject: targetSubject,
@@ -2745,6 +2775,115 @@ export function App() {
       if (initialSet.length < targetTotalCount) {
         effectiveTargetTotalCount = initialSet.length;
       }
+    } else if (isNed) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 60;
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateNedFullMockBank(seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('NED', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isPieas) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 60;
+      const pieasStream = Array.isArray(params.groupSubjects) ? params.groupSubjects.join(' ') : (params.chapterName || selectedGroup || 'Pre-Engineering');
+      if (isMock) {
+        initialSet = deduplicateQuestions(generatePieasFullMockBank(pieasStream, seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('PIEAS', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isNat) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 60;
+      const natCategory = Array.isArray(params.groupSubjects) ? params.groupSubjects.join(' ') : (params.chapterName || selectedGroup || 'NAT-IE');
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateNatFullMockBank(natCategory, seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('NAT', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isIba) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 60;
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateIbaFullMockBank(seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('IBA', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isAku) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 60;
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateAkuFullMockBank(seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('AKU', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isMuet) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 60;
+      const muetStream = Array.isArray(params.groupSubjects)
+        ? (params.groupSubjects.some(s => s.toLowerCase().includes('bio')) ? 'Pre-Medical' : (params.groupSubjects.some(s => s.toLowerCase().includes('comp') || s.toLowerCase().includes('cs')) ? 'ICS' : 'Pre-Engineering'))
+        : (params.chapterName || selectedGroup || 'Pre-Engineering');
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateMuetFullMockBank(muetStream, seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('MUET', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isLums) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 60;
+      const lumsPath = Array.isArray(params.groupSubjects) ? params.groupSubjects.join(' ') : (params.chapterName || selectedGroup || 'LCAT');
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateLumsFullMockBank(lumsPath, seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('LUMS', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isNuml) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 50;
+      const numlStream = Array.isArray(params.groupSubjects) ? params.groupSubjects.join(' ') : (params.chapterName || selectedGroup || 'Engineering & CS');
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateNumlFullMockBank(numlStream, seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('NUML', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isHitec) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 60;
+      const hitecStream = Array.isArray(params.groupSubjects) ? params.groupSubjects.join(' ') : (params.chapterName || selectedGroup || 'Engineering');
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateHitecFullMockBank(hitecStream, seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('HITEC', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isNutech) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 60;
+      const nutechStream = Array.isArray(params.groupSubjects) ? params.groupSubjects.join(' ') : (params.chapterName || selectedGroup || 'Engineering');
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateNutechFullMockBank(nutechStream, seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('NUTECH', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
     } else {
       // 1. Instantly assemble initial questions from cache & prebuilt bank, prioritizing unseen questions
       const cached = getCachedQuestions(targetSubject, targetTopic) || [];
@@ -2821,6 +2960,16 @@ export function App() {
       }
 
       if (initialSet.length === 0) {
+        // Fallback: fetch without seen filter to serve revision set
+        const fallback = getPrebuiltQuestionsForSubject(targetSubject, targetTopic, selectedClass, params.chapterName, params.subtopic);
+        if (fallback.length > 0) {
+          initialSet = fallback;
+          isReviewSet = true;
+          reviewNote = "You have completed all questions in this bank! Serving revision set.";
+        }
+      }
+
+      if (initialSet.length === 0) {
         setIsGenerating(false);
         setGenerationError({
           isOpen: true,
@@ -2846,7 +2995,7 @@ export function App() {
 
     // Update config with the exact effective question count so total question indicators match exactly
     config = {
-      path: isMdcat ? 'mdcat' : isTcat ? 'tcat' : 'boards',
+      path: configPath,
       classNum: selectedClass,
       group: selectedGroup,
       subject: targetSubject,
@@ -2933,8 +3082,8 @@ export function App() {
     setIsGenerating(false);
     setPendingTestParams(null);
 
-    // 2. Launch background generation to fetch fresh AI-generated questions asynchronously (strictly disabled for TCAT and MDCAT)
-    if (!isTcat && !isMdcat && effectiveTargetTotalCount > readyQuestions.length) {
+    // 2. Launch background generation to fetch fresh AI-generated questions asynchronously (strictly disabled for entrance exam tracks which have complete authentic banks)
+    if (!isAnyEntranceTrack && effectiveTargetTotalCount > readyQuestions.length) {
       startBackgroundGeneration(params, readyQuestions, effectiveTargetTotalCount, isMdcat, activeSessionId);
     }
   };

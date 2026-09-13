@@ -26,8 +26,14 @@ export function mapSubject(input: string): CanonicalSubject | 'All Mix' | string
 
   const lower = clean.toLowerCase();
 
-  // Full mock exams should not be converted to a single canonical subject
-  if (lower.includes('tcat full') || lower.includes('tcat mock') || lower.includes('mdcat full') || lower.includes('full mock')) {
+  // Full mock exams and entrance simulations should not be converted to a single canonical subject
+  if (
+    lower.includes('mock') ||
+    lower.includes('grand mock') ||
+    lower.includes('full-length') ||
+    lower.includes('entrance') ||
+    lower.includes('aptitude')
+  ) {
     return clean;
   }
 
