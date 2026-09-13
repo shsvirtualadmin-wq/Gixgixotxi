@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { UserAvatar } from './UserAvatar';
 import { StudyBuddyFormattedMessage } from './StudyBuddyFormattedMessage';
 import { SegmentedControl } from './SegmentedControl';
+import { AdminPromoLinksManager } from './AdminPromoLinksManager';
 import {
   supabase,
   isAdminEmail,
@@ -81,11 +82,12 @@ import {
   Eye,
   Image as ImageIcon,
   ZoomIn,
+  Gift,
 } from 'lucide-react';
 
 interface AdminDashboardScreenProps {
   currentUser: User | null;
-  initialTab?: 'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress';
+  initialTab?: 'students' | 'payment_requests' | 'promo_links' | 'activity_logs' | 'tests' | 'progress';
   onBack: () => void;
 }
 
@@ -94,7 +96,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
   initialTab = 'students',
   onBack,
 }) => {
-  const [activeTab, setActiveTab] = useState<'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'students' | 'payment_requests' | 'promo_links' | 'activity_logs' | 'tests' | 'progress'>(initialTab);
 
   useEffect(() => {
     if (initialTab) {
@@ -1298,7 +1300,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
 
       {/* Responsive Admin Tab Navigation using Unified SegmentedControl */}
       <div className="w-full overflow-hidden">
-        <SegmentedControl<'students' | 'payment_requests' | 'activity_logs' | 'tests' | 'progress'>
+        <SegmentedControl<'students' | 'payment_requests' | 'promo_links' | 'activity_logs' | 'tests' | 'progress'>
           id="admin-main-segmented-tabs"
           options={[
             {
@@ -1319,6 +1321,11 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                 paymentRequests.filter((r) => r.status === 'pending').length > 0
                   ? 'bg-amber-500 text-white animate-pulse'
                   : undefined,
+            },
+            {
+              value: 'promo_links',
+              label: 'Promo Links',
+              icon: Gift,
             },
             {
               value: 'activity_logs',
@@ -1345,6 +1352,11 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
           className="w-full shadow-sm"
         />
       </div>
+
+      {/* TAB CONTENT: PROMO & REFERRAL LINKS (1-YEAR FREE PRO) */}
+      {activeTab === 'promo_links' && (
+        <AdminPromoLinksManager currentUser={currentUser} />
+      )}
 
       {/* TAB CONTENT 1: STUDENTS DIRECTORY */}
       {activeTab === 'students' && (

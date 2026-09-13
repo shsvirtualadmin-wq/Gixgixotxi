@@ -75,7 +75,15 @@ const ClassStreamDashboard = lazyWithRetry(() => import('./components/ClassStrea
 const PaymentRequiredScreen = lazyWithRetry(() => import('./components/PaymentRequiredScreen').then(m => ({ default: m.PaymentRequiredScreen })), 'PaymentRequired');
 const PlanSelectionScreen = lazyWithRetry(() => import('./components/PlanSelectionScreen').then(m => ({ default: m.PlanSelectionScreen })), 'PlanSelection');
 const PricingPage = lazyWithRetry(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })), 'Pricing');
-const StudentProfileView = lazyWithRetry(() => import('./components/StudentProfileView').then(m => ({ default: m.StudentProfileView })), 'StudentProfileView');
+import { StudentProfileView } from './components/StudentProfileView';
+import { PromoCelebrationModal } from './components/PromoCelebrationModal';
+import {
+  extractPromoCodeFromUrl,
+  storePendingPromoCode,
+  getStoredPendingPromoCode,
+  clearPendingPromoCode,
+  claimPromoCode,
+} from './lib/promoCode';
 
 import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
@@ -141,6 +149,20 @@ const getInitialUrlState = (): {
 } => {
   if (typeof window === 'undefined') {
     return { screen: 'intro', selectedSubject: '' };
+  }
+
+  // Check if visitor opened a promotional or referral link (/claim?code=... or ?promo=...)
+  const promoFromUrl = extractPromoCodeFromUrl();
+  if (promoFromUrl) {
+    storePendingPromoCode(promoFromUrl);
+    // Requirement 2: If someone clicks the link while already logged in, take them straight to their own dashboard
+    const cachedUser = localStorage.getItem('boardly_cached_user');
+    if (cachedUser) {
+      return { screen: 'dashboard', selectedSubject: '' };
+    } else {
+      // If logged out or new student, direct them to login/signup
+      return { screen: 'auth', selectedSubject: '' };
+    }
   }
 
   // Check if URL contains email confirmation tokens or auth callback parameters
@@ -597,6 +619,56 @@ export function App() {
 
     return () => clearTimeout(masterTimeout);
   }, []);
+
+  // 1-Year Free Pro Promotional Link Modal States
+  const [promoModalOpen, setPromoModalOpen] = useState<boolean>(false);
+  const [promoModalData, setPromoModalData] = useState<{
+    trackLabel?: string;
+    expiresDate?: string | null;
+    code?: string;
+    campaignLabel?: string;
+  } | null>(null);
+
+  // Auto-claim 1-Year Free Pro Promo Link for logged-in students who open a claim link
+  useEffect(() => {
+    if (!currentUser) return;
+    const promoCode = extractPromoCodeFromUrl() || getStoredPendingPromoCode();
+    if (!promoCode) return;
+
+    let isMounted = true;
+    console.log(`[Promo Engine] Detecting promo code "${promoCode}" for active user ${currentUser.email}...`);
+
+    claimPromoCode(promoCode, currentUser.id, currentUser.email).then((result) => {
+      if (!isMounted) return;
+      if (result.success && result.profile) {
+        setUserProfile(result.profile);
+        localStorage.setItem('boardly_cached_profile', JSON.stringify(result.profile));
+        localStorage.setItem(`boardly_profile_${currentUser.id}`, JSON.stringify(result.profile));
+        clearPendingPromoCode();
+        setPromoModalData({
+          trackLabel: result.profile.grade || result.profile.stream || 'Boardly Pro Track',
+          expiresDate: result.grantedUntil,
+          code: result.code || promoCode,
+          campaignLabel: result.label,
+        });
+        setPromoModalOpen(true);
+        // Requirement 2: Take them straight to their own dashboard
+        setScreen('dashboard');
+        if (window.location.pathname.startsWith('/claim') || window.location.search.includes('code=')) {
+          window.history.replaceState(null, '', window.location.pathname === '/claim' ? '/' : window.location.pathname);
+        }
+      } else if (result.alreadyRedeemed) {
+        clearPendingPromoCode();
+        console.log('[Promo Engine] Account already redeemed a 1-year promo pass.');
+      }
+    }).catch((err) => {
+      console.warn('[Promo Engine] Failed auto-claiming for logged-in user:', err);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [currentUser]);
 
   const handleRetryAuth = useCallback(async () => {
     setAuthTimedOut(false);
@@ -1488,18 +1560,32 @@ export function App() {
           }
         });
       } else if (codeParam) {
-        console.log('[Auth Callback] Exchanging code for session with Supabase...');
-        supabase.auth.exchangeCodeForSession(codeParam).then(({ data, error }) => {
-          console.log('[Auth Callback] Code exchange result:', { data, error });
-          if (!error && data?.session?.user) {
-            console.log('[Auth Callback] Code exchange success! User session set:', data.session.user.email);
-            setCurrentUser(data.session.user);
-            window.history.replaceState(null, '', window.location.pathname);
-          } else if (error) {
-            console.error('[Auth Callback] Code exchange error:', error);
-            setScreen('auth');
-          }
-        });
+        const isPromoCodeParam = Boolean(
+          window.location.pathname.startsWith('/claim') ||
+          searchParams.has('promo') ||
+          searchParams.has('claim') ||
+          codeParam.startsWith('BOARDLY-') ||
+          codeParam.startsWith('PRO-') ||
+          codeParam.startsWith('FREE-')
+        );
+
+        if (isPromoCodeParam) {
+          console.log('[Auth Callback] Detected promo code parameter, storing intent:', codeParam);
+          storePendingPromoCode(codeParam);
+        } else {
+          console.log('[Auth Callback] Exchanging auth code for session with Supabase...');
+          supabase.auth.exchangeCodeForSession(codeParam).then(({ data, error }) => {
+            console.log('[Auth Callback] Code exchange result:', { data, error });
+            if (!error && data?.session?.user) {
+              console.log('[Auth Callback] Code exchange success! User session set:', data.session.user.email);
+              setCurrentUser(data.session.user);
+              window.history.replaceState(null, '', window.location.pathname);
+            } else if (error) {
+              console.error('[Auth Callback] Code exchange error:', error);
+              setScreen('auth');
+            }
+          });
+        }
       } else if (urlError || urlErrorDescription) {
         console.error('[Auth Callback] URL contains Auth Error:', urlErrorDescription || urlError);
         setScreen('auth');
@@ -1529,6 +1615,37 @@ export function App() {
       } finally {
         if (isSubscribed) {
           setProfileSyncing(false);
+        }
+      }
+
+      // 1.1 Check & Auto-Claim Pending Promo Link (1-Year Free Pro) right after registration / login
+      const pendingPromo = getStoredPendingPromoCode() || extractPromoCodeFromUrl();
+      if (pendingPromo) {
+        try {
+          console.log(`[Promo Engine] Auto-claiming promo code "${pendingPromo}" for authenticated student ${user.email}...`);
+          const claimResult = await claimPromoCode(pendingPromo, user.id, user.email);
+          console.log('[Promo Engine] Auto-claim response:', claimResult);
+          if (claimResult.success && claimResult.profile) {
+            profile = claimResult.profile;
+            if (isSubscribed) {
+              setUserProfile(claimResult.profile);
+            }
+            localStorage.setItem('boardly_cached_profile', JSON.stringify(claimResult.profile));
+            localStorage.setItem(`boardly_profile_${user.id}`, JSON.stringify(claimResult.profile));
+            clearPendingPromoCode();
+            setPromoModalData({
+              trackLabel: claimResult.profile.grade || claimResult.profile.stream || 'Boardly Pro Track',
+              expiresDate: claimResult.grantedUntil,
+              code: claimResult.code || pendingPromo,
+              campaignLabel: claimResult.label,
+            });
+            setPromoModalOpen(true);
+          } else if (claimResult.alreadyRedeemed) {
+            clearPendingPromoCode();
+            console.log('[Promo Engine] Student account has already redeemed a 1-year promo link.');
+          }
+        } catch (promoErr) {
+          console.error('[Promo Engine] Error auto-claiming pending promo:', promoErr);
         }
       }
 
@@ -3880,6 +3997,20 @@ export function App() {
           </div>
         </div>
       )}
+
+      {/* 1-Year Free Pro Promotional Pass Celebration Modal */}
+      <PromoCelebrationModal
+        isOpen={promoModalOpen}
+        onClose={() => setPromoModalOpen(false)}
+        trackLabel={promoModalData?.trackLabel}
+        expiresDate={promoModalData?.expiresDate}
+        code={promoModalData?.code}
+        campaignLabel={promoModalData?.campaignLabel}
+        onGoToDashboard={() => {
+          setPromoModalOpen(false);
+          setScreen('dashboard');
+        }}
+      />
 
       {showExitToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-slate-900/95  text-white  font-bold text-xs sm:text-sm px-5 py-3 rounded-full shadow-2xl backdrop-blur-md border border-white/20  flex items-center gap-2.5 animate-ios-spring pointer-events-none transition-all">

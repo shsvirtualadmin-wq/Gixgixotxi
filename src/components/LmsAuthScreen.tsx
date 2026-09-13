@@ -20,9 +20,11 @@ import {
   Send,
   Sparkles,
   HelpCircle,
+  Gift,
 } from 'lucide-react';
 import { useSiteSettings } from '../context/SiteSettingsContext';
 import { SegmentedControl } from './SegmentedControl';
+import { getStoredPendingPromoCode, extractPromoCodeFromUrl } from '../lib/promoCode';
 
 interface LmsAuthScreenProps {
   onSuccess?: (user?: User) => void;
@@ -52,6 +54,18 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = React.memo(({
   const [infoMsg, setInfoMsg] = useState<string | null>(null);
   const [emailSentMessage, setEmailSentMessage] = useState<string | null>(null);
   const [emailVerifiedMessage, setEmailVerifiedMessage] = useState<string | null>(null);
+  const [pendingPromoCode, setPendingPromoCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    const promo = extractPromoCodeFromUrl() || getStoredPendingPromoCode();
+    if (promo) {
+      setPendingPromoCode(promo);
+      if (initialMode === 'signin') {
+        setMode('signup');
+        setDirection(1);
+      }
+    }
+  }, [initialMode]);
 
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -306,6 +320,33 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = React.memo(({
           LEARN &middot; GROW &middot; ACHIEVE
         </p>
       </div>
+
+      {/* 1-Year Free Pro Promo Link Announcement Banner */}
+      {pendingPromoCode && (
+        <div className="mb-5 p-4 bg-gradient-to-r from-blue-900/50 via-indigo-900/50 to-blue-950/60 border border-blue-500/50 rounded-2xl shadow-xl animate-fadeIn">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-blue-500/20 border border-blue-400/40 text-amber-300 flex items-center justify-center shrink-0 mt-0.5 shadow">
+              <Gift className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap mb-1">
+                <span className="text-[10px] font-black tracking-wider text-white uppercase bg-blue-600 px-2 py-0.5 rounded-full border border-blue-400/40 shadow-sm">
+                  1-Year Free Pro Pass Attached
+                </span>
+                <span className="font-mono text-[11px] font-bold text-amber-300 bg-black/40 px-2 py-0.5 rounded-md border border-amber-400/30">
+                  {pendingPromoCode}
+                </span>
+              </div>
+              <h3 className="text-sm font-bold text-white leading-snug">
+                Welcome to Boardly!
+              </h3>
+              <p className="text-xs text-blue-100/90 mt-1 leading-relaxed">
+                Complete your registration or sign in below to automatically activate your <strong>1 full year of free Pro access</strong> across all tests and tracks.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Verified Notice Banner */}
       {emailVerifiedMessage && (

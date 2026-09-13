@@ -8978,6 +8978,465 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
+  // ==========================================
+  // PROMOTIONAL & REFERRAL LINK ENGINE (1-YEAR FREE PRO)
+  // ==========================================
+  const PROMO_LINKS_FILE_PATH = path.join(process.cwd(), "data", "promo_links.json");
+
+  interface PromoLinkRecord {
+    id: string;
+    code: string;
+    label: string;
+    discount_type: '1_year_free_pro';
+    duration_months: number;
+    max_redemptions: number | null;
+    redemption_count: number;
+    is_active: boolean;
+    created_by: string;
+    created_at: string;
+    expires_at: string | null;
+    redemptions: Array<{
+      student_id: string;
+      student_email: string;
+      student_name: string;
+      redeemed_at: string;
+      track: string;
+      granted_until: string;
+    }>;
+  }
+
+  function loadPromoLinks(): PromoLinkRecord[] {
+    try {
+      if (fs.existsSync(PROMO_LINKS_FILE_PATH)) {
+        const raw = fs.readFileSync(PROMO_LINKS_FILE_PATH, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn("Could not read promo_links.json, initializing empty array:", e);
+    }
+    return [];
+  }
+
+  function savePromoLinks(data: PromoLinkRecord[]): void {
+    try {
+      const dir = path.dirname(PROMO_LINKS_FILE_PATH);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(PROMO_LINKS_FILE_PATH, JSON.stringify(data, null, 2), "utf-8");
+    } catch (e) {
+      console.error("Failed to write promo_links.json:", e);
+    }
+  }
+
+  // Anti-stacking validator: verifies whether this student account has already redeemed ANY 1-year promo link
+  function hasStudentAlreadyRedeemedPromo(
+    studentId?: string,
+    studentEmail?: string,
+    links: PromoLinkRecord[] = [],
+    currentStudent?: any
+  ): boolean {
+    const cleanId = (studentId || "").trim();
+    const cleanEmail = (studentEmail || "").trim().toLowerCase();
+
+    // 1. Check all redemptions across all promo campaigns
+    for (const link of links) {
+      if (Array.isArray(link.redemptions)) {
+        for (const r of link.redemptions) {
+          if (
+            (cleanId && r.student_id === cleanId) ||
+            (cleanEmail && r.student_email && r.student_email.trim().toLowerCase() === cleanEmail)
+          ) {
+            return true;
+          }
+        }
+      }
+    }
+
+    // 2. Check current student database record
+    if (currentStudent) {
+      if (currentStudent.promo_code_redeemed || currentStudent.promo_redeemed_at) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  // API Endpoint: Validate Promo Code
+  app.get("/api/promo/validate", async (req: express.Request, res: express.Response) => {
+    try {
+      const code = String(req.query.code || "").trim().toUpperCase();
+      if (!code) {
+        return res.status(400).json({ valid: false, error: "Promo code parameter required." });
+      }
+
+      const links = loadPromoLinks();
+      const link = links.find((l) => l.code.toUpperCase() === code);
+
+      if (!link) {
+        return res.status(404).json({ valid: false, error: "Promotional code not found." });
+      }
+
+      if (!link.is_active) {
+        return res.status(400).json({ valid: false, error: "This promotional link has been paused." });
+      }
+
+      if (link.expires_at && new Date(link.expires_at).getTime() < Date.now()) {
+        return res.status(400).json({ valid: false, error: "This promotional link has expired." });
+      }
+
+      if (link.max_redemptions && link.redemption_count >= link.max_redemptions) {
+        return res.status(400).json({ valid: false, error: "This promotional link has reached its maximum redemptions." });
+      }
+
+      const remainingRedemptions = link.max_redemptions ? Math.max(0, link.max_redemptions - link.redemption_count) : null;
+
+      return res.status(200).json({
+        valid: true,
+        code: link.code,
+        label: link.label,
+        maxRedemptions: link.max_redemptions,
+        redemptionCount: link.redemption_count,
+        remainingRedemptions,
+        expiresAt: link.expires_at,
+      });
+    } catch (err: any) {
+      console.error("Error validating promo code:", err);
+      return res.status(500).json({ valid: false, error: "Server error validating promo code." });
+    }
+  });
+
+  // API Endpoint: Claim / Redeem Promo Link (1-Year Free Pro Access)
+  app.post("/api/promo/claim", async (req: express.Request, res: express.Response) => {
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const { code: rawCode, studentId, studentEmail } = req.body || {};
+      const code = String(rawCode || "").trim().toUpperCase();
+
+      if (!code) {
+        return res.status(400).json({ success: false, error: "Promo code is required." });
+      }
+      if (!studentId && !studentEmail) {
+        return res.status(400).json({ success: false, error: "Student identification (ID or Email) is required to claim this promo." });
+      }
+
+      const links = loadPromoLinks();
+      const link = links.find((l) => l.code.toUpperCase() === code);
+
+      if (!link) {
+        return res.status(404).json({ success: false, error: `Promotional code "${code}" not found.` });
+      }
+
+      if (!link.is_active) {
+        return res.status(400).json({ success: false, error: "This promotional link has been paused or is no longer active." });
+      }
+
+      if (link.expires_at && new Date(link.expires_at).getTime() < Date.now()) {
+        return res.status(400).json({
+          success: false,
+          error: `This promotional link expired on ${new Date(link.expires_at).toLocaleDateString()}.`
+        });
+      }
+
+      if (link.max_redemptions && link.redemption_count >= link.max_redemptions) {
+        return res.status(400).json({
+          success: false,
+          error: "This promotional link has reached its maximum allowable redemptions."
+        });
+      }
+
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
+
+      // Fetch student profile to verify and check anti-stacking
+      let currentStudent: any = null;
+      const searchId = studentId && !studentId.includes("@") ? studentId : null;
+      const searchEmail = studentEmail || (studentId && studentId.includes("@") ? studentId : null);
+
+      if (supabaseAdmin) {
+        if (searchId) {
+          const { data: sById } = await supabaseAdmin.from("students").select("*").eq("id", searchId).maybeSingle();
+          if (sById) currentStudent = sById;
+        }
+        if (!currentStudent && searchEmail) {
+          const { data: sByEmail } = await supabaseAdmin.from("students").select("*").eq("email", searchEmail).maybeSingle();
+          if (sByEmail) currentStudent = sByEmail;
+        }
+      }
+
+      // STRICT SERVER-SIDE ANTI-EXPLOIT / ANTI-STACKING CHECK
+      // Check if student already redeemed ANY promo link previously
+      if (hasStudentAlreadyRedeemedPromo(studentId, studentEmail, links, currentStudent)) {
+        return res.status(400).json({
+          success: false,
+          alreadyRedeemed: true,
+          error: "This student account has already redeemed a 1-Year Free Pro promotional link. Promotional passes are limited to one per student account."
+        });
+      }
+
+      // 1 Full Year (365 days) from current moment
+      const oneYearDurationMs = 365 * 24 * 60 * 60 * 1000;
+      const accessExpiresStr = new Date(Date.now() + oneYearDurationMs).toISOString();
+
+      const promoPackageName = "⭐ Boardly 1-Year Pro (Promotional Pass)";
+      const existingPlans = Array.isArray(currentStudent?.subscribed_plans)
+        ? currentStudent.subscribed_plans
+        : [];
+      const updatedSubscribedPlans = Array.from(new Set([...existingPlans, "boardly_pro", "pro"]));
+
+      const planUpdateData: any = {
+        is_pro: true,
+        plan_tier: "pro",
+        package_name: promoPackageName,
+        payment_status: "Verified & Paid",
+        plan_status: "verified_pro",
+        requires_payment: false,
+        subscribed_plans: updatedSubscribedPlans,
+        access_expires: accessExpiresStr,
+        tests_used_this_month: 0,
+        ai_messages_used_today: 0,
+        promo_code_redeemed: link.code,
+        promo_redeemed_at: new Date().toISOString(),
+        status: "active",
+        updated_at: new Date().toISOString(),
+      };
+
+      // If student was not found in table yet, create a bootstrap record
+      const studentFinalId = currentStudent?.id || searchId || ("student_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6));
+      const studentFinalEmail = currentStudent?.email || searchEmail || "";
+      const studentFinalName = currentStudent?.name || (studentFinalEmail ? studentFinalEmail.split("@")[0] : "Student");
+
+      if (!currentStudent) {
+        planUpdateData.id = studentFinalId;
+        planUpdateData.email = studentFinalEmail;
+        planUpdateData.name = studentFinalName;
+        planUpdateData.grade = "General Student";
+        planUpdateData.stream = "";
+        planUpdateData.is_registered = false;
+        planUpdateData.created_at = new Date().toISOString();
+      }
+
+      // Commit update to database if Supabase client is available
+      if (supabaseAdmin) {
+        let dbError: any = null;
+        try {
+          const { error: upsertErr } = await supabaseAdmin
+            .from("students")
+            .upsert({ id: studentFinalId, ...planUpdateData });
+          if (upsertErr) dbError = upsertErr;
+        } catch (err: any) {
+          dbError = err;
+        }
+
+        if (dbError) {
+          console.error("[Promo Redemption DB Error]:", dbError);
+          try {
+            await supabaseAdmin.from("students").update(planUpdateData).eq("id", studentFinalId);
+          } catch (e2) {
+            console.error("[Promo Redemption DB update fallback failed]:", e2);
+          }
+        }
+      }
+
+      // Record redemption in the promo link object
+      const trackLabel = currentStudent?.grade || currentStudent?.stream || "Boardly Enrolled Track";
+      const redemptionRecord = {
+        student_id: studentFinalId,
+        student_email: studentFinalEmail,
+        student_name: studentFinalName,
+        redeemed_at: new Date().toISOString(),
+        track: trackLabel,
+        granted_until: accessExpiresStr,
+      };
+
+      link.redemption_count = (link.redemption_count || 0) + 1;
+      if (!Array.isArray(link.redemptions)) link.redemptions = [];
+      link.redemptions.unshift(redemptionRecord);
+
+      savePromoLinks(links);
+
+      // Log into admin activity log
+      const logRecord = {
+        id: "log_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7),
+        admin_email: link.created_by || "system_promo",
+        target_student_id: studentFinalId,
+        target_student_name: studentFinalName,
+        target_student_email: studentFinalEmail,
+        action_type: "promo_1year_redeemed",
+        old_plan: currentStudent?.package_name || "Free Plan",
+        new_plan: promoPackageName,
+        note: `Redeemed 1-Year Free Pro Promo Link "${link.code}" (${link.label}) — 1 Full Year Pro granted until ${new Date(accessExpiresStr).toLocaleDateString()}`,
+        created_at: new Date().toISOString(),
+      };
+
+      try {
+        await supabaseAdmin.from("admin_activity_logs").insert([logRecord]);
+      } catch {
+        // in-memory fallback
+      }
+      memoryActivityLogs.unshift(logRecord);
+
+      const returnedProfile = {
+        ...(currentStudent || {}),
+        id: studentFinalId,
+        email: studentFinalEmail,
+        name: studentFinalName,
+        ...planUpdateData,
+      };
+
+      console.log(`[Promo Engine] Successfully granted 1-Year Free Pro to ${studentFinalEmail} via code "${link.code}" until ${accessExpiresStr}`);
+
+      return res.status(200).json({
+        success: true,
+        message: "🎉 1 Year of Free Boardly Pro Access Unlocked!",
+        code: link.code,
+        label: link.label,
+        grantedUntil: accessExpiresStr,
+        profile: returnedProfile,
+      });
+    } catch (err: any) {
+      console.error("Error in /api/promo/claim:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Internal server error claiming promo code." });
+    }
+  });
+
+  // API Endpoint: Admin Fetch All Promo Links
+  app.get("/api/admin/promo-links", async (req: express.Request, res: express.Response) => {
+    try {
+      const requesterEmail = (req.query.adminEmail as string) || "";
+      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
+      const requestedBy = requesterEmail || tokenUser?.email || "";
+      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
+
+      if (!isAdmin && requesterEmail && !isAdminEmail(requesterEmail)) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+      }
+
+      const links = loadPromoLinks();
+      return res.status(200).json({ success: true, links });
+    } catch (err: any) {
+      console.error("Error fetching admin promo links:", err);
+      return res.status(500).json({ success: false, error: "Failed to fetch promotional links." });
+    }
+  });
+
+  // API Endpoint: Admin Create Promo Link
+  app.post("/api/admin/promo-links/create", async (req: express.Request, res: express.Response) => {
+    try {
+      const { label, customCode, maxRedemptions, expiresDays, adminEmail } = req.body || {};
+      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
+      const requestedBy = adminEmail || tokenUser?.email || "";
+      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
+
+      if (!isAdmin && requestedBy && !isAdminEmail(requestedBy)) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to administrators." });
+      }
+
+      if (!label || !label.trim()) {
+        return res.status(400).json({ success: false, error: "A label or campaign name is required." });
+      }
+
+      const links = loadPromoLinks();
+
+      // Generate or sanitize code
+      let finalCode = "";
+      if (customCode && customCode.trim()) {
+        finalCode = customCode.trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "");
+      } else {
+        const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        let rand = "";
+        for (let i = 0; i < 5; i++) {
+          rand += chars.charAt(Math.floor(Math.random() * chars.length));
+        }
+        finalCode = `BOARDLY-1Y-${rand}`;
+      }
+
+      // Ensure uniqueness
+      if (links.some((l) => l.code.toUpperCase() === finalCode)) {
+        return res.status(400).json({ success: false, error: `Promo code "${finalCode}" already exists. Please choose another code.` });
+      }
+
+      let expiresAt: string | null = null;
+      if (expiresDays && Number(expiresDays) > 0) {
+        expiresAt = new Date(Date.now() + Number(expiresDays) * 24 * 60 * 60 * 1000).toISOString();
+      }
+
+      const newLink: PromoLinkRecord = {
+        id: "promo_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6),
+        code: finalCode,
+        label: label.trim(),
+        discount_type: "1_year_free_pro",
+        duration_months: 12,
+        max_redemptions: maxRedemptions ? Number(maxRedemptions) : null,
+        redemption_count: 0,
+        is_active: true,
+        created_by: requestedBy || "shsvirtualadmin@gmail.com",
+        created_at: new Date().toISOString(),
+        expires_at: expiresAt,
+        redemptions: [],
+      };
+
+      links.unshift(newLink);
+      savePromoLinks(links);
+
+      return res.status(201).json({ success: true, link: newLink });
+    } catch (err: any) {
+      console.error("Error creating promo link:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Failed to create promo link." });
+    }
+  });
+
+  // API Endpoint: Admin Toggle Active Status
+  app.post("/api/admin/promo-links/toggle", async (req: express.Request, res: express.Response) => {
+    try {
+      const { id, isActive, adminEmail } = req.body || {};
+      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
+      const requestedBy = adminEmail || tokenUser?.email || "";
+      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
+
+      if (!isAdmin && requestedBy && !isAdminEmail(requestedBy)) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to administrators." });
+      }
+
+      const links = loadPromoLinks();
+      const link = links.find((l) => l.id === id);
+      if (!link) {
+        return res.status(404).json({ success: false, error: "Promo link not found." });
+      }
+
+      link.is_active = typeof isActive === "boolean" ? isActive : !link.is_active;
+      savePromoLinks(links);
+
+      return res.status(200).json({ success: true, link });
+    } catch (err: any) {
+      console.error("Error toggling promo link:", err);
+      return res.status(500).json({ success: false, error: "Failed to update promo link status." });
+    }
+  });
+
+  // API Endpoint: Admin Delete Promo Link
+  app.delete("/api/admin/promo-links/:id", async (req: express.Request, res: express.Response) => {
+    try {
+      const { id } = req.params;
+      const requesterEmail = (req.query.adminEmail as string) || "";
+      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
+      const requestedBy = requesterEmail || tokenUser?.email || "";
+      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
+
+      if (!isAdmin && requestedBy && !isAdminEmail(requestedBy)) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to administrators." });
+      }
+
+      const links = loadPromoLinks();
+      const filtered = links.filter((l) => l.id !== id);
+      savePromoLinks(filtered);
+
+      return res.status(200).json({ success: true, message: "Promo link deleted." });
+    } catch (err: any) {
+      console.error("Error deleting promo link:", err);
+      return res.status(500).json({ success: false, error: "Failed to delete promo link." });
+    }
+  });
+
   // API Endpoint: Admin Fetch Activity Logs
   app.get("/api/admin/activity-logs", async (req: express.Request, res: express.Response) => {
     try {

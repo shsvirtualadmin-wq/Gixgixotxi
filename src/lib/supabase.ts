@@ -349,6 +349,8 @@ export interface StudentProfile {
   plan_tier?: 'free' | 'pro';
   ai_messages_used_today?: number;
   last_ai_message_date?: string;
+  promo_code_redeemed?: string;
+  promo_redeemed_at?: string;
   created_at: string;
   updated_at?: string;
 }
