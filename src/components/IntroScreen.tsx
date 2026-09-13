@@ -329,6 +329,70 @@ const TRUSTED_INSTITUTIONS_MARQUEE: TrustedInstitution[] = [
     remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000ca3482089810078834ca4bd2.png',
     fallbackInitials: 'KIPS',
   },
+  {
+    id: 'pieas',
+    name: 'PIEAS Islamabad',
+    shortName: 'PIEAS',
+    localLogoUrl: '/logos/academic/pieas.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000748c8211bb5e3cfb31849396.png',
+    fallbackInitials: 'PIEAS',
+  },
+  {
+    id: 'usat',
+    name: 'HEC USAT',
+    shortName: 'HEC USAT',
+    localLogoUrl: '/logos/academic/hec-usat.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000175082118793959c6c498063.png',
+    fallbackInitials: 'USAT',
+  },
+  {
+    id: 'lums',
+    name: 'LUMS Lahore',
+    shortName: 'LUMS',
+    localLogoUrl: '/logos/academic/lums.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f29c8211bbac0ae9800006de.png',
+    fallbackInitials: 'LUMS',
+  },
+  {
+    id: 'comsats',
+    name: 'COMSATS University',
+    shortName: 'COMSATS',
+    localLogoUrl: '/logos/academic/comsats.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000008a848208ad6e5ff38e3d1998.png',
+    fallbackInitials: 'CUI',
+  },
+  {
+    id: 'hitec',
+    name: 'HITEC University Taxila',
+    shortName: 'HITEC',
+    localLogoUrl: '/logos/academic/hitec.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_0000000011a08208bd16b443318357b1.png',
+    fallbackInitials: 'HITEC',
+  },
+  {
+    id: 'nutech',
+    name: 'NUTECH Islamabad',
+    shortName: 'NUTECH',
+    localLogoUrl: '/logos/academic/nutech.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_0000000098c08211934c88fe8706c744.png',
+    fallbackInitials: 'NUTECH',
+  },
+  {
+    id: 'muet',
+    name: 'Mehran UET Jamshoro',
+    shortName: 'MUET',
+    localLogoUrl: '/logos/academic/muet.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
+    fallbackInitials: 'MUET',
+  },
+  {
+    id: 'ned',
+    name: 'NED University Karachi',
+    shortName: 'NED',
+    localLogoUrl: '/logos/academic/ned.png',
+    remoteLogoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000287482088f11d13f9c658cf4.png',
+    fallbackInitials: 'NED',
+  },
 ];
 
 const MARQUEE_ITEMS = [...TRUSTED_INSTITUTIONS_MARQUEE, ...TRUSTED_INSTITUTIONS_MARQUEE];
@@ -375,34 +439,58 @@ const CarouselLogoItem: React.FC<{ inst: TrustedInstitution }> = React.memo(({ i
   );
 });
 
-const CardLogoImage: React.FC<{ src: string; alt: string; fallbackText: string; bgClass: string; textClass: string }> = React.memo(({
+const CardLogoImage: React.FC<{
+  src: string;
+  fallbackSrc?: string;
+  alt: string;
+  fallbackText: string;
+  bgClass: string;
+  textClass: string;
+}> = React.memo(({
   src,
+  fallbackSrc,
   alt,
   fallbackText,
   bgClass,
   textClass,
 }) => {
+  const [currentSrc, setCurrentSrc] = useState(src);
   const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setCurrentSrc(src);
+    setFailed(false);
+  }, [src]);
+
+  const handleError = () => {
+    if (fallbackSrc && currentSrc !== fallbackSrc) {
+      setCurrentSrc(fallbackSrc);
+    } else {
+      setFailed(true);
+    }
+  };
 
   if (failed) {
     return (
-      <div className={`w-full h-full ${bgClass} flex items-center justify-center rounded-xl font-black text-sm sm:text-base ${textClass}`}>
+      <div className={`w-full h-full ${bgClass} flex items-center justify-center rounded-2xl font-black text-sm sm:text-base shadow-xs ${textClass}`}>
         {fallbackText}
       </div>
     );
   }
 
   return (
-    <img
-      src={src}
-      alt={alt}
-      className="w-full h-full object-contain"
-      style={{ objectFit: 'contain' }}
-      loading="lazy"
-      decoding="async"
-      referrerPolicy="no-referrer"
-      onError={() => setFailed(true)}
-    />
+    <div className="w-full h-full p-2 flex items-center justify-center">
+      <img
+        src={currentSrc}
+        alt={alt}
+        className="max-w-full max-h-full object-contain filter drop-shadow-xs transition-transform duration-300 group-hover:scale-105"
+        style={{ objectFit: 'contain' }}
+        loading="lazy"
+        decoding="async"
+        referrerPolicy="no-referrer"
+        onError={handleError}
+      />
+    </div>
   );
 });
 
@@ -1279,7 +1367,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 id: 'usat',
                 categoryBadge: 'HEC Pakistan',
                 categoryBadgeClass: 'bg-violet-600/15 text-violet-800',
-                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png',
+                logoSrc: '/logos/academic/hec-usat.png',
+                fallbackSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000175082118793959c6c498063.png',
                 logoAlt: 'HEC USAT Logo',
                 fallbackText: 'USAT',
                 bgClass: 'bg-indigo-900',
@@ -1297,7 +1386,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 id: 'ned',
                 categoryBadge: 'NED Karachi',
                 categoryBadgeClass: 'bg-[#002D62]/15 text-[#002D62]',
-                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/ned-logo.png',
+                logoSrc: '/logos/academic/ned.png',
+                fallbackSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000287482088f11d13f9c658cf4.png',
                 logoAlt: 'NED University Official Logo',
                 fallbackText: 'NED',
                 bgClass: 'bg-[#002D62]',
@@ -1315,7 +1405,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 id: 'pieas',
                 categoryBadge: 'PIEAS Islamabad',
                 categoryBadgeClass: 'bg-[#1E3A8A]/15 text-[#1E3A8A]',
-                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/pieas-logo.png',
+                logoSrc: '/logos/academic/pieas.png',
+                fallbackSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000748c8211bb5e3cfb31849396.png',
                 logoAlt: 'PIEAS Official Logo',
                 fallbackText: 'PIEAS',
                 bgClass: 'bg-[#1E3A8A]',
@@ -1333,15 +1424,16 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 id: 'nat',
                 categoryBadge: 'COMSATS / Air / Bahria',
                 categoryBadgeClass: 'bg-[#006A4E]/15 text-[#006A4E]',
-                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nts-logo.png',
-                logoAlt: 'NTS NAT Shared Portal Logo',
-                fallbackText: 'NAT',
+                logoSrc: '/logos/academic/comsats.png',
+                fallbackSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000008a848208ad6e5ff38e3d1998.png',
+                logoAlt: 'COMSATS University / NTS NAT Official Logo',
+                fallbackText: 'COMSATS',
                 bgClass: 'bg-[#006A4E]',
                 textClass: 'text-white',
                 hoverBorderClass: 'hover:border-[#006A4E]',
                 hoverTitleClass: 'group-hover:text-[#006A4E]',
                 hoverBtnClass: 'group-hover:bg-[#006A4E]',
-                title: 'NTS NAT Shared Portal',
+                title: 'NTS NAT Shared Portal (COMSATS)',
                 description: 'One shared portal for COMSATS, Air University, Bahria, IIUI, and IST: 90 MCQs in 120 minutes across English, Analytical, Quantitative, and Subject streams.',
                 features: ['90 MCQs in 120 Minutes', 'NAT-IE, NAT-IM & NAT-ICS Streams', 'Covers COMSATS, Air, Bahria, IIUI, IST'],
                 buttonText: 'Open NTS NAT Portal',
@@ -1387,15 +1479,16 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 id: 'muet',
                 categoryBadge: 'MUET Jamshoro',
                 categoryBadgeClass: 'bg-[#800020]/15 text-[#800020]',
-                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/muet-logo.png',
-                logoAlt: 'MUET Jamshoro Logo',
+                logoSrc: '/logos/academic/muet.png',
+                fallbackSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
+                logoAlt: 'Mehran University (MUET) Official Logo',
                 fallbackText: 'MUET',
                 bgClass: 'bg-[#800020]',
                 textClass: 'text-white',
                 hoverBorderClass: 'hover:border-[#800020]',
                 hoverTitleClass: 'group-hover:text-[#800020]',
                 hoverBtnClass: 'group-hover:bg-[#800020]',
-                title: 'MUET Jamshoro Pre-Admission',
+                title: 'Mehran University (MUET)',
                 description: '100 MCQs in 100 minutes with no negative marking. 25 Math/Bio, 25 Physics, 25 Chem/CS, and 25 English based on Sindh Textbook Board.',
                 features: ['100 MCQs in 100 Minutes', 'Pre-Eng, ICS & Pre-Med Options', 'Zero Negative Marking Scheme'],
                 buttonText: 'Open MUET Portal',
@@ -1405,7 +1498,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 id: 'lums',
                 categoryBadge: 'LUMS Lahore',
                 categoryBadgeClass: 'bg-[#002855]/15 text-[#002855]',
-                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/lums-logo.png',
+                logoSrc: '/logos/academic/lums.png',
+                fallbackSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f29c8211bbac0ae9800006de.png',
                 logoAlt: 'LUMS Official Logo',
                 fallbackText: 'LUMS',
                 bgClass: 'bg-[#002855]',
@@ -1441,7 +1535,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 id: 'hitec',
                 categoryBadge: 'HITEC Taxila',
                 categoryBadgeClass: 'bg-[#7C2D12]/15 text-[#7C2D12]',
-                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/hitec-logo.png',
+                logoSrc: '/logos/academic/hitec.png',
+                fallbackSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_0000000011a08208bd16b443318357b1.png',
                 logoAlt: 'HITEC University Logo',
                 fallbackText: 'HITEC',
                 bgClass: 'bg-[#7C2D12]',
@@ -1459,7 +1554,8 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 id: 'nutech',
                 categoryBadge: 'NUTECH Islamabad',
                 categoryBadgeClass: 'bg-[#14532D]/15 text-[#14532D]',
-                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nutech-logo.png',
+                logoSrc: '/logos/academic/nutech.png',
+                fallbackSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_0000000098c08211934c88fe8706c744.png',
                 logoAlt: 'NUTECH NUET Official Logo',
                 fallbackText: 'NUTECH',
                 bgClass: 'bg-[#14532D]',
@@ -1492,6 +1588,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                       <div className="w-[108px] h-[108px] sm:w-[116px] sm:h-[116px] flex items-center justify-center shrink-0">
                         <CardLogoImage
                           src={track.logoSrc}
+                          fallbackSrc={track.fallbackSrc}
                           alt={track.logoAlt}
                           fallbackText={track.fallbackText}
                           bgClass={track.bgClass}

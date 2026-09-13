@@ -1,4 +1,12 @@
-import { apiFetch, safeJsonResponse, StudentProfile, supabase } from './supabase';
+import {
+  apiFetch,
+  invalidateStudentProfileCache,
+  normalizeStudentProfileFromRow,
+  safeJsonResponse,
+  sanitizeStudentForDb,
+  StudentProfile,
+  supabase,
+} from './supabase';
 
 export interface PromoLink {
   id: string;
@@ -220,7 +228,66 @@ export async function claimPromoCode(
     const data = await safeJsonResponse<PromoClaimResult>(resp);
     if (data && data.success) {
       clearPendingPromoCode();
-      return data;
+
+      const oneYearDurationMs = 365 * 24 * 60 * 60 * 1000;
+      const grantedExpires = data.grantedUntil || data.profile?.access_expires || new Date(Date.now() + oneYearDurationMs).toISOString();
+
+      const normalizedProfile = normalizeStudentProfileFromRow({
+        ...(data.profile || {}),
+        id: studentId || data.profile?.id || '',
+        email: studentEmail || data.profile?.email || '',
+        is_pro: true,
+        plan_tier: 'pro',
+        package_name: data.profile?.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)',
+        payment_status: 'Verified & Paid',
+        plan_status: 'verified_pro',
+        requires_payment: false,
+        subscribed_plans: ['boardly_pro', 'pro'],
+        access_expires: grantedExpires,
+        tests_used_this_month: 0,
+        ai_messages_used_today: 0,
+        transaction_reference: `PROMO:${cleanCode}`,
+      }, studentId);
+
+      // Directly update Supabase student record using authenticated client session
+      if (studentId) {
+        try {
+          const dbPayload = sanitizeStudentForDb({
+            id: studentId,
+            is_pro: true,
+            plan_tier: 'pro',
+            package_name: normalizedProfile.package_name,
+            payment_status: 'Verified & Paid',
+            plan_status: 'verified_pro',
+            requires_payment: false,
+            subscribed_plans: ['boardly_pro', 'pro'],
+            access_expires: grantedExpires,
+            tests_used_this_month: 0,
+            ai_messages_used_today: 0,
+            transaction_reference: `PROMO:${cleanCode}`,
+            status: 'active',
+            updated_at: new Date().toISOString(),
+          });
+          await supabase.from('students').update(dbPayload).eq('id', studentId);
+        } catch (dbErr) {
+          console.warn('[claimPromoCode] Client DB sync warning:', dbErr);
+        }
+
+        invalidateStudentProfileCache(studentId, normalizedProfile);
+        try {
+          localStorage.setItem(`boardly_profile_${studentId}`, JSON.stringify(normalizedProfile));
+        } catch {}
+      }
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('boardly_profile_updated', { detail: normalizedProfile }));
+      }
+
+      return {
+        ...data,
+        profile: normalizedProfile,
+        grantedUntil: grantedExpires,
+      };
     }
     if (data && data.alreadyRedeemed) {
       return data;
@@ -285,22 +352,28 @@ export async function claimPromoCode(
 
     const planUpdateData = {
       is_pro: true,
-      plan_tier: 'pro',
+      plan_tier: 'pro' as const,
       package_name: '⭐ Boardly 1-Year Pro (Promotional Pass)',
       payment_status: 'Verified & Paid',
       plan_status: 'verified_pro',
       requires_payment: false,
       subscribed_plans: ['boardly_pro', 'pro'],
       access_expires: accessExpiresStr,
-      promo_code_redeemed: cleanCode,
-      promo_redeemed_at: new Date().toISOString(),
+      tests_used_this_month: 0,
+      ai_messages_used_today: 0,
+      transaction_reference: `PROMO:${cleanCode}`,
+      status: 'active',
       updated_at: new Date().toISOString(),
     };
 
     // Update student directly in Supabase if studentId exists
     if (studentId) {
       try {
-        await supabase.from('students').update(planUpdateData).eq('id', studentId);
+        const dbPayload = sanitizeStudentForDb({
+          id: studentId,
+          ...planUpdateData,
+        });
+        await supabase.from('students').update(dbPayload).eq('id', studentId);
       } catch (dbErr) {
         console.warn('[claimPromoCode] Direct Supabase update attempt:', dbErr);
       }
@@ -308,18 +381,31 @@ export async function claimPromoCode(
 
     clearPendingPromoCode();
 
+    const normalizedProfile = normalizeStudentProfileFromRow({
+      id: studentId,
+      email: studentEmail || '',
+      name: 'Student',
+      ...planUpdateData,
+    }, studentId);
+
+    if (studentId) {
+      invalidateStudentProfileCache(studentId, normalizedProfile);
+      try {
+        localStorage.setItem(`boardly_profile_${studentId}`, JSON.stringify(normalizedProfile));
+      } catch {}
+    }
+
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('boardly_profile_updated', { detail: normalizedProfile }));
+    }
+
     return {
       success: true,
       message: '🎉 1 Year of Free Boardly Pro Access Unlocked!',
       code: cleanCode,
       label: matchedLabel,
       grantedUntil: accessExpiresStr,
-      profile: {
-        id: studentId,
-        email: studentEmail || '',
-        name: 'Student',
-        ...planUpdateData,
-      } as StudentProfile,
+      profile: normalizedProfile,
     };
   } catch (fallbackErr: any) {
     console.error('[claimPromoCode] Fallback engine error:', fallbackErr);

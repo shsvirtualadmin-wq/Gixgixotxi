@@ -19,7 +19,8 @@ import {
   Flame,
   Trophy,
   Award,
-  Check
+  Check,
+  Crown
 } from 'lucide-react';
 import { User, StudentProfile, fetchStudentWeaknessProfile, StudentWeaknessProfileData, evaluateStudentAccess, isUserProOrPaid } from '../lib/supabase';
 import { HistoryItem } from '../types';
@@ -495,12 +496,38 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
 
             {(() => {
               const access = evaluateStudentAccess(userProfile, monthlyTestCount, isAdmin);
-              return !access.isPro ? (
+              const isPro = Boolean(access.isPro || isProStudent);
+              if (isPro) {
+                let expiryDateDisplay = '1 Year';
+                if (userProfile?.access_expires) {
+                  try {
+                    const d = new Date(userProfile.access_expires);
+                    if (!isNaN(d.getTime())) {
+                      expiryDateDisplay = d.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        year: 'numeric',
+                      });
+                    }
+                  } catch {}
+                }
+                return (
+                  <div
+                    id="dashboard-pro-status-badge"
+                    className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-emerald-500/10 border border-emerald-500/30 text-emerald-800 px-3.5 py-1 rounded-full text-xs font-black shadow-xs whitespace-nowrap shrink-0"
+                  >
+                    <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
+                    <span>Pro — expires {expiryDateDisplay}</span>
+                  </div>
+                );
+              }
+
+              return (
                 <div className="inline-flex items-center gap-1.5 bg-blue-500/10 border border-blue-500/30 text-blue-700  px-3 py-1 rounded-full text-xs font-extrabold whitespace-nowrap shrink-0">
                   <Zap className="w-3.5 h-3.5 text-[#1E5AFF] shrink-0" />
                   <span>{access.currentMonthlyTests} / 2 Monthly Tests Used</span>
                 </div>
-              ) : null;
+              );
             })()}
           </div>
         </div>
@@ -548,6 +575,31 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
           </div>
         )}
 
+        {/* Pro Active Status Card */}
+        {isProStudent && (
+          <div
+            id="dashboard-pro-active-banner"
+            className="bg-gradient-to-r from-emerald-50 via-teal-50/50 to-emerald-50 border border-emerald-200/90 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 text-xs relative z-10 shadow-xs"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-700 shrink-0">
+                <Crown className="w-5 h-5 text-amber-500 fill-amber-500" />
+              </div>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-2">
+                  <span className="font-extrabold text-emerald-950 text-sm">Boardly Pro Active</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100/90 text-emerald-800 border border-emerald-300">
+                    Unlimited Tests
+                  </span>
+                </div>
+                <p className="text-emerald-700 text-xs font-medium">
+                  {userProfile?.access_expires ? `Expires ${new Date(userProfile.access_expires).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : '1-Year Full Access Active'} • Chapter Weakness Detection & All Subjects Unlocked
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Primary Action Buttons - Personalized to student's registered track */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 relative z-10 pt-1">
           {userProfile?.grade?.toUpperCase().includes('MDCAT') || userProfile?.stream?.toUpperCase().includes('MDCAT') || userProfile?.assigned_classes?.some(c => c.toUpperCase().includes('MDCAT')) ? (
@@ -585,7 +637,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
             >
               <Zap className="w-4 h-4 text-[#0A0A0A] fill-[#0A0A0A]" />
               <span>
-                {isTestLimitReached ? "2/2 free tests used this month" : `${userProfile?.grade || 'Class 11'} ${userProfile?.stream || 'Pre-Engineering'} Practice Test`}
+                {!isProStudent && isTestLimitReached ? "2/2 free tests used this month" : `${userProfile?.grade || 'Class 11'} ${userProfile?.stream || 'Pre-Engineering'} Practice Test`}
               </span>
             </button>
           )}

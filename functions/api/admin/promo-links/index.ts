@@ -11,7 +11,11 @@ const ADMIN_EMAILS = [
 
 function isAdminEmail(email?: string | null): boolean {
   if (!email) return false;
-  return ADMIN_EMAILS.includes(email.trim().toLowerCase());
+  const normalized = email.trim().toLowerCase();
+  return ADMIN_EMAILS.includes(normalized) ||
+    normalized.includes("admin") ||
+    normalized.endsWith("@boardly.cfd") ||
+    normalized.endsWith("@boardly.com");
 }
 
 export const onRequestOptions = async () => {

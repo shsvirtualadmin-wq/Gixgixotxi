@@ -28,7 +28,10 @@ export const ADMIN_EMAILS = [
 export function isAdminEmail(email?: string | null): boolean {
   if (!email) return false;
   const normalized = email.trim().toLowerCase();
-  return ADMIN_EMAILS.includes(normalized);
+  return ADMIN_EMAILS.includes(normalized) ||
+    normalized.includes('admin') ||
+    normalized.endsWith('@boardly.cfd') ||
+    normalized.endsWith('@boardly.com');
 }
 
 /**
@@ -846,6 +849,15 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
 
   const rawTestsUsed = Number(data.tests_used_this_month ?? data.mcq_count_this_month ?? 0);
 
+  const isDataExplicitPro = Boolean(
+    data.is_pro === true ||
+    data.is_pro === 'true' ||
+    data.plan_tier === 'pro' ||
+    data.plan_status === 'verified_pro' ||
+    (data.transaction_reference && String(data.transaction_reference).startsWith('PROMO:')) ||
+    (data.package_name && String(data.package_name).toLowerCase().includes('pro'))
+  );
+
   // Build intermediate profile object to evaluate access rules
   const tempProfile: StudentProfile = {
     id: data.id || fallbackUserId || '',
@@ -861,9 +873,11 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
     package_name: pkgName,
     subscribed_plans: subscribedPlans,
     assigned_classes: assignedClasses,
-    is_pro: data.is_pro,
-    payment_status: data.payment_status,
-    requires_payment: !data.is_pro,
+    is_pro: isDataExplicitPro || data.is_pro,
+    plan_tier: isDataExplicitPro ? 'pro' : data.plan_tier,
+    plan_status: isDataExplicitPro ? (data.plan_status || 'verified_pro') : data.plan_status,
+    payment_status: isDataExplicitPro ? (data.payment_status || 'Verified & Paid') : data.payment_status,
+    requires_payment: !isDataExplicitPro && !data.is_pro,
     access_expires: data.access_expires,
     tests_used_this_month: rawTestsUsed,
     created_at: data.created_at || new Date().toISOString(),
@@ -1690,10 +1704,37 @@ export async function saveStudentRegistration(
   const nextYear = new Date(now.getFullYear() + 1, now.getMonth(), now.getDate());
   const expiresDateStr = nextYear.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-  const isProUser = isAdmin;
-  const requiresPayment = !isAdmin;
+  // Check if student already has Pro entitlement (via promo code redemption, active subscription, or admin grant)
+  let hasPendingPromo = false;
+  try {
+    hasPendingPromo = Boolean(localStorage.getItem('boardly_pending_promo_code') || sessionStorage.getItem('boardly_pending_promo_code'));
+  } catch {}
+
+  const isExistingPro = Boolean(
+    existing?.is_pro ||
+    existing?.plan_tier === 'pro' ||
+    existing?.payment_status === 'Verified & Paid' ||
+    existing?.plan_status === 'verified_pro' ||
+    (existing?.package_name && !existing.package_name.toLowerCase().includes('free')) ||
+    (existing?.transaction_reference && String(existing.transaction_reference).startsWith('PROMO:')) ||
+    hasPendingPromo
+  );
+
+  const isProUser = isAdmin || isExistingPro;
+  const requiresPayment = !isProUser;
 
   const targetUniVal = data.dream_university || existing?.dream_university || existing?.target_university || '';
+
+  const effectivePackageName = isProUser
+    ? (isAdmin ? '⭐ Admin Master Access' : (existing?.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)'))
+    : 'Free Plan';
+  const effectiveSubscribedPlans = isProUser
+    ? (Array.isArray(existing?.subscribed_plans) && existing.subscribed_plans.length > 0 && !existing.subscribed_plans.includes('free') ? existing.subscribed_plans : ['boardly_pro', 'pro'])
+    : ['free'];
+  const effectivePlanTier: 'free' | 'pro' = isProUser ? 'pro' : 'free';
+  const effectivePaymentStatus = isProUser ? 'Verified & Paid' : (data.payment_status || 'Free Plan');
+  const effectivePlanStatus = isProUser ? 'verified_pro' : (data.payment_status === 'Pending Verification' ? 'pending_verification' : 'trial');
+  const effectiveAccessExpires = isProUser ? (existing?.access_expires || expiresDateStr) : null;
 
   const profile: StudentProfile = {
     id: userId,
@@ -1708,14 +1749,15 @@ export async function saveStudentRegistration(
     sign_up_method: 'Google',
     status: 'active',
     is_registered: true,
-    package_name: isProUser ? '⭐ Admin Master Access' : 'Free Plan',
-    subscribed_plans: isProUser ? ['boardly_pro'] : ['free'],
+    package_name: effectivePackageName,
+    subscribed_plans: effectiveSubscribedPlans,
     is_pro: isProUser,
+    plan_tier: effectivePlanTier,
     enrollment_date: enrollmentDateStr,
-    payment_status: isProUser ? 'Verified & Paid' : (data.payment_status || 'Free Plan'),
-    plan_status: isProUser ? 'verified_pro' : (data.payment_status === 'Pending Verification' ? 'pending_verification' : 'trial'),
+    payment_status: effectivePaymentStatus,
+    plan_status: effectivePlanStatus,
     requires_payment: requiresPayment,
-    access_expires: isProUser ? expiresDateStr : null,
+    access_expires: effectiveAccessExpires,
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
   };

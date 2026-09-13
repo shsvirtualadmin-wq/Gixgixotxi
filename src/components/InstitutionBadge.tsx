@@ -60,7 +60,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-300',
     borderColor: 'border-blue-400/30',
     badgeInitials: 'NED',
-    logoUrl: '/logos/ned.svg',
+    logoUrl: '/logos/academic/ned.png',
     description: 'Sindh engineering entrance exam and entry test topics.',
   },
   lums: {
@@ -72,8 +72,80 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-emerald-400',
     borderColor: 'border-emerald-500/30',
     badgeInitials: 'LUMS',
-    logoUrl: '/logos/lums.svg',
+    logoUrl: '/logos/academic/lums.png',
     description: 'LCAT & SSE Scientific Aptitude Test prep.',
+  },
+  pieas: {
+    id: 'pieas',
+    name: 'Pakistan Institute of Engineering & Applied Sciences',
+    shortName: 'PIEAS',
+    category: 'university',
+    bgGradient: 'from-[#0A1330] to-[#1E3A8A]',
+    textColor: 'text-blue-300',
+    borderColor: 'border-blue-400/30',
+    badgeInitials: 'PIEAS',
+    logoUrl: '/logos/academic/pieas.png',
+    description: 'Premier engineering and applied sciences admissions.',
+  },
+  comsats: {
+    id: 'comsats',
+    name: 'COMSATS University Islamabad',
+    shortName: 'COMSATS',
+    category: 'university',
+    bgGradient: 'from-[#062419] to-[#006A4E]',
+    textColor: 'text-emerald-300',
+    borderColor: 'border-emerald-400/30',
+    badgeInitials: 'COMSATS',
+    logoUrl: '/logos/academic/comsats.png',
+    description: 'NTS NAT portal for engineering, computing and sciences.',
+  },
+  nat: {
+    id: 'nat',
+    name: 'NTS National Aptitude Test (NAT / COMSATS)',
+    shortName: 'NTS NAT',
+    category: 'board',
+    bgGradient: 'from-[#062419] to-[#006A4E]',
+    textColor: 'text-emerald-300',
+    borderColor: 'border-emerald-400/30',
+    badgeInitials: 'NAT',
+    logoUrl: '/logos/academic/comsats.png',
+    description: 'Shared admission test for COMSATS, Air, Bahria, IIUI, and IST.',
+  },
+  hitec: {
+    id: 'hitec',
+    name: 'HITEC University Taxila',
+    shortName: 'HITEC',
+    category: 'university',
+    bgGradient: 'from-[#3A1408] to-[#7C2D12]',
+    textColor: 'text-orange-300',
+    borderColor: 'border-orange-400/30',
+    badgeInitials: 'HITEC',
+    logoUrl: '/logos/academic/hitec.png',
+    description: 'Heavy Industries Taxila Education City university entrance.',
+  },
+  nutech: {
+    id: 'nutech',
+    name: 'National University of Technology',
+    shortName: 'NUTECH',
+    category: 'university',
+    bgGradient: 'from-[#06301A] to-[#14532D]',
+    textColor: 'text-emerald-300',
+    borderColor: 'border-emerald-400/30',
+    badgeInitials: 'NUTECH',
+    logoUrl: '/logos/academic/nutech.png',
+    description: 'NUTECH Entry Test (NUET) for engineering and computing.',
+  },
+  muet: {
+    id: 'muet',
+    name: 'Mehran University of Engineering and Technology (MUET)',
+    shortName: 'MUET',
+    category: 'university',
+    bgGradient: 'from-[#3A0A14] to-[#800020]',
+    textColor: 'text-rose-300',
+    borderColor: 'border-rose-400/30',
+    badgeInitials: 'MUET',
+    logoUrl: '/logos/academic/muet.png',
+    description: 'Pre-admission test for Sindh engineering and technology.',
   },
   iba: {
     id: 'iba',
@@ -216,7 +288,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-indigo-300',
     borderColor: 'border-indigo-400/30',
     badgeInitials: 'USAT',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png',
+    logoUrl: '/logos/academic/hec-usat.png',
     description: 'Higher Education Commission Undergraduate Studies Admission Test.',
   },
   apsacs: {
@@ -302,6 +374,18 @@ interface InstitutionBadgeProps {
   selected?: boolean;
 }
 
+export const R2_FALLBACK_URLS: Record<string, string> = {
+  pieas: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000748c8211bb5e3cfb31849396.png',
+  usat: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000175082118793959c6c498063.png',
+  lums: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f29c8211bbac0ae9800006de.png',
+  comsats: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000008a848208ad6e5ff38e3d1998.png',
+  nat: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000008a848208ad6e5ff38e3d1998.png',
+  hitec: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_0000000011a08208bd16b443318357b1.png',
+  nutech: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_0000000098c08211934c88fe8706c744.png',
+  muet: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
+  ned: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000287482088f11d13f9c658cf4.png',
+};
+
 export const InstitutionBadge: React.FC<InstitutionBadgeProps> = ({
   id,
   size = 'md',
@@ -310,8 +394,6 @@ export const InstitutionBadge: React.FC<InstitutionBadgeProps> = ({
   onClick,
   selected = false,
 }) => {
-  const [imgError, setImgError] = React.useState(false);
-
   const inst = INSTITUTIONS[id.toLowerCase()] || {
     id,
     name: id.toUpperCase(),
@@ -321,6 +403,25 @@ export const InstitutionBadge: React.FC<InstitutionBadgeProps> = ({
     textColor: 'text-blue-400',
     borderColor: 'border-white/10',
     badgeInitials: id.slice(0, 4).toUpperCase(),
+  };
+
+  const primaryLogo = inst.logoUrl || R2_FALLBACK_URLS[id.toLowerCase()];
+  const [currentSrc, setCurrentSrc] = React.useState<string | undefined>(primaryLogo);
+  const [imgError, setImgError] = React.useState(false);
+
+  React.useEffect(() => {
+    const nextLogo = inst.logoUrl || R2_FALLBACK_URLS[id.toLowerCase()];
+    setCurrentSrc(nextLogo);
+    setImgError(false);
+  }, [id, inst.logoUrl]);
+
+  const handleImageError = () => {
+    const fallbackUrl = R2_FALLBACK_URLS[id.toLowerCase()];
+    if (fallbackUrl && currentSrc !== fallbackUrl) {
+      setCurrentSrc(fallbackUrl);
+    } else {
+      setImgError(true);
+    }
   };
 
   const sizeClasses = {
@@ -350,13 +451,13 @@ export const InstitutionBadge: React.FC<InstitutionBadgeProps> = ({
       <div
         className={`${sizeClasses.badge} rounded-lg bg-black/40 border border-white/20 p-0.5 flex items-center justify-center shrink-0 shadow-inner overflow-hidden`}
       >
-        {inst.logoUrl && !imgError ? (
+        {currentSrc && !imgError ? (
           <img
-            src={inst.logoUrl}
+            src={currentSrc}
             alt={`${inst.name} Logo`}
             className="w-full h-full object-contain"
             referrerPolicy="no-referrer"
-            onError={() => setImgError(true)}
+            onError={handleImageError}
           />
         ) : (
           <span className={`font-black tracking-tighter ${inst.textColor}`}>
@@ -405,6 +506,12 @@ export function renderTargetUniversityBadge(targetUniStr?: string, size: 'sm' | 
   else if (lower.includes('nums')) instId = 'nums';
   else if (lower.includes('szabmu')) instId = 'szabmu';
   else if (lower.includes('ned')) instId = 'ned';
+  else if (lower.includes('pieas')) instId = 'pieas';
+  else if (lower.includes('comsats') || lower.includes('cui')) instId = 'comsats';
+  else if (lower.includes('usat')) instId = 'usat';
+  else if (lower.includes('hitec')) instId = 'hitec';
+  else if (lower.includes('nutech')) instId = 'nutech';
+  else if (lower.includes('muet') || lower.includes('mehran')) instId = 'muet';
   else if (lower.includes('iba')) instId = 'iba';
   else if (lower.includes('duhs') || lower.includes('dow')) instId = 'duhs';
   else if (lower.includes('kmu') || lower.includes('khyber')) instId = 'kmu';

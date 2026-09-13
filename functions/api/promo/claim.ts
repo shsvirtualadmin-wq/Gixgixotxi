@@ -80,8 +80,10 @@ export const onRequestPost = async (context: PagesContext) => {
       requires_payment: false,
       subscribed_plans: ["boardly_pro", "pro"],
       access_expires: accessExpiresStr,
-      promo_code_redeemed: cleanCode,
-      promo_redeemed_at: new Date().toISOString(),
+      tests_used_this_month: 0,
+      ai_messages_used_today: 0,
+      transaction_reference: `PROMO:${cleanCode}`,
+      status: "active",
       updated_at: new Date().toISOString(),
     };
 
@@ -97,7 +99,12 @@ export const onRequestPost = async (context: PagesContext) => {
       }
 
       // Check anti-stacking
-      if (studentRecord && (studentRecord.promo_code_redeemed || studentRecord.promo_redeemed_at)) {
+      const hasRedeemed = studentRecord && (
+        studentRecord.promo_code_redeemed ||
+        studentRecord.promo_redeemed_at ||
+        (studentRecord.transaction_reference && String(studentRecord.transaction_reference).startsWith("PROMO:"))
+      );
+      if (hasRedeemed) {
         return new Response(
           JSON.stringify({
             success: false,
