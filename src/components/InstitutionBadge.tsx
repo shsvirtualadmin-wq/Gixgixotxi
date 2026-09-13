@@ -24,7 +24,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-400',
     borderColor: 'border-blue-500/30',
     badgeInitials: 'NUST',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nust-logo-png_seeklogo-234117.png',
+    logoUrl: '/logos/academic/nust.png',
     description: 'ECAT & NET Entry Test prep for Engineering, CS & Applied Sciences.',
   },
   fast: {
@@ -36,7 +36,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-cyan-400',
     borderColor: 'border-cyan-500/30',
     badgeInitials: 'FAST',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Fast-University-Logo.png',
+    logoUrl: '/logos/academic/fast.png',
     description: 'Top CS & Software Engineering entry test specialization.',
   },
   giki: {
@@ -48,7 +48,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-300',
     borderColor: 'border-blue-400/30',
     badgeInitials: 'GIKI',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/cropped-giki-logo-updated.png',
+    logoUrl: '/logos/academic/giki.png',
     description: 'High-level engineering & AI technology entrance exam.',
   },
   ned: {
@@ -240,7 +240,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-emerald-300',
     borderColor: 'border-emerald-400/30',
     badgeInitials: 'UHS',
-    logoUrl: '/logos/uhs.png',
+    logoUrl: '/logos/academic/uhs.png',
     description: 'Punjab MDCAT medical admissions authority.',
   },
   duhs: {
@@ -264,7 +264,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-lime-300',
     borderColor: 'border-lime-400/30',
     badgeInitials: 'NUMS',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nums-logo.png',
+    logoUrl: '/logos/academic/nums.png',
     description: 'Army Medical College & NUMS affiliated admissions.',
   },
   kmu: {
@@ -300,7 +300,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-emerald-400',
     borderColor: 'border-emerald-500/30',
     badgeInitials: 'FBISE',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png',
+    logoUrl: '/logos/academic/fbise.png',
     description: 'FBISE Examinations & Curriculum Islamabad & Nationwide.',
   },
   pmdc: {
@@ -312,7 +312,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-400',
     borderColor: 'border-blue-500/30',
     badgeInitials: 'PMDC',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/PMDC%20Logo-Green.png',
+    logoUrl: '/logos/academic/pmdc.png',
     description: 'Official PMDC MDCAT medical entry test authority.',
   },
   uet: {
@@ -324,7 +324,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-cyan-400',
     borderColor: 'border-cyan-500/30',
     badgeInitials: 'TCAT',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png',
+    logoUrl: '/logos/academic/uet-taxila.png',
     description: 'Official UET Taxila TCAT engineering entry test authority.',
   },
   ecat: {
@@ -336,7 +336,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-400',
     borderColor: 'border-blue-500/30',
     badgeInitials: 'ECAT',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png',
+    logoUrl: '/logos/academic/uet-taxila.png',
     description: 'Official Combined Engineering Entrance Test (ECAT) for Punjab engineering institutions.',
   },
   etea: {
@@ -348,7 +348,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-teal-300',
     borderColor: 'border-teal-400/30',
     badgeInitials: 'ETEA',
-    logoUrl: '/logos/kmu.svg',
+    logoUrl: '/logos/academic/uet-peshawar.png',
     description: 'Educational Testing and Evaluation Agency (ETEA) engineering test for KPK.',
   },
   usat: {
@@ -372,7 +372,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-400',
     borderColor: 'border-blue-400/30',
     badgeInitials: 'APS',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_000000000c0c82088a7c46700ba17bd5.png',
+    logoUrl: '/logos/academic/aps.png',
     description: 'FBISE SSC & HSSC excellence network.',
   },
   fgc: {
@@ -384,7 +384,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-teal-200',
     borderColor: 'border-teal-400/30',
     badgeInitials: 'FGC',
-    logoUrl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000016248208870342fb6e403b94.png',
+    logoUrl: '/logos/academic/fgc.png',
     description: 'Federal Government Institutions across Pakistan.',
   },
   opf: {
@@ -447,6 +447,21 @@ interface InstitutionBadgeProps {
 }
 
 export const R2_FALLBACK_URLS: Record<string, string> = {
+  nust: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nust-logo-png_seeklogo-234117.png',
+  fast: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Fast-University-Logo.png',
+  giki: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/cropped-giki-logo-updated.png',
+  nums: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nums-logo.png',
+  fbise: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png',
+  pmdc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/PMDC%20Logo-Green.png',
+  uet: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png',
+  ecat: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png',
+  etea: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/uet-02.png',
+  aps: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_000000000c0c82088a7c46700ba17bd5.png',
+  apsacs: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_000000000c0c82088a7c46700ba17bd5.png',
+  fgc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000016248208870342fb6e403b94.png',
+  kips: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000ca3482089810078834ca4bd2.png',
+  qau: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_000000007cec8208ba576fe1db5a4e93.png',
+  fazaia: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images%20(1).jpeg',
   pieas: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000748c8211bb5e3cfb31849396.png',
   usat: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000175082118793959c6c498063.png',
   'hec-usat': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000175082118793959c6c498063.png',

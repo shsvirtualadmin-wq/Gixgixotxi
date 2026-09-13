@@ -40,6 +40,7 @@ import {
 } from 'lucide-react';
 import { fetchStudentCountFromSupabase } from '../lib/supabase';
 import { InstitutionBadge, INSTITUTIONS } from './InstitutionBadge';
+import { useLogosReady } from '../lib/logoPreloader';
 import { useSlidingPill } from '../hooks/useSlidingPill';
 import { useCountUp } from '../hooks/useCountUp';
 import { AnimatedCounter } from './AnimatedCounter';
@@ -766,6 +767,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
   const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
+  const isLogosReady = useLogosReady();
 
   // Smooth sliding pill hook for Student Success Stories filter
   const {
@@ -974,17 +976,31 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
           </div>
 
           {/* Auto-sliding Horizontal Carousel with Gradient Fades at Edges */}
-          <div className="relative w-full overflow-hidden py-2 group">
+          <div className="relative w-full overflow-hidden py-2 group min-h-[140px] sm:min-h-[160px]">
             {/* Left/Right Edge Fades */}
             <div className="absolute left-0 top-0 bottom-0 w-12 sm:w-20 bg-gradient-to-r from-white/80  to-transparent z-10 pointer-events-none" />
             <div className="absolute right-0 top-0 bottom-0 w-12 sm:w-20 bg-gradient-to-l from-white/80  to-transparent z-10 pointer-events-none" />
 
-            {/* Continuous Marquee Track */}
-            <div className="animate-continuous-scroll flex gap-6 sm:gap-10 items-start will-change-transform">
-              {MARQUEE_ITEMS.map((inst, index) => (
-                <CarouselLogoItem key={`${inst.id}-${index}`} inst={inst} />
-              ))}
-            </div>
+            {/* If logos are loading in parallel, render a coordinated skeleton placeholder to prevent staggered pop-in */}
+            {!isLogosReady ? (
+              <div className="flex gap-6 sm:gap-10 items-start animate-pulse opacity-60">
+                {TRUSTED_INSTITUTIONS_MARQUEE.slice(0, 10).map((inst, index) => (
+                  <div key={`skel-${inst.id}-${index}`} className="flex flex-col items-center shrink-0 w-28 sm:w-32 md:w-36 select-none">
+                    <div className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 rounded-full bg-slate-100 border border-slate-200/80 shadow-xs flex items-center justify-center p-3">
+                      <div className="w-12 h-12 rounded-full bg-slate-200/70" />
+                    </div>
+                    <div className="mt-3 h-3 w-16 bg-slate-200 rounded-full" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* Continuous Marquee Track - all logos rendered simultaneously */
+              <div className="animate-continuous-scroll flex gap-6 sm:gap-10 items-start will-change-transform transition-opacity duration-500 opacity-100">
+                {MARQUEE_ITEMS.map((inst, index) => (
+                  <CarouselLogoItem key={`${inst.id}-${index}`} inst={inst} />
+                ))}
+              </div>
+            )}
           </div>
         </section>
 
