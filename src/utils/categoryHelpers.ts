@@ -16,6 +16,34 @@ export function getCategoryFromClassAndGroup(classNum: BoardClass | string | und
     return 'tcat';
   }
 
+  if (cStr === 'NET' || gStr.includes('net') || gStr.includes('nust')) {
+    return 'net';
+  }
+
+  if (cStr === 'FAST' || gStr.includes('fast') || gStr.includes('nat')) {
+    return 'fast';
+  }
+
+  if (cStr === 'ECAT' || gStr.includes('ecat')) {
+    return 'ecat';
+  }
+
+  if (cStr === 'ETEA' || gStr.includes('etea')) {
+    return 'etea';
+  }
+
+  if (cStr === 'NUMS' || gStr.includes('nums')) {
+    return 'nums';
+  }
+
+  if (cStr === 'GIKI' || gStr.includes('giki')) {
+    return 'giki';
+  }
+
+  if (cStr === 'USAT' || gStr.includes('usat')) {
+    return 'usat';
+  }
+
   if (cStr === '9' || cStr === 'GRADE 9' || cStr === '9TH') {
     if (gStr.includes('comp') || gStr.includes('cs') || gStr.includes('ics')) return 'grade9_cs';
     return 'grade9_medical';
@@ -57,6 +85,17 @@ export function getCategoryFromProfile(userEmail: string | undefined, profile: a
     return 'tcat';
   }
 
+  const gCheck = String(profile?.grade || '').toUpperCase();
+  const sCheck = String(profile?.stream || '').toUpperCase();
+
+  if (gCheck === 'NET' || sCheck.includes('NET') || sCheck.includes('NUST')) return 'net';
+  if (gCheck === 'FAST' || sCheck.includes('FAST') || sCheck.includes('NAT')) return 'fast';
+  if (gCheck === 'ECAT' || sCheck.includes('ECAT')) return 'ecat';
+  if (gCheck === 'ETEA' || sCheck.includes('ETEA')) return 'etea';
+  if (gCheck === 'NUMS' || sCheck.includes('NUMS')) return 'nums';
+  if (gCheck === 'GIKI' || sCheck.includes('GIKI')) return 'giki';
+  if (gCheck === 'USAT' || sCheck.includes('USAT')) return 'usat';
+
   if (profile?.grade && profile?.stream) {
     return getCategoryFromClassAndGroup(profile.grade, profile.stream);
   }
@@ -93,6 +132,20 @@ export function getClassAndGroupFromCategory(category: DashboardCategory): { cla
       return { classNum: 'MDCAT', group: 'MDCAT' };
     case 'tcat':
       return { classNum: 'TCAT', group: 'TCAT' };
+    case 'net':
+      return { classNum: 'NET', group: 'Engineering & Computing' };
+    case 'fast':
+      return { classNum: 'FAST', group: 'CS & Engineering' };
+    case 'ecat':
+      return { classNum: 'ECAT', group: 'Pre-Engineering' };
+    case 'etea':
+      return { classNum: 'ETEA', group: 'Engineering (Chemistry)' };
+    case 'nums':
+      return { classNum: 'NUMS', group: 'MBBS / BDS & Psychological Assessment' };
+    case 'giki':
+      return { classNum: 'GIKI', group: 'Engineering & Artificial Intelligence' };
+    case 'usat':
+      return { classNum: 'USAT', group: 'USAT-E (Pre-Engineering)' };
     case 'admin':
       return { classNum: 11, group: 'Pre-Medical' };
     default:

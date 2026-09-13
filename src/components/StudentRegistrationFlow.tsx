@@ -42,6 +42,14 @@ import {
   HelpCircle,
   Eye,
   EyeOff,
+  Atom,
+  Binary,
+  Compass,
+  Landmark,
+  Award,
+  Scale,
+  Brain,
+  Globe2,
 } from 'lucide-react';
 
 interface StudentRegistrationFlowProps {
@@ -132,6 +140,204 @@ const BOARD_INSTITUTIONS = [
   'Future Goal: NUST / GIKI / UET Engineering',
   'Future Goal: KEMU / RMU Medical',
   'Other College / School',
+];
+
+const TARGET_UNIVERSITIES_BY_TRACK: Record<string, string[]> = {
+  FBISE: BOARD_INSTITUTIONS,
+  MDCAT: MDCAT_COLLEGES,
+  TCAT: TCAT_UNIVERSITIES,
+  NET: [
+    'NUST Islamabad (Main Campus)',
+    'NUST SEECS (School of Electrical Engineering & Computer Science)',
+    'NUST SMME (School of Mechanical & Manufacturing Engineering)',
+    'NUST NICE (Civil Engineering)',
+    'NUST EME Campus Rawalpindi',
+    'NUST PNEC Karachi',
+    'NUST MCS Rawalpindi',
+    'Other NUST School / College',
+  ],
+  FAST: [
+    'FAST-NU Islamabad Campus',
+    'FAST-NU Lahore Campus',
+    'FAST-NU Karachi Campus',
+    'FAST-NU Peshawar Campus',
+    'FAST-NU Faisalabad Campus',
+    'Other FAST Campus / University',
+  ],
+  ECAT: [
+    'UET Lahore (Main Campus)',
+    'UET Kala Shah Kaku (KSK)',
+    'UET Faisalabad Campus',
+    'UET Narowal Campus',
+    'Other Punjab Engineering University',
+  ],
+  ETEA: [
+    'UET Peshawar (Main Campus)',
+    'UET Peshawar (Jalozai Campus)',
+    'UET Peshawar (Bannu Campus)',
+    'UET Peshawar (Abbottabad Campus)',
+    'Other KPK Engineering University',
+  ],
+  NUMS: [
+    'Army Medical College (AMC) Rawalpindi',
+    'CMH Lahore Medical College',
+    'HITEC Institute of Medical Sciences Taxila',
+    'Karachi Institute of Medical Sciences (KIMS)',
+    'Quetta Institute of Medical Sciences (QIMS)',
+    'Other NUMS Affiliated Medical College',
+  ],
+  GIKI: [
+    'Ghulam Ishaq Khan Institute (GIKI Topi)',
+    'Other Engineering Institution',
+  ],
+  USAT: [
+    'Quaid-i-Azam University (QAU) Islamabad',
+    'COMSATS University Islamabad',
+    'University of the Punjab (PU) Lahore',
+    'Government College University (GCU) Lahore',
+    'Other HEC Recognized University',
+  ],
+  NED: [
+    'NED University of Engineering & Technology (Main Campus Karachi)',
+    'NED LEJ Campus Karachi',
+    'Other Sindh Engineering University',
+  ],
+  PIEAS: [
+    'Pakistan Institute of Engineering & Applied Sciences (PIEAS) Islamabad',
+    'Other Engineering & Sciences University',
+  ],
+  NAT: [
+    'COMSATS University Islamabad (CUI)',
+    'Air University Islamabad',
+    'Bahria University (Islamabad / Karachi / Lahore)',
+    'International Islamic University Islamabad (IIUI)',
+    'Institute of Space Technology (IST) Islamabad',
+    'Other NTS Associated University',
+  ],
+  IBA: [
+    'Institute of Business Administration (IBA Main Campus Karachi)',
+    'IBA City Campus Karachi',
+    'Other Premier Business School',
+  ],
+  AKU: [
+    'Aga Khan University Medical College Karachi',
+    'Aga Khan University School of Nursing and Midwifery',
+    'Other Premier Medical University',
+  ],
+  MUET: [
+    'Mehran University of Engineering & Technology (Main Campus Jamshoro)',
+    'MUET Shaheed Zulfiqar Ali Bhutto Campus Khairpur',
+    'Other Sindh Engineering University',
+  ],
+  LUMS: [
+    'LUMS Syed Babar Ali School of Science and Engineering (SBASSE)',
+    'LUMS Suleman Dawood School of Business (SDSB)',
+    'LUMS Mushtaq Ahmad Gurmani School of Humanities & Social Sciences (MGSHSS)',
+    'LUMS Shaikh Ahmad Hassan School of Law (SAHSL)',
+    'Other University / College',
+  ],
+  NUML: [
+    'National University of Modern Languages (NUML Main Campus Islamabad)',
+    'NUML Lahore Campus',
+    'NUML Karachi Campus',
+    'NUML Peshawar Campus',
+    'Other University / Institute',
+  ],
+  HITEC: [
+    'HITEC University Taxila Cantt',
+    'Other Engineering University',
+  ],
+  NUTECH: [
+    'National University of Technology (NUTECH Islamabad)',
+    'Other Technology University',
+  ],
+};
+
+const PIEAS_GROUPS = [
+  {
+    id: 'Pre-Engineering',
+    name: 'Pre-Engineering Stream',
+    subjects: 'Math (30) · Physics (30) · Chemistry (30) · English (10)',
+    desc: 'Official 100 MCQs in 3 hours pattern for engineering degree admissions',
+  },
+  {
+    id: 'ICS',
+    name: 'Computer Science (ICS) Stream',
+    subjects: 'Math (30) · Physics (30) · Computer Science (30) · English (10)',
+    desc: 'Official 100 MCQs in 3 hours pattern for computing degree admissions',
+  },
+];
+
+const NAT_GROUPS = [
+  {
+    id: 'NAT-IE (Pre-Engineering)',
+    name: 'NAT-IE (Pre-Engineering)',
+    subjects: 'English (20) · Analytical (20) · Quantitative (20) · Physics, Chem, Math (30)',
+    desc: 'For engineering programs at COMSATS, Air, Bahria, IIUI, and IST',
+  },
+  {
+    id: 'NAT-IM (Pre-Medical)',
+    name: 'NAT-IM (Pre-Medical)',
+    subjects: 'English (20) · Analytical (20) · Quantitative (20) · Physics, Chem, Bio (30)',
+    desc: 'For bio-sciences, pharmacy, and allied health sciences admissions',
+  },
+  {
+    id: 'NAT-ICS (Computer Science)',
+    name: 'NAT-ICS (Computer Science)',
+    subjects: 'English (20) · Analytical (20) · Quantitative (20) · Physics, CS, Math (30)',
+    desc: 'For Computer Science, Software Engineering, AI, and IT admissions',
+  },
+];
+
+const MUET_GROUPS = [
+  {
+    id: 'Pre-Engineering',
+    name: 'Pre-Engineering Stream',
+    subjects: 'Mathematics (25) · Physics (25) · Chemistry (25) · English (25)',
+    desc: '100 MCQs in 100 minutes aligned with Sindh Textbook Board curriculum',
+  },
+  {
+    id: 'Computer Science / ICS',
+    name: 'Computer Science / ICS Stream',
+    subjects: 'Mathematics (25) · Physics (25) · Computer Science (25) · English (25)',
+    desc: 'For Sindh engineering and computer science undergraduate admissions',
+  },
+  {
+    id: 'Pre-Medical',
+    name: 'Pre-Medical Stream',
+    subjects: 'Biology (25) · Physics (25) · Chemistry (25) · English (25)',
+    desc: 'For biomedical engineering and allied health technology admissions',
+  },
+];
+
+const LUMS_GROUPS = [
+  {
+    id: 'LCAT (Verbal & Quantitative)',
+    name: 'LCAT Undergraduate Test',
+    subjects: 'Verbal Aptitude (45 MCQs) · Quantitative Aptitude (45 MCQs) · 160 Mins',
+    desc: 'Official undergraduate admission test covering critical reading and math',
+  },
+  {
+    id: 'SBASSE (Scientific Aptitude)',
+    name: 'SBASSE Scientific Aptitude Test',
+    subjects: 'Physics · Chemistry · Mathematics · Biology',
+    desc: 'Rigorous scientific aptitude test for School of Science & Engineering',
+  },
+];
+
+const NUTECH_GROUPS = [
+  {
+    id: 'Engineering',
+    name: 'NUET Engineering Stream',
+    subjects: 'Mathematics (80) · Physics (60) · Chemistry/CS (40) · English (20)',
+    desc: '200 MCQs in 180 minutes with zero negative marking',
+  },
+  {
+    id: 'Computing / CS',
+    name: 'NUET Computing Stream',
+    subjects: 'Mathematics (100) · Physics/CS (60) · English (40)',
+    desc: '200 MCQs in 180 minutes for Computer Science & AI degree admissions',
+  },
 ];
 
 // TCAT Groups
@@ -247,10 +453,39 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
   const [phone, setPhone] = useState<string>('');
 
   // Step 1: Track Selection
-  const [selectedTrack, setSelectedTrack] = useState<'FBISE' | 'MDCAT' | 'TCAT'>('FBISE');
+  const [selectedTrack, setSelectedTrack] = useState<
+    | 'FBISE'
+    | 'MDCAT'
+    | 'TCAT'
+    | 'NET'
+    | 'FAST'
+    | 'ECAT'
+    | 'ETEA'
+    | 'NUMS'
+    | 'GIKI'
+    | 'USAT'
+    | 'NED'
+    | 'PIEAS'
+    | 'NAT'
+    | 'IBA'
+    | 'AKU'
+    | 'MUET'
+    | 'LUMS'
+    | 'NUML'
+    | 'HITEC'
+    | 'NUTECH'
+  >('FBISE');
   const [fbiseGrade, setFbiseGrade] = useState<string>('Class 11');
   const [fbiseStream, setFbiseStream] = useState<string>('Pre-Engineering');
   const [tcatGroup, setTcatGroup] = useState<string>('Pre-Engineering Group');
+  const [ecatGroup, setEcatGroup] = useState<string>('Pre-Engineering (Chemistry)');
+  const [eteaGroup, setEteaGroup] = useState<string>('Engineering (Chemistry)');
+  const [usatGroup, setUsatGroup] = useState<string>('USAT-E (Pre-Engineering)');
+  const [pieasGroup, setPieasGroup] = useState<string>('Pre-Engineering');
+  const [natGroup, setNatGroup] = useState<string>('NAT-IE (Pre-Engineering)');
+  const [muetGroup, setMuetGroup] = useState<string>('Pre-Engineering');
+  const [lumsGroup, setLumsGroup] = useState<string>('LCAT (Verbal & Quantitative)');
+  const [nutechGroup, setNutechGroup] = useState<string>('Engineering');
 
   // Step 2: Dream University
   const [dreamUniversity, setDreamUniversity] = useState<string>('');
@@ -304,7 +539,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
         activeUser = authData?.user || null;
       }
       const userId = activeUser?.id || `anon-${Date.now()}`;
-      const trackText = selectedTrack === 'FBISE' ? `FBISE ${fbiseGrade}` : selectedTrack === 'MDCAT' ? 'MDCAT' : `TCAT (${tcatGroup})`;
+      const trackText = getSelectedTrackMeta().trackText;
       const planDetails = getFeePlanDetails();
 
       const payload = {
@@ -543,19 +778,302 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
         ],
       };
     }
-    // TCAT
+    if (selectedTrack === 'TCAT') {
+      return {
+        planTitle: `UET Taxila TCAT Prep (${tcatGroup})`,
+        fee: '1,499',
+        features: [
+          `Group-Specific TCAT Question Bank (${tcatGroup})`,
+          'Formula Sheets & Quick Numerical Practice',
+          'UET Taxila Standard Full-Length Mocks',
+        ],
+      };
+    }
+    if (selectedTrack === 'NET') {
+      return {
+        planTitle: 'NUST NET Entrance Prep Session',
+        fee: '1,499',
+        features: [
+          '200 MCQs Full Simulation Bank (Math 100, Phys 60, Eng 40)',
+          'NUST High-Speed Drill Mode & Formula Sheets',
+          'Detailed Step-by-Step Numerical Solutions',
+        ],
+      };
+    }
+    if (selectedTrack === 'FAST') {
+      return {
+        planTitle: 'FAST-NU NAT Entrance Prep Session',
+        fee: '1,499',
+        features: [
+          '120 MCQs Simulation with -0.25 Negative Marking',
+          'Adv Math (50), Basic Math (20), IQ/Analytical (20), Eng (30)',
+          'Speed & Negative-Marking Precision Diagnostics',
+        ],
+      };
+    }
+    if (selectedTrack === 'ECAT') {
+      return {
+        planTitle: `UET Lahore ECAT Prep (${ecatGroup})`,
+        fee: '1,499',
+        features: [
+          '100 MCQs (400 Marks) Official Pattern',
+          'Math (30), Physics (30), Chem/CS (30), English (10)',
+          'Subject-wise Mock Banks & Solutions',
+        ],
+      };
+    }
+    if (selectedTrack === 'ETEA') {
+      return {
+        planTitle: `UET Peshawar ETEA Prep (${eteaGroup})`,
+        fee: '1,499',
+        features: [
+          '100 MCQs Engineering Simulation Bank',
+          'Physics (40), Math (30), Chem/CS (20), English (10)',
+          'KPK Textbook Board Aligned Mock Bank',
+        ],
+      };
+    }
+    if (selectedTrack === 'NUMS') {
+      return {
+        planTitle: 'NUMS Medical Entry Test Prep',
+        fee: '1,499',
+        features: [
+          '150 MCQs Full Mock Exam Bank',
+          'Biology (60), Chemistry (38), Physics (37), English (15)',
+          'Army Medical College (AMC) Standard Drills',
+        ],
+      };
+    }
+    if (selectedTrack === 'GIKI') {
+      return {
+        planTitle: 'GIKI Engineering Entrance Prep',
+        fee: '1,499',
+        features: [
+          '80 MCQs Engineering Simulation Bank',
+          'Mathematics (30), Physics (30), English (20)',
+          'Conceptual Numerical Problem Solving',
+        ],
+      };
+    }
+    if (selectedTrack === 'NED') {
+      return {
+        planTitle: 'NED University Pre-Admission Prep',
+        fee: '1,499',
+        features: [
+          '100 MCQs Full Simulation Bank (2 Hours)',
+          'Math (25), Phys (25), Chem (25), Eng (25)',
+          'HSC 60/40 Formula & Zero Negative Marking',
+        ],
+      };
+    }
+    if (selectedTrack === 'PIEAS') {
+      return {
+        planTitle: `PIEAS Written Test Prep (${pieasGroup})`,
+        fee: '1,499',
+        features: [
+          '100 MCQs in 180 Minutes (3 Hours)',
+          pieasGroup === 'Pre-Engineering'
+            ? 'Math (30), Phys (30), Chem (30), Eng (10)'
+            : 'Math (30), Phys (30), CS (30), Eng (10)',
+          'No Negative Marking & PIEAS Merit Formula',
+        ],
+      };
+    }
+    if (selectedTrack === 'NAT') {
+      return {
+        planTitle: `NTS NAT Prep (${natGroup})`,
+        fee: '1,499',
+        features: [
+          '90 MCQs in 120 Minutes Pattern',
+          'Verbal (20), Analytical (20), Quantitative (20), Subject (30)',
+          'Covers COMSATS, Air, Bahria, IIUI, and IST',
+        ],
+      };
+    }
+    if (selectedTrack === 'IBA') {
+      return {
+        planTitle: 'IBA Karachi Aptitude Prep',
+        fee: '1,499',
+        features: [
+          '90 MCQs in 165 Minutes (2h 45m)',
+          'English Verbal (45) + Quantitative Math (45)',
+          '-0.25 Negative Marking & Sectional Cut-offs',
+        ],
+      };
+    }
+    if (selectedTrack === 'AKU') {
+      return {
+        planTitle: 'Aga Khan University (AKU) Medical Prep',
+        fee: '1,499',
+        features: [
+          'Science Achievement (Bio 16, Chem 12, Phys 12 with -0.25 penalty)',
+          'Science Reasoning (30) & Mathematical Reasoning (30)',
+          '100 MCQs in 120 Minutes Simulation',
+        ],
+      };
+    }
+    if (selectedTrack === 'MUET') {
+      return {
+        planTitle: `MUET Jamshoro Pre-Admission Prep (${muetGroup})`,
+        fee: '1,499',
+        features: [
+          '100 MCQs in 100 Minutes (No Negative Marking)',
+          'Math/Bio (25), Phys (25), Chem/CS (25), Eng (25)',
+          'Sindh Textbook Board Aligned Practice',
+        ],
+      };
+    }
+    if (selectedTrack === 'LUMS') {
+      return {
+        planTitle: `LUMS Undergraduate Prep (${lumsGroup})`,
+        fee: '1,499',
+        features: [
+          lumsGroup.startsWith('LCAT')
+            ? '90 MCQs in 160 Minutes: Verbal (45) + Quantitative (45)'
+            : 'SBASSE Scientific Aptitude: Phys, Chem, Math, Bio',
+          'High-Order Analytical & Reasoning Drills',
+          'LUMS Standard Timed Simulation Engine',
+        ],
+      };
+    }
+    if (selectedTrack === 'NUML') {
+      return {
+        planTitle: 'NUML University Entrance Prep',
+        fee: '1,499',
+        features: [
+          '75 MCQs in 60 Minutes (Zero Negative Marking)',
+          'English (20), Physics (20), Math (20), CS (15)',
+          '50% Minimum Passing Criteria Benchmarking',
+        ],
+      };
+    }
+    if (selectedTrack === 'HITEC') {
+      return {
+        planTitle: 'HITEC University Taxila Prep',
+        fee: '1,499',
+        features: [
+          '100 MCQs in 120 Minutes (Zero Negative Marking)',
+          'Math (30), Physics (30), Chem/CS (20), English (20)',
+          '50% Passing Criteria Simulation Drills',
+        ],
+      };
+    }
+    if (selectedTrack === 'NUTECH') {
+      return {
+        planTitle: `NUTECH Entry Test (NUET) Prep (${nutechGroup})`,
+        fee: '1,499',
+        features: [
+          '200 MCQs in 180 Minutes (Zero Negative Marking)',
+          nutechGroup === 'Engineering'
+            ? 'Math (80), Physics (60), Chem/CS (40), English (20)'
+            : 'Math (100), CS/Physics (60), English (40)',
+          'NUET High-Endurance Simulation Engine',
+        ],
+      };
+    }
+    // USAT (HEC)
     return {
-      planTitle: `UET Taxila TCAT Prep (${tcatGroup})`,
+      planTitle: `HEC USAT Prep (${usatGroup})`,
       fee: '1,499',
       features: [
-        `Group-Specific TCAT Question Bank (${tcatGroup})`,
-        'Formula Sheets & Quick Numerical Practice',
-        'UET Taxila Standard Full-Length Mocks',
+        '100 MCQs Official HEC USAT Pattern',
+        'Part 1: Verbal (20) & Quantitative (25)',
+        'Part 2: Subject Discipline Specific (30)',
       ],
     };
   };
 
   const planDetails = getFeePlanDetails();
+
+  const getSelectedTrackMeta = () => {
+    let gradeVal = 'FBISE';
+    let streamVal = fbiseStream;
+    let trackText = `FBISE ${fbiseGrade} (${fbiseStream})`;
+
+    if (selectedTrack === 'FBISE') {
+      gradeVal = fbiseGrade;
+      streamVal = fbiseStream;
+      trackText = `FBISE ${fbiseGrade} (${fbiseStream})`;
+    } else if (selectedTrack === 'MDCAT') {
+      gradeVal = 'MDCAT Prep';
+      streamVal = 'PMDC Medical Entry Test';
+      trackText = 'PMDC MDCAT Entrance';
+    } else if (selectedTrack === 'TCAT') {
+      gradeVal = 'TCAT Prep';
+      streamVal = tcatGroup;
+      trackText = `UET Taxila TCAT (${tcatGroup})`;
+    } else if (selectedTrack === 'NET') {
+      gradeVal = 'NET Prep';
+      streamVal = 'NUST NET Engineering & Computing';
+      trackText = 'NUST NET (Engineering & Computing)';
+    } else if (selectedTrack === 'FAST') {
+      gradeVal = 'FAST Prep';
+      streamVal = 'FAST-NU CS & Engineering';
+      trackText = 'FAST-NU NAT (CS & Engineering)';
+    } else if (selectedTrack === 'ECAT') {
+      gradeVal = 'ECAT Prep';
+      streamVal = ecatGroup;
+      trackText = `UET Lahore ECAT (${ecatGroup})`;
+    } else if (selectedTrack === 'ETEA') {
+      gradeVal = 'ETEA Prep';
+      streamVal = eteaGroup;
+      trackText = `UET Peshawar ETEA (${eteaGroup})`;
+    } else if (selectedTrack === 'NUMS') {
+      gradeVal = 'NUMS Prep';
+      streamVal = 'NUMS Medical Entry Test';
+      trackText = 'NUMS Medical Entry Test';
+    } else if (selectedTrack === 'GIKI') {
+      gradeVal = 'GIKI Prep';
+      streamVal = 'GIKI Engineering Entrance';
+      trackText = 'GIKI Admission Test';
+    } else if (selectedTrack === 'USAT') {
+      gradeVal = 'USAT Prep';
+      streamVal = usatGroup;
+      trackText = `HEC USAT (${usatGroup})`;
+    } else if (selectedTrack === 'NED') {
+      gradeVal = 'NED Prep';
+      streamVal = 'NED University Pre-Admission';
+      trackText = 'NED University Karachi';
+    } else if (selectedTrack === 'PIEAS') {
+      gradeVal = 'PIEAS Prep';
+      streamVal = `PIEAS ${pieasGroup}`;
+      trackText = `PIEAS Islamabad (${pieasGroup})`;
+    } else if (selectedTrack === 'NAT') {
+      gradeVal = 'NAT Prep';
+      streamVal = `NTS NAT (${natGroup})`;
+      trackText = `NTS NAT (${natGroup})`;
+    } else if (selectedTrack === 'IBA') {
+      gradeVal = 'IBA Prep';
+      streamVal = 'IBA Karachi Aptitude';
+      trackText = 'IBA Karachi Aptitude';
+    } else if (selectedTrack === 'AKU') {
+      gradeVal = 'AKU Prep';
+      streamVal = 'Aga Khan University Medical';
+      trackText = 'Aga Khan University (AKU)';
+    } else if (selectedTrack === 'MUET') {
+      gradeVal = 'MUET Prep';
+      streamVal = `MUET ${muetGroup}`;
+      trackText = `MUET Jamshoro (${muetGroup})`;
+    } else if (selectedTrack === 'LUMS') {
+      gradeVal = 'LUMS Prep';
+      streamVal = `LUMS ${lumsGroup}`;
+      trackText = `LUMS (${lumsGroup})`;
+    } else if (selectedTrack === 'NUML') {
+      gradeVal = 'NUML Prep';
+      streamVal = 'NUML University Entrance';
+      trackText = 'NUML Islamabad';
+    } else if (selectedTrack === 'HITEC') {
+      gradeVal = 'HITEC Prep';
+      streamVal = 'HITEC University Taxila';
+      trackText = 'HITEC University Taxila';
+    } else if (selectedTrack === 'NUTECH') {
+      gradeVal = 'NUTECH Prep';
+      streamVal = `NUTECH ${nutechGroup}`;
+      trackText = `NUTECH NUET (${nutechGroup})`;
+    }
+
+    return { gradeVal, streamVal, trackText };
+  };
 
   // Handle Copy text helper
   const handleCopy = (text: string, id: string) => {
@@ -616,18 +1134,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
     setEmail(resolvedEmail);
     setFullName(resolvedName);
 
-    const gradeVal =
-      selectedTrack === 'FBISE'
-        ? fbiseGrade
-        : selectedTrack === 'MDCAT'
-        ? 'MDCAT Prep'
-        : 'TCAT Prep';
-    const streamVal =
-      selectedTrack === 'FBISE'
-        ? fbiseStream
-        : selectedTrack === 'MDCAT'
-        ? 'PMDC Medical Entry Test'
-        : tcatGroup;
+    const { gradeVal, streamVal } = getSelectedTrackMeta();
 
     // Persist Step 1 progress to database
     if (activeUser?.id) {
@@ -684,12 +1191,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
     setIsSendingEmail(true);
     setCurrentStep(3);
 
-    const trackLabel =
-      selectedTrack === 'FBISE'
-        ? `FBISE (${fbiseGrade} - ${fbiseStream})`
-        : selectedTrack === 'MDCAT'
-        ? 'PMDC MDCAT Entrance Prep'
-        : `UET Taxila TCAT (${tcatGroup})`;
+    const trackLabel = getSelectedTrackMeta().trackText;
 
     try {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -749,18 +1251,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
     setIsSubmitting(true);
 
     const chosenUni = dreamUniversity === 'Other' ? customUniversity : dreamUniversity;
-    const gradeVal =
-      selectedTrack === 'FBISE'
-        ? fbiseGrade
-        : selectedTrack === 'MDCAT'
-        ? 'MDCAT Prep'
-        : 'TCAT Prep';
-    const streamVal =
-      selectedTrack === 'FBISE'
-        ? fbiseStream
-        : selectedTrack === 'MDCAT'
-        ? 'PMDC Medical Entry Test'
-        : tcatGroup;
+    const { gradeVal, streamVal } = getSelectedTrackMeta();
 
     try {
       let activeUser = user;
@@ -807,25 +1298,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
     setIsSubmitting(true);
 
     const chosenUni = dreamUniversity === 'Other' ? customUniversity : dreamUniversity;
-    const gradeVal =
-      selectedTrack === 'FBISE'
-        ? fbiseGrade
-        : selectedTrack === 'MDCAT'
-        ? 'MDCAT Prep'
-        : 'TCAT Prep';
-    const streamVal =
-      selectedTrack === 'FBISE'
-        ? fbiseStream
-        : selectedTrack === 'MDCAT'
-        ? 'PMDC Medical Entry Test'
-        : tcatGroup;
-
-    const trackText =
-      selectedTrack === 'FBISE'
-        ? `FBISE ${fbiseGrade} (${fbiseStream})`
-        : selectedTrack === 'MDCAT'
-        ? 'PMDC MDCAT Entrance'
-        : `UET Taxila TCAT (${tcatGroup})`;
+    const { gradeVal, streamVal, trackText } = getSelectedTrackMeta();
 
     try {
       // 1. Get current authenticated user ID
@@ -1036,25 +1509,25 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
             <label className="block text-xs font-black text-slate-800 ">
               Select Exam Category <span className="text-blue-500">*</span>
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {/* FBISE */}
               <button
                 type="button"
                 onClick={() => setSelectedTrack('FBISE')}
-                className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                   selectedTrack === 'FBISE'
                     ? 'bg-blue-500/10 border-blue-500 text-slate-900  ring-2 ring-blue-500/30'
                     : 'bg-slate-50  border-slate-200  hover:border-slate-300 '
                 }`}
               >
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-1.5">
                   <GraduationCap className="w-5 h-5 text-blue-500" />
                   {selectedTrack === 'FBISE' && (
                     <CheckCircle2 className="w-4 h-4 text-blue-500" />
                   )}
                 </div>
                 <div>
-                  <div className="font-extrabold text-xs">FBISE</div>
+                  <div className="font-extrabold text-xs">FBISE Board</div>
                   <div className="text-[10px] text-slate-500  mt-0.5">
                     Classes 9th, 10th, 11th & 12th
                   </div>
@@ -1065,13 +1538,13 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
               <button
                 type="button"
                 onClick={() => setSelectedTrack('MDCAT')}
-                className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                   selectedTrack === 'MDCAT'
                     ? 'bg-emerald-500/10 border-emerald-500 text-slate-900  ring-2 ring-emerald-500/30'
                     : 'bg-slate-50  border-slate-200  hover:border-slate-300 '
                 }`}
               >
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-1.5">
                   <Stethoscope className="w-5 h-5 text-emerald-500" />
                   {selectedTrack === 'MDCAT' && (
                     <CheckCircle2 className="w-4 h-4 text-emerald-500" />
@@ -1089,13 +1562,13 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
               <button
                 type="button"
                 onClick={() => setSelectedTrack('TCAT')}
-                className={`p-4 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
                   selectedTrack === 'TCAT'
                     ? 'bg-blue-500/10 border-blue-500 text-slate-900  ring-2 ring-blue-500/30'
                     : 'bg-slate-50  border-slate-200  hover:border-slate-300 '
                 }`}
               >
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-1.5">
                   <Cpu className="w-5 h-5 text-blue-500" />
                   {selectedTrack === 'TCAT' && (
                     <CheckCircle2 className="w-4 h-4 text-blue-500" />
@@ -1105,6 +1578,414 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
                   <div className="font-extrabold text-xs">UET Taxila TCAT</div>
                   <div className="text-[10px] text-slate-500  mt-0.5">
                     Engineering Entry Test (By Group)
+                  </div>
+                </div>
+              </button>
+
+              {/* NUST (NET) */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('NET')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'NET'
+                    ? 'bg-blue-500/10 border-blue-500 text-slate-900  ring-2 ring-blue-500/30'
+                    : 'bg-slate-50  border-slate-200  hover:border-slate-300 '
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Atom className="w-5 h-5 text-blue-600" />
+                  {selectedTrack === 'NET' && (
+                    <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">NUST (NET)</div>
+                  <div className="text-[10px] text-slate-500  mt-0.5">
+                    200 MCQs · Math, Physics, English
+                  </div>
+                </div>
+              </button>
+
+              {/* FAST-NU (NAT) */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('FAST')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'FAST'
+                    ? 'bg-sky-500/10 border-sky-500 text-slate-900  ring-2 ring-sky-500/30'
+                    : 'bg-slate-50  border-slate-200  hover:border-slate-300 '
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Binary className="w-5 h-5 text-sky-600" />
+                  {selectedTrack === 'FAST' && (
+                    <CheckCircle2 className="w-4 h-4 text-sky-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">FAST-NU (NAT)</div>
+                  <div className="text-[10px] text-slate-500  mt-0.5">
+                    120 MCQs · -0.25 Negative Marking
+                  </div>
+                </div>
+              </button>
+
+              {/* UET Lahore (ECAT) */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('ECAT')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'ECAT'
+                    ? 'bg-indigo-500/10 border-indigo-500 text-slate-900  ring-2 ring-indigo-500/30'
+                    : 'bg-slate-50  border-slate-200  hover:border-slate-300 '
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Compass className="w-5 h-5 text-indigo-600" />
+                  {selectedTrack === 'ECAT' && (
+                    <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">UET Lahore (ECAT)</div>
+                  <div className="text-[10px] text-slate-500  mt-0.5">
+                    100 MCQs · 400 Marks (Chem / CS)
+                  </div>
+                </div>
+              </button>
+
+              {/* UET Peshawar (ETEA) */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('ETEA')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'ETEA'
+                    ? 'bg-teal-500/10 border-teal-500 text-slate-900  ring-2 ring-teal-500/30'
+                    : 'bg-slate-50  border-slate-200  hover:border-slate-300 '
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Layers className="w-5 h-5 text-teal-600" />
+                  {selectedTrack === 'ETEA' && (
+                    <CheckCircle2 className="w-4 h-4 text-teal-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">UET Peshawar (ETEA)</div>
+                  <div className="text-[10px] text-slate-500  mt-0.5">
+                    100 MCQs · Engineering (Chem / CS)
+                  </div>
+                </div>
+              </button>
+
+              {/* NUMS */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('NUMS')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'NUMS'
+                    ? 'bg-green-500/10 border-green-500 text-slate-900  ring-2 ring-green-500/30'
+                    : 'bg-slate-50  border-slate-200  hover:border-slate-300 '
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Stethoscope className="w-5 h-5 text-green-600" />
+                  {selectedTrack === 'NUMS' && (
+                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">NUMS (Army Medical)</div>
+                  <div className="text-[10px] text-slate-500  mt-0.5">
+                    150 MCQs · AMC MBBS/BDS Prep
+                  </div>
+                </div>
+              </button>
+
+              {/* GIKI */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('GIKI')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'GIKI'
+                    ? 'bg-blue-600/10 border-blue-600 text-slate-900  ring-2 ring-blue-600/30'
+                    : 'bg-slate-50  border-slate-200  hover:border-slate-300 '
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Sparkles className="w-5 h-5 text-blue-700" />
+                  {selectedTrack === 'GIKI' && (
+                    <CheckCircle2 className="w-4 h-4 text-blue-700" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">GIKI Admission Test</div>
+                  <div className="text-[10px] text-slate-500  mt-0.5">
+                    80 MCQs · Math, Physics, English
+                  </div>
+                </div>
+              </button>
+
+              {/* USAT (HEC) */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('USAT')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'USAT'
+                    ? 'bg-violet-500/10 border-violet-500 text-slate-900  ring-2 ring-violet-500/30'
+                    : 'bg-slate-50  border-slate-200  hover:border-slate-300 '
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <FileText className="w-5 h-5 text-violet-600" />
+                  {selectedTrack === 'USAT' && (
+                    <CheckCircle2 className="w-4 h-4 text-violet-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">HEC USAT</div>
+                  <div className="text-[10px] text-slate-500  mt-0.5">
+                    100 MCQs · USAT-E & USAT-CS
+                  </div>
+                </div>
+              </button>
+
+              {/* NED University */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('NED')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'NED'
+                    ? 'bg-blue-600/10 border-blue-600 text-slate-900 ring-2 ring-blue-600/30'
+                    : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Landmark className="w-5 h-5 text-blue-600" />
+                  {selectedTrack === 'NED' && (
+                    <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">NED University</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    100 MCQs · 2 Hours · Sindh Merit
+                  </div>
+                </div>
+              </button>
+
+              {/* PIEAS Islamabad */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('PIEAS')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'PIEAS'
+                    ? 'bg-cyan-600/10 border-cyan-600 text-slate-900 ring-2 ring-cyan-600/30'
+                    : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Atom className="w-5 h-5 text-cyan-600" />
+                  {selectedTrack === 'PIEAS' && (
+                    <CheckCircle2 className="w-4 h-4 text-cyan-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">PIEAS Islamabad</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    100 MCQs · 3 Hours · Pre-Eng & ICS
+                  </div>
+                </div>
+              </button>
+
+              {/* NTS NAT Portal */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('NAT')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'NAT'
+                    ? 'bg-emerald-600/10 border-emerald-600 text-slate-900 ring-2 ring-emerald-600/30'
+                    : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Globe2 className="w-5 h-5 text-emerald-600" />
+                  {selectedTrack === 'NAT' && (
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">NTS NAT Portal</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    90 MCQs · COMSATS, Air, Bahria, IST
+                  </div>
+                </div>
+              </button>
+
+              {/* IBA Karachi */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('IBA')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'IBA'
+                    ? 'bg-amber-600/10 border-amber-600 text-slate-900 ring-2 ring-amber-600/30'
+                    : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Award className="w-5 h-5 text-amber-600" />
+                  {selectedTrack === 'IBA' && (
+                    <CheckCircle2 className="w-4 h-4 text-amber-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">IBA Karachi</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    90 MCQs · Verbal & Math Aptitude
+                  </div>
+                </div>
+              </button>
+
+              {/* Aga Khan University (AKU) */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('AKU')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'AKU'
+                    ? 'bg-rose-600/10 border-rose-600 text-slate-900 ring-2 ring-rose-600/30'
+                    : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Stethoscope className="w-5 h-5 text-rose-600" />
+                  {selectedTrack === 'AKU' && (
+                    <CheckCircle2 className="w-4 h-4 text-rose-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">AKU Medical</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    100 MCQs · Science & Reasoning
+                  </div>
+                </div>
+              </button>
+
+              {/* Mehran UET Jamshoro (MUET) */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('MUET')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'MUET'
+                    ? 'bg-teal-600/10 border-teal-600 text-slate-900 ring-2 ring-teal-600/30'
+                    : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Cpu className="w-5 h-5 text-teal-600" />
+                  {selectedTrack === 'MUET' && (
+                    <CheckCircle2 className="w-4 h-4 text-teal-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">MUET Jamshoro</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    100 MCQs · Sindh Pre-Admission
+                  </div>
+                </div>
+              </button>
+
+              {/* LUMS Admission */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('LUMS')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'LUMS'
+                    ? 'bg-indigo-600/10 border-indigo-600 text-slate-900 ring-2 ring-indigo-600/30'
+                    : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Brain className="w-5 h-5 text-indigo-600" />
+                  {selectedTrack === 'LUMS' && (
+                    <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">LUMS Admission</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    LCAT & SBASSE Scientific Aptitude
+                  </div>
+                </div>
+              </button>
+
+              {/* NUML Islamabad */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('NUML')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'NUML'
+                    ? 'bg-purple-600/10 border-purple-600 text-slate-900 ring-2 ring-purple-600/30'
+                    : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <BookOpen className="w-5 h-5 text-purple-600" />
+                  {selectedTrack === 'NUML' && (
+                    <CheckCircle2 className="w-4 h-4 text-purple-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">NUML University</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    75 MCQs · 60m · Eng, Phys, Math, CS
+                  </div>
+                </div>
+              </button>
+
+              {/* HITEC University Taxila */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('HITEC')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'HITEC'
+                    ? 'bg-sky-600/10 border-sky-600 text-slate-900 ring-2 ring-sky-600/30'
+                    : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Compass className="w-5 h-5 text-sky-600" />
+                  {selectedTrack === 'HITEC' && (
+                    <CheckCircle2 className="w-4 h-4 text-sky-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">HITEC Taxila</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    100 MCQs · 120m · Engineering & CS
+                  </div>
+                </div>
+              </button>
+
+              {/* NUTECH Islamabad (NUET) */}
+              <button
+                type="button"
+                onClick={() => setSelectedTrack('NUTECH')}
+                className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                  selectedTrack === 'NUTECH'
+                    ? 'bg-orange-600/10 border-orange-600 text-slate-900 ring-2 ring-orange-600/30'
+                    : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <Sparkles className="w-5 h-5 text-orange-600" />
+                  {selectedTrack === 'NUTECH' && (
+                    <CheckCircle2 className="w-4 h-4 text-orange-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="font-extrabold text-xs">NUTECH (NUET)</div>
+                  <div className="text-[10px] text-slate-500 mt-0.5">
+                    200 MCQs · 180m · Tech & Computing
                   </div>
                 </div>
               </button>
@@ -1231,6 +2112,189 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
             </div>
           )}
 
+          {selectedTrack === 'ECAT' && (
+            <div className="space-y-3 pt-2 border-t border-slate-100 ">
+              <label className="block text-xs font-bold text-slate-700 ">
+                Select UET Lahore ECAT Group <span className="text-indigo-500">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {[
+                  {
+                    id: 'Pre-Engineering (Chemistry)',
+                    name: 'Pre-Engineering Group',
+                    subjects: 'Math (30) · Physics (30) · Chemistry (30) · English (10)',
+                    desc: 'For FSc Pre-Engineering students targeting UET Engineering programs',
+                  },
+                  {
+                    id: 'ICS (Computer Science)',
+                    name: 'Computer Science (ICS) Group',
+                    subjects: 'Math (30) · Physics (30) · Computer Science (30) · English (10)',
+                    desc: 'For ICS students targeting Computer Science & Software Engineering',
+                  },
+                ].map((grp) => {
+                  const isSel = ecatGroup === grp.id;
+                  return (
+                    <button
+                      key={grp.id}
+                      type="button"
+                      onClick={() => setEcatGroup(grp.id)}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isSel
+                          ? 'bg-indigo-500/15 border-indigo-500 text-slate-900 ring-2 ring-indigo-500/30'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-extrabold text-xs text-slate-900">{grp.name}</span>
+                        {isSel && <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />}
+                      </div>
+                      <div className="text-[11px] font-bold text-indigo-600 mb-1">{grp.subjects}</div>
+                      <p className="text-[10px] text-slate-500 leading-normal">{grp.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {selectedTrack === 'ETEA' && (
+            <div className="space-y-3 pt-2 border-t border-slate-100 ">
+              <label className="block text-xs font-bold text-slate-700 ">
+                Select UET Peshawar ETEA Group <span className="text-teal-500">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {[
+                  {
+                    id: 'Engineering (Chemistry)',
+                    name: 'Pre-Engineering Track',
+                    subjects: 'Physics (40) · Math (30) · Chemistry (20) · English (10)',
+                    desc: 'Standard KPK engineering track aligned with KPK textbook board',
+                  },
+                  {
+                    id: 'Computer / ICS (Computer Science)',
+                    name: 'Computer / ICS Track',
+                    subjects: 'Physics (40) · Math (30) · Computer Science (20) · English (10)',
+                    desc: 'For Computer Science & IT programs across Khyber Pakhtunkhwa universities',
+                  },
+                ].map((grp) => {
+                  const isSel = eteaGroup === grp.id;
+                  return (
+                    <button
+                      key={grp.id}
+                      type="button"
+                      onClick={() => setEteaGroup(grp.id)}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isSel
+                          ? 'bg-teal-500/15 border-teal-500 text-slate-900 ring-2 ring-teal-500/30'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-extrabold text-xs text-slate-900">{grp.name}</span>
+                        {isSel && <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />}
+                      </div>
+                      <div className="text-[11px] font-bold text-teal-600 mb-1">{grp.subjects}</div>
+                      <p className="text-[10px] text-slate-500 leading-normal">{grp.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {selectedTrack === 'USAT' && (
+            <div className="space-y-3 pt-2 border-t border-slate-100 ">
+              <label className="block text-xs font-bold text-slate-700 ">
+                Select HEC USAT Category <span className="text-violet-500">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {[
+                  {
+                    id: 'USAT-E (Pre-Engineering)',
+                    name: 'USAT-E (Pre-Engineering)',
+                    subjects: 'Part 1: Verbal (20) + Quant (25) · Part 2: Phys (10), Chem (10), Math (10)',
+                    desc: 'HEC admission test for engineering degrees nationwide',
+                  },
+                  {
+                    id: 'USAT-CS (Computer Science)',
+                    name: 'USAT-CS (Computer Science)',
+                    subjects: 'Part 1: Verbal (20) + Quant (25) · Part 2: Phys (10), CS (10), Math (10)',
+                    desc: 'HEC admission test for CS, AI, Software, and Data Science degrees',
+                  },
+                ].map((grp) => {
+                  const isSel = usatGroup === grp.id;
+                  return (
+                    <button
+                      key={grp.id}
+                      type="button"
+                      onClick={() => setUsatGroup(grp.id)}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isSel
+                          ? 'bg-violet-500/15 border-violet-500 text-slate-900 ring-2 ring-violet-500/30'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-extrabold text-xs text-slate-900">{grp.name}</span>
+                        {isSel && <CheckCircle2 className="w-4 h-4 text-violet-600 shrink-0" />}
+                      </div>
+                      <div className="text-[11px] font-bold text-violet-600 mb-1">{grp.subjects}</div>
+                      <p className="text-[10px] text-slate-500 leading-normal">{grp.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {selectedTrack === 'NET' && (
+            <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-xs text-blue-900  space-y-1">
+              <div className="font-extrabold flex items-center gap-1.5">
+                <Atom className="w-4 h-4 text-blue-600" />
+                <span>NUST Entry Test (NET) — Engineering & Computing Pattern</span>
+              </div>
+              <p className="text-[11px] text-slate-600 ">
+                200 MCQs (3 Hours, No Negative Marking). Sections: Mathematics 100 MCQs, Physics 60 MCQs, English 40 MCQs (SAT-Style). No Chemistry/Biology/CS section.
+              </p>
+            </div>
+          )}
+
+          {selectedTrack === 'FAST' && (
+            <div className="p-4 rounded-2xl bg-sky-500/10 border border-sky-500/30 text-xs text-sky-950  space-y-1">
+              <div className="font-extrabold flex items-center gap-1.5">
+                <Binary className="w-4 h-4 text-sky-600" />
+                <span>FAST-NU Admission Test (NAT) — CS & Engineering Pattern</span>
+              </div>
+              <p className="text-[11px] text-slate-600 ">
+                120 MCQs with -0.25 Negative Marking per incorrect answer. Sections: Advanced Mathematics 50, Basic Math/Quantitative 20, IQ & Analytical Reasoning 20, English 30.
+              </p>
+            </div>
+          )}
+
+          {selectedTrack === 'NUMS' && (
+            <div className="p-4 rounded-2xl bg-green-500/10 border border-green-500/30 text-xs text-green-950  space-y-1">
+              <div className="font-extrabold flex items-center gap-1.5">
+                <Stethoscope className="w-4 h-4 text-green-600" />
+                <span>NUMS Medical Entry Test — Army Medical College (AMC) Track</span>
+              </div>
+              <p className="text-[11px] text-slate-600 ">
+                150 MCQs (150 Minutes, No Negative Marking). Sections: Biology 60 MCQs, Chemistry 38 MCQs, Physics 37 MCQs, English 15 MCQs.
+              </p>
+            </div>
+          )}
+
+          {selectedTrack === 'GIKI' && (
+            <div className="p-4 rounded-2xl bg-blue-600/10 border border-blue-600/30 text-xs text-blue-950  space-y-1">
+              <div className="font-extrabold flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-blue-700" />
+                <span>GIKI Engineering Admission Test Track</span>
+              </div>
+              <p className="text-[11px] text-slate-600 ">
+                80 MCQs (2 Hours, No Negative Marking). Sections: Mathematics 30 MCQs, Physics 30 MCQs, English 20 MCQs.
+              </p>
+            </div>
+          )}
+
           {selectedTrack === 'MDCAT' && (
             <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-900  space-y-1">
               <div className="font-extrabold flex items-center gap-1.5">
@@ -1240,6 +2304,226 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
               <p className="text-[11px] text-slate-600 ">
                 Covers Biology, Chemistry, Physics, English, and Logical Reasoning according to the latest PMDC MDCAT syllabus.
               </p>
+            </div>
+          )}
+
+          {selectedTrack === 'NED' && (
+            <div className="p-4 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-xs text-blue-950 space-y-1">
+              <div className="font-extrabold flex items-center gap-1.5">
+                <Landmark className="w-4 h-4 text-blue-600" />
+                <span>NED University Pre-Admission Test Track</span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                100 MCQs (2 Hours, No Negative Marking). Sections: Mathematics 25 MCQs, Physics 25 MCQs, Chemistry 25 MCQs, English 25 MCQs. Merit calculation: 60% Entry Test + 40% HSC.
+              </p>
+            </div>
+          )}
+
+          {selectedTrack === 'PIEAS' && (
+            <div className="space-y-3 pt-2 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-700">
+                Select PIEAS Stream <span className="text-cyan-600">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {PIEAS_GROUPS.map((grp) => {
+                  const isSel = pieasGroup === grp.id;
+                  return (
+                    <button
+                      key={grp.id}
+                      type="button"
+                      onClick={() => setPieasGroup(grp.id)}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isSel
+                          ? 'bg-cyan-500/15 border-cyan-500 text-slate-900 ring-2 ring-cyan-500/30'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-extrabold text-xs text-slate-900">{grp.name}</span>
+                        {isSel && <CheckCircle2 className="w-4 h-4 text-cyan-600 shrink-0" />}
+                      </div>
+                      <div className="text-[11px] font-bold text-cyan-600 mb-1">{grp.subjects}</div>
+                      <p className="text-[10px] text-slate-500 leading-normal">{grp.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {selectedTrack === 'NAT' && (
+            <div className="space-y-3 pt-2 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-700">
+                Select NTS NAT Stream <span className="text-emerald-600">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {NAT_GROUPS.map((grp) => {
+                  const isSel = natGroup === grp.id;
+                  return (
+                    <button
+                      key={grp.id}
+                      type="button"
+                      onClick={() => setNatGroup(grp.id)}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isSel
+                          ? 'bg-emerald-500/15 border-emerald-500 text-slate-900 ring-2 ring-emerald-500/30'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-extrabold text-xs text-slate-900">{grp.name}</span>
+                        {isSel && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
+                      </div>
+                      <div className="text-[11px] font-bold text-emerald-600 mb-1">{grp.subjects}</div>
+                      <p className="text-[10px] text-slate-500 leading-normal">{grp.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {selectedTrack === 'IBA' && (
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-950 space-y-1">
+              <div className="font-extrabold flex items-center gap-1.5">
+                <Award className="w-4 h-4 text-amber-600" />
+                <span>IBA Karachi Aptitude Test Track</span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                90 MCQs (165 Minutes, Negative Marking -0.25). Verbal English: 45 MCQs, Quantitative Math: 45 MCQs. Direct cut-offs per section apply for admission interview exemption.
+              </p>
+            </div>
+          )}
+
+          {selectedTrack === 'AKU' && (
+            <div className="p-4 rounded-2xl bg-rose-500/10 border border-rose-500/30 text-xs text-rose-950 space-y-1">
+              <div className="font-extrabold flex items-center gap-1.5">
+                <Stethoscope className="w-4 h-4 text-rose-600" />
+                <span>Aga Khan University (AKU) Medical Test Track</span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                100 MCQs (120 Minutes). Science Achievement: Bio 16, Chem 12, Phys 12 (Negative Marking -0.25). Science Reasoning: 30 MCQs & Mathematical Reasoning: 30 MCQs (No Negative Marking).
+              </p>
+            </div>
+          )}
+
+          {selectedTrack === 'MUET' && (
+            <div className="space-y-3 pt-2 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-700">
+                Select MUET Jamshoro Stream <span className="text-teal-600">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {MUET_GROUPS.map((grp) => {
+                  const isSel = muetGroup === grp.id;
+                  return (
+                    <button
+                      key={grp.id}
+                      type="button"
+                      onClick={() => setMuetGroup(grp.id)}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isSel
+                          ? 'bg-teal-500/15 border-teal-500 text-slate-900 ring-2 ring-teal-500/30'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-extrabold text-xs text-slate-900">{grp.name}</span>
+                        {isSel && <CheckCircle2 className="w-4 h-4 text-teal-600 shrink-0" />}
+                      </div>
+                      <div className="text-[11px] font-bold text-teal-600 mb-1">{grp.subjects}</div>
+                      <p className="text-[10px] text-slate-500 leading-normal">{grp.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {selectedTrack === 'LUMS' && (
+            <div className="space-y-3 pt-2 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-700">
+                Select LUMS Admission Test Track <span className="text-indigo-600">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {LUMS_GROUPS.map((grp) => {
+                  const isSel = lumsGroup === grp.id;
+                  return (
+                    <button
+                      key={grp.id}
+                      type="button"
+                      onClick={() => setLumsGroup(grp.id)}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isSel
+                          ? 'bg-indigo-500/15 border-indigo-500 text-slate-900 ring-2 ring-indigo-500/30'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-extrabold text-xs text-slate-900">{grp.name}</span>
+                        {isSel && <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0" />}
+                      </div>
+                      <div className="text-[11px] font-bold text-indigo-600 mb-1">{grp.subjects}</div>
+                      <p className="text-[10px] text-slate-500 leading-normal">{grp.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {selectedTrack === 'NUML' && (
+            <div className="p-4 rounded-2xl bg-purple-500/10 border border-purple-500/30 text-xs text-purple-950 space-y-1">
+              <div className="font-extrabold flex items-center gap-1.5">
+                <BookOpen className="w-4 h-4 text-purple-600" />
+                <span>NUML University Entrance Test Track</span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                75 MCQs (60 Minutes, No Negative Marking). Sections: English 20 MCQs, Physics 20 MCQs, Mathematics 20 MCQs, Computer Science 15 MCQs. Passing Criteria: 50%.
+              </p>
+            </div>
+          )}
+
+          {selectedTrack === 'HITEC' && (
+            <div className="p-4 rounded-2xl bg-sky-500/10 border border-sky-500/30 text-xs text-sky-950 space-y-1">
+              <div className="font-extrabold flex items-center gap-1.5">
+                <Compass className="w-4 h-4 text-sky-600" />
+                <span>HITEC University Taxila Admission Test Track</span>
+              </div>
+              <p className="text-[11px] text-slate-600">
+                100 MCQs (120 Minutes, No Negative Marking). Sections: Mathematics 30 MCQs, Physics 30 MCQs, Chemistry/CS 20 MCQs, English 20 MCQs. Passing Criteria: 50%.
+              </p>
+            </div>
+          )}
+
+          {selectedTrack === 'NUTECH' && (
+            <div className="space-y-3 pt-2 border-t border-slate-100">
+              <label className="block text-xs font-bold text-slate-700">
+                Select NUTECH (NUET) Stream <span className="text-orange-600">*</span>
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {NUTECH_GROUPS.map((grp) => {
+                  const isSel = nutechGroup === grp.id;
+                  return (
+                    <button
+                      key={grp.id}
+                      type="button"
+                      onClick={() => setNutechGroup(grp.id)}
+                      className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                        isSel
+                          ? 'bg-orange-500/15 border-orange-500 text-slate-900 ring-2 ring-orange-500/30'
+                          : 'bg-slate-50 border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="font-extrabold text-xs text-slate-900">{grp.name}</span>
+                        {isSel && <CheckCircle2 className="w-4 h-4 text-orange-600 shrink-0" />}
+                      </div>
+                      <div className="text-[11px] font-bold text-orange-600 mb-1">{grp.subjects}</div>
+                      <p className="text-[10px] text-slate-500 leading-normal">{grp.desc}</p>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
 
@@ -1290,12 +2574,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
 
           {/* List of relevant colleges */}
           <div className="space-y-2 max-h-[320px] overflow-y-auto pr-1">
-            {(selectedTrack === 'MDCAT'
-              ? MDCAT_COLLEGES
-              : selectedTrack === 'TCAT'
-              ? TCAT_UNIVERSITIES
-              : BOARD_INSTITUTIONS
-            ).map((uni) => {
+            {(TARGET_UNIVERSITIES_BY_TRACK[selectedTrack] || BOARD_INSTITUTIONS).map((uni) => {
               const isSelected = dreamUniversity === uni;
               return (
                 <button
@@ -1303,7 +2582,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
                   type="button"
                   onClick={() => {
                     setDreamUniversity(uni);
-                    if (uni !== 'Other Medical College / University' && uni !== 'Other Engineering University' && uni !== 'Other College / School') {
+                    if (!uni.includes('Other')) {
                       setCustomUniversity('');
                     }
                   }}

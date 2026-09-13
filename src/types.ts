@@ -1,6 +1,49 @@
-export type PathType = 'boards' | 'mdcat' | 'tcat';
+export type PathType =
+  | 'boards'
+  | 'mdcat'
+  | 'tcat'
+  | 'net'
+  | 'fast'
+  | 'ecat'
+  | 'etea'
+  | 'nums'
+  | 'giki'
+  | 'usat'
+  | 'ned'
+  | 'pieas'
+  | 'nat'
+  | 'iba'
+  | 'aku'
+  | 'muet'
+  | 'lums'
+  | 'numl'
+  | 'hitec'
+  | 'nutech';
 
-export type BoardClass = 9 | 10 | 11 | 12 | 'MDCAT' | 'TCAT';
+export type BoardClass =
+  | 9
+  | 10
+  | 11
+  | 12
+  | 'MDCAT'
+  | 'TCAT'
+  | 'NET'
+  | 'FAST'
+  | 'ECAT'
+  | 'ETEA'
+  | 'NUMS'
+  | 'GIKI'
+  | 'USAT'
+  | 'NED'
+  | 'PIEAS'
+  | 'NAT'
+  | 'IBA'
+  | 'AKU'
+  | 'MUET'
+  | 'LUMS'
+  | 'NUML'
+  | 'HITEC'
+  | 'NUTECH';
 
 export type DashboardCategory = 
   | 'grade9_cs'
@@ -15,6 +58,23 @@ export type DashboardCategory =
   | 'grade12_premedical'
   | 'mdcat'
   | 'tcat'
+  | 'net'
+  | 'fast'
+  | 'ecat'
+  | 'etea'
+  | 'nums'
+  | 'giki'
+  | 'usat'
+  | 'ned'
+  | 'pieas'
+  | 'nat'
+  | 'iba'
+  | 'aku'
+  | 'muet'
+  | 'lums'
+  | 'numl'
+  | 'hitec'
+  | 'nutech'
   | 'admin';
 
 export type QuestionDifficulty = 'Easy' | 'Medium' | 'Hard' | 'Exam Standard';
@@ -29,6 +89,8 @@ export interface Question {
   explain: string;
   difficulty?: QuestionDifficulty;
   subject?: string;
+  question?: string;
+  explanation?: string;
 }
 
 export type TestMode = 'instant' | 'ai-custom';

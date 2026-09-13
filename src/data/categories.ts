@@ -7,7 +7,24 @@ export const CLASS_GROUPS: Record<BoardClass, string[]> = {
   11: ["Pre-Medical", "Pre-Engineering", "ICS"],
   12: ["Pre-Medical", "Pre-Engineering", "ICS"],
   'MDCAT': ["MDCAT"],
-  'TCAT': ["Pre-Engineering", "ICS (Physics)", "ICS (Statistics)", "Pre-Medical to Engineering", "Statistics & Physics"]
+  'TCAT': ["Pre-Engineering", "ICS (Physics)", "ICS (Statistics)", "Pre-Medical to Engineering", "Statistics & Physics"],
+  'NET': ["Engineering & Computing"],
+  'FAST': ["CS & Engineering"],
+  'ECAT': ["Pre-Engineering", "ICS"],
+  'ETEA': ["Engineering (Chemistry)", "Engineering (Computer Science)"],
+  'NUMS': ["MBBS / BDS & Psychological Assessment"],
+  'GIKI': ["Engineering & Artificial Intelligence"],
+  'USAT': ["USAT-E (Pre-Engineering)", "USAT-CS (Computer Science)"],
+  'NED': ["Pre-Engineering"],
+  'PIEAS': ["Pre-Engineering", "ICS"],
+  'NAT': ["NAT-IE (Pre-Engineering)", "NAT-IM (Pre-Medical)", "NAT-ICS (Computer Science)"],
+  'IBA': ["Undergraduate Aptitude"],
+  'AKU': ["MBBS & Nursing"],
+  'MUET': ["Pre-Engineering", "ICS", "Pre-Medical"],
+  'LUMS': ["LCAT (Aptitude)", "SBASSE (Scientific Aptitude)"],
+  'NUML': ["Engineering & CS", "General"],
+  'HITEC': ["Engineering", "Computing"],
+  'NUTECH': ["Engineering", "Computing"]
 };
 
 /**
@@ -16,6 +33,125 @@ export const CLASS_GROUPS: Record<BoardClass, string[]> = {
  */
 export function getSubjectsForClassAndGroup(classNum: BoardClass, group: string): string[] {
   const normGroup = (group || '').trim().toLowerCase();
+  const normClass = String(classNum).toUpperCase();
+
+  // NUST NET: Mathematics 100, Physics 60, English 40. No Chem/Bio/CS!
+  if (normClass === 'NET' || normGroup.includes('net') || normGroup.includes('nust')) {
+    return ["Mathematics", "Physics", "English"];
+  }
+
+  // FAST-NU NAT: Advanced Math 50, Basic Math 20, IQ & Analytical 20, English 30. No Physics/Chemistry!
+  if (normClass === 'FAST' || normGroup.includes('fast') || normGroup.includes('nat')) {
+    return ["Advanced Mathematics", "Basic Mathematics", "IQ & Analytical Reasoning", "English"];
+  }
+
+  // UET Lahore ECAT: Math 30, Physics 30, Chemistry OR Computer Science 30, English 10
+  if (normClass === 'ECAT' || normGroup.includes('ecat')) {
+    if (normGroup.includes('cs') || normGroup.includes('computer') || normGroup.includes('ics')) {
+      return ["Mathematics", "Physics", "Computer Science", "English"];
+    }
+    return ["Mathematics", "Physics", "Chemistry", "English"];
+  }
+
+  // UET Peshawar ETEA: Physics 40, Mathematics 35, English 15, Chemistry OR CS 10
+  if (normClass === 'ETEA' || normGroup.includes('etea')) {
+    if (normGroup.includes('cs') || normGroup.includes('computer')) {
+      return ["Physics", "Mathematics", "English", "Computer Science"];
+    }
+    return ["Physics", "Mathematics", "English", "Chemistry"];
+  }
+
+  // NUMS: Part A (Biology 55, Chemistry 40, Physics 40, English 15), Part B (Psychological Assessment 50)
+  if (normClass === 'NUMS' || normGroup.includes('nums')) {
+    return ["Biology", "Chemistry", "Physics", "English", "Psychological Assessment"];
+  }
+
+  // GIKI: Mathematics 30, Physics 30, English 20.
+  if (normClass === 'GIKI' || normGroup.includes('giki')) {
+    return ["Mathematics", "Physics", "English"];
+  }
+
+  // USAT (HEC): USAT-E & USAT-CS
+  if (normClass === 'USAT' || normGroup.includes('usat')) {
+    if (normGroup.includes('cs') || normGroup.includes('computer')) {
+      return ["Verbal Reasoning", "Quantitative Reasoning", "Physics", "Computer Science", "Mathematics"];
+    }
+    return ["Verbal Reasoning", "Quantitative Reasoning", "Physics", "Mathematics"];
+  }
+
+  // NED University: Math 25, Physics 25, Chemistry 25, English 25
+  if (normClass === 'NED' || normGroup.includes('ned')) {
+    return ["Mathematics", "Physics", "Chemistry", "English"];
+  }
+
+  // PIEAS: Pre-Engineering (Math 30, Phys 30, Chem 30, Eng 10) vs ICS (Math 30, Phys 30, CS 30, Eng 10)
+  if (normClass === 'PIEAS' || normGroup.includes('pieas')) {
+    if (normGroup.includes('cs') || normGroup.includes('computer') || normGroup.includes('ics')) {
+      return ["English", "Mathematics", "Physics", "Computer Science"];
+    }
+    return ["English", "Mathematics", "Physics", "Chemistry"];
+  }
+
+  // NTS NAT (Shared Portal: COMSATS, Air, Bahria, IIUI, IST)
+  if (normClass === 'NAT' || normGroup.includes('nat-ie') || normGroup.includes('nat-im') || normGroup.includes('nat-ics')) {
+    if (normGroup.includes('im') || normGroup.includes('med')) {
+      return ["English", "Analytical Reasoning", "Quantitative Reasoning", "Physics", "Chemistry", "Biology"];
+    }
+    if (normGroup.includes('ics') || normGroup.includes('cs') || normGroup.includes('computer')) {
+      return ["English", "Analytical Reasoning", "Quantitative Reasoning", "Physics", "Computer Science", "Mathematics"];
+    }
+    return ["English", "Analytical Reasoning", "Quantitative Reasoning", "Physics", "Chemistry", "Mathematics"];
+  }
+
+  // IBA Karachi Aptitude Test: English 45, Mathematics 45
+  if (normClass === 'IBA' || normGroup.includes('iba')) {
+    return ["English", "Mathematics"];
+  }
+
+  // Aga Khan University (AKU): Science Achievement (Bio 16, Chem 12, Phys 12), Science Reasoning 30, Math Reasoning 30
+  if (normClass === 'AKU' || normGroup.includes('aku')) {
+    return ["Biology", "Chemistry", "Physics", "Science Reasoning", "Mathematical Reasoning"];
+  }
+
+  // MUET Jamshoro: Math/Bio 25, Physics 25, Chem/CS 25, English 25
+  if (normClass === 'MUET' || normGroup.includes('muet')) {
+    if (normGroup.includes('med')) {
+      return ["Biology", "Physics", "Chemistry", "English"];
+    }
+    if (normGroup.includes('ics') || normGroup.includes('cs') || normGroup.includes('computer')) {
+      return ["Mathematics", "Physics", "Computer Science", "English"];
+    }
+    return ["Mathematics", "Physics", "Chemistry", "English"];
+  }
+
+  // LUMS: LCAT vs SBASSE Scientific Aptitude
+  if (normClass === 'LUMS' || normGroup.includes('lums')) {
+    if (normGroup.includes('sse') || normGroup.includes('scientific') || normGroup.includes('science')) {
+      return ["Physics", "Chemistry", "Mathematics", "Biology"];
+    }
+    return ["Verbal Reasoning", "Quantitative Reasoning"];
+  }
+
+  // NUML: English 20, Physics 20, Mathematics 20, CS 15
+  if (normClass === 'NUML' || normGroup.includes('numl')) {
+    return ["English", "Physics", "Mathematics", "Computer Science"];
+  }
+
+  // HITEC University Taxila: Math 30, Physics 30, Chem/CS 20, English 20
+  if (normClass === 'HITEC' || normGroup.includes('hitec')) {
+    if (normGroup.includes('cs') || normGroup.includes('computer') || normGroup.includes('comput')) {
+      return ["Mathematics", "Physics", "Computer Science", "English"];
+    }
+    return ["Mathematics", "Physics", "Chemistry", "English"];
+  }
+
+  // NUTECH: Engineering vs Computing
+  if (normClass === 'NUTECH' || normGroup.includes('nutech') || normGroup.includes('nuet')) {
+    if (normGroup.includes('cs') || normGroup.includes('computer') || normGroup.includes('comput')) {
+      return ["Mathematics", "Computer Science", "English"];
+    }
+    return ["Mathematics", "Physics", "Chemistry", "English"];
+  }
 
   if (classNum === 'TCAT' || normGroup === 'tcat') {
     if (normGroup.includes('med')) {

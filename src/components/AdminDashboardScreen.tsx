@@ -308,7 +308,24 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
     'FBISE 12 Pre-Medical',
     'FBISE 12 ICS',
     'MDCAT',
-    'ECAT / TCAT',
+    'TCAT',
+    'NUST (NET)',
+    'FAST-NU (NAT)',
+    'ECAT (UET Lahore)',
+    'ETEA (KPK Engineering)',
+    'NUMS (Medical)',
+    'GIKI (Engineering)',
+    'USAT (HEC)',
+    'NED University',
+    'PIEAS',
+    'NTS NAT',
+    'IBA Karachi',
+    'Aga Khan University (AKU)',
+    'MUET Jamshoro',
+    'LUMS',
+    'NUML',
+    'HITEC University Taxila',
+    'NUTECH Islamabad',
   ];
 
 const getPlanDefaultDisplayName = (planKey: string): string => {
@@ -317,6 +334,23 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
   if (planKey === 'fsc') return '⭐ FSc Pro';
   if (planKey === 'tcat') return '⭐ TCAT Pro';
   if (planKey === 'mdcat') return '⭐ MDCAT Pro';
+  if (planKey === 'net') return '⭐ NUST NET Pro';
+  if (planKey === 'fast') return '⭐ FAST-NU NAT Pro';
+  if (planKey === 'ecat') return '⭐ ECAT Pro';
+  if (planKey === 'etea') return '⭐ ETEA Pro';
+  if (planKey === 'nums') return '⭐ NUMS Medical Pro';
+  if (planKey === 'giki') return '⭐ GIKI Pro';
+  if (planKey === 'usat') return '⭐ HEC USAT Pro';
+  if (planKey === 'ned') return '⭐ NED University Pro';
+  if (planKey === 'pieas') return '⭐ PIEAS Pro';
+  if (planKey === 'nat') return '⭐ NTS NAT Pro';
+  if (planKey === 'iba') return '⭐ IBA Karachi Pro';
+  if (planKey === 'aku') return '⭐ AKU Medical Pro';
+  if (planKey === 'muet') return '⭐ MUET Jamshoro Pro';
+  if (planKey === 'lums') return '⭐ LUMS Pro';
+  if (planKey === 'numl') return '⭐ NUML Pro';
+  if (planKey === 'hitec') return '⭐ HITEC Taxila Pro';
+  if (planKey === 'nutech') return '⭐ NUTECH Pro';
   return `⭐ ${planKey.toUpperCase()} Pro`;
 };
 
@@ -698,6 +732,23 @@ function normalizeGradeForSelect(g?: string): string {
   const u = g.toUpperCase();
   if (u.includes('MDCAT') || u.includes('MEDICAL ENTRANCE')) return 'MDCAT';
   if (u.includes('TCAT') || u.includes('ENGINEERING ENTRANCE')) return 'TCAT';
+  if (u.includes('NET') || u.includes('NUST')) return 'NET';
+  if (u.includes('FAST')) return 'FAST';
+  if (u.includes('ECAT')) return 'ECAT';
+  if (u.includes('ETEA')) return 'ETEA';
+  if (u.includes('NUMS')) return 'NUMS';
+  if (u.includes('GIKI')) return 'GIKI';
+  if (u.includes('USAT')) return 'USAT';
+  if (u.includes('NED')) return 'NED';
+  if (u.includes('PIEAS')) return 'PIEAS';
+  if (u.includes('NAT') || u.includes('NTS')) return 'NAT';
+  if (u.includes('IBA')) return 'IBA';
+  if (u.includes('AKU') || u.includes('AGA KHAN')) return 'AKU';
+  if (u.includes('MUET') || u.includes('MEHRAN')) return 'MUET';
+  if (u.includes('LUMS')) return 'LUMS';
+  if (u.includes('NUML')) return 'NUML';
+  if (u.includes('HITEC')) return 'HITEC';
+  if (u.includes('NUTECH')) return 'NUTECH';
   if (u.includes('9')) return '9th';
   if (u.includes('10')) return '10th';
   if (u.includes('12')) return '12th';
@@ -717,6 +768,36 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
     if (s.includes('TCAT')) return 'TCAT Stream';
     return 'Pre-Engineering Stream';
   }
+  if (normGrade === 'NET') return 'NUST NET Engineering & Computing';
+  if (normGrade === 'FAST') return 'FAST-NU CS & Engineering';
+  if (normGrade === 'ECAT') return s.includes('ICS') ? 'ECAT ICS Group' : 'ECAT Engineering Group';
+  if (normGrade === 'ETEA') return s.includes('CS') || s.includes('COMP') ? 'ETEA Computer Science' : 'ETEA Engineering Group';
+  if (normGrade === 'NUMS') return 'NUMS Medical Entry Test';
+  if (normGrade === 'GIKI') return 'GIKI Engineering Entrance';
+  if (normGrade === 'USAT') {
+    if (s.includes('CS')) return 'USAT-CS (Computer Science)';
+    if (s.includes('M') || s.includes('MED')) return 'USAT-M (Pre-Medical)';
+    return 'USAT-E (Pre-Engineering)';
+  }
+  if (normGrade === 'NED') return 'NED University Pre-Admission';
+  if (normGrade === 'PIEAS') return s.includes('ICS') ? 'PIEAS ICS' : 'PIEAS Pre-Engineering';
+  if (normGrade === 'NAT') {
+    if (s.includes('IM') || s.includes('MED')) return 'NTS NAT-IM (Pre-Medical)';
+    if (s.includes('ICS') || s.includes('COMP')) return 'NTS NAT-ICS (Computer Science)';
+    return 'NTS NAT-IE (Pre-Engineering)';
+  }
+  if (normGrade === 'IBA') return 'IBA Karachi Aptitude';
+  if (normGrade === 'AKU') return 'Aga Khan University Medical';
+  if (normGrade === 'MUET') {
+    if (s.includes('ICS') || s.includes('COMP')) return 'MUET Computer Science / ICS';
+    if (s.includes('MED') || s.includes('BIO')) return 'MUET Pre-Medical';
+    return 'MUET Pre-Engineering';
+  }
+  if (normGrade === 'LUMS') return s.includes('SBASSE') ? 'LUMS SBASSE (Scientific Aptitude)' : 'LUMS LCAT (Verbal & Quantitative)';
+  if (normGrade === 'NUML') return 'NUML University Entrance';
+  if (normGrade === 'HITEC') return 'HITEC University Taxila';
+  if (normGrade === 'NUTECH') return s.includes('COMP') || s.includes('CS') ? 'NUTECH Computing / CS' : 'NUTECH Engineering';
+
   if (normGrade === '9th' || normGrade === '10th') {
     if (s.includes('COMPUTER') || s.includes('CS') || s.includes('ICS')) return 'Computer Science Stream';
     return 'Biology Stream';
@@ -764,6 +845,20 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
       defaultSubjects = ['Biology', 'Chemistry', 'Physics', 'English', 'Logical Reasoning'];
     } else if (upperG === 'TCAT' || upperG.includes('TCAT')) {
       defaultSubjects = ['Mathematics', 'Physics', 'Chemistry', 'English', 'Logical Reasoning'];
+    } else if (upperG === 'NET' || upperG.includes('NET') || upperG.includes('NUST')) {
+      defaultSubjects = ['Mathematics', 'Physics', 'English'];
+    } else if (upperG === 'FAST' || upperG.includes('FAST') || upperG.includes('NAT')) {
+      defaultSubjects = ['Advanced Mathematics', 'Basic Mathematics', 'English', 'IQ & Analytical Reasoning'];
+    } else if (upperG === 'ECAT' || upperG.includes('ECAT')) {
+      defaultSubjects = ['Mathematics', 'Physics', 'Chemistry', 'English'];
+    } else if (upperG === 'ETEA' || upperG.includes('ETEA')) {
+      defaultSubjects = ['Physics', 'Mathematics', 'English', 'Chemistry'];
+    } else if (upperG === 'NUMS' || upperG.includes('NUMS')) {
+      defaultSubjects = ['Biology', 'Chemistry', 'Physics', 'English', 'Psychological Assessment'];
+    } else if (upperG === 'GIKI' || upperG.includes('GIKI')) {
+      defaultSubjects = ['Mathematics', 'Physics', 'English'];
+    } else if (upperG === 'USAT' || upperG.includes('USAT')) {
+      defaultSubjects = ['Verbal Reasoning', 'Quantitative Reasoning', 'Physics', 'Mathematics'];
     } else if (editStudentGrade.includes('9') || editStudentGrade.includes('10')) {
       if (editStudentStream.includes('Biology')) {
         defaultSubjects = ['Physics', 'Chemistry', 'Biology', 'English', 'Urdu', editStudentGrade.includes('10') ? 'Pakistan Studies' : 'Islamic Studies'];
@@ -2629,16 +2724,67 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                           setEditStudentStream('MDCAT Stream');
                         } else if (val === 'TCAT') {
                           setEditStudentStream('Pre-Engineering Stream');
+                        } else if (val === 'NET') {
+                          setEditStudentStream('NUST NET Engineering & Computing');
+                        } else if (val === 'FAST') {
+                          setEditStudentStream('FAST-NU CS & Engineering');
+                        } else if (val === 'ECAT') {
+                          setEditStudentStream('ECAT Engineering Group');
+                        } else if (val === 'ETEA') {
+                          setEditStudentStream('ETEA Engineering Group');
+                        } else if (val === 'NUMS') {
+                          setEditStudentStream('NUMS Medical Entry Test');
+                        } else if (val === 'GIKI') {
+                          setEditStudentStream('GIKI Engineering Entrance');
+                        } else if (val === 'USAT') {
+                          setEditStudentStream('USAT-E (Pre-Engineering)');
+                        } else if (val === 'NED') {
+                          setEditStudentStream('NED University Pre-Admission');
+                        } else if (val === 'PIEAS') {
+                          setEditStudentStream('PIEAS Pre-Engineering');
+                        } else if (val === 'NAT') {
+                          setEditStudentStream('NTS NAT-IE (Pre-Engineering)');
+                        } else if (val === 'IBA') {
+                          setEditStudentStream('IBA Karachi Aptitude');
+                        } else if (val === 'AKU') {
+                          setEditStudentStream('Aga Khan University Medical');
+                        } else if (val === 'MUET') {
+                          setEditStudentStream('MUET Pre-Engineering');
+                        } else if (val === 'LUMS') {
+                          setEditStudentStream('LUMS LCAT (Verbal & Quantitative)');
+                        } else if (val === 'NUML') {
+                          setEditStudentStream('NUML University Entrance');
+                        } else if (val === 'HITEC') {
+                          setEditStudentStream('HITEC University Taxila');
+                        } else if (val === 'NUTECH') {
+                          setEditStudentStream('NUTECH Engineering');
                         }
                       }}
                       className="w-full bg-white  border border-slate-300  rounded-xl px-3 py-2 text-xs font-bold text-slate-900  focus:outline-none"
                     >
-                      <option value="9th">9th Class</option>
-                      <option value="10th">10th Class</option>
-                      <option value="11th">11th Class</option>
-                      <option value="12th">12th Class</option>
-                      <option value="MDCAT">MDCAT (Medical Entrance)</option>
-                      <option value="TCAT">TCAT (Engineering Entrance)</option>
+                      <option value="9th">9th Class (FBISE SSC-I)</option>
+                      <option value="10th">10th Class (FBISE SSC-II)</option>
+                      <option value="11th">11th Class (FBISE HSSC-I)</option>
+                      <option value="12th">12th Class (FBISE HSSC-II)</option>
+                      <option value="MDCAT">PMDC MDCAT (Medical)</option>
+                      <option value="TCAT">TCAT (UET Taxila)</option>
+                      <option value="NET">NUST Entry Test (NET)</option>
+                      <option value="FAST">FAST-NU Admission (NAT)</option>
+                      <option value="ECAT">UET Lahore ECAT</option>
+                      <option value="ETEA">UET Peshawar ETEA</option>
+                      <option value="NUMS">NUMS Medical (Army Medical College)</option>
+                      <option value="GIKI">GIKI Engineering Admission</option>
+                      <option value="USAT">HEC USAT Series</option>
+                      <option value="NED">NED University Karachi</option>
+                      <option value="PIEAS">PIEAS Islamabad</option>
+                      <option value="NAT">NTS NAT (COMSATS, Air, Bahria, IST)</option>
+                      <option value="IBA">IBA Karachi Aptitude</option>
+                      <option value="AKU">Aga Khan University (AKU)</option>
+                      <option value="MUET">Mehran UET Jamshoro</option>
+                      <option value="LUMS">LUMS Undergraduate (LCAT / SBASSE)</option>
+                      <option value="NUML">NUML Islamabad</option>
+                      <option value="HITEC">HITEC University Taxila</option>
+                      <option value="NUTECH">NUTECH Islamabad (NUET)</option>
                     </select>
                   </div>
 
@@ -2661,6 +2807,88 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                           <option value="Pre-Engineering Stream">Pre-Engineering Stream</option>
                           <option value="ICS Stream">ICS Engineering Stream</option>
                           <option value="TCAT Stream">TCAT Engineering Stream</option>
+                        </>
+                      ) : editStudentGrade === 'NET' ? (
+                        <>
+                          <option value="NUST NET Engineering & Computing">NUST NET Engineering & Computing</option>
+                          <option value="NUST NET Applied Sciences">NUST NET Applied Sciences</option>
+                        </>
+                      ) : editStudentGrade === 'FAST' ? (
+                        <>
+                          <option value="FAST-NU CS & Engineering">FAST-NU CS & Engineering</option>
+                          <option value="FAST-NU Computing & Data Science">FAST-NU Computing & Data Science</option>
+                        </>
+                      ) : editStudentGrade === 'ECAT' ? (
+                        <>
+                          <option value="ECAT Engineering Group">ECAT Engineering (Math, Phys, Chem)</option>
+                          <option value="ECAT ICS Group">ECAT Computing (Math, Phys, CS)</option>
+                        </>
+                      ) : editStudentGrade === 'ETEA' ? (
+                        <>
+                          <option value="ETEA Engineering Group">ETEA Engineering Group</option>
+                          <option value="ETEA Computer Science">ETEA Computer Science Group</option>
+                        </>
+                      ) : editStudentGrade === 'NUMS' ? (
+                        <>
+                          <option value="NUMS Medical Entry Test">NUMS MBBS / BDS Medical Stream</option>
+                        </>
+                      ) : editStudentGrade === 'GIKI' ? (
+                        <>
+                          <option value="GIKI Engineering Entrance">GIKI Engineering Entrance</option>
+                        </>
+                      ) : editStudentGrade === 'USAT' ? (
+                        <>
+                          <option value="USAT-E (Pre-Engineering)">USAT-E (Pre-Engineering)</option>
+                          <option value="USAT-M (Pre-Medical)">USAT-M (Pre-Medical)</option>
+                          <option value="USAT-CS (Computer Science)">USAT-CS (Computer Science)</option>
+                          <option value="USAT-GS (General Science)">USAT-GS (General Science)</option>
+                        </>
+                      ) : editStudentGrade === 'NED' ? (
+                        <>
+                          <option value="NED University Pre-Admission">NED Pre-Admission (Math, Phys, Chem, Eng)</option>
+                        </>
+                      ) : editStudentGrade === 'PIEAS' ? (
+                        <>
+                          <option value="PIEAS Pre-Engineering">PIEAS Pre-Engineering (Math, Phys, Chem, Eng)</option>
+                          <option value="PIEAS ICS">PIEAS ICS (Math, Phys, CS, Eng)</option>
+                        </>
+                      ) : editStudentGrade === 'NAT' ? (
+                        <>
+                          <option value="NTS NAT-IE (Pre-Engineering)">NAT-IE (Pre-Engineering)</option>
+                          <option value="NTS NAT-IM (Pre-Medical)">NAT-IM (Pre-Medical)</option>
+                          <option value="NTS NAT-ICS (Computer Science)">NAT-ICS (Computer Science)</option>
+                        </>
+                      ) : editStudentGrade === 'IBA' ? (
+                        <>
+                          <option value="IBA Karachi Aptitude">IBA Karachi Aptitude (Verbal + Math)</option>
+                        </>
+                      ) : editStudentGrade === 'AKU' ? (
+                        <>
+                          <option value="Aga Khan University Medical">AKU Medical (Achievement, Sci & Math Reasoning)</option>
+                        </>
+                      ) : editStudentGrade === 'MUET' ? (
+                        <>
+                          <option value="MUET Pre-Engineering">MUET Pre-Engineering</option>
+                          <option value="MUET Computer Science / ICS">MUET Computer Science / ICS</option>
+                          <option value="MUET Pre-Medical">MUET Pre-Medical</option>
+                        </>
+                      ) : editStudentGrade === 'LUMS' ? (
+                        <>
+                          <option value="LUMS LCAT (Verbal & Quantitative)">LUMS LCAT (Verbal & Quantitative)</option>
+                          <option value="LUMS SBASSE (Scientific Aptitude)">LUMS SBASSE (Scientific Aptitude)</option>
+                        </>
+                      ) : editStudentGrade === 'NUML' ? (
+                        <>
+                          <option value="NUML University Entrance">NUML University Entrance</option>
+                        </>
+                      ) : editStudentGrade === 'HITEC' ? (
+                        <>
+                          <option value="HITEC University Taxila">HITEC University Taxila</option>
+                        </>
+                      ) : editStudentGrade === 'NUTECH' ? (
+                        <>
+                          <option value="NUTECH Engineering">NUTECH Engineering (NUET)</option>
+                          <option value="NUTECH Computing / CS">NUTECH Computing / CS (NUET)</option>
                         </>
                       ) : editStudentGrade.includes('9') || editStudentGrade.includes('10') ? (
                         <>

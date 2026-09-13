@@ -63,9 +63,9 @@ export const ClassGroupScreen: React.FC<ClassGroupScreenProps> = React.memo(({
                         ? 'ENGINEERING ENTRY TEST'
                         : cNum === 'MDCAT'
                         ? 'MEDICAL ENTRY TEST'
-                        : cNum >= 11
-                        ? `HSSC Part ${cNum === 11 ? 1 : 2}`
-                        : `Matric Part ${cNum === 9 ? 1 : 2}`}
+                        : Number(cNum) >= 11
+                        ? `HSSC Part ${Number(cNum) === 11 ? 1 : 2}`
+                        : `Matric Part ${Number(cNum) === 9 ? 1 : 2}`}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 font-medium">

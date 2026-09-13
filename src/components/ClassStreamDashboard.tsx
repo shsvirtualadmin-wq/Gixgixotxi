@@ -3,6 +3,7 @@ import { triggerHaptic, HAPTIC_PATTERNS } from '../lib/haptics';
 import { BoardClass, HistoryItem, QuestionDifficulty, TestMode } from '../types';
 import { MdcatDashboardPortal } from './MdcatDashboardPortal';
 import { TcatDashboardPortal } from './TcatDashboardPortal';
+import { EntranceDashboardPortal, EntranceTrackType } from './EntranceDashboardPortal';
 import { getDashboardConfig, DASHBOARD_CONFIGS } from '../data/dashboardsConfig';
 import { getBookmarkedQuestions, removeBookmark, BookmarkedQuestion } from '../lib/bookmarks';
 import { User, StudentProfile } from '../lib/supabase';
@@ -136,6 +137,53 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = React.m
         onOpenHistory={onOpenHistory || (() => {})}
         onBackToMainScreen={onBackToClasses}
         isAdmin={isAdmin}
+        onUpgradeClick={onUpgradeClick}
+      />
+    );
+  }
+
+  const rawTrackStr = `${String(classNum)} ${String(group)}`.toUpperCase();
+  const matchedEntranceTrack: EntranceTrackType | null = (() => {
+    if (rawTrackStr.includes('NET') || rawTrackStr.includes('NUST')) return 'NET';
+    if (rawTrackStr.includes('FAST') || rawTrackStr.includes('NAT')) return 'FAST';
+    if (rawTrackStr.includes('ECAT')) return 'ECAT';
+    if (rawTrackStr.includes('ETEA')) return 'ETEA';
+    if (rawTrackStr.includes('NUMS')) return 'NUMS';
+    if (rawTrackStr.includes('GIKI')) return 'GIKI';
+    if (rawTrackStr.includes('USAT')) return 'USAT';
+    return null;
+  })();
+
+  if (matchedEntranceTrack) {
+    return (
+      <EntranceDashboardPortal
+        track={matchedEntranceTrack}
+        selectedGroup={String(group)}
+        currentUser={currentUser || null}
+        userProfile={userProfile}
+        history={history}
+        isTestLimitReached={isTestLimitReached}
+        isAdmin={isAdmin}
+        onStartTest={(params) => {
+          const effectiveTopic = params.topic || (params.subtopic ? `${params.chapterName ? params.chapterName + ' - ' : ''}${params.subtopic}` : params.chapterName);
+          onStartTest({
+            subject: params.subject,
+            customTopic: effectiveTopic,
+            topic: effectiveTopic,
+            subtopic: params.subtopic,
+            chapterName: params.chapterName,
+            durationMinutes: params.durationMinutes,
+            questionCount: params.questionCount,
+            difficulty: params.difficulty,
+            mode: params.mode,
+            instantFeedback: params.instantFeedback,
+            groupSubjects: params.groupSubjects,
+            isFullMock: params.isFullMock,
+          });
+        }}
+        onOpenAuth={onOpenAuth || (() => {})}
+        onOpenHistory={onOpenHistory || (() => {})}
+        onBackToMainScreen={onBackToClasses}
         onUpgradeClick={onUpgradeClick}
       />
     );

@@ -16,6 +16,16 @@ import { PREBUILT_QUESTIONS, getPrebuiltQuestionsForSubject } from './data/prebu
 import { generateTCATFullMockBank, getTCATPrebuiltQuestions } from './data/tcatPrebuiltQuestions';
 import { generateMDCATFullMockBank, getMDCATPrebuiltQuestions } from './data/mdcatPrebuiltQuestions';
 import {
+  generateNetFullMockBank,
+  generateFastFullMockBank,
+  generateEcatFullMockBank,
+  generateEteaFullMockBank,
+  generateNumsFullMockBank,
+  generateGikiFullMockBank,
+  generateUsatFullMockBank,
+  getEntranceExamQuestions,
+} from './data/entranceExamQuestions';
+import {
   getSeenStemsForStudent,
   recordQuestionsAsSeen,
   selectPrioritizedQuestions,
@@ -2336,9 +2346,16 @@ export function App() {
 
     const isMdcat = selectedClass === 'MDCAT' || selectedGroup === 'MDCAT';
     const isTcat = selectedClass === 'TCAT' || selectedGroup === 'TCAT' || targetSubject.toLowerCase().includes('tcat');
+    const isNet = selectedClass === 'NET' || selectedGroup === 'NET' || targetSubject.toLowerCase().includes('net') || String(params.customTopic || '').toLowerCase().includes('net');
+    const isFast = selectedClass === 'FAST' || selectedGroup === 'FAST' || targetSubject.toLowerCase().includes('fast') || String(params.customTopic || '').toLowerCase().includes('fast');
+    const isEcat = selectedClass === 'ECAT' || selectedGroup === 'ECAT' || targetSubject.toLowerCase().includes('ecat') || String(params.customTopic || '').toLowerCase().includes('ecat');
+    const isEtea = selectedClass === 'ETEA' || selectedGroup === 'ETEA' || targetSubject.toLowerCase().includes('etea') || String(params.customTopic || '').toLowerCase().includes('etea');
+    const isNums = selectedClass === 'NUMS' || selectedGroup === 'NUMS' || targetSubject.toLowerCase().includes('nums') || String(params.customTopic || '').toLowerCase().includes('nums');
+    const isGiki = selectedClass === 'GIKI' || selectedGroup === 'GIKI' || targetSubject.toLowerCase().includes('giki') || String(params.customTopic || '').toLowerCase().includes('giki');
+    const isUsat = selectedClass === 'USAT' || selectedGroup === 'USAT' || targetSubject.toLowerCase().includes('usat') || String(params.customTopic || '').toLowerCase().includes('usat');
 
     let config: TestConfig = {
-      path: isMdcat ? 'mdcat' : isTcat ? 'tcat' : 'boards',
+      path: isMdcat ? 'mdcat' : isTcat ? 'tcat' : isNet ? 'net' : isFast ? 'fast' : isEcat ? 'ecat' : isEtea ? 'etea' : isNums ? 'nums' : isGiki ? 'giki' : isUsat ? 'usat' : 'boards',
       classNum: selectedClass,
       group: selectedGroup,
       subject: targetSubject,
@@ -2374,7 +2391,7 @@ export function App() {
     let reviewNote: string | undefined = undefined;
     let initialSet: Question[] = [];
 
-    // TCAT Track: Exclusively assemble questions from verified hardcoded bank, prioritizing unseen questions
+    // Entrance Tracks: Assemble questions from verified hardcoded banks, prioritizing unseen questions
     if (isTcat) {
       const isTcatMock = params.isFullMock || targetSubject.toLowerCase().includes('tcat full') || targetSubject.toLowerCase().includes('tcat mock') || targetTotalCount >= 100;
       if (isTcatMock) {
@@ -2395,6 +2412,79 @@ export function App() {
         initialSet = deduplicateQuestions(getMDCATPrebuiltQuestions(targetSubject, targetTotalCount, targetTopic, params.chapterName, params.subtopic, seenStems));
       }
 
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isNet) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 100;
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateNetFullMockBank(seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('NET', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isFast) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 80;
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateFastFullMockBank(seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('FAST', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isEcat) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 90;
+      const ecatGroupStr = Array.isArray(params.groupSubjects) ? params.groupSubjects.join(' ') : (typeof params.groupSubjects === 'string' ? params.groupSubjects : (params.chapterName || selectedGroup || ''));
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateEcatFullMockBank(ecatGroupStr, seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('ECAT', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isEtea) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 90;
+      const eteaGroupStr = Array.isArray(params.groupSubjects) ? params.groupSubjects.join(' ') : (typeof params.groupSubjects === 'string' ? params.groupSubjects : (params.chapterName || selectedGroup || ''));
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateEteaFullMockBank(eteaGroupStr, seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('ETEA', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isNums) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 100;
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateNumsFullMockBank(seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('NUMS', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isGiki) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 60;
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateGikiFullMockBank(seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('GIKI', targetSubject, targetTotalCount, seenStems));
+      }
+      if (initialSet.length < targetTotalCount) {
+        effectiveTargetTotalCount = initialSet.length;
+      }
+    } else if (isUsat) {
+      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 90;
+      const usatGroupStr = Array.isArray(params.groupSubjects) ? params.groupSubjects.join(' ') : (typeof params.groupSubjects === 'string' ? params.groupSubjects : (params.chapterName || selectedGroup || ''));
+      if (isMock) {
+        initialSet = deduplicateQuestions(generateUsatFullMockBank(usatGroupStr, seenStems));
+      } else {
+        initialSet = deduplicateQuestions(getEntranceExamQuestions('USAT', targetSubject, targetTotalCount, seenStems));
+      }
       if (initialSet.length < targetTotalCount) {
         effectiveTargetTotalCount = initialSet.length;
       }
@@ -2749,14 +2839,30 @@ export function App() {
       });
 
       const total = finalQuestions.length || 1;
-      const percentage = Math.round((correctCount / total) * 100);
+      const wrongCount = total - correctCount;
+
+      const isFastExam = effectiveConfig.path === 'fast' || String(effectiveConfig.classNum).toUpperCase().includes('FAST') || String(effectiveConfig.group).toUpperCase().includes('FAST');
+      const isEcatExam = effectiveConfig.path === 'ecat' || String(effectiveConfig.classNum).toUpperCase().includes('ECAT') || String(effectiveConfig.group).toUpperCase().includes('ECAT');
+
+      let calculatedScore = correctCount;
+      let percentage = Math.round((correctCount / total) * 100);
+
+      if (isFastExam) {
+        // FAST: Negative marking of -0.25 per wrong answer
+        calculatedScore = Math.max(0, Math.round((correctCount - (wrongCount * 0.25)) * 100) / 100);
+        percentage = Math.max(0, Math.round((calculatedScore / total) * 100));
+      } else if (isEcatExam) {
+        // ECAT: 4 marks per correct answer (Total: 400 marks for 100 MCQs)
+        calculatedScore = correctCount * 4;
+        percentage = Math.round((correctCount / total) * 100);
+      }
 
       const result: TestResult = {
         id: `res-${Date.now()}`,
         timestamp: Date.now(),
         config: effectiveConfig,
-        score: correctCount,
-        total,
+        score: calculatedScore,
+        total: isEcatExam ? total * 4 : total,
         percentage,
         timeTakenSeconds,
         topicBreakdown,
@@ -2772,6 +2878,20 @@ export function App() {
         trackPrefix = 'MDCAT — ';
       } else if (effectiveConfig.path === 'tcat' || effectiveConfig.group === 'TCAT' || String(effectiveConfig.classNum) === 'TCAT') {
         trackPrefix = 'TCAT — ';
+      } else if (effectiveConfig.path === 'net' || effectiveConfig.group === 'NET' || String(effectiveConfig.classNum) === 'NET') {
+        trackPrefix = 'NET — ';
+      } else if (effectiveConfig.path === 'fast' || effectiveConfig.group === 'FAST' || String(effectiveConfig.classNum) === 'FAST') {
+        trackPrefix = 'FAST — ';
+      } else if (effectiveConfig.path === 'ecat' || effectiveConfig.group === 'ECAT' || String(effectiveConfig.classNum) === 'ECAT') {
+        trackPrefix = 'ECAT — ';
+      } else if (effectiveConfig.path === 'etea' || effectiveConfig.group === 'ETEA' || String(effectiveConfig.classNum) === 'ETEA') {
+        trackPrefix = 'ETEA — ';
+      } else if (effectiveConfig.path === 'nums' || effectiveConfig.group === 'NUMS' || String(effectiveConfig.classNum) === 'NUMS') {
+        trackPrefix = 'NUMS — ';
+      } else if (effectiveConfig.path === 'giki' || effectiveConfig.group === 'GIKI' || String(effectiveConfig.classNum) === 'GIKI') {
+        trackPrefix = 'GIKI — ';
+      } else if (effectiveConfig.path === 'usat' || effectiveConfig.group === 'USAT' || String(effectiveConfig.classNum) === 'USAT') {
+        trackPrefix = 'USAT — ';
       }
       const pathLabel = trackPrefix + (effectiveConfig.chapterName || effectiveConfig.customTopic || `Class ${effectiveConfig.classNum || '9-12'}`);
 
@@ -3109,6 +3229,12 @@ export function App() {
                       onSelectTcat={() => {
                         setSelectedClass('TCAT');
                         setSelectedGroup('TCAT');
+                        setScreen('auth');
+                      }}
+                      onSelectEntranceTrack={(track) => {
+                        const t = track.toUpperCase() as BoardClass;
+                        setSelectedClass(t);
+                        setSelectedGroup(String(t));
                         setScreen('auth');
                       }}
                       onOpenCommunity={() => openCommunityModal()}
@@ -3601,6 +3727,12 @@ export function App() {
                       onSelectTcat={() => {
                         setSelectedClass('TCAT');
                         setSelectedGroup('TCAT');
+                        setScreen('auth');
+                      }}
+                      onSelectEntranceTrack={(track) => {
+                        const t = track.toUpperCase() as BoardClass;
+                        setSelectedClass(t);
+                        setSelectedGroup(String(t));
                         setScreen('auth');
                       }}
                       onOpenCommunity={() => openCommunityModal()}

@@ -4960,6 +4960,13 @@ ${scopeInstruction}${excludeInstruction}`;
         const u = raw.toString().trim().toUpperCase();
         if (u.includes("MDCAT") || u.includes("MEDICAL ENTRANCE")) return "MDCAT";
         if (u.includes("TCAT") || u.includes("ENGINEERING ENTRANCE")) return "TCAT";
+        if (u.includes("NET") || u.includes("NUST")) return "NET";
+        if (u.includes("FAST") || u.includes("NAT")) return "FAST";
+        if (u.includes("ECAT")) return "ECAT";
+        if (u.includes("ETEA")) return "ETEA";
+        if (u.includes("NUMS")) return "NUMS";
+        if (u.includes("GIKI")) return "GIKI";
+        if (u.includes("USAT")) return "USAT";
         if (u.includes("9")) return "9th";
         if (u.includes("10")) return "10th";
         if (u.includes("12")) return "12th";
@@ -4981,6 +4988,13 @@ ${scopeInstruction}${excludeInstruction}`;
           if (u.includes("TCAT")) return "TCAT Stream";
           return "Pre-Engineering Stream";
         }
+        if (normGrade === "NET") return "NUST NET Engineering & Computing";
+        if (normGrade === "FAST") return "FAST-NU CS & Engineering";
+        if (normGrade === "ECAT") return u.includes("ICS") ? "ECAT ICS Group" : "ECAT Engineering Group";
+        if (normGrade === "ETEA") return u.includes("CS") ? "ETEA Computer Science" : "ETEA Engineering Group";
+        if (normGrade === "NUMS") return "NUMS Medical Entry Test";
+        if (normGrade === "GIKI") return "GIKI Engineering Entrance";
+        if (normGrade === "USAT") return rawStream || "USAT-E (Pre-Engineering)";
         if (u.includes("ENGINEERING") || u.includes("PRE-ENG")) return "Pre-Engineering Stream";
         if (u.includes("ICS") || u.includes("COMPUTER") || u.includes("CS")) return "ICS Stream";
         if (u.includes("BIOLOGY")) return "Biology Stream";
@@ -5013,7 +5027,14 @@ ${scopeInstruction}${excludeInstruction}`;
       const assignedClasses: string[] = [];
       const cleanUpper = (cleanGrade + " " + cleanStream).toUpperCase();
       if (cleanUpper.includes("MDCAT")) assignedClasses.push("MDCAT");
-      if (cleanUpper.includes("TCAT") || cleanUpper.includes("ECAT") || cleanUpper.includes("UET")) assignedClasses.push("TCAT");
+      if (cleanUpper.includes("TCAT")) assignedClasses.push("TCAT");
+      if (cleanUpper.includes("NET") || cleanUpper.includes("NUST")) assignedClasses.push("NET");
+      if (cleanUpper.includes("FAST") || cleanUpper.includes("NAT")) assignedClasses.push("FAST");
+      if (cleanUpper.includes("ECAT")) assignedClasses.push("ECAT");
+      if (cleanUpper.includes("ETEA")) assignedClasses.push("ETEA");
+      if (cleanUpper.includes("NUMS")) assignedClasses.push("NUMS");
+      if (cleanUpper.includes("GIKI")) assignedClasses.push("GIKI");
+      if (cleanUpper.includes("USAT")) assignedClasses.push("USAT");
       if (cleanUpper.includes("9") || cleanUpper.includes("NINTH")) assignedClasses.push("Class 9");
       if (cleanUpper.includes("10") || cleanUpper.includes("TENTH") || cleanUpper.includes("MATRIC")) assignedClasses.push("Class 10");
       if (cleanUpper.includes("11") || cleanUpper.includes("FIRST YEAR") || cleanUpper.includes("1ST YEAR")) assignedClasses.push("Class 11");
@@ -5023,6 +5044,13 @@ ${scopeInstruction}${excludeInstruction}`;
       let defaultTargetUni = "Board Exams";
       if (cleanUpper.includes("MDCAT")) defaultTargetUni = "UHS / PMDC";
       else if (cleanUpper.includes("TCAT")) defaultTargetUni = "UET Taxila";
+      else if (cleanUpper.includes("NET") || cleanUpper.includes("NUST")) defaultTargetUni = "NUST Islamabad";
+      else if (cleanUpper.includes("FAST") || cleanUpper.includes("NAT")) defaultTargetUni = "FAST-NUCES";
+      else if (cleanUpper.includes("ECAT")) defaultTargetUni = "UET Lahore";
+      else if (cleanUpper.includes("ETEA")) defaultTargetUni = "UET Peshawar";
+      else if (cleanUpper.includes("NUMS")) defaultTargetUni = "Army Medical College (NUMS)";
+      else if (cleanUpper.includes("GIKI")) defaultTargetUni = "GIKI Topi";
+      else if (cleanUpper.includes("USAT")) defaultTargetUni = "HEC Recognized Universities";
 
       const adminUpdateData = {
         grade: cleanGrade,
@@ -5742,11 +5770,29 @@ ${scopeInstruction}${excludeInstruction}`;
     assignedArr.forEach((c) => {
       const cStr = String(c).trim().toUpperCase();
       if (cStr.includes("MDCAT")) allowed.add("MDCAT");
-      else if (cStr.includes("TCAT") || cStr.includes("UET") || cStr.includes("ECAT")) allowed.add("TCAT");
+      else if (cStr.includes("TCAT") || cStr.includes("UET TAXILA")) allowed.add("TCAT");
+      else if (cStr.includes("NET") || cStr.includes("NUST")) allowed.add("NET");
+      else if (cStr.includes("FAST")) allowed.add("FAST");
+      else if (cStr.includes("NAT") || cStr.includes("NTS")) allowed.add("NAT");
+      else if (cStr.includes("ECAT") || cStr.includes("UET LAHORE")) allowed.add("ECAT");
+      else if (cStr.includes("ETEA") || cStr.includes("UET PESHAWAR")) allowed.add("ETEA");
+      else if (cStr.includes("NUMS")) allowed.add("NUMS");
+      else if (cStr.includes("GIKI")) allowed.add("GIKI");
+      else if (cStr.includes("USAT")) allowed.add("USAT");
+      else if (cStr.includes("NED")) allowed.add("NED");
+      else if (cStr.includes("PIEAS")) allowed.add("PIEAS");
+      else if (cStr.includes("IBA")) allowed.add("IBA");
+      else if (cStr.includes("AKU") || cStr.includes("AGA KHAN")) allowed.add("AKU");
+      else if (cStr.includes("MUET") || cStr.includes("MEHRAN")) allowed.add("MUET");
+      else if (cStr.includes("LUMS")) allowed.add("LUMS");
+      else if (cStr.includes("NUML")) allowed.add("NUML");
+      else if (cStr.includes("HITEC")) allowed.add("HITEC");
+      else if (cStr.includes("NUTECH") || cStr.includes("NUET")) allowed.add("NUTECH");
       else if (cStr.includes("9") || cStr.includes("NINTH")) allowed.add("Class 9");
       else if (cStr.includes("10") || cStr.includes("TENTH") || cStr.includes("MATRIC")) allowed.add("Class 10");
       else if (cStr.includes("11") || cStr.includes("FIRST") || cStr.includes("FSC 1")) allowed.add("Class 11");
       else if (cStr.includes("12") || cStr.includes("SECOND") || cStr.includes("FSC 2")) allowed.add("Class 12");
+      else allowed.add(String(c).trim());
     });
 
     const gStr = String(record.grade || "").trim().toUpperCase();
@@ -5755,14 +5801,50 @@ ${scopeInstruction}${excludeInstruction}`;
     const combined = `${gStr} ${sStr} ${pStr}`;
 
     if (combined.includes("MDCAT")) allowed.add("MDCAT");
-    if (combined.includes("TCAT") || combined.includes("UET") || combined.includes("ECAT")) allowed.add("TCAT");
+    if (combined.includes("TCAT") || combined.includes("UET TAXILA")) allowed.add("TCAT");
+    if (combined.includes("NET") || combined.includes("NUST")) allowed.add("NET");
+    if (combined.includes("FAST")) allowed.add("FAST");
+    if (combined.includes("NAT") || combined.includes("NTS")) allowed.add("NAT");
+    if (combined.includes("ECAT") || combined.includes("UET LAHORE")) allowed.add("ECAT");
+    if (combined.includes("ETEA") || combined.includes("UET PESHAWAR")) allowed.add("ETEA");
+    if (combined.includes("NUMS")) allowed.add("NUMS");
+    if (combined.includes("GIKI")) allowed.add("GIKI");
+    if (combined.includes("USAT")) allowed.add("USAT");
+    if (combined.includes("NED")) allowed.add("NED");
+    if (combined.includes("PIEAS")) allowed.add("PIEAS");
+    if (combined.includes("IBA")) allowed.add("IBA");
+    if (combined.includes("AKU") || combined.includes("AGA KHAN")) allowed.add("AKU");
+    if (combined.includes("MUET") || combined.includes("MEHRAN")) allowed.add("MUET");
+    if (combined.includes("LUMS")) allowed.add("LUMS");
+    if (combined.includes("NUML")) allowed.add("NUML");
+    if (combined.includes("HITEC")) allowed.add("HITEC");
+    if (combined.includes("NUTECH") || combined.includes("NUET")) allowed.add("NUTECH");
     if (gStr.includes("9") || gStr.includes("NINTH") || combined.includes("CLASS 9") || combined.includes("GRADE 9")) allowed.add("Class 9");
     if (gStr.includes("10") || gStr.includes("TENTH") || combined.includes("CLASS 10") || combined.includes("GRADE 10")) allowed.add("Class 10");
     if (gStr.includes("11") || gStr.includes("FIRST YEAR") || gStr.includes("FSC 1") || combined.includes("CLASS 11") || combined.includes("GRADE 11")) allowed.add("Class 11");
     if (gStr.includes("12") || gStr.includes("SECOND YEAR") || gStr.includes("FSC 2") || combined.includes("CLASS 12") || combined.includes("GRADE 12")) allowed.add("Class 12");
 
     if (allowed.size === 0) {
-      if (gStr.includes("9")) allowed.add("Class 9");
+      if (gStr.includes("NET") || gStr.includes("NUST")) allowed.add("NET");
+      else if (gStr.includes("FAST")) allowed.add("FAST");
+      else if (gStr.includes("NAT") || gStr.includes("NTS")) allowed.add("NAT");
+      else if (gStr.includes("ECAT")) allowed.add("ECAT");
+      else if (gStr.includes("ETEA")) allowed.add("ETEA");
+      else if (gStr.includes("NUMS")) allowed.add("NUMS");
+      else if (gStr.includes("GIKI")) allowed.add("GIKI");
+      else if (gStr.includes("USAT")) allowed.add("USAT");
+      else if (gStr.includes("NED")) allowed.add("NED");
+      else if (gStr.includes("PIEAS")) allowed.add("PIEAS");
+      else if (gStr.includes("IBA")) allowed.add("IBA");
+      else if (gStr.includes("AKU") || gStr.includes("AGA KHAN")) allowed.add("AKU");
+      else if (gStr.includes("MUET") || gStr.includes("MEHRAN")) allowed.add("MUET");
+      else if (gStr.includes("LUMS")) allowed.add("LUMS");
+      else if (gStr.includes("NUML")) allowed.add("NUML");
+      else if (gStr.includes("HITEC")) allowed.add("HITEC");
+      else if (gStr.includes("NUTECH") || gStr.includes("NUET")) allowed.add("NUTECH");
+      else if (gStr.includes("MDCAT")) allowed.add("MDCAT");
+      else if (gStr.includes("TCAT")) allowed.add("TCAT");
+      else if (gStr.includes("9")) allowed.add("Class 9");
       else if (gStr.includes("10")) allowed.add("Class 10");
       else if (gStr.includes("11")) allowed.add("Class 11");
       else if (gStr.includes("12")) allowed.add("Class 12");
@@ -8679,6 +8761,102 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         status: 'active',
         updated_at: new Date().toISOString(),
       };
+
+      if (Array.isArray(assignedClasses)) {
+        dbUpdatePayload.assigned_classes = assignedClasses;
+        if (assignedClasses.length > 0) {
+          const topClass = String(assignedClasses[0]).toUpperCase();
+          if (topClass.includes('NET') || topClass.includes('NUST')) {
+            dbUpdatePayload.grade = 'NET';
+            dbUpdatePayload.stream = 'NUST NET Engineering & Computing';
+            dbUpdatePayload.target_university = 'NUST Islamabad';
+          } else if (topClass.includes('FAST')) {
+            dbUpdatePayload.grade = 'FAST';
+            dbUpdatePayload.stream = 'FAST-NU CS & Engineering';
+            dbUpdatePayload.target_university = 'FAST-NUCES';
+          } else if (topClass.includes('NAT') || topClass.includes('NTS')) {
+            dbUpdatePayload.grade = 'NAT';
+            dbUpdatePayload.stream = 'NAT-IE (Pre-Engineering)';
+            dbUpdatePayload.target_university = 'COMSATS / Air / Bahria / IIUI / IST';
+          } else if (topClass.includes('NED')) {
+            dbUpdatePayload.grade = 'NED';
+            dbUpdatePayload.stream = 'NED Pre-Engineering';
+            dbUpdatePayload.target_university = 'NED University Karachi';
+          } else if (topClass.includes('PIEAS')) {
+            dbUpdatePayload.grade = 'PIEAS';
+            dbUpdatePayload.stream = 'PIEAS Pre-Engineering';
+            dbUpdatePayload.target_university = 'PIEAS Islamabad';
+          } else if (topClass.includes('IBA')) {
+            dbUpdatePayload.grade = 'IBA';
+            dbUpdatePayload.stream = 'Undergraduate Aptitude';
+            dbUpdatePayload.target_university = 'IBA Karachi';
+          } else if (topClass.includes('AKU') || topClass.includes('AGA KHAN')) {
+            dbUpdatePayload.grade = 'AKU';
+            dbUpdatePayload.stream = 'AKU MBBS & Nursing';
+            dbUpdatePayload.target_university = 'Aga Khan University';
+          } else if (topClass.includes('MUET') || topClass.includes('MEHRAN')) {
+            dbUpdatePayload.grade = 'MUET';
+            dbUpdatePayload.stream = 'MUET Pre-Engineering';
+            dbUpdatePayload.target_university = 'MUET Jamshoro';
+          } else if (topClass.includes('LUMS')) {
+            dbUpdatePayload.grade = 'LUMS';
+            dbUpdatePayload.stream = 'LCAT Aptitude Stream';
+            dbUpdatePayload.target_university = 'LUMS Lahore';
+          } else if (topClass.includes('NUML')) {
+            dbUpdatePayload.grade = 'NUML';
+            dbUpdatePayload.stream = 'Engineering & CS';
+            dbUpdatePayload.target_university = 'NUML Islamabad';
+          } else if (topClass.includes('HITEC')) {
+            dbUpdatePayload.grade = 'HITEC';
+            dbUpdatePayload.stream = 'Engineering Stream';
+            dbUpdatePayload.target_university = 'HITEC University Taxila';
+          } else if (topClass.includes('NUTECH') || topClass.includes('NUET')) {
+            dbUpdatePayload.grade = 'NUTECH';
+            dbUpdatePayload.stream = 'NUET Engineering Stream';
+            dbUpdatePayload.target_university = 'NUTECH Islamabad';
+          } else if (topClass.includes('ECAT')) {
+            dbUpdatePayload.grade = 'ECAT';
+            dbUpdatePayload.stream = 'ECAT Engineering Group';
+            dbUpdatePayload.target_university = 'UET Lahore';
+          } else if (topClass.includes('ETEA')) {
+            dbUpdatePayload.grade = 'ETEA';
+            dbUpdatePayload.stream = 'ETEA Engineering Group';
+            dbUpdatePayload.target_university = 'UET Peshawar';
+          } else if (topClass.includes('NUMS')) {
+            dbUpdatePayload.grade = 'NUMS';
+            dbUpdatePayload.stream = 'NUMS Medical Entry Test';
+            dbUpdatePayload.target_university = 'Army Medical College (NUMS)';
+          } else if (topClass.includes('GIKI')) {
+            dbUpdatePayload.grade = 'GIKI';
+            dbUpdatePayload.stream = 'GIKI Engineering Entrance';
+            dbUpdatePayload.target_university = 'GIKI Topi';
+          } else if (topClass.includes('USAT')) {
+            dbUpdatePayload.grade = 'USAT';
+            dbUpdatePayload.stream = 'USAT-E (Pre-Engineering)';
+            dbUpdatePayload.target_university = 'HEC Recognized Universities';
+          } else if (topClass.includes('MDCAT')) {
+            dbUpdatePayload.grade = 'MDCAT';
+            dbUpdatePayload.stream = 'MDCAT Stream';
+            dbUpdatePayload.target_university = 'King Edward / UHS / PMDC';
+          } else if (topClass.includes('TCAT')) {
+            dbUpdatePayload.grade = 'TCAT';
+            dbUpdatePayload.stream = 'TCAT Stream';
+            dbUpdatePayload.target_university = 'UET Taxila';
+          } else if (topClass.includes('9')) {
+            dbUpdatePayload.grade = '9th';
+            dbUpdatePayload.stream = 'Science';
+          } else if (topClass.includes('10')) {
+            dbUpdatePayload.grade = '10th';
+            dbUpdatePayload.stream = 'Science';
+          } else if (topClass.includes('11')) {
+            dbUpdatePayload.grade = '11th';
+            dbUpdatePayload.stream = topClass.includes('MEDICAL') ? 'Pre-Medical Stream' : (topClass.includes('ICS') ? 'ICS Stream' : 'Pre-Engineering Stream');
+          } else if (topClass.includes('12')) {
+            dbUpdatePayload.grade = '12th';
+            dbUpdatePayload.stream = topClass.includes('MEDICAL') ? 'Pre-Medical Stream' : (topClass.includes('ICS') ? 'ICS Stream' : 'Pre-Engineering Stream');
+          }
+        }
+      }
 
       if (finalIsPro) {
         dbUpdatePayload.tests_used_this_month = 0;

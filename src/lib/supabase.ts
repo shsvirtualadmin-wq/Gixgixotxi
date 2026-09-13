@@ -396,8 +396,22 @@ export function parseAssignedTrack(
 
   if (gStr.includes('MDCAT') || sStr.includes('MDCAT')) {
     assignedTrack = 'MDCAT';
-  } else if (gStr.includes('TCAT') || sStr.includes('TCAT') || gStr.includes('UET')) {
+  } else if (gStr.includes('TCAT') || sStr.includes('TCAT')) {
     assignedTrack = 'TCAT';
+  } else if (gStr.includes('NET') || sStr.includes('NET') || sStr.includes('NUST')) {
+    assignedTrack = 'NET';
+  } else if (gStr.includes('FAST') || sStr.includes('FAST') || sStr.includes('NAT')) {
+    assignedTrack = 'FAST';
+  } else if (gStr.includes('ECAT') || sStr.includes('ECAT')) {
+    assignedTrack = 'ECAT';
+  } else if (gStr.includes('ETEA') || sStr.includes('ETEA')) {
+    assignedTrack = 'ETEA';
+  } else if (gStr.includes('NUMS') || sStr.includes('NUMS')) {
+    assignedTrack = 'NUMS';
+  } else if (gStr.includes('GIKI') || sStr.includes('GIKI')) {
+    assignedTrack = 'GIKI';
+  } else if (gStr.includes('USAT') || sStr.includes('USAT')) {
+    assignedTrack = 'USAT';
   } else if (gStr.includes('9') || gStr.includes('NINTH')) {
     assignedTrack = 9;
   } else if (gStr.includes('10') || gStr.includes('TENTH') || gStr.includes('MATRIC')) {
@@ -415,6 +429,13 @@ export function parseAssignedTrack(
       const cStr = String(c).trim().toUpperCase();
       if (cStr.includes('MDCAT') && !allowedClasses.includes('MDCAT')) allowedClasses.push('MDCAT');
       else if (cStr.includes('TCAT') && !allowedClasses.includes('TCAT')) allowedClasses.push('TCAT');
+      else if (cStr.includes('NET') && !allowedClasses.includes('NET')) allowedClasses.push('NET');
+      else if (cStr.includes('FAST') && !allowedClasses.includes('FAST')) allowedClasses.push('FAST');
+      else if (cStr.includes('ECAT') && !allowedClasses.includes('ECAT')) allowedClasses.push('ECAT');
+      else if (cStr.includes('ETEA') && !allowedClasses.includes('ETEA')) allowedClasses.push('ETEA');
+      else if (cStr.includes('NUMS') && !allowedClasses.includes('NUMS')) allowedClasses.push('NUMS');
+      else if (cStr.includes('GIKI') && !allowedClasses.includes('GIKI')) allowedClasses.push('GIKI');
+      else if (cStr.includes('USAT') && !allowedClasses.includes('USAT')) allowedClasses.push('USAT');
       else if (cStr.includes('9') && !allowedClasses.includes(9)) allowedClasses.push(9);
       else if (cStr.includes('10') && !allowedClasses.includes(10)) allowedClasses.push(10);
       else if (cStr.includes('11') && !allowedClasses.includes(11)) allowedClasses.push(11);
@@ -490,7 +511,7 @@ export function evaluateStudentAccess(
       resetDateStr: fallbackReset,
       assignedTrack,
       assignedStream,
-      allowedClasses: [9, 10, 11, 12, 'MDCAT', 'TCAT'],
+      allowedClasses: [9, 10, 11, 12, 'MDCAT', 'TCAT', 'NET', 'FAST', 'ECAT', 'ETEA', 'NUMS', 'GIKI', 'USAT'],
       isTrackAllowed: () => true,
     };
   }

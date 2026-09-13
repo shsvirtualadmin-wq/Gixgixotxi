@@ -67,7 +67,7 @@ export function getCategoryDisplayLabel(
   userProfile?: StudentProfile | null,
   selectedClass?: BoardClass | string,
   selectedGroup?: string
-): { shortLabel: string; fullLabel: string; trackType: 'mdcat' | 'tcat' | 'fbise' } | null {
+): { shortLabel: string; fullLabel: string; trackType: 'mdcat' | 'tcat' | 'fbise' | 'net' | 'fast' | 'ecat' | 'etea' | 'nums' | 'giki' | 'usat' } | null {
   const gradeStr = String(selectedClass || userProfile?.grade || '').trim();
   const streamStr = String(selectedGroup || userProfile?.stream || '').trim();
 
@@ -91,6 +91,62 @@ export function getCategoryDisplayLabel(
       shortLabel: 'TCAT',
       fullLabel: 'TCAT Engineering Entrance',
       trackType: 'tcat',
+    };
+  }
+
+  if (upperGrade === 'NET' || upperStream === 'NET' || upperGrade.includes('NET') || upperStream.includes('NET')) {
+    return {
+      shortLabel: 'NUST NET',
+      fullLabel: 'NUST Entry Test (NET)',
+      trackType: 'net',
+    };
+  }
+
+  if (upperGrade === 'FAST' || upperStream === 'FAST' || upperGrade.includes('FAST') || upperStream.includes('NAT')) {
+    return {
+      shortLabel: 'FAST NAT',
+      fullLabel: 'FAST-NU Admission Test',
+      trackType: 'fast',
+    };
+  }
+
+  if (upperGrade === 'ECAT' || upperStream === 'ECAT' || upperGrade.includes('ECAT')) {
+    return {
+      shortLabel: 'UET ECAT',
+      fullLabel: 'UET Lahore ECAT',
+      trackType: 'ecat',
+    };
+  }
+
+  if (upperGrade === 'ETEA' || upperStream === 'ETEA' || upperGrade.includes('ETEA')) {
+    return {
+      shortLabel: 'ETEA',
+      fullLabel: 'UET Peshawar ETEA Engineering',
+      trackType: 'etea',
+    };
+  }
+
+  if (upperGrade === 'NUMS' || upperStream === 'NUMS' || upperGrade.includes('NUMS')) {
+    return {
+      shortLabel: 'NUMS',
+      fullLabel: 'NUMS Medical Entry Test',
+      trackType: 'nums',
+    };
+  }
+
+  if (upperGrade === 'GIKI' || upperStream === 'GIKI' || upperGrade.includes('GIKI')) {
+    return {
+      shortLabel: 'GIKI',
+      fullLabel: 'GIKI Admission Test',
+      trackType: 'giki',
+    };
+  }
+
+  if (upperGrade === 'USAT' || upperStream === 'USAT' || upperGrade.includes('USAT')) {
+    return {
+      shortLabel: 'HEC USAT',
+      fullLabel: 'HEC Undergraduate Studies Admission Test',
+      trackType: 'usat',
     };
   }
 
@@ -445,10 +501,24 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
               onClick={onTrackClick || onOpenLmsPortal || onMenuClick}
               className={`hidden md:flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold transition-all shadow-xs cursor-pointer hover:scale-[1.02] active:scale-95 select-none ${
                 trackInfo.trackType === 'mdcat'
-                  ? 'bg-blue-500/10  text-blue-900  border-blue-500/30'
+                  ? 'bg-emerald-500/10 text-emerald-900 border-emerald-500/30'
                   : trackInfo.trackType === 'tcat'
-                  ? 'bg-indigo-500/10  text-indigo-900  border-indigo-500/30'
-                  : 'bg-blue-500/10  text-blue-900  border-blue-500/30'
+                  ? 'bg-cyan-500/10 text-cyan-900 border-cyan-500/30'
+                  : trackInfo.trackType === 'net'
+                  ? 'bg-blue-500/10 text-blue-900 border-blue-500/30'
+                  : trackInfo.trackType === 'fast'
+                  ? 'bg-sky-500/10 text-sky-900 border-sky-500/30'
+                  : trackInfo.trackType === 'ecat'
+                  ? 'bg-indigo-500/10 text-indigo-900 border-indigo-500/30'
+                  : trackInfo.trackType === 'etea'
+                  ? 'bg-teal-500/10 text-teal-900 border-teal-500/30'
+                  : trackInfo.trackType === 'nums'
+                  ? 'bg-green-500/10 text-green-900 border-green-500/30'
+                  : trackInfo.trackType === 'giki'
+                  ? 'bg-blue-600/10 text-blue-950 border-blue-600/30'
+                  : trackInfo.trackType === 'usat'
+                  ? 'bg-violet-500/10 text-violet-900 border-violet-500/30'
+                  : 'bg-blue-500/10 text-blue-900 border-blue-500/30'
               }`}
               title={`Active Registered Track: ${trackInfo.fullLabel}`}
             >

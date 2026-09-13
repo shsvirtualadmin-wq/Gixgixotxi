@@ -56,6 +56,7 @@ interface IntroScreenProps {
   onSelectGradesFlow?: () => void;
   onSelectMdcat?: () => void;
   onSelectTcat?: () => void;
+  onSelectEntranceTrack?: (track: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -411,7 +412,7 @@ interface Testimonial {
   name: string;
   role: string;
   cityBoard: string;
-  track: 'FBISE' | 'MDCAT' | 'TCAT';
+  track: 'FBISE' | 'MDCAT' | 'TCAT' | 'NET' | 'FAST' | 'ECAT' | 'NUMS' | 'GIKI' | 'USAT' | 'ETEA';
   outcome: string;
   avatarBg: string;
   avatarText: string;
@@ -537,6 +538,45 @@ const TESTIMONIALS_DATA: Testimonial[] = [
     quote:
       'I loved the clean layout and immediate answer breakdowns. Study Buddy feels like having a personal tutor available at 2 AM before exams.',
   },
+  {
+    id: '10',
+    name: 'Daniyal Tariq',
+    role: 'CS / Software Engineering Aspirant',
+    cityBoard: 'NUST SEECS, Islamabad',
+    track: 'NET',
+    outcome: 'Scored 172 / 200 in NET-1',
+    avatarBg: 'bg-blue-600/20 border-blue-600/40 text-blue-800',
+    avatarText: 'DT',
+    rating: 5,
+    quote:
+      'The 200-question timed mocks and zero-marking pacing simulations prepared me perfectly for the NUST NET exam environment.',
+  },
+  {
+    id: '11',
+    name: 'Sarah Qureshi',
+    role: 'FAST CS Student',
+    cityBoard: 'FAST-NUCES, Lahore',
+    track: 'FAST',
+    outcome: 'Top 1% in FAST Admission Test',
+    avatarBg: 'bg-cyan-600/20 border-cyan-600/40 text-cyan-800',
+    avatarText: 'SQ',
+    rating: 5,
+    quote:
+      'FAST test has brutal -0.25 negative marking penalties. Boardly taught me question selection strategy and rapid mental math without calculators.',
+  },
+  {
+    id: '12',
+    name: 'Farhan Ali',
+    role: 'Mechanical Engineering Student',
+    cityBoard: 'UET Lahore ECAT',
+    track: 'ECAT',
+    outcome: 'Scored 342 / 400 in ECAT',
+    avatarBg: 'bg-sky-600/20 border-sky-600/40 text-sky-800',
+    avatarText: 'FA',
+    rating: 5,
+    quote:
+      'Practicing 100-MCQ 400-mark timed sets for UET ECAT made the actual examination feel like second nature.',
+  },
 ];
 
 // FAQ Dataset
@@ -554,7 +594,7 @@ const FAQ_DATA: FAQItem[] = [
   {
     question: 'Which subjects and exams does Boardly cover?',
     answer:
-      'Boardly provides comprehensive coverage for FBISE SSC (Classes 9 & 10) and HSSC (Classes 11 & 12) across Physics, Chemistry, Biology, Mathematics, Computer Science, English, Urdu, and Islamiat. Additionally, it offers dedicated competitive entrance test modules for PMDC MDCAT (Medical) and UET Taxila TCAT (Engineering), complete with syllabus-specific question weightings.',
+      'Boardly provides comprehensive coverage across all 20 exam tracks in Pakistan: FBISE SSC (Classes 9 & 10) and HSSC (Classes 11 & 12), PMDC MDCAT (Medical), NUST NET (Engineering & Computing), FAST-NU Admission (NAT), UET Lahore ECAT, UET Peshawar ETEA, NUMS Medical (Army Medical College), GIKI Engineering, UET Taxila TCAT, HEC USAT, NED University Karachi, PIEAS Islamabad, NTS NAT (Shared Portal: COMSATS, Air, Bahria, IIUI, IST), IBA Karachi Aptitude, Aga Khan University (AKU) Medical, Mehran UET Jamshoro (MUET), LUMS (LCAT & SBASSE), NUML University, HITEC University Taxila, and NUTECH Islamabad (NUET).',
   },
   {
     question: 'Is Boardly free to use?',
@@ -588,10 +628,11 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
   onSelectGradesFlow,
   onSelectMdcat,
   onSelectTcat,
+  onSelectEntranceTrack,
 }) => {
   const [studentCount, setStudentCount] = useState<number>(12000);
   const [activeLegalModal, setActiveLegalModal] = useState<'privacy' | 'terms' | 'no-refunds' | null>(null);
-  const [activeTrackFilter, setActiveTrackFilter] = useState<'ALL' | 'FBISE' | 'MDCAT' | 'TCAT'>('ALL');
+  const [activeTrackFilter, setActiveTrackFilter] = useState<'ALL' | 'FBISE' | 'MDCAT' | 'NET' | 'FAST' | 'ECAT' | 'TCAT'>('ALL');
   const [expandedFaq, setExpandedFaq] = useState<number | null>(0);
   const [showScrollTop, setShowScrollTop] = useState<boolean>(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState<boolean>(false);
@@ -601,7 +642,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
     containerRef: testimonialTabsRef,
     registerTab: registerTestimonialTab,
     pillStyle: testimonialPillStyle,
-  } = useSlidingPill<'ALL' | 'FBISE' | 'MDCAT' | 'TCAT'>(activeTrackFilter);
+  } = useSlidingPill<'ALL' | 'FBISE' | 'MDCAT' | 'NET' | 'FAST' | 'ECAT' | 'TCAT'>(activeTrackFilter);
 
   useEffect(() => {
     let isMounted = true;
@@ -704,7 +745,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 Boardly — MCQ Practice for FSC Matric & Post FSC Students
               </h1>
               <p className="text-slate-600  text-sm sm:text-base lg:text-lg leading-relaxed font-normal">
-                Master FBISE SSC & HSSC Matric & FSC curriculum, PMDC MDCAT Medical, and UET Taxila TCAT entrance exams with intelligent chapter-wise question banks, step-by-step AI reasoning, and performance analytics.
+                Master FBISE SSC & HSSC Matric & FSC curriculum, PMDC MDCAT, NUST NET, FAST-NU, UET ECAT, ETEA, NUMS, GIKI, TCAT, HEC USAT, NED University, PIEAS, NTS NAT, IBA Karachi, AKU Medical, MUET, LUMS, NUML, HITEC, and NUTECH entrance exams with intelligent chapter-wise question banks, step-by-step AI reasoning, and performance analytics.
               </p>
             </motion.div>
 
@@ -769,11 +810,11 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                     label="MCQs Explained"
                   />
                   <AnimatedStatCard
-                    targetValue={3}
+                    targetValue={20}
                     duration={1000}
-                    midCountFn={(v) => `${Math.round(v)}`}
-                    finalDisplay="3 Tracks"
-                    label="FBISE, MDCAT, TCAT"
+                    midCountFn={(v) => `${Math.round(v)} Tracks`}
+                    finalDisplay="20 Tracks"
+                    label="All 20 Exam Portals"
                   />
                   <AnimatedStatCard
                     targetValue={24}
@@ -827,10 +868,10 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
               <span>Dedicated Exam Preparation Platform</span>
             </div>
             <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 leading-tight">
-              How does Boardly help you prepare for FBISE, MDCAT, and TCAT exams?
+              How does Boardly help you prepare for FBISE, MDCAT, and university entrance exams?
             </h2>
             <p className="text-sm sm:text-base text-slate-600 leading-relaxed font-normal">
-              Boardly is a comprehensive online MCQ practice and examination preparation platform engineered specifically for students across Pakistan. Designed to foster active recall and conceptual clarity, Boardly provides an extensive repository of chapter-wise multiple-choice questions, timed mock tests, and instant step-by-step solutions across science and general subjects. Whether you are revising core textbook concepts or testing your problem-solving speed under exam conditions, Boardly helps you identify learning gaps and master your syllabus with confidence.
+              Boardly is a comprehensive online MCQ practice and examination preparation platform engineered specifically for students across Pakistan. Covering 20 distinct academic and entrance test tracks — FBISE (Classes 9–12), PMDC MDCAT, NUST NET, FAST-NU, UET ECAT, ETEA, NUMS, GIKI, UET Taxila TCAT, HEC USAT, NED University Karachi, PIEAS Islamabad, NTS NAT, IBA Karachi, Aga Khan University (AKU), MEHRAN UET (MUET), LUMS, NUML, HITEC University Taxila, and NUTECH Islamabad — Boardly provides extensive chapter-wise question banks, timed mock tests with negative marking simulations, and instant AI step-by-step solutions to help you identify learning gaps and master your syllabus with confidence.
             </p>
             <p className="text-sm sm:text-base text-slate-600 leading-relaxed font-normal">
               Boardly is an educational initiative developed under{' '}
@@ -887,15 +928,19 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 <ul className="space-y-2 text-xs text-slate-700 font-medium">
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span><strong>Matric (Classes 9 & 10):</strong> Full FBISE SSC coverage across Physics, Chemistry, Biology, Mathematics, Computer Science, English, Urdu, and Islamiat.</span>
+                    <span><strong>Matric & FSc (Classes 9–12):</strong> Complete FBISE SSC & HSSC curriculum across Science, Pre-Med, Pre-Eng, and ICS streams.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span><strong>FSC (Classes 11 & 12 / HSSC):</strong> Specialized banks for Pre-Medical, Pre-Engineering, ICS & General Science streams.</span>
+                    <span><strong>Medical Aspirants:</strong> PMDC MDCAT, NUMS (Army Medical College), and Aga Khan University (AKU) entrance preparation.</span>
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
-                    <span><strong>Post-FSC Entrance Aspirants:</strong> PMDC MDCAT Medical and UET Taxila TCAT Engineering admission test prep.</span>
+                    <span><strong>Engineering & Computing:</strong> NUST NET, FAST-NU, UET ECAT, ETEA, GIKI, TCAT, NED University, PIEAS, MUET Jamshoro, HITEC, and NUTECH (NUET).</span>
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0 mt-0.5" />
+                    <span><strong>Aptitude & Undergraduate:</strong> HEC USAT series, NTS NAT (COMSATS, Air, Bahria, IIUI, IST), IBA Karachi, LUMS (LCAT & SBASSE), and NUML.</span>
                   </li>
                 </ul>
               </div>
@@ -1019,7 +1064,7 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
                 </div>
                 <h3 className="font-bold text-base text-slate-900 ">Select Your Exam Track</h3>
                 <p className="text-xs text-slate-600  leading-relaxed font-normal">
-                  Choose FBISE (Classes 9-12), PMDC MDCAT Medical, or UET Taxila TCAT Engineering test series.
+                  Choose from 20 comprehensive tracks: FBISE (9–12), MDCAT, NET, FAST, ECAT, ETEA, NUMS, GIKI, TCAT, USAT, NED, PIEAS, NAT, IBA, AKU, MUET, LUMS, NUML, HITEC, or NUTECH.
                 </p>
               </div>
             </ScrollFadeInCard>
@@ -1067,164 +1112,420 @@ export const IntroScreen: React.FC<IntroScreenProps> = React.memo(({
             </div>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {/* Track 1: FBISE */}
-            <ScrollFadeInCard delayIndex={0} className="h-full">
-              <div
-                onClick={onSelectGradesFlow || onContinue}
-                className="bg-white border border-slate-200/80 card-containment hover:border-[#1E5AFF] rounded-2xl p-6 shadow-sm hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer group flex flex-col justify-between gap-6 relative overflow-hidden h-full"
-              >
-                {/* Top-Right Category Badge */}
-                <div className="absolute top-5 right-5 z-10 pointer-events-none">
-                  <span className="bg-[#1E5AFF]/15 text-[#0A1330]  text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
-                    Class 9 – 12
-                  </span>
+            {[
+              {
+                id: 'fbise',
+                categoryBadge: 'Class 9 – 12',
+                categoryBadgeClass: 'bg-[#1E5AFF]/15 text-[#0A1330]',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png',
+                logoAlt: 'FBISE Official Logo',
+                fallbackText: 'FBISE',
+                bgClass: 'bg-emerald-600',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-[#1E5AFF]',
+                hoverTitleClass: 'group-hover:text-[#1E5AFF]',
+                hoverBtnClass: 'group-hover:bg-[#1E5AFF]',
+                title: 'FBISE (Classes 9–12)',
+                description: 'Complete FBISE question banks covering Physics, Chemistry, Biology, Mathematics, Computer Science, and English mapped to SLO guidelines.',
+                features: ['SLO Mapped FBISE Questions', 'Past Paper Solutions with Keys', 'Chapter-wise & Full Tests'],
+                buttonText: 'Select FBISE Class',
+                onAction: onSelectGradesFlow || onContinue,
+              },
+              {
+                id: 'mdcat',
+                categoryBadge: 'Medical Entrance',
+                categoryBadgeClass: 'bg-rose-500/15 text-rose-700',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/PMDC%20Logo-Green.png',
+                logoAlt: 'PMDC MDCAT Official Logo',
+                fallbackText: 'PMDC',
+                bgClass: 'bg-rose-700',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-rose-500',
+                hoverTitleClass: 'group-hover:text-rose-600',
+                hoverBtnClass: 'group-hover:bg-rose-600',
+                title: 'MDCAT Medical Portal',
+                description: 'Dedicated PMDC / PMC Medical entrance test prep covering Biology, Organic/Inorganic Chemistry, Physics & English reasoning.',
+                features: ['Bio, Chem, Physics & English', '200-Question Timed Mock Tests', 'Memory Tricks & High-Yield Notes'],
+                buttonText: 'Open MDCAT Portal',
+                onAction: onSelectMdcat || (() => (onSelectEntranceTrack ? onSelectEntranceTrack('MDCAT') : onContinue())),
+              },
+              {
+                id: 'net',
+                categoryBadge: 'NUST Islamabad',
+                categoryBadgeClass: 'bg-blue-600/15 text-blue-800',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nust-logo-png_seeklogo-234117.png',
+                logoAlt: 'NUST Entry Test Logo',
+                fallbackText: 'NUST',
+                bgClass: 'bg-[#004B87]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-blue-600',
+                hoverTitleClass: 'group-hover:text-blue-700',
+                hoverBtnClass: 'group-hover:bg-blue-600',
+                title: 'NUST Entry Test (NET)',
+                description: 'National University of Sciences & Technology series: 200 MCQs across Mathematics, Physics, and SAT-I style English with zero negative marking.',
+                features: ['200 MCQs in 180 Minutes', 'Math 100, Physics 60, English 40', 'Zero Negative Marking Scheme'],
+                buttonText: 'Open NUST NET Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('NET') : onContinue()),
+              },
+              {
+                id: 'fast',
+                categoryBadge: 'FAST-NUCES',
+                categoryBadgeClass: 'bg-cyan-600/15 text-cyan-800',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Fast-University-Logo.png',
+                logoAlt: 'FAST-NU Official Logo',
+                fallbackText: 'FAST',
+                bgClass: 'bg-[#003B73]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-cyan-600',
+                hoverTitleClass: 'group-hover:text-cyan-700',
+                hoverBtnClass: 'group-hover:bg-cyan-600',
+                title: 'FAST-NU Admission (NAT)',
+                description: 'Pakistan premier Computer Science entrance test: 120 MCQs with -0.25 negative marking penalty and advanced analytical reasoning.',
+                features: ['120 MCQs: Adv Math, Basic Math, IQ', '-0.25 Negative Marking Penalty', 'Calculators Strictly Prohibited'],
+                buttonText: 'Open FAST-NU Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('FAST') : onContinue()),
+              },
+              {
+                id: 'ecat',
+                categoryBadge: 'Punjab Engineering',
+                categoryBadgeClass: 'bg-sky-600/15 text-sky-800',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png',
+                logoAlt: 'UET Lahore ECAT Logo',
+                fallbackText: 'ECAT',
+                bgClass: 'bg-[#0B1E48]',
+                textClass: 'text-cyan-300',
+                hoverBorderClass: 'hover:border-sky-600',
+                hoverTitleClass: 'group-hover:text-sky-700',
+                hoverBtnClass: 'group-hover:bg-sky-600',
+                title: 'UET Lahore ECAT',
+                description: 'Combined Entry Test for Punjab engineering universities: 100 MCQs for 400 total marks (+4 correct, -1 incorrect) with Pre-Eng & ICS streams.',
+                features: ['100 MCQs / 400 Total Marks (+4 each)', 'Pre-Eng (Chem) & ICS (CS) Streams', '100 Minutes Real Exam Pacing'],
+                buttonText: 'Open ECAT Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('ECAT') : onContinue()),
+              },
+              {
+                id: 'etea',
+                categoryBadge: 'KPK Engineering',
+                categoryBadgeClass: 'bg-teal-600/15 text-teal-800',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/uet-02.png',
+                logoAlt: 'UET Peshawar ETEA Logo',
+                fallbackText: 'ETEA',
+                bgClass: 'bg-teal-700',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-teal-600',
+                hoverTitleClass: 'group-hover:text-teal-700',
+                hoverBtnClass: 'group-hover:bg-teal-600',
+                title: 'UET Peshawar ETEA',
+                description: 'Educational Testing and Evaluation Agency entrance exam for KPK colleges mapped directly to KPK Board textbook syllabus.',
+                features: ['Physics 40, Math 35, Eng 15, Chem/CS 10', '100 Questions in 100 Minutes', 'KPK Board Textbook Syllabus'],
+                buttonText: 'Open ETEA Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('ETEA') : onContinue()),
+              },
+              {
+                id: 'nums',
+                categoryBadge: 'Army Medical College',
+                categoryBadgeClass: 'bg-emerald-600/15 text-emerald-800',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nums-logo.png',
+                logoAlt: 'NUMS Medical Official Logo',
+                fallbackText: 'NUMS',
+                bgClass: 'bg-[#006837]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-emerald-600',
+                hoverTitleClass: 'group-hover:text-emerald-700',
+                hoverBtnClass: 'group-hover:bg-emerald-600',
+                title: 'NUMS Medical (AMC)',
+                description: 'National University of Medical Sciences test for AMC Rawalpindi: Part A (150 MCQs Subject Knowledge) and Part B (50 MCQs Psychological Assessment).',
+                features: ['Part A: 150 Subject MCQs (95% Weight)', 'Part B: 50 Psychological MCQs (5%)', 'Mandatory for AMC Open Merit'],
+                buttonText: 'Open NUMS Medical Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('NUMS') : onContinue()),
+              },
+              {
+                id: 'giki',
+                categoryBadge: 'GIKI Topi',
+                categoryBadgeClass: 'bg-indigo-600/15 text-indigo-800',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/cropped-giki-logo-updated.png',
+                logoAlt: 'GIKI Official Logo',
+                fallbackText: 'GIKI',
+                bgClass: 'bg-[#102254]',
+                textClass: 'text-blue-200',
+                hoverBorderClass: 'hover:border-indigo-600',
+                hoverTitleClass: 'group-hover:text-indigo-700',
+                hoverBtnClass: 'group-hover:bg-indigo-600',
+                title: 'GIKI Admission Test',
+                description: 'Ghulam Ishaq Khan Institute test: 80 high-difficulty analytical MCQs across Mathematics, Physics, and English over generous 120-minute timing.',
+                features: ['80 Multi-step Conceptual MCQs', 'Generous 120-Minute Time Limit', 'Calculus & Advanced Physics Focus'],
+                buttonText: 'Open GIKI Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('GIKI') : onContinue()),
+              },
+              {
+                id: 'tcat',
+                categoryBadge: 'UET Taxila',
+                categoryBadgeClass: 'bg-cyan-500/15 text-cyan-700',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png',
+                logoAlt: 'UET Taxila TCAT Official Logo',
+                fallbackText: 'TCAT',
+                bgClass: 'bg-sky-900',
+                textClass: 'text-cyan-300',
+                hoverBorderClass: 'hover:border-cyan-500',
+                hoverTitleClass: 'group-hover:text-cyan-600',
+                hoverBtnClass: 'group-hover:bg-cyan-600',
+                title: 'TCAT / UET Taxila Series',
+                description: 'Taxila Combined Admission Test preparation portal featuring FSc group combinations, 100-MCQ full mock tests & 400 total marks scoring.',
+                features: ['Math, Physics, CS/Chem & English', '400 Marks Exam Simulation', 'Negative Marking Rules & Timing'],
+                buttonText: 'Open TCAT Dashboard',
+                onAction: onSelectTcat || (() => (onSelectEntranceTrack ? onSelectEntranceTrack('TCAT') : onContinue())),
+              },
+              {
+                id: 'usat',
+                categoryBadge: 'HEC Pakistan',
+                categoryBadgeClass: 'bg-violet-600/15 text-violet-800',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png',
+                logoAlt: 'HEC USAT Logo',
+                fallbackText: 'USAT',
+                bgClass: 'bg-indigo-900',
+                textClass: 'text-indigo-200',
+                hoverBorderClass: 'hover:border-violet-600',
+                hoverTitleClass: 'group-hover:text-violet-700',
+                hoverBtnClass: 'group-hover:bg-violet-600',
+                title: 'HEC USAT Series',
+                description: 'Higher Education Commission Undergraduate Studies Admission Test covering Verbal Reasoning, Quantitative Reasoning, and discipline electives.',
+                features: ['Verbal (20) & Quantitative (25) Logic', 'Discipline Electives (55 Questions)', '100 Total Marks — 50 to Qualify'],
+                buttonText: 'Open HEC USAT Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('USAT') : onContinue()),
+              },
+              {
+                id: 'ned',
+                categoryBadge: 'NED Karachi',
+                categoryBadgeClass: 'bg-[#002D62]/15 text-[#002D62]',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/ned-logo.png',
+                logoAlt: 'NED University Official Logo',
+                fallbackText: 'NED',
+                bgClass: 'bg-[#002D62]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-[#002D62]',
+                hoverTitleClass: 'group-hover:text-[#002D62]',
+                hoverBtnClass: 'group-hover:bg-[#002D62]',
+                title: 'NED University Karachi',
+                description: '100 MCQs in 2 hours with no negative marking: Math 25, Physics 25, Chemistry 25, and English 25. Merit formula: 60% Entry Test + 40% HSC.',
+                features: ['100 MCQs in 2 Hours (120 Mins)', 'Math 25, Phys 25, Chem 25, Eng 25', 'Zero Negative Marking Scheme'],
+                buttonText: 'Open NED Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('NED') : onContinue()),
+              },
+              {
+                id: 'pieas',
+                categoryBadge: 'PIEAS Islamabad',
+                categoryBadgeClass: 'bg-[#1E3A8A]/15 text-[#1E3A8A]',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/pieas-logo.png',
+                logoAlt: 'PIEAS Official Logo',
+                fallbackText: 'PIEAS',
+                bgClass: 'bg-[#1E3A8A]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-[#1E3A8A]',
+                hoverTitleClass: 'group-hover:text-[#1E3A8A]',
+                hoverBtnClass: 'group-hover:bg-[#1E3A8A]',
+                title: 'PIEAS Written Test',
+                description: '100 MCQs over 3 hours with no negative marking. Pre-Engineering and ICS streams covering Mathematics, Physics, English, and Chemistry or CS.',
+                features: ['100 MCQs in 180 Minutes (3 Hours)', 'Pre-Eng & ICS Subject Streams', 'Zero Negative Marking Scheme'],
+                buttonText: 'Open PIEAS Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('PIEAS') : onContinue()),
+              },
+              {
+                id: 'nat',
+                categoryBadge: 'COMSATS / Air / Bahria',
+                categoryBadgeClass: 'bg-[#006A4E]/15 text-[#006A4E]',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nts-logo.png',
+                logoAlt: 'NTS NAT Shared Portal Logo',
+                fallbackText: 'NAT',
+                bgClass: 'bg-[#006A4E]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-[#006A4E]',
+                hoverTitleClass: 'group-hover:text-[#006A4E]',
+                hoverBtnClass: 'group-hover:bg-[#006A4E]',
+                title: 'NTS NAT Shared Portal',
+                description: 'One shared portal for COMSATS, Air University, Bahria, IIUI, and IST: 90 MCQs in 120 minutes across English, Analytical, Quantitative, and Subject streams.',
+                features: ['90 MCQs in 120 Minutes', 'NAT-IE, NAT-IM & NAT-ICS Streams', 'Covers COMSATS, Air, Bahria, IIUI, IST'],
+                buttonText: 'Open NTS NAT Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('NAT') : onContinue()),
+              },
+              {
+                id: 'iba',
+                categoryBadge: 'IBA Karachi',
+                categoryBadgeClass: 'bg-[#8B0000]/15 text-[#8B0000]',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/iba-logo.png',
+                logoAlt: 'IBA Karachi Logo',
+                fallbackText: 'IBA',
+                bgClass: 'bg-[#8B0000]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-[#8B0000]',
+                hoverTitleClass: 'group-hover:text-[#8B0000]',
+                hoverBtnClass: 'group-hover:bg-[#8B0000]',
+                title: 'IBA Karachi Aptitude',
+                description: '90 MCQs in 165 minutes with strict sectional cut-offs and -0.25 negative marking: 45 English Verbal Aptitude and 45 Quantitative Mathematics.',
+                features: ['90 MCQs in 165 Minutes (2h 45m)', 'Strict Sectional Cut-offs (Both Pass)', '-0.25 Negative Marking Penalty'],
+                buttonText: 'Open IBA Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('IBA') : onContinue()),
+              },
+              {
+                id: 'aku',
+                categoryBadge: 'AKU Medical',
+                categoryBadgeClass: 'bg-[#005A36]/15 text-[#005A36]',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/aku-logo.png',
+                logoAlt: 'Aga Khan University Logo',
+                fallbackText: 'AKU',
+                bgClass: 'bg-[#005A36]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-[#005A36]',
+                hoverTitleClass: 'group-hover:text-[#005A36]',
+                hoverBtnClass: 'group-hover:bg-[#005A36]',
+                title: 'Aga Khan University (AKU)',
+                description: 'Premier 100-mark MBBS test: Science Achievement (Bio 16, Chem 12, Phys 12 with -0.25 penalty), Science Reasoning (30), and Mathematical Reasoning (30).',
+                features: ['Science Achievement (-0.25 Penalty)', 'Science & Mathematical Reasoning', '100 Questions in 120 Minutes'],
+                buttonText: 'Open AKU Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('AKU') : onContinue()),
+              },
+              {
+                id: 'muet',
+                categoryBadge: 'MUET Jamshoro',
+                categoryBadgeClass: 'bg-[#800020]/15 text-[#800020]',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/muet-logo.png',
+                logoAlt: 'MUET Jamshoro Logo',
+                fallbackText: 'MUET',
+                bgClass: 'bg-[#800020]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-[#800020]',
+                hoverTitleClass: 'group-hover:text-[#800020]',
+                hoverBtnClass: 'group-hover:bg-[#800020]',
+                title: 'MUET Jamshoro Pre-Admission',
+                description: '100 MCQs in 100 minutes with no negative marking. 25 Math/Bio, 25 Physics, 25 Chem/CS, and 25 English based on Sindh Textbook Board.',
+                features: ['100 MCQs in 100 Minutes', 'Pre-Eng, ICS & Pre-Med Options', 'Zero Negative Marking Scheme'],
+                buttonText: 'Open MUET Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('MUET') : onContinue()),
+              },
+              {
+                id: 'lums',
+                categoryBadge: 'LUMS Lahore',
+                categoryBadgeClass: 'bg-[#002855]/15 text-[#002855]',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/lums-logo.png',
+                logoAlt: 'LUMS Official Logo',
+                fallbackText: 'LUMS',
+                bgClass: 'bg-[#002855]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-[#002855]',
+                hoverTitleClass: 'group-hover:text-[#002855]',
+                hoverBtnClass: 'group-hover:bg-[#002855]',
+                title: 'LUMS LCAT & SBASSE',
+                description: 'LCAT (90 MCQs in 160 mins: Verbal 45 & Quant 45) and SBASSE Scientific Aptitude (Physics, Chem, Math, Bio) for premier undergraduate admissions.',
+                features: ['LCAT: Verbal 45 & Quantitative 45', 'SBASSE: Advanced Scientific Aptitude', '160 Minutes Testing Window'],
+                buttonText: 'Open LUMS Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('LUMS') : onContinue()),
+              },
+              {
+                id: 'numl',
+                categoryBadge: 'NUML Islamabad',
+                categoryBadgeClass: 'bg-[#155E75]/15 text-[#155E75]',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/numl-logo.png',
+                logoAlt: 'NUML Official Logo',
+                fallbackText: 'NUML',
+                bgClass: 'bg-[#155E75]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-[#155E75]',
+                hoverTitleClass: 'group-hover:text-[#155E75]',
+                hoverBtnClass: 'group-hover:bg-[#155E75]',
+                title: 'NUML University Entrance',
+                description: '75 MCQs in 60 minutes with no negative marking and 50% passing threshold: English 20, Physics 20, Mathematics 20, Computer Science 15.',
+                features: ['75 MCQs in 60 Minutes', 'English 20, Phys 20, Math 20, CS 15', '50% Minimum Passing Criteria'],
+                buttonText: 'Open NUML Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('NUML') : onContinue()),
+              },
+              {
+                id: 'hitec',
+                categoryBadge: 'HITEC Taxila',
+                categoryBadgeClass: 'bg-[#7C2D12]/15 text-[#7C2D12]',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/hitec-logo.png',
+                logoAlt: 'HITEC University Logo',
+                fallbackText: 'HITEC',
+                bgClass: 'bg-[#7C2D12]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-[#7C2D12]',
+                hoverTitleClass: 'group-hover:text-[#7C2D12]',
+                hoverBtnClass: 'group-hover:bg-[#7C2D12]',
+                title: 'HITEC University Taxila',
+                description: '100 MCQs in 120 minutes with 50% passing mark: Math 30, Physics 30, Chemistry or CS 20, English 20 with zero negative marking.',
+                features: ['100 MCQs in 120 Minutes', 'Math 30, Phys 30, Chem/CS 20, Eng 20', '50% Passing Marks Requirement'],
+                buttonText: 'Open HITEC Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('HITEC') : onContinue()),
+              },
+              {
+                id: 'nutech',
+                categoryBadge: 'NUTECH Islamabad',
+                categoryBadgeClass: 'bg-[#14532D]/15 text-[#14532D]',
+                logoSrc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nutech-logo.png',
+                logoAlt: 'NUTECH NUET Official Logo',
+                fallbackText: 'NUTECH',
+                bgClass: 'bg-[#14532D]',
+                textClass: 'text-white',
+                hoverBorderClass: 'hover:border-[#14532D]',
+                hoverTitleClass: 'group-hover:text-[#14532D]',
+                hoverBtnClass: 'group-hover:bg-[#14532D]',
+                title: 'NUTECH Entry Test (NUET)',
+                description: '200 MCQs in 180 minutes with no negative marking. Engineering (Math 80, Phys 60, Chem/CS 40, Eng 20) and Computing (Math 100, CS/Phys 60, Eng 40).',
+                features: ['200 MCQs in 180 Minutes (3 Hours)', 'Engineering & Computing Streams', 'No Negative Marking Scheme'],
+                buttonText: 'Open NUTECH Portal',
+                onAction: () => (onSelectEntranceTrack ? onSelectEntranceTrack('NUTECH') : onContinue()),
+              },
+            ].map((track, idx) => (
+              <ScrollFadeInCard key={track.id} delayIndex={idx % 3} className="h-full">
+                <div
+                  onClick={track.onAction}
+                  className={`bg-white border border-slate-200/80 card-containment ${track.hoverBorderClass} rounded-2xl p-6 shadow-sm hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer group flex flex-col justify-between gap-6 relative overflow-hidden h-full`}
+                >
+                  {/* Top-Right Category Badge */}
+                  <div className="absolute top-5 right-5 z-10 pointer-events-none">
+                    <span className={`${track.categoryBadgeClass} text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider`}>
+                      {track.categoryBadge}
+                    </span>
+                  </div>
+
+                  <div className="space-y-4">
+                    {/* Centered Logo */}
+                    <div className="flex justify-center pt-2 pb-1">
+                      <div className="w-[108px] h-[108px] sm:w-[116px] sm:h-[116px] flex items-center justify-center shrink-0">
+                        <CardLogoImage
+                          src={track.logoSrc}
+                          alt={track.logoAlt}
+                          fallbackText={track.fallbackText}
+                          bgClass={track.bgClass}
+                          textClass={track.textClass}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h3 className={`font-['Space_Grotesk'] font-extrabold text-xl text-slate-900 ${track.hoverTitleClass} transition-colors break-words min-w-0`}>
+                        {track.title}
+                      </h3>
+                      <p className="text-xs text-slate-600 leading-relaxed font-normal">
+                        {track.description}
+                      </p>
+                    </div>
+
+                    <div className="space-y-2 pt-2 border-t border-slate-100 text-xs text-slate-600 font-medium">
+                      {track.features.map((feat, fIdx) => (
+                        <div key={fIdx} className="flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                          <span>{feat}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button className={`w-full bg-[#0A1330] text-white ${track.hoverBtnClass} group-hover:text-white font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer`}>
+                    <span>{track.buttonText}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
                 </div>
-
-                <div className="space-y-4">
-                  {/* Centered Logo (No box/border/bg container) */}
-                  <div className="flex justify-center pt-2 pb-1">
-                    <div className="w-[108px] h-[108px] sm:w-[116px] sm:h-[116px] flex items-center justify-center shrink-0">
-                      <CardLogoImage src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png" alt="FBISE Official Logo" fallbackText="FBISE" bgClass="bg-emerald-600" textClass="text-white" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <h3 className="font-['Space_Grotesk'] font-extrabold text-xl text-slate-900  group-hover:text-[#1E5AFF] transition-colors break-words min-w-0">
-                      FBISE (Classes 9–12)
-                    </h3>
-                    <p className="text-xs text-slate-600  leading-relaxed font-normal">
-                      Complete FBISE question banks covering Physics, Chemistry, Biology, Mathematics, Computer Science, and English mapped to SLO guidelines.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t border-slate-100  text-xs text-slate-600  font-medium">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>SLO Mapped FBISE Questions</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>Past Paper Solutions with Keys</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
-                      <span>Chapter-wise Tests</span>
-                    </div>
-                  </div>
-                </div>
-
-                <button className="w-full bg-[#0A1330] text-white  group-hover:bg-[#1E5AFF] group-hover:text-white font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer">
-                  <span>Select FBISE Class</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </ScrollFadeInCard>
-
-            {/* Track 2: MDCAT Medical */}
-            <ScrollFadeInCard delayIndex={1} className="h-full">
-              <div
-                onClick={onSelectMdcat || onSelectGradesFlow || onContinue}
-                className="bg-white border border-slate-200/80 card-containment hover:border-rose-500 rounded-2xl p-6 shadow-sm hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer group flex flex-col justify-between gap-6 relative overflow-hidden h-full"
-              >
-                {/* Top-Right Category Badge */}
-                <div className="absolute top-5 right-5 z-10 pointer-events-none">
-                  <span className="bg-rose-500/15 text-rose-700  text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
-                    Post-FSc Entrance
-                  </span>
-                </div>
-
-                <div className="space-y-4">
-                  {/* Centered Logo (No box/border/bg container) */}
-                  <div className="flex justify-center pt-2 pb-1">
-                    <div className="w-[108px] h-[108px] sm:w-[116px] sm:h-[116px] flex items-center justify-center shrink-0">
-                      <CardLogoImage src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/PMDC%20Logo-Green.png" alt="PMDC MDCAT Official Logo" fallbackText="PMDC" bgClass="bg-rose-700" textClass="text-white" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <h3 className="font-['Space_Grotesk'] font-extrabold text-xl text-slate-900  group-hover:text-rose-600  transition-colors break-words min-w-0">
-                      MDCAT Medical Portal
-                    </h3>
-                    <p className="text-xs text-slate-600  leading-relaxed font-normal">
-                      Dedicated PMDC / PMC Medical entrance test prep covering Biology, Organic/Inorganic Chemistry, Physics & English reasoning.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t border-slate-100  text-xs text-slate-600  font-medium">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-rose-500 shrink-0" />
-                      <span>Bio, Chem, Physics & English</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-rose-500 shrink-0" />
-                      <span>200-Question Timed Mock Tests</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-rose-500 shrink-0" />
-                      <span>Memory Tricks & High-Yield Notes</span>
-                    </div>
-                  </div>
-                </div>
-
-                <button className="w-full bg-slate-900 text-white  group-hover:bg-rose-600 group-hover:text-white font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer">
-                  <span>Open MDCAT Portal</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </ScrollFadeInCard>
-
-            {/* Track 3: TCAT Engineering */}
-            <ScrollFadeInCard delayIndex={2} className="h-full">
-              <div
-                onClick={onSelectTcat || onSelectGradesFlow || onContinue}
-                className="bg-white border border-slate-200/80 card-containment hover:border-cyan-500 rounded-2xl p-6 shadow-sm hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 cursor-pointer group flex flex-col justify-between gap-6 relative overflow-hidden h-full"
-              >
-                {/* Top-Right Category Badge */}
-                <div className="absolute top-5 right-5 z-10 pointer-events-none">
-                  <span className="bg-cyan-500/15 text-cyan-700  text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-wider">
-                    Post-FSc Engineering
-                  </span>
-                </div>
-
-                <div className="space-y-4">
-                  {/* Centered Logo (No box/border/bg container) */}
-                  <div className="flex justify-center pt-2 pb-1">
-                    <div className="w-[108px] h-[108px] sm:w-[116px] sm:h-[116px] flex items-center justify-center shrink-0">
-                      <CardLogoImage src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png" alt="UET Taxila TCAT Official Logo" fallbackText="UET" bgClass="bg-sky-900" textClass="text-cyan-300" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <h3 className="font-['Space_Grotesk'] font-extrabold text-xl text-slate-900  group-hover:text-cyan-600  transition-colors break-words min-w-0">
-                      TCAT / UET Taxila Series
-                    </h3>
-                    <p className="text-xs text-slate-600  leading-relaxed font-normal">
-                      Taxila Combined Admission Test preparation portal featuring FSc group combinations, 100-MCQ full mock tests & 400 total marks scoring.
-                    </p>
-                  </div>
-
-                  <div className="space-y-2 pt-2 border-t border-slate-100  text-xs text-slate-600  font-medium">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-cyan-500 shrink-0" />
-                      <span>Math, Physics, CS/Chem & English</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-cyan-500 shrink-0" />
-                      <span>400 Marks Exam Simulation</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-cyan-500 shrink-0" />
-                      <span>Negative Marking Rules</span>
-                    </div>
-                  </div>
-                </div>
-
-                <button className="w-full bg-slate-900 text-white  group-hover:bg-cyan-600 group-hover:text-white font-bold py-3 rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer">
-                  <span>Open TCAT Dashboard</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </ScrollFadeInCard>
+              </ScrollFadeInCard>
+            ))}
           </div>
         </section>
         </LazySection>
@@ -1477,7 +1778,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                 }}
               />
 
-              {(['ALL', 'FBISE', 'MDCAT', 'TCAT'] as const).map((filter) => (
+              {(['ALL', 'FBISE', 'MDCAT', 'NET', 'FAST', 'ECAT', 'TCAT'] as const).map((filter) => (
                 <button
                   key={filter}
                   ref={registerTestimonialTab(filter)}
@@ -1874,7 +2175,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                 </span>
               </div>
               <p className="text-slate-600  leading-relaxed font-normal">
-                Pakistan's premier intelligent MCQ practice platform for FBISE (SSC & HSSC), PMDC MDCAT Medical, and UET Taxila TCAT entrance exams. A dedicated project under{' '}
+                Pakistan's premier intelligent MCQ practice platform for FBISE (SSC & HSSC), MDCAT, NUST NET, FAST-NU, ECAT, ETEA, NUMS, GIKI, TCAT, USAT, NED, PIEAS, NAT, IBA, AKU, MUET, LUMS, NUML, HITEC, and NUTECH entrance exams. A dedicated project under{' '}
                 <a
                   href="https://shsvirtualacademy.pro"
                   target="_blank"
@@ -1890,9 +2191,9 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
             {/* Column 2: Product Links */}
             <div className="space-y-2.5">
               <p className="font-bold text-slate-900  uppercase tracking-wider text-[11px]">
-                Product Tracks
+                Product Tracks (20 Portals)
               </p>
-              <ul className="space-y-2 text-slate-600  font-medium">
+              <ul className="space-y-1.5 text-slate-600  font-medium">
                 <li>
                   <button
                     onClick={onSelectGradesFlow || onContinue}
@@ -1911,10 +2212,146 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                 </li>
                 <li>
                   <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('NET') : onContinue())}
+                    className="hover:text-blue-600 transition-colors cursor-pointer"
+                  >
+                    NUST NET Portal
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('FAST') : onContinue())}
+                    className="hover:text-cyan-600 transition-colors cursor-pointer"
+                  >
+                    FAST-NU Admission Portal
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('ECAT') : onContinue())}
+                    className="hover:text-sky-600 transition-colors cursor-pointer"
+                  >
+                    UET Lahore ECAT
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('ETEA') : onContinue())}
+                    className="hover:text-teal-600 transition-colors cursor-pointer"
+                  >
+                    UET Peshawar ETEA
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('NUMS') : onContinue())}
+                    className="hover:text-emerald-600 transition-colors cursor-pointer"
+                  >
+                    NUMS Medical (AMC)
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('GIKI') : onContinue())}
+                    className="hover:text-indigo-600 transition-colors cursor-pointer"
+                  >
+                    GIKI Admission Test
+                  </button>
+                </li>
+                <li>
+                  <button
                     onClick={onSelectTcat || onContinue}
                     className="hover:text-cyan-500 transition-colors cursor-pointer"
                   >
                     TCAT / UET Taxila Series
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('USAT') : onContinue())}
+                    className="hover:text-violet-600 transition-colors cursor-pointer"
+                  >
+                    HEC USAT Portal
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('NED') : onContinue())}
+                    className="hover:text-[#002D62] transition-colors cursor-pointer"
+                  >
+                    NED University Karachi
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('PIEAS') : onContinue())}
+                    className="hover:text-[#1E3A8A] transition-colors cursor-pointer"
+                  >
+                    PIEAS Islamabad
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('NAT') : onContinue())}
+                    className="hover:text-[#006A4E] transition-colors cursor-pointer"
+                  >
+                    NTS NAT Shared Portal
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('IBA') : onContinue())}
+                    className="hover:text-[#8B0000] transition-colors cursor-pointer"
+                  >
+                    IBA Karachi Aptitude
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('AKU') : onContinue())}
+                    className="hover:text-[#005A36] transition-colors cursor-pointer"
+                  >
+                    Aga Khan University (AKU)
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('MUET') : onContinue())}
+                    className="hover:text-[#800020] transition-colors cursor-pointer"
+                  >
+                    MUET Jamshoro
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('LUMS') : onContinue())}
+                    className="hover:text-[#002855] transition-colors cursor-pointer"
+                  >
+                    LUMS (LCAT &amp; SBASSE)
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('NUML') : onContinue())}
+                    className="hover:text-[#155E75] transition-colors cursor-pointer"
+                  >
+                    NUML University
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('HITEC') : onContinue())}
+                    className="hover:text-[#7C2D12] transition-colors cursor-pointer"
+                  >
+                    HITEC University Taxila
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => (onSelectEntranceTrack ? onSelectEntranceTrack('NUTECH') : onContinue())}
+                    className="hover:text-[#14532D] transition-colors cursor-pointer"
+                  >
+                    NUTECH Islamabad (NUET)
                   </button>
                 </li>
                 <li>
