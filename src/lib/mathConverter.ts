@@ -81,8 +81,14 @@ export function convertSlashFractions(str: string): string {
   s = s.replace(/(?<![\w\\])([a-zA-Z]\([a-zA-Z0-9,\s\+\-]+\))\s*\/\s*([a-zA-Z]\([a-zA-Z0-9,\s\+\-]+\))(?![\w\\])/g, '\\frac{$1}{$2}');
 
   // 2. Bracketed denominator with optional exponent: e.g. 1 / [(x - 1)(x + 2)], (2x + 3) / [(x - 1)(x^2 + 1)]
-  s = s.replace(/\(((?:[^()]|\([^()]*\))+)\)\s*\/\s*\[([^\[\]]+)\]((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, '\\frac{$1}{($2)$3}');
-  s = s.replace(/(?<![\\a-zA-Z0-9_])([a-zA-Z0-9\^_\{\}\+\-\*\\]+)\s*\/\s*\[([^\[\]]+)\]((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, '\\frac{$1}{($2)$3}');
+  s = s.replace(/\(((?:[^()]|\([^()]*\))+)\)\s*\/\s*\[([^\[\]]+)\]((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, (_m, num, den, exp) => {
+    let cleanDen = den.replace(/^\s*\((.*)\)\s*$/, '$1');
+    return `\\frac{${num}}{${cleanDen}${exp}}`;
+  });
+  s = s.replace(/(?<![\\a-zA-Z0-9_])([a-zA-Z0-9\^_\{\}\+\-\*\\]+)\s*\/\s*\[([^\[\]]+)\]((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, (_m, num, den, exp) => {
+    let cleanDen = den.replace(/^\s*\((.*)\)\s*$/, '$1');
+    return `\\frac{${num}}{${cleanDen}${exp}}`;
+  });
 
   // 3. (numer) / (denom) with optional exponent and up to 1 level of nested parens:
   // e.g. (v0^2 * sin^2(theta)) / (2g), (2x) / (1 - x^2), (x + 1) / (x - 2)^2
@@ -109,6 +115,10 @@ export function convertSlashFractions(str: string): string {
   // 10. Pure numerical fractions: e.g. 3/2, -1/3, 1 / 4
   s = s.replace(/(?<![\\a-zA-Z0-9_/])([+-]?\d+)\s*\/\s*(\d+)(?![\\a-zA-Z0-9_/])/g, '\\frac{$1}{$2}');
 
+  // Clean redundant double parentheses created by nested bracket regexes: e.g. ((x - 1)(x + 2)) -> (x - 1)(x + 2)
+  s = s.replace(/\\frac\{([^}]+)\}\{\(\(([^)]+)\)\(([^)]+)\)\)\}/g, '\\frac{$1}{($2)($3)}');
+  s = s.replace(/\\frac\{([^}]+)\}\{\(\(([^()]+)\)\)\}/g, '\\frac{$1}{($2)}');
+
   return s;
 }
 
@@ -122,11 +132,25 @@ export function formatLatexContent(rawLatex: string): string {
   // Normalize dashes
   s = s.replace(/[−–—]/g, '-');
 
+  // Repair JS escape corruption where backslashed characters were turned into control codes
+  s = s.replace(/\x0Crac/g, '\\frac')
+       .replace(/\r(?=ho\b|ho\W)/g, '\\r') // carriage return before ho -> \rho
+       .replace(/\bgammaho\b|\\gammaho\b/gi, '\\gamma \\rho')
+       .replace(/\\gammarho\b/gi, '\\gamma \\rho')
+       .replace(/\\gamma\\rho\b/gi, '\\gamma \\rho')
+       .replace(/\x09(?=heta\b)/g, '\\t') // tab before heta -> \theta
+       .replace(/\x09(?=o\b)/g, '\\t') // tab before o -> \to
+       .replace(/\x08(?=eta\b)/g, '\\b') // backspace before eta -> \beta
+       .replace(/\\r(?=\\n)/g, '')
+       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
+
+  // Repair Laplace correction factor formatting:
+  // e.g. \frac{\sqrt{P}}{(\gammaho)} or \frac{\sqrt{P}}{\gamma \rho} -> \sqrt{\frac{P}{\gamma \rho}}
+  s = s.replace(/\\frac\{\\sqrt\{([^{}]+)\}\}\{\(?\\?gamma\s*\\?r?ho\)?\}/gi, '\\sqrt{\\frac{$1}{\\gamma \\rho}}');
+  s = s.replace(/\\frac\{\\sqrt\{([^{}]+)\}\}\{\(?\\gamma\s*\\rho\)?\}/gi, '\\sqrt{\\frac{$1}{\\gamma \\rho}}');
+
   // Normalize double-escaped commands like \\begin, \\end, \\displaystyle, \\frac
   s = s.replace(/\\\\(displaystyle|begin|end|frac|sqrt|pmatrix|bmatrix|vmatrix|matrix|array|text|mathrm|mathbf|lim|int|sum|prod|alpha|beta|gamma|delta|epsilon|theta|pi|lambda|mu|sigma|omega|rho|nu|Delta|Gamma|times|cdot|to|pm|approx)/g, '\\$1');
-
-  // Clean control characters (DO NOT delete literal \r or \n indiscriminately!)
-  s = s.replace(/\x0Crac/g, '\\frac').replace(/[\x00-\x09\x0B\x0C\x0E-\x1F]/g, '');
 
   // Convert unicode subscripts and superscripts
   s = s.replace(/₀/g, '_0').replace(/₁/g, '_1').replace(/₂/g, '_2').replace(/₃/g, '_3').replace(/₄/g, '_4')
@@ -167,7 +191,7 @@ export function formatLatexContent(rawLatex: string): string {
   s = s.replace(/(?:\\epsilon_0|ε0|ε_0|epsilon_0)/g, '\\epsilon_0');
 
   // Function mappings: f: A -> B or f: X \to Y
-  s = s.replace(/\b([fgh]):\s*([A-Za-z0-9_\{\}\mathbb]+(?:\^[\w\{\}]+)?)\s*(?:->|-->|→|\\to)\s*([A-Za-z0-9_\{\}\mathbb]+(?:\^[\w\{\}]+)?)\b/g, '$1: $2 \\to $3');
+  s = s.replace(/\b([fghFGH])\s*:\s*([A-Za-z0-9_\{\}\mathbb\[\],\s\^]+?)\s*(?:->|-->|→|\\to)\s*([A-Za-z0-9_\{\}\mathbb\[\],\s\^]+?)(?=[.,;!?\s]|$|\))/g, '$1: $2 \\to $3');
 
   // Physics and math variable subscripts
   s = s.replace(/\bF_?net\b/gi, 'F_{\\text{net}}');
@@ -176,6 +200,7 @@ export function formatLatexContent(rawLatex: string): string {
   s = s.replace(/\bP\.?E\.?\b/gi, '\\text{P.E.}');
   s = s.replace(/\bhnu\b/gi, 'h\\nu');
   s = s.replace(/\bF_?c\b/g, 'F_c');
+  s = s.replace(/\ba_?c\b/g, 'a_c');
   s = s.replace(/([PVTmrvaxyz])(\d+)/g, '$1_{$2}');
   s = s.replace(/(?<!\\)([PVTmrvaxyz])_([a-zA-Z0-9]+)/g, (_m, v, sub) => {
     if (/^\d+$/.test(sub) || sub.length === 1) return `${v}_{${sub}}`;
@@ -186,6 +211,7 @@ export function formatLatexContent(rawLatex: string): string {
   // MUST use (?<!\\) so existing \sqrt is not doubled
   s = s.replace(/(?<!\\)\bsqrt\s*\(([^()]+)\)/gi, '\\sqrt{$1}');
   s = s.replace(/(?<!\\)\bsqrt\s*\{([^{}]+)\}/gi, '\\sqrt{$1}');
+  s = s.replace(/(?<!\\)\bsqrt\s+([a-zA-Z0-9_]+)/gi, '\\sqrt{$1}');
   s = s.replace(/√\s*\(([^()]+)\)/g, '\\sqrt{$1}');
   s = s.replace(/√\s*\{([^{}]+)\}/g, '\\sqrt{$1}');
   s = s.replace(/√\s*([a-zA-Z0-9_]+)/g, '\\sqrt{$1}');
@@ -198,7 +224,10 @@ export function formatLatexContent(rawLatex: string): string {
     if (convertedInner.includes('/')) {
       const slashParts = convertedInner.split('/');
       if (slashParts.length === 2) {
-        return `\\sqrt{\\frac{${slashParts[0].trim()}}{${slashParts[1].trim()}}}`;
+        let den = slashParts[1].trim();
+        // Ensure \gamma \rho has a space so KaTeX renders it cleanly
+        den = den.replace(/\\gamma\\?r?ho\b/g, '\\gamma \\rho');
+        return `\\sqrt{\\frac{${slashParts[0].trim()}}{${den}}}`;
       }
       convertedInner = convertSlashFractions(convertedInner);
     }
@@ -207,12 +236,20 @@ export function formatLatexContent(rawLatex: string): string {
 
   // Standard math functions
   s = s.replace(/(?<!\\)\b(sin|cos|tan|sec|csc|cot|sinh|cosh|tanh|arcsin|arccos|arctan|arcsec|arccsc|arccot|ln|log|det|exp)\b/g, '\\$1');
-  s = s.replace(/(?<!\\)\blim_([a-zA-Z0-9\{\}\\\+\-\>]+)/gi, '\\lim_{$1}');
-  s = s.replace(/\blim\s*\(([^)]+)\)/gi, '\\lim_{$1}');
+  s = s.replace(/(?<!\\)\blim_([a-zA-Z0-9\{\}\\\+\-\>]+)/gi, (_m, sub) => {
+    const cleanSub = sub.replace(/(?:->|-->)/g, '\\to ');
+    return `\\lim_{${cleanSub}}`;
+  });
+  s = s.replace(/\blim\s*\(([^)]+)\)/gi, (_m, sub) => {
+    const cleanSub = sub.replace(/(?:->|-->)/g, '\\to ');
+    return `\\lim_{${cleanSub}}`;
+  });
 
   // Format arguments of functions with fractions: e.g. \arctan((2x) / (1 - x^2)) -> \arctan\left(\frac{2x}{1 - x^2}\right)
   s = s.replace(/(\\(?:sin|cos|tan|arcsin|arccos|arctan|sec|csc|cot|ln|log))\s*\(((?:[^()]|\([^()]*\))+)\)/g, (_m, fn, arg) => {
     let formattedArg = convertSlashFractions(arg);
+    // Ensure carets inside argument are formatted
+    formattedArg = formattedArg.replace(/\^([+\-]?[a-zA-Z0-9]+)(?![a-zA-Z0-9\{])/g, '^{$1}');
     if (formattedArg.includes('\\frac')) {
       return `${fn}\\left(${formattedArg}\\right)`;
     }
@@ -273,6 +310,11 @@ export function isPureMathFormula(str: string): boolean {
   if (!str) return false;
   const s = str.trim();
 
+  // If it already starts with a LaTeX command like \displaystyle, \frac, \sqrt, \begin
+  if (/^\\+(?:displaystyle|frac|sqrt|begin|mathbf|mathrm|text|left|alpha|beta|gamma|lambda|theta|pi|rho|sigma|omega|Delta|Omega)\b/i.test(s)) {
+    return true;
+  }
+
   // If it starts with common English question or statement starters
   if (/^(?:Let|Find|Evaluate|Calculate|Where|When|What|Which|Select|If|Given|Show|Prove|Determine|Consider|Suppose|According|Because|True|False)\b/i.test(s)) {
     return false;
@@ -292,12 +334,16 @@ export function isPureMathFormula(str: string): boolean {
   // Check if it has math operators, variables, numbers, functions, fractions, units
   const hasMathChar = /[\^_\{\}\\\/\+\-\*=\<\>≤≥≠≈∝∫√πθλωαβγδσμρνΔΦ]/.test(s);
   const hasMathKeyword = /\b(sqrt|sin|cos|tan|cot|sec|csc|ln|log|lim|dy\/dx|dM\/dt|dv\/dt|dx|dy|dt|mu_0|epsilon_0|theta|alpha|beta|gamma|lambda|omega|pi|rho|sigma)\b/i.test(s);
-  const hasFunctionMapping = /\b[fgh]:\s*[A-Za-z0-9_\{\}\mathbb]+\s*(?:->|-->|→|\\to)\s*[A-Za-z0-9_\{\}\mathbb]+\b/.test(s);
-  const hasPureFraction = /^[+-]?(?:[a-zA-Z0-9\(\)\^\*\s\\]+)\s*\/\s*(?:[a-zA-Z0-9\(\)\^\*\s\\]+)$/.test(s);
+  const hasFunctionMapping = /\b[fghFGH]\s*:\s*[A-Za-z0-9_\{\}\mathbb\[\],\s\^]+\s*(?:->|-->|→|\\to)\s*[A-Za-z0-9_\{\}\mathbb\[\],\s\^]+\b/.test(s);
+  const hasPureFraction = /^[+-]?(?:[a-zA-Z0-9\(\)\^_\{\}\*\s\\]+)\s*\/\s*(?:[a-zA-Z0-9\(\)\^_\{\}\*\s\\]+)$/.test(s);
+  const hasSqrt = /(?:^|[\s\+\-\*\/])(?:\\?sqrt\b|√)/i.test(s);
+  const hasDerivative = /\b(dy\/dx|d\^?2y\/dx\^?2|d2y\/dx2|df\/dx|dM\/dt|dv\/dt|d\/dx|d\/dt)\b/i.test(s);
   const hasOnlyMathAndUnits = /^[+-]?[0-9a-zA-Z\s\(\)\^\*\/\+\-\.,\\_\{\}=<>|]*(?:\s*(?:N|J|W|m\/s|m\/s\^2|m\/s²|kg|m|s|Hz|V|Pa|rad|deg|rad\/s))?$/.test(s);
 
   if (hasFunctionMapping) return true;
   if (hasPureFraction) return true;
+  if (hasSqrt && hasOnlyMathAndUnits) return true;
+  if (hasDerivative) return true;
   if ((hasMathChar || hasMathKeyword) && hasOnlyMathAndUnits) return true;
 
   return false;
@@ -328,7 +374,7 @@ export function autoDetectAndConvertMath(text: string): string {
   // Otherwise, it is a mixed sentence (question text or explanation).
   // 1. Function mappings: e.g. "f: A -> B" -> "$f: A \to B$"
   str = applyOutsideMath(str, (chunk) =>
-    chunk.replace(/\b([fgh]:\s*[A-Za-z0-9_\{\}\mathbb]+(?:\^[\w\{\}]+)?\s*(?:->|-->|→|\\to)\s*[A-Za-z0-9_\{\}\mathbb]+(?:\^[\w\{\}]+)?)\b/g, (_m, match) => {
+    chunk.replace(/\b([fghFGH]\s*:\s*[A-Za-z0-9_\{\}\mathbb\[\],\s\^]+?\s*(?:->|-->|→|\\to)\s*[A-Za-z0-9_\{\}\mathbb\[\],\s\^]+?)(?=[.,;!?\s]|$|\))/g, (_m, match) => {
       return `$${formatLatexContent(match)}$`;
     })
   );
@@ -359,14 +405,15 @@ export function autoDetectAndConvertMath(text: string): string {
   // 4. Derivatives: dy/dx, d^2y/dx^2, d/dx, dM/dt, dv/dt
   str = applyOutsideMath(str, (chunk) =>
     chunk.replace(/(?<![\$\w])(d\^?2y\/dx\^?2|d2y\/dx2|dy\/dx|d\/dx|d\/dt|df\/dx|dM\/dt|dv\/dt)(?![\$\w])/g, (_m, match) => {
-      return `$${formatLatexContent(match)}$`;
+      return `$\\displaystyle ${formatLatexContent(match)}$`;
     })
   );
 
-  // 5. Square root expressions: sqrt(...), √(..), sqrt 6, sqrt(6)
+  // 5. Square root expressions: sqrt(...), √(..), sqrt 6, sqrt(6), sqrt 2
   str = applyOutsideMath(str, (chunk) =>
-    chunk.replace(/(?<![\$\w])(sqrt\s*\([^()]+\)|√\s*\([^()]+\)|sqrt\s+\d+|√\s*[a-zA-Z0-9_]+)(?![\$\w])/gi, (_m, match) => {
-      return `$${formatLatexContent(match)}$`;
+    chunk.replace(/(?<![\$\w\\])(?:\\?sqrt\s*[\(\{]\s*([^{}()]+)\s*[\)\}]|\\?sqrt\s+([a-zA-Z0-9]+)|√\s*[\(\{]?\s*([^{}()]+)\s*[\)\}]?)(?![\$\w])/gi, (_m, g1, g2, g3) => {
+      const inner = g1 || g2 || g3;
+      return `$\\sqrt{${formatLatexContent(inner)}}$`;
     })
   );
 
@@ -374,13 +421,13 @@ export function autoDetectAndConvertMath(text: string): string {
   str = applyOutsideMath(str, (chunk) =>
     chunk.replace(/(?<![\$\w])((?:[+-]?[a-zA-Z0-9\(\)]+)\s*\/\s*(?:\[[^\[\]]+\]|\(((?:[^()]|\([^()]*\))+)\)|[a-zA-Z0-9]+(?:\^[0-9]+)?))(?![\$\w])/g, (_m, match) => {
       if (match.includes('/')) {
-        return `$${formatLatexContent(match)}$`;
+        return `$\\displaystyle ${formatLatexContent(match)}$`;
       }
       return match;
     })
   );
 
-  // 7. Standalone caret exponents: e.g. x^2, e^(3x), 10^-3
+  // 7. Standalone caret exponents: e.g. x^2, e^(3x), 10^-3, 2^n
   str = applyOutsideMath(str, (chunk) =>
     chunk.replace(/(?<![\$\w])(?:[a-zA-Z0-9_]+|\([^\)\n]+\))\^(?:\([^\)\n]+\)|[+\-]?[a-zA-Z0-9]+)(?![\$\w])/g, (match) => {
       if (/^[0-9]+$/.test(match)) return match;
@@ -404,14 +451,14 @@ export function autoDetectAndConvertMath(text: string): string {
     })
   );
 
-  // 10. Asterisks as multiplication in prose: e.g. r * F -> r × F
+  // 10. Asterisks as multiplication in prose: e.g. r * F -> r × F, 3 * 10 -> 3 × 10
   str = applyOutsideMath(str, (chunk) =>
     chunk.replace(/(?<=\b[a-zA-Z0-9]\b)\s*\*\s*(?=\b[a-zA-Z0-9]\b)/g, ' × ')
   );
 
   // 11. Replace any remaining -> with Unicode arrow → in plain text
   str = applyOutsideMath(str, (chunk) =>
-    chunk.replace(/(?<![\\a-zA-Z0-9_])->|-->(?![\\a-zA-Z0-9_])/g, '→')
+    chunk.replace(/(?<![\\a-zA-Z0-9_])->|-->(?![\\a-zA-Z0-9_])/g, '→').replace(/->|-->/g, '→')
   );
 
   return str;
@@ -508,6 +555,8 @@ export function preprocessMathText(text: string): string {
 export function convertLatexToReadableText(latex: string): string {
   let s = latex;
   s = s.replace(/\\displaystyle/g, '');
+  s = s.replace(/\\gammaho\b/gi, 'γρ').replace(/\\gamma\\rho\b/gi, 'γρ');
+  s = s.replace(/\\frac\{\\sqrt\{([^}]+)\}\}\{\(?\\?gamma\s*\\?r?ho\)?\}/gi, '√(($1) / (γρ))');
   s = s.replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, '($1) / ($2)');
   s = s.replace(/\\sqrt\{([^{}]+)\}/g, '√($1)');
   s = s.replace(/\\to\b/g, '→');
@@ -565,8 +614,13 @@ export function renderKaTeX(latex: string, displayMode: boolean = false): string
 
       // Check if KaTeX encountered an error
       if (html.includes('katex-error')) {
-        // Attempt emergency repair: strip \displaystyle, fix braces
-        let repaired = cleanLatex.replace(/\\displaystyle/g, '');
+        // Attempt emergency repair: strip \displaystyle, fix \gammaho, etc.
+        let repaired = cleanLatex
+          .replace(/\\displaystyle/g, '')
+          .replace(/\\gammaho\b/gi, '\\gamma \\rho')
+          .replace(/\\gamma\\rho\b/gi, '\\gamma \\rho')
+          .replace(/\\frac\{\\sqrt\{([^}]+)\}\}\{\(?\\?gamma\s*\\?r?ho\)?\}/gi, '\\sqrt{\\frac{$1}{\\gamma \\rho}}')
+          .replace(/\\frac\{\\sqrt\{([^}]+)\}\}\{\(?\\gamma\s*\\rho\)?\}/gi, '\\sqrt{\\frac{$1}{\\gamma \\rho}}');
         let repairedHtml = katexModule.renderToString(repaired, {
           displayMode,
           throwOnError: false,

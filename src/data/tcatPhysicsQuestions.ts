@@ -388,7 +388,7 @@ export const TCAT_PHYSICS_QUESTIONS: Question[] = [
     topic: 'Waves',
     difficulty: 'Easy',
     q: 'What was Laplace correction factor \\gamma to Newton formula for the speed of sound in a gas?',
-    options: ['\\sqrt{\\gamma P / \\rho}', '\\sqrt{P / (\\gamma\\rho)}', '\\gamma \\sqrt{P / \\rho}', '\\sqrt{P / \\rho}'],
+    options: ['\\sqrt{\\gamma P / \\rho}', '\\sqrt{P / (\\gamma \\rho)}', '\\gamma \\sqrt{P / \\rho}', '\\sqrt{P / \\rho}'],
     correct: 0,
     explain: 'Laplace corrected Newton assumption from isothermal to adiabatic: v = \\sqrt{\\gamma P / \\rho}, where \\gamma = Cp/Cv.'
   },

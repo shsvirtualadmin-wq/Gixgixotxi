@@ -1002,9 +1002,12 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
         {/* Full-Length Mock Card */}
         <div className="lg:col-span-2 bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden border border-slate-800 flex flex-col justify-between">
           <div className="relative z-10 space-y-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-semibold backdrop-blur-xs">
-              <Zap className="w-3.5 h-3.5 text-amber-400" />
-              <span>Full-Length Exam Simulation</span>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-semibold backdrop-blur-xs">
+                <Zap className="w-3.5 h-3.5 text-amber-400" />
+                <span>Full-Length Exam Simulation</span>
+              </div>
+              <InstitutionBadge id={trackData.institutionId} size="lg" />
             </div>
 
             <div className="space-y-2">
@@ -1133,7 +1136,7 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
 
               <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
                 <span className="text-xs font-bold text-slate-500">
-                  Targeted Drill Available
+                  Full Section Mock
                 </span>
                 <button
                   onClick={() => {
@@ -1143,7 +1146,7 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
                   className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-600 hover:text-white text-slate-700 text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <Play className="w-3 h-3 fill-current" />
-                  <span>Practice Section</span>
+                  <span>Section Mock Test</span>
                 </button>
               </div>
             </div>
