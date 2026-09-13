@@ -4019,21 +4019,23 @@ export function App() {
       </main>
 
       {/* Global Lazy-loaded Modals rendered outside main tree for high performance */}
-      <GlobalModals
-        currentUser={currentUser}
-        userProfile={userProfile}
-        setUserProfile={setUserProfile}
-        history={history}
-        handleClearHistory={handleClearHistory}
-        isTestLimitReached={isTestLimitReached}
-        refreshUserProfile={refreshUserProfile}
-        selectedClass={selectedClass}
-        selectedGroup={selectedGroup}
-        selectedSubject={selectedSubject}
-        customTopic={customTopic}
-        screen={screen}
-        setScreen={setScreen}
-      />
+      <ChunkErrorBoundary fallback={null}>
+        <GlobalModals
+          currentUser={currentUser}
+          userProfile={userProfile}
+          setUserProfile={setUserProfile}
+          history={history}
+          handleClearHistory={handleClearHistory}
+          isTestLimitReached={isTestLimitReached}
+          refreshUserProfile={refreshUserProfile}
+          selectedClass={selectedClass}
+          selectedGroup={selectedGroup}
+          selectedSubject={selectedSubject}
+          customTopic={customTopic}
+          screen={screen}
+          setScreen={setScreen}
+        />
+      </ChunkErrorBoundary>
 
       {/* In-App Leave Confirmation Modal */}
       {leaveModalConfig?.isOpen && (

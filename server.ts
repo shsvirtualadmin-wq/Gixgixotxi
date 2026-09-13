@@ -10116,6 +10116,11 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       })
     );
 
+    // Return 404 for missing assets under /assets/ so dynamic import immediately detects missing chunk rather than parsing HTML
+    app.use("/assets", (req, res) => {
+      res.status(404).type("text/plain").send("Asset chunk not found (hash updated)");
+    });
+
     // SPA fallback: Always serve index.html with no-cache headers
     app.get("*", (req, res) => {
       res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate");

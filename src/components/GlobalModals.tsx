@@ -1,29 +1,38 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, useEffect } from 'react';
 import { useModals } from '../context/ModalContext';
 import { User, StudentProfile, fetchStudentProfileFromSupabase } from '../lib/supabase';
 import { HistoryItem } from '../types';
+import { lazyWithRetry } from '../lib/lazyWithRetry';
+import { ChunkErrorBoundary } from './ChunkErrorBoundary';
 
-// Lazy load modals so their code is loaded only when requested
-const StudyBuddyModal = lazy(() =>
-  import('./StudyBuddyModal').then((m) => ({ default: m.StudyBuddyModal }))
+// Lazy load modals with auto-retry and chunk recovery
+const StudyBuddyModal = lazyWithRetry(
+  () => import('./StudyBuddyModal').then((m) => ({ default: m.StudyBuddyModal })),
+  'StudyBuddyModal'
 );
-const LmsPortalModal = lazy(() =>
-  import('./LmsPortalModal').then((m) => ({ default: m.LmsPortalModal }))
+const LmsPortalModal = lazyWithRetry(
+  () => import('./LmsPortalModal').then((m) => ({ default: m.LmsPortalModal })),
+  'LmsPortalModal'
 );
-const HistoryModal = lazy(() =>
-  import('./HistoryModal').then((m) => ({ default: m.HistoryModal }))
+const HistoryModal = lazyWithRetry(
+  () => import('./HistoryModal').then((m) => ({ default: m.HistoryModal })),
+  'HistoryModal'
 );
-const CommunityModal = lazy(() =>
-  import('./CommunityModal').then((m) => ({ default: m.CommunityModal }))
+const CommunityModal = lazyWithRetry(
+  () => import('./CommunityModal').then((m) => ({ default: m.CommunityModal })),
+  'CommunityModal'
 );
-const PrintableTestModal = lazy(() =>
-  import('./PrintableTestModal').then((m) => ({ default: m.PrintableTestModal }))
+const PrintableTestModal = lazyWithRetry(
+  () => import('./PrintableTestModal').then((m) => ({ default: m.PrintableTestModal })),
+  'PrintableTestModal'
 );
-const PaymentProofModal = lazy(() =>
-  import('./PaymentProofModal').then((m) => ({ default: m.PaymentProofModal }))
+const PaymentProofModal = lazyWithRetry(
+  () => import('./PaymentProofModal').then((m) => ({ default: m.PaymentProofModal })),
+  'PaymentProofModal'
 );
-const TestLimitModal = lazy(() =>
-  import('./TestLimitModal').then((m) => ({ default: m.TestLimitModal }))
+const TestLimitModal = lazyWithRetry(
+  () => import('./TestLimitModal').then((m) => ({ default: m.TestLimitModal })),
+  'TestLimitModal'
 );
 
 interface GlobalModalsProps {
@@ -80,22 +89,39 @@ export const GlobalModals: React.FC<GlobalModalsProps> = React.memo(({
     openPaymentModal,
   } = useModals();
 
+  // Preload StudyBuddyModal chunk during idle time so it opens instantly without network delay
+  useEffect(() => {
+    const preload = () => {
+      import('./StudyBuddyModal').catch(() => {});
+    };
+    if (typeof window !== 'undefined') {
+      if ('requestIdleCallback' in window) {
+        (window as any).requestIdleCallback(preload, { timeout: 3000 });
+      } else {
+        setTimeout(preload, 1200);
+      }
+    }
+  }, []);
+
   return (
-    <Suspense fallback={null}>
-      {/* Study Buddy Chatbot */}
-      <StudyBuddyModal
-        isOpen={showStudyBuddy}
-        onClose={closeStudyBuddy}
-        preloadedContext={studyBuddyContext}
-        onClearPreloadedContext={() => setStudyBuddyContext(null)}
-        studentProfile={userProfile}
-        selectedClass={selectedClass}
-        selectedGroup={selectedGroup}
-        selectedSubject={selectedSubject}
-        customTopic={customTopic}
-        hideFloatingButton={screen === 'test'}
-        onUpgradeClick={() => setScreen('plan_selection')}
-      />
+    <ChunkErrorBoundary fallback={null}>
+      <Suspense fallback={null}>
+        {/* Study Buddy Chatbot */}
+        {showStudyBuddy && (
+          <StudyBuddyModal
+            isOpen={showStudyBuddy}
+            onClose={closeStudyBuddy}
+            preloadedContext={studyBuddyContext}
+            onClearPreloadedContext={() => setStudyBuddyContext(null)}
+            studentProfile={userProfile}
+            selectedClass={selectedClass}
+            selectedGroup={selectedGroup}
+            selectedSubject={selectedSubject}
+            customTopic={customTopic}
+            hideFloatingButton={screen === 'test'}
+            onUpgradeClick={() => setScreen('plan_selection')}
+          />
+        )}
 
       {showLmsModal && (
         <LmsPortalModal
@@ -177,7 +203,8 @@ export const GlobalModals: React.FC<GlobalModalsProps> = React.memo(({
           openPaymentModal();
         }}
       />
-    </Suspense>
+      </Suspense>
+    </ChunkErrorBoundary>
   );
 });
 

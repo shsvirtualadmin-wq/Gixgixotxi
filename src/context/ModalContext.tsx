@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
 import { TestResult, MCQContext } from '../types';
 
 export interface ModalState {
@@ -60,6 +60,18 @@ export const ModalProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     currentUsage: 0,
   });
   const [studyBuddyContext, setStudyBuddyContextState] = useState<MCQContext | null>(null);
+
+  // Automatically reopen Study Buddy if page reloaded due to a stale dynamic import/chunk update
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem('boardly_reopen_study_buddy') === 'true') {
+        sessionStorage.removeItem('boardly_reopen_study_buddy');
+        setTimeout(() => {
+          setShowStudyBuddy(true);
+        }, 150);
+      }
+    } catch {}
+  }, []);
 
   const openCommunityModal = useCallback(() => setShowCommunityModal(true), []);
   const closeCommunityModal = useCallback(() => setShowCommunityModal(false), []);

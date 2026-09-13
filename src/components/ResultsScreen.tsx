@@ -28,7 +28,7 @@ import {
   Target,
 } from 'lucide-react';
 
-import { MCQContext } from './StudyBuddyModal';
+import type { MCQContext } from '../types';
 
 import { checkAndRecordPdfDownload } from '../lib/pdfLimit';
 import { PdfRestrictionModal } from './PdfRestrictionModal';

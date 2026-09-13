@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { RefreshCw, Sparkles, AlertCircle } from 'lucide-react';
+import { RefreshCw, Sparkles } from 'lucide-react';
+import { isChunkOrDynamicImportError } from '../lib/lazyWithRetry';
 
 interface Props {
   children: ReactNode;
@@ -23,29 +24,19 @@ export class ChunkErrorBoundary extends Component<Props, State> {
   }
 
   static getDerivedStateFromError(error: Error): State {
-    const msg = error?.message || '';
-    const isChunk =
-      msg.includes('Failed to fetch dynamically imported module') ||
-      msg.includes('Loading chunk') ||
-      msg.includes('dynamically imported module') ||
-      error?.name === 'ChunkLoadError';
-
+    const isChunk = isChunkOrDynamicImportError(error);
     return {
       hasError: true,
       isChunkError: isChunk,
-      errorMessage: msg,
+      errorMessage: error?.message || '',
     };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('[ChunkErrorBoundary caught error]:', error, errorInfo);
 
+    const isChunk = isChunkOrDynamicImportError(error);
     const msg = error?.message || '';
-    const isChunk =
-      msg.includes('Failed to fetch dynamically imported module') ||
-      msg.includes('Loading chunk') ||
-      msg.includes('dynamically imported module') ||
-      error?.name === 'ChunkLoadError';
 
     if (isChunk) {
       const lastReload = sessionStorage.getItem('global_chunk_error_reload');
@@ -54,7 +45,18 @@ export class ChunkErrorBoundary extends Component<Props, State> {
       // Perform a one-time automated page reload if not performed in the last 20 seconds
       if (!lastReload || now - Number(lastReload) > 20000) {
         sessionStorage.setItem('global_chunk_error_reload', String(now));
-        console.log('[ChunkErrorBoundary] Reloading application to pull updated deployment assets...');
+        if (msg.toLowerCase().includes('studybuddy') || msg.toLowerCase().includes('study_buddy')) {
+          sessionStorage.setItem('boardly_reopen_study_buddy', 'true');
+        }
+        console.log('[ChunkErrorBoundary] Stale chunk detected. Reloading application to pull updated deployment assets...');
+
+        if (typeof caches !== 'undefined') {
+          caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).finally(() => {
+            window.location.reload();
+          });
+          return;
+        }
+
         window.location.reload();
       }
     }
@@ -62,6 +64,12 @@ export class ChunkErrorBoundary extends Component<Props, State> {
 
   handleManualReload = () => {
     sessionStorage.removeItem('global_chunk_error_reload');
+    if (typeof caches !== 'undefined') {
+      caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k)))).finally(() => {
+        window.location.reload();
+      });
+      return;
+    }
     window.location.reload();
   };
 

@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 import { saveBookmark, removeBookmark } from '../lib/bookmarks';
-import { MCQContext } from './StudyBuddyModal';
+import type { MCQContext } from '../types';
 import { FormattedExplanation } from './FormattedExplanation';
 import { MathText } from './MathText';
 
