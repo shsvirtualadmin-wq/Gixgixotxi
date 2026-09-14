@@ -96,7 +96,7 @@ import {
   validatePromoCode,
 } from './lib/promoCode';
 
-import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess } from './lib/supabase';
+import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
@@ -600,6 +600,18 @@ export function App() {
       if (savedUni && profile) {
         if (!profile.dream_university) profile.dream_university = savedUni;
         if (!profile.target_university) profile.target_university = savedUni;
+      }
+      if (profile && (profile.is_pro || profile.plan_tier === 'pro') && profile.access_expires) {
+        const expTime = new Date(profile.access_expires).getTime();
+        if (!isNaN(expTime) && expTime <= Date.now()) {
+          profile.is_pro = false;
+          profile.plan_tier = 'free';
+          profile.plan_status = 'free';
+          profile.payment_status = 'Free Plan';
+          profile.package_name = 'Free Plan';
+          profile.subscribed_plans = ['free'];
+          profile.access_expires = null;
+        }
       }
       return profile;
     } catch {
@@ -1293,6 +1305,31 @@ export function App() {
     if (profile) {
       setUserProfile((prev) => {
         if (!prev) return profile;
+
+        // Automatic Expiry Check: If student account has expired Pro access_expires date, immediately downgrade it!
+        const isExp = (p: StudentProfile) => {
+          if ((p.is_pro || p.plan_tier === 'pro') && p.access_expires) {
+            const exp = new Date(p.access_expires).getTime();
+            return !isNaN(exp) && exp <= Date.now();
+          }
+          return false;
+        };
+
+        if (isExp(profile) || (prev && isExp(prev))) {
+          console.log('[refreshUserProfile] Pro grant expired. Downgrading to Free Tier.');
+          downgradeExpiredProStudent(id, userEmail);
+          return {
+            ...(profile || prev),
+            is_pro: false,
+            plan_tier: 'free',
+            plan_status: 'free',
+            payment_status: 'Free Plan',
+            package_name: 'Free Plan',
+            subscribed_plans: ['free'],
+            access_expires: null,
+          };
+        }
+
         // Pro Persistence Guard: If student has an active Pro grant with future expiration,
         // strictly prevent any background sync or transient remote fetch from demoting them to Free.
         if (prev.is_pro && prev.access_expires && new Date(prev.access_expires).getTime() > Date.now()) {

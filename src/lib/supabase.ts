@@ -754,6 +754,92 @@ export function invalidateStudentProfileCache(studentId?: string, updatedProfile
   }
 }
 
+/**
+ * Automatically downgrades an expired student account to Free Tier both in localStorage
+ * and remotely in Supabase (students + profiles tables) and via the server endpoint.
+ */
+export async function downgradeExpiredProStudent(userId: string, email?: string): Promise<StudentProfile | null> {
+  console.log(`[downgradeExpiredProStudent] Triggering downgrade for student ${userId} (${email})`);
+
+  // 1. Clear caches and write downgraded profile into local cache immediately
+  clearProfileCache(userId);
+  try {
+    if (userId) {
+      localStorage.removeItem(`boardly_active_pro_grant_${userId}`);
+      const cached = localStorage.getItem(`boardly_profile_${userId}`);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        const downgraded = {
+          ...parsed,
+          is_pro: false,
+          plan_tier: 'free',
+          plan_status: 'free',
+          payment_status: 'Free Plan',
+          package_name: 'Free Plan',
+          subscribed_plans: ['free'],
+          access_expires: null,
+        };
+        localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(downgraded));
+      }
+    }
+    if (email) {
+      localStorage.removeItem(`boardly_active_pro_grant_${email.toLowerCase().trim()}`);
+    }
+    localStorage.removeItem('boardly_cached_profile');
+  } catch (e) {}
+
+  const nowIso = new Date().toISOString();
+  const downgradePayload = {
+    is_pro: false,
+    plan_tier: 'free',
+    plan_status: 'free',
+    payment_status: 'Free Plan',
+    package_name: 'Free Plan',
+    subscribed_plans: ['free'],
+    access_expires: null,
+    updated_at: nowIso,
+  };
+
+  // 2. Direct Supabase update
+  try {
+    if (userId && !userId.includes('@')) {
+      await supabase.from('students').update(downgradePayload).eq('id', userId);
+      try {
+        await supabase.from('profiles').update({
+          is_pro: false,
+          subscription_tier: 'free',
+          subscription_expires_at: null,
+        }).eq('id', userId);
+      } catch (profUpdateErr) {}
+    } else if (email) {
+      await supabase.from('students').update(downgradePayload).eq('email', email.toLowerCase().trim());
+    }
+  } catch (directErr) {
+    console.warn('[downgradeExpiredProStudent] Direct Supabase write note:', directErr);
+  }
+
+  // 3. Server administrative endpoint call to guarantee database update
+  try {
+    const res = await apiFetch('/api/student/downgrade-expired', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, userEmail: email, force: true }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.profile) {
+        const norm = normalizeStudentProfileFromRow(data.profile, userId);
+        invalidateStudentProfileCache(userId, norm);
+        return norm;
+      }
+    }
+  } catch (apiErr) {
+    console.warn('[downgradeExpiredProStudent] Server endpoint error:', apiErr);
+  }
+
+  return null;
+}
+
 // Helper to sanitize student payload so only valid Supabase columns are sent
 export function sanitizeStudentForDb(data: Record<string, any>): Record<string, any> {
   if (!data) return {};
@@ -1133,32 +1219,60 @@ export async function syncUserProfile(
         const cachedRaw = dedicatedGrant || localStorage.getItem(`boardly_profile_${userId}`);
         if (cachedRaw) {
           const cachedJson = JSON.parse(cachedRaw);
-          if (cachedJson?.is_pro && cachedJson.access_expires && new Date(cachedJson.access_expires).getTime() > Date.now()) {
-            if (!finalProfile.is_pro) {
-              console.log(`[syncUserProfile] Preserving active Pro grant from local storage for ${userId}`);
-              finalProfile = {
-                ...finalProfile,
-                is_pro: true,
-                plan_tier: 'pro',
-                access_expires: cachedJson.access_expires,
-                package_name: cachedJson.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)',
-                payment_status: 'Verified & Paid',
-                plan_status: 'verified_pro',
-                requires_payment: false,
-                subscribed_plans: ['boardly_pro', 'pro'],
-              };
-              // Heal remote Supabase students table in background if out of sync
-              supabase.from('students').update({
-                is_pro: true,
-                plan_tier: 'pro',
-                access_expires: cachedJson.access_expires,
-                payment_status: 'Verified & Paid',
-                plan_status: 'verified_pro',
-              }).eq('id', user.id).then(() => {}, () => {});
+          if (cachedJson?.is_pro && cachedJson.access_expires) {
+            const expTime = new Date(cachedJson.access_expires).getTime();
+            if (!isNaN(expTime) && expTime > Date.now()) {
+              if (!finalProfile.is_pro) {
+                console.log(`[syncUserProfile] Preserving active Pro grant from local storage for ${userId}`);
+                finalProfile = {
+                  ...finalProfile,
+                  is_pro: true,
+                  plan_tier: 'pro',
+                  access_expires: cachedJson.access_expires,
+                  package_name: cachedJson.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)',
+                  payment_status: 'Verified & Paid',
+                  plan_status: 'verified_pro',
+                  requires_payment: false,
+                  subscribed_plans: ['boardly_pro', 'pro'],
+                };
+                // Heal remote Supabase students table in background if out of sync
+                supabase.from('students').update({
+                  is_pro: true,
+                  plan_tier: 'pro',
+                  access_expires: cachedJson.access_expires,
+                  payment_status: 'Verified & Paid',
+                  plan_status: 'verified_pro',
+                }).eq('id', user.id).then(() => {}, () => {});
+              }
+            } else if (!isNaN(expTime) && expTime <= Date.now()) {
+              // Expired grant found in cache - purge it
+              localStorage.removeItem(`boardly_active_pro_grant_${userId}`);
+              if (user.email) {
+                localStorage.removeItem(`boardly_active_pro_grant_${user.email.toLowerCase().trim()}`);
+              }
             }
           }
         }
       } catch (cachedErr) {}
+
+      // Automatic Expiry Check: If finalProfile has an expired Pro access_expires date, immediately downgrade it!
+      if ((finalProfile.is_pro || finalProfile.plan_tier === 'pro') && finalProfile.access_expires) {
+        const expTime = new Date(finalProfile.access_expires).getTime();
+        if (!isNaN(expTime) && expTime <= Date.now()) {
+          console.log(`[syncUserProfile] Pro access expired for student ${userId} (${user.email}). Automatically downgrading to Free Tier on load.`);
+          finalProfile = {
+            ...finalProfile,
+            is_pro: false,
+            plan_tier: 'free',
+            plan_status: 'free',
+            payment_status: 'Free Plan',
+            package_name: 'Free Plan',
+            subscribed_plans: ['free'],
+            access_expires: null,
+          };
+          downgradeExpiredProStudent(userId, user.email);
+        }
+      }
 
       // Save to memory cache & localStorage
       profileMemoryCache.set(userId, { profile: finalProfile, timestamp: Date.now() });
@@ -2551,6 +2665,25 @@ export async function fetchStudentProfileFromSupabase(
               }
             }
           } catch (guardErr) {}
+
+          // Automatic Expiry Check: If profile has an expired Pro access_expires date, immediately downgrade it!
+          if ((profile.is_pro || profile.plan_tier === 'pro') && profile.access_expires) {
+            const expTime = new Date(profile.access_expires).getTime();
+            if (!isNaN(expTime) && expTime <= Date.now()) {
+              console.log(`[fetchStudentProfileFromSupabase] Pro access expired for student ${userId} (${userEmail}). Automatically downgrading.`);
+              profile = {
+                ...profile,
+                is_pro: false,
+                plan_tier: 'free',
+                plan_status: 'free',
+                payment_status: 'Free Plan',
+                package_name: 'Free Plan',
+                subscribed_plans: ['free'],
+                access_expires: null,
+              };
+              downgradeExpiredProStudent(userId, userEmail);
+            }
+          }
 
           // Update memory & local caches
           profileMemoryCache.set(userId, { profile, timestamp: Date.now() });

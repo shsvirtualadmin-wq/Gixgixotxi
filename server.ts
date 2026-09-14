@@ -272,6 +272,25 @@ async function checkStudentIsPro(
           if (!isNaN(expTime)) {
             const valid = expTime > Date.now();
             console.log(`[checkStudentIsPro] DB rawIsPro=true with access_expires=${stData.access_expires}, valid=${valid}`);
+            if (!valid && db && stData.id) {
+              console.log(`[checkStudentIsPro] Pro access expired for student ${stData.id} (${userEmail}). Automatically downgrading to free tier.`);
+              db.from("students").update({
+                is_pro: false,
+                plan_tier: "free",
+                plan_status: "free",
+                payment_status: "Free Plan",
+                package_name: "Free Plan",
+                subscribed_plans: ["free"],
+                access_expires: null,
+                updated_at: new Date().toISOString()
+              }).eq("id", stData.id).then(() => {}, (e: any) => console.warn("[checkStudentIsPro] Downgrade error:", e));
+
+              db.from("profiles").update({
+                is_pro: false,
+                subscription_tier: "free",
+                subscription_expires_at: null
+              }).eq("id", stData.id).catch(() => {});
+            }
             return valid;
           }
         }
@@ -5639,6 +5658,94 @@ ${scopeInstruction}${excludeInstruction}`;
     }
   });
 
+  // API Endpoint: Automatically Downgrade Expired Pro Student
+  app.post("/api/student/downgrade-expired", async (req: express.Request, res: express.Response) => {
+    try {
+      const { userId, userEmail, force } = req.body || {};
+      if (!userId && !userEmail) {
+        return res.status(400).json({ success: false, error: "userId or userEmail required" });
+      }
+
+      const db = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
+      if (!db) {
+        return res.status(500).json({ success: false, error: "Database unavailable" });
+      }
+
+      // Fetch student record
+      let stQuery = db.from("students").select("id, email, is_pro, plan_tier, access_expires, payment_status, plan_status");
+      if (userId) {
+        stQuery = stQuery.eq("id", userId);
+      } else if (userEmail) {
+        stQuery = stQuery.eq("email", userEmail.toLowerCase().trim());
+      }
+      const { data: stRow, error: fetchErr } = await stQuery.maybeSingle();
+      if (fetchErr) {
+        console.warn("[/api/student/downgrade-expired] Query note:", fetchErr.message);
+      }
+
+      const now = Date.now();
+      const expTime = stRow?.access_expires ? new Date(stRow.access_expires).getTime() : 0;
+      const isActuallyExpired = !expTime || isNaN(expTime) || expTime <= now || force === true;
+
+      if (!isActuallyExpired) {
+        return res.json({
+          success: true,
+          downgraded: false,
+          message: "Account Pro access is still active and has not expired.",
+          expiresAt: stRow.access_expires,
+          remainingSeconds: Math.max(0, Math.floor((expTime - now) / 1000))
+        });
+      }
+
+      const nowIso = new Date().toISOString();
+      const downgradePayload = {
+        is_pro: false,
+        plan_tier: "free",
+        plan_status: "free",
+        payment_status: "Free Plan",
+        package_name: "Free Plan",
+        subscribed_plans: ["free"],
+        access_expires: null,
+        updated_at: nowIso,
+      };
+
+      let updateRes: any = null;
+      if (userId) {
+        updateRes = await db.from("students").update(downgradePayload).eq("id", userId).select().maybeSingle();
+      }
+      if ((!updateRes || updateRes.error || !updateRes.data) && userEmail) {
+        updateRes = await db.from("students").update(downgradePayload).eq("email", userEmail.toLowerCase().trim()).select().maybeSingle();
+      }
+
+      // Also update profiles table
+      if (userId) {
+        await db.from("profiles").update({
+          is_pro: false,
+          subscription_tier: "free",
+          subscription_expires_at: null,
+          updated_at: nowIso
+        }).eq("id", userId).catch(() => {});
+      } else if (userEmail) {
+        await db.from("profiles").update({
+          is_pro: false,
+          subscription_tier: "free",
+          subscription_expires_at: null,
+          updated_at: nowIso
+        }).eq("email", userEmail.toLowerCase().trim()).catch(() => {});
+      }
+
+      console.log(`[/api/student/downgrade-expired] Successfully downgraded student ${userId || userEmail} to Free Tier in DB.`);
+      return res.json({
+        success: true,
+        downgraded: true,
+        profile: updateRes?.data || (stRow ? { ...stRow, ...downgradePayload } : null)
+      });
+    } catch (err: any) {
+      console.error("[/api/student/downgrade-expired] Error:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Failed to downgrade expired student" });
+    }
+  });
+
   // API Endpoint: Admin Remove Student (Full Account Wipe)
   app.all("/api/admin/remove-student", async (req, res) => {
     if (req.method === "OPTIONS") {
@@ -10475,6 +10582,54 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
+
+  // Background Scheduled Job: Check and downgrade expired Pro students automatically every 60s
+  const runProExpiryCheck = async () => {
+    try {
+      const db = getSupabaseAdminClient() || supabaseServer;
+      if (!db) return;
+      const now = Date.now();
+      const { data: proStudents, error } = await db
+        .from("students")
+        .select("id, email, access_expires, is_pro, plan_tier")
+        .or("is_pro.eq.true,plan_tier.eq.pro")
+        .not("access_expires", "is", null);
+
+      if (error || !proStudents || proStudents.length === 0) return;
+
+      for (const st of proStudents) {
+        if (st.access_expires) {
+          const expTime = new Date(st.access_expires).getTime();
+          if (!isNaN(expTime) && expTime <= now) {
+            console.log(`[Pro Expiry Cron] Automatically downgrading expired student ${st.id} (${st.email})`);
+            const nowIso = new Date().toISOString();
+            await db.from("students").update({
+              is_pro: false,
+              plan_tier: "free",
+              plan_status: "free",
+              payment_status: "Free Plan",
+              package_name: "Free Plan",
+              subscribed_plans: ["free"],
+              access_expires: null,
+              updated_at: nowIso,
+            }).eq("id", st.id);
+
+            await db.from("profiles").update({
+              is_pro: false,
+              subscription_tier: "free",
+              subscription_expires_at: null,
+              updated_at: nowIso,
+            }).eq("id", st.id).catch(() => {});
+          }
+        }
+      }
+    } catch (cronErr) {
+      console.warn("[Pro Expiry Cron] Background job error:", cronErr);
+    }
+  };
+
+  setTimeout(runProExpiryCheck, 5000);
+  setInterval(runProExpiryCheck, 60000);
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`SHS Virtual Academy MCQs Server running on http://0.0.0.0:${PORT}`);

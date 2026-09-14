@@ -22,7 +22,7 @@ import {
   Check,
   Crown
 } from 'lucide-react';
-import { User, StudentProfile, fetchStudentWeaknessProfile, StudentWeaknessProfileData, evaluateStudentAccess, isUserProOrPaid } from '../lib/supabase';
+import { User, StudentProfile, fetchStudentWeaknessProfile, StudentWeaknessProfileData, evaluateStudentAccess, isUserProOrPaid, downgradeExpiredProStudent } from '../lib/supabase';
 import { HistoryItem } from '../types';
 import { InstitutionBadge, renderTargetUniversityBadge } from './InstitutionBadge';
 import { TargetUniversityModal } from './TargetUniversityModal';
@@ -161,7 +161,101 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
   monthlyTestCount = 0,
   onUpgradeClick,
 }) => {
-  const isProStudent = isUserProOrPaid(currentUser, userProfile, isAdmin);
+  // Live Pro Countdown & Expiry Engine
+  const [nowTime, setNowTime] = useState<number>(() => Date.now());
+  const [isLocallyDowngraded, setIsLocallyDowngraded] = useState<boolean>(false);
+  const hasTriggeredDowngradeRef = useRef<boolean>(false);
+
+  // Set up 1-second interval to update live countdown in real time on the dashboard
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTime(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Determine if the student profile holds a Pro grant
+  const hasProGrant = Boolean(
+    !isLocallyDowngraded &&
+    (userProfile?.is_pro || userProfile?.plan_tier === 'pro' || (isAdmin && !isLocallyDowngraded))
+  );
+
+  // Parse access_expires timestamp
+  const expiryTimestamp = React.useMemo(() => {
+    if (!userProfile?.access_expires) return null;
+    const t = new Date(userProfile.access_expires).getTime();
+    return isNaN(t) ? null : t;
+  }, [userProfile?.access_expires]);
+
+  // Reset local downgrade state if profile receives a valid future expiration
+  useEffect(() => {
+    if (expiryTimestamp && expiryTimestamp > Date.now()) {
+      hasTriggeredDowngradeRef.current = false;
+      setIsLocallyDowngraded(false);
+    }
+  }, [expiryTimestamp]);
+
+  // Target expiry time
+  const targetExpiryTime = React.useMemo(() => {
+    if (!hasProGrant) return null;
+    if (expiryTimestamp) return expiryTimestamp;
+    // Fallback if is_pro is true but access_expires is unset
+    if (userProfile?.created_at) {
+      const c = new Date(userProfile.created_at).getTime();
+      if (!isNaN(c)) return c + 365 * 24 * 3600 * 1000;
+    }
+    return Date.now() + 365 * 24 * 3600 * 1000;
+  }, [hasProGrant, expiryTimestamp, userProfile?.created_at]);
+
+  const remainingMs = targetExpiryTime ? targetExpiryTime - nowTime : 0;
+  const isProActive = Boolean(hasProGrant && targetExpiryTime && remainingMs > 0);
+  const isProStudent = isProActive;
+
+  // Format countdown string: "199d 14h 22m 05s left"
+  const countdownString = React.useMemo(() => {
+    if (!targetExpiryTime || remainingMs <= 0) return '';
+    const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
+    const days = Math.floor(totalSeconds / 86400);
+    const hours = Math.floor((totalSeconds % 86400) / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${days}d ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s left`;
+  }, [targetExpiryTime, remainingMs]);
+
+  // Exact automatic downgrade when countdown hits zero (or on load if already expired)
+  useEffect(() => {
+    if (
+      targetExpiryTime &&
+      remainingMs <= 0 &&
+      (userProfile?.is_pro || userProfile?.plan_tier === 'pro') &&
+      !hasTriggeredDowngradeRef.current
+    ) {
+      hasTriggeredDowngradeRef.current = true;
+      setIsLocallyDowngraded(true);
+
+      const downgradedProfile: StudentProfile = {
+        ...userProfile,
+        is_pro: false,
+        plan_tier: 'free',
+        plan_status: 'free',
+        payment_status: 'Free Plan',
+        package_name: 'Free Plan',
+        subscribed_plans: ['free'],
+        access_expires: null,
+      };
+
+      if (onUpdateProfile) {
+        onUpdateProfile(downgradedProfile);
+      }
+
+      const uid = userProfile.id || currentUser?.id || '';
+      const uemail = userProfile.email || currentUser?.email || undefined;
+      downgradeExpiredProStudent(uid, uemail);
+    }
+  }, [targetExpiryTime, remainingMs, userProfile, currentUser, onUpdateProfile]);
+
   const [weaknessProfile, setWeaknessProfile] = useState<StudentWeaknessProfileData | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState<boolean>(true);
   const [showUniModal, setShowUniModal] = useState<boolean>(false);
@@ -477,59 +571,25 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
       <div className="bg-white  text-slate-900  rounded-3xl p-6 sm:p-7 border border-black/10  shadow-xl relative overflow-hidden flex flex-col gap-6 transition-colors">
         <div className="absolute top-0 right-0 w-72 h-72 bg-[#F2B90C]/15  rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex flex-wrap items-center justify-between gap-3 relative z-10">
-          {/* Pro Status & Streak Badges */}
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Live Streak Header Pill */}
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic(HAPTIC_PATTERNS.light);
-                document.getElementById('streak-section-card')?.scrollIntoView({ behavior: 'smooth' });
-              }}
-              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-orange-500/15 via-amber-500/15 to-orange-500/10 border border-orange-500/30 text-orange-700 px-3 py-1 rounded-full text-xs font-black cursor-pointer hover:border-orange-500/60 active:scale-95 transition-all shadow-xs group"
-              title="Click to view full streak details"
+        <div className="flex items-center justify-between gap-3 relative z-10">
+          {/* Single Status Label */}
+          {isProActive ? (
+            <div
+              id="student-dashboard-status-label"
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-xs whitespace-nowrap shrink-0"
             >
-              <Flame className="w-3.5 h-3.5 text-orange-500 fill-orange-500" />
-              <span>{dailyStreak} Day Streak</span>
-            </button>
-
-            {(() => {
-              const access = evaluateStudentAccess(userProfile, monthlyTestCount, isAdmin);
-              const isPro = Boolean(access.isPro || isProStudent);
-              if (isPro) {
-                let expiryDateDisplay = '1 Year';
-                if (userProfile?.access_expires) {
-                  try {
-                    const d = new Date(userProfile.access_expires);
-                    if (!isNaN(d.getTime())) {
-                      expiryDateDisplay = d.toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        year: 'numeric',
-                      });
-                    }
-                  } catch {}
-                }
-                return (
-                  <div
-                    id="dashboard-pro-status-badge"
-                    className="inline-flex items-center gap-1.5 bg-gradient-to-r from-emerald-500/15 via-teal-500/15 to-emerald-500/10 border border-emerald-500/30 text-emerald-800 px-3.5 py-1 rounded-full text-xs font-black shadow-xs whitespace-nowrap shrink-0"
-                  >
-                    <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
-                    <span>Pro — expires {expiryDateDisplay}</span>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="inline-flex items-center gap-1.5 bg-blue-500/10 border border-blue-500/30 text-blue-700  px-3 py-1 rounded-full text-xs font-extrabold whitespace-nowrap shrink-0">
-                  <Zap className="w-3.5 h-3.5 text-[#1E5AFF] shrink-0" />
-                  <span>{access.currentMonthlyTests} / 2 Monthly Tests Used</span>
-                </div>
-              );
-            })()}
-          </div>
+              <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
+              <span>Pro — {countdownString}</span>
+            </div>
+          ) : (
+            <div
+              id="student-dashboard-status-label"
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 shadow-xs whitespace-nowrap shrink-0"
+            >
+              <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
+              <span>Free Tier</span>
+            </div>
+          )}
         </div>
 
         {/* Greeting Banner */}
@@ -571,31 +631,6 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
                   <span>{cls}</span>
                 </div>
               ))}
-            </div>
-          </div>
-        )}
-
-        {/* Pro Active Status Card */}
-        {isProStudent && (
-          <div
-            id="dashboard-pro-active-banner"
-            className="bg-gradient-to-r from-emerald-50 via-teal-50/50 to-emerald-50 border border-emerald-200/90 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 text-xs relative z-10 shadow-xs"
-          >
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center text-emerald-700 shrink-0">
-                <Crown className="w-5 h-5 text-amber-500 fill-amber-500" />
-              </div>
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-2">
-                  <span className="font-extrabold text-emerald-950 text-sm">Boardly Pro Active</span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100/90 text-emerald-800 border border-emerald-300">
-                    Unlimited Tests
-                  </span>
-                </div>
-                <p className="text-emerald-700 text-xs font-medium">
-                  {userProfile?.access_expires ? `Expires ${new Date(userProfile.access_expires).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}` : '1-Year Full Access Active'} • Chapter Weakness Detection & All Subjects Unlocked
-                </p>
-              </div>
             </div>
           </div>
         )}
