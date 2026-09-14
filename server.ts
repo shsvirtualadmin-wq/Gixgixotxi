@@ -2915,19 +2915,23 @@ async function startServer() {
     }
   });
 
-  // 4. Retrieval Endpoint - Full Subject Mock Test (Union of all chapters in that subject)
-  app.get("/api/mcqs/mock", async (req, res) => {
+  // 4. Retrieval Endpoint - Full Mock Test or Single Subject Mock Test (Pre-written, verified questions only)
+  app.all("/api/mcqs/mock", async (req, res) => {
     try {
-      const exam_type = String(req.query.exam_type || '').trim().toUpperCase();
-      const subject = normalizeSubjectKey(String(req.query.subject || '').trim());
-      const student_id = req.query.student_id ? String(req.query.student_id).trim() : null;
-      const defaultLimit = exam_type === 'MDCAT' ? 180 : 100;
-      const limit = Math.min(Number(req.query.limit || defaultLimit), 200);
+      const payload: any = { ...req.query, ...(req.body || {}) };
+      const exam_type = String(payload.exam_type || payload.track || '').trim().toUpperCase();
+      const rawSubject = String(payload.subject || '').trim();
+      const isFullMock = !rawSubject || rawSubject.toLowerCase().includes('full mock') || rawSubject.toLowerCase().includes('all') || payload.isFullMock === true;
+      const subject = isFullMock ? '' : normalizeSubjectKey(rawSubject);
+      const stream = String(payload.stream || payload.group || 'Pre-Engineering').trim();
+      const student_id = payload.student_id ? String(payload.student_id).trim() : null;
+      const defaultLimit = exam_type === 'MDCAT' ? 180 : (exam_type === 'NET' || exam_type === 'NUTECH' ? 200 : 100);
+      const limit = Math.min(Number(payload.limit || payload.questionCount || payload.count || defaultLimit), 250);
 
-      if (!exam_type || !subject) {
+      if (!exam_type) {
         return res.status(400).json({
           success: false,
-          error: "Required parameters: exam_type, subject"
+          error: "Required parameter: exam_type"
         });
       }
 
@@ -2936,13 +2940,16 @@ async function startServer() {
 
       if (db && student_id) {
         try {
-          const { data: attempts } = await db
+          let attemptsQuery = db
             .from('student_attempted_mcqs')
             .select('mcq_id')
             .eq('student_id', student_id)
             .eq('exam_type', exam_type)
-            .eq('subject', subject)
             .gte('attempted_at', new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString());
+          if (subject) {
+            attemptsQuery = attemptsQuery.eq('subject', subject);
+          }
+          const { data: attempts } = await attemptsQuery;
           if (Array.isArray(attempts)) {
             excludedIds = attempts.map(a => a.mcq_id).filter(Boolean);
           }
@@ -2955,8 +2962,11 @@ async function startServer() {
         let query = db
           .from('mcqs')
           .select('*')
-          .eq('exam_type', exam_type)
-          .eq('subject', subject);
+          .eq('exam_type', exam_type);
+
+        if (subject) {
+          query = query.eq('subject', subject);
+        }
 
         if (excludedIds.length > 0) {
           query = query.not('id', 'in', `(${excludedIds.slice(0, 100).join(',')})`);
@@ -2967,7 +2977,7 @@ async function startServer() {
           const shuffled = [...data].sort(() => Math.random() - 0.5).slice(0, limit);
           return res.json({
             success: true,
-            filter: { exam_type, subject },
+            filter: { exam_type, subject: subject || 'Full Mock' },
             count: shuffled.length,
             questions: shuffled,
             source: 'supabase'
@@ -2975,23 +2985,68 @@ async function startServer() {
         }
       }
 
-      // Local fallback
+      // Local fallback from structured_mcqs.json
       const allLocal = loadLocalMcqs();
-      let matched = allLocal.filter(
-        item => item.exam_type === exam_type && item.subject === subject
-      );
+      let matched = allLocal.filter(item => {
+        if (item.exam_type !== exam_type) return false;
+        if (subject) {
+          return item.subject === subject || item.subject.toLowerCase() === subject.toLowerCase();
+        }
+        return true;
+      });
 
       if (excludedIds.length > 0) {
         matched = matched.filter(item => !excludedIds.includes(item.id));
       }
 
-      const shuffled = [...matched].sort(() => Math.random() - 0.5).slice(0, limit);
+      if (matched.length > 0) {
+        const shuffled = [...matched].sort(() => Math.random() - 0.5).slice(0, limit);
+        return res.json({
+          success: true,
+          filter: { exam_type, subject: subject || 'Full Mock' },
+          count: shuffled.length,
+          questions: shuffled,
+          source: 'local_file'
+        });
+      }
+
+      // Prebuilt generator fallback to guarantee 100% verified question availability without live AI
+      let fallbackQuestions: any[] = [];
+      const seenSet = new Set<string>(excludedIds);
+
+      if (isFullMock) {
+        switch (exam_type) {
+          case 'MUET': fallbackQuestions = generateMuetFullMockBank(stream, seenSet); break;
+          case 'NET': fallbackQuestions = generateNetFullMockBank(seenSet); break;
+          case 'FAST': fallbackQuestions = generateFastFullMockBank(seenSet); break;
+          case 'ECAT': fallbackQuestions = generateEcatFullMockBank(stream, seenSet); break;
+          case 'ETEA': fallbackQuestions = generateEteaFullMockBank(stream, seenSet); break;
+          case 'NUMS': fallbackQuestions = generateNumsFullMockBank(seenSet); break;
+          case 'GIKI': fallbackQuestions = generateGikiFullMockBank(seenSet); break;
+          case 'USAT': fallbackQuestions = generateUsatFullMockBank(stream, seenSet); break;
+          case 'NED': fallbackQuestions = generateNedFullMockBank(seenSet); break;
+          case 'PIEAS': fallbackQuestions = generatePieasFullMockBank(stream, seenSet); break;
+          case 'NAT': fallbackQuestions = generateNatFullMockBank(stream, seenSet); break;
+          case 'IBA': fallbackQuestions = generateIbaFullMockBank(seenSet); break;
+          case 'AKU': fallbackQuestions = generateAkuFullMockBank(seenSet); break;
+          case 'LUMS': fallbackQuestions = generateLumsFullMockBank(stream, seenSet); break;
+          case 'NUML': fallbackQuestions = generateNumlFullMockBank(stream, seenSet); break;
+          case 'HITEC': fallbackQuestions = generateHitecFullMockBank(stream, seenSet); break;
+          case 'NUTECH': fallbackQuestions = generateNutechFullMockBank(stream, seenSet); break;
+          case 'TCAT': fallbackQuestions = generateTCATFullMockBank(stream, seenSet); break;
+          case 'MDCAT': fallbackQuestions = generateMDCATFullMockBank(seenSet); break;
+          default: fallbackQuestions = generateMuetFullMockBank(stream, seenSet); break;
+        }
+      } else {
+        fallbackQuestions = getEntranceExamQuestions(exam_type, subject, limit, seenSet);
+      }
+
       return res.json({
         success: true,
-        filter: { exam_type, subject },
-        count: shuffled.length,
-        questions: shuffled,
-        source: 'local_file'
+        filter: { exam_type, subject: subject || 'Full Mock' },
+        count: fallbackQuestions.length,
+        questions: fallbackQuestions.slice(0, limit),
+        source: 'verified_prebuilt_bank'
       });
     } catch (err: any) {
       console.error("[/api/mcqs/mock error]:", err);

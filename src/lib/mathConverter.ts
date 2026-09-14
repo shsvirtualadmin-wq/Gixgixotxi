@@ -77,28 +77,63 @@ export function formatChemicalFormulas(str: string): string {
 export function convertSlashFractions(str: string): string {
   let s = str;
 
-  // 1. Function / Function e.g. P(x) / Q(x), sin(x) / x
-  s = s.replace(/(?<![\w\\])([a-zA-Z]\([a-zA-Z0-9,\s\+\-]+\))\s*\/\s*([a-zA-Z]\([a-zA-Z0-9,\s\+\-]+\))(?![\w\\])/g, '\\frac{$1}{$2}');
+  // Protect \text{...} blocks from slash fraction conversion so units like mg/L or m/s are preserved
+  const textBlocks: string[] = [];
+  s = s.replace(/\\text\{[^{}]*\}/g, (match) => {
+    textBlocks.push(match);
+    return `__TEXT_BLOCK_${textBlocks.length - 1}__`;
+  });
+
+  // 1. Function / Function e.g. P(x) / Q(x), sin(x) / x, sin(3*θ)/sin(theta), \sin(3\theta)/\sin(\theta)
+  s = s.replace(
+    /(?<![\w\\])(\\?(?:sin|cos|tan|cot|sec|csc|ln|log|exp|arcsin|arccos|arctan|sinh|cosh|tanh|[a-zA-Z])\s*\(((?:[^()]|\([^()]*\))+)\))\s*\/\s*(\\?(?:sin|cos|tan|cot|sec|csc|ln|log|exp|arcsin|arccos|arctan|sinh|cosh|tanh|[a-zA-Z])\s*\(((?:[^()]|\([^()]*\))+)\))(?![\w\\])/gi,
+    '\\frac{$1}{$3}'
+  );
 
   // 2. Bracketed denominator with optional exponent: e.g. 1 / [(x - 1)(x + 2)], (2x + 3) / [(x - 1)(x^2 + 1)]
+  const unwrapOuterParensOnly = (raw: string): string => {
+    let clean = raw.trim();
+    if (clean.startsWith('(') && clean.endsWith(')')) {
+      let depth = 0;
+      let isSinglePair = true;
+      for (let i = 0; i < clean.length - 1; i++) {
+        if (clean[i] === '(') depth++;
+        else if (clean[i] === ')') {
+          depth--;
+          if (depth === 0) { isSinglePair = false; break; }
+        }
+      }
+      if (isSinglePair) return clean.slice(1, -1).trim();
+    }
+    return clean;
+  };
+
   s = s.replace(/\(((?:[^()]|\([^()]*\))+)\)\s*\/\s*\[([^\[\]]+)\]((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, (_m, num, den, exp) => {
-    let cleanDen = den.replace(/^\s*\((.*)\)\s*$/, '$1');
-    return `\\frac{${num}}{${cleanDen}${exp}}`;
+    return `\\frac{${num}}{${unwrapOuterParensOnly(den)}${exp || ''}}`;
   });
   s = s.replace(/(?<![\\a-zA-Z0-9_])([a-zA-Z0-9\^_\{\}\+\-\*\\]+)\s*\/\s*\[([^\[\]]+)\]((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, (_m, num, den, exp) => {
-    let cleanDen = den.replace(/^\s*\((.*)\)\s*$/, '$1');
-    return `\\frac{${num}}{${cleanDen}${exp}}`;
+    return `\\frac{${num}}{${unwrapOuterParensOnly(den)}${exp || ''}}`;
   });
 
-  // 3. (numer) / (denom) with optional exponent and up to 1 level of nested parens:
-  // e.g. (v0^2 * sin^2(theta)) / (2g), (2x) / (1 - x^2), (x + 1) / (x - 2)^2
-  s = s.replace(/\(((?:[^()]|\([^()]*\))+)\)\s*\/\s*\(((?:[^()]|\([^()]*\))+)\)((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, '\\frac{$1}{$2$3}');
+  // 3. (numer) / (denom) with optional function prefix and exponent:
+  // e.g. (v0^2 * sin^2(theta)) / (2g), (2x) / (1 - x^2), (x + 1) / (x - 2)^2, (sin(3*θ)) / (sin(theta))
+  s = s.replace(/(?:(\\?[a-zA-Z0-9_]+)\s*)?\(((?:[^()]|\([^()]*\))+)\)\s*\/\s*(?:(\\?[a-zA-Z0-9_]+)\s*)?\(((?:[^()]|\([^()]*\))+)\)((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, (_m, fn1, num, fn2, den, exp) => {
+    const fullNum = fn1 ? `${fn1}(${num})` : num;
+    const fullDen = (fn2 ? `${fn2}(${den})` : den) + (exp || '');
+    return `\\frac{${fullNum}}{${fullDen}}`;
+  });
 
   // 4. (numer) / simple denom: e.g. (x + 1) / 2, (Ax + B) / x^2, (v0^2 * sin(2*theta)) / g
-  s = s.replace(/\(((?:[^()]|\([^()]*\))+)\)\s*\/\s*([+-]?[a-zA-Z0-9\^_\{\}\\]+)/g, '\\frac{$1}{$2}');
+  s = s.replace(/(?:(\\?[a-zA-Z0-9_]+)\s*)?\(((?:[^()]|\([^()]*\))+)\)\s*\/\s*([+-]?[a-zA-Z0-9\^_\{\}\\]+)/g, (_m, fn1, num, den) => {
+    const fullNum = fn1 ? `${fn1}(${num})` : num;
+    return `\\frac{${fullNum}}{${den}}`;
+  });
 
   // 5. simple term / (denom) with optional exponent: e.g. A / (x - 1)^2, 2 / (1 + x^2), 2x / (1 + x^2), -2 / (1 + x^2), 1 / (x + 2)
-  s = s.replace(/(?<![\\a-zA-Z0-9_])([+-]?[a-zA-Z0-9\^_\{\}\\]+)\s*\/\s*\(((?:[^()]|\([^()]*\))+)\)((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, '\\frac{$1}{$2$3}');
+  s = s.replace(/(?<![\\a-zA-Z0-9_])([+-]?[a-zA-Z0-9\^_\{\}\\]+)\s*\/\s*(?:(\\?[a-zA-Z0-9_]+)\s*)?\(((?:[^()]|\([^()]*\))+)\)((?:\^[0-9a-zA-Z]+|\^\{[^\}]+\})?)/g, (_m, num, fn2, den, exp) => {
+    const fullDen = (fn2 ? `${fn2}(${den})` : den) + (exp || '');
+    return `\\frac{${num}}{${fullDen}}`;
+  });
 
   // 6. Term / sqrt denominator: e.g. 1 / \sqrt{\mu_0 \epsilon_0}, x_0 / \sqrt{2}, 1 / \sqrt{2}
   s = s.replace(/(?<![\\a-zA-Z0-9_])([a-zA-Z0-9_\^]+)\s*\/\s*(\\sqrt\{[^{}]*\})/g, '\\frac{$1}{$2}');
@@ -119,6 +154,9 @@ export function convertSlashFractions(str: string): string {
   s = s.replace(/\\frac\{([^}]+)\}\{\(\(([^)]+)\)\(([^)]+)\)\)\}/g, '\\frac{$1}{($2)($3)}');
   s = s.replace(/\\frac\{([^}]+)\}\{\(\(([^()]+)\)\)\}/g, '\\frac{$1}{($2)}');
 
+  // Restore \text{...} blocks
+  s = s.replace(/__TEXT_BLOCK_(\d+)__/g, (_m, idx) => textBlocks[Number(idx)]);
+
   return s;
 }
 
@@ -128,6 +166,9 @@ export function convertSlashFractions(str: string): string {
 export function formatLatexContent(rawLatex: string): string {
   if (!rawLatex) return '';
   let s = rawLatex.trim();
+
+  // Repair any invalid \frac leaked inside \text{...} blocks (e.g. \text{ \frac{mg}{L} } -> \text{ mg/L })
+  s = s.replace(/\\text\{([^{}]*)\\frac\{([^{}]*)\}\{([^{}]*)\}([^{}]*)\}/g, '\\text{$1$2/$3$4}');
 
   // Normalize dashes
   s = s.replace(/[−–—]/g, '-');
@@ -181,19 +222,22 @@ export function formatLatexContent(rawLatex: string): string {
   s = s.replace(/\bdv\/dt\b/gi, '\\frac{dv}{dt}');
 
   // Greek letters (WITH negative lookbehind (?<!\\) so \gamma, \rho, etc. are NEVER doubled!)
-  s = s.replace(/(?<!\\)\b(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)\b/g, '\\$1');
+  s = s.replace(/(?<!\\)\b(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)\b/gi, (match) => `\\${match.toLowerCase()}`);
   s = s.replace(/(?<!\\)\b(Delta|Gamma|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)\b/g, '\\$1');
   s = s.replace(/π/g, '\\pi ').replace(/θ/g, '\\theta ').replace(/λ/g, '\\lambda ').replace(/μ/g, '\\mu ')
        .replace(/ω/g, '\\omega ').replace(/α/g, '\\alpha ').replace(/β/g, '\\beta ').replace(/γ/g, '\\gamma ')
        .replace(/δ/g, '\\delta ').replace(/σ/g, '\\sigma ').replace(/ρ/g, '\\rho ').replace(/ν/g, '\\nu ')
-       .replace(/Δ/g, '\\Delta ').replace(/Φ/g, '\\Phi ').replace(/ψ/g, '\\psi ');
+       .replace(/Δ/g, '\\Delta ').replace(/Φ/g, '\\Phi ').replace(/ψ/g, '\\psi ')
+       .replace(/ε/g, '\\epsilon ').replace(/η/g, '\\eta ').replace(/ζ/g, '\\zeta ').replace(/κ/g, '\\kappa ')
+       .replace(/ξ/g, '\\xi ').replace(/τ/g, '\\tau ').replace(/υ/g, '\\upsilon ').replace(/χ/g, '\\chi ')
+       .replace(/Ψ/g, '\\Psi ').replace(/Ω/g, '\\Omega ').replace(/∞/g, '\\infty ');
   s = s.replace(/(?:\\mu_0|μ0|μ_0|mu_0)/g, '\\mu_0');
   s = s.replace(/(?:\\epsilon_0|ε0|ε_0|epsilon_0)/g, '\\epsilon_0');
 
   // Function mappings: f: A -> B or f: X \to Y
   s = s.replace(/\b([fghFGH])\s*:\s*([A-Za-z0-9_\{\}\mathbb\[\],\s\^]+?)\s*(?:->|-->|→|\\to)\s*([A-Za-z0-9_\{\}\mathbb\[\],\s\^]+?)(?=[.,;!?\s]|$|\))/g, '$1: $2 \\to $3');
 
-  // Physics and math variable subscripts
+  // Physics and math variable subscripts: e.g. a1 -> a_{1}, a_1, F_net, K.E.
   s = s.replace(/\bF_?net\b/gi, 'F_{\\text{net}}');
   s = s.replace(/\bK\.?E\.?(?:_?max|max)\b/gi, '\\text{K.E.}_{\\text{max}}');
   s = s.replace(/\bK\.?E\.?\b/gi, '\\text{K.E.}');
@@ -201,7 +245,7 @@ export function formatLatexContent(rawLatex: string): string {
   s = s.replace(/\bhnu\b/gi, 'h\\nu');
   s = s.replace(/\bF_?c\b/g, 'F_c');
   s = s.replace(/\ba_?c\b/g, 'a_c');
-  s = s.replace(/([PVTmrvaxyz])(\d+)/g, '$1_{$2}');
+  s = s.replace(/\b([a-zA-Z])(\d+)\b/g, '$1_{$2}');
   s = s.replace(/(?<!\\)([PVTmrvaxyz])_([a-zA-Z0-9]+)/g, (_m, v, sub) => {
     if (/^\d+$/.test(sub) || sub.length === 1) return `${v}_{${sub}}`;
     return `${v}_{\\text{${sub}}}`;
@@ -236,12 +280,18 @@ export function formatLatexContent(rawLatex: string): string {
 
   // Standard math functions
   s = s.replace(/(?<!\\)\b(sin|cos|tan|sec|csc|cot|sinh|cosh|tanh|arcsin|arccos|arctan|arcsec|arccsc|arccot|ln|log|det|exp)\b/g, '\\$1');
-  s = s.replace(/(?<!\\)\blim_([a-zA-Z0-9\{\}\\\+\-\>]+)/gi, (_m, sub) => {
-    const cleanSub = sub.replace(/(?:->|-->)/g, '\\to ');
+  // Limits with arrow or infinity
+  s = s.replace(/(?<!\\)\blim\s*_(?:\{([^{}]+)\}|([a-zA-Z0-9→\-\\>∞]+))/gi, (_m, g1, g2) => {
+    let cleanSub = (g1 || g2).replace(/(?:->|-->|→)/g, '\\to ').replace(/\\?infty/g, '\\infty ');
+    return `\\lim_{${cleanSub.trim()}}`;
+  });
+  s = s.replace(/(?<!\\)\blim_([a-zA-Z0-9\{\}\\\+\-\>→∞]+)/gi, (_m, sub) => {
+    let cleanSub = sub.replace(/(?:->|-->|→)/g, '\\to ').replace(/\\?infty/g, '\\infty ');
+    if (!cleanSub.startsWith('{')) cleanSub = `{${cleanSub}}`;
     return `\\lim_{${cleanSub}}`;
   });
   s = s.replace(/\blim\s*\(([^)]+)\)/gi, (_m, sub) => {
-    const cleanSub = sub.replace(/(?:->|-->)/g, '\\to ');
+    const cleanSub = sub.replace(/(?:->|-->|→)/g, '\\to ').replace(/\\?infty/g, '\\infty ');
     return `\\lim_{${cleanSub}}`;
   });
 
@@ -256,19 +306,26 @@ export function formatLatexContent(rawLatex: string): string {
     return `${fn}(${formattedArg})`;
   });
 
-  // Exponents & Superscripts: e.g. e^(3x) -> e^{3x}, e^x -> e^{x}, x^2 -> x^{2}
+  // Exponents & Superscripts: e.g. e^(3x) -> e^{3x}, e^x -> e^{x}, x^2 -> x^{2}, (1+1/n)^{3n}
   s = s.replace(/\^[\(\[]([^\)\]]+)[\)\]]/g, '^{$1}');
   s = s.replace(/\^([+\-]?[a-zA-Z0-9]+)(?![a-zA-Z0-9\{])/g, '^{$1}');
 
-  // Multiplication asterisks: e.g. 10*sqrt(3) -> 10 \sqrt{3}, 2*arctan(x) -> 2 \arctan(x), 3 * 10^8 -> 3 \times 10^{8}
+  // Multiplication asterisks: e.g. 10*sqrt(3) -> 10 \sqrt{3}, 2*arctan(x) -> 2 \arctan(x), 3 * 10^8 -> 3 \times 10^{8}, 3*θ -> 3 \theta, a1*x -> a_{1} x
   s = s.replace(/(\d+(?:\.\d+)?)\s*\*\s*10\^/g, '$1 \\times 10^');
   s = s.replace(/(\d+(?:\.\d+)?)\s*\*\s*(\d+(?:\.\d+)?)/g, '$1 \\times $2');
-  s = s.replace(/(\d+(?:\.\d+)?)\s*\*\s*(\\sqrt|\\pi|\\[a-zA-Z]+|[a-zA-Z])/g, '$1 $2');
-  s = s.replace(/([a-zA-Z0-9\)\}\]])\s*\*\s*(\\sqrt|\\sin|\\cos|\\tan|\\arctan|\\ln|\\log|\\[a-zA-Z]+)/g, '$1 $2');
+  s = s.replace(/([a-zA-Z0-9\)])\s*\*\s*(\\?[a-zA-Z]+)/g, '$1 $2');
+  s = s.replace(/([a-zA-Z])(\d+)\s*\*\s*([a-zA-Z])/g, '$1_{$2} $3');
   s = s.replace(/([a-zA-Z0-9\)\}\]])\s*\*\s*([a-zA-Z0-9\(\{\[])/g, '$1 \\cdot $2');
+  s = s.replace(/\s*\*\s*/g, ' \\cdot ');
 
   // Convert general slash fractions outside of existing \frac and \sqrt
   s = convertSlashFractions(s);
+
+  // Parentheses sizing around fractions
+  s = s.replace(/(?<!\\left)\((\\frac\{[^}]+\}\{[^}]+\}[^\)]*)\)(?!\\right)/g, '\\left($1\\right)');
+  s = s.replace(/(?<!\\left)\((1\s*[\+\-]\s*\\frac\{[^}]+\}\{[^}]+\})\)(?!\\right)/g, '\\left($1\\right)');
+  s = s.replace(/\\left\s*\\left/g, '\\left');
+  s = s.replace(/\\right\s*\\right/g, '\\right');
 
   // Arrows: -> or \rightarrow -> \to
   s = s.replace(/\s*(?:->|-->|\\rightarrow)\s*/g, ' \\to ');
@@ -287,10 +344,11 @@ export function formatLatexContent(rawLatex: string): string {
   s = s.replace(/\b(km\/s)\b/g, '\\text{ km/s}');
   s = s.replace(/\b(km\/h)\b/g, '\\text{ km/h}');
 
-  // Add \displaystyle for stacked fractions and matrices in options/formulas
-  if (!s.includes('\\displaystyle') && (/\\frac\{|\\begin\{(?:pmatrix|bmatrix|vmatrix|matrix|array)\}/.test(s))) {
+  // Add \displaystyle for stacked fractions, limits, and matrices in options/formulas
+  if (!s.includes('\\displaystyle') && (/\\frac\{|\\lim_|\\begin\{(?:pmatrix|bmatrix|vmatrix|matrix|array)\}/.test(s))) {
     s = '\\displaystyle ' + s;
   }
+  s = s.replace(/(?:\\displaystyle\s*)+/g, '\\displaystyle ');
 
   // Balance braces
   let openCount = (s.match(/\{/g) || []).length;
@@ -331,15 +389,32 @@ export function isPureMathFormula(str: string): boolean {
     return false;
   }
 
+  // If it has multiple normal English prose words (words >= 3 letters that are not standard math symbols/functions), it is NOT a pure math formula
+  const words = s.match(/\b[a-zA-Z]{3,}\b/g) || [];
+  const allowedMathWords = new Set([
+    'sin', 'cos', 'tan', 'cot', 'sec', 'csc', 'sinh', 'cosh', 'tanh', 'exp', 'log', 'lim', 'det', 'adj',
+    'dim', 'gcd', 'lcm', 'deg', 'rad', 'min', 'max', 'arg', 'inf', 'sup', 'ker', 'img', 'mod',
+    'sqrt', 'arcsin', 'arccos', 'arctan', 'theta', 'alpha', 'beta', 'gamma', 'lambda', 'omega',
+    'sigma', 'delta', 'mu_0', 'epsilon_0', 'text', 'frac', 'left', 'right', 'mathbf', 'mathrm'
+  ]);
+  const englishWordCount = words.filter(w => !allowedMathWords.has(w.toLowerCase())).length;
+  if (englishWordCount >= 2) {
+    return false;
+  }
+
   // Check if it has math operators, variables, numbers, functions, fractions, units
-  const hasMathChar = /[\^_\{\}\\\/\+\-\*=\<\>≤≥≠≈∝∫√πθλωαβγδσμρνΔΦ]/.test(s);
-  const hasMathKeyword = /\b(sqrt|sin|cos|tan|cot|sec|csc|ln|log|lim|dy\/dx|dM\/dt|dv\/dt|dx|dy|dt|mu_0|epsilon_0|theta|alpha|beta|gamma|lambda|omega|pi|rho|sigma)\b/i.test(s);
+  const hasMathChar = /[\^_\{\}\\\/\+\-\*=\<\>≤≥≠≈∝∫√πθλωαβγδσμρνΔΦψεηζικξτυχ→∞±]/.test(s);
+  const hasMathKeyword = /\b(sqrt|sin|cos|tan|cot|sec|csc|ln|log|lim|dy\/dx|dM\/dt|dv\/dt|dx|dy|dt|mu_0|epsilon_0|theta|alpha|beta|gamma|lambda|omega|pi|rho|sigma|delta|phi|psi)\b/i.test(s);
   const hasFunctionMapping = /\b[fghFGH]\s*:\s*[A-Za-z0-9_\{\}\mathbb\[\],\s\^]+\s*(?:->|-->|→|\\to)\s*[A-Za-z0-9_\{\}\mathbb\[\],\s\^]+\b/.test(s);
   const hasPureFraction = /^[+-]?(?:[a-zA-Z0-9\(\)\^_\{\}\*\s\\]+)\s*\/\s*(?:[a-zA-Z0-9\(\)\^_\{\}\*\s\\]+)$/.test(s);
   const hasSqrt = /(?:^|[\s\+\-\*\/])(?:\\?sqrt\b|√)/i.test(s);
   const hasDerivative = /\b(dy\/dx|d\^?2y\/dx\^?2|d2y\/dx2|df\/dx|dM\/dt|dv\/dt|d\/dx|d\/dt)\b/i.test(s);
-  const hasOnlyMathAndUnits = /^[+-]?[0-9a-zA-Z\s\(\)\^\*\/\+\-\.,\\_\{\}=<>|]*(?:\s*(?:N|J|W|m\/s|m\/s\^2|m\/s²|kg|m|s|Hz|V|Pa|rad|deg|rad\/s))?$/.test(s);
+  const hasCompoundTrigOrFraction = /(?:sin|cos|tan|cot|sec|csc)\s*\([^)]+\)\s*\/\s*(?:sin|cos|tan|cot|sec|csc)\s*\([^)]+\)/i.test(s);
+  const hasLimit = /\blim\s*[_({]/i.test(s);
+  const hasOnlyMathAndUnits = /^[+-]?[0-9a-zA-Z\s\(\)\[\]\^\*\/\+\-\.,\\_\{\}=<>|πθλωαβγδσμρνΔΦψεηζικξτυχ→∞≠≤≥≈∝±]*(?:\s*(?:N|J|W|m\/s|m\/s\^2|m\/s²|kg|m|s|Hz|V|Pa|rad|deg|rad\/s|\\text\{[^}]+\}))?$/i.test(s);
 
+  if (hasCompoundTrigOrFraction && hasOnlyMathAndUnits) return true;
+  if (hasLimit && hasOnlyMathAndUnits) return true;
   if (hasFunctionMapping) return true;
   if (hasPureFraction) return true;
   if (hasSqrt && hasOnlyMathAndUnits) return true;
@@ -372,6 +447,28 @@ export function autoDetectAndConvertMath(text: string): string {
   };
 
   // Otherwise, it is a mixed sentence (question text or explanation).
+
+  // 0a. Limits with argument and powers: e.g. "lim_{n→∞}(1+1/n)^{3n}", "lim_{x->0} sin(x)/x", "\lim_{x \to 0} \frac{\sin(7x)}{x}"
+  str = applyOutsideMath(str, (chunk) =>
+    chunk.replace(/(?<![\$\w])(?:\\?lim\s*(?:_\{[^}]+\}|_\([^\)]+\)|_[a-zA-Z0-9→\-\\>∞]+))\s*(?:\\frac\{(?:[^{}]|\{[^{}]*\})+\}\{(?:[^{}]|\{[^{}]*\})+\}|(?:\((?:[^()]|\([^()]*\))+\)|\[(?:[^\[\]]|\[[^\[\]]*\])+\])(?:\^\{[^}]+\}|\^[a-zA-Z0-9]+)?|[a-zA-Z0-9\^_\{\}\\\/\+\-\*]+)/gi, (match) => {
+      return `$${formatLatexContent(match)}$`;
+    })
+  );
+
+  // 0b. Standalone LaTeX fractions: e.g. "\frac{\sin(7x)}{x}", "\frac{1}{2}"
+  str = applyOutsideMath(str, (chunk) =>
+    chunk.replace(/(?<![\$\w])([+-]?(?:\\?[a-zA-Z0-9]+\s*)?\\frac\{(?:[^{}]|\{[^{}]*\})+\}\{(?:[^{}]|\{[^{}]*\})+\})(?![\$\w])/g, (_m, match) => {
+      return `$${formatLatexContent(match)}$`;
+    })
+  );
+
+  // 0b. Compound trig / function fractions: e.g. "sin(3*θ)/sin(theta) - cos(3*θ)/cos(theta)"
+  str = applyOutsideMath(str, (chunk) =>
+    chunk.replace(/(?<![\$\w])(?:\\?(?:sin|cos|tan|cot|sec|csc)\s*\(((?:[^()]|\([^()]*\))+)\)\s*\/\s*\\?(?:sin|cos|tan|cot|sec|csc)\s*\(((?:[^()]|\([^()]*\))+)\))(?:\s*[\+\-\*\/]\s*(?:\\?(?:sin|cos|tan|cot|sec|csc)\s*\(((?:[^()]|\([^()]*\))+)\)\s*\/\s*\\?(?:sin|cos|tan|cot|sec|csc)\s*\(((?:[^()]|\([^()]*\))+)\)))*/gi, (match) => {
+      return `$${formatLatexContent(match)}$`;
+    })
+  );
+
   // 1. Function mappings: e.g. "f: A -> B" -> "$f: A \to B$"
   str = applyOutsideMath(str, (chunk) =>
     chunk.replace(/\b([fghFGH]\s*:\s*[A-Za-z0-9_\{\}\mathbb\[\],\s\^]+?\s*(?:->|-->|→|\\to)\s*[A-Za-z0-9_\{\}\mathbb\[\],\s\^]+?)(?=[.,;!?\s]|$|\))/g, (_m, match) => {
@@ -382,11 +479,11 @@ export function autoDetectAndConvertMath(text: string): string {
   // 2. Equations with functions and fractions: e.g. "y = arctan((2x) / (1 - x²))", "v = \sqrt{\gamma P / \rho}", "\gamma = Cp/Cv"
   const stopWords = '(?:\\s+(?:what|which|where|when|for|if|with|then|is|and|or|in|at|by|such|so|find|evaluate|calculate|defined)\\b|$)';
   str = applyOutsideMath(str, (chunk) => {
-    let s = chunk.replace(new RegExp(`\\b([fgh]\\([a-zA-Z0-9,\\s]+\\)\\s*=\\s*[0-9a-zA-Z\\^\\*\\/\\+\\-\\s\\(\\)\\\\]+?)(?=[.,;!?]|${stopWords})`, 'i'), (match) => {
+    let s = chunk.replace(new RegExp('\\b([fgh]\\([a-zA-Z0-9,\\s]+\\)\\s*=\\s*[0-9a-zA-Z\\^\\*\\/\\+\\-\\s\\(\\)\\\\]+?)(?=[.,;!?]|' + stopWords + ')', 'i'), (match) => {
       return `$${formatLatexContent(match)}$`;
     });
 
-    s = s.replace(new RegExp(`(?<![\\$\\w])((?:\\\\[a-zA-Z]+|[a-zA-Z])(?:\\([a-zA-Z0-9]+\\))?\\s*=\\s*(?:\\\\?[a-zA-Z]+\\s*\\(((?:[^()]|\\([^()]*\\))+\\))|[a-zA-Z0-9\\(\\)\\[\\]\\^\\_\\{\\}\\+\\-\\*\\/\\s\\\\]+?))(?=[.,;!?]|${stopWords})`, 'g'), (match) => {
+    s = s.replace(/(?<![\$\w])((?:\\[a-zA-Z]+|[a-zA-Z])(?:\([a-zA-Z0-9]+\))?\s*=\s*(?:\\?[a-zA-Z]+\s*\((?:[^()]|\([^()]*\))+\)|[a-zA-Z0-9\(\)\[\]\^_{}+\-*/\s\\]+?))(?=[.,;!?]|(?:\s+(?:what|which|where|when|for|if|with|then|is|and|or|in|at|by|such|so|find|evaluate|calculate|defined)\b|$))/g, (match) => {
       if (/[\^_\/\+\-\*√]|sqrt|arctan|tan|sin|cos|ln|log|\\/.test(match)) {
         return `$${formatLatexContent(match)}$`;
       }
@@ -417,17 +514,28 @@ export function autoDetectAndConvertMath(text: string): string {
     })
   );
 
-  // 6. Standalone slash fractions: e.g. 1 / [(x - 1)(x + 2)], (x + 1) / [x^2(x - 2)], 2 / (1 + x²)
+  // 6. Scientific notation: e.g. 3.0 * 10^8, 1.5 * 10^-3
+  str = applyOutsideMath(str, (chunk) =>
+    chunk.replace(/(?<![\$\w])([+-]?\d+(?:\.\d+)?)\s*\*\s*10\^([+\-]?[0-9]+)(?![\$\w])/g, (_m, coef, exp) => {
+      return `$${coef} \\times 10^{${exp}}$`;
+    })
+  );
+
+  // 7. Standalone slash fractions: e.g. 1 / [(x - 1)(x + 2)], (x + 1) / [x^2(x - 2)], 2 / (1 + x²)
   str = applyOutsideMath(str, (chunk) =>
     chunk.replace(/(?<![\$\w])((?:[+-]?[a-zA-Z0-9\(\)]+)\s*\/\s*(?:\[[^\[\]]+\]|\(((?:[^()]|\([^()]*\))+)\)|[a-zA-Z0-9]+(?:\^[0-9]+)?))(?![\$\w])/g, (_m, match) => {
       if (match.includes('/')) {
-        return `$\\displaystyle ${formatLatexContent(match)}$`;
+        // Avoid converting standard standalone unit strings like m/s or km/h
+        if (/^(?:m\/s|km\/h|kJ\/mol|cm\/s|g\/cm|N\/m)$/i.test(match.trim())) {
+          return match;
+        }
+        return `$${formatLatexContent(match)}$`;
       }
       return match;
     })
   );
 
-  // 7. Standalone caret exponents: e.g. x^2, e^(3x), 10^-3, 2^n
+  // 8. Standalone caret exponents: e.g. x^2, e^(3x), 10^-3, 2^n
   str = applyOutsideMath(str, (chunk) =>
     chunk.replace(/(?<![\$\w])(?:[a-zA-Z0-9_]+|\([^\)\n]+\))\^(?:\([^\)\n]+\)|[+\-]?[a-zA-Z0-9]+)(?![\$\w])/g, (match) => {
       if (/^[0-9]+$/.test(match)) return match;
@@ -435,13 +543,51 @@ export function autoDetectAndConvertMath(text: string): string {
     })
   );
 
-  // 8. Standalone Greek letters and symbols in text: e.g. \gamma, \lambda, \theta, \mu_0
+  // 9. Relations in formulas: e.g. θ != n*pi, x <= 5
+  str = applyOutsideMath(str, (chunk) =>
+    chunk.replace(/(?<![\$\w])([a-zA-Z0-9_θπαβγδλω\\]+)\s*(!=|<=|>=|<|>)\s*([a-zA-Z0-9_θπαβγδλω\*\\]+)(?![\$\w])/g, (_m, left, op, right) => {
+      const opLatex = op === '!=' ? '\\neq' : op === '<=' ? '\\le' : op === '>=' ? '\\ge' : op;
+      return `$${formatLatexContent(left)} ${opLatex} ${formatLatexContent(right)}$`;
+    })
+  );
+
+  // 10. Standalone Greek letters and symbols in text: e.g. \gamma, \lambda, \theta, theta, alpha
+  const GREEK_MAP: Record<string, string> = {
+    'θ': '\\theta',
+    'π': '\\pi',
+    'α': '\\alpha',
+    'β': '\\beta',
+    'γ': '\\gamma',
+    'δ': '\\delta',
+    'λ': '\\lambda',
+    'ω': '\\omega',
+    'μ': '\\mu',
+    'ρ': '\\rho',
+    'σ': '\\sigma',
+    'Δ': '\\Delta',
+    'Ω': '\\Omega',
+    'Φ': '\\Phi',
+    'ψ': '\\psi'
+  };
+
   str = applyOutsideMath(str, (chunk) => {
-    let s = chunk.replace(/(?<![\$\\\w])\\(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Delta|Gamma|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)(?![\w\{])/g, '$\\$1$');
-    return s.replace(/(?<![\$\\\w])\\(mu_0|epsilon_0)(?![\w\{])/g, '$\\$1$');
+    let s = chunk;
+    s = s.replace(/(?<![\$\\\w])\\(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)(?![\w\{])/gi, (m, g) => `$\\${g.toLowerCase()}$`);
+    s = s.replace(/(?<![\$\\\w])\b(alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega)\b(?![\w\{])/gi, (m, g) => `$\\${g.toLowerCase()}$`);
+    s = s.replace(/(?<![\$\\\w])\b(Delta|Gamma|Theta|Lambda|Xi|Pi|Sigma|Upsilon|Phi|Psi|Omega)\b(?![\w\{])/g, '$\\$1$');
+    s = s.replace(/(?<![\$\\\w])([θπαβγδλωΔΩΦψ])(?![\$\w\{])/g, (_m, char) => `$${GREEK_MAP[char] || char}$`);
+    s = s.replace(/(?<![\$\\\w])\\(mu_0|epsilon_0)(?![\w\{])/g, '$\\$1$');
+    return s;
   });
 
-  // 9. Standalone chemical / nuclear reactions with ->
+  // 11. Expressions with asterisks (multiplication): e.g. a1*x, 3*θ, n*pi
+  str = applyOutsideMath(str, (chunk) =>
+    chunk.replace(/(?<![\$\w])([a-zA-Z0-9_θπαβγδλω\\]+\s*\*\s*[a-zA-Z0-9_θπαβγδλω\\]+(?:\s*[\+\-\*\/=]\s*[a-zA-Z0-9_θπαβγδλω\\]+)*)(?![\$\w])/g, (match) => {
+      return `$${formatLatexContent(match)}$`;
+    })
+  );
+
+  // 11. Standalone chemical / nuclear reactions with ->
   str = applyOutsideMath(str, (chunk) =>
     chunk.replace(/(?<![\$\w])([a-zA-Z0-9_\^\{\}\+\-\s]+\s*(?:->|-->)\s*[a-zA-Z0-9_\^\{\}\+\-\s]+)(?![\$\w])/g, (match) => {
       if (/[a-zA-Z0-9]\s*->\s*[a-zA-Z0-9]/.test(match)) {
@@ -451,12 +597,12 @@ export function autoDetectAndConvertMath(text: string): string {
     })
   );
 
-  // 10. Asterisks as multiplication in prose: e.g. r * F -> r × F, 3 * 10 -> 3 × 10
+  // 12. Asterisks as multiplication in prose: e.g. r * F -> r × F, 3 * 10 -> 3 × 10
   str = applyOutsideMath(str, (chunk) =>
     chunk.replace(/(?<=\b[a-zA-Z0-9]\b)\s*\*\s*(?=\b[a-zA-Z0-9]\b)/g, ' × ')
   );
 
-  // 11. Replace any remaining -> with Unicode arrow → in plain text
+  // 13. Replace any remaining -> with Unicode arrow → in plain text
   str = applyOutsideMath(str, (chunk) =>
     chunk.replace(/(?<![\\a-zA-Z0-9_])->|-->(?![\\a-zA-Z0-9_])/g, '→').replace(/->|-->/g, '→')
   );
@@ -487,8 +633,14 @@ export function preprocessMathText(text: string): string {
   str = str.replace(/\\\[([\s\S]*?)\\\]/g, (_m, g) => `\n\n$$\n${g.trim()}\n$$\n\n`);
   str = str.replace(/\\\(([\s\S]*?)\\\)/g, (_m, g) => `$${g.trim()}$`);
 
-  // Protect standalone currency values like $0, $10, $100
-  str = str.replace(/(^|[\s\(\[\{])\$(\d+(?:\.\d+)?)(?=[^\d\$]|$)/g, '$1\\$$2');
+  // Protect standalone currency values like $0, $10, $100 (only when NOT followed by a matching closing $ on the same line)
+  str = str.replace(/(^|[\s\(\[\{])\$(\d+(?:\.\d+)?)(?=[\s,;:\.!?)]|$)/g, (match, prefix, num, offset, full) => {
+    const after = full.slice(offset + match.length);
+    if (/^[^\$\n]*\$/.test(after)) {
+      return match;
+    }
+    return prefix + '\\$' + num;
+  });
 
   // Ensure headings start on new lines
   str = str.replace(/([^\n])\s*(#{1,6})([^\s#\n])/g, '$1\n\n$2 $3');

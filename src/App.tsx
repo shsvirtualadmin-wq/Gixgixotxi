@@ -2405,11 +2405,15 @@ export function App() {
     const targetSubject = mapSubject(fullParams.subject || selectedSubject || 'Physics');
     const targetTopic = fullParams.customTopic !== undefined ? fullParams.customTopic : customTopic;
 
-    // TCAT and MDCAT use strictly verified hardcoded banks and must NEVER invoke AI/API background generation
-    const isTcat = fullParams.path === 'tcat' || selectedClass === 'TCAT' || selectedGroup === 'TCAT' || (fullParams.subject || '').toLowerCase().includes('tcat') || targetSubject.toLowerCase().includes('tcat');
-    const isMdcatTest = isMdcat || fullParams.path === 'mdcat' || selectedClass === 'MDCAT' || selectedGroup === 'MDCAT' || (fullParams.subject || '').toLowerCase().includes('mdcat') || targetSubject.toLowerCase().includes('mdcat');
-    if (isTcat || isMdcatTest) {
-      console.log('[MCQ Background Gen] TCAT/MDCAT test detected: strictly bypassing AI generation, relying solely on hardcoded question bank.');
+    // Entrance tracks use strictly verified pre-written questions and must NEVER invoke AI/API background generation
+    const entrancePaths = ['mdcat', 'tcat', 'net', 'fast', 'ecat', 'etea', 'nums', 'giki', 'usat', 'ned', 'pieas', 'nat', 'iba', 'aku', 'muet', 'lums', 'numl', 'hitec', 'nutech'];
+    const pathLower = String(fullParams?.path || '').toLowerCase();
+    const classLower = String(selectedClass || '').toLowerCase();
+    const groupLower = String(selectedGroup || '').toLowerCase();
+    const subLower = String(fullParams?.subject || targetSubject || '').toLowerCase();
+    const isEntrance = isMdcat || fullParams?.isMdcat || entrancePaths.some(p => pathLower.includes(p) || classLower.includes(p) || groupLower.includes(p) || subLower.includes(p));
+    if (isEntrance) {
+      console.log('[MCQ Background Gen] Entrance track detected: strictly bypassing AI generation, relying solely on verified question bank.');
       return;
     }
 
@@ -3933,6 +3937,14 @@ export function App() {
                       } else if (isMdcatTest) {
                         const mdcatPool = getMDCATPrebuiltQuestions(targetSub, targetCount, targetTop, testConfig?.chapterName, undefined, seenStems);
                         for (const q of mdcatPool) {
+                          if (newSet.length >= targetCount) break;
+                          if (!newSet.some(existing => isDuplicateQuestion(existing, q))) {
+                            newSet.push(q);
+                          }
+                        }
+                      } else if (testConfig?.path && ['net', 'fast', 'ecat', 'etea', 'nums', 'giki', 'usat', 'ned', 'pieas', 'nat', 'iba', 'aku', 'muet', 'lums', 'numl', 'hitec', 'nutech'].includes(testConfig.path)) {
+                        const entrancePool = getEntranceExamQuestions(testConfig.path.toUpperCase(), targetSub, targetCount, seenStems);
+                        for (const q of entrancePool) {
                           if (newSet.length >= targetCount) break;
                           if (!newSet.some(existing => isDuplicateQuestion(existing, q))) {
                             newSet.push(q);
