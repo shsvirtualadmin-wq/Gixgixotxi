@@ -144,25 +144,70 @@ const handleSubmitPaymentRequest = async (context: PagesContext) => {
       }
     }
 
-    // Check for existing pending request for same student + track
-    const { data: pendingList } = await supabaseAdmin
+    // Check for existing request for same student + track (both pending and approved)
+    const { data: studentRequests } = await supabaseAdmin
       .from("payment_requests")
       .select("*")
       .eq("student_email", cleanEmail)
-      .eq("status", "pending");
+      .order("submitted_at", { ascending: false });
 
-    if (pendingList && pendingList.length > 0) {
-      const match = pendingList.find(
+    if (studentRequests && studentRequests.length > 0) {
+      const match = studentRequests.find(
         (r: any) => normalizePackageTrack(r.package_name || r.course_tier || "") === canonicalTier
       );
       if (match) {
-        console.log("[submit.ts] Student already has a pending payment request for track:", canonicalTier);
+        console.log("[submit.ts] Student already has an existing payment request for track:", canonicalTier, "Status:", match.status);
+        if (match.status === 'approved') {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              isDuplicate: true,
+              error: `You already have an active/approved subscription for ${canonicalTier}.`,
+              existingRequest: match,
+            }),
+            { status: 409, headers: corsHeaders }
+          );
+        }
+
+        // If pending, update proof_url/screenshot if provided, and avoid creating duplicate row
+        if (proofUrl && !match.screenshot_url && !match.proof_url) {
+          await supabaseAdmin
+            .from("payment_requests")
+            .update({
+              proof_url: proofUrl,
+              screenshot_url: proofUrl,
+              payment_proof_url: proofUrl,
+            })
+            .eq("id", match.id);
+          match.proof_url = proofUrl;
+          match.screenshot_url = proofUrl;
+        }
+
         return new Response(
           JSON.stringify({
             success: true,
             duplicateDetected: true,
             data: match,
-            message: `You already have a pending verification request for ${canonicalTier}. Please wait for admin approval.`,
+            message: `You already have a verification request for ${canonicalTier} pending admin approval.`,
+          }),
+          { status: 200, headers: corsHeaders }
+        );
+      }
+
+      // Debounce: check if any submission was made by this email in the last 5 minutes
+      const nowMs = Date.now();
+      const recent = studentRequests.find((r: any) => {
+        const subTime = new Date(r.submitted_at || r.created_at || 0).getTime();
+        return nowMs - subTime < 5 * 60 * 1000;
+      });
+      if (recent) {
+        console.log("[submit.ts] Rapid repeat submission blocked for email:", cleanEmail);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            duplicateDetected: true,
+            data: recent,
+            message: "Your payment verification request was just received. Our admin team will verify it shortly.",
           }),
           { status: 200, headers: corsHeaders }
         );

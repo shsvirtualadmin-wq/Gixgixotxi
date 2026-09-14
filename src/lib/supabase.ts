@@ -3795,26 +3795,34 @@ export async function submitPaymentProofApi(payload: Record<string, any> | FormD
       }
     }
 
-    // Check existing pending request for same student + track
+    // Check existing request for same student + track (both pending and approved)
     if (student_email) {
       try {
-        const { data: pendingList } = await supabase
+        const { data: studentRequests } = await supabase
           .from('payment_requests')
           .select('*')
           .eq('student_email', student_email)
-          .eq('status', 'pending');
+          .order('submitted_at', { ascending: false });
 
-        if (pendingList && pendingList.length > 0) {
-          const trackMatch = pendingList.find(
+        if (studentRequests && studentRequests.length > 0) {
+          const trackMatch = studentRequests.find(
             (r) => normalizePackageTrack(r.package_name || r.course_tier || '') === canonicalTier
           );
           if (trackMatch) {
-            console.log('[submitPaymentProofApi Fallback] Student already has pending request for track:', canonicalTier);
+            console.log('[submitPaymentProofApi Fallback] Student already has request for track:', canonicalTier, 'status:', trackMatch.status);
+            if (trackMatch.status === 'approved') {
+              return {
+                success: false,
+                isDuplicate: true,
+                error: `You already have an active/approved subscription for ${canonicalTier}.`,
+                data: trackMatch,
+              };
+            }
             return {
               success: true,
               duplicateDetected: true,
               data: trackMatch,
-              message: `You already have a pending verification request for ${canonicalTier}. Please wait for admin approval.`,
+              message: `You already have a verification request for ${canonicalTier} pending admin approval.`,
             };
           }
         }
@@ -4068,13 +4076,16 @@ export async function deletePaymentRequestInSupabase(
 
   // Fallback to direct Supabase deletion
   try {
-    const { error } = await supabase
+    const { error, count } = await supabase
       .from('payment_requests')
-      .delete()
+      .delete({ count: 'exact' })
       .eq('id', requestId);
 
     if (error) {
       return { success: false, message: error.message };
+    }
+    if (count === 0) {
+      return { success: false, message: 'Delete blocked by database security rules (RLS). Please ensure backend service is configured.' };
     }
     return { success: true, message: 'Payment request deleted successfully.' };
   } catch (dbErr: any) {
@@ -4121,19 +4132,26 @@ export async function cleanupDuplicatePaymentRequestsInSupabase(
       return { success: true, removedCount: 0, message: 'No duplicate payment requests found.' };
     }
 
-    const { error } = await supabase
+    const { error, count } = await supabase
       .from('payment_requests')
-      .delete()
+      .delete({ count: 'exact' })
       .in('id', toDelete);
 
     if (error) {
       return { success: false, removedCount: 0, message: error.message };
     }
+    if (count === 0) {
+      return {
+        success: false,
+        removedCount: 0,
+        message: 'Could not delete duplicates from database: client session lacks service role privileges (RLS restriction). Please ensure /api/admin/payment-requests/cleanup-duplicates is deployed.',
+      };
+    }
 
     return {
       success: true,
-      removedCount: toDelete.length,
-      message: `Cleaned up ${toDelete.length} duplicate submission(s)!`,
+      removedCount: count ?? toDelete.length,
+      message: `Cleaned up ${count ?? toDelete.length} duplicate submission(s)!`,
     };
   } catch (err: any) {
     return { success: false, removedCount: 0, message: err?.message || 'Error cleaning duplicates.' };

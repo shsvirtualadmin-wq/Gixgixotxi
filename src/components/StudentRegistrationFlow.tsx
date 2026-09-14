@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   User,
@@ -505,6 +505,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
   const [transactionRef, setTransactionRef] = useState<string>('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
+  const alreadySubmittedProofRef = useRef<boolean>(false);
 
   // Requirement: Payment proof submission confirmation gate
   const [hasConfirmedSubmittedProof, setHasConfirmedSubmittedProofState] = useState<boolean>(() => {
@@ -528,6 +529,12 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
   const handleConfirmSubmittedProof = async () => {
     if (hasConfirmedSubmittedProof || isConfirmingSubmission) {
       console.log('[StudentRegistrationFlow] Already confirmed or confirming, skipping duplicate execution.');
+      return;
+    }
+    // Prevent duplicate payment_request creation if already submitted in Step 5
+    if (alreadySubmittedProofRef.current) {
+      console.log('[StudentRegistrationFlow] Payment proof already submitted in Step 5. Acknowledging confirmation without duplicate DB write.');
+      setHasConfirmedSubmittedProof(true);
       return;
     }
     console.log('[StudentRegistrationFlow] "I\'ve submitted my payment proof" button clicked! Calling submitPaymentProofApi -> /api/payment-requests/submit');
@@ -555,6 +562,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
       };
 
       console.log('[StudentRegistrationFlow] Submitting payment proof payload:', payload);
+      alreadySubmittedProofRef.current = true;
       const res = await submitPaymentProofApi(payload);
       console.log('[StudentRegistrationFlow] submitPaymentProofApi response:', res);
 
@@ -1331,6 +1339,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
       // 3. Submit Payment Request details to backend
       try {
         const canonicalTrack = normalizePackageTrack(trackText);
+        alreadySubmittedProofRef.current = true;
         await submitPaymentProofApi({
           student_id: savedProfile?.id || userId,
           student_name: fullName.trim() || activeUser?.user_metadata?.full_name || 'Student',

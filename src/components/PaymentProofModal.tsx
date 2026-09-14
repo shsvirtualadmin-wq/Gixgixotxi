@@ -218,10 +218,16 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
   const [hasConfirmedSubmittedProof, setHasConfirmedSubmittedProof] = useState<boolean>(false);
   const [isConfirmingSubmission, setIsConfirmingSubmission] = useState<boolean>(false);
   const [confirmSubmissionError, setConfirmSubmissionError] = useState<string | null>(null);
+  const alreadySubmittedRef = useRef<boolean>(false);
 
   const handleConfirmSubmittedProof = async () => {
     if (hasConfirmedSubmittedProof || isConfirmingSubmission) {
       console.log('[PaymentProofModal] Already confirmed or confirming, skipping duplicate execution.');
+      return;
+    }
+    if (alreadySubmittedRef.current) {
+      console.log('[PaymentProofModal] Payment proof already submitted via form. Acknowledging confirmation without duplicate DB write.');
+      setHasConfirmedSubmittedProof(true);
       return;
     }
     console.log('[PaymentProofModal] "I\'ve submitted my payment proof" button clicked! Calling submitPaymentProofApi -> /api/payment-requests/submit');
@@ -243,6 +249,7 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
       formData.append('tier', canonicalTier);
 
       console.log('[PaymentProofModal] Submitting payment proof formData');
+      alreadySubmittedRef.current = true;
       const res = await submitPaymentProofApi(formData);
       console.log('[PaymentProofModal] submitPaymentProofApi response:', res);
 
@@ -368,6 +375,7 @@ Please verify my payment and activate my account.`;
       formData.append('package_name', packageName);
       formData.append('transaction_reference', trxVal);
 
+      alreadySubmittedRef.current = true;
       const res = await submitPaymentProofApi(formData);
       setHasConfirmedSubmittedProof(true);
 

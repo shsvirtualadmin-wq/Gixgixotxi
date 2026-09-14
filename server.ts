@@ -8720,24 +8720,24 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         }
 
         // =========================================================================
-        // SAFEGUARD 2: Check for existing pending request for same student + track
+        // SAFEGUARD 2: Check for existing request for same student + track (both pending & approved)
         // =========================================================================
         let existingByTrack: any = null;
         if (supabaseAdmin) {
           try {
-            const { data: studentPending } = await supabaseAdmin
+            const { data: studentRequests } = await supabaseAdmin
               .from('payment_requests')
               .select('*')
               .eq('student_email', resolvedEmail)
-              .eq('status', 'pending');
+              .order('submitted_at', { ascending: false });
 
-            if (studentPending && studentPending.length > 0) {
-              existingByTrack = studentPending.find(
+            if (studentRequests && studentRequests.length > 0) {
+              existingByTrack = studentRequests.find(
                 (r) => normalizePackageTrack(r.package_name || r.course_tier || '') === resolvedTier
               );
             }
           } catch (e) {
-            console.warn('[Check existing pending student track]:', e);
+            console.warn('[Check existing student track]:', e);
           }
         }
 
@@ -8745,13 +8745,20 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           existingByTrack = inMemoryPaymentRequests.find(
             (r) =>
               (r.student_email || '').toLowerCase() === resolvedEmail &&
-              r.status === 'pending' &&
               normalizePackageTrack(r.package_name || r.course_tier || '') === resolvedTier
           );
         }
 
         if (existingByTrack) {
-          console.log(`[Payment Submit Duplicate] Student "${resolvedEmail}" already has a pending submission for track "${resolvedTier}".`);
+          console.log(`[Payment Submit Duplicate] Student "${resolvedEmail}" already has a submission for track "${resolvedTier}". Status: ${existingByTrack.status}`);
+          if (existingByTrack.status === 'approved') {
+            return res.status(409).json({
+              success: false,
+              isDuplicate: true,
+              error: `You already have an active/approved subscription for ${resolvedTier}.`,
+              existingRequest: existingByTrack,
+            });
+          }
           return res.status(200).json({
             success: true,
             duplicateDetected: true,
@@ -8761,13 +8768,13 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         }
 
         // =========================================================================
-        // SAFEGUARD 3: Debounce rapid repeated submissions (double-clicks within 30s)
+        // SAFEGUARD 3: Debounce rapid repeated submissions (within 5 minutes)
         // =========================================================================
         const nowMs = Date.now();
         const rapidDuplicate = inMemoryPaymentRequests.find((r) => {
           if ((r.student_email || '').toLowerCase() !== resolvedEmail) return false;
           const subTime = new Date(r.submitted_at || r.created_at || 0).getTime();
-          return nowMs - subTime < 30 * 1000;
+          return nowMs - subTime < 5 * 60 * 1000;
         });
 
         if (rapidDuplicate) {
@@ -9230,6 +9237,46 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       }
 
       // Remove from Supabase
+      if (supabaseAdmin) {
+        try {
+          const { error } = await supabaseAdmin
+            .from('payment_requests')
+            .delete()
+            .eq('id', requestId);
+          if (error) {
+            console.error("[Delete Payment Request DB Error]:", error);
+            return res.status(500).json({ success: false, error: error.message });
+          }
+        } catch (dbErr: any) {
+          console.error("[Delete Payment Request DB Exception]:", dbErr);
+          return res.status(500).json({ success: false, error: dbErr?.message || "Database deletion error." });
+        }
+      }
+
+      console.log(`✅ [Payment Request Deleted]: ID ${requestId} by ${adminEmail || 'admin'}`);
+      return res.status(200).json({ success: true, message: `Payment request ${requestId} deleted successfully.` });
+    } catch (err: any) {
+      console.error("Error deleting payment request:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Internal server error." });
+    }
+  });
+
+  // Also support standard HTTP DELETE /api/admin/payment-requests/:requestId
+  app.delete("/api/admin/payment-requests/:requestId", async (req: express.Request, res: express.Response) => {
+    try {
+      const { requestId } = req.params;
+      const { adminEmail } = req.body || {};
+      if (!requestId) {
+        return res.status(400).json({ success: false, error: "Missing required requestId parameter." });
+      }
+
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req);
+
+      const memIdx = inMemoryPaymentRequests.findIndex((r) => r.id === requestId);
+      if (memIdx !== -1) {
+        inMemoryPaymentRequests.splice(memIdx, 1);
+      }
+
       if (supabaseAdmin) {
         try {
           const { error } = await supabaseAdmin
