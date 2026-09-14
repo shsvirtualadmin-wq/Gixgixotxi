@@ -10484,32 +10484,47 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
 
         // 3. Update or Upsert promo_codes table
         try {
+          let realRedemptionsCount = 0;
+          try {
+            const { count } = await supabaseAdmin
+              .from("promo_redemptions")
+              .select("*", { count: "exact", head: true })
+              .or(`promo_code.ilike.${link.code},code.ilike.${link.code}`);
+            if (typeof count === "number") realRedemptionsCount = count;
+          } catch {}
+
           const { data: codeRow } = await supabaseAdmin
             .from("promo_codes")
             .select("*")
             .ilike("code", link.code)
             .maybeSingle();
 
+          const prevCnt = typeof codeRow?.redemption_count === "number" ? codeRow.redemption_count : (link.redemption_count || 0);
+          const nextCount = Math.max(prevCnt + 1, realRedemptionsCount || 1);
+          const maxRed = codeRow?.max_redemptions !== undefined ? codeRow.max_redemptions : (link.max_redemptions ?? 1);
+          const shouldDeactivate = maxRed ? nextCount >= maxRed : false;
+
           if (codeRow) {
-            const nextCount = (codeRow.redemption_count || 0) + 1;
-            const shouldDeactivate = codeRow.max_redemptions && nextCount >= codeRow.max_redemptions;
-            await supabaseAdmin
-              .from("promo_codes")
-              .update({
-                redemption_count: nextCount,
-                is_active: shouldDeactivate ? false : codeRow.is_active,
-                updated_at: new Date().toISOString(),
-              })
-              .eq("id", codeRow.id);
+            let updateQ = supabaseAdmin.from("promo_codes").update({
+              redemption_count: nextCount,
+              is_active: shouldDeactivate ? false : codeRow.is_active,
+              updated_at: new Date().toISOString(),
+            });
+            if (codeRow.id) {
+              updateQ = updateQ.or(`code.ilike.${link.code},id.eq.${codeRow.id}`);
+            } else {
+              updateQ = updateQ.ilike("code", link.code);
+            }
+            await updateQ;
           } else {
             await supabaseAdmin.from("promo_codes").upsert({
               code: link.code,
               label: link.label || "1-Year Free Boardly Pro Campaign",
               discount_type: "1_year_free_pro",
               duration_months: 12,
-              max_redemptions: link.max_redemptions || 1,
-              redemption_count: 1,
-              is_active: (link.max_redemptions && 1 >= link.max_redemptions) ? false : true,
+              max_redemptions: maxRed,
+              redemption_count: nextCount,
+              is_active: !shouldDeactivate,
               created_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             });
@@ -10611,6 +10626,139 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
+  // API Endpoint: Admin Backfill Promo Links Redemption Counts from promo_redemptions table
+  app.post("/api/admin/promo-links/backfill", async (req: express.Request, res: express.Response) => {
+    try {
+      const requesterEmail = (req.body?.adminEmail as string) || (req.query.adminEmail as string) || "";
+      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
+      const requestedBy = requesterEmail || tokenUser?.email || "";
+      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
+
+      if (!isAdmin && requesterEmail && !isAdminEmail(requesterEmail)) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+      }
+
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
+      if (!supabaseAdmin) {
+        // In local mode without Supabase credentials, reconcile promo_links.json from internal redemptions
+        const localLinks = loadPromoLinks();
+        let updatedCount = 0;
+        for (const l of localLinks) {
+          const actualRedemptions = Array.isArray(l.redemptions) ? l.redemptions.length : 0;
+          if ((l.redemption_count || 0) < actualRedemptions) {
+            l.redemption_count = actualRedemptions;
+            if (l.max_redemptions && actualRedemptions >= l.max_redemptions) {
+              l.is_active = false;
+            }
+            updatedCount++;
+          }
+        }
+        if (updatedCount > 0) savePromoLinks(localLinks);
+        return res.status(200).json({
+          success: true,
+          message: `Local backfill complete. Updated ${updatedCount} promo links from local redemption records.`,
+          links: localLinks,
+        });
+      }
+
+      // 1. Fetch all redemptions from DB
+      const { data: allRedemptions, error: redErr } = await supabaseAdmin.from("promo_redemptions").select("*");
+      if (redErr) {
+        return res.status(500).json({ success: false, error: "Failed to read promo_redemptions: " + redErr.message });
+      }
+
+      // Group by normalized code
+      const countsByCode = new Map<string, { count: number; studentEmails: string[] }>();
+      if (Array.isArray(allRedemptions)) {
+        for (const r of allRedemptions) {
+          const code = String(r.promo_code || r.code || r.promocode || r.discount_code || "").trim().toUpperCase();
+          if (!code) continue;
+          if (!countsByCode.has(code)) countsByCode.set(code, { count: 0, studentEmails: [] });
+          const entry = countsByCode.get(code)!;
+          entry.count += 1;
+          const email = String(r.student_email || r.email || "").trim().toLowerCase();
+          if (email && !entry.studentEmails.includes(email)) entry.studentEmails.push(email);
+        }
+      }
+
+      // 2. Fetch existing promo_codes
+      const { data: existingCodes } = await supabaseAdmin.from("promo_codes").select("*");
+      const existingMap = new Map<string, any>();
+      if (Array.isArray(existingCodes)) {
+        for (const c of existingCodes) {
+          const cCode = String(c.code || "").trim().toUpperCase();
+          if (cCode) existingMap.set(cCode, c);
+        }
+      }
+
+      const backfillSummary: any[] = [];
+      for (const [code, info] of countsByCode.entries()) {
+        const existing = existingMap.get(code);
+        const maxRed = existing?.max_redemptions !== undefined ? existing.max_redemptions : 1;
+        const shouldDeactivate = maxRed ? info.count >= maxRed : false;
+
+        if (existing) {
+          let uQ = supabaseAdmin.from("promo_codes").update({
+            redemption_count: info.count,
+            is_active: shouldDeactivate ? false : (existing.is_active !== false),
+            updated_at: new Date().toISOString(),
+          });
+          if (existing.id) {
+            uQ = uQ.or(`code.ilike.${code},id.eq.${existing.id}`);
+          } else {
+            uQ = uQ.ilike("code", code);
+          }
+          await uQ;
+        } else {
+          await supabaseAdmin.from("promo_codes").upsert({
+            code: code,
+            label: `Campaign for ${code}`,
+            discount_type: "1_year_free_pro",
+            duration_months: 12,
+            max_redemptions: 1,
+            redemption_count: info.count,
+            is_active: !shouldDeactivate,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          });
+        }
+
+        backfillSummary.push({
+          code,
+          previousCount: existing?.redemption_count ?? 0,
+          newCount: info.count,
+          studentCount: info.studentEmails.length,
+          studentEmails: info.studentEmails,
+          isActive: !shouldDeactivate,
+        });
+      }
+
+      // Also update local promo_links.json
+      const localLinks = loadPromoLinks();
+      for (const l of localLinks) {
+        const lCode = String(l.code || "").trim().toUpperCase();
+        if (countsByCode.has(lCode)) {
+          const cInfo = countsByCode.get(lCode)!;
+          l.redemption_count = Math.max(l.redemption_count || 0, cInfo.count);
+          if (l.max_redemptions && l.redemption_count >= l.max_redemptions) {
+            l.is_active = false;
+          }
+        }
+      }
+      savePromoLinks(localLinks);
+
+      return res.status(200).json({
+        success: true,
+        message: `Backfilled ${backfillSummary.length} codes from promo_redemptions table.`,
+        totalRedemptionsInDb: allRedemptions?.length || 0,
+        codesUpdated: backfillSummary,
+      });
+    } catch (e: any) {
+      console.error("Backfill error:", e);
+      return res.status(500).json({ success: false, error: e?.message });
+    }
+  });
+
   // API Endpoint: Admin Fetch All Promo Links
   app.get("/api/admin/promo-links", async (req: express.Request, res: express.Response) => {
     try {
@@ -10623,8 +10771,133 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
       }
 
-      const links = loadPromoLinks();
-      return res.status(200).json({ success: true, links });
+      const localLinks = loadPromoLinks();
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
+
+      if (supabaseAdmin) {
+        try {
+          const { data: dbCodes, error: codesErr } = await supabaseAdmin
+            .from("promo_codes")
+            .select("*")
+            .order("created_at", { ascending: false });
+
+          let allRedemptions: any[] = [];
+          try {
+            const { data: rData } = await supabaseAdmin.from("promo_redemptions").select("*");
+            if (Array.isArray(rData)) allRedemptions = rData;
+          } catch {}
+
+          if (!codesErr && Array.isArray(dbCodes)) {
+            const mappedDbLinks: PromoLinkRecord[] = dbCodes.map((c: any) => {
+              const codeUpper = String(c.code || "").trim().toUpperCase();
+              const redemptionsForCode = allRedemptions.filter((r: any) => {
+                const rCode = String(r.promo_code || r.code || r.promocode || r.discount_code || "").trim().toUpperCase();
+                return rCode === codeUpper;
+              });
+
+              const realCount = redemptionsForCode.length;
+              const storedCount = typeof c.redemption_count === "number" ? c.redemption_count : 0;
+              const effectiveCount = Math.max(storedCount, realCount);
+              const maxRed = c.max_redemptions !== undefined ? c.max_redemptions : 1;
+              const isExhausted = maxRed ? effectiveCount >= maxRed : false;
+              const isActive = isExhausted ? false : (c.is_active !== false);
+
+              // Auto-heal discrepancy if promo_codes count is behind
+              if (storedCount < effectiveCount || (isExhausted && c.is_active !== false)) {
+                try {
+                  let syncQ = supabaseAdmin.from("promo_codes").update({
+                    redemption_count: effectiveCount,
+                    is_active: isActive,
+                    updated_at: new Date().toISOString(),
+                  });
+                  if (c.id) {
+                    syncQ = syncQ.or(`code.ilike.${codeUpper},id.eq.${c.id}`);
+                  } else {
+                    syncQ = syncQ.ilike("code", codeUpper);
+                  }
+                  syncQ.then(() => {}).catch(() => {});
+                } catch {}
+              }
+
+              return {
+                id: c.id || "promo_" + codeUpper,
+                code: codeUpper,
+                label: c.label || "1-Year Free Pro Campaign",
+                discount_type: c.discount_type || "1_year_free_pro",
+                duration_months: c.duration_months || 12,
+                max_redemptions: maxRed,
+                redemption_count: effectiveCount,
+                is_active: isActive,
+                created_by: c.created_by || "admin",
+                created_at: c.created_at || new Date().toISOString(),
+                expires_at: c.expires_at || null,
+                redemptions: redemptionsForCode.map((r: any) => ({
+                  id: r.id,
+                  student_id: r.student_id || r.user_id,
+                  student_name: r.student_name || "Student",
+                  student_email: r.student_email || r.email,
+                  redeemed_at: r.redeemed_at || r.created_at,
+                  granted_until: r.granted_until || r.expires_at,
+                  track: r.track || "General Track",
+                })),
+              };
+            });
+
+            // Surface any orphan redemptions
+            const dbCodesUpper = new Set(mappedDbLinks.map((m) => (m.code || "").toUpperCase()));
+            const orphanCodeMap = new Map<string, any[]>();
+            for (const r of allRedemptions) {
+              const rCode = String(r.promo_code || r.code || r.promocode || r.discount_code || "").trim().toUpperCase();
+              if (rCode && !dbCodesUpper.has(rCode)) {
+                if (!orphanCodeMap.has(rCode)) orphanCodeMap.set(rCode, []);
+                orphanCodeMap.get(rCode)!.push(r);
+              }
+            }
+            for (const [orphanCode, rList] of orphanCodeMap.entries()) {
+              mappedDbLinks.push({
+                id: "promo_" + orphanCode,
+                code: orphanCode,
+                label: "1-Year Free Pro Campaign (" + orphanCode + ")",
+                discount_type: "1_year_free_pro",
+                duration_months: 12,
+                max_redemptions: 1,
+                redemption_count: rList.length,
+                is_active: rList.length < 1,
+                created_by: "system",
+                created_at: rList[0]?.redeemed_at || rList[0]?.created_at || new Date().toISOString(),
+                expires_at: null,
+                redemptions: rList.map((r: any) => ({
+                  id: r.id,
+                  student_id: r.student_id || r.user_id,
+                  student_name: r.student_name || "Student",
+                  student_email: r.student_email || r.email,
+                  redeemed_at: r.redeemed_at || r.created_at,
+                  granted_until: r.granted_until || r.expires_at,
+                  track: r.track || "General Track",
+                })),
+              });
+              dbCodesUpper.add(orphanCode);
+            }
+
+            // Merge with localLinks (localLinks not in DB)
+            const merged = [...mappedDbLinks];
+            for (const local of localLinks) {
+              const lUpper = (local.code || "").toUpperCase();
+              if (!dbCodesUpper.has(lUpper)) {
+                merged.push(local);
+              }
+            }
+
+            // Keep promo_links.json updated with latest counts
+            savePromoLinks(merged);
+            return res.status(200).json({ success: true, links: merged });
+          }
+        } catch (dbErr) {
+          console.warn("[server /api/admin/promo-links] DB query note:", dbErr);
+        }
+      }
+
+      return res.status(200).json({ success: true, links: localLinks });
     } catch (err: any) {
       console.error("Error fetching admin promo links:", err);
       return res.status(500).json({ success: false, error: "Failed to fetch promotional links." });
@@ -10715,6 +10988,28 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
 
       links.unshift(newLink);
       savePromoLinks(links);
+
+      // Also upsert into Supabase promo_codes table
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
+      if (supabaseAdmin) {
+        try {
+          await supabaseAdmin.from("promo_codes").upsert({
+            code: newLink.code,
+            label: newLink.label,
+            discount_type: newLink.discount_type,
+            duration_months: newLink.duration_months,
+            max_redemptions: newLink.max_redemptions,
+            redemption_count: 0,
+            is_active: true,
+            created_by: requestedBy || "shsvirtualadmin@gmail.com",
+            created_at: newLink.created_at,
+            expires_at: newLink.expires_at,
+            updated_at: new Date().toISOString(),
+          });
+        } catch (dbErr) {
+          console.warn("[server create] promo_codes DB insert note:", dbErr);
+        }
+      }
 
       return res.status(201).json({ success: true, link: newLink });
     } catch (err: any) {

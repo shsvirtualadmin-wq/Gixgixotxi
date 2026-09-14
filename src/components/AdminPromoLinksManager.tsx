@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PromoLink, buildShareablePromoUrl } from '../lib/promoCode';
-import { apiFetch, safeJsonResponse, User } from '../lib/supabase';
+import { apiFetch, safeJsonResponse, User, supabase } from '../lib/supabase';
 import {
   Gift,
   Plus,
@@ -24,6 +24,7 @@ import {
   Tag,
   Power,
   Layers,
+  Database,
 } from 'lucide-react';
 
 interface AdminPromoLinksManagerProps {
@@ -95,6 +96,7 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
   const [customMaxCount, setCustomMaxCount] = useState<string>('25');
   const [expiryOption, setExpiryOption] = useState<'never' | '30' | '90' | '365'>('never');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isBackfilling, setIsBackfilling] = useState(false);
 
   // Selected link for viewing redemptions
   const [viewingRedemptionsLink, setViewingRedemptionsLink] = useState<PromoLink | null>(null);
@@ -109,11 +111,73 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
         },
       });
       const data = await safeJsonResponse<{ success: boolean; links: PromoLink[]; error?: string }>(resp);
-      if (data?.success && Array.isArray(data.links) && data.links.length > 0) {
+      let incomingLinks = (data?.success && Array.isArray(data.links)) ? data.links : [];
+
+      // Enrich with direct Supabase queries if accessible
+      try {
+        const { data: dbCodes } = await supabase.from('promo_codes').select('*').order('created_at', { ascending: false });
+        const { data: dbRedemptions } = await supabase.from('promo_redemptions').select('*');
+        if (Array.isArray(dbCodes) && dbCodes.length > 0) {
+          const redList = Array.isArray(dbRedemptions) ? dbRedemptions : [];
+
+          for (const c of dbCodes) {
+            const cUpper = String(c.code || '').trim().toUpperCase();
+            const redsForC = redList.filter((r: any) => {
+              const rCode = String(r.promo_code || r.code || r.promocode || r.discount_code || '').trim().toUpperCase();
+              return rCode === cUpper;
+            });
+            const realCount = redsForC.length;
+            const storedCount = typeof c.redemption_count === 'number' ? c.redemption_count : 0;
+            const effectiveCount = Math.max(storedCount, realCount);
+            const maxR = c.max_redemptions !== undefined ? c.max_redemptions : 1;
+            const isExhausted = maxR ? effectiveCount >= maxR : false;
+
+            const existingIdx = incomingLinks.findIndex((l) => (l.code || '').toUpperCase() === cUpper);
+            const enrichedItem: PromoLink = {
+              id: c.id || 'promo_' + cUpper,
+              code: cUpper,
+              label: c.label || '1-Year Free Pro Campaign',
+              discount_type: c.discount_type || '1_year_free_pro',
+              duration_months: c.duration_months || 12,
+              max_redemptions: maxR,
+              redemption_count: effectiveCount,
+              is_active: isExhausted ? false : (c.is_active !== false),
+              created_by: c.created_by || 'admin',
+              created_at: c.created_at || new Date().toISOString(),
+              expires_at: c.expires_at || null,
+              redemptions: redsForC.map((r: any) => ({
+                id: r.id,
+                student_id: r.student_id || r.user_id,
+                student_name: r.student_name || 'Student',
+                student_email: r.student_email || r.email,
+                redeemed_at: r.redeemed_at || r.created_at,
+                granted_until: r.granted_until || r.expires_at,
+                track: r.track || 'General Track',
+              })),
+            };
+
+            if (existingIdx >= 0) {
+              incomingLinks[existingIdx] = {
+                ...incomingLinks[existingIdx],
+                ...enrichedItem,
+                redemption_count: Math.max(incomingLinks[existingIdx].redemption_count || 0, effectiveCount),
+                redemptions: enrichedItem.redemptions?.length ? enrichedItem.redemptions : incomingLinks[existingIdx].redemptions,
+              };
+            } else {
+              incomingLinks.push(enrichedItem);
+            }
+          }
+        }
+      } catch (dbErr) {
+        // Continue with incomingLinks from backend
+      }
+
+      if (incomingLinks.length > 0) {
         setLinks((prev) => {
-          const merged = [...data.links];
+          const merged = [...incomingLinks];
           for (const localLink of prev) {
-            if (!merged.some((m) => (m.code || '').toUpperCase() === (localLink.code || '').toUpperCase())) {
+            const lCode = (localLink.code || '').toUpperCase();
+            if (!merged.some((m) => (m.code || '').toUpperCase() === lCode)) {
               merged.push(localLink);
             }
           }
@@ -128,8 +192,56 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
     }
   };
 
+  const handleBackfill = async () => {
+    setIsBackfilling(true);
+    setError(null);
+    try {
+      const adminMail = (currentUser?.email || 'shsvirtualadmin@gmail.com').trim().toLowerCase();
+      const resp = await apiFetch(`/api/admin/promo-links/backfill?adminEmail=${encodeURIComponent(adminMail)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-email': adminMail,
+        },
+        body: JSON.stringify({ adminEmail: adminMail }),
+      });
+      const resData = await safeJsonResponse<{ success: boolean; message?: string; error?: string }>(resp);
+      if (resData?.success) {
+        setSuccessToast(resData.message || 'Successfully reconciled and synchronized promo redemption counts from database.');
+        await fetchLinks();
+      } else {
+        setError(resData?.error || 'Failed to backfill redemption counts.');
+      }
+    } catch (err: any) {
+      setError(err?.message || 'Backfill operation encountered an error.');
+    } finally {
+      setIsBackfilling(false);
+    }
+  };
+
   useEffect(() => {
     fetchLinks();
+
+    const handlePromoUpdate = (e: any) => {
+      if (Array.isArray(e?.detail)) {
+        setLinks(e.detail);
+      } else {
+        fetchLinks();
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchLinks();
+      }
+    };
+
+    window.addEventListener('boardly_promo_links_updated', handlePromoUpdate);
+    window.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.removeEventListener('boardly_promo_links_updated', handlePromoUpdate);
+      window.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, [currentUser?.email]);
 
   const generateRandomCode = () => {
@@ -433,6 +545,16 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
           </button>
 
           <button
+            onClick={handleBackfill}
+            disabled={isBackfilling || loading}
+            className="px-3 py-2 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl transition flex items-center gap-1.5 shadow-sm"
+            title="Reconcile redemption counts from promo_redemptions database table"
+          >
+            <Database className={`w-3.5 h-3.5 text-blue-600 ${isBackfilling ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline">{isBackfilling ? 'Reconciling...' : 'Reconcile DB Counts'}</span>
+          </button>
+
+          <button
             onClick={handleOpenCreateModal}
             className="flex-1 md:flex-initial px-4 py-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow flex items-center justify-center gap-2"
           >
@@ -518,13 +640,30 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
                   </div>
 
                   {/* Redemptions Progress / Badge */}
-                  <div className="flex items-center gap-2 self-start sm:self-auto bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200 text-xs">
-                    <Users className="w-3.5 h-3.5 text-slate-500" />
-                    <span className="font-semibold text-slate-800">
+                  <div className={`flex items-center gap-2 self-start sm:self-auto px-3 py-1.5 rounded-xl border text-xs transition-colors ${
+                    link.max_redemptions && link.redemption_count >= link.max_redemptions
+                      ? 'bg-slate-100 border-slate-300 text-slate-700 font-semibold'
+                      : link.redemption_count > 0
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-800 font-semibold'
+                      : 'bg-slate-50 border-slate-200 text-slate-800 font-semibold'
+                  }`}>
+                    <Users className={`w-3.5 h-3.5 ${
+                      link.max_redemptions && link.redemption_count >= link.max_redemptions
+                        ? 'text-slate-500'
+                        : link.redemption_count > 0
+                        ? 'text-emerald-600'
+                        : 'text-slate-400'
+                    }`} />
+                    <span>
                       {link.redemption_count}{' '}
-                      <span className="text-slate-400 font-normal">
+                      <span className="font-normal opacity-75">
                         / {link.max_redemptions ? link.max_redemptions : 'Unlimited'} redeemed
                       </span>
+                      {link.max_redemptions && link.redemption_count >= link.max_redemptions && (
+                        <span className="ml-1.5 text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-200 text-slate-700">
+                          Redeemed
+                        </span>
+                      )}
                     </span>
                   </div>
                 </div>

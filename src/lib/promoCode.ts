@@ -543,17 +543,63 @@ export async function claimPromoCode(
       const { data: codeRow } = await supabase.from('promo_codes').select('*').ilike('code', cleanCode).maybeSingle();
       if (codeRow) {
         const nextCount = (codeRow.redemption_count || 0) + 1;
-        const maxRed = codeRow.max_redemptions || 1;
-        await supabase.from('promo_codes').update({
+        const maxRed = codeRow.max_redemptions !== undefined ? codeRow.max_redemptions : 1;
+        const shouldDeactivate = maxRed ? nextCount >= maxRed : false;
+        let updateQ = supabase.from('promo_codes').update({
           redemption_count: nextCount,
-          is_active: nextCount >= maxRed ? false : codeRow.is_active,
+          is_active: shouldDeactivate ? false : codeRow.is_active,
           updated_at: new Date().toISOString(),
-        }).eq('id', codeRow.id);
+        });
+        if (codeRow.id) {
+          updateQ = updateQ.or(`code.ilike.${cleanCode},id.eq.${codeRow.id}`);
+        } else {
+          updateQ = updateQ.ilike('code', cleanCode);
+        }
+        await updateQ;
         console.log(`[claimPromoCode] Updated promo_codes usage (${nextCount}/${maxRed}).`);
       }
     } catch (codeErr) {
       console.warn('[claimPromoCode] promo_codes update note:', codeErr);
     }
+
+    // 5. Synchronize local admin promo links cache so counter reflects immediately
+    try {
+      if (typeof window !== 'undefined') {
+        const rawAdminLinks = localStorage.getItem('boardly_admin_promo_links');
+        if (rawAdminLinks) {
+          const parsed = JSON.parse(rawAdminLinks);
+          if (Array.isArray(parsed)) {
+            const updated = parsed.map((item: any) => {
+              if (String(item.code || '').trim().toUpperCase() === cleanCode) {
+                const nextCnt = (item.redemption_count || 0) + 1;
+                const maxR = item.max_redemptions !== undefined ? item.max_redemptions : 1;
+                const isExhausted = maxR ? nextCnt >= maxR : false;
+                return {
+                  ...item,
+                  redemption_count: nextCnt,
+                  is_active: isExhausted ? false : (item.is_active !== false),
+                  redemptions: [
+                    ...(Array.isArray(item.redemptions) ? item.redemptions : []),
+                    {
+                      id: 'red_' + Date.now(),
+                      student_id: studentId,
+                      student_name: normalizedEmail ? normalizedEmail.split('@')[0] : 'Student',
+                      student_email: normalizedEmail,
+                      redeemed_at: new Date().toISOString(),
+                      granted_until: accessExpiresStr,
+                      track: 'Boardly Pro Track',
+                    },
+                  ],
+                };
+              }
+              return item;
+            });
+            localStorage.setItem('boardly_admin_promo_links', JSON.stringify(updated));
+            window.dispatchEvent(new CustomEvent('boardly_promo_links_updated', { detail: updated }));
+          }
+        }
+      }
+    } catch {}
   };
 
   // 1. Try server API first

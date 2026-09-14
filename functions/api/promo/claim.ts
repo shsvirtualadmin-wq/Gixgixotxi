@@ -273,19 +273,48 @@ export const onRequestPost = async (context: PagesContext) => {
         console.warn("[claim] promo_redemptions insert exception:", rErr);
       }
 
-      // 6. UPDATE or UPSERT promo_codes table (increment redemption_count)
+      // 6. UPDATE or UPSERT promo_codes table (increment redemption_count and deactivate if limit reached)
       try {
+        let realRedemptionCount = 0;
+        try {
+          const { count, error: countErr } = await supabaseAdmin
+            .from("promo_redemptions")
+            .select("*", { count: "exact", head: true })
+            .or(`promo_code.ilike.${cleanCode},code.ilike.${cleanCode}`);
+          if (!countErr && typeof count === "number") {
+            realRedemptionCount = count;
+          }
+        } catch {}
+
+        const previousCount = typeof promoCodeRecord?.redemption_count === "number" ? promoCodeRecord.redemption_count : 0;
+        const newCount = Math.max(previousCount + 1, realRedemptionCount || 1);
+        const maxRedemptions = promoCodeRecord?.max_redemptions !== undefined ? promoCodeRecord.max_redemptions : 1;
+        const shouldDeactivate = maxRedemptions ? newCount >= maxRedemptions : false;
+
         if (promoCodeRecord) {
-          const newCount = (promoCodeRecord.redemption_count || 0) + 1;
-          const shouldDeactivate = promoCodeRecord.max_redemptions && newCount >= promoCodeRecord.max_redemptions;
-          await supabaseAdmin
-            .from("promo_codes")
-            .update({
+          // Target code explicitly (case-insensitive) and id if available
+          let updateQuery = supabaseAdmin.from("promo_codes").update({
+            redemption_count: newCount,
+            is_active: shouldDeactivate ? false : promoCodeRecord.is_active,
+            updated_at: new Date().toISOString(),
+          });
+
+          if (promoCodeRecord.id) {
+            updateQuery = updateQuery.or(`code.ilike.${cleanCode},id.eq.${promoCodeRecord.id}`);
+          } else {
+            updateQuery = updateQuery.ilike("code", cleanCode);
+          }
+
+          const { error: updateErr } = await updateQuery;
+          if (updateErr) {
+            console.warn("[claim] promo_codes update error:", updateErr);
+            // Fallback: update solely by code
+            await supabaseAdmin.from("promo_codes").update({
               redemption_count: newCount,
               is_active: shouldDeactivate ? false : promoCodeRecord.is_active,
               updated_at: new Date().toISOString(),
-            })
-            .eq("id", promoCodeRecord.id);
+            }).ilike("code", cleanCode);
+          }
         } else {
           // Record code creation and redemption in promo_codes table
           await supabaseAdmin.from("promo_codes").upsert({
@@ -294,12 +323,13 @@ export const onRequestPost = async (context: PagesContext) => {
             discount_type: "1_year_free_pro",
             duration_months: 12,
             max_redemptions: 1,
-            redemption_count: 1,
+            redemption_count: newCount,
             is_active: false,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
         }
+        console.log(`[claim] Successfully updated promo_codes count for "${cleanCode}" to ${newCount}/${maxRedemptions}`);
       } catch (cErr) {
         console.warn("[claim] promo_codes update note:", cErr);
       }

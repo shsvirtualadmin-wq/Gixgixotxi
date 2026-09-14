@@ -71,7 +71,7 @@ export const onRequestGet = async (context: PagesContext) => {
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (!codesErr && Array.isArray(dbCodes) && dbCodes.length > 0) {
+      if (!codesErr && Array.isArray(dbCodes)) {
         // Fetch all redemptions
         let allRedemptions: any[] = [];
         try {
@@ -80,10 +80,35 @@ export const onRequestGet = async (context: PagesContext) => {
         } catch {}
 
         const mappedLinks = dbCodes.map((c: any) => {
-          const codeUpper = (c.code || "").toUpperCase();
-          const redemptionsForCode = allRedemptions.filter(
-            (r: any) => (r.promo_code || r.code || "").toUpperCase() === codeUpper
-          );
+          const codeUpper = String(c.code || "").trim().toUpperCase();
+          const redemptionsForCode = allRedemptions.filter((r: any) => {
+            const rCode = String(r.promo_code || r.code || r.promocode || r.discount_code || "").trim().toUpperCase();
+            return rCode === codeUpper;
+          });
+
+          const realCount = redemptionsForCode.length;
+          const storedCount = typeof c.redemption_count === "number" ? c.redemption_count : 0;
+          const effectiveCount = Math.max(storedCount, realCount);
+          const maxRedemptions = c.max_redemptions !== undefined ? c.max_redemptions : 1;
+          const isExhausted = maxRedemptions ? effectiveCount >= maxRedemptions : false;
+          const isActive = isExhausted ? false : (c.is_active !== false);
+
+          // Auto-heal discrepancy in promo_codes table asynchronously
+          if (storedCount < effectiveCount || (isExhausted && c.is_active !== false)) {
+            try {
+              let syncQ = supabaseAdmin.from("promo_codes").update({
+                redemption_count: effectiveCount,
+                is_active: isActive,
+                updated_at: new Date().toISOString(),
+              });
+              if (c.id) {
+                syncQ = syncQ.or(`code.ilike.${codeUpper},id.eq.${c.id}`);
+              } else {
+                syncQ = syncQ.ilike("code", codeUpper);
+              }
+              syncQ.then(() => {}).catch(() => {});
+            } catch {}
+          }
 
           return {
             id: c.id || "promo_" + codeUpper,
@@ -91,9 +116,9 @@ export const onRequestGet = async (context: PagesContext) => {
             label: c.label || "1-Year Free Pro Campaign",
             discount_type: c.discount_type || "1_year_free_pro",
             duration_months: c.duration_months || 12,
-            max_redemptions: c.max_redemptions,
-            redemption_count: c.redemption_count || redemptionsForCode.length || 0,
-            is_active: c.is_active !== false,
+            max_redemptions: maxRedemptions,
+            redemption_count: effectiveCount,
+            is_active: isActive,
             created_by: c.created_by || "admin",
             created_at: c.created_at || new Date().toISOString(),
             expires_at: c.expires_at || null,
@@ -109,10 +134,47 @@ export const onRequestGet = async (context: PagesContext) => {
           };
         });
 
-        return new Response(JSON.stringify({ success: true, links: mappedLinks }), {
-          status: 200,
-          headers: corsHeaders,
-        });
+        // Also surface any promo codes that exist in promo_redemptions but weren't in promo_codes table
+        const existingCodesSet = new Set(dbCodes.map((c: any) => String(c.code || "").trim().toUpperCase()));
+        const orphanCodeMap = new Map<string, any[]>();
+        for (const r of allRedemptions) {
+          const rCode = String(r.promo_code || r.code || r.promocode || r.discount_code || "").trim().toUpperCase();
+          if (rCode && !existingCodesSet.has(rCode)) {
+            if (!orphanCodeMap.has(rCode)) orphanCodeMap.set(rCode, []);
+            orphanCodeMap.get(rCode)!.push(r);
+          }
+        }
+        for (const [orphanCode, rList] of orphanCodeMap.entries()) {
+          mappedLinks.push({
+            id: "promo_" + orphanCode,
+            code: orphanCode,
+            label: "1-Year Free Pro Campaign (" + orphanCode + ")",
+            discount_type: "1_year_free_pro",
+            duration_months: 12,
+            max_redemptions: 1,
+            redemption_count: rList.length,
+            is_active: rList.length < 1,
+            created_by: "system",
+            created_at: rList[0]?.redeemed_at || rList[0]?.created_at || new Date().toISOString(),
+            expires_at: null,
+            redemptions: rList.map((r: any) => ({
+              id: r.id,
+              student_id: r.student_id || r.user_id,
+              student_name: r.student_name || "Student",
+              student_email: r.student_email || r.email,
+              redeemed_at: r.redeemed_at || r.created_at,
+              granted_until: r.granted_until || r.expires_at,
+              track: r.track || "General Track",
+            })),
+          });
+        }
+
+        if (mappedLinks.length > 0) {
+          return new Response(JSON.stringify({ success: true, links: mappedLinks }), {
+            status: 200,
+            headers: corsHeaders,
+          });
+        }
       }
     } catch (dbErr) {
       console.warn("[promo-links] DB query note:", dbErr);
