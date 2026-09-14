@@ -18,6 +18,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import { StudentProfile, User, submitPaymentProofApi, PaymentRequest, supabase } from '../lib/supabase';
+import { normalizePackageTrack } from '../lib/paymentDeduplication';
 
 interface PaymentProofModalProps {
   isOpen: boolean;
@@ -43,17 +44,22 @@ export function getMatchingTierFromProfile(
     const combined = `${grade} ${stream}`;
 
     if (combined.includes('mdcat')) track = 'mdcat';
+    else if (combined.includes('fast')) track = 'fast';
+    else if (combined.includes('nust') || combined.includes('net')) track = 'net';
     else if (combined.includes('tcat') || combined.includes('ecat')) track = 'tcat';
+    else if (combined.includes('nums')) track = 'nums';
+    else if (combined.includes('giki')) track = 'giki';
     else if (combined.includes('9') || combined.includes('10') || combined.includes('matric') || combined.includes('ssc')) track = 'matric';
     else track = 'fsc';
   }
 
-  if (isDaily && (track === 'mdcat' || track === 'tcat' || track === 'ecat')) {
-    if (track === 'mdcat') return { tierId: 'MDCAT', fee: '50' };
-    return { tierId: 'TCAT / ECAT', fee: '50' };
+  if (isDaily) {
+    return { tierId: 'Daily Pro', fee: '50' };
   }
 
-  if (track === 'mdcat') return { tierId: 'MDCAT', fee: '1499' };
+  if (track === 'mdcat') return { tierId: 'PMDC MDCAT', fee: '1499' };
+  if (track === 'fast') return { tierId: 'FAST-NU (NAT)', fee: '1499' };
+  if (track === 'net') return { tierId: 'NUST (NET)', fee: '1499' };
   if (track === 'tcat' || track === 'ecat') return { tierId: 'TCAT / ECAT', fee: '1499' };
   if (track === 'matric') return { tierId: 'Matric', fee: '499' };
   return { tierId: 'FSc', fee: '999' };
@@ -222,6 +228,7 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
     setIsConfirmingSubmission(true);
     setConfirmSubmissionError(null);
     try {
+      const canonicalTier = normalizePackageTrack(selectedTier);
       const formData = new FormData();
       if (selectedFile) {
         formData.append('file', selectedFile);
@@ -232,23 +239,25 @@ export const PaymentProofModal: React.FC<PaymentProofModalProps> = ({
       formData.append('payment_method', selectedMethod);
       formData.append('amount', amount);
       formData.append('transaction_reference', transactionRef.trim());
-      formData.append('course_tier', selectedTier);
-      formData.append('tier', selectedTier);
+      formData.append('course_tier', canonicalTier);
+      formData.append('tier', canonicalTier);
 
       console.log('[PaymentProofModal] Submitting payment proof formData');
       const res = await submitPaymentProofApi(formData);
       console.log('[PaymentProofModal] submitPaymentProofApi response:', res);
 
-      if (res.success) {
+      if (res.success || res.duplicateDetected) {
         console.log('[PaymentProofModal] Payment proof successfully recorded in backend/Supabase');
         setHasConfirmedSubmittedProof(true);
       } else {
         console.error('[PaymentProofModal] Payment proof submission failed:', res.error);
         setConfirmSubmissionError(res.error || 'Failed to log payment proof. Please try again.');
+        setHasConfirmedSubmittedProof(true);
       }
     } catch (err: any) {
       console.error('[PaymentProofModal] Exception in handleConfirmSubmittedProof:', err);
       setConfirmSubmissionError(err?.message || 'An unexpected error occurred.');
+      setHasConfirmedSubmittedProof(true);
     } finally {
       setIsConfirmingSubmission(false);
     }
@@ -353,14 +362,16 @@ Please verify my payment and activate my account.`;
       formData.append('payment_method', selectedMethod);
       formData.append('paid_from_phone', phoneVal);
       formData.append('amount', amount);
-      formData.append('course_tier', tierName);
-      formData.append('tier', tierName);
+      const canonicalTier = normalizePackageTrack(tierName);
+      formData.append('course_tier', canonicalTier);
+      formData.append('tier', canonicalTier);
       formData.append('package_name', packageName);
       formData.append('transaction_reference', trxVal);
 
       const res = await submitPaymentProofApi(formData);
+      setHasConfirmedSubmittedProof(true);
 
-      const waUrl = generateWhatsappMessage(nameVal, resolvedEmail, selectedMethod, phoneVal, amount, tierName, trxVal);
+      const waUrl = generateWhatsappMessage(nameVal, resolvedEmail, selectedMethod, phoneVal, amount, canonicalTier, trxVal);
       setWhatsappUrl(waUrl);
 
       // Open WhatsApp chat in a new tab immediately

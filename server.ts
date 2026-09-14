@@ -33,6 +33,7 @@ import {
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { generateAcademicExplanation } from "./src/lib/curriculumEngine.js";
 import { normalizeQuestionStem, deduplicateQuestions } from "./src/lib/shuffle.js";
+import { normalizePackageTrack, findDuplicatePaymentGroups } from "./src/lib/paymentDeduplication.js";
 
 dotenv.config();
 
@@ -8660,10 +8661,123 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         const resolvedMethod = payment_method || paymentMethod || 'JazzCash';
         const resolvedAmount = amount || '0';
         const resolvedTrx = (transaction_reference || transactionRef || '').trim();
-        const resolvedTier = course_tier || tier || '';
+        const rawTier = course_tier || tier || '';
+        const resolvedTier = normalizePackageTrack(rawTier);
 
         if (!resolvedEmail || !resolvedMethod || !resolvedAmount) {
           return res.status(400).json({ success: false, error: "Missing required fields: student_email, payment_method, amount." });
+        }
+
+        const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req);
+
+        // =========================================================================
+        // SAFEGUARD 1: Check for existing request with the same transaction reference
+        // =========================================================================
+        const cleanTxLower = resolvedTrx.toLowerCase();
+        const isMeaningfulTrx = cleanTxLower.length > 0 && !['n/a', 'na', 'none', '0', '-'].includes(cleanTxLower);
+
+        if (isMeaningfulTrx) {
+          let existingByTrx: any = null;
+
+          if (supabaseAdmin) {
+            try {
+              const { data: dbMatches } = await supabaseAdmin
+                .from('payment_requests')
+                .select('*')
+                .ilike('transaction_ref', resolvedTrx)
+                .limit(1);
+              if (dbMatches && dbMatches.length > 0) {
+                existingByTrx = dbMatches[0];
+              }
+            } catch (e) {
+              console.warn('[Check existing transaction_ref in DB]:', e);
+            }
+          }
+
+          if (!existingByTrx) {
+            existingByTrx = inMemoryPaymentRequests.find(
+              (r) => (r.transaction_ref || r.transaction_reference || '').trim().toLowerCase() === cleanTxLower
+            );
+          }
+
+          if (existingByTrx) {
+            console.log(`[Payment Submit Duplicate] Blocked duplicate insert for TRX "${resolvedTrx}". Existing status: ${existingByTrx.status}`);
+            if (existingByTrx.status === 'approved') {
+              return res.status(409).json({
+                success: false,
+                isDuplicate: true,
+                error: `Payment with transaction reference "${resolvedTrx}" has already been verified and approved.`,
+                existingRequest: existingByTrx,
+              });
+            }
+            return res.status(200).json({
+              success: true,
+              duplicateDetected: true,
+              message: `A payment verification request with transaction reference "${resolvedTrx}" is already pending admin verification.`,
+              data: existingByTrx,
+            });
+          }
+        }
+
+        // =========================================================================
+        // SAFEGUARD 2: Check for existing pending request for same student + track
+        // =========================================================================
+        let existingByTrack: any = null;
+        if (supabaseAdmin) {
+          try {
+            const { data: studentPending } = await supabaseAdmin
+              .from('payment_requests')
+              .select('*')
+              .eq('student_email', resolvedEmail)
+              .eq('status', 'pending');
+
+            if (studentPending && studentPending.length > 0) {
+              existingByTrack = studentPending.find(
+                (r) => normalizePackageTrack(r.package_name || r.course_tier || '') === resolvedTier
+              );
+            }
+          } catch (e) {
+            console.warn('[Check existing pending student track]:', e);
+          }
+        }
+
+        if (!existingByTrack) {
+          existingByTrack = inMemoryPaymentRequests.find(
+            (r) =>
+              (r.student_email || '').toLowerCase() === resolvedEmail &&
+              r.status === 'pending' &&
+              normalizePackageTrack(r.package_name || r.course_tier || '') === resolvedTier
+          );
+        }
+
+        if (existingByTrack) {
+          console.log(`[Payment Submit Duplicate] Student "${resolvedEmail}" already has a pending submission for track "${resolvedTier}".`);
+          return res.status(200).json({
+            success: true,
+            duplicateDetected: true,
+            message: `You already have a pending verification request for ${resolvedTier}. Please wait for admin approval.`,
+            data: existingByTrack,
+          });
+        }
+
+        // =========================================================================
+        // SAFEGUARD 3: Debounce rapid repeated submissions (double-clicks within 30s)
+        // =========================================================================
+        const nowMs = Date.now();
+        const rapidDuplicate = inMemoryPaymentRequests.find((r) => {
+          if ((r.student_email || '').toLowerCase() !== resolvedEmail) return false;
+          const subTime = new Date(r.submitted_at || r.created_at || 0).getTime();
+          return nowMs - subTime < 30 * 1000;
+        });
+
+        if (rapidDuplicate) {
+          console.log(`[Payment Submit Debounce] Blocked rapid repeat submission from "${resolvedEmail}".`);
+          return res.status(200).json({
+            success: true,
+            duplicateDetected: true,
+            message: "Your payment verification request was just submitted. Our admin team will verify it shortly.",
+            data: rapidDuplicate,
+          });
         }
 
         let driveFileId = `wa-${Date.now()}`;
@@ -8687,8 +8801,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
             console.error("[Payment Proof File Save Error]:", fileErr);
           }
         }
-
-        const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req);
         
         let targetStudentUuid: string | null = null;
         if (resolvedStudentId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedStudentId)) {
@@ -9098,6 +9210,148 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     } catch (err: any) {
       console.error("Error reviewing payment request:", err);
       return res.status(500).json({ success: false, error: err?.message || "Internal server error reviewing payment request." });
+    }
+  });
+
+  // API Endpoint: Admin Delete Individual Payment Request
+  app.post("/api/admin/payment-requests/delete", async (req: express.Request, res: express.Response) => {
+    try {
+      const { requestId, adminEmail } = req.body || {};
+      if (!requestId) {
+        return res.status(400).json({ success: false, error: "Missing required parameter: requestId." });
+      }
+
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req);
+
+      // Remove from memory
+      const memIdx = inMemoryPaymentRequests.findIndex((r) => r.id === requestId);
+      if (memIdx !== -1) {
+        inMemoryPaymentRequests.splice(memIdx, 1);
+      }
+
+      // Remove from Supabase
+      if (supabaseAdmin) {
+        try {
+          const { error } = await supabaseAdmin
+            .from('payment_requests')
+            .delete()
+            .eq('id', requestId);
+          if (error) {
+            console.error("[Delete Payment Request DB Error]:", error);
+            return res.status(500).json({ success: false, error: error.message });
+          }
+        } catch (dbErr: any) {
+          console.error("[Delete Payment Request DB Exception]:", dbErr);
+          return res.status(500).json({ success: false, error: dbErr?.message || "Database deletion error." });
+        }
+      }
+
+      console.log(`✅ [Payment Request Deleted]: ID ${requestId} by ${adminEmail || 'admin'}`);
+      return res.status(200).json({ success: true, message: `Payment request ${requestId} deleted successfully.` });
+    } catch (err: any) {
+      console.error("Error deleting payment request:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Internal server error." });
+    }
+  });
+
+  // API Endpoint: Admin Cleanup All Duplicate Payment Requests
+  app.post("/api/admin/payment-requests/cleanup-duplicates", async (req: express.Request, res: express.Response) => {
+    try {
+      const { adminEmail } = req.body || {};
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req);
+
+      let allRequests: any[] = [];
+      if (supabaseAdmin) {
+        try {
+          let { data, error } = await supabaseAdmin
+            .from('payment_requests')
+            .select('*')
+            .order('submitted_at', { ascending: false });
+
+          if (error && error.message?.includes('submitted_at')) {
+            const res2 = await supabaseAdmin.from('payment_requests').select('*');
+            data = res2.data;
+          }
+          if (Array.isArray(data)) {
+            allRequests = data;
+          }
+        } catch (e) {
+          console.warn("[cleanup-duplicates DB fetch error]:", e);
+        }
+      }
+
+      const existingIds = new Set(allRequests.map((r) => r.id));
+      for (const mem of inMemoryPaymentRequests) {
+        if (!existingIds.has(mem.id)) {
+          allRequests.push(mem);
+        }
+      }
+
+      const groups = findDuplicatePaymentGroups(allRequests);
+      const duplicateIdsToDelete: string[] = [];
+      const keptIds: string[] = [];
+
+      for (const group of groups) {
+        keptIds.push(group.primary.id);
+        for (const dupe of group.duplicates) {
+          duplicateIdsToDelete.push(dupe.id);
+        }
+      }
+
+      if (duplicateIdsToDelete.length === 0) {
+        return res.status(200).json({
+          success: true,
+          removedCount: 0,
+          removedIds: [],
+          keptIds,
+          message: "No duplicate payment requests found. Database is clean!",
+        });
+      }
+
+      // 1. Delete duplicates from inMemoryPaymentRequests
+      for (const dupeId of duplicateIdsToDelete) {
+        const idx = inMemoryPaymentRequests.findIndex((r) => r.id === dupeId);
+        if (idx !== -1) {
+          inMemoryPaymentRequests.splice(idx, 1);
+        }
+      }
+
+      // 2. Delete duplicates from Supabase
+      if (supabaseAdmin) {
+        try {
+          const { error } = await supabaseAdmin
+            .from('payment_requests')
+            .delete()
+            .in('id', duplicateIdsToDelete);
+
+          if (error) {
+            console.error("[cleanup-duplicates Supabase delete error]:", error);
+            return res.status(500).json({
+              success: false,
+              error: `Database delete error: ${error.message}`,
+              duplicateIdsDetected: duplicateIdsToDelete,
+            });
+          }
+        } catch (dbErr: any) {
+          console.error("[cleanup-duplicates Supabase exception]:", dbErr);
+          return res.status(500).json({
+            success: false,
+            error: dbErr?.message || "Failed to remove duplicates from database.",
+          });
+        }
+      }
+
+      console.log(`✅ [Duplicate Cleanup Complete]: Deleted ${duplicateIdsToDelete.length} duplicates by ${adminEmail || 'admin'}`);
+      return res.status(200).json({
+        success: true,
+        removedCount: duplicateIdsToDelete.length,
+        removedIds: duplicateIdsToDelete,
+        keptIds,
+        message: `Successfully cleaned up ${duplicateIdsToDelete.length} duplicate submission(s)! Kept the verified and primary records.`,
+      });
+    } catch (err: any) {
+      console.error("Error in cleanup duplicate payment requests:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Internal server error cleaning duplicates." });
     }
   });
 

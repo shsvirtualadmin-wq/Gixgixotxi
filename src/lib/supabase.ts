@@ -1,5 +1,6 @@
 import { createClient, User as SupabaseUser } from '@supabase/supabase-js';
 import { HistoryItem, TestResult, BoardClass, ResourceCategory, ResourceItem } from '../types';
+import { normalizePackageTrack, findDuplicatePaymentGroups } from './paymentDeduplication';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://wbvzbbnapowwmrjecdyt.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -3652,7 +3653,14 @@ export interface PaymentRequest {
 /**
  * Submit payment proof request details to backend (records request in DB for WhatsApp verification)
  */
-export async function submitPaymentProofApi(payload: Record<string, any> | FormData): Promise<{ success: boolean; data?: PaymentRequest; error?: string }> {
+export async function submitPaymentProofApi(payload: Record<string, any> | FormData): Promise<{
+  success: boolean;
+  data?: PaymentRequest;
+  error?: string;
+  duplicateDetected?: boolean;
+  isDuplicate?: boolean;
+  message?: string;
+}> {
   console.log('[submitPaymentProofApi] Initiating payment proof submission with payload:', payload);
   try {
     const isFormData = payload instanceof FormData;
@@ -3671,9 +3679,45 @@ export async function submitPaymentProofApi(payload: Record<string, any> | FormD
     const resp = await apiFetch('/api/payment-requests/submit', options);
     clearTimeout(timeoutId);
     const result = await safeJsonResponse(resp);
+
     if (resp.ok && result && result.success) {
       console.log('[submitPaymentProofApi] ✅ Express endpoint write succeeded:', result.data);
-      return { success: true, data: result.data };
+      return {
+        success: true,
+        data: result.data,
+        duplicateDetected: result.duplicateDetected,
+        message: result.message,
+      };
+    }
+
+    // Explicit duplicate blocked by server (409 Conflict)
+    if (resp.status === 409 || result?.isDuplicate) {
+      console.warn('[submitPaymentProofApi] Duplicate detected by server:', result);
+      return {
+        success: false,
+        isDuplicate: true,
+        error: result?.error || 'A payment with this transaction reference has already been verified and approved.',
+        data: result?.existingRequest,
+      };
+    }
+
+    // Duplicate pending detected by server (200 with duplicateDetected)
+    if (result && result.duplicateDetected) {
+      console.log('[submitPaymentProofApi] Pending submission already recorded by server:', result);
+      return {
+        success: true,
+        duplicateDetected: true,
+        data: result.data,
+        message: result.message,
+      };
+    }
+
+    // Explicit bad request from server (missing fields)
+    if (resp.status === 400) {
+      return {
+        success: false,
+        error: result?.error || 'Missing required payment submission fields.',
+      };
     }
 
     console.warn('[submitPaymentProofApi] /api/payment-requests/submit returned non-ok status, attempting direct Supabase fallback:', resp.status, result);
@@ -3696,7 +3740,8 @@ export async function submitPaymentProofApi(payload: Record<string, any> | FormD
     const payment_method = String(rawObj.payment_method || rawObj.paymentMethod || 'JazzCash');
     const amount = Number(rawObj.amount) || rawObj.amount || 0;
     const transaction_reference = String(rawObj.transaction_reference || rawObj.transactionRef || '').trim();
-    const course_tier = String(rawObj.course_tier || rawObj.tier || '');
+    const rawCourseTier = String(rawObj.course_tier || rawObj.tier || '');
+    const canonicalTier = normalizePackageTrack(rawCourseTier);
 
     let targetStudentUuid: string | null = null;
     if (student_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(student_id)) {
@@ -3718,20 +3763,63 @@ export async function submitPaymentProofApi(payload: Record<string, any> | FormD
       }
     }
 
-    if (transaction_reference) {
+    // Check existing by transaction_reference
+    const cleanTx = transaction_reference.toLowerCase();
+    if (cleanTx.length > 0 && !['n/a', 'na', 'none', '0', '-'].includes(cleanTx)) {
       try {
         const { data: existingRef } = await supabase
           .from('payment_requests')
           .select('*')
-          .eq('transaction_ref', transaction_reference)
-          .maybeSingle();
+          .ilike('transaction_ref', transaction_reference)
+          .limit(1);
 
-        if (existingRef) {
-          console.log('[submitPaymentProofApi] Existing payment_request found for transaction_ref in fallback:', transaction_reference);
-          return { success: true, data: existingRef };
+        if (existingRef && existingRef.length > 0) {
+          const found = existingRef[0];
+          console.log('[submitPaymentProofApi Fallback] Existing payment_request found for transaction_ref:', transaction_reference);
+          if (found.status === 'approved') {
+            return {
+              success: false,
+              isDuplicate: true,
+              error: `Payment with transaction reference "${transaction_reference}" has already been verified and approved.`,
+            };
+          }
+          return {
+            success: true,
+            duplicateDetected: true,
+            data: found,
+            message: `A payment verification request with transaction reference "${transaction_reference}" is already pending admin verification.`,
+          };
         }
       } catch (checkErr) {
         console.warn('[submitPaymentProofApi] Check existing transaction_ref failed:', checkErr);
+      }
+    }
+
+    // Check existing pending request for same student + track
+    if (student_email) {
+      try {
+        const { data: pendingList } = await supabase
+          .from('payment_requests')
+          .select('*')
+          .eq('student_email', student_email)
+          .eq('status', 'pending');
+
+        if (pendingList && pendingList.length > 0) {
+          const trackMatch = pendingList.find(
+            (r) => normalizePackageTrack(r.package_name || r.course_tier || '') === canonicalTier
+          );
+          if (trackMatch) {
+            console.log('[submitPaymentProofApi Fallback] Student already has pending request for track:', canonicalTier);
+            return {
+              success: true,
+              duplicateDetected: true,
+              data: trackMatch,
+              message: `You already have a pending verification request for ${canonicalTier}. Please wait for admin approval.`,
+            };
+          }
+        }
+      } catch (e) {
+        console.warn('[submitPaymentProofApi Fallback] Check existing student track failed:', e);
       }
     }
 
@@ -3741,7 +3829,7 @@ export async function submitPaymentProofApi(payload: Record<string, any> | FormD
       student_name,
       student_email,
       transaction_ref: transaction_reference,
-      package_name: course_tier,
+      package_name: canonicalTier,
       status: 'pending',
       proof_url: rawObj.proof_url || rawObj.screenshot_url || undefined,
       screenshot_url: rawObj.screenshot_url || rawObj.proof_url || undefined,
@@ -3954,6 +4042,101 @@ export async function reviewPaymentRequestInSupabase(
   } catch (fallbackErr: any) {
     console.error('[reviewPaymentRequestInSupabase] Direct Supabase fallback exception:', fallbackErr);
     return { success: false, message: fallbackErr?.message || 'Error updating payment request status.' };
+  }
+}
+
+/**
+ * Delete a specific payment request (Admin Only)
+ */
+export async function deletePaymentRequestInSupabase(
+  requestId: string,
+  adminEmail?: string
+): Promise<{ success: boolean; message?: string }> {
+  try {
+    const resp = await apiFetch('/api/admin/payment-requests/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId, adminEmail }),
+    });
+    const result = await safeJsonResponse(resp);
+    if (resp.ok && result && result.success) {
+      return { success: true, message: result.message };
+    }
+  } catch (err) {
+    console.warn('[deletePaymentRequestInSupabase] API route failed, attempting direct Supabase delete:', err);
+  }
+
+  // Fallback to direct Supabase deletion
+  try {
+    const { error } = await supabase
+      .from('payment_requests')
+      .delete()
+      .eq('id', requestId);
+
+    if (error) {
+      return { success: false, message: error.message };
+    }
+    return { success: true, message: 'Payment request deleted successfully.' };
+  } catch (dbErr: any) {
+    return { success: false, message: dbErr?.message || 'Failed to delete payment request.' };
+  }
+}
+
+/**
+ * Clean up all duplicate payment requests (Admin Only)
+ */
+export async function cleanupDuplicatePaymentRequestsInSupabase(
+  adminEmail?: string
+): Promise<{ success: boolean; removedCount: number; message?: string }> {
+  try {
+    const resp = await apiFetch('/api/admin/payment-requests/cleanup-duplicates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ adminEmail }),
+    });
+    const result = await safeJsonResponse(resp);
+    if (resp.ok && result && result.success) {
+      return {
+        success: true,
+        removedCount: result.removedCount ?? 0,
+        message: result.message,
+      };
+    }
+  } catch (err) {
+    console.warn('[cleanupDuplicatePaymentRequestsInSupabase] API route failed, running client-side duplicate resolution:', err);
+  }
+
+  // Client-side fallback if server endpoint is unavailable:
+  try {
+    const all = await fetchAllPaymentRequestsFromSupabase();
+    const groups = findDuplicatePaymentGroups(all);
+    const toDelete: string[] = [];
+    for (const g of groups) {
+      for (const d of g.duplicates) {
+        toDelete.push(d.id);
+      }
+    }
+
+    if (toDelete.length === 0) {
+      return { success: true, removedCount: 0, message: 'No duplicate payment requests found.' };
+    }
+
+    const { error } = await supabase
+      .from('payment_requests')
+      .delete()
+      .in('id', toDelete);
+
+    if (error) {
+      return { success: false, removedCount: 0, message: error.message };
+    }
+
+    return {
+      success: true,
+      removedCount: toDelete.length,
+      message: `Cleaned up ${toDelete.length} duplicate submission(s)!`,
+    };
+  } catch (err: any) {
+    return { success: false, removedCount: 0, message: err?.message || 'Error cleaning duplicates.' };
   }
 }
 

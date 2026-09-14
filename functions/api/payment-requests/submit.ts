@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { normalizePackageTrack } from "../../../src/lib/paymentDeduplication";
 
 interface PagesContext {
   request: Request;
@@ -107,19 +108,62 @@ const handleSubmitPaymentRequest = async (context: PagesContext) => {
     const cleanTxRef = String(transaction_reference || "").trim();
     const cleanEmail = String(student_email || "").toLowerCase().trim();
     const validStudentUuid = student_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(student_id) ? student_id : null;
+    const canonicalTier = normalizePackageTrack(course_tier || "Boardly Premium");
 
-    // Check for existing pending request with same transaction_ref to avoid duplicates
-    if (cleanTxRef) {
+    // Check for existing request with same transaction_ref to avoid duplicates
+    if (cleanTxRef && !['n/a', 'na', 'none', '0', '-'].includes(cleanTxRef.toLowerCase())) {
       const { data: existingRef } = await supabaseAdmin
         .from("payment_requests")
         .select("*")
-        .eq("transaction_ref", cleanTxRef)
-        .maybeSingle();
+        .ilike("transaction_ref", cleanTxRef)
+        .limit(1);
 
-      if (existingRef) {
-        console.log("[submit.ts] Existing payment_request found for transaction_ref:", cleanTxRef);
+      if (existingRef && existingRef.length > 0) {
+        const found = existingRef[0];
+        console.log("[submit.ts] Existing payment_request found for transaction_ref:", cleanTxRef, "status:", found.status);
+        if (found.status === 'approved') {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              isDuplicate: true,
+              error: `Payment with transaction reference "${cleanTxRef}" has already been verified and approved.`,
+              existingRequest: found,
+            }),
+            { status: 409, headers: corsHeaders }
+          );
+        }
         return new Response(
-          JSON.stringify({ success: true, data: existingRef, message: "Payment request already recorded." }),
+          JSON.stringify({
+            success: true,
+            duplicateDetected: true,
+            data: found,
+            message: `A payment verification request with transaction reference "${cleanTxRef}" is already pending admin verification.`,
+          }),
+          { status: 200, headers: corsHeaders }
+        );
+      }
+    }
+
+    // Check for existing pending request for same student + track
+    const { data: pendingList } = await supabaseAdmin
+      .from("payment_requests")
+      .select("*")
+      .eq("student_email", cleanEmail)
+      .eq("status", "pending");
+
+    if (pendingList && pendingList.length > 0) {
+      const match = pendingList.find(
+        (r: any) => normalizePackageTrack(r.package_name || r.course_tier || "") === canonicalTier
+      );
+      if (match) {
+        console.log("[submit.ts] Student already has a pending payment request for track:", canonicalTier);
+        return new Response(
+          JSON.stringify({
+            success: true,
+            duplicateDetected: true,
+            data: match,
+            message: `You already have a pending verification request for ${canonicalTier}. Please wait for admin approval.`,
+          }),
           { status: 200, headers: corsHeaders }
         );
       }
@@ -130,7 +174,7 @@ const handleSubmitPaymentRequest = async (context: PagesContext) => {
       student_name: String(student_name || "Student"),
       student_email: cleanEmail,
       transaction_ref: cleanTxRef,
-      package_name: String(course_tier || "Boardly Premium").trim(),
+      package_name: canonicalTier,
       status: "pending",
       proof_url: proofUrl,
       screenshot_url: proofUrl,

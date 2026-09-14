@@ -10,6 +10,7 @@ import {
   clearProfileCache,
   submitPaymentProofApi,
 } from '../lib/supabase';
+import { normalizePackageTrack } from '../lib/paymentDeduplication';
 import { useSiteSettings } from '../context/SiteSettingsContext';
 import { UserAvatar } from './UserAvatar';
 import {
@@ -539,7 +540,8 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
         activeUser = authData?.user || null;
       }
       const userId = activeUser?.id || `anon-${Date.now()}`;
-      const trackText = getSelectedTrackMeta().trackText;
+      const rawTrackText = getSelectedTrackMeta().trackText;
+      const trackText = normalizePackageTrack(rawTrackText);
       const planDetails = getFeePlanDetails();
 
       const payload = {
@@ -556,7 +558,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
       const res = await submitPaymentProofApi(payload);
       console.log('[StudentRegistrationFlow] submitPaymentProofApi response:', res);
 
-      if (res.success) {
+      if (res.success || res.duplicateDetected) {
         console.log('[StudentRegistrationFlow] Payment proof successfully recorded in backend/Supabase');
         setHasConfirmedSubmittedProof(true);
       } else {
@@ -1328,6 +1330,7 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
 
       // 3. Submit Payment Request details to backend
       try {
+        const canonicalTrack = normalizePackageTrack(trackText);
         await submitPaymentProofApi({
           student_id: savedProfile?.id || userId,
           student_name: fullName.trim() || activeUser?.user_metadata?.full_name || 'Student',
@@ -1335,8 +1338,9 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
           payment_method: selectedMethod,
           amount: planDetails.fee.replace(/,/g, ''),
           transaction_reference: transactionRef.trim(),
-          course_tier: trackText,
+          course_tier: canonicalTrack,
         });
+        setHasConfirmedSubmittedProof(true);
       } catch (reqErr) {
         console.warn('Payment request API submission notice:', reqErr);
       }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { UserAvatar } from './UserAvatar';
 import { StudyBuddyFormattedMessage } from './StudyBuddyFormattedMessage';
 import { SegmentedControl } from './SegmentedControl';
@@ -19,6 +19,8 @@ import {
   updateStudentStatusInSupabase,
   fetchAllPaymentRequestsFromSupabase,
   reviewPaymentRequestInSupabase,
+  deletePaymentRequestInSupabase,
+  cleanupDuplicatePaymentRequestsInSupabase,
   updateStudentPlanInSupabase,
   fetchAdminActivityLogsFromSupabase,
   AdminActivityLog,
@@ -30,6 +32,7 @@ import {
   StudyBuddyMessage,
   evaluateStudentAccess,
 } from '../lib/supabase';
+import { findDuplicatePaymentGroups } from '../lib/paymentDeduplication';
 import { getPrebuiltQuestionsForSubject } from '../data/prebuiltQuestions';
 import { getDynamicQuestionBankStats } from '../lib/questionBankStats';
 import { AVAILABLE_ASSIGNABLE_CLASSES } from '../data/portalMasterTracks';
@@ -138,9 +141,15 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all');
   const [paymentSearchQuery, setPaymentSearchQuery] = useState<string>('');
   const [reviewingRequestId, setReviewingRequestId] = useState<string | null>(null);
+  const [deletingRequestId, setDeletingRequestId] = useState<string | null>(null);
+  const [isCleaningDuplicates, setIsCleaningDuplicates] = useState<boolean>(false);
   const [rejectingRequest, setRejectingRequest] = useState<PaymentRequest | null>(null);
   const [rejectNote, setRejectNote] = useState<string>('');
   const [paymentToast, setPaymentToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
+  const duplicateGroups = useMemo(() => findDuplicatePaymentGroups(paymentRequests), [paymentRequests]);
+  const duplicateCount = useMemo(() => duplicateGroups.reduce((acc, g) => acc + g.duplicates.length, 0), [duplicateGroups]);
+  const duplicateIds = useMemo(() => new Set(duplicateGroups.flatMap((g) => g.duplicates.map((d) => d.id))), [duplicateGroups]);
 
   // Student directory filters
   const [studentGradeFilter, setStudentGradeFilter] = useState<string>('All');
@@ -854,6 +863,59 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
       setPaymentToast({ type: 'error', message: err?.message || 'Error rejecting payment.' });
     } finally {
       setReviewingRequestId(null);
+    }
+  };
+
+  const handleDeletePaymentRequest = async (request: PaymentRequest) => {
+    if (!window.confirm(`Are you sure you want to delete this payment submission for ${request.student_name} (${request.course_tier || 'Payment'})? This action cannot be undone.`)) {
+      return;
+    }
+    setDeletingRequestId(request.id);
+    try {
+      const res = await deletePaymentRequestInSupabase(request.id, detectedEmail);
+      if (res.success) {
+        setPaymentRequests((prev) => prev.filter((r) => r.id !== request.id));
+        setPaymentToast({
+          type: 'success',
+          message: `Payment request deleted successfully.`,
+        });
+        setTimeout(() => setPaymentToast(null), 5000);
+      } else {
+        setPaymentToast({ type: 'error', message: res.message || 'Failed to delete payment request.' });
+      }
+    } catch (err: any) {
+      setPaymentToast({ type: 'error', message: err?.message || 'Error deleting payment request.' });
+    } finally {
+      setDeletingRequestId(null);
+    }
+  };
+
+  const handleCleanupDuplicates = async () => {
+    if (duplicateCount === 0) {
+      setPaymentToast({ type: 'success', message: 'No duplicate submissions found.' });
+      return;
+    }
+    if (!window.confirm(`Are you sure you want to clean up ${duplicateCount} duplicate payment submission(s)? Only the earliest unique record per student/submission will be kept.`)) {
+      return;
+    }
+    setIsCleaningDuplicates(true);
+    try {
+      const res = await cleanupDuplicatePaymentRequestsInSupabase(detectedEmail);
+      if (res.success) {
+        const refreshed = await fetchAllPaymentRequestsFromSupabase(detectedEmail);
+        setPaymentRequests(refreshed);
+        setPaymentToast({
+          type: 'success',
+          message: res.message || `Cleaned up ${res.removedCount} duplicate submission(s)!`,
+        });
+        setTimeout(() => setPaymentToast(null), 6000);
+      } else {
+        setPaymentToast({ type: 'error', message: res.message || 'Failed to cleanup duplicates.' });
+      }
+    } catch (err: any) {
+      setPaymentToast({ type: 'error', message: err?.message || 'Error during duplicate cleanup.' });
+    } finally {
+      setIsCleaningDuplicates(false);
     }
   };
 
@@ -2506,6 +2568,36 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
             </div>
           )}
 
+          {/* Duplicate Submissions Alert & Clean Up Banner */}
+          {duplicateCount > 0 && (
+            <div className="p-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 text-amber-950 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm animate-fadeIn">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/20 flex items-center justify-center shrink-0">
+                  <AlertTriangle className="w-4 h-4 text-amber-700" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-amber-900">Duplicate Submissions Detected ({duplicateCount})</h4>
+                  <p className="text-[11px] text-amber-800">
+                    Found {duplicateCount} redundant submission(s) across {duplicateGroups.length} group(s) with matching TRX references or timestamps.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isCleaningDuplicates}
+                onClick={handleCleanupDuplicates}
+                className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 cursor-pointer shadow transition-all active:scale-95 shrink-0 disabled:opacity-50"
+              >
+                {isCleaningDuplicates ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5" />
+                )}
+                <span>Clean Up All Duplicates ({duplicateCount})</span>
+              </button>
+            </div>
+          )}
+
           {/* Filter System Control Bar */}
           <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
             {/* Filter Toggle Buttons with SegmentedControl */}
@@ -2719,6 +2811,13 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                               {isRejected && <XCircle className="w-3 h-3 text-rose-500" />}
                               <span className="capitalize">{req.status}</span>
                             </span>
+
+                            {duplicateIds.has(req.id) && (
+                              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full flex items-center gap-1 bg-amber-500/15 text-amber-700 border border-amber-500/30">
+                                <AlertTriangle className="w-3 h-3 text-amber-600" />
+                                <span>Duplicate Entry</span>
+                              </span>
+                            )}
                           </div>
 
                           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
@@ -2806,6 +2905,21 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                         >
                           <XCircle className="w-3.5 h-3.5" />
                           <span>{isRejected ? 'Rejected' : 'Reject'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          disabled={deletingRequestId === req.id || isBusy}
+                          onClick={() => handleDeletePaymentRequest(req)}
+                          className="px-2.5 py-1.5 rounded-xl text-xs font-extrabold transition-all flex items-center gap-1 cursor-pointer text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 hover:border-rose-200 shadow-sm"
+                          title="Delete this payment submission record"
+                        >
+                          {deletingRequestId === req.id ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-rose-500" />
+                          ) : (
+                            <Trash2 className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-500" />
+                          )}
+                          <span className="hidden sm:inline">Delete</span>
                         </button>
                       </div>
                     </div>
