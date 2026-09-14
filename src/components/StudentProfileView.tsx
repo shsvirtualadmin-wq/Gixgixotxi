@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { StudentProfile, User, updateStudentPersonalInfo, uploadUserAvatar, supabase, evaluateStudentAccess } from '../lib/supabase';
+import { StudentProfile, User, updateStudentPersonalInfo, uploadUserAvatar, supabase, evaluateStudentAccess, isAdminEmail } from '../lib/supabase';
 import { renderTargetUniversityBadge } from './InstitutionBadge';
 import { TargetUniversityModal } from './TargetUniversityModal';
 import { UserAvatar } from './UserAvatar';
@@ -471,6 +471,19 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
 
           {/* Active Subscription Pill */}
           {(() => {
+            const isUserAdmin = Boolean(
+              (profile?.email && isAdminEmail(profile.email)) ||
+              (user?.email && isAdminEmail(user.email)) ||
+              profile?.role === 'admin'
+            );
+            if (isUserAdmin) {
+              return (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-purple-50 text-purple-900 border border-purple-200">
+                  <ShieldCheck className="w-3 h-3 text-purple-600" />
+                  <span>Admin — Unlimited (999+)</span>
+                </span>
+              );
+            }
             const access = evaluateStudentAccess(profile);
             return (
               <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
@@ -487,45 +500,52 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
 
         {/* Read-Only Summary Table */}
         {(() => {
-          const access = evaluateStudentAccess(profile);
+          const isUserAdmin = Boolean(
+            (profile?.email && isAdminEmail(profile.email)) ||
+            (user?.email && isAdminEmail(user.email)) ||
+            profile?.role === 'admin'
+          );
+          const access = evaluateStudentAccess(profile, 0, isUserAdmin);
           return (
             <div className="divide-y divide-black/5  border border-black/10  rounded-2xl overflow-hidden text-xs">
               <div className="p-3.5 bg-slate-50  flex justify-between items-center">
                 <span className="font-bold text-slate-500">Subscription Package</span>
                 <span className="font-extrabold text-[#0A0A0A] ">
-                  {access.effectivePlanName}
+                  {isUserAdmin ? '⭐ Admin Master Access (999+)' : access.effectivePlanName}
                 </span>
               </div>
 
               <div className="p-3.5 bg-white  flex justify-between items-start gap-4">
                 <span className="font-bold text-slate-500 shrink-0">Enrolled Track</span>
                 <span className="font-bold text-[#0A0A0A]  text-right truncate max-w-xs">
-                  Class {access.assignedTrack} ({access.assignedStream})
+                  {isUserAdmin ? 'All Academic & Entry Portals' : `Class ${access.assignedTrack} (${access.assignedStream})`}
                 </span>
               </div>
 
               <div className="p-3.5 bg-slate-50  flex justify-between items-center">
                 <span className="font-bold text-slate-500">Monthly Test Limit</span>
                 <span className="font-extrabold text-[#0A0A0A] ">
-                  {access.isPro ? 'Unlimited Tests' : '2 Tests / Calendar Month'}
+                  {isUserAdmin ? 'Unlimited (999+)' : access.isPro ? 'Unlimited Tests' : '2 Tests / Calendar Month'}
                 </span>
               </div>
 
               <div className="p-3.5 bg-white  flex justify-between items-center">
                 <span className="font-bold text-slate-500">Payment Status</span>
                 <span className={`font-extrabold flex items-center gap-1 ${
-                  access.isPro ? 'text-emerald-600 ' : 'text-slate-600 '
+                  isUserAdmin || access.isPro ? 'text-emerald-600 ' : 'text-slate-600 '
                 }`}>
                   <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>{access.paymentStatus}</span>
+                  <span>{isUserAdmin ? 'Verified & Paid (Admin Access)' : access.paymentStatus}</span>
                 </span>
               </div>
 
               <div className="p-3.5 bg-slate-50  flex justify-between items-center">
                 <span className="font-bold text-slate-500">Access Expiration</span>
                 <span className="font-extrabold text-[#0A0A0A] ">
-                  {access.isPro
-                    ? `${access.daysRemaining} days remaining (${access.accessExpiresDate ? new Date(access.accessExpiresDate).toLocaleDateString() : 'Active'})`
+                  {isUserAdmin
+                    ? 'Permanent / Non-Expiring (999+)'
+                    : access.isPro
+                    ? (access.accessExpiresDate ? `${access.daysRemaining} days remaining (${new Date(access.accessExpiresDate).toLocaleDateString()})` : 'Active / Non-Expiring')
                     : 'Free Tier (Renews Monthly)'}
                 </span>
               </div>

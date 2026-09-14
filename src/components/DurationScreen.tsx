@@ -81,7 +81,7 @@ export const DurationScreen: React.FC<DurationScreenProps> = React.memo(({
         {isProUser ? (
           <span className="text-[10px] font-bold tracking-wide text-white bg-[#1E5AFF] px-3 py-1 rounded-full flex items-center gap-1.5 shadow-xs">
             <ShieldCheck className="w-3.5 h-3.5" />
-            {usageInfo?.isAdmin || isAdminEmail(currentUser?.email) ? 'Admin (Unlimited)' : 'Unlimited — Pro Access'}
+            {usageInfo?.isAdmin || isAdminEmail(currentUser?.email) ? 'Admin — Unlimited (999+)' : 'Unlimited — Pro Access'}
           </span>
         ) : usageInfo ? (
           <span className={`text-[10px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5 ${

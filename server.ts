@@ -5666,6 +5666,14 @@ ${scopeInstruction}${excludeInstruction}`;
         return res.status(400).json({ success: false, error: "userId or userEmail required" });
       }
 
+      if ((userEmail && isAdminEmail(userEmail)) || (userId && isAdminEmail(userId))) {
+        return res.json({
+          success: true,
+          downgraded: false,
+          message: "Admin account has permanent access and is not subject to expiration or downgrade.",
+        });
+      }
+
       const db = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
       if (!db) {
         return res.status(500).json({ success: false, error: "Database unavailable" });
@@ -10598,6 +10606,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       if (error || !proStudents || proStudents.length === 0) return;
 
       for (const st of proStudents) {
+        if (st.email && isAdminEmail(st.email)) continue;
         if (st.access_expires) {
           const expTime = new Date(st.access_expires).getTime();
           if (!isNaN(expTime) && expTime <= now) {

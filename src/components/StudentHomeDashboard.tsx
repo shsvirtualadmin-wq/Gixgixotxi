@@ -22,7 +22,7 @@ import {
   Check,
   Crown
 } from 'lucide-react';
-import { User, StudentProfile, fetchStudentWeaknessProfile, StudentWeaknessProfileData, evaluateStudentAccess, isUserProOrPaid, downgradeExpiredProStudent } from '../lib/supabase';
+import { User, StudentProfile, fetchStudentWeaknessProfile, StudentWeaknessProfileData, evaluateStudentAccess, isUserProOrPaid, downgradeExpiredProStudent, isAdminEmail } from '../lib/supabase';
 import { HistoryItem } from '../types';
 import { InstitutionBadge, renderTargetUniversityBadge } from './InstitutionBadge';
 import { TargetUniversityModal } from './TargetUniversityModal';
@@ -161,59 +161,69 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
   monthlyTestCount = 0,
   onUpgradeClick,
 }) => {
+  // 1. Detect if this account is an administrator / staff account (permanent, non-expiring access)
+  const isEffectiveAdmin = Boolean(
+    isAdmin ||
+    isAdminEmail(currentUser?.email) ||
+    isAdminEmail(userProfile?.email) ||
+    userProfile?.role === 'admin' ||
+    (userProfile as any)?.is_admin
+  );
+
   // Live Pro Countdown & Expiry Engine
   const [nowTime, setNowTime] = useState<number>(() => Date.now());
   const [isLocallyDowngraded, setIsLocallyDowngraded] = useState<boolean>(false);
   const hasTriggeredDowngradeRef = useRef<boolean>(false);
 
-  // Set up 1-second interval to update live countdown in real time on the dashboard
+  // Set up 1-second interval to update live countdown in real time on the dashboard ONLY for students
   useEffect(() => {
+    if (isEffectiveAdmin) return;
     const timer = setInterval(() => {
       setNowTime(Date.now());
     }, 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [isEffectiveAdmin]);
 
-  // Determine if the student profile holds a Pro grant
+  // Determine if the student profile holds a Pro grant (strictly for student accounts)
   const hasProGrant = Boolean(
+    !isEffectiveAdmin &&
     !isLocallyDowngraded &&
-    (userProfile?.is_pro || userProfile?.plan_tier === 'pro' || (isAdmin && !isLocallyDowngraded))
+    (userProfile?.is_pro || userProfile?.plan_tier === 'pro')
   );
 
-  // Parse access_expires timestamp
+  // Parse access_expires timestamp strictly for real student accounts with an actual access_expires date
   const expiryTimestamp = React.useMemo(() => {
+    if (isEffectiveAdmin) return null;
     if (!userProfile?.access_expires) return null;
     const t = new Date(userProfile.access_expires).getTime();
     return isNaN(t) ? null : t;
-  }, [userProfile?.access_expires]);
+  }, [isEffectiveAdmin, userProfile?.access_expires]);
 
   // Reset local downgrade state if profile receives a valid future expiration
   useEffect(() => {
+    if (isEffectiveAdmin) return;
     if (expiryTimestamp && expiryTimestamp > Date.now()) {
       hasTriggeredDowngradeRef.current = false;
       setIsLocallyDowngraded(false);
     }
-  }, [expiryTimestamp]);
+  }, [isEffectiveAdmin, expiryTimestamp]);
 
-  // Target expiry time
+  // Target expiry time: ONLY applied to real student accounts with an actual access_expires date
   const targetExpiryTime = React.useMemo(() => {
-    if (!hasProGrant) return null;
-    if (expiryTimestamp) return expiryTimestamp;
-    // Fallback if is_pro is true but access_expires is unset
-    if (userProfile?.created_at) {
-      const c = new Date(userProfile.created_at).getTime();
-      if (!isNaN(c)) return c + 365 * 24 * 3600 * 1000;
-    }
-    return Date.now() + 365 * 24 * 3600 * 1000;
-  }, [hasProGrant, expiryTimestamp, userProfile?.created_at]);
+    if (isEffectiveAdmin || !hasProGrant) return null;
+    return expiryTimestamp;
+  }, [isEffectiveAdmin, hasProGrant, expiryTimestamp]);
 
   const remainingMs = targetExpiryTime ? targetExpiryTime - nowTime : 0;
-  const isProActive = Boolean(hasProGrant && targetExpiryTime && remainingMs > 0);
-  const isProStudent = isProActive;
+  // A student has active Pro if they have a pro grant and either no expiry or it hasn't expired yet
+  const isProActive = Boolean(hasProGrant && (!targetExpiryTime || remainingMs > 0));
+
+  // Feature gate access on dashboard: Admin always gets permanent unlimited access; Students get access when active
+  const isProStudent = isEffectiveAdmin || isProActive;
 
   // Format countdown string: "199d 14h 22m 05s left"
   const countdownString = React.useMemo(() => {
-    if (!targetExpiryTime || remainingMs <= 0) return '';
+    if (isEffectiveAdmin || !targetExpiryTime || remainingMs <= 0) return '';
     const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
     const days = Math.floor(totalSeconds / 86400);
     const hours = Math.floor((totalSeconds % 86400) / 3600);
@@ -222,10 +232,11 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
 
     const pad = (n: number) => String(n).padStart(2, '0');
     return `${days}d ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s left`;
-  }, [targetExpiryTime, remainingMs]);
+  }, [isEffectiveAdmin, targetExpiryTime, remainingMs]);
 
-  // Exact automatic downgrade when countdown hits zero (or on load if already expired)
+  // Exact automatic downgrade when countdown hits zero (strictly for real student accounts with an actual access_expires date)
   useEffect(() => {
+    if (isEffectiveAdmin) return;
     if (
       targetExpiryTime &&
       remainingMs <= 0 &&
@@ -250,11 +261,11 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
         onUpdateProfile(downgradedProfile);
       }
 
-      const uid = userProfile.id || currentUser?.id || '';
-      const uemail = userProfile.email || currentUser?.email || undefined;
+      const uid = userProfile?.id || currentUser?.id || '';
+      const uemail = userProfile?.email || currentUser?.email || undefined;
       downgradeExpiredProStudent(uid, uemail);
     }
-  }, [targetExpiryTime, remainingMs, userProfile, currentUser, onUpdateProfile]);
+  }, [isEffectiveAdmin, targetExpiryTime, remainingMs, userProfile, currentUser, onUpdateProfile]);
 
   const [weaknessProfile, setWeaknessProfile] = useState<StudentWeaknessProfileData | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState<boolean>(true);
@@ -573,13 +584,22 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
 
         <div className="flex items-center justify-between gap-3 relative z-10">
           {/* Single Status Label */}
-          {isProActive ? (
+          {isEffectiveAdmin ? (
+            <div
+              id="student-dashboard-status-label"
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-purple-50 text-purple-900 border border-purple-200 shadow-xs whitespace-nowrap shrink-0"
+              title="Staff / Admin Account — Permanent Unlimited Access (999+)"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+              <span>Admin — Unlimited (999+)</span>
+            </div>
+          ) : isProActive ? (
             <div
               id="student-dashboard-status-label"
               className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-xs whitespace-nowrap shrink-0"
             >
               <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
-              <span>Pro — {countdownString}</span>
+              <span>Pro — {countdownString || 'Active'}</span>
             </div>
           ) : (
             <div

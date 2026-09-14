@@ -358,6 +358,8 @@ export interface StudentProfile {
   access_expires?: string;
   tests_used_this_month?: number;
   plan_tier?: 'free' | 'pro';
+  role?: string;
+  is_admin?: boolean;
   ai_messages_used_today?: number;
   last_ai_message_date?: string;
   promo_code_redeemed?: string;
@@ -759,6 +761,12 @@ export function invalidateStudentProfileCache(studentId?: string, updatedProfile
  * and remotely in Supabase (students + profiles tables) and via the server endpoint.
  */
 export async function downgradeExpiredProStudent(userId: string, email?: string): Promise<StudentProfile | null> {
+  // Admin accounts have permanent unlimited access and must NEVER be downgraded
+  if ((email && isAdminEmail(email)) || (userId && isAdminEmail(userId))) {
+    console.log(`[downgradeExpiredProStudent] Bailing out: ${userId || email} is an admin account.`);
+    return null;
+  }
+
   console.log(`[downgradeExpiredProStudent] Triggering downgrade for student ${userId} (${email})`);
 
   // 1. Clear caches and write downgraded profile into local cache immediately
@@ -1255,8 +1263,13 @@ export async function syncUserProfile(
         }
       } catch (cachedErr) {}
 
-      // Automatic Expiry Check: If finalProfile has an expired Pro access_expires date, immediately downgrade it!
-      if ((finalProfile.is_pro || finalProfile.plan_tier === 'pro') && finalProfile.access_expires) {
+      // Automatic Expiry Check: If real student account has an expired Pro access_expires date, immediately downgrade it!
+      const isAccountAdmin = Boolean(
+        (user.email && isAdminEmail(user.email)) ||
+        (finalProfile.email && isAdminEmail(finalProfile.email)) ||
+        finalProfile.role === 'admin'
+      );
+      if (!isAccountAdmin && (finalProfile.is_pro || finalProfile.plan_tier === 'pro') && finalProfile.access_expires) {
         const expTime = new Date(finalProfile.access_expires).getTime();
         if (!isNaN(expTime) && expTime <= Date.now()) {
           console.log(`[syncUserProfile] Pro access expired for student ${userId} (${user.email}). Automatically downgrading to Free Tier on load.`);
@@ -2666,8 +2679,13 @@ export async function fetchStudentProfileFromSupabase(
             }
           } catch (guardErr) {}
 
-          // Automatic Expiry Check: If profile has an expired Pro access_expires date, immediately downgrade it!
-          if ((profile.is_pro || profile.plan_tier === 'pro') && profile.access_expires) {
+          // Automatic Expiry Check: If real student account has an expired Pro access_expires date, immediately downgrade it!
+          const isAccountAdmin = Boolean(
+            (userEmail && isAdminEmail(userEmail)) ||
+            (profile.email && isAdminEmail(profile.email)) ||
+            profile.role === 'admin'
+          );
+          if (!isAccountAdmin && (profile.is_pro || profile.plan_tier === 'pro') && profile.access_expires) {
             const expTime = new Date(profile.access_expires).getTime();
             if (!isNaN(expTime) && expTime <= Date.now()) {
               console.log(`[fetchStudentProfileFromSupabase] Pro access expired for student ${userId} (${userEmail}). Automatically downgrading.`);

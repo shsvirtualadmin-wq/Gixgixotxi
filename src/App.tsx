@@ -601,7 +601,11 @@ export function App() {
         if (!profile.dream_university) profile.dream_university = savedUni;
         if (!profile.target_university) profile.target_university = savedUni;
       }
-      if (profile && (profile.is_pro || profile.plan_tier === 'pro') && profile.access_expires) {
+      const isProfileAdmin = Boolean(
+        (profile?.email && isAdminEmail(profile.email)) ||
+        profile?.role === 'admin'
+      );
+      if (!isProfileAdmin && profile && (profile.is_pro || profile.plan_tier === 'pro') && profile.access_expires) {
         const expTime = new Date(profile.access_expires).getTime();
         if (!isNaN(expTime) && expTime <= Date.now()) {
           profile.is_pro = false;
@@ -1308,6 +1312,8 @@ export function App() {
 
         // Automatic Expiry Check: If student account has expired Pro access_expires date, immediately downgrade it!
         const isExp = (p: StudentProfile) => {
+          if (p.email && isAdminEmail(p.email)) return false;
+          if (p.role === 'admin') return false;
           if ((p.is_pro || p.plan_tier === 'pro') && p.access_expires) {
             const exp = new Date(p.access_expires).getTime();
             return !isNaN(exp) && exp <= Date.now();
