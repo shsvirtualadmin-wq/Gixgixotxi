@@ -993,11 +993,27 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
       if (!res.success) {
         throw new Error(res.message || 'Failed to remove student account.');
       }
-      setStudents((prev) => prev.filter((s) => s.id !== studentToRemove.id));
-      if (selectedStudent && selectedStudent.id === studentToRemove.id) {
+      setStudents((prev) =>
+        prev.filter((s) => s.id !== studentToRemove.id && s.email.toLowerCase() !== studentToRemove.email.toLowerCase())
+      );
+      setAllTestResults((prev) =>
+        prev.filter(
+          (t) =>
+            t.student_id !== studentToRemove.id &&
+            (t.student_email || '').toLowerCase() !== studentToRemove.email.toLowerCase()
+        )
+      );
+      setPaymentRequests((prev) =>
+        prev.filter(
+          (p) =>
+            p.student_id !== studentToRemove.id &&
+            (p.student_email || '').toLowerCase() !== studentToRemove.email.toLowerCase()
+        )
+      );
+      if (selectedStudent && (selectedStudent.id === studentToRemove.id || selectedStudent.email.toLowerCase() === studentToRemove.email.toLowerCase())) {
         setSelectedStudent(null);
       }
-      setRemoveSuccessToast(`Successfully wiped student account for ${studentToRemove.name} (${studentToRemove.email}).`);
+      setRemoveSuccessToast(`Successfully permanently wiped user and all data for ${studentToRemove.name} (${studentToRemove.email}).`);
       setStudentToRemove(null);
       setRemoveConfirmText('');
     } catch (err: any) {
@@ -3623,15 +3639,15 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
         </div>
       )}
 
-      {/* ACCOUNT WIPE CONFIRMATION MODAL */}
+      {/* PERMANENT USER DELETION CONFIRMATION MODAL — NO DATA RETAINED */}
       {studentToRemove && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fadeIn overflow-y-auto">
-          <div className="bg-white  border border-slate-200  rounded-[24px] sm:rounded-[28px] max-w-md w-full max-w-[95vw] sm:max-w-md p-4 sm:p-6 shadow-2xl space-y-4 animate-ios-spring relative overflow-hidden box-border my-auto">
-            <div className="absolute top-0 left-0 right-0 h-2 bg-rose-600" />
-            <div className="flex items-center justify-between border-b border-slate-100  pb-3 gap-2">
-              <div className="flex items-center gap-2 text-rose-600  font-extrabold text-xs sm:text-sm min-w-0">
-                <Trash2 className="w-5 h-5 shrink-0" />
-                <span className="truncate">Wipe & Remove Student Account</span>
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 animate-fadeIn overflow-y-auto">
+          <div className="bg-white border-2 border-rose-500/30 rounded-[24px] sm:rounded-[28px] max-w-md w-full max-w-[95vw] sm:max-w-md p-4 sm:p-6 shadow-2xl space-y-4 animate-ios-spring relative overflow-hidden box-border my-auto">
+            <div className="absolute top-0 left-0 right-0 h-2.5 bg-gradient-to-r from-rose-600 via-red-600 to-rose-700" />
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-2">
+              <div className="flex items-center gap-2 text-rose-600 font-extrabold text-xs sm:text-sm min-w-0">
+                <Trash2 className="w-5 h-5 shrink-0 text-rose-600" />
+                <span className="truncate">Permanent User Deletion — Irreversible</span>
               </div>
               <button
                 onClick={() => {
@@ -3639,46 +3655,56 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                   setRemoveConfirmText('');
                   setRemoveStudentError(null);
                 }}
-                className="p-1 rounded-full text-slate-400 hover:text-slate-600  cursor-pointer shrink-0"
+                className="p-1 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer shrink-0"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-3 text-xs min-w-0">
-              <div className="bg-slate-50  p-3 rounded-2xl border border-slate-200  space-y-1 min-w-0 overflow-hidden">
-                <div className="font-extrabold text-slate-900  text-sm truncate">{studentToRemove.name}</div>
-                <div className="text-slate-500  font-mono text-[11px] truncate">{studentToRemove.email}</div>
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 space-y-1 min-w-0 overflow-hidden">
+                <div className="font-extrabold text-slate-900 text-sm truncate">{studentToRemove.name}</div>
+                <div className="text-slate-600 font-mono text-xs truncate select-all">{studentToRemove.email}</div>
               </div>
 
-              <div className="bg-rose-50  border border-rose-200  rounded-2xl p-3 text-rose-900  text-xs space-y-1 font-medium break-words">
-                <p className="font-extrabold flex items-center gap-1 text-rose-950 ">
+              <div className="bg-rose-50 border border-rose-300 rounded-2xl p-3.5 text-rose-900 text-xs space-y-2 font-medium break-words">
+                <div className="font-black flex items-center gap-1.5 text-rose-950 text-xs uppercase tracking-wide">
                   <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                  <span>DESTRUCTIVE ACTION (Full Account Wipe)</span>
+                  <span>NO EXCEPTIONS, NO DATA RETAINED</span>
+                </div>
+                <p className="leading-relaxed text-rose-900">
+                  This action permanently and irreversibly destroys this user across the entire system:
                 </p>
-                <p>
-                  This action permanently deletes this student record, test history, MCQ attempts, and AI Study Buddy conversations from the database.
-                </p>
-                <p className="text-[11px] text-rose-800  font-bold pt-1">
-                  Upon logging back in with this email, the user will be treated as an unregistered brand-new student.
+                <ul className="list-disc list-inside space-y-0.5 text-[11px] text-rose-950 font-semibold pl-1">
+                  <li>Supabase Auth credentials (<code className="font-mono text-[10px] bg-rose-100 px-1 py-0.5 rounded">auth.users</code>)</li>
+                  <li>All payment, transaction & subscription history</li>
+                  <li>All test results & MCQ practice history</li>
+                  <li>All AI Study Buddy conversations & usage</li>
+                  <li>All promo code & link redemptions</li>
+                  <li>All profile data, storage files & avatars</li>
+                </ul>
+                <p className="text-[11px] text-rose-950 font-bold pt-1 border-t border-rose-200">
+                  ⚠️ If this email signs up again afterward, it will be treated as a 100% brand-new account with zero history.
                 </p>
               </div>
 
               <div className="space-y-1.5 pt-1 min-w-0">
-                <label className="block text-[11px] font-extrabold text-slate-700  break-words">
-                  To confirm permanent wipe, type <span className="font-mono text-rose-600  break-all">{studentToRemove.email}</span> below:
+                <label className="block text-[11px] font-extrabold text-slate-800 break-words">
+                  To confirm permanent deletion, type <span className="font-mono text-rose-700 font-bold select-all bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200 break-all">{studentToRemove.email}</span> below:
                 </label>
                 <input
                   type="text"
                   value={removeConfirmText}
                   onChange={(e) => setRemoveConfirmText(e.target.value)}
-                  placeholder="Type student email or name to confirm..."
-                  className="w-full bg-slate-50  border border-slate-300  rounded-xl px-3 py-2 text-xs text-slate-900  font-medium focus:outline-none focus:border-rose-500 box-border"
+                  placeholder={`Type ${studentToRemove.email} to confirm...`}
+                  className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-xs text-slate-900 font-medium focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 box-border font-mono"
+                  autoComplete="off"
+                  spellCheck="false"
                 />
               </div>
 
               {removeStudentError && (
-                <p className="text-xs font-bold text-rose-600  bg-rose-100  p-2.5 rounded-xl border border-rose-300  break-words">
+                <p className="text-xs font-bold text-rose-700 bg-rose-100 p-2.5 rounded-xl border border-rose-300 break-words">
                   {removeStudentError}
                 </p>
               )}
@@ -3693,7 +3719,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                   setRemoveConfirmText('');
                   setRemoveStudentError(null);
                 }}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-full text-xs font-bold bg-slate-100  text-slate-800  cursor-pointer text-center"
+                className="w-full sm:w-auto px-4 py-2.5 rounded-full text-xs font-bold bg-slate-100 text-slate-800 hover:bg-slate-200 cursor-pointer text-center transition-colors"
               >
                 Cancel
               </button>
@@ -3702,21 +3728,20 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                 type="button"
                 disabled={
                   isRemovingStudent ||
-                  (removeConfirmText.trim().toLowerCase() !== studentToRemove.email.trim().toLowerCase() &&
-                    removeConfirmText.trim().toLowerCase() !== studentToRemove.name.trim().toLowerCase())
+                  removeConfirmText.trim().toLowerCase() !== studentToRemove.email.trim().toLowerCase()
                 }
                 onClick={handleConfirmRemoveStudent}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-full text-xs font-extrabold bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md active:scale-95 text-center shrink-0"
+                className="w-full sm:w-auto px-5 py-2.5 rounded-full text-xs font-extrabold bg-rose-600 hover:bg-rose-700 disabled:opacity-40 text-white transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-md active:scale-95 text-center shrink-0"
               >
                 {isRemovingStudent ? (
                   <>
                     <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                    <span>Wiping Student...</span>
+                    <span>Permanently Deleting...</span>
                   </>
                 ) : (
                   <>
                     <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                    <span>Permanently Wipe Account</span>
+                    <span>Permanently Delete User & All Data</span>
                   </>
                 )}
               </button>

@@ -3171,11 +3171,19 @@ export async function removeStudentAccountInSupabase(
   }
 
   try {
-    // Clear local caches first
-    clearProfileCache(studentId);
-    try {
-      localStorage.removeItem(`boardly_profile_${studentId}`);
-    } catch {}
+    // Clear local profile and authentication caches
+    if (studentId) {
+      clearProfileCache(studentId);
+      try {
+        localStorage.removeItem(`boardly_profile_${studentId}`);
+      } catch {}
+    }
+    if (studentEmail) {
+      clearProfileCache(studentEmail);
+      try {
+        localStorage.removeItem(`boardly_profile_${studentEmail}`);
+      } catch {}
+    }
 
     let resp = await apiFetch('/api/admin/remove-student', {
       method: 'POST',
@@ -3186,7 +3194,7 @@ export async function removeStudentAccountInSupabase(
     // Fallback if 405 Method Not Allowed occurs on POST
     if (resp.status === 405) {
       console.warn('/api/admin/remove-student returned 405 on POST. Retrying with DELETE...');
-      resp = await apiFetch(`/api/admin/remove-student?requesterEmail=${encodeURIComponent(requesterEmail)}&studentId=${encodeURIComponent(studentId)}&studentEmail=${encodeURIComponent(studentEmail)}`, {
+      resp = await apiFetch(`/api/admin/remove-student?requesterEmail=${encodeURIComponent(requesterEmail || '')}&studentId=${encodeURIComponent(studentId)}&studentEmail=${encodeURIComponent(studentEmail)}`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requesterEmail, studentId, studentEmail }),
@@ -3204,32 +3212,7 @@ export async function removeStudentAccountInSupabase(
     }
 
     if (resp.ok && resData.success) {
-      // Direct Supabase fallback cleanup if configured
-      if (isSupabaseConfigured) {
-        try {
-          if (studentId) {
-            await supabase.from('test_results').delete().eq('student_id', studentId);
-            await supabase.from('mcq_attempts').delete().eq('student_id', studentId);
-            await supabase.from('student_mcq_usage').delete().eq('student_id', studentId);
-            await supabase.from('mcq_usage').delete().eq('student_id', studentId);
-            await supabase.from('student_progress').delete().eq('student_id', studentId);
-            await supabase.from('ai_history').delete().eq('student_id', studentId);
-            await supabase.from('study_buddy_history').delete().eq('student_id', studentId);
-            await supabase.from('study_buddy_usage').delete().eq('student_id', studentId);
-            await supabase.from('student_achievements').delete().eq('student_id', studentId);
-            await supabase.from('achievements').delete().eq('student_id', studentId);
-            await supabase.from('students').delete().eq('id', studentId);
-          }
-          if (studentEmail) {
-            await supabase.from('student_mcq_usage').delete().eq('email', studentEmail);
-            await supabase.from('mcq_usage').delete().eq('email', studentEmail);
-            await supabase.from('students').delete().eq('email', studentEmail);
-          }
-        } catch (e) {
-          console.warn('Direct Supabase deletion cleanup warning:', e);
-        }
-      }
-      return { success: true, message: 'Student account wiped successfully.' };
+      return { success: true, message: resData.message || 'Student account and all associated records permanently wiped.' };
     }
 
     // Direct Supabase fallback if API route returned error
@@ -3239,6 +3222,7 @@ export async function removeStudentAccountInSupabase(
         if (studentId) {
           await supabase.from('test_results').delete().eq('student_id', studentId);
           await supabase.from('mcq_attempts').delete().eq('student_id', studentId);
+          await supabase.from('student_attempted_mcqs').delete().eq('student_id', studentId);
           await supabase.from('student_mcq_usage').delete().eq('student_id', studentId);
           await supabase.from('mcq_usage').delete().eq('student_id', studentId);
           await supabase.from('student_progress').delete().eq('student_id', studentId);
@@ -3247,15 +3231,26 @@ export async function removeStudentAccountInSupabase(
           await supabase.from('study_buddy_usage').delete().eq('student_id', studentId);
           await supabase.from('student_achievements').delete().eq('student_id', studentId);
           await supabase.from('achievements').delete().eq('student_id', studentId);
-          const { error: delErr } = await supabase.from('students').delete().eq('id', studentId);
-          if (!delErr) deleted = true;
+          await supabase.from('payment_requests').delete().eq('student_id', studentId);
+          await supabase.from('promo_redemptions').delete().eq('student_id', studentId);
+          await supabase.from('students').delete().eq('id', studentId);
+          await supabase.from('profiles').delete().eq('id', studentId);
+          deleted = true;
         }
-        if (studentEmail && !deleted) {
-          const { error: delErr2 } = await supabase.from('students').delete().eq('email', studentEmail);
-          if (!delErr2) deleted = true;
+        if (studentEmail) {
+          await supabase.from('test_results').delete().eq('student_email', studentEmail);
+          await supabase.from('mcq_attempts').delete().eq('student_email', studentEmail);
+          await supabase.from('student_mcq_usage').delete().eq('email', studentEmail);
+          await supabase.from('mcq_usage').delete().eq('email', studentEmail);
+          await supabase.from('study_buddy_usage').delete().eq('email', studentEmail);
+          await supabase.from('payment_requests').delete().eq('student_email', studentEmail);
+          await supabase.from('promo_redemptions').delete().ilike('student_email', studentEmail);
+          await supabase.from('students').delete().ilike('email', studentEmail);
+          await supabase.from('profiles').delete().ilike('email', studentEmail);
+          deleted = true;
         }
         if (deleted) {
-          return { success: true, message: 'Student account wiped successfully.' };
+          return { success: true, message: 'Student account and records permanently wiped.' };
         }
       } catch (e) {
         console.warn('Direct Supabase deletion fallback warning:', e);

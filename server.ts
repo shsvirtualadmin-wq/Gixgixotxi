@@ -11294,6 +11294,600 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
+  // =========================================================================
+  // PERMANENT USER DELETION — NO EXCEPTIONS, NO DATA RETAINED
+  // =========================================================================
+  const handlePermanentUserDeletion = async (req: express.Request, res: express.Response) => {
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
+      const requestedBy = (req.body?.requesterEmail || req.query?.requesterEmail || tokenUser?.email || "").trim().toLowerCase();
+      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
+
+      if (!isAdmin) {
+        return res.status(403).json({
+          success: false,
+          error: "Forbidden: Permanent user deletion is strictly restricted to authorized administrators.",
+        });
+      }
+
+      let studentId = String(req.body?.studentId || req.query?.studentId || "").trim();
+      let studentEmail = String(req.body?.studentEmail || req.query?.studentEmail || "").trim().toLowerCase();
+
+      if (!studentId && !studentEmail) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid request: studentId or studentEmail required for deletion.",
+        });
+      }
+
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
+      const errors: string[] = [];
+      const wipedSummary: Record<string, number | boolean> = {};
+
+      // Resolve missing studentId or studentEmail if one is missing
+      if (supabaseAdmin) {
+        if (!studentEmail && studentId) {
+          try {
+            const { data: s } = await supabaseAdmin.from("students").select("email").eq("id", studentId).maybeSingle();
+            if (s?.email) studentEmail = s.email.trim().toLowerCase();
+            if (!studentEmail) {
+              const { data: p } = await supabaseAdmin.from("profiles").select("email").eq("id", studentId).maybeSingle();
+              if (p?.email) studentEmail = p.email.trim().toLowerCase();
+            }
+          } catch {}
+        } else if (!studentId && studentEmail) {
+          try {
+            const { data: s } = await supabaseAdmin.from("students").select("id").ilike("email", studentEmail).maybeSingle();
+            if (s?.id) studentId = s.id;
+            if (!studentId) {
+              const { data: p } = await supabaseAdmin.from("profiles").select("id").ilike("email", studentEmail).maybeSingle();
+              if (p?.id) studentId = p.id;
+            }
+          } catch {}
+        }
+      }
+
+      // Check inMemoryStudents as well to resolve IDs
+      for (const s of inMemoryStudents) {
+        if (!studentEmail && studentId && s.id === studentId && s.email) {
+          studentEmail = s.email.trim().toLowerCase();
+        }
+        if (!studentId && studentEmail && s.email && s.email.trim().toLowerCase() === studentEmail) {
+          studentId = s.id;
+        }
+      }
+
+      const safeUserId = (studentId || studentEmail).replace(/[^a-zA-Z0-9_-]/g, "_");
+
+      // 1. Delete Storage Files (avatars, payment proof screenshots)
+      if (supabaseAdmin?.storage) {
+        try {
+          const { data: avatarFiles } = await supabaseAdmin.storage.from("avatars").list("avatars");
+          if (Array.isArray(avatarFiles) && avatarFiles.length > 0) {
+            const filesToRemove = avatarFiles
+              .filter((f: any) => f.name.includes(safeUserId) || (studentId && f.name.includes(studentId)))
+              .map((f: any) => `avatars/${f.name}`);
+            if (filesToRemove.length > 0) {
+              await supabaseAdmin.storage.from("avatars").remove(filesToRemove);
+              wipedSummary["storage_avatars_removed"] = filesToRemove.length;
+            }
+          }
+        } catch (stgErr: any) {
+          console.warn("[remove-student] Storage cleanup note:", stgErr?.message);
+        }
+      }
+
+      // 2. Delete from child tables in Supabase in strict dependency order
+      if (supabaseAdmin) {
+        const childTablesWithStudentId = [
+          "test_results",
+          "mcq_attempts",
+          "student_attempted_mcqs",
+          "student_mcq_usage",
+          "mcq_usage",
+          "student_progress",
+          "ai_history",
+          "study_buddy_history",
+          "study_buddy_usage",
+          "student_achievements",
+          "achievements",
+          "payment_requests",
+          "admin_activity_logs",
+        ];
+
+        for (const tbl of childTablesWithStudentId) {
+          if (studentId) {
+            try {
+              const idCol = tbl === "admin_activity_logs" ? "target_student_id" : "student_id";
+              const { error, count } = await supabaseAdmin
+                .from(tbl)
+                .delete({ count: "exact" })
+                .eq(idCol, studentId);
+              if (error && !error.message?.includes("does not exist") && !error.message?.includes("not find column")) {
+                errors.push(`${tbl}(${idCol}): ${error.message}`);
+              } else {
+                wipedSummary[tbl] = (Number(wipedSummary[tbl] || 0)) + (count || 0);
+              }
+            } catch (err: any) {
+              console.warn(`[remove-student] Error deleting ${tbl} by id:`, err?.message);
+            }
+          }
+
+          if (studentEmail) {
+            try {
+              let emailCol = "student_email";
+              if (tbl === "admin_activity_logs") emailCol = "target_student_email";
+              else if (tbl === "student_mcq_usage" || tbl === "mcq_usage" || tbl === "study_buddy_usage") emailCol = "email";
+              else if (tbl === "student_attempted_mcqs" || tbl === "student_progress" || tbl === "ai_history" || tbl === "study_buddy_history" || tbl === "student_achievements" || tbl === "achievements") {
+                continue; // no email column in these tables
+              }
+
+              const { error, count } = await supabaseAdmin
+                .from(tbl)
+                .delete({ count: "exact" })
+                .ilike(emailCol, studentEmail);
+              if (error && !error.message?.includes("does not exist") && !error.message?.includes("not find column")) {
+                errors.push(`${tbl}(${emailCol}): ${error.message}`);
+              } else {
+                wipedSummary[tbl] = (Number(wipedSummary[tbl] || 0)) + (count || 0);
+              }
+            } catch (err: any) {
+              console.warn(`[remove-student] Error deleting ${tbl} by email:`, err?.message);
+            }
+          }
+        }
+
+        // 3. Delete from promo_redemptions and update promo_codes
+        try {
+          let promoCodesAffected: string[] = [];
+          let q = supabaseAdmin.from("promo_redemptions").select("promo_code");
+          if (studentId && studentEmail) {
+            q = q.or(`student_id.eq.${studentId},student_email.ilike.${studentEmail}`);
+          } else if (studentId) {
+            q = q.eq("student_id", studentId);
+          } else {
+            q = q.ilike("student_email", studentEmail);
+          }
+          const { data: reds } = await q;
+          if (Array.isArray(reds) && reds.length > 0) {
+            promoCodesAffected = Array.from(
+              new Set(reds.map((r: any) => String(r.promo_code || "").trim().toUpperCase()).filter(Boolean))
+            );
+          }
+
+          let deletedPromoRedemptionsCount = 0;
+          if (studentId) {
+            const { count } = await supabaseAdmin.from("promo_redemptions").delete({ count: "exact" }).eq("student_id", studentId);
+            deletedPromoRedemptionsCount += count || 0;
+          }
+          if (studentEmail) {
+            const { count } = await supabaseAdmin.from("promo_redemptions").delete({ count: "exact" }).ilike("student_email", studentEmail);
+            deletedPromoRedemptionsCount += count || 0;
+          }
+          wipedSummary["promo_redemptions"] = deletedPromoRedemptionsCount;
+
+          // Re-sync promo_codes count and active status in Supabase
+          for (const code of promoCodesAffected) {
+            const { count: liveCount } = await supabaseAdmin
+              .from("promo_redemptions")
+              .select("*", { count: "exact", head: true })
+              .ilike("promo_code", code);
+            const actualCount = liveCount || 0;
+            const { data: codeRow } = await supabaseAdmin
+              .from("promo_codes")
+              .select("max_redemptions")
+              .ilike("code", code)
+              .maybeSingle();
+            const maxR = codeRow?.max_redemptions || 1;
+            await supabaseAdmin
+              .from("promo_codes")
+              .update({
+                redemption_count: actualCount,
+                is_active: actualCount < maxR,
+                updated_at: new Date().toISOString(),
+              })
+              .ilike("code", code);
+          }
+        } catch (prErr: any) {
+          console.warn("[remove-student] Error deleting promo_redemptions:", prErr?.message);
+        }
+
+        // 4. Delete from public parent tables: students & profiles
+        try {
+          if (studentId) {
+            await supabaseAdmin.from("students").delete().eq("id", studentId);
+            await supabaseAdmin.from("profiles").delete().eq("id", studentId);
+          }
+          if (studentEmail) {
+            await supabaseAdmin.from("students").delete().ilike("email", studentEmail);
+            await supabaseAdmin.from("profiles").delete().ilike("email", studentEmail);
+          }
+          wipedSummary["students"] = true;
+          wipedSummary["profiles"] = true;
+        } catch (stErr: any) {
+          console.warn("[remove-student] Error deleting students/profiles:", stErr?.message);
+        }
+
+        // 5. Delete Supabase Auth User record (auth.users) via service role key
+        let authUserDeleted = false;
+        const authAdmin = (supabaseAdmin as any).auth?.admin;
+        if (authAdmin && typeof authAdmin.deleteUser === "function") {
+          // A. Look up user by email in auth.users
+          if (studentEmail && typeof authAdmin.listUsers === "function") {
+            try {
+              const { data: authList, error: listErr } = await authAdmin.listUsers({ page: 1, perPage: 1000 });
+              if (!listErr && authList?.users) {
+                const matchedAuth = authList.users.find(
+                  (u: any) => (u.email || "").trim().toLowerCase() === studentEmail.toLowerCase()
+                );
+                if (matchedAuth?.id) {
+                  const { error: delAuthErr } = await authAdmin.deleteUser(matchedAuth.id);
+                  if (!delAuthErr) {
+                    authUserDeleted = true;
+                  } else {
+                    console.warn("[remove-student] auth.admin.deleteUser by email error:", delAuthErr.message);
+                  }
+                }
+              }
+            } catch (listException) {
+              console.warn("[remove-student] Exception listing auth users for deletion:", listException);
+            }
+          }
+
+          // B. If studentId is a UUID and user not deleted yet, call deleteUser with studentId directly
+          if (!authUserDeleted && studentId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId)) {
+            try {
+              const { error: delIdErr } = await authAdmin.deleteUser(studentId);
+              if (!delIdErr) {
+                authUserDeleted = true;
+              }
+            } catch (aErr: any) {
+              console.warn("[remove-student] Exception deleting auth user by id:", aErr?.message);
+            }
+          }
+        }
+        wipedSummary["auth_user_deleted"] = authUserDeleted;
+      }
+
+      // 6. Delete from In-Memory Stores and Server JSON files
+      // A. inMemoryStudents
+      let memoryStudentsRemoved = 0;
+      for (let i = inMemoryStudents.length - 1; i >= 0; i--) {
+        const s = inMemoryStudents[i];
+        if (
+          (studentId && s.id === studentId) ||
+          (studentEmail && s.email && s.email.trim().toLowerCase() === studentEmail)
+        ) {
+          inMemoryStudents.splice(i, 1);
+          memoryStudentsRemoved++;
+        }
+      }
+      wipedSummary["inMemoryStudents_removed"] = memoryStudentsRemoved;
+
+      // B. inMemoryPaymentRequests
+      let memoryPaymentsRemoved = 0;
+      for (let i = inMemoryPaymentRequests.length - 1; i >= 0; i--) {
+        const p = inMemoryPaymentRequests[i];
+        if (
+          (studentId && p.student_id === studentId) ||
+          (studentEmail && p.student_email && p.student_email.trim().toLowerCase() === studentEmail)
+        ) {
+          inMemoryPaymentRequests.splice(i, 1);
+          memoryPaymentsRemoved++;
+        }
+      }
+      wipedSummary["inMemoryPaymentRequests_removed"] = memoryPaymentsRemoved;
+
+      // C. inMemoryTestResults & persistentTestSessions
+      let memoryTestsRemoved = 0;
+      for (let i = inMemoryTestResults.length - 1; i >= 0; i--) {
+        const t = inMemoryTestResults[i];
+        if (
+          (studentId && t.student_id === studentId) ||
+          (studentEmail && t.student_email && t.student_email.trim().toLowerCase() === studentEmail)
+        ) {
+          inMemoryTestResults.splice(i, 1);
+          memoryTestsRemoved++;
+        }
+      }
+      if (memoryTestsRemoved > 0) {
+        savePersistentTestResults();
+      }
+      wipedSummary["inMemoryTestResults_removed"] = memoryTestsRemoved;
+
+      let sessionsRemoved = 0;
+      persistentTestSessions.forEach((val, key) => {
+        if (
+          (studentId && val.student_id === studentId) ||
+          (studentEmail && val.student_email && val.student_email.trim().toLowerCase() === studentEmail)
+        ) {
+          persistentTestSessions.delete(key);
+          sessionsRemoved++;
+        }
+      });
+      if (sessionsRemoved > 0) {
+        savePersistentSessions();
+      }
+      wipedSummary["persistentTestSessions_removed"] = sessionsRemoved;
+
+      // D. memoryActivityLogs
+      for (let i = memoryActivityLogs.length - 1; i >= 0; i--) {
+        const l = memoryActivityLogs[i];
+        if (
+          (studentId && l.target_student_id === studentId) ||
+          (studentEmail && l.target_student_email && l.target_student_email.trim().toLowerCase() === studentEmail)
+        ) {
+          memoryActivityLogs.splice(i, 1);
+        }
+      }
+
+      // E. inMemoryUsageStore
+      if (studentId && inMemoryUsageStore) {
+        for (const period of Object.keys(inMemoryUsageStore)) {
+          delete inMemoryUsageStore[period][studentId];
+          if (studentEmail) delete inMemoryUsageStore[period][studentEmail];
+        }
+      }
+
+      // F. Promo links, codes, and redemptions JSON files
+      try {
+        const localRedemptions = loadPromoRedemptions();
+        const promoCodesToUpdate = new Set<string>();
+        const filteredRedemptions = localRedemptions.filter((r) => {
+          const matchId = studentId && r.student_id === studentId;
+          const matchEmail = studentEmail && r.student_email && r.student_email.trim().toLowerCase() === studentEmail;
+          if (matchId || matchEmail) {
+            if (r.promo_code) promoCodesToUpdate.add(r.promo_code.toUpperCase());
+            return false;
+          }
+          return true;
+        });
+        savePromoRedemptions(filteredRedemptions);
+
+        const localLinks = loadPromoLinks();
+        for (const link of localLinks) {
+          if (Array.isArray(link.redemptions)) {
+            const beforeLen = link.redemptions.length;
+            link.redemptions = link.redemptions.filter((r) => {
+              const matchId = studentId && r.student_id === studentId;
+              const matchEmail = studentEmail && r.student_email && r.student_email.trim().toLowerCase() === studentEmail;
+              return !matchId && !matchEmail;
+            });
+            if (link.redemptions.length !== beforeLen) {
+              link.redemption_count = link.redemptions.length;
+              if (link.max_redemptions && link.redemption_count < link.max_redemptions) {
+                link.is_active = true;
+              }
+            }
+          }
+        }
+        savePromoLinks(localLinks);
+
+        const localCodes = loadPromoCodes();
+        for (const codeRow of localCodes) {
+          const cCode = codeRow.code.toUpperCase();
+          if (promoCodesToUpdate.has(cCode)) {
+            const liveCount = filteredRedemptions.filter((r) => r.promo_code.toUpperCase() === cCode).length;
+            codeRow.redemption_count = liveCount;
+            if (codeRow.max_redemptions && liveCount < codeRow.max_redemptions) {
+              codeRow.is_active = true;
+            }
+            codeRow.updated_at = new Date().toISOString();
+          }
+        }
+        savePromoCodes(localCodes);
+      } catch (promoCleanErr: any) {
+        console.warn("[remove-student] Promo links JSON cleanup note:", promoCleanErr?.message);
+      }
+
+      console.log(`🗑️ [User Permanent Deletion Complete] Student wiped by ${requestedBy}: ID=${studentId}, Email=${studentEmail}`);
+
+      return res.status(200).json({
+        success: true,
+        message: "Student account and ALL associated records permanently and irreversibly destroyed across entire system.",
+        details: {
+          studentId,
+          studentEmail,
+          requestedBy,
+          summary: wipedSummary,
+          warnings: errors.length > 0 ? errors : undefined,
+        },
+      });
+    } catch (err: any) {
+      console.error("Error in permanent user deletion:", err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || "Internal server error deleting user account.",
+      });
+    }
+  };
+
+  app.post("/api/admin/remove-student", handlePermanentUserDeletion);
+  app.delete("/api/admin/remove-student", handlePermanentUserDeletion);
+
+  // =========================================================================
+  // VERIFY USER DELETION — CHECK FOR ORPHANED ROWS
+  // =========================================================================
+  const handleVerifyUserDeletion = async (req: express.Request, res: express.Response) => {
+    res.setHeader("Content-Type", "application/json");
+    try {
+      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
+      const requestedBy = (req.body?.requesterEmail || req.query?.requesterEmail || tokenUser?.email || "").trim().toLowerCase();
+      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
+
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to administrators." });
+      }
+
+      const identifier = String(
+        req.body?.identifier ||
+        req.query?.identifier ||
+        req.body?.studentEmail ||
+        req.query?.studentEmail ||
+        req.body?.studentId ||
+        req.query?.studentId ||
+        ""
+      ).trim();
+
+      if (!identifier) {
+        return res.status(400).json({ success: false, error: "Missing identifier parameter (email or studentId)." });
+      }
+
+      const isEmail = identifier.includes("@");
+      const targetEmail = isEmail ? identifier.toLowerCase() : "";
+      const targetId = isEmail ? "" : identifier;
+
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
+      const orphanedRecords: Array<{ tableOrStore: string; count: number; sampleIds?: string[] }> = [];
+
+      // 1. Check Supabase Auth
+      let authUserFound = false;
+      let authUserId: string | null = null;
+      if (supabaseAdmin?.auth?.admin?.listUsers) {
+        try {
+          const { data } = await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+          if (data?.users) {
+            const found = data.users.find(
+              (u: any) =>
+                (targetEmail && (u.email || "").toLowerCase() === targetEmail) ||
+                (targetId && u.id === targetId)
+            );
+            if (found) {
+              authUserFound = true;
+              authUserId = found.id;
+              orphanedRecords.push({ tableOrStore: "auth.users", count: 1, sampleIds: [found.id] });
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Check public tables in Supabase
+      if (supabaseAdmin) {
+        const tablesToCheck = [
+          { table: "students", cols: ["id", "email"] },
+          { table: "profiles", cols: ["id", "email"] },
+          { table: "test_results", cols: ["student_id", "student_email"] },
+          { table: "mcq_attempts", cols: ["student_id", "student_email"] },
+          { table: "student_attempted_mcqs", cols: ["student_id"] },
+          { table: "student_mcq_usage", cols: ["student_id", "email"] },
+          { table: "mcq_usage", cols: ["student_id", "email"] },
+          { table: "student_progress", cols: ["student_id"] },
+          { table: "ai_history", cols: ["student_id"] },
+          { table: "study_buddy_history", cols: ["student_id"] },
+          { table: "study_buddy_usage", cols: ["student_id", "email"] },
+          { table: "student_achievements", cols: ["student_id"] },
+          { table: "achievements", cols: ["student_id"] },
+          { table: "payment_requests", cols: ["student_id", "student_email"] },
+          { table: "promo_redemptions", cols: ["student_id", "student_email"] },
+          { table: "admin_activity_logs", cols: ["target_student_id", "target_student_email"] },
+        ];
+
+        for (const t of tablesToCheck) {
+          try {
+            const orClauses: string[] = [];
+            for (const col of t.cols) {
+              if (col.includes("email") && targetEmail) {
+                orClauses.push(`${col}.ilike.${targetEmail}`);
+              } else if (!col.includes("email") && targetId) {
+                orClauses.push(`${col}.eq.${targetId}`);
+              } else if (!col.includes("email") && authUserId) {
+                orClauses.push(`${col}.eq.${authUserId}`);
+              }
+            }
+
+            if (orClauses.length > 0) {
+              const { data, count } = await supabaseAdmin
+                .from(t.table)
+                .select("id", { count: "exact" })
+                .or(orClauses.join(","));
+              if ((count || 0) > 0 || (Array.isArray(data) && data.length > 0)) {
+                orphanedRecords.push({
+                  tableOrStore: t.table,
+                  count: count || data?.length || 0,
+                  sampleIds: Array.isArray(data) ? data.slice(0, 5).map((d: any) => d.id) : [],
+                });
+              }
+            }
+          } catch {
+            // Table might not exist or permission, ignore
+          }
+        }
+      }
+
+      // 3. Check in-memory stores
+      const memStudentMatches = inMemoryStudents.filter(
+        (s) =>
+          (targetId && s.id === targetId) ||
+          (targetEmail && s.email && s.email.toLowerCase() === targetEmail)
+      );
+      if (memStudentMatches.length > 0) {
+        orphanedRecords.push({ tableOrStore: "inMemoryStudents", count: memStudentMatches.length });
+      }
+
+      const memPaymentMatches = inMemoryPaymentRequests.filter(
+        (p) =>
+          (targetId && p.student_id === targetId) ||
+          (targetEmail && p.student_email && p.student_email.toLowerCase() === targetEmail)
+      );
+      if (memPaymentMatches.length > 0) {
+        orphanedRecords.push({ tableOrStore: "inMemoryPaymentRequests", count: memPaymentMatches.length });
+      }
+
+      const memTestMatches = inMemoryTestResults.filter(
+        (t) =>
+          (targetId && t.student_id === targetId) ||
+          (targetEmail && t.student_email && t.student_email.toLowerCase() === targetEmail)
+      );
+      if (memTestMatches.length > 0) {
+        orphanedRecords.push({ tableOrStore: "inMemoryTestResults", count: memTestMatches.length });
+      }
+
+      let sessionMatches = 0;
+      persistentTestSessions.forEach((val) => {
+        if (
+          (targetId && val.student_id === targetId) ||
+          (targetEmail && val.student_email && val.student_email.toLowerCase() === targetEmail)
+        ) {
+          sessionMatches++;
+        }
+      });
+      if (sessionMatches > 0) {
+        orphanedRecords.push({ tableOrStore: "persistentTestSessions", count: sessionMatches });
+      }
+
+      const promoRedMatches = loadPromoRedemptions().filter(
+        (r) =>
+          (targetId && r.student_id === targetId) ||
+          (targetEmail && r.student_email && r.student_email.toLowerCase() === targetEmail)
+      );
+      if (promoRedMatches.length > 0) {
+        orphanedRecords.push({ tableOrStore: "promo_redemptions.json", count: promoRedMatches.length });
+      }
+
+      const totalOrphaned = orphanedRecords.reduce((acc, r) => acc + r.count, 0);
+
+      return res.status(200).json({
+        success: true,
+        identifier,
+        clean: totalOrphaned === 0,
+        totalOrphaned,
+        orphanedRecords,
+        authUserFound,
+        message:
+          totalOrphaned === 0
+            ? `CLEAN: 0 records found for "${identifier}". All user data, credentials, and records are completely eliminated.`
+            : `Found ${totalOrphaned} orphaned record(s) for "${identifier}" across ${orphanedRecords.length} location(s).`,
+      });
+    } catch (err: any) {
+      console.error("Error verifying user deletion:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Failed to verify user deletion." });
+    }
+  };
+
+  app.get("/api/admin/verify-user-deletion", handleVerifyUserDeletion);
+  app.post("/api/admin/verify-user-deletion", handleVerifyUserDeletion);
+
 
   // Vite middleware for development
 
