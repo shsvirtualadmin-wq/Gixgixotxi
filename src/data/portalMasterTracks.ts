@@ -384,3 +384,434 @@ export const MASTER_PORTAL_TRACKS: MasterPortalTrack[] = [
     officialPatternText: '75 MCQs • 60 Minutes • 50% Passing Threshold',
   },
 ];
+
+export interface DerivedTrackInfo {
+  primaryClass: string;
+  grade: BoardClass;
+  gradeDisplay: string;
+  stream: string;
+  targetUniversity: string;
+  enrolledTrackLabel: string;
+  practiceButtonText: string;
+  assignedClasses: string[];
+  isEntranceExam: boolean;
+}
+
+/**
+ * Universal Track Resolver: Single authoritative source of truth for parsing any
+ * assignable track, plan name, or class string into its canonical grade, stream,
+ * target university, and UI display labels.
+ */
+function getBaseTrackDetails(rawTrack?: string | null): Omit<DerivedTrackInfo, 'assignedClasses' | 'isEntranceExam'> {
+  const raw = (rawTrack || '').trim();
+  const upper = raw.toUpperCase();
+
+  // 1. FAST-NU (NAT)
+  if (upper.includes('FAST')) {
+    return {
+      primaryClass: 'FAST-NU (NAT)',
+      grade: 'FAST',
+      gradeDisplay: 'FAST-NU (NAT)',
+      stream: 'CS & Engineering Stream',
+      targetUniversity: 'FAST-NUCES',
+      enrolledTrackLabel: 'FAST-NU (NAT)',
+      practiceButtonText: 'FAST-NU NAT Entry Test Portal',
+    };
+  }
+
+  // 2. NUST (NET)
+  if (upper.includes('NET') || (upper.includes('NUST') && !upper.includes('NUTECH'))) {
+    return {
+      primaryClass: 'NUST (NET)',
+      grade: 'NET',
+      gradeDisplay: 'NUST (NET)',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'NUST Islamabad',
+      enrolledTrackLabel: 'NUST (NET)',
+      practiceButtonText: 'NUST NET Entry Test Portal',
+    };
+  }
+
+  // 3. MDCAT
+  if (upper.includes('MDCAT') || upper.includes('PMDC') || upper.includes('MBBS')) {
+    return {
+      primaryClass: 'MDCAT',
+      grade: 'MDCAT',
+      gradeDisplay: 'MDCAT',
+      stream: 'Pre-Medical Stream',
+      targetUniversity: 'King Edward / UHS / PMDC',
+      enrolledTrackLabel: 'MDCAT',
+      practiceButtonText: 'MDCAT Entry Test Portal',
+    };
+  }
+
+  // 4. UET Taxila TCAT
+  if (upper.includes('TCAT')) {
+    return {
+      primaryClass: 'TCAT',
+      grade: 'TCAT',
+      gradeDisplay: 'TCAT',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'UET Taxila',
+      enrolledTrackLabel: 'TCAT (UET Taxila)',
+      practiceButtonText: 'UET Taxila TCAT Entry Portal',
+    };
+  }
+
+  // 5. ECAT (UET Lahore)
+  if (upper.includes('ECAT')) {
+    return {
+      primaryClass: 'ECAT (UET Lahore)',
+      grade: 'ECAT',
+      gradeDisplay: 'ECAT (UET Lahore)',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'UET Lahore',
+      enrolledTrackLabel: 'ECAT (UET Lahore)',
+      practiceButtonText: 'ECAT UET Lahore Entry Portal',
+    };
+  }
+
+  // 6. NUMS
+  if (upper.includes('NUMS')) {
+    return {
+      primaryClass: 'NUMS (Medical)',
+      grade: 'NUMS',
+      gradeDisplay: 'NUMS (Medical)',
+      stream: 'Pre-Medical Stream',
+      targetUniversity: 'Army Medical College / NUMS',
+      enrolledTrackLabel: 'NUMS (Medical)',
+      practiceButtonText: 'NUMS Medical Entry Portal',
+    };
+  }
+
+  // 7. GIKI
+  if (upper.includes('GIKI')) {
+    return {
+      primaryClass: 'GIKI (Engineering)',
+      grade: 'GIKI',
+      gradeDisplay: 'GIKI (Engineering)',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'GIKI Topi',
+      enrolledTrackLabel: 'GIKI (Engineering)',
+      practiceButtonText: 'GIKI Engineering Entry Portal',
+    };
+  }
+
+  // 8. ETEA (KPK)
+  if (upper.includes('ETEA')) {
+    return {
+      primaryClass: 'ETEA (KPK Engineering)',
+      grade: 'ETEA',
+      gradeDisplay: 'ETEA (KPK Engineering)',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'UET Peshawar',
+      enrolledTrackLabel: 'ETEA (KPK Engineering)',
+      practiceButtonText: 'ETEA Engineering Entry Portal',
+    };
+  }
+
+  // 9. USAT (HEC)
+  if (upper.includes('USAT')) {
+    return {
+      primaryClass: 'USAT (HEC)',
+      grade: 'USAT',
+      gradeDisplay: 'USAT (HEC)',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'HEC Recognized Universities',
+      enrolledTrackLabel: 'USAT (HEC)',
+      practiceButtonText: 'HEC USAT Entry Portal',
+    };
+  }
+
+  // 10. NED
+  if (upper.includes('NED')) {
+    return {
+      primaryClass: 'NED University',
+      grade: 'NED',
+      gradeDisplay: 'NED University',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'NED Karachi',
+      enrolledTrackLabel: 'NED University',
+      practiceButtonText: 'NED University Entry Portal',
+    };
+  }
+
+  // 11. PIEAS
+  if (upper.includes('PIEAS')) {
+    return {
+      primaryClass: 'PIEAS',
+      grade: 'PIEAS',
+      gradeDisplay: 'PIEAS',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'PIEAS Islamabad',
+      enrolledTrackLabel: 'PIEAS',
+      practiceButtonText: 'PIEAS Written Test Portal',
+    };
+  }
+
+  // 12. NTS NAT
+  if (upper.includes('NAT') || upper.includes('NTS')) {
+    return {
+      primaryClass: 'NTS NAT',
+      grade: 'NAT',
+      gradeDisplay: 'NTS NAT',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'COMSATS / NTS Universities',
+      enrolledTrackLabel: 'NTS NAT',
+      practiceButtonText: 'NTS NAT Entry Portal',
+    };
+  }
+
+  // 13. IBA Karachi
+  if (upper.includes('IBA')) {
+    return {
+      primaryClass: 'IBA Karachi',
+      grade: 'IBA',
+      gradeDisplay: 'IBA Karachi',
+      stream: 'Business & CS Aptitude',
+      targetUniversity: 'IBA Karachi',
+      enrolledTrackLabel: 'IBA Karachi',
+      practiceButtonText: 'IBA Karachi Aptitude Portal',
+    };
+  }
+
+  // 14. Aga Khan University (AKU)
+  if (upper.includes('AKU') || upper.includes('AGA KHAN')) {
+    return {
+      primaryClass: 'Aga Khan University (AKU)',
+      grade: 'AKU',
+      gradeDisplay: 'Aga Khan University',
+      stream: 'Pre-Medical Stream',
+      targetUniversity: 'Aga Khan University (AKU)',
+      enrolledTrackLabel: 'Aga Khan University (AKU)',
+      practiceButtonText: 'AKU Medical Entry Portal',
+    };
+  }
+
+  // 15. MUET Jamshoro
+  if (upper.includes('MUET')) {
+    return {
+      primaryClass: 'MUET Jamshoro',
+      grade: 'MUET',
+      gradeDisplay: 'MUET Jamshoro',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'MUET Jamshoro',
+      enrolledTrackLabel: 'MUET Jamshoro',
+      practiceButtonText: 'MUET Jamshoro Entry Portal',
+    };
+  }
+
+  // 16. LUMS
+  if (upper.includes('LUMS')) {
+    return {
+      primaryClass: 'LUMS',
+      grade: 'LUMS',
+      gradeDisplay: 'LUMS',
+      stream: 'LCAT Aptitude Stream',
+      targetUniversity: 'LUMS Lahore',
+      enrolledTrackLabel: 'LUMS',
+      practiceButtonText: 'LUMS LCAT Entry Portal',
+    };
+  }
+
+  // 17. NUML
+  if (upper.includes('NUML')) {
+    return {
+      primaryClass: 'NUML',
+      grade: 'NUML',
+      gradeDisplay: 'NUML',
+      stream: 'Languages & CS Stream',
+      targetUniversity: 'NUML Islamabad',
+      enrolledTrackLabel: 'NUML',
+      practiceButtonText: 'NUML Entrance Portal',
+    };
+  }
+
+  // 18. HITEC
+  if (upper.includes('HITEC')) {
+    return {
+      primaryClass: 'HITEC University Taxila',
+      grade: 'HITEC',
+      gradeDisplay: 'HITEC University',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'HITEC University Taxila',
+      enrolledTrackLabel: 'HITEC University',
+      practiceButtonText: 'HITEC University Entry Portal',
+    };
+  }
+
+  // 19. NUTECH
+  if (upper.includes('NUTECH')) {
+    return {
+      primaryClass: 'NUTECH Islamabad',
+      grade: 'NUTECH',
+      gradeDisplay: 'NUTECH Islamabad',
+      stream: 'Applied Sciences & Tech',
+      targetUniversity: 'NUTECH Islamabad',
+      enrolledTrackLabel: 'NUTECH Islamabad',
+      practiceButtonText: 'NUTECH NUET Entry Portal',
+    };
+  }
+
+  // 20. FBISE 9th Class
+  if (upper.includes('FBISE 9') || upper.includes('CLASS 9') || upper.includes('GRADE 9') || upper === '9') {
+    return {
+      primaryClass: 'FBISE 9',
+      grade: 9,
+      gradeDisplay: 'Class 9',
+      stream: 'Science & Computer Group',
+      targetUniversity: 'FBISE Board Examinations',
+      enrolledTrackLabel: 'FBISE Class 9',
+      practiceButtonText: 'Class 9 Practice Test',
+    };
+  }
+
+  // 21. FBISE 10th Class
+  if (upper.includes('FBISE 10') || upper.includes('CLASS 10') || upper.includes('GRADE 10') || upper === '10') {
+    return {
+      primaryClass: 'FBISE 10',
+      grade: 10,
+      gradeDisplay: 'Class 10',
+      stream: 'Science & Computer Group',
+      targetUniversity: 'FBISE Board Examinations',
+      enrolledTrackLabel: 'FBISE Class 10',
+      practiceButtonText: 'Class 10 Practice Test',
+    };
+  }
+
+  // 22. FBISE 12th Class
+  if (upper.includes('12') || upper.includes('2ND YEAR')) {
+    if (upper.includes('MED')) {
+      return {
+        primaryClass: 'FBISE 12 Pre-Medical',
+        grade: 12,
+        gradeDisplay: 'Class 12',
+        stream: 'Pre-Medical Stream',
+        targetUniversity: 'Medical Colleges (King Edward, UHS)',
+        enrolledTrackLabel: 'Class 12 Pre-Medical',
+        practiceButtonText: 'Class 12 Pre-Medical Practice Test',
+      };
+    }
+    if (upper.includes('ICS') || upper.includes('COMP')) {
+      return {
+        primaryClass: 'FBISE 12 ICS',
+        grade: 12,
+        gradeDisplay: 'Class 12',
+        stream: 'ICS Stream',
+        targetUniversity: 'Computing Universities (FAST, NUST)',
+        enrolledTrackLabel: 'Class 12 ICS',
+        practiceButtonText: 'Class 12 ICS Practice Test',
+      };
+    }
+    return {
+      primaryClass: 'FBISE 12 Pre-Engineering',
+      grade: 12,
+      gradeDisplay: 'Class 12',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'Engineering Universities (NUST, GIKI, UET)',
+      enrolledTrackLabel: 'Class 12 Pre-Engineering',
+      practiceButtonText: 'Class 12 Pre-Engineering Practice Test',
+    };
+  }
+
+  // 23. FBISE 11th Class (Default standard board stream)
+  if (upper.includes('ENG') || upper.includes('PRE-ENG')) {
+    return {
+      primaryClass: 'FBISE 11 Pre-Engineering',
+      grade: 11,
+      gradeDisplay: 'Class 11',
+      stream: 'Pre-Engineering Stream',
+      targetUniversity: 'Engineering Universities (NUST, GIKI, UET)',
+      enrolledTrackLabel: 'Class 11 Pre-Engineering',
+      practiceButtonText: 'Class 11 Pre-Engineering Practice Test',
+    };
+  }
+
+  if (upper.includes('ICS') || upper.includes('COMP')) {
+    return {
+      primaryClass: 'FBISE 11 ICS',
+      grade: 11,
+      gradeDisplay: 'Class 11',
+      stream: 'ICS Stream',
+      targetUniversity: 'Computing Universities (FAST, NUST)',
+      enrolledTrackLabel: 'Class 11 ICS',
+      practiceButtonText: 'Class 11 ICS Practice Test',
+    };
+  }
+
+  return {
+    primaryClass: 'FBISE 11 Pre-Medical',
+    grade: 11,
+    gradeDisplay: 'Class 11',
+    stream: 'Pre-Medical Stream',
+    targetUniversity: 'Medical Colleges (King Edward, UHS)',
+    enrolledTrackLabel: 'Class 11 Pre-Medical',
+    practiceButtonText: 'Class 11 Pre-Medical Stream Practice Test',
+  };
+}
+
+export function deriveTrackDetailsFromAssignableClass(rawTrack?: string | null): DerivedTrackInfo {
+  const base = getBaseTrackDetails(rawTrack);
+  const isEntrance = typeof base.grade === 'string' && isNaN(Number(base.grade));
+  return {
+    ...base,
+    assignedClasses: [base.primaryClass],
+    isEntranceExam: isEntrance,
+  };
+}
+
+/**
+ * Authoritative Student Profile Track Resolver.
+ * Resolves the student's active track, stream, target university, and display labels
+ * strictly using the single source of truth (assigned_classes -> grade/stream).
+ */
+export function resolveStudentTrackDetails(profile?: {
+  grade?: string;
+  stream?: string;
+  assigned_classes?: string[];
+  target_university?: string;
+  dream_university?: string;
+} | null): DerivedTrackInfo {
+  // 1. Primary Source of Truth: assigned_classes[0]
+  if (profile?.assigned_classes && Array.isArray(profile.assigned_classes) && profile.assigned_classes.length > 0) {
+    const primary = String(profile.assigned_classes[0]).trim();
+    if (primary) {
+      const derived = deriveTrackDetailsFromAssignableClass(primary);
+      // If student has an explicitly selected custom dream university, retain it unless track is specific entrance portal
+      const customUni = (profile.target_university || profile.dream_university || '').trim();
+      if (customUni && derived.targetUniversity === 'FBISE Board Examinations') {
+        derived.targetUniversity = customUni;
+      }
+      return {
+        ...derived,
+        assignedClasses: profile.assigned_classes.map((cls, idx) => idx === 0 ? derived.primaryClass : cls),
+      };
+    }
+  }
+
+  // 2. Secondary fallback: grade + stream composite
+  if (profile?.grade || profile?.stream) {
+    const composite = `${profile.grade || ''} ${profile.stream || ''}`.trim();
+    const derived = deriveTrackDetailsFromAssignableClass(composite);
+    const customUni = (profile.target_university || profile.dream_university || '').trim();
+    if (customUni && !derived.targetUniversity.includes('FAST') && !derived.targetUniversity.includes('NUST')) {
+      derived.targetUniversity = customUni;
+    }
+    return derived;
+  }
+
+  // 3. Unassigned / Unenrolled default
+  const customUni = (profile?.target_university || profile?.dream_university || '').trim();
+  return {
+    primaryClass: 'Class 11',
+    grade: 11,
+    gradeDisplay: 'Class 11',
+    stream: 'General Track',
+    targetUniversity: customUni || 'Not Selected',
+    enrolledTrackLabel: 'Class 11 (Unassigned)',
+    practiceButtonText: 'Class 11 Practice Test',
+    assignedClasses: [],
+    isEntranceExam: false,
+  };
+}
+

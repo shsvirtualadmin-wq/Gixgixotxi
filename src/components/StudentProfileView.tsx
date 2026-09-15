@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { StudentProfile, User, updateStudentPersonalInfo, uploadUserAvatar, supabase, evaluateStudentAccess, isAdminEmail } from '../lib/supabase';
+import { StudentProfile, User, updateStudentPersonalInfo, uploadUserAvatar, supabase, evaluateStudentAccess, isAdminEmail, clearAllClientAuthAndSessionData } from '../lib/supabase';
 import { renderTargetUniversityBadge } from './InstitutionBadge';
 import { TargetUniversityModal } from './TargetUniversityModal';
 import { UserAvatar } from './UserAvatar';
+import { resolveStudentTrackDetails } from '../data/portalMasterTracks';
 import {
   User as UserIcon,
   Mail,
@@ -49,6 +50,8 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   const [showUniModal, setShowUniModal] = useState<boolean>(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const resolvedTrack = resolveStudentTrackDetails(profile);
 
   const initialLetter = (profile.name || user.email || 'S').charAt(0).toUpperCase();
 
@@ -410,7 +413,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
               <span>Grade / Class</span>
             </div>
             <span className="font-extrabold text-sm text-[#0A0A0A]  block">
-              {profile.grade || 'Class 11'}
+              {resolvedTrack.gradeDisplay || profile.grade || 'Class 11'}
             </span>
           </div>
 
@@ -421,7 +424,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
               <span>Academic Stream</span>
             </div>
             <span className="font-extrabold text-sm text-[#0A0A0A]  block truncate">
-              {profile.stream || 'Pre-Medical Stream'}
+              {resolvedTrack.stream || profile.stream || 'Pre-Medical Stream'}
             </span>
           </div>
 
@@ -442,7 +445,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
             </div>
             <div>
               {renderTargetUniversityBadge(
-                profile.dream_university || profile.target_university,
+                resolvedTrack.targetUniversity || profile.dream_university || profile.target_university,
                 'md',
                 () => setShowUniModal(true)
               )}
@@ -520,11 +523,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
                 <span className="font-bold text-[#0A0A0A]  text-right truncate max-w-xs">
                   {isUserAdmin
                     ? 'All Academic & Entry Portals'
-                    : (profile.assigned_classes && profile.assigned_classes[0])
-                    ? profile.assigned_classes[0]
-                    : typeof access.assignedTrack === 'number'
-                    ? `Class ${access.assignedTrack} (${access.assignedStream})`
-                    : `${access.assignedTrack} • ${access.assignedStream}`}
+                    : resolvedTrack.enrolledTrackLabel}
                 </span>
               </div>
 
@@ -565,6 +564,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
         <button
           onClick={async () => {
             try {
+              clearAllClientAuthAndSessionData();
               await supabase.auth.signOut();
             } catch (err) {
               console.error('Logout error:', err);

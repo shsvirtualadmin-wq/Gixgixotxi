@@ -56,6 +56,10 @@ export const onRequestPost = async (context: PagesContext) => {
       expirationMonths = 12,
       adminNote,
       adminEmail,
+      grade: reqGrade,
+      stream: reqStream,
+      target_university: reqTargetUni,
+      dream_university: reqDreamUni,
     } = body || {};
 
     const requestedByEmail = (adminEmail || "").trim().toLowerCase();
@@ -124,6 +128,53 @@ export const onRequestPost = async (context: PagesContext) => {
       ? new Date(Date.now() + expMonths * 30 * 24 * 3600 * 1000).toISOString()
       : new Date().toISOString();
 
+    // Deduce grade, stream, and target university atomically
+    let finalGrade = (reqGrade || "").trim();
+    let finalStream = (reqStream || "").trim();
+    let finalTargetUni = (reqTargetUni || reqDreamUni || "").trim();
+
+    const topClassRaw = Array.isArray(assignedClasses) && assignedClasses.length > 0 ? String(assignedClasses[0]).trim() : "";
+    const topClassUpper = topClassRaw.toUpperCase();
+
+    if (!finalStream) {
+      if (topClassUpper.includes("FAST")) finalStream = "CS & Engineering Stream";
+      else if (topClassUpper.includes("PRE-ENGINEERING") || topClassUpper.includes("ENGINEERING")) finalStream = "Pre-Engineering Stream";
+      else if (topClassUpper.includes("PRE-MEDICAL") || topClassUpper.includes("MEDICAL")) finalStream = "Pre-Medical Stream";
+      else if (topClassUpper.includes("ICS") || topClassUpper.includes("COMPUTER")) finalStream = "ICS Stream";
+    }
+
+    if (!finalGrade) {
+      if (topClassUpper.includes("NET") || topClassUpper.includes("NUST")) finalGrade = "NET";
+      else if (topClassUpper.includes("MDCAT")) finalGrade = "MDCAT";
+      else if (topClassUpper.includes("TCAT")) finalGrade = "TCAT";
+      else if (topClassUpper.includes("FAST")) finalGrade = "FAST";
+      else if (topClassUpper.includes("11")) finalGrade = "Class 11";
+      else if (topClassUpper.includes("12")) finalGrade = "Class 12";
+      else finalGrade = currentStudent.grade || "Class 11";
+    }
+
+    if (!finalStream) {
+      if (finalGrade === "FAST") finalStream = "CS & Engineering Stream";
+      else if (finalGrade === "NET" || finalGrade === "TCAT" || finalGrade === "ECAT") finalStream = "Pre-Engineering Stream";
+      else if (finalGrade === "MDCAT" || finalGrade === "NUMS") finalStream = "Pre-Medical Stream";
+      else finalStream = currentStudent.stream || "Pre-Engineering Stream";
+    }
+
+    if (!finalTargetUni || finalTargetUni === "HEC / Board Standard") {
+      const gUpper = (finalGrade || topClassUpper).toUpperCase();
+      if (gUpper.includes("FAST")) finalTargetUni = "FAST-NUCES";
+      else if (gUpper.includes("NET") || gUpper.includes("NUST")) finalTargetUni = "NUST Islamabad";
+      else if (gUpper.includes("MDCAT")) finalTargetUni = "King Edward / UHS / PMDC";
+      else if (gUpper.includes("TCAT")) finalTargetUni = "UET Taxila";
+      else if (gUpper.includes("ECAT")) finalTargetUni = "UET Lahore";
+      else finalTargetUni = currentStudent.target_university || currentStudent.dream_university || "FBISE Board Examinations";
+    }
+
+    let finalAssignedClasses: string[] = Array.isArray(assignedClasses) && assignedClasses.length > 0 ? [...assignedClasses] : [];
+    if (finalAssignedClasses.length === 0 && finalGrade) {
+      finalAssignedClasses = [`${finalGrade}${finalStream ? " • " + finalStream : ""}`];
+    }
+
     const planData = {
       subscribed_plans: finalIsPro ? subscribedPlans : ["free"],
       is_pro: finalIsPro,
@@ -132,6 +183,11 @@ export const onRequestPost = async (context: PagesContext) => {
       plan_status: finalPlanStatus,
       requires_payment: finalRequiresPayment,
       access_expires: accessExpiresStr,
+      grade: finalGrade,
+      stream: finalStream,
+      target_university: finalTargetUni,
+      dream_university: finalTargetUni,
+      assigned_classes: finalAssignedClasses,
       status: "active",
       updated_at: new Date().toISOString(),
     };
@@ -147,6 +203,11 @@ export const onRequestPost = async (context: PagesContext) => {
       plan_status: finalPlanStatus,
       requires_payment: finalRequiresPayment,
       access_expires: accessExpiresStr,
+      grade: finalGrade,
+      stream: finalStream,
+      target_university: finalTargetUni,
+      dream_university: finalTargetUni,
+      assigned_classes: finalAssignedClasses,
       status: "active",
       updated_at: new Date().toISOString(),
     };

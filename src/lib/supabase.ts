@@ -1,6 +1,7 @@
 import { createClient, User as SupabaseUser } from '@supabase/supabase-js';
 import { HistoryItem, TestResult, BoardClass, ResourceCategory, ResourceItem } from '../types';
 import { normalizePackageTrack, findDuplicatePaymentGroups } from './paymentDeduplication';
+import { deriveTrackDetailsFromAssignableClass } from '../data/portalMasterTracks';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://wbvzbbnapowwmrjecdyt.supabase.co';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
@@ -405,103 +406,31 @@ export function parseAssignedTrack(
   assignedStream: string;
   allowedClasses: (BoardClass | string)[];
 } {
-  const gStr = (grade || '').trim().toUpperCase();
-  const sStr = (stream || '').trim().toUpperCase();
   const primaryAssigned = Array.isArray(assignedClasses) && assignedClasses.length > 0
     ? String(assignedClasses[0]).trim()
     : '';
-  const aStr = primaryAssigned.toUpperCase();
 
-  let assignedTrack: BoardClass | string = 11;
-  let detectedStream = stream || '';
+  // Single authoritative track derivation
+  const inputStr = primaryAssigned || `${grade || ''} ${stream || ''}`.trim() || 'Class 11 Pre-Medical';
+  const derived = deriveTrackDetailsFromAssignableClass(inputStr);
 
-  // 1. If assignedClasses contains explicit separator (e.g. "NET • Pre-Engineering Stream")
-  if (primaryAssigned.includes('•') || primaryAssigned.includes('-')) {
-    const parts = primaryAssigned.includes('•') ? primaryAssigned.split('•') : primaryAssigned.split('-');
-    const trackPart = parts[0].trim().toUpperCase();
-    const streamPart = parts.slice(1).join(' ').trim();
-    if (streamPart && (!detectedStream || detectedStream === 'Pre-Medical Stream' || detectedStream === 'Pre-Engineering Stream')) {
-      detectedStream = streamPart;
-    }
-    if (trackPart.includes('NET') || trackPart.includes('NUST')) assignedTrack = 'NET';
-    else if (trackPart.includes('MDCAT')) assignedTrack = 'MDCAT';
-    else if (trackPart.includes('TCAT')) assignedTrack = 'TCAT';
-    else if (trackPart.includes('FAST')) assignedTrack = 'FAST';
-    else if (trackPart.includes('ECAT')) assignedTrack = 'ECAT';
-    else if (trackPart.includes('ETEA')) assignedTrack = 'ETEA';
-    else if (trackPart.includes('NUMS')) assignedTrack = 'NUMS';
-    else if (trackPart.includes('GIKI')) assignedTrack = 'GIKI';
-    else if (trackPart.includes('USAT')) assignedTrack = 'USAT';
-    else if (trackPart.includes('11')) assignedTrack = 11;
-    else if (trackPart.includes('12')) assignedTrack = 12;
-    else if (trackPart.includes('9')) assignedTrack = 9;
-    else if (trackPart.includes('10')) assignedTrack = 10;
-  }
-
-  // 2. If track wasn't resolved by separator, check grade and assigned class
-  if (assignedTrack === 11) {
-    if (gStr.includes('NET') || gStr.includes('NUST') || aStr.includes('NET') || aStr.includes('NUST')) {
-      assignedTrack = 'NET';
-    } else if (gStr.includes('MDCAT') || aStr.includes('MDCAT')) {
-      assignedTrack = 'MDCAT';
-    } else if (gStr.includes('TCAT') || aStr.includes('TCAT')) {
-      assignedTrack = 'TCAT';
-    } else if (gStr.includes('FAST') || aStr.includes('FAST') || gStr.includes('NAT') || aStr.includes('NAT')) {
-      assignedTrack = 'FAST';
-    } else if (gStr.includes('ECAT') || aStr.includes('ECAT')) {
-      assignedTrack = 'ECAT';
-    } else if (gStr.includes('ETEA') || aStr.includes('ETEA')) {
-      assignedTrack = 'ETEA';
-    } else if (gStr.includes('NUMS') || aStr.includes('NUMS')) {
-      assignedTrack = 'NUMS';
-    } else if (gStr.includes('GIKI') || aStr.includes('GIKI')) {
-      assignedTrack = 'GIKI';
-    } else if (gStr.includes('USAT') || aStr.includes('USAT')) {
-      assignedTrack = 'USAT';
-    } else if (gStr.includes('12') || gStr.includes('SECOND YEAR') || aStr.includes('12')) {
-      assignedTrack = 12;
-    } else if (gStr.includes('11') || gStr.includes('FIRST YEAR') || gStr.includes('FSC') || aStr.includes('11')) {
-      assignedTrack = 11;
-    } else if (gStr.includes('10') || gStr.includes('TENTH') || gStr.includes('MATRIC') || aStr.includes('10')) {
-      assignedTrack = 10;
-    } else if (gStr.includes('9') || gStr.includes('NINTH') || aStr.includes('9')) {
-      assignedTrack = 9;
-    }
-  }
-
-  if (!detectedStream) {
-    if (aStr.includes('PRE-ENGINEERING') || sStr.includes('PRE-ENGINEERING')) detectedStream = 'Pre-Engineering Stream';
-    else if (aStr.includes('PRE-MEDICAL') || sStr.includes('PRE-MEDICAL')) detectedStream = 'Pre-Medical Stream';
-    else if (aStr.includes('ICS') || sStr.includes('ICS')) detectedStream = 'ICS Stream';
-    else if (assignedTrack === 'NET' || assignedTrack === 'TCAT' || assignedTrack === 'ECAT') detectedStream = 'Pre-Engineering Stream';
-    else if (assignedTrack === 'MDCAT' || assignedTrack === 'NUMS') detectedStream = 'Pre-Medical Stream';
-    else detectedStream = `${assignedTrack} Track`;
-  }
+  const assignedTrack: BoardClass | string = derived.grade;
+  const assignedStream: string = derived.stream;
 
   const allowedClasses: (BoardClass | string)[] = [assignedTrack];
 
   if (Array.isArray(assignedClasses)) {
-    assignedClasses.forEach(c => {
-      const cStr = String(c).trim().toUpperCase();
-      if (cStr.includes('MDCAT') && !allowedClasses.includes('MDCAT')) allowedClasses.push('MDCAT');
-      else if (cStr.includes('TCAT') && !allowedClasses.includes('TCAT')) allowedClasses.push('TCAT');
-      else if (cStr.includes('NET') && !allowedClasses.includes('NET')) allowedClasses.push('NET');
-      else if (cStr.includes('FAST') && !allowedClasses.includes('FAST')) allowedClasses.push('FAST');
-      else if (cStr.includes('ECAT') && !allowedClasses.includes('ECAT')) allowedClasses.push('ECAT');
-      else if (cStr.includes('ETEA') && !allowedClasses.includes('ETEA')) allowedClasses.push('ETEA');
-      else if (cStr.includes('NUMS') && !allowedClasses.includes('NUMS')) allowedClasses.push('NUMS');
-      else if (cStr.includes('GIKI') && !allowedClasses.includes('GIKI')) allowedClasses.push('GIKI');
-      else if (cStr.includes('USAT') && !allowedClasses.includes('USAT')) allowedClasses.push('USAT');
-      else if (cStr.includes('9') && !allowedClasses.includes(9)) allowedClasses.push(9);
-      else if (cStr.includes('10') && !allowedClasses.includes(10)) allowedClasses.push(10);
-      else if (cStr.includes('11') && !allowedClasses.includes(11)) allowedClasses.push(11);
-      else if (cStr.includes('12') && !allowedClasses.includes(12)) allowedClasses.push(12);
+    assignedClasses.forEach((c) => {
+      const cDerived = deriveTrackDetailsFromAssignableClass(String(c));
+      if (!allowedClasses.includes(cDerived.grade)) {
+        allowedClasses.push(cDerived.grade);
+      }
     });
   }
 
   return {
     assignedTrack,
-    assignedStream: detectedStream || `${assignedTrack} Track`,
+    assignedStream: assignedStream || `${assignedTrack} Track`,
     allowedClasses,
   };
 }
@@ -764,6 +693,90 @@ export function clearProfileCache(userId?: string) {
     profileInFlightPromises.clear();
     syncInFlightPromises.clear();
     profileMemoryCache.clear();
+  }
+}
+
+/**
+ * Completely purges ALL client-side auth tokens, session data, user profiles,
+ * and registration flags from localStorage, sessionStorage, and cookies.
+ * Guaranteed to leave zero residual footprint for any subsequent sign-in.
+ */
+export function clearAllClientAuthAndSessionData(): void {
+  if (typeof window === 'undefined') return;
+
+  // Clear memory cache
+  clearProfileCache();
+
+  try {
+    // 1. Explicitly clear known Boardly and auth keys
+    const specificKeysToRemove = [
+      'boardly_cached_user',
+      'boardly_cached_profile',
+      'boardly_cached_access',
+      'boardly_target_university',
+      'boardly_registration_is_success',
+      'boardly_registration_step',
+      'boardly_guided_wizard_step',
+      'boardly_student_grade',
+      'boardly_student_package',
+      'boardly_student_stream',
+      'boardly_confirmed_submitted_proof',
+      'shs_intended_class',
+      'shs_intended_group',
+      'shs_oauth_redirect',
+      'boardly_active_screen',
+      'boardly_active_test_answers',
+      'boardly_active_test_session',
+      'boardly_active_test_time',
+      'boardly_pending_promo_code',
+      'boardly_reopen_study_buddy',
+      'boardly_deleted_resources',
+      'boardly_admin_promo_links',
+    ];
+    specificKeysToRemove.forEach((key) => {
+      try { localStorage.removeItem(key); } catch {}
+    });
+
+    // 2. Remove dynamic pattern keys (boardly_profile_*, boardly_active_pro_grant_*, sb-*, supabase.*)
+    const keysToPurge: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (
+        k.startsWith('boardly_profile_') ||
+        k.startsWith('boardly_active_pro_grant_') ||
+        k.startsWith('boardly_registration_') ||
+        k.startsWith('sb-') ||
+        k.startsWith('supabase.')
+      )) {
+        keysToPurge.push(k);
+      }
+    }
+    keysToPurge.forEach((k) => {
+      try { localStorage.removeItem(k); } catch {}
+    });
+
+    // 3. Wipe sessionStorage completely
+    try {
+      sessionStorage.clear();
+    } catch {}
+
+    // 4. Wipe cookies
+    try {
+      const cookies = document.cookie.split(';');
+      for (let i = 0; i < cookies.length; i++) {
+        const cookie = cookies[i];
+        const eqPos = cookie.indexOf('=');
+        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+        if (name) {
+          document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;`;
+          document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=${window.location.hostname};`;
+        }
+      }
+    } catch {}
+
+    console.log('[Auth Cleanup] Fully purged all client storage, cached profiles, and auth sessions.');
+  } catch (err) {
+    console.error('[Auth Cleanup] Error during storage wipe:', err);
   }
 }
 
@@ -1064,8 +1077,8 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
     grade: data.grade || '',
     stream: data.stream || '',
     subjects: Array.isArray(data.subjects) ? data.subjects : [],
-    dream_university: data.dream_university || data.target_university || (typeof window !== 'undefined' ? (localStorage.getItem('boardly_target_university') || '') : ''),
-    target_university: data.target_university || data.dream_university || (typeof window !== 'undefined' ? (localStorage.getItem('boardly_target_university') || '') : ''),
+    dream_university: data.dream_university || data.target_university || '',
+    target_university: data.target_university || data.dream_university || '',
     sign_up_method: data.sign_up_method || 'Google',
     status: data.status || 'active',
     is_registered: isReg,
@@ -1248,84 +1261,97 @@ export async function syncUserProfile(
 
         finalProfile = normalizeStudentProfileFromRow(combinedRow, user.id);
       } else {
-        // Guard against transient query misses: If local storage already has a registered/pro profile,
-        // do NOT overwrite the database with an empty unpaid default.
-        let localExisting: StudentProfile | null = null;
+        // If database query returned no student record for user.id AND user.email,
+        // this is a brand-new user or an account that was permanently deleted by admin.
+        // Wipe any stale local caches for this user to guarantee clean onboarding!
         try {
-          const cachedRaw = localStorage.getItem(`boardly_profile_${userId}`) || localStorage.getItem('boardly_cached_profile');
-          if (cachedRaw) localExisting = JSON.parse(cachedRaw);
+          localStorage.removeItem(`boardly_profile_${userId}`);
+          localStorage.removeItem('boardly_cached_profile');
+          localStorage.removeItem('boardly_target_university');
+          localStorage.removeItem('boardly_registration_is_success');
+          localStorage.removeItem('boardly_registration_step');
+          localStorage.removeItem('boardly_guided_wizard_step');
+          localStorage.removeItem(`boardly_active_pro_grant_${userId}`);
+          if (user.email) {
+            localStorage.removeItem(`boardly_active_pro_grant_${user.email.toLowerCase().trim()}`);
+            localStorage.removeItem(`boardly_profile_${user.email.toLowerCase().trim()}`);
+          }
         } catch {}
 
-        if (localExisting && (localExisting.is_registered || localExisting.is_pro || localExisting.grade)) {
-          console.log(`[syncUserProfile] Student record missing on network query; retaining local profile for ${userId}`);
-          finalProfile = localExisting;
+        // Insert new student record for genuine brand new signups
+        const requiresPay = !isAdmin;
+        const newDefaultProfile: StudentProfile = {
+          ...defaultProfile,
+          is_registered: isAdmin,
+          grade: isAdmin ? 'Admin' : '',
+          stream: isAdmin ? 'Admin Stream' : '',
+          dream_university: '',
+          target_university: '',
+          requires_payment: requiresPay,
+          payment_status: isAdmin ? 'Verified & Paid' : 'Unpaid',
+          status: requiresPay ? 'pending admin approval' : 'active',
+        };
+
+        const { data: inserted, error: insertErr } = await supabase
+          .from('students')
+          .upsert(sanitizeStudentForDb(newDefaultProfile))
+          .select()
+          .single();
+
+        if (insertErr) {
+          console.warn('Failed to insert student into Supabase:', insertErr.message);
+          finalProfile = newDefaultProfile;
         } else {
-          // Insert new student record for genuine brand new signups
-          const requiresPay = !isAdmin;
-          const newDefaultProfile: StudentProfile = {
-            ...defaultProfile,
-            requires_payment: requiresPay,
-            payment_status: isAdmin ? 'Verified & Paid' : 'Unpaid',
-            status: requiresPay ? 'pending admin approval' : 'active',
-          };
-
-          const { data: inserted, error: insertErr } = await supabase
-            .from('students')
-            .upsert(sanitizeStudentForDb(newDefaultProfile))
-            .select()
-            .single();
-
-          if (insertErr) {
-            console.warn('Failed to insert student into Supabase:', insertErr.message);
-            finalProfile = newDefaultProfile;
-          } else {
-            finalProfile = normalizeStudentProfileFromRow(inserted || newDefaultProfile, user.id);
-          }
+          finalProfile = normalizeStudentProfileFromRow(inserted || newDefaultProfile, user.id);
         }
       }
 
-      // Pro Persistence Guard: Check dedicated Pro grant cache or local profile
-      try {
-        const dedicatedGrant = localStorage.getItem(`boardly_active_pro_grant_${userId}`) ||
-          (user.email ? localStorage.getItem(`boardly_active_pro_grant_${user.email.toLowerCase().trim()}`) : null);
-        const cachedRaw = dedicatedGrant || localStorage.getItem(`boardly_profile_${userId}`);
-        if (cachedRaw) {
-          const cachedJson = JSON.parse(cachedRaw);
-          if (cachedJson?.is_pro && cachedJson.access_expires) {
-            const expTime = new Date(cachedJson.access_expires).getTime();
-            if (!isNaN(expTime) && expTime > Date.now()) {
-              if (!finalProfile.is_pro) {
-                console.log(`[syncUserProfile] Preserving active Pro grant from local storage for ${userId}`);
-                finalProfile = {
-                  ...finalProfile,
-                  is_pro: true,
-                  plan_tier: 'pro',
-                  access_expires: cachedJson.access_expires,
-                  package_name: cachedJson.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)',
-                  payment_status: 'Verified & Paid',
-                  plan_status: 'verified_pro',
-                  requires_payment: false,
-                  subscribed_plans: ['boardly_pro', 'pro'],
-                };
-                // Heal remote Supabase students table in background if out of sync
-                supabase.from('students').update({
-                  is_pro: true,
-                  plan_tier: 'pro',
-                  access_expires: cachedJson.access_expires,
-                  payment_status: 'Verified & Paid',
-                  plan_status: 'verified_pro',
-                }).eq('id', user.id).then(() => {}, () => {});
-              }
-            } else if (!isNaN(expTime) && expTime <= Date.now()) {
-              // Expired grant found in cache - purge it
-              localStorage.removeItem(`boardly_active_pro_grant_${userId}`);
-              if (user.email) {
-                localStorage.removeItem(`boardly_active_pro_grant_${user.email.toLowerCase().trim()}`);
+      // Pro Persistence Guard: Only check for existing valid users, never for brand-new or deleted signups
+      if (existing) {
+        try {
+          const dedicatedGrant = localStorage.getItem(`boardly_active_pro_grant_${userId}`) ||
+            (user.email ? localStorage.getItem(`boardly_active_pro_grant_${user.email.toLowerCase().trim()}`) : null);
+          const cachedRaw = dedicatedGrant || localStorage.getItem(`boardly_profile_${userId}`);
+          if (cachedRaw) {
+            const cachedJson = JSON.parse(cachedRaw);
+            if (cachedJson?.is_pro && cachedJson.access_expires) {
+              const expTime = new Date(cachedJson.access_expires).getTime();
+              if (!isNaN(expTime) && expTime > Date.now()) {
+                if (!finalProfile.is_pro) {
+                  console.log(`[syncUserProfile] Preserving active Pro grant from local storage for ${userId}`);
+                  finalProfile = {
+                    ...finalProfile,
+                    is_pro: true,
+                    plan_tier: 'pro',
+                    access_expires: cachedJson.access_expires,
+                    package_name: cachedJson.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)',
+                    payment_status: 'Verified & Paid',
+                    plan_status: 'verified_pro',
+                    requires_payment: false,
+                    subscribed_plans: ['boardly_pro', 'pro'],
+                  };
+                  // Heal remote Supabase students table in background if out of sync
+                  supabase.from('students').update({
+                    is_pro: true,
+                    plan_tier: 'pro',
+                    access_expires: cachedJson.access_expires,
+                    payment_status: 'Verified & Paid',
+                    plan_status: 'verified_pro',
+                  }).eq('id', user.id).then(() => {}, () => {});
+                }
+              } else if (!isNaN(expTime) && expTime <= Date.now()) {
+                // Expired grant found in cache - purge it
+                localStorage.removeItem(`boardly_active_pro_grant_${userId}`);
+                if (user.email) {
+                  localStorage.removeItem(`boardly_active_pro_grant_${user.email.toLowerCase().trim()}`);
+                }
               }
             }
           }
+        } catch (proErr) {
+          console.warn('[syncUserProfile] Pro guard note:', proErr);
         }
-      } catch (cachedErr) {}
+      }
 
       // Automatic Expiry Check: If real student account has an expired Pro access_expires date, immediately downgrade it!
       const isAccountAdmin = Boolean(
@@ -3171,19 +3197,38 @@ export async function removeStudentAccountInSupabase(
   }
 
   try {
-    // Clear local profile and authentication caches
+    // Clear local profile and authentication caches immediately
+    clearAllClientAuthAndSessionData();
     if (studentId) {
       clearProfileCache(studentId);
       try {
         localStorage.removeItem(`boardly_profile_${studentId}`);
+        localStorage.removeItem(`boardly_active_pro_grant_${studentId}`);
       } catch {}
     }
     if (studentEmail) {
       clearProfileCache(studentEmail);
+      const cleanEmail = studentEmail.toLowerCase().trim();
       try {
-        localStorage.removeItem(`boardly_profile_${studentEmail}`);
+        localStorage.removeItem(`boardly_profile_${cleanEmail}`);
+        localStorage.removeItem(`boardly_active_pro_grant_${cleanEmail}`);
       } catch {}
     }
+
+    // Wipe any pending/stale registration keys from this client
+    try {
+      localStorage.removeItem('boardly_cached_profile');
+      localStorage.removeItem('boardly_target_university');
+      localStorage.removeItem('boardly_registration_is_success');
+      localStorage.removeItem('boardly_registration_step');
+      localStorage.removeItem('boardly_guided_wizard_step');
+      localStorage.removeItem('boardly_student_grade');
+      localStorage.removeItem('boardly_student_package');
+      localStorage.removeItem('boardly_student_stream');
+      localStorage.removeItem('boardly_confirmed_submitted_proof');
+      localStorage.removeItem('shs_intended_class');
+      localStorage.removeItem('shs_intended_group');
+    } catch {}
 
     let resp = await apiFetch('/api/admin/remove-student', {
       method: 'POST',
@@ -3212,6 +3257,15 @@ export async function removeStudentAccountInSupabase(
     }
 
     if (resp.ok && resData.success) {
+      if (typeof window !== 'undefined') {
+        try {
+          window.dispatchEvent(
+            new CustomEvent('boardly_user_permanently_deleted', {
+              detail: { studentId, studentEmail },
+            })
+          );
+        } catch (evtErr) {}
+      }
       return { success: true, message: resData.message || 'Student account and all associated records permanently wiped.' };
     }
 
@@ -3250,6 +3304,15 @@ export async function removeStudentAccountInSupabase(
           deleted = true;
         }
         if (deleted) {
+          if (typeof window !== 'undefined') {
+            try {
+              window.dispatchEvent(
+                new CustomEvent('boardly_user_permanently_deleted', {
+                  detail: { studentId, studentEmail },
+                })
+              );
+            } catch (evtErr) {}
+          }
           return { success: true, message: 'Student account and records permanently wiped.' };
         }
       } catch (e) {

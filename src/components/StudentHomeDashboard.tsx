@@ -30,6 +30,7 @@ import { UserAvatar } from './UserAvatar';
 import { AnimatedCounter } from './AnimatedCounter';
 import { ResourcesHub } from './ResourcesHub';
 import { triggerHaptic, HAPTIC_PATTERNS } from '../lib/haptics';
+import { resolveStudentTrackDetails } from '../data/portalMasterTracks';
 
 /**
  * Accuracy threshold percentage cutoff for identifying weak subject/chapter areas.
@@ -169,6 +170,8 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
     userProfile?.role === 'admin' ||
     (userProfile as any)?.is_admin
   );
+
+  const resolvedTrack = resolveStudentTrackDetails(userProfile);
 
   // Live Pro Countdown & Expiry Engine
   const [nowTime, setNowTime] = useState<number>(() => Date.now());
@@ -565,8 +568,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
       {/* Pending Verification Notice Banner */}
       {Boolean(
         (userProfile?.payment_status === 'Pending Verification' ||
-         userProfile?.plan_status === 'pending_verification' ||
-         localStorage.getItem('boardly_registration_is_success') === 'true') &&
+         userProfile?.plan_status === 'pending_verification') &&
         !evaluateStudentAccess(userProfile, monthlyTestCount, isAdmin).isPro
       ) && (
         <div className="bg-amber-500/10 border border-amber-500/30  rounded-2xl p-4 text-amber-800  flex items-start sm:items-center gap-3 shadow-sm animate-fadeIn">
@@ -632,7 +634,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
         </div>
 
         {/* Assigned Classes & Test Series Box */}
-        {userProfile?.assigned_classes && userProfile.assigned_classes.length > 0 && (
+        {resolvedTrack.assignedClasses && resolvedTrack.assignedClasses.length > 0 && (
           <div className="bg-slate-50/80  border border-slate-200  rounded-2xl p-4 space-y-2 relative z-10">
             <div className="flex items-center">
               <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500  flex items-center gap-1.5">
@@ -642,7 +644,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
             </div>
 
             <div className="flex flex-wrap gap-2 pt-0.5">
-              {userProfile.assigned_classes.map((cls, idx) => (
+              {resolvedTrack.assignedClasses.map((cls, idx) => (
                 <div
                   key={idx}
                   className="inline-flex items-center gap-1.5 bg-blue-500/10  border border-blue-500/30 text-blue-700  px-3 py-1.5 rounded-xl text-xs font-extrabold"
@@ -657,29 +659,23 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
 
         {/* Primary Action Buttons - Personalized to student's registered track */}
         <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 relative z-10 pt-1">
-          {userProfile?.grade?.toUpperCase().includes('MDCAT') || userProfile?.stream?.toUpperCase().includes('MDCAT') || userProfile?.assigned_classes?.some(c => c.toUpperCase().includes('MDCAT')) ? (
+          {resolvedTrack.isEntranceExam ? (
             <button
               type="button"
               onClick={() => {
                 triggerHaptic(HAPTIC_PATTERNS.medium);
-                if (onSelectMdcat) onSelectMdcat(); else onStartPracticeTest();
+                if (resolvedTrack.grade === 'MDCAT' && onSelectMdcat) {
+                  onSelectMdcat();
+                } else if (resolvedTrack.grade === 'TCAT' && onSelectTcat) {
+                  onSelectTcat();
+                } else {
+                  onStartPracticeTest();
+                }
               }}
-              className="w-full bg-gradient-to-r from-rose-600 to-pink-600 hover:from-rose-500 hover:to-pink-500 text-white font-extrabold py-3.5 px-5 rounded-2xl transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer border border-rose-400/30"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold py-3.5 px-5 rounded-2xl transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer border border-blue-400/30"
             >
               <Sparkles className="w-4 h-4 text-white fill-white/20" />
-              <span>MDCAT Entry Test Portal</span>
-            </button>
-          ) : userProfile?.grade?.toUpperCase().includes('TCAT') || userProfile?.stream?.toUpperCase().includes('TCAT') || userProfile?.assigned_classes?.some(c => c.toUpperCase().includes('TCAT')) ? (
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic(HAPTIC_PATTERNS.medium);
-                if (onSelectTcat) onSelectTcat(); else onStartPracticeTest();
-              }}
-              className="w-full bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-500 hover:to-sky-500 text-white font-extrabold py-3.5 px-5 rounded-2xl transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 text-xs sm:text-sm cursor-pointer border border-cyan-400/30"
-            >
-              <Target className="w-4 h-4 text-cyan-200" />
-              <span>UET Taxila TCAT Entry Portal</span>
+              <span>{resolvedTrack.practiceButtonText}</span>
             </button>
           ) : (
             <button
@@ -692,7 +688,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
             >
               <Zap className="w-4 h-4 text-[#0A0A0A] fill-[#0A0A0A]" />
               <span>
-                {!isProStudent && isTestLimitReached ? "2/2 free tests used this month" : `${userProfile?.grade || 'Class 11'} ${userProfile?.stream || 'Pre-Engineering'} Practice Test`}
+                {!isProStudent && isTestLimitReached ? "2/2 free tests used this month" : resolvedTrack.practiceButtonText}
               </span>
             </button>
           )}
@@ -704,7 +700,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
             Target University:
           </span>
           {renderTargetUniversityBadge(
-            userProfile?.dream_university || userProfile?.target_university,
+            resolvedTrack.targetUniversity || userProfile?.dream_university || userProfile?.target_university,
             'sm',
             () => setShowUniModal(true)
           )}

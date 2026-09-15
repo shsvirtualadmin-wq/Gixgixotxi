@@ -9516,8 +9516,10 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       const topClassUpper = topClassRaw.toUpperCase();
 
       // If assigned class has "TRACK • STREAM" separator (e.g. "NET • Pre-Engineering Stream")
-      if (topClassRaw.includes('•') || topClassRaw.includes('-')) {
-        const parts = topClassRaw.includes('•') ? topClassRaw.split('•') : topClassRaw.split('-');
+      if (topClassRaw.includes('•') || topClassRaw.includes(' - ') || topClassRaw.includes(' — ')) {
+        const parts = topClassRaw.includes('•')
+          ? topClassRaw.split('•')
+          : (topClassRaw.includes(' - ') ? topClassRaw.split(' - ') : topClassRaw.split(' — '));
         const part0 = parts[0].trim();
         const part1 = parts.slice(1).join(' ').trim();
         if (!finalGrade && part0) finalGrade = part0;
@@ -9525,7 +9527,9 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       }
 
       if (!finalStream) {
-        if (topClassUpper.includes('PRE-ENGINEERING') || topClassUpper.includes('ENGINEERING')) {
+        if (topClassUpper.includes('FAST')) {
+          finalStream = 'CS & Engineering Stream';
+        } else if (topClassUpper.includes('PRE-ENGINEERING') || topClassUpper.includes('ENGINEERING')) {
           finalStream = 'Pre-Engineering Stream';
         } else if (topClassUpper.includes('PRE-MEDICAL') || topClassUpper.includes('MEDICAL')) {
           finalStream = 'Pre-Medical Stream';
@@ -9576,7 +9580,9 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       }
 
       if (!finalStream) {
-        if (finalGrade === 'NET' || finalGrade === 'TCAT' || finalGrade === 'ECAT') {
+        if (finalGrade === 'FAST') {
+          finalStream = 'CS & Engineering Stream';
+        } else if (finalGrade === 'NET' || finalGrade === 'TCAT' || finalGrade === 'ECAT' || finalGrade === 'GIKI') {
           finalStream = (currentStudent.stream && currentStudent.stream.includes('Pre-Engineering'))
             ? currentStudent.stream
             : 'Pre-Engineering Stream';
@@ -9589,8 +9595,8 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         }
       }
 
-      if (!finalTargetUni) {
-        const gUpper = finalGrade.toUpperCase();
+      if (!finalTargetUni || finalTargetUni === 'HEC / Board Standard') {
+        const gUpper = (finalGrade || topClassUpper).toUpperCase();
         if (gUpper.includes('NET') || gUpper.includes('NUST')) finalTargetUni = 'NUST Islamabad';
         else if (gUpper.includes('MDCAT')) finalTargetUni = 'King Edward / UHS / PMDC';
         else if (gUpper.includes('FAST')) finalTargetUni = 'FAST-NUCES';
@@ -9604,7 +9610,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         else if (gUpper.includes('NUMS')) finalTargetUni = 'Army Medical College (NUMS)';
         else if (gUpper.includes('LUMS')) finalTargetUni = 'LUMS Lahore';
         else if (gUpper.includes('IBA')) finalTargetUni = 'IBA Karachi';
-        else finalTargetUni = currentStudent.target_university || currentStudent.dream_university || 'HEC / Board Standard';
+        else finalTargetUni = currentStudent.target_university || currentStudent.dream_university || 'FBISE Board Examinations';
       }
 
       // Compute unified assigned_classes array ensuring primary track representation

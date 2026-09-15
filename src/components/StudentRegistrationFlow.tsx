@@ -711,16 +711,15 @@ export const StudentRegistrationFlow: React.FC<StudentRegistrationFlowProps> = (
             }
           })();
 
-          if (isPending || localStorage.getItem('boardly_registration_is_success') === 'true') {
+          const isRegistered = Boolean(effectiveProfile.is_registered && gradeVal && streamVal);
+          if (isRegistered && isPending) {
             setSavedProfileResult(effectiveProfile);
             setCompletedMode('paid_proof');
             setIsSuccess(true);
-          } else if (targetUni) {
+          } else if (gradeVal && streamVal && targetUni) {
             setCurrentStep(Math.max(4, savedLocalStep));
-          } else if (gradeVal) {
+          } else if (gradeVal && streamVal) {
             setCurrentStep(Math.max(2, savedLocalStep));
-          } else if (savedLocalStep > 1) {
-            setCurrentStep(savedLocalStep);
           } else {
             setCurrentStep(1);
           }

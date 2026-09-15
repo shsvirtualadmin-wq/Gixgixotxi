@@ -51,6 +51,7 @@ import {
   getClassAndGroupFromCategory,
   isCategoryAccessAllowed,
 } from './utils/categoryHelpers';
+import { resolveStudentTrackDetails } from './data/portalMasterTracks';
 
 import { MainHeader } from './components/MainHeader';
 import { HeaderLogo } from './components/HeaderLogo';
@@ -96,7 +97,7 @@ import {
   validatePromoCode,
 } from './lib/promoCode';
 
-import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack } from './lib/supabase';
+import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, clearAllClientAuthAndSessionData, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
@@ -568,11 +569,6 @@ export function App() {
         const cachedGeneral = localStorage.getItem('boardly_cached_profile');
         if (cachedGeneral) profile = JSON.parse(cachedGeneral);
       }
-      const savedUni = localStorage.getItem('boardly_target_university');
-      if (savedUni && profile) {
-        if (!profile.dream_university) profile.dream_university = savedUni;
-        if (!profile.target_university) profile.target_university = savedUni;
-      }
       const isProfileAdmin = Boolean(
         (profile?.email && isAdminEmail(profile.email)) ||
         profile?.role === 'admin'
@@ -882,10 +878,7 @@ export function App() {
   );
   const isRegisteredStudent = isAdmin ||
     Boolean(userProfile?.is_registered) ||
-    hasGradeAndStream ||
-    localStorage.getItem('boardly_registration_is_success') === 'true' ||
-    userProfile?.payment_status === 'Pending Verification' ||
-    userProfile?.plan_status === 'pending_verification';
+    hasGradeAndStream;
 
   // Access Gating Rule: Only Admins OR students whose evaluated access isPro is true have Pro access!
   const isStudentProOrPaid = userProfile ? evaluateStudentAccess(userProfile, 0, isAdmin).isPro : false;
@@ -1482,13 +1475,18 @@ export function App() {
         const activeProf = userProfile;
         const isApprovedOrExempt = isAdmin || checkIsStudentProOrPaid(activeProf, isAdmin);
 
+        const hasAcademicTrack = Boolean(
+          activeProf?.grade &&
+          activeProf.grade.trim() &&
+          activeProf.grade !== 'General Student' &&
+          activeProf?.stream &&
+          activeProf.stream.trim()
+        );
         const isUserRegistered = Boolean(
+          isAdmin ||
           activeProf?.is_registered ||
-          (activeProf?.grade && activeProf?.stream) ||
-          isRegisteredStudent ||
-          localStorage.getItem('boardly_registration_is_success') === 'true' ||
-          activeProf?.payment_status === 'Pending Verification' ||
-          activeProf?.plan_status === 'pending_verification'
+          hasAcademicTrack ||
+          isRegisteredStudent
         );
 
         if (!isUserRegistered) {
@@ -1856,10 +1854,7 @@ export function App() {
       const validStream = Boolean(profile?.stream && profile.stream.trim());
       const isReg = isUserAdmin ||
         Boolean(profile?.is_registered) ||
-        (validGrade && validStream) ||
-        localStorage.getItem('boardly_registration_is_success') === 'true' ||
-        profile?.payment_status === 'Pending Verification' ||
-        profile?.plan_status === 'pending_verification';
+        (validGrade && validStream);
 
       const hasHashToken = window.location.hash.includes('access_token');
       const hasSearchCode = window.location.search.includes('code=');
@@ -2042,12 +2037,7 @@ export function App() {
         if (!exists) {
           console.warn('[Protected Page Verification] Student record wiped/deleted in database. Forcing sign-out...');
           supabase.auth.signOut().then(() => {
-            clearProfileCache();
-            localStorage.removeItem('boardly_cached_user');
-            localStorage.removeItem('boardly_cached_profile');
-            if (currentUser?.id) {
-              localStorage.removeItem(`boardly_profile_${currentUser.id}`);
-            }
+            clearAllClientAuthAndSessionData();
             setCurrentUser(null);
             setUserProfile(null);
             setScreen('auth');
@@ -2056,6 +2046,27 @@ export function App() {
       });
     }
   }, [screen, currentUser?.id, currentUser?.email]);
+
+  // Listen for permanent user deletion events across tabs/windows
+  useEffect(() => {
+    const handleUserDeleted = (e: any) => {
+      const { studentId, studentEmail } = e?.detail || {};
+      if (
+        (studentId && currentUser?.id === studentId) ||
+        (studentEmail && currentUser?.email && currentUser.email.toLowerCase() === studentEmail.toLowerCase())
+      ) {
+        console.warn('[User Session] Current user was permanently deleted. Wiping local session and signing out...');
+        clearAllClientAuthAndSessionData();
+        supabase.auth.signOut().finally(() => {
+          setCurrentUser(null);
+          setUserProfile(null);
+          setScreen('auth');
+        });
+      }
+    };
+    window.addEventListener('boardly_user_permanently_deleted', handleUserDeleted);
+    return () => window.removeEventListener('boardly_user_permanently_deleted', handleUserDeleted);
+  }, [currentUser?.id, currentUser?.email]);
 
   const [isOffline, setIsOffline] = useState<boolean>(!navigator.onLine);
 
@@ -3744,19 +3755,9 @@ export function App() {
                           openTestLimitModal(testLimitResetDate, currentMonthlyTestCount);
                           return;
                         }
-                        if (userProfile?.grade) {
-                          const gUpper = userProfile.grade.toUpperCase();
-                          if (gUpper.includes('MDCAT')) {
-                            setSelectedClass('MDCAT');
-                            setSelectedGroup('MDCAT');
-                          } else if (gUpper.includes('TCAT')) {
-                            setSelectedClass('TCAT');
-                            setSelectedGroup('TCAT');
-                          } else {
-                            setSelectedClass(userProfile.grade as BoardClass);
-                            if (userProfile.stream) setSelectedGroup(userProfile.stream);
-                          }
-                        }
+                        const resolved = resolveStudentTrackDetails(userProfile);
+                        setSelectedClass(resolved.grade as BoardClass);
+                        setSelectedGroup(resolved.stream);
                         setScreen('subjects');
                       }}
                       onPracticeWeakTopic={(subject, topic) => {

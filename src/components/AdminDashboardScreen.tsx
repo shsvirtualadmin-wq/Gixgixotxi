@@ -35,7 +35,7 @@ import {
 import { findDuplicatePaymentGroups } from '../lib/paymentDeduplication';
 import { getPrebuiltQuestionsForSubject } from '../data/prebuiltQuestions';
 import { getDynamicQuestionBankStats } from '../lib/questionBankStats';
-import { AVAILABLE_ASSIGNABLE_CLASSES } from '../data/portalMasterTracks';
+import { AVAILABLE_ASSIGNABLE_CLASSES, deriveTrackDetailsFromAssignableClass } from '../data/portalMasterTracks';
 import {
   ShieldCheck,
   Search,
@@ -668,12 +668,8 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
     setCustomPackageName(getPlanDefaultDisplayName(planKey));
 
     if (defaultClass) {
-      setSelectedAssignedClassesForChange((prev) => {
-        if (!prev.includes(defaultClass)) {
-          return [...prev, defaultClass];
-        }
-        return prev;
-      });
+      // Primary track assignment rule: The plan's default class becomes the primary (index 0) assigned class
+      setSelectedAssignedClassesForChange([defaultClass]);
     }
   };
 
@@ -691,35 +687,16 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
     const isFree = selectedPlansForChange.includes('free') && selectedPlansForChange.length === 1 && !isProForChange;
     const paymentStatusVal = isProForChange ? 'Verified & Paid' : (isFree ? 'Free Plan' : 'Pending Verification');
 
-    // Derive primary track, stream, and target uni if assigned classes or plans were changed
-    let derivedGrade = '';
-    let derivedStream = '';
-    let derivedTargetUni = '';
-    const topClass = selectedAssignedClassesForChange.length > 0 ? selectedAssignedClassesForChange[0] : '';
-    if (topClass.includes('•') || topClass.includes('-')) {
-      const parts = topClass.includes('•') ? topClass.split('•') : topClass.split('-');
-      derivedGrade = parts[0].trim();
-      derivedStream = parts.slice(1).join(' ').trim();
-    } else if (topClass) {
-      const tcUpper = topClass.toUpperCase();
-      if (tcUpper.includes('NET') || tcUpper.includes('NUST')) {
-        derivedGrade = 'NET';
-        derivedStream = tcUpper.includes('PRE-MEDICAL') ? 'Pre-Medical Stream' : 'Pre-Engineering Stream';
-        derivedTargetUni = 'NUST Islamabad';
-      } else if (tcUpper.includes('MDCAT')) {
-        derivedGrade = 'MDCAT';
-        derivedStream = 'Pre-Medical Stream';
-        derivedTargetUni = 'King Edward / UHS / PMDC';
-      } else if (tcUpper.includes('TCAT')) {
-        derivedGrade = 'TCAT';
-        derivedStream = 'Pre-Engineering Stream';
-        derivedTargetUni = 'UET Taxila';
-      } else if (tcUpper.includes('FAST')) {
-        derivedGrade = 'FAST';
-        derivedStream = 'Pre-Engineering Stream';
-        derivedTargetUni = 'FAST-NUCES';
-      }
-    }
+    // Single source-of-truth track derivation:
+    // Determine the primary assigned class from the plan or selection
+    const topClass = selectedAssignedClassesForChange.length > 0
+      ? selectedAssignedClassesForChange[0]
+      : (ADMIN_SUBSCRIPTION_PLANS.find((p) => p.key === selectedPlansForChange[0])?.defaultClass || 'FBISE 11 Pre-Medical');
+
+    const derivedDetails = deriveTrackDetailsFromAssignableClass(topClass);
+    const derivedGrade = String(derivedDetails.grade);
+    const derivedStream = derivedDetails.stream;
+    const derivedTargetUni = derivedDetails.targetUniversity;
 
     console.log('[Admin UI Click: Save & Update Subscription]', {
       studentId: selectedStudentForPlan.id,
@@ -733,6 +710,7 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
       adminEmail: detectedEmail,
       derivedGrade,
       derivedStream,
+      derivedTargetUni,
     });
 
     try {
@@ -747,9 +725,9 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
         expirationMonths,
         adminNote: planAdminNote,
         adminEmail: detectedEmail,
-        grade: derivedGrade || undefined,
-        stream: derivedStream || undefined,
-        target_university: derivedTargetUni || undefined,
+        grade: derivedGrade,
+        stream: derivedStream,
+        target_university: derivedTargetUni,
       });
 
       if (res.success) {
@@ -761,6 +739,10 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
               ? {
                   ...s,
                   ...(returnedProfile || {}),
+                  grade: returnedProfile?.grade || derivedGrade || s.grade,
+                  stream: returnedProfile?.stream || derivedStream || s.stream,
+                  target_university: returnedProfile?.target_university || derivedTargetUni || s.target_university,
+                  dream_university: returnedProfile?.dream_university || derivedTargetUni || s.dream_university,
                   subscribed_plans: returnedProfile?.subscribed_plans || selectedPlansForChange,
                   assigned_classes: returnedProfile?.assigned_classes || selectedAssignedClassesForChange,
                   is_pro: returnedProfile?.is_pro ?? isProForChange,
