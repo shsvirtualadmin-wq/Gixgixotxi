@@ -334,18 +334,32 @@ export async function verifyEmailTokenHash(tokenHash: string, type: any = 'signu
 }
 
 export interface StudentProfile {
+  // Identity & Contact
   id: string;
   name: string;
   email: string;
   phone?: string;
   avatar_url?: string;
+  sign_up_method: string; // 'Google' | 'Email/Password'
+  status?: string; // 'active' | 'pending admin approval'
+
+  // Single Source of Truth Canonical Fields (Step 3)
+  registration_completed?: boolean;
+  enrolled_track_id?: string | null;
+  enrolled_university_id?: string | null;
+  enrolled_stream_id?: string | null;
+  subscription_tier?: 'free' | 'pro' | string;
+  payment_status?: 'unpaid' | 'pending_verification' | 'verified' | string;
+  pro_expires_at?: string | null;
+  free_tests_used_this_month?: number;
+  free_tests_reset_at?: string;
+
+  // Legacy Compatibility Mappings (read-only aliases mirroring canonical fields)
   grade: string;
   stream?: string;
   subjects?: string[] | string;
   dream_university?: string;
   target_university?: string;
-  sign_up_method: string; // 'Google' | 'Email/Password'
-  status?: string; // 'active' | 'pending admin approval'
   is_registered?: boolean;
   package_name?: string;
   subscribed_plans?: string[];
@@ -353,11 +367,10 @@ export interface StudentProfile {
   is_pro?: boolean;
   target_exam?: 'FBISE' | 'MDCAT' | 'TCAT';
   enrollment_date?: string;
-  payment_status?: string; // 'Verified & Paid' | 'Pending Verification' | 'Unpaid' | 'Rejected' | 'Free Plan'
-  plan_status?: string; // 'trial' | 'pending_verification' | 'verified_pro'
+  plan_status?: string;
   transaction_reference?: string;
-  requires_payment?: boolean; // true for new signups after rule deployment, false for existing students
-  access_expires?: string;
+  requires_payment?: boolean;
+  access_expires?: string | null;
   tests_used_this_month?: number;
   plan_tier?: 'free' | 'pro';
   role?: string;
@@ -521,30 +534,19 @@ export function evaluateStudentAccess(
     };
   }
 
-  // 1. Strict Pro status determination: true if explicitly marked as pro, verified paid, has pro plan key, or paid package name
-  const pStatus = String(profile.payment_status || '').trim().toLowerCase();
-  const isExplicitPaid = pStatus === 'verified & paid' || pStatus === 'verified' || pStatus === 'paid';
-  const hasProPlanKey = Array.isArray(profile.subscribed_plans) && profile.subscribed_plans.some(p => {
-    const pl = String(p).toLowerCase().trim();
-    return Boolean(pl) && pl !== 'free' && pl !== 'none';
-  });
-  const hasProPkgName = Boolean(profile.package_name && !profile.package_name.toLowerCase().includes('free'));
-  const hasProTier = profile.plan_tier === 'pro';
-  const isExplicitPro = hasProTier || Boolean(profile.is_pro) || isExplicitPaid || profile.plan_status === 'verified_pro' || hasProPlanKey || hasProPkgName;
+  // 1. Single Source of Truth: subscription_tier determines Pro vs Free
+  const canonicalPro = profile.subscription_tier === 'pro' || (profile.subscription_tier as string) === 'pro';
+  const legacyPro = Boolean(profile.is_pro || profile.plan_tier === 'pro');
+  const isCandidatePro = canonicalPro || (profile.subscription_tier !== 'free' && legacyPro);
 
-  const actualMonthlyTestsTaken = Math.max(Number(profile.tests_used_this_month || 0), Number(monthlyTestsTaken || 0));
-
-  let isPro = isExplicitPro;
-  if (profile.plan_tier === 'free' && !profile.is_pro && !isExplicitPaid && !isAdmin) {
-    isPro = false;
-  }
+  let isPro = isCandidatePro;
   let isProExpired = false;
   let daysRemaining = 0;
-  let expiresDateStr: string | null = profile.access_expires || null;
+  let expiresDateStr: string | null = profile.pro_expires_at || profile.access_expires || null;
 
-  if (isExplicitPro) {
-    if (profile.access_expires) {
-      const expTime = new Date(profile.access_expires).getTime();
+  if (isCandidatePro) {
+    if (expiresDateStr) {
+      const expTime = new Date(expiresDateStr).getTime();
       if (!isNaN(expTime)) {
         const now = Date.now();
         if (expTime <= now) {
@@ -560,12 +562,23 @@ export function evaluateStudentAccess(
         daysRemaining = 365;
       }
     } else {
+      // Lifetime / permanent Pro plan
       isPro = true;
-      daysRemaining = 365;
+      daysRemaining = 9999;
     }
+  } else {
+    isPro = false;
+    isProExpired = false;
+    daysRemaining = 0;
   }
 
-  // 2. Test Limit: Pro = Unlimited, Free = 2/month
+  // 2. Free Tier Usage Limit (Step 3: Single Source of Truth)
+  const actualMonthlyTestsTaken = Math.max(
+    Number(profile.free_tests_used_this_month ?? profile.tests_used_this_month ?? 0),
+    Number(monthlyTestsTaken || 0)
+  );
+
+  // Pro = Unlimited, Free = 2/month
   const monthlyTestLimit = isPro ? 999999 : 2;
   const remainingTests = isPro ? 999999 : Math.max(0, 2 - actualMonthlyTestsTaken);
   const isMonthlyLimitReached = !isPro && actualMonthlyTestsTaken >= 2;
@@ -941,7 +954,10 @@ export function sanitizeStudentForDb(data: Record<string, any>): Record<string, 
     'requires_payment', 'is_pro', 'plan_tier', 'subscribed_plans', 'assigned_classes',
     'access_expires', 'transaction_reference', 'tests_used_this_month', 'ai_messages_used_today',
     'last_ai_message_date', 'created_at', 'updated_at',
-    'dream_university', 'target_university', 'avatar_url'
+    'dream_university', 'target_university', 'avatar_url',
+    // Single Source of Truth Canonical Columns (Step 3)
+    'registration_completed', 'enrolled_track_id', 'enrolled_university_id', 'enrolled_stream_id',
+    'subscription_tier', 'pro_expires_at', 'free_tests_used_this_month', 'free_tests_reset_at'
   ];
   const clean: Record<string, any> = {};
   for (const col of allowedColumns) {
@@ -954,26 +970,42 @@ export function sanitizeStudentForDb(data: Record<string, any>): Record<string, 
 
 // Helper to standardize student profile normalization from raw database rows
 export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: string): StudentProfile {
+  const todayDateStr = new Date().toISOString().slice(0, 10);
+  const currentMonthStr = todayDateStr.slice(0, 7);
+
   if (!data) {
     return {
       id: fallbackUserId || '',
       name: '',
       email: '',
       phone: '',
+      sign_up_method: 'Google',
+      status: 'active',
+
+      // Single Source of Truth Canonical Fields
+      registration_completed: false,
+      enrolled_track_id: null,
+      enrolled_university_id: null,
+      enrolled_stream_id: null,
+      subscription_tier: 'free',
+      payment_status: 'unpaid',
+      pro_expires_at: null,
+      free_tests_used_this_month: 0,
+      free_tests_reset_at: todayDateStr,
+
+      // Legacy Compatibility Mappings
       grade: '',
       stream: '',
       subjects: [],
-      sign_up_method: 'Google',
-      status: 'active',
       is_registered: false,
       package_name: 'Free Plan',
       subscribed_plans: ['free'],
       assigned_classes: [],
       is_pro: false,
       enrollment_date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-      payment_status: 'Free Plan',
       requires_payment: true,
-      access_expires: new Date(Date.now() + 365 * 24 * 3600 * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      access_expires: null,
+      tests_used_this_month: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -981,24 +1013,72 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
 
   const email = data.email || '';
   const isAdmin = isAdminEmail(email);
-  const validGrade = Boolean(data.grade && data.grade.trim() && data.grade !== 'General Student');
-  const validStream = Boolean(data.stream && data.stream.trim());
-  const hasGradeStream = Boolean(validGrade && validStream);
-  const isReg = isAdmin || Boolean(data.is_registered) || hasGradeStream;
-  const isExistingBeforeRule = isStudentExistingBeforeRule(data.created_at);
 
-  let subscribedPlans: string[] = [];
-  if (Array.isArray(data.subscribed_plans)) {
-    subscribedPlans = data.subscribed_plans.map((p: any) => String(p));
-  } else if (typeof data.subscribed_plans === 'string' && data.subscribed_plans.trim()) {
-    try {
-      const parsed = JSON.parse(data.subscribed_plans);
-      subscribedPlans = Array.isArray(parsed) ? parsed.map((p: any) => String(p)) : [String(data.subscribed_plans)];
-    } catch {
-      subscribedPlans = [String(data.subscribed_plans)];
+  // 1. Canonical: registration_completed
+  const hasAcademicTrack = Boolean(
+    data.grade &&
+    String(data.grade).trim() &&
+    data.grade !== 'General Student' &&
+    data.stream &&
+    String(data.stream).trim()
+  );
+  const isReg = isAdmin || Boolean(
+    data.registration_completed === true ||
+    data.is_registered === true ||
+    hasAcademicTrack
+  );
+
+  // 2. Canonical: enrolled tracks
+  const enrolledTrack = data.enrolled_track_id || data.grade || null;
+  const enrolledUni = data.enrolled_university_id || data.dream_university || data.target_university || null;
+  const enrolledStream = data.enrolled_stream_id || data.stream || null;
+
+  // 3. Canonical: subscription_tier ('free' | 'pro')
+  const proExpiresAt = data.pro_expires_at || data.access_expires || data.subscription_expires_at || null;
+  let isProExpired = false;
+  if (proExpiresAt) {
+    const expTime = new Date(proExpiresAt).getTime();
+    if (!isNaN(expTime) && expTime <= Date.now()) {
+      isProExpired = true;
     }
   }
 
+  let subTier: 'free' | 'pro' = 'free';
+  if (isAdmin) {
+    subTier = 'pro';
+  } else if (!isProExpired && (data.subscription_tier === 'pro' || data.plan_tier === 'pro' || data.is_pro === true || data.is_pro === 'true')) {
+    subTier = 'pro';
+  } else {
+    subTier = 'free';
+  }
+
+  // 4. Canonical: payment_status ('unpaid' | 'pending_verification' | 'verified')
+  let payStatus: 'unpaid' | 'pending_verification' | 'verified' | string = 'unpaid';
+  const rawPay = String(data.payment_status || '').trim().toLowerCase();
+  if (isAdmin || subTier === 'pro' || rawPay === 'verified' || rawPay === 'verified & paid' || rawPay === 'paid') {
+    payStatus = 'verified';
+  } else if (rawPay.includes('pending')) {
+    payStatus = 'pending_verification';
+  } else {
+    payStatus = 'unpaid';
+  }
+
+  // 5. Canonical: free_tests_used_this_month & free_tests_reset_at
+  let resetAt = data.free_tests_reset_at
+    ? String(data.free_tests_reset_at).slice(0, 10)
+    : (data.created_at ? new Date(data.created_at).toISOString().slice(0, 10) : todayDateStr);
+
+  let freeTestsUsed = Number(data.free_tests_used_this_month ?? data.tests_used_this_month ?? data.mcq_count_this_month ?? 0);
+  if (isNaN(freeTestsUsed) || freeTestsUsed < 0) freeTestsUsed = 0;
+
+  // Calendar month reset check
+  const resetMonth = resetAt.slice(0, 7);
+  if (resetMonth && resetMonth !== currentMonthStr) {
+    freeTestsUsed = 0;
+    resetAt = todayDateStr;
+  }
+
+  // Derived legacy fields
   let assignedClasses: string[] = [];
   if (Array.isArray(data.assigned_classes)) {
     assignedClasses = data.assigned_classes.map((c: any) => String(c));
@@ -1010,70 +1090,19 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
       assignedClasses = [String(data.assigned_classes)];
     }
   }
-
-  if (assignedClasses.length === 0 && (data.grade || data.stream)) {
-    const derived = `${data.grade || ''}${data.stream ? ' ' + data.stream : ''}`.trim();
+  if (assignedClasses.length === 0 && (enrolledTrack || enrolledStream)) {
+    const derived = `${enrolledTrack || ''}${enrolledStream ? ' ' + enrolledStream : ''}`.trim();
     if (derived) assignedClasses = [derived];
   }
 
-  const pkgName = data.package_name || '';
-  const pkgNameLower = pkgName.toLowerCase();
-
-  const hasExplicitFreePlan = subscribedPlans.length === 1 && subscribedPlans[0].toLowerCase() === 'free';
-  const hasExplicitProPlan = subscribedPlans.some((p: string) => {
-    const pl = String(p).toLowerCase();
-    return pl !== 'free' && ['pro', 'fsc', 'mdcat', 'tcat', 'matric', 'premium', 'boardly_pro'].includes(pl);
-  });
-
-  const rawTestsUsed = Number(data.tests_used_this_month ?? data.mcq_count_this_month ?? 0);
-
-  const isDataExplicitPro = Boolean(
-    data.is_pro === true ||
-    data.is_pro === 'true' ||
-    data.plan_tier === 'pro' ||
-    data.plan_status === 'verified_pro' ||
-    (data.transaction_reference && String(data.transaction_reference).startsWith('PROMO:')) ||
-    (data.package_name && String(data.package_name).toLowerCase().includes('pro'))
-  );
-
-  // Build intermediate profile object to evaluate access rules
-  const tempProfile: StudentProfile = {
-    id: data.id || fallbackUserId || '',
-    name: data.name || '',
-    email: email,
-    phone: data.phone || '',
-    grade: data.grade || '',
-    stream: data.stream || '',
-    subjects: Array.isArray(data.subjects) ? data.subjects : [],
-    sign_up_method: data.sign_up_method || 'Google',
-    status: data.status || 'active',
-    is_registered: isReg,
-    package_name: pkgName,
-    subscribed_plans: subscribedPlans,
-    assigned_classes: assignedClasses,
-    is_pro: isDataExplicitPro || data.is_pro,
-    plan_tier: isDataExplicitPro ? 'pro' : data.plan_tier,
-    plan_status: isDataExplicitPro ? (data.plan_status || 'verified_pro') : data.plan_status,
-    payment_status: isDataExplicitPro ? (data.payment_status || 'Verified & Paid') : data.payment_status,
-    requires_payment: !isDataExplicitPro && !data.is_pro,
-    access_expires: data.access_expires,
-    tests_used_this_month: rawTestsUsed,
-    created_at: data.created_at || new Date().toISOString(),
-    updated_at: data.updated_at || new Date().toISOString(),
-  };
-
-  const evalResult = evaluateStudentAccess(tempProfile, rawTestsUsed, isAdmin);
-  const isPro = evalResult.isPro;
-  const finalPackageName = pkgName || evalResult.effectivePlanName;
-  const finalPaymentStatus = data.payment_status || evalResult.paymentStatus;
-  const finalRequiresPayment = !isPro;
-  const finalSubscribedPlans = (subscribedPlans.length > 0 && !hasExplicitFreePlan)
-    ? subscribedPlans
-    : (isPro ? ['boardly_pro'] : ['free']);
-
-  const planTier: 'free' | 'pro' = isPro
-    ? 'pro'
-    : (data.plan_tier === 'pro' ? 'pro' : 'free');
+  const isPro = subTier === 'pro';
+  const finalPackageName = isPro
+    ? (data.package_name && !data.package_name.toLowerCase().includes('free') ? data.package_name : '⭐ Boardly Pro Pass')
+    : 'Free Plan';
+  const finalSubscribedPlans = isPro ? ['boardly_pro'] : ['free'];
+  const finalLegacyPaymentStatus = isPro
+    ? 'Verified & Paid'
+    : (payStatus === 'pending_verification' ? 'Pending Verification' : 'Free Plan');
 
   return {
     id: data.id || fallbackUserId || '',
@@ -1081,30 +1110,42 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
     email: email,
     phone: data.phone || '',
     avatar_url: data.avatar_url || data.picture || data.picture_url || '',
-    grade: data.grade || '',
-    stream: data.stream || '',
-    subjects: Array.isArray(data.subjects) ? data.subjects : [],
-    dream_university: data.dream_university || data.target_university || '',
-    target_university: data.target_university || data.dream_university || '',
     sign_up_method: data.sign_up_method || 'Google',
     status: data.status || 'active',
+
+    // Single Source of Truth Canonical Fields
+    registration_completed: isReg,
+    enrolled_track_id: enrolledTrack,
+    enrolled_university_id: enrolledUni,
+    enrolled_stream_id: enrolledStream,
+    subscription_tier: subTier,
+    payment_status: payStatus,
+    pro_expires_at: isPro ? proExpiresAt : null,
+    free_tests_used_this_month: freeTestsUsed,
+    free_tests_reset_at: resetAt,
+
+    // Legacy Compatibility Fields
+    grade: enrolledTrack || '',
+    stream: enrolledStream || '',
+    subjects: Array.isArray(data.subjects) ? data.subjects : [],
+    dream_university: enrolledUni || '',
+    target_university: enrolledUni || '',
     is_registered: isReg,
     package_name: finalPackageName,
     subscribed_plans: finalSubscribedPlans,
     assigned_classes: assignedClasses,
     is_pro: isPro,
-    plan_tier: planTier,
+    plan_tier: subTier,
     ai_messages_used_today: Number(data.ai_messages_used_today || 0),
     last_ai_message_date: String(data.last_ai_message_date || ''),
     enrollment_date: data.created_at
       ? new Date(data.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    payment_status: finalPaymentStatus,
-    plan_status: data.plan_status || (finalPaymentStatus === 'Pending Verification' ? 'pending_verification' : (isPro ? 'verified_pro' : undefined)),
+    plan_status: payStatus === 'pending_verification' ? 'pending_verification' : (isPro ? 'verified_pro' : 'free'),
     transaction_reference: data.transaction_reference || '',
-    requires_payment: finalRequiresPayment,
-    access_expires: isPro ? (data.access_expires || null) : null,
-    tests_used_this_month: rawTestsUsed,
+    requires_payment: !isPro,
+    access_expires: isPro ? proExpiresAt : null,
+    tests_used_this_month: freeTestsUsed,
     created_at: data.created_at || new Date().toISOString(),
     updated_at: data.updated_at || new Date().toISOString(),
   };
@@ -2630,7 +2671,7 @@ export async function fetchStudentProfileFromSupabase(
   }
 
   const fetchPromise = (async (): Promise<StudentProfile | null> => {
-    // Query Supabase directly first if configured so DB is primary source of truth
+    // 1. Query Supabase directly first if configured (DB is single source of truth)
     if (isSupabaseConfigured) {
       try {
         let dbRow: any = null;
@@ -2660,149 +2701,23 @@ export async function fetchStudentProfileFromSupabase(
           }
         }
 
-        // Cross-check promo_redemptions table to guarantee Pro status if redeemed
-        try {
-          let redRow: any = null;
-          if (userId && !userId.includes('@')) {
-            const { data: r1 } = await supabase
-              .from('promo_redemptions')
-              .select('*')
-              .eq('student_id', userId)
-              .maybeSingle();
-            if (r1) redRow = r1;
-          }
-          if (!redRow && (userEmail || dbRow?.email)) {
-            const searchEmail = (userEmail || dbRow?.email || '').trim().toLowerCase();
-            const { data: r2 } = await supabase
-              .from('promo_redemptions')
-              .select('*')
-              .ilike('student_email', searchEmail)
-              .maybeSingle();
-            if (r2) redRow = r2;
-          }
-
-          if (redRow && redRow.granted_until && new Date(redRow.granted_until).getTime() > Date.now()) {
-            if (!dbRow) {
-              dbRow = {
-                id: userId,
-                email: userEmail || redRow.student_email || '',
-                name: redRow.student_name || 'Student',
-                status: 'active',
-                is_registered: true,
-              };
-            }
-            dbRow.is_pro = true;
-            dbRow.plan_tier = 'pro';
-            dbRow.access_expires = redRow.granted_until;
-            dbRow.payment_status = 'Verified & Paid';
-            dbRow.plan_status = 'verified_pro';
-            dbRow.requires_payment = false;
-            dbRow.promo_code_redeemed = redRow.promo_code;
-          }
-        } catch (redCheckErr) {
-          console.warn('[fetchStudentProfileFromSupabase] promo_redemptions check note:', redCheckErr);
-        }
-
-        // Cross-check profiles table to synchronize subscription_tier & Pro status
-        try {
-          let profData: any = null;
-          const searchUid = dbRow?.id || (!userId.includes('@') ? userId : null);
-          const searchEmail = (userEmail || dbRow?.email || '').trim().toLowerCase();
-
-          if (searchUid) {
-            const { data: p1 } = await supabase.from('profiles').select('*').eq('id', searchUid).maybeSingle();
-            if (p1) profData = p1;
-          }
-          if (!profData && searchEmail) {
-            const { data: p2 } = await supabase.from('profiles').select('*').ilike('email', searchEmail).maybeSingle();
-            if (p2) profData = p2;
-          }
-
-          if (profData && (profData.subscription_tier === 'pro' || profData.is_pro)) {
-            if (dbRow) {
-              dbRow.is_pro = true;
-              dbRow.plan_tier = 'pro';
-              dbRow.access_expires = profData.subscription_expires_at || dbRow.access_expires;
-              if (profData.promo_code_redeemed) dbRow.promo_code_redeemed = profData.promo_code_redeemed;
-            } else {
-              dbRow = {
-                id: profData.id || userId,
-                email: profData.email || userEmail || '',
-                name: profData.name || profData.full_name || 'Student',
-                is_pro: true,
-                plan_tier: 'pro',
-                access_expires: profData.subscription_expires_at,
-                promo_code_redeemed: profData.promo_code_redeemed,
-                status: 'active',
-              };
-            }
-          }
-        } catch (profCrossErr) {
-          console.warn('[fetchStudentProfileFromSupabase] profiles table cross-check note:', profCrossErr);
-        }
-
         if (dbRow) {
-          let profile = normalizeStudentProfileFromRow(dbRow, userId);
+          const profile = normalizeStudentProfileFromRow(dbRow, userId);
 
-          // Pro Persistence Guard: Check if student has active non-expired Pro grant in local storage
-          try {
-            const dedicatedGrant = localStorage.getItem(`boardly_active_pro_grant_${userId}`) ||
-              (userEmail ? localStorage.getItem(`boardly_active_pro_grant_${userEmail.toLowerCase().trim()}`) : null);
-            const cachedRaw = dedicatedGrant || localStorage.getItem(`boardly_profile_${userId}`);
-            if (cachedRaw) {
-              const cachedJson = JSON.parse(cachedRaw);
-              if (cachedJson?.is_pro && cachedJson.access_expires && new Date(cachedJson.access_expires).getTime() > Date.now()) {
-                if (!profile.is_pro) {
-                  console.log(`[fetchStudentProfileFromSupabase] Preserving active Pro grant for ${userId}`);
-                  profile = {
-                    ...profile,
-                    is_pro: true,
-                    plan_tier: 'pro',
-                    access_expires: cachedJson.access_expires,
-                    package_name: cachedJson.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)',
-                    payment_status: 'Verified & Paid',
-                    plan_status: 'verified_pro',
-                    requires_payment: false,
-                    subscribed_plans: ['boardly_pro', 'pro'],
-                  };
-                  // Re-assert in remote Supabase students table in background
-                  supabase.from('students').update({
-                    is_pro: true,
-                    plan_tier: 'pro',
-                    access_expires: cachedJson.access_expires,
-                    payment_status: 'Verified & Paid',
-                    plan_status: 'verified_pro',
-                  }).eq('id', userId).then(() => {}, () => {});
-                }
-              }
-            }
-          } catch (guardErr) {}
-
-          // Automatic Expiry Check: If real student account has an expired Pro access_expires date, immediately downgrade it!
-          const isAccountAdmin = Boolean(
-            (userEmail && isAdminEmail(userEmail)) ||
-            (profile.email && isAdminEmail(profile.email)) ||
-            profile.role === 'admin'
-          );
-          if (!isAccountAdmin && (profile.is_pro || profile.plan_tier === 'pro') && profile.access_expires) {
-            const expTime = new Date(profile.access_expires).getTime();
-            if (!isNaN(expTime) && expTime <= Date.now()) {
-              console.log(`[fetchStudentProfileFromSupabase] Pro access expired for student ${userId} (${userEmail}). Automatically downgrading.`);
-              profile = {
-                ...profile,
-                is_pro: false,
-                plan_tier: 'free',
-                plan_status: 'free',
-                payment_status: 'Free Plan',
-                package_name: 'Free Plan',
-                subscribed_plans: ['free'],
-                access_expires: null,
-              };
-              downgradeExpiredProStudent(userId, userEmail);
-            }
+          // Monthly reset synchronization: if reset occurred during normalization, sync to DB
+          const todayDateStr = new Date().toISOString().slice(0, 10);
+          const currentMonthPrefix = todayDateStr.slice(0, 7);
+          const rawResetAt = dbRow.free_tests_reset_at ? String(dbRow.free_tests_reset_at).slice(0, 7) : '';
+          if (rawResetAt && rawResetAt !== currentMonthPrefix) {
+            supabase.from('students').update({
+              free_tests_used_this_month: 0,
+              free_tests_reset_at: todayDateStr,
+              tests_used_this_month: 0,
+              updated_at: new Date().toISOString(),
+            }).eq('id', profile.id).then(() => {}, () => {});
           }
 
-          // Update memory & local caches
+          // Cache in memory and local storage
           profileMemoryCache.set(userId, { profile, timestamp: Date.now() });
           try {
             localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(profile));
@@ -2811,7 +2726,7 @@ export async function fetchStudentProfileFromSupabase(
 
           return profile;
         } else {
-          // Check backend server profile endpoint before declaring student not found
+          // If not in Supabase, check backend server profile endpoint before declaring student not found
           try {
             const sResp = await apiFetch(`/api/student-profile?id=${encodeURIComponent(userId)}&email=${encodeURIComponent(userEmail || '')}`);
             const sData = await safeJsonResponse<{ profile?: any }>(sResp);
@@ -2824,39 +2739,26 @@ export async function fetchStudentProfileFromSupabase(
               return serverNormalized;
             }
           } catch (serverFetchErr) {
-            console.warn('[fetchStudentProfileFromSupabase] Server profile query fallback error:', serverFetchErr);
+            console.warn('[fetchStudentProfileFromSupabase] Server profile query error:', serverFetchErr);
           }
 
-          // Check if we have a locally stored profile before declaring it null/wiped
-          let localProf: StudentProfile | null = null;
-          try {
-            const cachedStr = localStorage.getItem(`boardly_profile_${userId}`);
-            if (cachedStr) {
-              localProf = JSON.parse(cachedStr);
-            }
-          } catch (e) {}
-
-          if (localProf && (localProf.is_registered || localProf.is_pro || localProf.plan_tier === 'pro')) {
-            console.log(`[Supabase Profile] Retaining local profile for student ${userId} (is_registered=${localProf.is_registered}, is_pro=${localProf.is_pro}).`);
-            profileMemoryCache.set(userId, { profile: localProf, timestamp: Date.now() });
-            return localProf;
-          }
-
-          // Student record was wiped/deleted from database
-          console.log(`[Supabase Profile] Student ${userId} not found in database (wiped/deleted). Clearing caches.`);
+          // Student record was wiped/deleted from database and server
+          console.log(`[Supabase Profile] Student ${userId} not found in database or server (wiped/deleted). Clearing caches.`);
           clearProfileCache(userId);
           try {
             localStorage.removeItem(`boardly_profile_${userId}`);
+            localStorage.removeItem(`boardly_active_pro_grant_${userId}`);
+            if (userEmail) localStorage.removeItem(`boardly_active_pro_grant_${userEmail.toLowerCase().trim()}`);
             localStorage.removeItem('boardly_cached_profile');
           } catch {}
           return null;
         }
       } catch (err) {
-        console.warn('Failed to query Supabase directly for profile, falling back to local cache:', err);
+        console.warn('Failed to query Supabase directly for profile, falling back to server query:', err);
       }
     }
 
-    // Secondary fallback: query server profile endpoint directly
+    // 2. Secondary fallback: query server profile endpoint directly
     try {
       const sResp = await apiFetch(`/api/student-profile?id=${encodeURIComponent(userId)}&email=${encodeURIComponent(userEmail || '')}`);
       const sData = await safeJsonResponse<{ profile?: any }>(sResp);

@@ -1297,57 +1297,15 @@ export function App() {
     if (profile) {
       setUserProfile((prev) => {
         if (!prev) return profile;
-
-        // Automatic Expiry Check: If student account has expired Pro access_expires date, immediately downgrade it!
-        const isExp = (p: StudentProfile) => {
-          if (p.email && isAdminEmail(p.email)) return false;
-          if (p.role === 'admin') return false;
-          if ((p.is_pro || p.plan_tier === 'pro') && p.access_expires) {
-            const exp = new Date(p.access_expires).getTime();
-            return !isNaN(exp) && exp <= Date.now();
-          }
-          return false;
-        };
-
-        if (isExp(profile) || (prev && isExp(prev))) {
-          console.log('[refreshUserProfile] Pro grant expired. Downgrading to Free Tier.');
-          downgradeExpiredProStudent(id, userEmail);
-          return {
-            ...(profile || prev),
-            is_pro: false,
-            plan_tier: 'free',
-            plan_status: 'free',
-            payment_status: 'Free Plan',
-            package_name: 'Free Plan',
-            subscribed_plans: ['free'],
-            access_expires: null,
-          };
-        }
-
-        // Pro Persistence Guard: If student has an active Pro grant with future expiration,
-        // strictly prevent any background sync or transient remote fetch from demoting them to Free.
-        if (prev.is_pro && prev.access_expires && new Date(prev.access_expires).getTime() > Date.now()) {
-          if (!profile.is_pro) {
-            console.log('[refreshUserProfile] Preserving active Pro subscription status against stale remote read');
-            return {
-              ...profile,
-              is_pro: true,
-              plan_tier: 'pro',
-              access_expires: prev.access_expires,
-              package_name: prev.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)',
-              payment_status: 'Verified & Paid',
-              plan_status: 'verified_pro',
-              requires_payment: false,
-              subscribed_plans: prev.subscribed_plans?.length ? prev.subscribed_plans : ['boardly_pro', 'pro'],
-            };
-          }
-        }
         // Deep comparison prevents unnecessary state reference churn and component flicker
         if (JSON.stringify(prev) === JSON.stringify(profile)) {
           return prev;
         }
         return profile;
       });
+    } else {
+      // User does not exist or was deleted from database
+      setUserProfile(null);
     }
   };
 

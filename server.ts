@@ -444,89 +444,63 @@ function clearActiveTestSession(userId?: string, userEmail?: string, sessionId?:
 
 
 async function getStudentMonthlyTestCount(userId: string, userEmail: string | undefined, req: express.Request | null = null): Promise<number> {
-  const period = getCurrentMonthPeriod();
-  const startOfMonthIso = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString();
-
-  let dbTestCount = 0;
-  let studentDbTestsUsed = 0;
-
   const cleanEmail = userEmail ? userEmail.trim().toLowerCase() : null;
   const isRealUser = Boolean(userId && userId !== "guest");
 
-  // If unauthenticated guest without email, return 0 (guests will be prompted to sign in before starting tests)
   if (!isRealUser && !cleanEmail) {
     return 0;
   }
 
+  const todayDateStr = new Date().toISOString().slice(0, 10);
+  const currentMonthStr = todayDateStr.slice(0, 7);
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   try {
     const authClient = getSupabaseAdminClient() || getAuthClient(req || null) || supabaseServer;
     if (authClient) {
-      let query = authClient
-        .from("test_results")
-        .select("id, created_at")
-        .gte("created_at", startOfMonthIso);
-
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
+      let stQuery = authClient.from("students").select("id, email, subscription_tier, is_pro, free_tests_used_this_month, free_tests_reset_at, tests_used_this_month, mcq_count_this_month");
       if (isRealUser && uuidRegex.test(userId)) {
-        if (cleanEmail) {
-          query = query.or(`student_id.eq.${userId},student_email.ilike.${cleanEmail}`);
-        } else {
-          query = query.eq("student_id", userId);
-        }
+        stQuery = stQuery.eq("id", userId);
       } else if (cleanEmail) {
-        query = query.ilike("student_email", cleanEmail);
+        stQuery = stQuery.eq("email", cleanEmail);
+      } else if (isRealUser) {
+        stQuery = stQuery.eq("id", userId);
       }
 
-      const { data: testRows, error } = await query;
-      if (!error && Array.isArray(testRows)) {
-        // Deduplicate rows with identical/near-identical timestamps (accidental double-inserts within 5s)
-        const sorted = testRows
-          .map(r => new Date(r.created_at).getTime())
-          .filter(t => !isNaN(t))
-          .sort((a, b) => a - b);
-        let uniqueCount = 0;
-        let lastTime = 0;
-        for (const t of sorted) {
-          if (t - lastTime > 5000) {
-            uniqueCount++;
-            lastTime = t;
-          }
+      const { data: stRow, error } = await stQuery.maybeSingle();
+      if (!error && stRow) {
+        // If student is Pro, usage does not gate them
+        if (stRow.subscription_tier === 'pro' || stRow.is_pro === true) {
+          return 0;
         }
-        dbTestCount = uniqueCount;
-      } else if (error) {
-        console.warn("[getStudentMonthlyTestCount] Supabase test_results query warning:", error.message);
-      }
 
-      // Check students table tests_used_this_month column
-      if (isRealUser || cleanEmail) {
-        let stQuery = authClient.from("students").select("tests_used_this_month, mcq_count_this_month");
-        if (isRealUser && uuidRegex.test(userId)) {
-          stQuery = stQuery.eq("id", userId);
-        } else if (cleanEmail) {
-          stQuery = stQuery.eq("email", cleanEmail);
+        // Calendar month reset check
+        const resetAt = stRow.free_tests_reset_at ? String(stRow.free_tests_reset_at).slice(0, 10) : '';
+        const resetMonth = resetAt.slice(0, 7);
+
+        let freeTestsUsed = Number(stRow.free_tests_used_this_month ?? stRow.tests_used_this_month ?? stRow.mcq_count_this_month ?? 0);
+        if (isNaN(freeTestsUsed) || freeTestsUsed < 0) freeTestsUsed = 0;
+
+        if (resetMonth && resetMonth !== currentMonthStr) {
+          // Reset usage in DB because we entered a new calendar month
+          freeTestsUsed = 0;
+          authClient.from("students").update({
+            free_tests_used_this_month: 0,
+            free_tests_reset_at: todayDateStr,
+            tests_used_this_month: 0,
+            updated_at: new Date().toISOString(),
+          }).eq("id", stRow.id).then(() => {}, () => {});
         }
-        const { data: stRow } = await stQuery.maybeSingle();
-        if (stRow) {
-          studentDbTestsUsed = Number(stRow.tests_used_this_month ?? stRow.mcq_count_this_month ?? 0);
-        }
+
+        return freeTestsUsed;
       }
     }
   } catch (err) {
     console.warn("[getStudentMonthlyTestCount] Supabase exception:", err);
   }
 
-  const recordedAttempts = isRealUser ? (inMemoryTestAttemptStore[period]?.[userId] || 0) : 0;
-  const recordedAttemptsEmail = cleanEmail ? (inMemoryTestAttemptStore[period]?.[cleanEmail] || 0) : 0;
-
-  const inMemoryCompletedCount = inMemoryTestResults.filter(r => {
-    const matchesUser = (isRealUser && r.student_id === userId) || (cleanEmail && r.student_email?.toLowerCase() === cleanEmail);
-    if (!matchesUser) return false;
-    const rDate = new Date(r.created_at);
-    return !isNaN(rDate.getTime()) && rDate >= new Date(startOfMonthIso);
-  }).length;
-
-  return Math.max(dbTestCount, studentDbTestsUsed, recordedAttempts, recordedAttemptsEmail, inMemoryCompletedCount);
+  // If user was deleted or not found in DB, return 0 (never revive deleted user counts)
+  return 0;
 }
 
 function recordStudentTestStart(userId: string, userEmail: string | undefined): number {
@@ -4798,7 +4772,7 @@ ${scopeInstruction}${excludeInstruction}`;
             try {
               const client = getAuthClient(req || null) || getSupabaseAdminClient() || supabaseServer;
               if (client) {
-                let stQuery = client.from("students").select("id, tests_used_this_month");
+                let stQuery = client.from("students").select("id, free_tests_used_this_month, free_tests_reset_at, tests_used_this_month");
                 if (validStudentUuid) {
                   stQuery = stQuery.eq("id", validStudentUuid);
                 } else if (cleanEmail) {
@@ -4808,8 +4782,22 @@ ${scopeInstruction}${excludeInstruction}`;
                 }
                 const { data: currentSt } = await stQuery.maybeSingle();
                 if (currentSt) {
-                  const nextUsed = (Number(currentSt.tests_used_this_month) || 0) + 1;
-                  await client.from("students").update({ tests_used_this_month: nextUsed }).eq("id", currentSt.id);
+                  const todayDateStr = new Date().toISOString().slice(0, 10);
+                  const currentMonthPrefix = todayDateStr.slice(0, 7);
+                  const lastResetPrefix = currentSt.free_tests_reset_at ? String(currentSt.free_tests_reset_at).slice(0, 7) : '';
+                  let currentUsage = Number(currentSt.free_tests_used_this_month ?? currentSt.tests_used_this_month ?? 0);
+                  let resetDate = currentSt.free_tests_reset_at || todayDateStr;
+                  if (lastResetPrefix && lastResetPrefix !== currentMonthPrefix) {
+                    currentUsage = 0;
+                    resetDate = todayDateStr;
+                  }
+                  const nextUsed = currentUsage + 1;
+                  await client.from("students").update({
+                    free_tests_used_this_month: nextUsed,
+                    free_tests_reset_at: resetDate,
+                    tests_used_this_month: nextUsed,
+                    updated_at: new Date().toISOString(),
+                  }).eq("id", currentSt.id);
                 }
               }
             } catch (syncErr) {
@@ -9442,6 +9430,16 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       }
 
       const dbUpdatePayload: any = {
+        // Single source of truth canonical fields
+        subscription_tier: finalIsPro ? 'pro' : 'free',
+        pro_expires_at: finalIsPro ? accessExpiresStr : null,
+        registration_completed: true,
+        enrolled_track_id: finalGrade,
+        enrolled_stream_id: finalStream,
+        enrolled_university_id: finalTargetUni,
+        free_tests_used_this_month: finalIsPro ? 0 : Number(currentStudent.free_tests_used_this_month ?? currentStudent.tests_used_this_month ?? 0),
+
+        // Legacy compatibility fields
         subscribed_plans: finalIsPro ? subscribedPlans : ['free'],
         is_pro: finalIsPro,
         plan_tier: finalIsPro ? 'pro' : 'free',

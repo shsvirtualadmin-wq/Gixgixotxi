@@ -176,6 +176,13 @@ export const onRequestPost = async (context: PagesContext) => {
     }
 
     const planData = {
+      subscription_tier: finalIsPro ? "pro" : "free",
+      pro_expires_at: finalIsPro ? accessExpiresStr : null,
+      registration_completed: true,
+      enrolled_track_id: finalGrade,
+      enrolled_stream_id: finalStream,
+      enrolled_university_id: finalTargetUni,
+      free_tests_used_this_month: finalIsPro ? 0 : Number(currentStudent.free_tests_used_this_month ?? currentStudent.tests_used_this_month ?? 0),
       subscribed_plans: finalIsPro ? subscribedPlans : ["free"],
       is_pro: finalIsPro,
       package_name: finalIsPro ? packageName : "Free Plan",
@@ -195,6 +202,13 @@ export const onRequestPost = async (context: PagesContext) => {
     let updatedStudent = { ...currentStudent, ...planData };
 
     const dbUpdatePayload: any = {
+      subscription_tier: finalIsPro ? "pro" : "free",
+      pro_expires_at: finalIsPro ? accessExpiresStr : null,
+      registration_completed: true,
+      enrolled_track_id: finalGrade,
+      enrolled_stream_id: finalStream,
+      enrolled_university_id: finalTargetUni,
+      free_tests_used_this_month: finalIsPro ? 0 : Number(currentStudent.free_tests_used_this_month ?? currentStudent.tests_used_this_month ?? 0),
       subscribed_plans: finalIsPro ? subscribedPlans : ["free"],
       is_pro: finalIsPro,
       plan_tier: finalIsPro ? "pro" : "free",
