@@ -87,6 +87,8 @@ const PaymentRequiredScreen = lazyWithRetry(() => import('./components/PaymentRe
 const PlanSelectionScreen = lazyWithRetry(() => import('./components/PlanSelectionScreen').then(m => ({ default: m.PlanSelectionScreen })), 'PlanSelection');
 const PricingPage = lazyWithRetry(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })), 'Pricing');
 import { StudentProfileView } from './components/StudentProfileView';
+import { RegistrationPage, RegistrationFormData } from './components/RegistrationPage';
+import { CheckoutDuesPage } from './components/CheckoutDuesPage';
 import { PromoCelebrationModal, PromoModalMode } from './components/PromoCelebrationModal';
 import {
   extractPromoCodeFromUrl,
@@ -97,7 +99,7 @@ import {
   validatePromoCode,
 } from './lib/promoCode';
 
-import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, clearAllClientAuthAndSessionData, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack } from './lib/supabase';
+import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveStudentRegistration, submitPaymentProofApi, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, clearAllClientAuthAndSessionData, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
@@ -120,7 +122,8 @@ export type ScreenType =
   | 'test'
   | 'results'
   | 'admin'
-  | 'profile';
+  | 'profile'
+  | 'checkout';
 
 export const VALID_SCREENS: ScreenType[] = [
   'dashboard',
@@ -140,6 +143,7 @@ export const VALID_SCREENS: ScreenType[] = [
   'auth',
   'test',
   'results',
+  'checkout',
 ];
 
 export function checkIsStudentProOrPaid(
@@ -389,6 +393,15 @@ export function App() {
     return getPricingTrackFromProfile(null, initialUrlState.selectedClass ? String(initialUrlState.selectedClass) : undefined, initialUrlState.selectedGroup);
   });
   const [selectedPricingCycle, setSelectedPricingCycle] = useState<BillingCycle>('annual');
+
+  const [pendingRegistrationData, setPendingRegistrationData] = useState<RegistrationFormData | null>(() => {
+    try {
+      const saved = localStorage.getItem('boardly_pending_registration_data');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
   const [showExitToast, setShowExitToast] = useState<boolean>(false);
   const lastExitPressTimeRef = useRef<number>(0);
@@ -1438,7 +1451,7 @@ export function App() {
     const enforceSecurity = async () => {
       // 1. Unauthenticated User Protection for Protected Routes
       if (!currentUser) {
-        if (['dashboard', 'subject', 'duration', 'test', 'results', 'guided_wizard', 'plan_selection', 'group', 'grades_flow', 'admin'].includes(screen)) {
+        if (['dashboard', 'subject', 'duration', 'test', 'results', 'guided_wizard', 'checkout', 'plan_selection', 'group', 'grades_flow', 'admin'].includes(screen)) {
           // Double-check active session directly with Supabase before bouncing to auth screen
           const { data: { session } } = await supabase.auth.getSession();
           if (!isMounted) return;
@@ -1491,7 +1504,7 @@ export function App() {
         );
 
         if (!isUserRegistered) {
-          if (screen !== 'guided_wizard' && screen !== 'auth' && screen !== 'intro') {
+          if (screen !== 'guided_wizard' && screen !== 'checkout' && screen !== 'auth' && screen !== 'intro') {
             setScreen('guided_wizard');
           }
         } else {
@@ -3234,18 +3247,6 @@ export function App() {
       return;
     }
 
-    // Grand Mock Exams (100/180 MCQs) are strictly Pro-only
-    const isGrandMock = Boolean(
-      params.isFullMock ||
-      (params.questionCount && params.questionCount >= 100) ||
-      (params.subject && params.subject.toLowerCase().includes('full mock'))
-    );
-    if (isGrandMock && !isPaymentApprovedOrExempt) {
-      setIsGenerating(false);
-      setScreen('plan_selection');
-      return;
-    }
-
     // Pre-flight check against local count
     if (!isPaymentApprovedOrExempt && currentMonthlyTestCount >= 2) {
       setIsGenerating(false);
@@ -3682,14 +3683,14 @@ export function App() {
       )}
 
       <main className={`flex-1 w-full mx-auto flex flex-col items-center justify-start p-2 sm:p-6 overflow-x-hidden ${
-        ['intro', 'dashboard', 'admin', 'guided_wizard', 'plan_selection'].includes(screen)
+        ['intro', 'dashboard', 'admin', 'guided_wizard', 'checkout', 'plan_selection'].includes(screen)
           ? 'max-w-7xl'
           : ['grades_flow', 'test', 'results'].includes(screen)
           ? 'max-w-4xl'
           : 'max-w-3xl'
       }`}>
         <div className={`w-full mx-auto relative flex flex-col flex-1 min-w-0 ${
-          ['intro', 'dashboard', 'admin', 'guided_wizard', 'plan_selection'].includes(screen)
+          ['intro', 'dashboard', 'admin', 'guided_wizard', 'checkout', 'plan_selection'].includes(screen)
             ? 'max-w-7xl'
             : ['grades_flow', 'test', 'results'].includes(screen)
             ? 'max-w-3xl'
@@ -3809,23 +3810,114 @@ export function App() {
                   )
                 )}
                 {screen === 'guided_wizard' && (
-                  <StudentRegistrationFlow
+                  <RegistrationPage
                     user={currentUser}
-                    onRegistrationComplete={async (profile) => {
-                      if (profile) {
-                        setUserProfile(profile);
+                    onProceedToCheckout={(data) => {
+                      setPendingRegistrationData(data);
+                      localStorage.setItem('boardly_pending_registration_data', JSON.stringify(data));
+                      setScreen('checkout');
+                      localStorage.setItem('boardly_active_screen', 'checkout');
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    onSignOut={async () => {
+                      await supabase.auth.signOut();
+                      clearAllClientAuthAndSessionData();
+                      setCurrentUser(null);
+                      setUserProfile(null);
+                      setScreen('intro');
+                    }}
+                  />
+                )}
+                {(screen === 'checkout' || screen === 'plan_selection') && (
+                  <CheckoutDuesPage
+                    user={currentUser}
+                    registrationData={pendingRegistrationData}
+                    initialPath={(new URLSearchParams(window.location.search).get('path') as any) || (screen === 'plan_selection' ? 'pro' : 'choose')}
+                    paymentStatus={userProfile?.payment_status || 'Unpaid'}
+                    onContinueFreeTier={async () => {
+                      const targetTrack = pendingRegistrationData?.category || 'NUST (NET)';
+                      const targetUni = pendingRegistrationData?.targetUniversity || 'NUST';
+                      const studentName = pendingRegistrationData?.fullName || currentUser?.user_metadata?.full_name || 'Student';
+                      const userId = currentUser?.id || `anon-${Date.now()}`;
+                      
+                      try {
+                        const savedProfile = await saveStudentRegistration(userId, {
+                          name: studentName,
+                          phone: pendingRegistrationData?.phone || '',
+                          email: currentUser?.email || '',
+                          grade: pendingRegistrationData?.grade || 'NET',
+                          stream: pendingRegistrationData?.stream || 'Pre-Engineering Stream',
+                          subjects: pendingRegistrationData?.subjects || [],
+                          dream_university: targetUni,
+                          payment_status: 'Free Plan',
+                        });
+                        if (savedProfile) {
+                          setUserProfile(savedProfile);
+                        }
+                      } catch (err) {
+                        console.error('Failed to save free plan registration:', err);
                       }
+
                       localStorage.setItem('boardly_registration_is_success', 'true');
                       localStorage.setItem('boardly_active_screen', 'dashboard');
                       try {
                         await refreshUserProfile();
                       } catch (e) {}
                       setScreen('dashboard');
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
-                    onSkipToPractice={() => {
+                    onSubmitProof={async (details) => {
+                      const targetTrack = pendingRegistrationData?.category || 'NUST (NET)';
+                      const targetUni = pendingRegistrationData?.targetUniversity || 'NUST';
+                      const studentName = pendingRegistrationData?.fullName || currentUser?.user_metadata?.full_name || 'Student';
+                      const userId = currentUser?.id || `anon-${Date.now()}`;
+
+                      try {
+                        const savedProfile = await saveStudentRegistration(userId, {
+                          name: studentName,
+                          phone: pendingRegistrationData?.phone || '',
+                          email: currentUser?.email || '',
+                          grade: pendingRegistrationData?.grade || 'NET',
+                          stream: pendingRegistrationData?.stream || 'Pre-Engineering Stream',
+                          subjects: pendingRegistrationData?.subjects || [],
+                          dream_university: targetUni,
+                          payment_status: 'Pending Verification',
+                          payment_method: details.method,
+                          transaction_reference: details.transactionId || 'WhatsApp Submission',
+                        });
+                        if (savedProfile) {
+                          setUserProfile(savedProfile);
+                        }
+
+                        try {
+                          await submitPaymentProofApi({
+                            student_id: savedProfile?.id || userId,
+                            student_name: studentName,
+                            student_email: currentUser?.email || '',
+                            payment_method: details.method,
+                            amount: details.amount,
+                            transaction_reference: details.transactionId || 'WhatsApp Submission',
+                            course_tier: targetTrack,
+                          });
+                        } catch (pErr) {
+                          console.warn('Payment proof submission notice:', pErr);
+                        }
+                      } catch (err) {
+                        console.error('Failed to save proof registration:', err);
+                      }
+
                       localStorage.setItem('boardly_registration_is_success', 'true');
                       localStorage.setItem('boardly_active_screen', 'dashboard');
+                      try {
+                        await refreshUserProfile();
+                      } catch (e) {}
                       setScreen('dashboard');
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                    onBackToRegistration={() => {
+                      setScreen('guided_wizard');
+                      localStorage.setItem('boardly_active_screen', 'guided_wizard');
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
                   />
                 )}

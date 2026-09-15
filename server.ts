@@ -3448,16 +3448,6 @@ function formatRemainingTimeString(ms: number): string {
         (config?.subject && String(config.subject).toLowerCase().includes("full mock"))
       );
 
-      // Enforce Pro-only for Grand Mocks (100/180 MCQs)
-      if (!isAdmin && !studentIsPro && isGrandMock) {
-        return res.status(403).json({
-          success: false,
-          grandMockRestricted: true,
-          error: "Full 100/180 MCQ Grand Mocks are a Pro feature — upgrade to Boardly Pro to access full entrance exam simulations.",
-          message: "Full Grand Mocks require Pro",
-        });
-      }
-
       // Enforce free-tier limit: max 2 tests/month
       if (!isAdmin && !studentIsPro && currentTestCount >= 2) {
         const resetDateStr = getNextMonthResetDate();
@@ -3754,19 +3744,6 @@ function formatRemainingTimeString(ms: number): string {
             limit: 2,
             remaining: 0,
             resetDate: resetDateStr,
-          });
-        }
-
-        // Check 2: Grand Mock Exams (100/180 MCQs) are strictly Pro-only
-        const isGrandMockRequested = isMdcatFullMock || isTcatFullMock || isAnyFullMock || requestedCount >= 100;
-        if (isGrandMockRequested) {
-          return res.status(403).json({
-            success: false,
-            locked: true,
-            grandMockRestricted: true,
-            paymentRequired: true,
-            error: "Grand Mock Exams (100/180 MCQs) are locked on the Free Starter plan. Upgrade to Boardly Pro for full entrance exam simulations.",
-            message: "Grand Mock Exams require a Pro subscription. Please upgrade to Pro."
           });
         }
       }
