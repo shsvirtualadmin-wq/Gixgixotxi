@@ -9430,7 +9430,11 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         isPro,
         expirationMonths = 12,
         adminNote,
-        adminEmail
+        adminEmail,
+        grade: reqGrade,
+        stream: reqStream,
+        target_university: reqTargetUni,
+        dream_university: reqDreamUni,
       } = req.body || {};
 
       // Server-side strict authorization check: Admin role verification
@@ -9453,23 +9457,35 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       }
 
       const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req);
-      if (!supabaseAdmin) {
-        return res.status(500).json({ success: false, error: "Database client unavailable." });
-      }
 
       // Fetch existing student profile to get old plan details
       let currentStudent: any = null;
       const searchId = studentId && !studentId.includes('@') ? studentId : null;
       const searchEmail = studentEmail || (studentId && studentId.includes('@') ? studentId : null);
 
-      if (searchId) {
-        const { data: sById } = await supabaseAdmin.from('students').select('*').eq('id', searchId).maybeSingle();
-        if (sById) currentStudent = sById;
+      if (supabaseAdmin) {
+        if (searchId) {
+          const { data: sById } = await supabaseAdmin.from('students').select('*').eq('id', searchId).maybeSingle();
+          if (sById) currentStudent = sById;
+        }
+
+        if (!currentStudent && searchEmail) {
+          const { data: sByEmail } = await supabaseAdmin.from('students').select('*').eq('email', searchEmail).maybeSingle();
+          if (sByEmail) currentStudent = sByEmail;
+        }
       }
 
-      if (!currentStudent && searchEmail) {
-        const { data: sByEmail } = await supabaseAdmin.from('students').select('*').eq('email', searchEmail).maybeSingle();
-        if (sByEmail) currentStudent = sByEmail;
+      // Check in-memory students store if not found in Supabase
+      if (!currentStudent) {
+        for (const s of inMemoryStudents) {
+          if (
+            (searchId && s.id === searchId) ||
+            (searchEmail && s.email && s.email.toLowerCase() === searchEmail.toLowerCase())
+          ) {
+            currentStudent = { ...s };
+            break;
+          }
+        }
       }
 
       if (!currentStudent) {
@@ -9491,28 +9507,113 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         ? new Date(Date.now() + durationMs).toISOString()
         : new Date().toISOString();
 
-      const planData = {
-        subscribed_plans: finalIsPro ? subscribedPlans : ['free'],
-        is_pro: finalIsPro,
-        package_name: finalIsPro ? packageName : 'Free Plan',
-        payment_status: finalPaymentStatus,
-        plan_status: finalPlanStatus,
-        requires_payment: finalRequiresPayment,
-        access_expires: accessExpiresStr,
-        status: 'active',
-        updated_at: new Date().toISOString(),
-      };
+      // Deduce grade, stream, and target university atomically
+      let finalGrade = (reqGrade || '').trim();
+      let finalStream = (reqStream || '').trim();
+      let finalTargetUni = (reqTargetUni || reqDreamUni || '').trim();
 
-      console.log(`[DEBUG: Plan Update BEFORE] Student ID: ${currentStudent.id}, Email: ${currentStudent.email}`, {
-        oldPlan,
-        subscribed_plans: currentStudent.subscribed_plans,
-        payment_status: currentStudent.payment_status,
-        requires_payment: currentStudent.requires_payment,
-        is_pro: currentStudent.is_pro,
-      });
+      const topClassRaw = Array.isArray(assignedClasses) && assignedClasses.length > 0 ? String(assignedClasses[0]).trim() : '';
+      const topClassUpper = topClassRaw.toUpperCase();
 
-      let updateSuccess = false;
-      let dbWriteError = null;
+      // If assigned class has "TRACK • STREAM" separator (e.g. "NET • Pre-Engineering Stream")
+      if (topClassRaw.includes('•') || topClassRaw.includes('-')) {
+        const parts = topClassRaw.includes('•') ? topClassRaw.split('•') : topClassRaw.split('-');
+        const part0 = parts[0].trim();
+        const part1 = parts.slice(1).join(' ').trim();
+        if (!finalGrade && part0) finalGrade = part0;
+        if (!finalStream && part1) finalStream = part1;
+      }
+
+      if (!finalStream) {
+        if (topClassUpper.includes('PRE-ENGINEERING') || topClassUpper.includes('ENGINEERING')) {
+          finalStream = 'Pre-Engineering Stream';
+        } else if (topClassUpper.includes('PRE-MEDICAL') || topClassUpper.includes('MEDICAL')) {
+          finalStream = 'Pre-Medical Stream';
+        } else if (topClassUpper.includes('ICS') || topClassUpper.includes('COMPUTER')) {
+          finalStream = 'ICS Stream';
+        }
+      }
+
+      if (!finalGrade) {
+        if (topClassUpper.includes('NET') || topClassUpper.includes('NUST')) finalGrade = 'NET';
+        else if (topClassUpper.includes('MDCAT')) finalGrade = 'MDCAT';
+        else if (topClassUpper.includes('TCAT')) finalGrade = 'TCAT';
+        else if (topClassUpper.includes('FAST')) finalGrade = 'FAST';
+        else if (topClassUpper.includes('NAT') || topClassUpper.includes('NTS')) finalGrade = 'NAT';
+        else if (topClassUpper.includes('NED')) finalGrade = 'NED';
+        else if (topClassUpper.includes('PIEAS')) finalGrade = 'PIEAS';
+        else if (topClassUpper.includes('IBA')) finalGrade = 'IBA';
+        else if (topClassUpper.includes('AKU')) finalGrade = 'AKU';
+        else if (topClassUpper.includes('MUET')) finalGrade = 'MUET';
+        else if (topClassUpper.includes('LUMS')) finalGrade = 'LUMS';
+        else if (topClassUpper.includes('NUML')) finalGrade = 'NUML';
+        else if (topClassUpper.includes('HITEC')) finalGrade = 'HITEC';
+        else if (topClassUpper.includes('NUTECH')) finalGrade = 'NUTECH';
+        else if (topClassUpper.includes('ECAT')) finalGrade = 'ECAT';
+        else if (topClassUpper.includes('ETEA')) finalGrade = 'ETEA';
+        else if (topClassUpper.includes('NUMS')) finalGrade = 'NUMS';
+        else if (topClassUpper.includes('GIKI')) finalGrade = 'GIKI';
+        else if (topClassUpper.includes('USAT')) finalGrade = 'USAT';
+        else if (topClassUpper.includes('11')) finalGrade = 'Class 11';
+        else if (topClassUpper.includes('12')) finalGrade = 'Class 12';
+        else if (topClassUpper.includes('9')) finalGrade = 'Class 9';
+        else if (topClassUpper.includes('10')) finalGrade = 'Class 10';
+      }
+
+      // Check subscribedPlans if grade or stream is still blank
+      if (!finalGrade && Array.isArray(subscribedPlans) && subscribedPlans.length > 0) {
+        const p = String(subscribedPlans[0]).toLowerCase();
+        if (p === 'net') finalGrade = 'NET';
+        else if (p === 'mdcat') finalGrade = 'MDCAT';
+        else if (p === 'tcat') finalGrade = 'TCAT';
+        else if (p === 'fast') finalGrade = 'FAST';
+        else if (p.includes('11')) finalGrade = 'Class 11';
+        else if (p.includes('12')) finalGrade = 'Class 12';
+      }
+
+      if (!finalGrade) {
+        finalGrade = currentStudent.grade || 'NET';
+      }
+
+      if (!finalStream) {
+        if (finalGrade === 'NET' || finalGrade === 'TCAT' || finalGrade === 'ECAT') {
+          finalStream = (currentStudent.stream && currentStudent.stream.includes('Pre-Engineering'))
+            ? currentStudent.stream
+            : 'Pre-Engineering Stream';
+        } else if (finalGrade === 'MDCAT' || finalGrade === 'NUMS' || finalGrade === 'AKU') {
+          finalStream = (currentStudent.stream && currentStudent.stream.includes('Pre-Medical'))
+            ? currentStudent.stream
+            : 'Pre-Medical Stream';
+        } else {
+          finalStream = currentStudent.stream || 'Pre-Engineering Stream';
+        }
+      }
+
+      if (!finalTargetUni) {
+        const gUpper = finalGrade.toUpperCase();
+        if (gUpper.includes('NET') || gUpper.includes('NUST')) finalTargetUni = 'NUST Islamabad';
+        else if (gUpper.includes('MDCAT')) finalTargetUni = 'King Edward / UHS / PMDC';
+        else if (gUpper.includes('FAST')) finalTargetUni = 'FAST-NUCES';
+        else if (gUpper.includes('TCAT')) finalTargetUni = 'UET Taxila';
+        else if (gUpper.includes('ECAT')) finalTargetUni = 'UET Lahore';
+        else if (gUpper.includes('ETEA')) finalTargetUni = 'UET Peshawar';
+        else if (gUpper.includes('GIKI')) finalTargetUni = 'GIKI Topi';
+        else if (gUpper.includes('PIEAS')) finalTargetUni = 'PIEAS Islamabad';
+        else if (gUpper.includes('NED')) finalTargetUni = 'NED University Karachi';
+        else if (gUpper.includes('AKU')) finalTargetUni = 'Aga Khan University';
+        else if (gUpper.includes('NUMS')) finalTargetUni = 'Army Medical College (NUMS)';
+        else if (gUpper.includes('LUMS')) finalTargetUni = 'LUMS Lahore';
+        else if (gUpper.includes('IBA')) finalTargetUni = 'IBA Karachi';
+        else finalTargetUni = currentStudent.target_university || currentStudent.dream_university || 'HEC / Board Standard';
+      }
+
+      // Compute unified assigned_classes array ensuring primary track representation
+      let finalAssignedClasses: string[] = Array.isArray(assignedClasses) && assignedClasses.length > 0
+        ? [...assignedClasses]
+        : [];
+      if (finalAssignedClasses.length === 0 && finalGrade) {
+        finalAssignedClasses = [`${finalGrade}${finalStream ? ' • ' + finalStream : ''}`];
+      }
 
       const dbUpdatePayload: any = {
         subscribed_plans: finalIsPro ? subscribedPlans : ['free'],
@@ -9524,254 +9625,150 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         requires_payment: finalRequiresPayment,
         access_expires: accessExpiresStr,
         status: 'active',
+        grade: finalGrade,
+        stream: finalStream,
+        target_university: finalTargetUni,
+        dream_university: finalTargetUni,
+        is_registered: true,
+        assigned_classes: finalAssignedClasses,
         updated_at: new Date().toISOString(),
       };
-
-      if (Array.isArray(assignedClasses)) {
-        dbUpdatePayload.assigned_classes = assignedClasses;
-        if (assignedClasses.length > 0) {
-          const topClass = String(assignedClasses[0]).toUpperCase();
-          if (topClass.includes('NET') || topClass.includes('NUST')) {
-            dbUpdatePayload.grade = 'NET';
-            dbUpdatePayload.stream = 'NUST NET Engineering & Computing';
-            dbUpdatePayload.target_university = 'NUST Islamabad';
-          } else if (topClass.includes('FAST')) {
-            dbUpdatePayload.grade = 'FAST';
-            dbUpdatePayload.stream = 'FAST-NU CS & Engineering';
-            dbUpdatePayload.target_university = 'FAST-NUCES';
-          } else if (topClass.includes('NAT') || topClass.includes('NTS')) {
-            dbUpdatePayload.grade = 'NAT';
-            dbUpdatePayload.stream = 'NAT-IE (Pre-Engineering)';
-            dbUpdatePayload.target_university = 'COMSATS / Air / Bahria / IIUI / IST';
-          } else if (topClass.includes('NED')) {
-            dbUpdatePayload.grade = 'NED';
-            dbUpdatePayload.stream = 'NED Pre-Engineering';
-            dbUpdatePayload.target_university = 'NED University Karachi';
-          } else if (topClass.includes('PIEAS')) {
-            dbUpdatePayload.grade = 'PIEAS';
-            dbUpdatePayload.stream = 'PIEAS Pre-Engineering';
-            dbUpdatePayload.target_university = 'PIEAS Islamabad';
-          } else if (topClass.includes('IBA')) {
-            dbUpdatePayload.grade = 'IBA';
-            dbUpdatePayload.stream = 'Undergraduate Aptitude';
-            dbUpdatePayload.target_university = 'IBA Karachi';
-          } else if (topClass.includes('AKU') || topClass.includes('AGA KHAN')) {
-            dbUpdatePayload.grade = 'AKU';
-            dbUpdatePayload.stream = 'AKU MBBS & Nursing';
-            dbUpdatePayload.target_university = 'Aga Khan University';
-          } else if (topClass.includes('MUET') || topClass.includes('MEHRAN')) {
-            dbUpdatePayload.grade = 'MUET';
-            dbUpdatePayload.stream = 'MUET Pre-Engineering';
-            dbUpdatePayload.target_university = 'MUET Jamshoro';
-          } else if (topClass.includes('LUMS')) {
-            dbUpdatePayload.grade = 'LUMS';
-            dbUpdatePayload.stream = 'LCAT Aptitude Stream';
-            dbUpdatePayload.target_university = 'LUMS Lahore';
-          } else if (topClass.includes('NUML')) {
-            dbUpdatePayload.grade = 'NUML';
-            dbUpdatePayload.stream = 'Engineering & CS';
-            dbUpdatePayload.target_university = 'NUML Islamabad';
-          } else if (topClass.includes('HITEC')) {
-            dbUpdatePayload.grade = 'HITEC';
-            dbUpdatePayload.stream = 'Engineering Stream';
-            dbUpdatePayload.target_university = 'HITEC University Taxila';
-          } else if (topClass.includes('NUTECH') || topClass.includes('NUET')) {
-            dbUpdatePayload.grade = 'NUTECH';
-            dbUpdatePayload.stream = 'NUET Engineering Stream';
-            dbUpdatePayload.target_university = 'NUTECH Islamabad';
-          } else if (topClass.includes('ECAT')) {
-            dbUpdatePayload.grade = 'ECAT';
-            dbUpdatePayload.stream = 'ECAT Engineering Group';
-            dbUpdatePayload.target_university = 'UET Lahore';
-          } else if (topClass.includes('ETEA')) {
-            dbUpdatePayload.grade = 'ETEA';
-            dbUpdatePayload.stream = 'ETEA Engineering Group';
-            dbUpdatePayload.target_university = 'UET Peshawar';
-          } else if (topClass.includes('NUMS')) {
-            dbUpdatePayload.grade = 'NUMS';
-            dbUpdatePayload.stream = 'NUMS Medical Entry Test';
-            dbUpdatePayload.target_university = 'Army Medical College (NUMS)';
-          } else if (topClass.includes('GIKI')) {
-            dbUpdatePayload.grade = 'GIKI';
-            dbUpdatePayload.stream = 'GIKI Engineering Entrance';
-            dbUpdatePayload.target_university = 'GIKI Topi';
-          } else if (topClass.includes('USAT')) {
-            dbUpdatePayload.grade = 'USAT';
-            dbUpdatePayload.stream = 'USAT-E (Pre-Engineering)';
-            dbUpdatePayload.target_university = 'HEC Recognized Universities';
-          } else if (topClass.includes('MDCAT')) {
-            dbUpdatePayload.grade = 'MDCAT';
-            dbUpdatePayload.stream = 'MDCAT Stream';
-            dbUpdatePayload.target_university = 'King Edward / UHS / PMDC';
-          } else if (topClass.includes('TCAT')) {
-            dbUpdatePayload.grade = 'TCAT';
-            dbUpdatePayload.stream = 'TCAT Stream';
-            dbUpdatePayload.target_university = 'UET Taxila';
-          } else if (topClass.includes('9')) {
-            dbUpdatePayload.grade = '9th';
-            dbUpdatePayload.stream = 'Science';
-          } else if (topClass.includes('10')) {
-            dbUpdatePayload.grade = '10th';
-            dbUpdatePayload.stream = 'Science';
-          } else if (topClass.includes('11')) {
-            dbUpdatePayload.grade = '11th';
-            dbUpdatePayload.stream = topClass.includes('MEDICAL') ? 'Pre-Medical Stream' : (topClass.includes('ICS') ? 'ICS Stream' : 'Pre-Engineering Stream');
-          } else if (topClass.includes('12')) {
-            dbUpdatePayload.grade = '12th';
-            dbUpdatePayload.stream = topClass.includes('MEDICAL') ? 'Pre-Medical Stream' : (topClass.includes('ICS') ? 'ICS Stream' : 'Pre-Engineering Stream');
-          }
-        }
-      }
-
-      if (!dbUpdatePayload.grade && Array.isArray(subscribedPlans) && subscribedPlans.length > 0) {
-        const p = String(subscribedPlans[0]).toLowerCase();
-        if (p === 'net') {
-          dbUpdatePayload.grade = 'NET';
-          dbUpdatePayload.stream = 'NUST NET Engineering & Computing';
-          dbUpdatePayload.target_university = 'NUST Islamabad';
-        } else if (p === 'fast') {
-          dbUpdatePayload.grade = 'FAST';
-          dbUpdatePayload.stream = 'FAST-NU CS & Engineering';
-          dbUpdatePayload.target_university = 'FAST-NUCES';
-        } else if (p === 'mdcat') {
-          dbUpdatePayload.grade = 'MDCAT';
-          dbUpdatePayload.stream = 'MDCAT Stream';
-          dbUpdatePayload.target_university = 'King Edward / UHS / PMDC';
-        } else if (p === 'tcat') {
-          dbUpdatePayload.grade = 'TCAT';
-          dbUpdatePayload.stream = 'TCAT Stream';
-          dbUpdatePayload.target_university = 'UET Taxila';
-        } else if (p === 'ecat') {
-          dbUpdatePayload.grade = 'ECAT';
-          dbUpdatePayload.stream = 'ECAT Engineering Group';
-          dbUpdatePayload.target_university = 'UET Lahore';
-        } else if (p === 'etea') {
-          dbUpdatePayload.grade = 'ETEA';
-          dbUpdatePayload.stream = 'ETEA Engineering Group';
-          dbUpdatePayload.target_university = 'UET Peshawar';
-        } else if (p === 'nums') {
-          dbUpdatePayload.grade = 'NUMS';
-          dbUpdatePayload.stream = 'NUMS Medical Entry Test';
-          dbUpdatePayload.target_university = 'Army Medical College (NUMS)';
-        } else if (p === 'giki') {
-          dbUpdatePayload.grade = 'GIKI';
-          dbUpdatePayload.stream = 'GIKI Engineering Entrance';
-          dbUpdatePayload.target_university = 'GIKI Topi';
-        } else if (p === 'usat') {
-          dbUpdatePayload.grade = 'USAT';
-          dbUpdatePayload.stream = 'USAT-E (Pre-Engineering)';
-          dbUpdatePayload.target_university = 'HEC Recognized Universities';
-        } else if (p === 'ned') {
-          dbUpdatePayload.grade = 'NED';
-          dbUpdatePayload.stream = 'NED Pre-Engineering';
-          dbUpdatePayload.target_university = 'NED University Karachi';
-        } else if (p === 'pieas') {
-          dbUpdatePayload.grade = 'PIEAS';
-          dbUpdatePayload.stream = 'PIEAS Pre-Engineering';
-          dbUpdatePayload.target_university = 'PIEAS Islamabad';
-        } else if (p === 'nat') {
-          dbUpdatePayload.grade = 'NAT';
-          dbUpdatePayload.stream = 'NAT-IE (Pre-Engineering)';
-          dbUpdatePayload.target_university = 'COMSATS / Air / Bahria / IIUI / IST';
-        } else if (p === 'iba') {
-          dbUpdatePayload.grade = 'IBA';
-          dbUpdatePayload.stream = 'Undergraduate Aptitude';
-          dbUpdatePayload.target_university = 'IBA Karachi';
-        } else if (p === 'aku') {
-          dbUpdatePayload.grade = 'AKU';
-          dbUpdatePayload.stream = 'AKU MBBS & Nursing';
-          dbUpdatePayload.target_university = 'Aga Khan University';
-        } else if (p === 'muet') {
-          dbUpdatePayload.grade = 'MUET';
-          dbUpdatePayload.stream = 'MUET Pre-Engineering';
-          dbUpdatePayload.target_university = 'MUET Jamshoro';
-        } else if (p === 'lums') {
-          dbUpdatePayload.grade = 'LUMS';
-          dbUpdatePayload.stream = 'LCAT Aptitude Stream';
-          dbUpdatePayload.target_university = 'LUMS Lahore';
-        } else if (p === 'numl') {
-          dbUpdatePayload.grade = 'NUML';
-          dbUpdatePayload.stream = 'Engineering & CS';
-          dbUpdatePayload.target_university = 'NUML Islamabad';
-        } else if (p === 'hitec') {
-          dbUpdatePayload.grade = 'HITEC';
-          dbUpdatePayload.stream = 'Engineering Stream';
-          dbUpdatePayload.target_university = 'HITEC University Taxila';
-        } else if (p === 'nutech') {
-          dbUpdatePayload.grade = 'NUTECH';
-          dbUpdatePayload.stream = 'NUET Engineering Stream';
-          dbUpdatePayload.target_university = 'NUTECH Islamabad';
-        } else if (p === 'fbise_9') {
-          dbUpdatePayload.grade = '9th';
-          dbUpdatePayload.stream = 'Science';
-        } else if (p === 'fbise_10') {
-          dbUpdatePayload.grade = '10th';
-          dbUpdatePayload.stream = 'Science';
-        } else if (p.includes('11') && p.includes('med')) {
-          dbUpdatePayload.grade = '11th';
-          dbUpdatePayload.stream = 'Pre-Medical Stream';
-        } else if (p.includes('11') && p.includes('ics')) {
-          dbUpdatePayload.grade = '11th';
-          dbUpdatePayload.stream = 'ICS Stream';
-        } else if (p.includes('11')) {
-          dbUpdatePayload.grade = '11th';
-          dbUpdatePayload.stream = 'Pre-Engineering Stream';
-        } else if (p.includes('12') && p.includes('med')) {
-          dbUpdatePayload.grade = '12th';
-          dbUpdatePayload.stream = 'Pre-Medical Stream';
-        } else if (p.includes('12') && p.includes('ics')) {
-          dbUpdatePayload.grade = '12th';
-          dbUpdatePayload.stream = 'ICS Stream';
-        } else if (p.includes('12')) {
-          dbUpdatePayload.grade = '12th';
-          dbUpdatePayload.stream = 'Pre-Engineering Stream';
-        }
-      }
 
       if (finalIsPro) {
         dbUpdatePayload.tests_used_this_month = 0;
         dbUpdatePayload.ai_messages_used_today = 0;
       }
 
-      try {
-        const { data: uData, error: uErr } = await supabaseAdmin
-          .from('students')
-          .update(dbUpdatePayload)
-          .eq('id', currentStudent.id)
-          .select();
-        if (!uErr && uData && uData.length > 0) {
-          updateSuccess = true;
-        } else if (uErr) {
-          dbWriteError = uErr.message;
+      console.log(`[DEBUG: Plan Update BEFORE] Student ID: ${currentStudent.id}, Email: ${currentStudent.email}`, {
+        oldPlan,
+        newPlan: packageName,
+        finalGrade,
+        finalStream,
+        finalTargetUni,
+        finalAssignedClasses,
+      });
+
+      let updateSuccess = false;
+      let dbWriteError = null;
+
+      // 1. Update students table in Supabase
+      if (supabaseAdmin) {
+        try {
+          const { data: uData, error: uErr } = await supabaseAdmin
+            .from('students')
+            .update(dbUpdatePayload)
+            .eq('id', currentStudent.id)
+            .select();
+          if (!uErr && uData && uData.length > 0) {
+            updateSuccess = true;
+          } else if (uErr) {
+            dbWriteError = uErr.message;
+          }
+        } catch (e: any) {
+          dbWriteError = e?.message || String(e);
         }
-      } catch (e: any) {
-        dbWriteError = e?.message || String(e);
+
+        // 2. Also update profiles table in Supabase atomically
+        try {
+          const profilePayload: any = {
+            grade: finalGrade,
+            stream: finalStream,
+            target_university: finalTargetUni,
+            dream_university: finalTargetUni,
+            is_registered: true,
+            assigned_classes: finalAssignedClasses,
+            subscribed_plans: dbUpdatePayload.subscribed_plans,
+            package_name: dbUpdatePayload.package_name,
+            is_pro: dbUpdatePayload.is_pro,
+            subscription_tier: finalIsPro ? 'pro' : 'free',
+            subscription_expires_at: dbUpdatePayload.access_expires,
+            payment_status: dbUpdatePayload.payment_status,
+            plan_status: dbUpdatePayload.plan_status,
+            requires_payment: dbUpdatePayload.requires_payment,
+            status: 'active',
+            updated_at: new Date().toISOString(),
+          };
+          await supabaseAdmin.from('profiles').update(profilePayload).eq('id', currentStudent.id);
+          if (currentStudent.email) {
+            await supabaseAdmin.from('profiles').update(profilePayload).ilike('email', currentStudent.email);
+          }
+        } catch (pErr) {
+          console.warn('Notice: updating profiles table in Supabase:', pErr);
+        }
       }
+
+      // 3. Atomically update in-memory student store
+      let memUpdated = false;
+      for (const s of inMemoryStudents) {
+        if (
+          (currentStudent.id && s.id === currentStudent.id) ||
+          (currentStudent.email && s.email && s.email.toLowerCase() === currentStudent.email.toLowerCase())
+        ) {
+          Object.assign(s, dbUpdatePayload);
+          memUpdated = true;
+        }
+      }
+      if (!memUpdated) {
+        inMemoryStudents.unshift({
+          ...currentStudent,
+          ...dbUpdatePayload,
+        });
+      }
+      if (memUpdated) updateSuccess = true;
+
+      // 4. Also update promo links / promo redemptions so old promo titles don't override new plan
+      try {
+        const links = loadPromoLinks();
+        let linkChanged = false;
+        for (const link of links) {
+          if (Array.isArray(link.redemptions)) {
+            for (const r of link.redemptions as any[]) {
+              if (
+                (r.student_id && r.student_id === currentStudent.id) ||
+                (r.student_email && r.student_email.toLowerCase() === currentStudent.email?.toLowerCase())
+              ) {
+                r.package_name = packageName;
+                r.grade = finalGrade;
+                r.stream = finalStream;
+                if (finalGrade && finalStream) {
+                  r.track = `${finalGrade} • ${finalStream}`;
+                }
+                linkChanged = true;
+              }
+            }
+          }
+        }
+        if (linkChanged) savePromoLinks(links);
+      } catch (lErr) {}
 
       // Verify DB state after write
       let verifiedData: any = null;
-      try {
-        const { data: vData } = await supabaseAdmin
-          .from('students')
-          .select('*')
-          .eq('id', currentStudent.id)
-          .maybeSingle();
-        verifiedData = vData;
-      } catch (vErr) {}
+      if (supabaseAdmin) {
+        try {
+          const { data: vData } = await supabaseAdmin
+            .from('students')
+            .select('*')
+            .eq('id', currentStudent.id)
+            .maybeSingle();
+          verifiedData = vData;
+        } catch (vErr) {}
+      }
 
       console.log(`[DEBUG: Plan Update WRITTEN TO DB] Student ID: ${currentStudent.id}, Email: ${currentStudent.email}`, {
         updateSuccess,
         verifiedDBRow: verifiedData ? {
           id: verifiedData.id,
-          subscribed_plans: verifiedData.subscribed_plans,
-          payment_status: verifiedData.payment_status,
-          requires_payment: verifiedData.requires_payment,
+          grade: verifiedData.grade,
+          stream: verifiedData.stream,
+          target_university: verifiedData.target_university,
           package_name: verifiedData.package_name,
+          assigned_classes: verifiedData.assigned_classes,
+          subscribed_plans: verifiedData.subscribed_plans,
           is_pro: verifiedData.is_pro,
         } : 'NONE',
       });
 
-      if (!updateSuccess && !verifiedData) {
+      if (!updateSuccess && !verifiedData && !memUpdated) {
         return res.status(500).json({
           success: false,
           error: `Failed to commit plan update to database. ${dbWriteError ? 'Database Error: ' + dbWriteError : ''}`
@@ -9791,18 +9788,21 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         return fallback;
       };
 
-      const finalProfile = verifiedData
-        ? {
-            ...currentStudent,
-            ...verifiedData,
-            subscribed_plans: parseArrayHelper(verifiedData.subscribed_plans, subscribedPlans),
-            assigned_classes: parseArrayHelper(verifiedData.assigned_classes, Array.isArray(assignedClasses) ? assignedClasses : []),
-            is_pro: typeof verifiedData.is_pro === 'boolean' ? verifiedData.is_pro : finalIsPro,
-            package_name: verifiedData.package_name || packageName,
-            payment_status: verifiedData.payment_status || finalPaymentStatus,
-            requires_payment: typeof verifiedData.requires_payment === 'boolean' ? verifiedData.requires_payment : finalRequiresPayment,
-          }
-        : { ...currentStudent, ...planData };
+      const finalProfile = {
+        ...currentStudent,
+        ...(verifiedData || {}),
+        ...dbUpdatePayload,
+        subscribed_plans: verifiedData?.subscribed_plans ? parseArrayHelper(verifiedData.subscribed_plans, subscribedPlans) : subscribedPlans,
+        assigned_classes: verifiedData?.assigned_classes ? parseArrayHelper(verifiedData.assigned_classes, finalAssignedClasses) : finalAssignedClasses,
+        grade: finalGrade,
+        stream: finalStream,
+        target_university: finalTargetUni,
+        dream_university: finalTargetUni,
+        package_name: packageName,
+        is_pro: finalIsPro,
+        payment_status: finalPaymentStatus,
+        requires_payment: finalRequiresPayment,
+      };
 
       console.log(`[DEBUG: Plan Update API RESPONSE] Student ID: ${currentStudent.id}`, {
         success: true,
@@ -10268,7 +10268,22 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           const { data } = await supabaseAdmin.from("students").select("*").eq("email", email).maybeSingle();
           if (data) studentRecord = data;
         }
+      }
 
+      // Check in-memory students store if not found in Supabase
+      if (!studentRecord) {
+        for (const s of inMemoryStudents) {
+          if (
+            (id && s.id === id) ||
+            (email && s.email && s.email.toLowerCase() === email.toLowerCase())
+          ) {
+            studentRecord = { ...s };
+            break;
+          }
+        }
+      }
+
+      if (supabaseAdmin) {
         // Cross-check promo_redemptions in Supabase
         try {
           let redRow: any = null;
@@ -10292,7 +10307,9 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
             }
             studentRecord.is_pro = true;
             studentRecord.plan_tier = "pro";
-            studentRecord.package_name = "⭐ Boardly 1-Year Pro (Promotional Pass)";
+            if (!studentRecord.package_name || studentRecord.package_name.toLowerCase().includes('free')) {
+              studentRecord.package_name = "⭐ Boardly 1-Year Pro (Promotional Pass)";
+            }
             studentRecord.payment_status = "Verified & Paid";
             studentRecord.plan_status = "verified_pro";
             studentRecord.requires_payment = false;
@@ -10327,7 +10344,9 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
               }
               studentRecord.is_pro = true;
               studentRecord.plan_tier = "pro";
-              studentRecord.package_name = "⭐ Boardly 1-Year Pro (Promotional Pass)";
+              if (!studentRecord.package_name || studentRecord.package_name.toLowerCase().includes('free')) {
+                studentRecord.package_name = "⭐ Boardly 1-Year Pro (Promotional Pass)";
+              }
               studentRecord.payment_status = "Verified & Paid";
               studentRecord.plan_status = "verified_pro";
               studentRecord.requires_payment = false;

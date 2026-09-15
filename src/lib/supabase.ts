@@ -407,35 +407,75 @@ export function parseAssignedTrack(
 } {
   const gStr = (grade || '').trim().toUpperCase();
   const sStr = (stream || '').trim().toUpperCase();
+  const primaryAssigned = Array.isArray(assignedClasses) && assignedClasses.length > 0
+    ? String(assignedClasses[0]).trim()
+    : '';
+  const aStr = primaryAssigned.toUpperCase();
 
   let assignedTrack: BoardClass | string = 11;
+  let detectedStream = stream || '';
 
-  if (gStr.includes('MDCAT') || sStr.includes('MDCAT')) {
-    assignedTrack = 'MDCAT';
-  } else if (gStr.includes('TCAT') || sStr.includes('TCAT')) {
-    assignedTrack = 'TCAT';
-  } else if (gStr.includes('NET') || sStr.includes('NET') || sStr.includes('NUST')) {
-    assignedTrack = 'NET';
-  } else if (gStr.includes('FAST') || sStr.includes('FAST') || sStr.includes('NAT')) {
-    assignedTrack = 'FAST';
-  } else if (gStr.includes('ECAT') || sStr.includes('ECAT')) {
-    assignedTrack = 'ECAT';
-  } else if (gStr.includes('ETEA') || sStr.includes('ETEA')) {
-    assignedTrack = 'ETEA';
-  } else if (gStr.includes('NUMS') || sStr.includes('NUMS')) {
-    assignedTrack = 'NUMS';
-  } else if (gStr.includes('GIKI') || sStr.includes('GIKI')) {
-    assignedTrack = 'GIKI';
-  } else if (gStr.includes('USAT') || sStr.includes('USAT')) {
-    assignedTrack = 'USAT';
-  } else if (gStr.includes('9') || gStr.includes('NINTH')) {
-    assignedTrack = 9;
-  } else if (gStr.includes('10') || gStr.includes('TENTH') || gStr.includes('MATRIC')) {
-    assignedTrack = 10;
-  } else if (gStr.includes('11') || gStr.includes('FIRST YEAR') || gStr.includes('FSC')) {
-    assignedTrack = 11;
-  } else if (gStr.includes('12') || gStr.includes('SECOND YEAR')) {
-    assignedTrack = 12;
+  // 1. If assignedClasses contains explicit separator (e.g. "NET • Pre-Engineering Stream")
+  if (primaryAssigned.includes('•') || primaryAssigned.includes('-')) {
+    const parts = primaryAssigned.includes('•') ? primaryAssigned.split('•') : primaryAssigned.split('-');
+    const trackPart = parts[0].trim().toUpperCase();
+    const streamPart = parts.slice(1).join(' ').trim();
+    if (streamPart && (!detectedStream || detectedStream === 'Pre-Medical Stream' || detectedStream === 'Pre-Engineering Stream')) {
+      detectedStream = streamPart;
+    }
+    if (trackPart.includes('NET') || trackPart.includes('NUST')) assignedTrack = 'NET';
+    else if (trackPart.includes('MDCAT')) assignedTrack = 'MDCAT';
+    else if (trackPart.includes('TCAT')) assignedTrack = 'TCAT';
+    else if (trackPart.includes('FAST')) assignedTrack = 'FAST';
+    else if (trackPart.includes('ECAT')) assignedTrack = 'ECAT';
+    else if (trackPart.includes('ETEA')) assignedTrack = 'ETEA';
+    else if (trackPart.includes('NUMS')) assignedTrack = 'NUMS';
+    else if (trackPart.includes('GIKI')) assignedTrack = 'GIKI';
+    else if (trackPart.includes('USAT')) assignedTrack = 'USAT';
+    else if (trackPart.includes('11')) assignedTrack = 11;
+    else if (trackPart.includes('12')) assignedTrack = 12;
+    else if (trackPart.includes('9')) assignedTrack = 9;
+    else if (trackPart.includes('10')) assignedTrack = 10;
+  }
+
+  // 2. If track wasn't resolved by separator, check grade and assigned class
+  if (assignedTrack === 11) {
+    if (gStr.includes('NET') || gStr.includes('NUST') || aStr.includes('NET') || aStr.includes('NUST')) {
+      assignedTrack = 'NET';
+    } else if (gStr.includes('MDCAT') || aStr.includes('MDCAT')) {
+      assignedTrack = 'MDCAT';
+    } else if (gStr.includes('TCAT') || aStr.includes('TCAT')) {
+      assignedTrack = 'TCAT';
+    } else if (gStr.includes('FAST') || aStr.includes('FAST') || gStr.includes('NAT') || aStr.includes('NAT')) {
+      assignedTrack = 'FAST';
+    } else if (gStr.includes('ECAT') || aStr.includes('ECAT')) {
+      assignedTrack = 'ECAT';
+    } else if (gStr.includes('ETEA') || aStr.includes('ETEA')) {
+      assignedTrack = 'ETEA';
+    } else if (gStr.includes('NUMS') || aStr.includes('NUMS')) {
+      assignedTrack = 'NUMS';
+    } else if (gStr.includes('GIKI') || aStr.includes('GIKI')) {
+      assignedTrack = 'GIKI';
+    } else if (gStr.includes('USAT') || aStr.includes('USAT')) {
+      assignedTrack = 'USAT';
+    } else if (gStr.includes('12') || gStr.includes('SECOND YEAR') || aStr.includes('12')) {
+      assignedTrack = 12;
+    } else if (gStr.includes('11') || gStr.includes('FIRST YEAR') || gStr.includes('FSC') || aStr.includes('11')) {
+      assignedTrack = 11;
+    } else if (gStr.includes('10') || gStr.includes('TENTH') || gStr.includes('MATRIC') || aStr.includes('10')) {
+      assignedTrack = 10;
+    } else if (gStr.includes('9') || gStr.includes('NINTH') || aStr.includes('9')) {
+      assignedTrack = 9;
+    }
+  }
+
+  if (!detectedStream) {
+    if (aStr.includes('PRE-ENGINEERING') || sStr.includes('PRE-ENGINEERING')) detectedStream = 'Pre-Engineering Stream';
+    else if (aStr.includes('PRE-MEDICAL') || sStr.includes('PRE-MEDICAL')) detectedStream = 'Pre-Medical Stream';
+    else if (aStr.includes('ICS') || sStr.includes('ICS')) detectedStream = 'ICS Stream';
+    else if (assignedTrack === 'NET' || assignedTrack === 'TCAT' || assignedTrack === 'ECAT') detectedStream = 'Pre-Engineering Stream';
+    else if (assignedTrack === 'MDCAT' || assignedTrack === 'NUMS') detectedStream = 'Pre-Medical Stream';
+    else detectedStream = `${assignedTrack} Track`;
   }
 
   const allowedClasses: (BoardClass | string)[] = [assignedTrack];
@@ -461,7 +501,7 @@ export function parseAssignedTrack(
 
   return {
     assignedTrack,
-    assignedStream: stream || `${assignedTrack} Track`,
+    assignedStream: detectedStream || `${assignedTrack} Track`,
     allowedClasses,
   };
 }
@@ -738,6 +778,29 @@ export function invalidateStudentProfileCache(studentId?: string, updatedProfile
       localStorage.removeItem(`boardly_profile_${studentId}`);
     }
     localStorage.removeItem('boardly_cached_profile');
+
+    // If an updated profile object is available, seed storage and cache immediately
+    if (updatedProfile) {
+      if (studentId) {
+        localStorage.setItem(`boardly_profile_${studentId}`, JSON.stringify(updatedProfile));
+      }
+      localStorage.setItem('boardly_cached_profile', JSON.stringify(updatedProfile));
+      if (updatedProfile.grade) {
+        localStorage.setItem('boardly_student_grade', updatedProfile.grade);
+      }
+      if (updatedProfile.stream) {
+        localStorage.setItem('boardly_student_stream', updatedProfile.stream);
+      }
+      if (updatedProfile.target_university || updatedProfile.dream_university) {
+        localStorage.setItem('boardly_target_university', updatedProfile.target_university || updatedProfile.dream_university || '');
+      }
+      if (updatedProfile.package_name) {
+        localStorage.setItem('boardly_student_package', updatedProfile.package_name);
+      }
+      if (studentId) {
+        profileMemoryCache.set(studentId, { profile: updatedProfile, timestamp: Date.now() });
+      }
+    }
   } catch (e) {}
 
   if (typeof window !== 'undefined') {
@@ -4185,6 +4248,10 @@ export async function updateStudentPlanInSupabase(params: {
   expirationMonths?: number;
   adminNote?: string;
   adminEmail: string;
+  grade?: string;
+  stream?: string;
+  target_university?: string;
+  dream_university?: string;
 }): Promise<{ success: boolean; message?: string; profile?: StudentProfile }> {
   const targetUrl = '/api/admin/update-student-plan';
   console.log('[TRACING updateStudentPlanInSupabase]', {
@@ -4265,6 +4332,11 @@ export async function updateStudentPlanInSupabase(params: {
       updated_at: new Date().toISOString(),
     };
 
+    if (params.grade) updatePayload.grade = params.grade;
+    if (params.stream) updatePayload.stream = params.stream;
+    if (params.target_university) updatePayload.target_university = params.target_university;
+    if (params.dream_university) updatePayload.dream_university = params.dream_university;
+
     if (finalIsPro) {
       updatePayload.tests_used_this_month = 0;
       updatePayload.ai_messages_used_today = 0;
@@ -4283,6 +4355,11 @@ export async function updateStudentPlanInSupabase(params: {
         .update(dbPayload)
         .eq('id', targetId)
         .select();
+
+      // Also update profiles table
+      try {
+        await supabase.from('profiles').update(dbPayload).eq('id', targetId);
+      } catch (pErr) {}
 
       const updatedStudent = updatedStudentData && updatedStudentData[0];
       if (!updateErr) {

@@ -691,6 +691,36 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
     const isFree = selectedPlansForChange.includes('free') && selectedPlansForChange.length === 1 && !isProForChange;
     const paymentStatusVal = isProForChange ? 'Verified & Paid' : (isFree ? 'Free Plan' : 'Pending Verification');
 
+    // Derive primary track, stream, and target uni if assigned classes or plans were changed
+    let derivedGrade = '';
+    let derivedStream = '';
+    let derivedTargetUni = '';
+    const topClass = selectedAssignedClassesForChange.length > 0 ? selectedAssignedClassesForChange[0] : '';
+    if (topClass.includes('•') || topClass.includes('-')) {
+      const parts = topClass.includes('•') ? topClass.split('•') : topClass.split('-');
+      derivedGrade = parts[0].trim();
+      derivedStream = parts.slice(1).join(' ').trim();
+    } else if (topClass) {
+      const tcUpper = topClass.toUpperCase();
+      if (tcUpper.includes('NET') || tcUpper.includes('NUST')) {
+        derivedGrade = 'NET';
+        derivedStream = tcUpper.includes('PRE-MEDICAL') ? 'Pre-Medical Stream' : 'Pre-Engineering Stream';
+        derivedTargetUni = 'NUST Islamabad';
+      } else if (tcUpper.includes('MDCAT')) {
+        derivedGrade = 'MDCAT';
+        derivedStream = 'Pre-Medical Stream';
+        derivedTargetUni = 'King Edward / UHS / PMDC';
+      } else if (tcUpper.includes('TCAT')) {
+        derivedGrade = 'TCAT';
+        derivedStream = 'Pre-Engineering Stream';
+        derivedTargetUni = 'UET Taxila';
+      } else if (tcUpper.includes('FAST')) {
+        derivedGrade = 'FAST';
+        derivedStream = 'Pre-Engineering Stream';
+        derivedTargetUni = 'FAST-NUCES';
+      }
+    }
+
     console.log('[Admin UI Click: Save & Update Subscription]', {
       studentId: selectedStudentForPlan.id,
       studentEmail: selectedStudentForPlan.email,
@@ -701,6 +731,8 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
       expirationMonths,
       adminNote: planAdminNote,
       adminEmail: detectedEmail,
+      derivedGrade,
+      derivedStream,
     });
 
     try {
@@ -715,6 +747,9 @@ const getPlanDefaultDisplayName = (planKey: string): string => {
         expirationMonths,
         adminNote: planAdminNote,
         adminEmail: detectedEmail,
+        grade: derivedGrade || undefined,
+        stream: derivedStream || undefined,
+        target_university: derivedTargetUni || undefined,
       });
 
       if (res.success) {

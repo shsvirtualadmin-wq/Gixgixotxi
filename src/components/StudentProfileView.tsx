@@ -518,7 +518,13 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
               <div className="p-3.5 bg-white  flex justify-between items-start gap-4">
                 <span className="font-bold text-slate-500 shrink-0">Enrolled Track</span>
                 <span className="font-bold text-[#0A0A0A]  text-right truncate max-w-xs">
-                  {isUserAdmin ? 'All Academic & Entry Portals' : `Class ${access.assignedTrack} (${access.assignedStream})`}
+                  {isUserAdmin
+                    ? 'All Academic & Entry Portals'
+                    : (profile.assigned_classes && profile.assigned_classes[0])
+                    ? profile.assigned_classes[0]
+                    : typeof access.assignedTrack === 'number'
+                    ? `Class ${access.assignedTrack} (${access.assignedStream})`
+                    : `${access.assignedTrack} • ${access.assignedStream}`}
                 </span>
               </div>
 

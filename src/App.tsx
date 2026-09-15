@@ -96,7 +96,7 @@ import {
   validatePromoCode,
 } from './lib/promoCode';
 
-import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent } from './lib/supabase';
+import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
@@ -327,39 +327,11 @@ const buildUrl = (
 
 export function getStudentDefaultClassAndGroup(profile: StudentProfile | null): { classNum: BoardClass; group: string } {
   if (!profile) return { classNum: 11, group: 'Pre-Medical' };
-  const g = (profile.grade || '').trim();
-  const s = (profile.stream || '').trim();
-  const gUpper = g.toUpperCase();
-  const sUpper = s.toUpperCase();
-
-  if (gUpper.includes('MDCAT') || sUpper.includes('MDCAT')) {
-    return { classNum: 'MDCAT', group: 'MDCAT' };
-  }
-  if (gUpper.includes('TCAT') || sUpper.includes('TCAT')) {
-    return { classNum: 'TCAT', group: s || 'Pre-Engineering' };
-  }
-
-  let classNum: BoardClass = 11;
-  const numMatch = g.match(/\d+/);
-  if (numMatch) {
-    const parsed = parseInt(numMatch[0], 10);
-    if (parsed === 9 || parsed === 10 || parsed === 11 || parsed === 12) {
-      classNum = parsed as BoardClass;
-    }
-  } else {
-    if (gUpper.includes('NINTH') || gUpper.includes('SSC PART 1') || gUpper.includes('SSC-1') || gUpper.includes('SSC 1')) {
-      classNum = 9;
-    } else if (gUpper.includes('TENTH') || gUpper.includes('MATRIC') || gUpper.includes('SSC PART 2') || gUpper.includes('SSC-2') || gUpper.includes('SSC 2')) {
-      classNum = 10;
-    } else if (gUpper.includes('FIRST YEAR') || gUpper.includes('1ST YEAR') || gUpper.includes('HSSC PART 1') || gUpper.includes('HSSC-1') || gUpper.includes('HSSC 1')) {
-      classNum = 11;
-    } else if (gUpper.includes('SECOND YEAR') || gUpper.includes('2ND YEAR') || gUpper.includes('HSSC PART 2') || gUpper.includes('HSSC-2') || gUpper.includes('HSSC 2')) {
-      classNum = 12;
-    }
-  }
-
-  const group = s || 'Pre-Medical';
-  return { classNum, group };
+  const parsed = parseAssignedTrack(profile.grade, profile.stream, profile.assigned_classes);
+  return {
+    classNum: parsed.assignedTrack as BoardClass,
+    group: parsed.assignedStream || 'Pre-Medical',
+  };
 }
 
 export function App() {
@@ -919,16 +891,26 @@ export function App() {
   const isStudentProOrPaid = userProfile ? evaluateStudentAccess(userProfile, 0, isAdmin).isPro : false;
   const isPaymentApprovedOrExempt = isAdmin || isStudentProOrPaid;
 
-  // Synchronize selectedClass & selectedGroup with student's profile grade & stream if not set yet
+  // Synchronize selectedClass & selectedGroup with student's profile grade & stream
+  const lastKnownProfileTrackRef = useRef<string>('');
   useEffect(() => {
     if (userProfile && isRegisteredStudent && !isAdmin) {
-      const defaultInfo = getStudentDefaultClassAndGroup(userProfile);
-      if (selectedClass === undefined) {
+      const currentTrackKey = `${userProfile.grade || ''}|${userProfile.stream || ''}|${(userProfile.assigned_classes || []).join(',')}`;
+      if (lastKnownProfileTrackRef.current && lastKnownProfileTrackRef.current !== currentTrackKey) {
+        // Admin changed student track/stream! Update selectedClass and selectedGroup immediately
+        const defaultInfo = getStudentDefaultClassAndGroup(userProfile);
         setSelectedClass(defaultInfo.classNum);
-      }
-      if (selectedGroup === undefined) {
         setSelectedGroup(defaultInfo.group);
+      } else if (selectedClass === undefined || selectedGroup === undefined) {
+        const defaultInfo = getStudentDefaultClassAndGroup(userProfile);
+        if (selectedClass === undefined) {
+          setSelectedClass(defaultInfo.classNum);
+        }
+        if (selectedGroup === undefined) {
+          setSelectedGroup(defaultInfo.group);
+        }
       }
+      lastKnownProfileTrackRef.current = currentTrackKey;
     }
   }, [userProfile, isRegisteredStudent, isAdmin, selectedClass, selectedGroup]);
 
@@ -1387,6 +1369,54 @@ export function App() {
       window.removeEventListener('focus', handleFocusSync);
     };
   }, [currentUser?.id, currentUser?.email]);
+
+  // Listen for real-time profile updates (e.g. from Admin "Change Plan" action or promo redemption)
+  useEffect(() => {
+    const handleProfileUpdated = (event: any) => {
+      const detail = event?.detail;
+      const targetId = detail?.studentId;
+      const targetEmail = detail?.studentEmail || detail?.profile?.email;
+      const currentId = currentUserRef.current?.id;
+      const currentEmail = currentUserRef.current?.email;
+
+      const isMatch =
+        (!targetId && !targetEmail) ||
+        (targetId && targetId === currentId) ||
+        (targetEmail && currentEmail && targetEmail.toLowerCase() === currentEmail.toLowerCase());
+
+      if (isMatch) {
+        console.log('[boardly_profile_updated event received] Syncing userProfile with new data:', detail);
+        if (detail?.profile) {
+          setUserProfile(detail.profile);
+          try {
+            if (currentId) localStorage.setItem(`boardly_profile_${currentId}`, JSON.stringify(detail.profile));
+            localStorage.setItem('boardly_cached_profile', JSON.stringify(detail.profile));
+          } catch {}
+        }
+        if (currentId) {
+          refreshUserProfile(currentId, currentEmail);
+        }
+      }
+    };
+
+    const handleStorageChange = (e: StorageEvent) => {
+      if (
+        e.key === 'boardly_cached_profile' ||
+        (currentUserRef.current?.id && e.key === `boardly_profile_${currentUserRef.current.id}`)
+      ) {
+        if (currentUserRef.current?.id) {
+          refreshUserProfile(currentUserRef.current.id, currentUserRef.current.email);
+        }
+      }
+    };
+
+    window.addEventListener('boardly_profile_updated', handleProfileUpdated);
+    window.addEventListener('storage', handleStorageChange);
+    return () => {
+      window.removeEventListener('boardly_profile_updated', handleProfileUpdated);
+      window.removeEventListener('storage', handleStorageChange);
+    };
+  }, []);
 
   // Periodic background sync to pick up admin status/plan upgrades automatically (4s poll when on payment_required, 60s otherwise)
   useEffect(() => {
