@@ -2595,12 +2595,14 @@ export async function checkUserExistsInDatabase(userId: string, email?: string):
       return true;
     }
 
+    // Check local storage before declaring user wiped to avoid wiping sessions during transient network/RLS issues
+    const cachedLocal = localStorage.getItem(`boardly_profile_${userId}`) || localStorage.getItem('boardly_cached_profile');
+    if (cachedLocal) {
+      return true;
+    }
+
     console.warn(`[checkUserExistsInDatabase] Student record ${userId} / ${email} not found in database.`);
     clearProfileCache(userId);
-    try {
-      localStorage.removeItem(`boardly_profile_${userId}`);
-      localStorage.removeItem('boardly_cached_profile');
-    } catch {}
     return false;
   } catch (err) {
     console.warn('checkUserExistsInDatabase exception:', err);

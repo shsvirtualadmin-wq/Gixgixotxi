@@ -1486,7 +1486,8 @@ export function App() {
           isAdmin ||
           activeProf?.is_registered ||
           hasAcademicTrack ||
-          isRegisteredStudent
+          isRegisteredStudent ||
+          localStorage.getItem('boardly_registration_is_success') === 'true'
         );
 
         if (!isUserRegistered) {
@@ -1850,11 +1851,19 @@ export function App() {
       syncSeenQuestionsWithServer(user.id, user.email).catch(() => {});
 
       // 2. Check registration status
-      const validGrade = Boolean(profile?.grade && profile.grade.trim() && profile.grade !== 'General Student');
-      const validStream = Boolean(profile?.stream && profile.stream.trim());
+      const validGrade = Boolean(
+        (profile?.grade && profile.grade.trim() && profile.grade !== 'General Student') ||
+        (userProfile?.grade && userProfile.grade.trim() && userProfile.grade !== 'General Student')
+      );
+      const validStream = Boolean(
+        (profile?.stream && profile.stream.trim()) ||
+        (userProfile?.stream && userProfile.stream.trim())
+      );
       const isReg = isUserAdmin ||
         Boolean(profile?.is_registered) ||
-        (validGrade && validStream);
+        Boolean(userProfile?.is_registered) ||
+        (validGrade && validStream) ||
+        localStorage.getItem('boardly_registration_is_success') === 'true';
 
       const hasHashToken = window.location.hash.includes('access_token');
       const hasSearchCode = window.location.search.includes('code=');
@@ -1885,7 +1894,7 @@ export function App() {
           console.log('[Auth Flow] First-time Google OAuth sign-in detected. Routing to setup wizard...');
           setScreen('guided_wizard');
         } else {
-          console.log('[Auth Flow] Returning Google OAuth user detected. Routing to dashboard...');
+          console.log('[Auth Flow] Returning Google OAuth user detected. Routing to destination...');
           const activeScreen = screenRef.current;
           if (activeScreen === 'auth' || activeScreen === 'intro') {
             if (pendingTestParamsRef.current && executeStartTestRef.current) {
@@ -1894,7 +1903,7 @@ export function App() {
               setScreen(nextScreenAfterAuthRef.current);
               setNextScreenAfterAuth(null);
             } else {
-              setScreen('dashboard');
+              setScreen(isUserAdmin ? 'admin' : 'dashboard');
             }
           }
         }
@@ -1922,8 +1931,19 @@ export function App() {
           !VALID_SCREENS.includes(rawUrlScreen as ScreenType);
 
         if (isAuthOrIntroOrEmpty) {
-          console.log('[Auth Flow] Authenticated user on root/intro/auth screen. Routing to dashboard...');
-          const target = nextScreenAfterAuthRef.current || 'dashboard';
+          console.log('[Auth Flow] Authenticated user on root/intro/auth screen. Routing to destination...');
+          const savedActiveScreen = localStorage.getItem('boardly_active_screen');
+          let target: ScreenType = isUserAdmin ? 'admin' : 'dashboard';
+          if (savedActiveScreen && VALID_SCREENS.includes(savedActiveScreen as ScreenType)) {
+            if (savedActiveScreen === 'admin') {
+              if (isUserAdmin) target = 'admin';
+            } else {
+              target = savedActiveScreen as ScreenType;
+            }
+          }
+          if (nextScreenAfterAuthRef.current) {
+            target = nextScreenAfterAuthRef.current;
+          }
           setScreen(target);
           setNextScreenAfterAuth(null);
         }
@@ -1939,27 +1959,28 @@ export function App() {
       };
     }
 
-    // 1. Initial Session Check on app load with explicit safety timeout (3500ms max)
+    // 1. Initial Session Check on app load with explicit safety timeout (4500ms max)
+    let initialCheckResolved = false;
     let splashTimeoutTimer: any = setTimeout(() => {
       if (!isSubscribed) return;
-      console.warn('[Splash Screen Safety Timeout] Initial session check exceeded threshold. Releasing splash lock to allow user recovery.');
-      setAuthTimedOut(true);
-      setAuthLoading(false);
-      setProfileSyncing(false);
-    }, 3500);
+      if (!initialCheckResolved) {
+        console.warn('[Splash Screen Safety Timeout] Initial session check exceeded threshold. Releasing splash lock to allow user recovery.');
+        setAuthTimedOut(true);
+        setAuthLoading(false);
+        setProfileSyncing(false);
+      }
+    }, 4500);
 
-    withTimeout(
-      supabase.auth.getSession(),
-      2500,
-      { data: { session: null }, error: null } as any,
-      'supabase.auth.getSession'
-    )
-      .then(({ data, error }) => {
+    const initSession = async () => {
+      try {
+        const { data, error } = await withTimeout(
+          supabase.auth.getSession(),
+          3000,
+          { data: { session: null }, error: null } as any,
+          'supabase.auth.getSession'
+        );
+
         if (!isSubscribed) return;
-        if (splashTimeoutTimer) {
-          clearTimeout(splashTimeoutTimer);
-          splashTimeoutTimer = null;
-        }
         if (error) {
           console.warn('[getSession warning]:', error);
         }
@@ -1969,30 +1990,41 @@ export function App() {
         setCurrentUser(user);
 
         if (user) {
-          processAuthUser(user, 'getSession');
+          await processAuthUser(user, 'getSession');
         } else {
           setUserProfile(null);
         }
-
-        setAuthLoading(false);
-      })
-      .catch((err) => {
+      } catch (err) {
+        console.error('[getSession exception]:', err);
+        if (isSubscribed) {
+          setAuthError('Unable to connect to authentication server.');
+        }
+      } finally {
+        initialCheckResolved = true;
         if (splashTimeoutTimer) {
           clearTimeout(splashTimeoutTimer);
           splashTimeoutTimer = null;
         }
-        console.error('[getSession exception]:', err);
         if (isSubscribed) {
           setAuthLoading(false);
-          setAuthError('Unable to connect to authentication server.');
+          setProfileSyncing(false);
         }
-      });
+      }
+    };
+
+    initSession();
 
     // 2. Real-time Auth State Change Listener
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
+    } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isSubscribed) return;
+
+      // Ignore INITIAL_SESSION event because initSession() handles initial load deterministically with full profile sync
+      if (event === 'INITIAL_SESSION') {
+        return;
+      }
+
       if (splashTimeoutTimer) {
         clearTimeout(splashTimeoutTimer);
         splashTimeoutTimer = null;
@@ -2001,8 +2033,8 @@ export function App() {
       const user = session?.user ?? null;
       setCurrentUser(user);
 
-      if (user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION' || event === 'PASSWORD_RECOVERY')) {
-        processAuthUser(user, event);
+      if (user && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'PASSWORD_RECOVERY')) {
+        await processAuthUser(user, event);
       } else if (!user) {
         setUserProfile(null);
       }
@@ -2022,7 +2054,7 @@ export function App() {
   }, []);
 
   // Verify active student session exists in database on protected page load / screen transition (throttled to avoid DB churn)
-  const lastUserVerificationRef = useRef<number>(0);
+  const lastUserVerificationRef = useRef<number>(Date.now());
   useEffect(() => {
     if (!currentUser) return;
     const isUserAdmin = Boolean(currentUser.email && isAdminEmail(currentUser.email));
