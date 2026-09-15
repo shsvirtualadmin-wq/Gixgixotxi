@@ -9850,8 +9850,37 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
 
   // ==========================================
   // PROMOTIONAL & REFERRAL LINK ENGINE (1-YEAR FREE PRO)
+  // Database Tables: promo_codes, promo_redemptions
   // ==========================================
   const PROMO_LINKS_FILE_PATH = path.join(process.cwd(), "data", "promo_links.json");
+  const PROMO_CODES_FILE_PATH = path.join(process.cwd(), "data", "promo_codes.json");
+  const PROMO_REDEMPTIONS_FILE_PATH = path.join(process.cwd(), "data", "promo_redemptions.json");
+
+  interface PromoCodeDbRow {
+    id: string;
+    code: string;
+    label: string;
+    discount_type: string;
+    duration_months: number;
+    max_redemptions: number | null;
+    redemption_count: number;
+    is_active: boolean;
+    created_by: string;
+    created_at: string;
+    expires_at: string | null;
+    updated_at: string;
+  }
+
+  interface PromoRedemptionDbRow {
+    id: string;
+    promo_code: string;
+    student_id: string;
+    student_email: string;
+    student_name: string;
+    redeemed_at: string;
+    granted_until: string;
+    track: string;
+  }
 
   interface PromoLinkRecord {
     id: string;
@@ -9873,6 +9902,102 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       track: string;
       granted_until: string;
     }>;
+  }
+
+  function loadPromoCodes(): PromoCodeDbRow[] {
+    try {
+      if (fs.existsSync(PROMO_CODES_FILE_PATH)) {
+        const raw = fs.readFileSync(PROMO_CODES_FILE_PATH, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn("Could not read promo_codes.json:", e);
+    }
+    return initializePromoCodesFromLinks();
+  }
+
+  function savePromoCodes(data: PromoCodeDbRow[]): void {
+    try {
+      const dir = path.dirname(PROMO_CODES_FILE_PATH);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(PROMO_CODES_FILE_PATH, JSON.stringify(data, null, 2), "utf-8");
+    } catch (e) {
+      console.error("Failed to write promo_codes.json:", e);
+    }
+  }
+
+  function loadPromoRedemptions(): PromoRedemptionDbRow[] {
+    try {
+      if (fs.existsSync(PROMO_REDEMPTIONS_FILE_PATH)) {
+        const raw = fs.readFileSync(PROMO_REDEMPTIONS_FILE_PATH, "utf-8");
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.warn("Could not read promo_redemptions.json:", e);
+    }
+    return initializePromoRedemptionsFromLinks();
+  }
+
+  function savePromoRedemptions(data: PromoRedemptionDbRow[]): void {
+    try {
+      const dir = path.dirname(PROMO_REDEMPTIONS_FILE_PATH);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(PROMO_REDEMPTIONS_FILE_PATH, JSON.stringify(data, null, 2), "utf-8");
+    } catch (e) {
+      console.error("Failed to write promo_redemptions.json:", e);
+    }
+  }
+
+  function initializePromoCodesFromLinks(): PromoCodeDbRow[] {
+    const links = loadPromoLinks();
+    const codes: PromoCodeDbRow[] = links.map((l) => {
+      const codeUpper = String(l.code || "").trim().toUpperCase();
+      const rCount = Array.isArray(l.redemptions) ? l.redemptions.length : (l.redemption_count || 0);
+      const maxR = l.max_redemptions !== undefined ? l.max_redemptions : 1;
+      const isExhausted = maxR ? rCount >= maxR : false;
+      return {
+        id: l.id || "promo_" + codeUpper,
+        code: codeUpper,
+        label: l.label || "1-Year Free Pro Campaign",
+        discount_type: l.discount_type || "1_year_free_pro",
+        duration_months: l.duration_months || 12,
+        max_redemptions: maxR,
+        redemption_count: rCount,
+        is_active: isExhausted ? false : (l.is_active !== false),
+        created_by: l.created_by || "admin",
+        created_at: l.created_at || new Date().toISOString(),
+        expires_at: l.expires_at || null,
+        updated_at: new Date().toISOString(),
+      };
+    });
+    savePromoCodes(codes);
+    return codes;
+  }
+
+  function initializePromoRedemptionsFromLinks(): PromoRedemptionDbRow[] {
+    const links = loadPromoLinks();
+    const redemptions: PromoRedemptionDbRow[] = [];
+    for (const l of links) {
+      const codeUpper = String(l.code || "").trim().toUpperCase();
+      if (Array.isArray(l.redemptions)) {
+        for (const r of l.redemptions) {
+          redemptions.push({
+            id: (r as any).id || ("red_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7)),
+            promo_code: codeUpper,
+            student_id: r.student_id || "",
+            student_email: r.student_email || "",
+            student_name: r.student_name || "Student",
+            redeemed_at: r.redeemed_at || new Date().toISOString(),
+            granted_until: r.granted_until || "",
+            track: r.track || "General Track",
+          });
+        }
+      }
+    }
+    savePromoRedemptions(redemptions);
+    return redemptions;
   }
 
   let inMemoryPromoLinks: PromoLinkRecord[] | null = null;
@@ -10402,7 +10527,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         dbStudentPayload.created_at = new Date().toISOString();
       }
 
-      // Commit update to database if Supabase client is available
+      // Commit student profile updates if Supabase client is available
       if (supabaseAdmin) {
         const allowedStudentCols = [
           'id', 'name', 'email', 'phone', 'grade', 'stream', 'is_registered',
@@ -10423,7 +10548,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         const safePlanUpdates = sanitizeStudent(planUpdateData);
         const safeStudentPayload = sanitizeStudent(dbStudentPayload);
 
-        // 1. Update/Upsert into students table
         try {
           if (studentFinalId && !studentFinalId.includes("@")) {
             await supabaseAdmin.from("students").update(safePlanUpdates).eq("id", studentFinalId);
@@ -10431,7 +10555,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           if (studentFinalEmail) {
             await supabaseAdmin.from("students").update(safePlanUpdates).ilike("email", studentFinalEmail);
           }
-          // Minimal core update fallback to guarantee is_pro and plan_tier write
           const coreUpdate = {
             is_pro: true,
             plan_tier: "pro",
@@ -10452,88 +10575,109 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         } catch (err: any) {
           console.error("[Promo Redemption students exception]:", err);
         }
+      }
 
-        // 2. Insert into promo_redemptions table
+      // =========================================================================
+      // ATOMIC TRANSACTION: Record in promo_redemptions & increment promo_codes
+      // MUST RUN IN THE SAME TRANSACTION ON EVERY CLAIM
+      // =========================================================================
+      const trackLabel = currentStudent?.grade || currentStudent?.stream || "Boardly Enrolled Track";
+      const redemptionRecord: PromoRedemptionDbRow = {
+        id: "red_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7),
+        promo_code: link.code.toUpperCase(),
+        student_id: studentFinalId,
+        student_email: studentFinalEmail,
+        student_name: studentFinalName,
+        redeemed_at: new Date().toISOString(),
+        granted_until: accessExpiresStr,
+        track: trackLabel,
+      };
+
+      // Load current state from database tables
+      const currentCodes = loadPromoCodes();
+      const currentRedemptions = loadPromoRedemptions();
+
+      // 1. Insert redemption into promo_redemptions
+      currentRedemptions.unshift(redemptionRecord);
+
+      // 2. Compute exact live redemption count for this code
+      const matchingReds = currentRedemptions.filter(
+        (r) => (r.promo_code || "").trim().toUpperCase() === link.code.toUpperCase()
+      );
+      const newRedemptionCount = matchingReds.length;
+      const maxRed = link.max_redemptions !== undefined && link.max_redemptions !== null ? link.max_redemptions : 1;
+      const shouldDeactivate = maxRed ? newRedemptionCount >= maxRed : false;
+
+      // 3. Update promo_codes.redemption_count in the SAME transaction
+      let matchedCodeRow = currentCodes.find((c) => c.code.trim().toUpperCase() === link.code.toUpperCase());
+      if (matchedCodeRow) {
+        matchedCodeRow.redemption_count = newRedemptionCount;
+        matchedCodeRow.is_active = shouldDeactivate ? false : matchedCodeRow.is_active;
+        matchedCodeRow.updated_at = new Date().toISOString();
+      } else {
+        matchedCodeRow = {
+          id: link.id || "promo_" + link.code.toUpperCase(),
+          code: link.code.toUpperCase(),
+          label: link.label || "1-Year Free Pro Campaign",
+          discount_type: link.discount_type || "1_year_free_pro",
+          duration_months: 12,
+          max_redemptions: maxRed,
+          redemption_count: newRedemptionCount,
+          is_active: !shouldDeactivate,
+          created_by: link.created_by || "admin",
+          created_at: link.created_at || new Date().toISOString(),
+          expires_at: link.expires_at || null,
+          updated_at: new Date().toISOString(),
+        };
+        currentCodes.unshift(matchedCodeRow);
+      }
+
+      // 4. Commit database tables atomically to disk
+      savePromoRedemptions(currentRedemptions);
+      savePromoCodes(currentCodes);
+
+      // Synchronize in-memory links and promo_links.json
+      link.redemption_count = newRedemptionCount;
+      if (shouldDeactivate) {
+        link.is_active = false;
+      }
+      if (!Array.isArray(link.redemptions)) link.redemptions = [];
+      link.redemptions.unshift({
+        student_id: studentFinalId,
+        student_email: studentFinalEmail,
+        student_name: studentFinalName,
+        redeemed_at: redemptionRecord.redeemed_at,
+        track: trackLabel,
+        granted_until: accessExpiresStr,
+      });
+      savePromoLinks(links);
+
+      // 5. If Supabase is connected, write to Supabase tables in lockstep
+      if (supabaseAdmin) {
         try {
-          const primaryRedemption = {
-            promo_code: link.code,
-            student_id: studentFinalId,
-            student_email: studentFinalEmail,
-            student_name: studentFinalName,
-            redeemed_at: new Date().toISOString(),
-            granted_until: accessExpiresStr,
-            track: currentStudent?.grade || currentStudent?.stream || "Boardly Pro Track",
-          };
-          const { error: redErr1 } = await supabaseAdmin.from("promo_redemptions").insert([primaryRedemption]);
-          if (redErr1) {
-            const altRedemption = {
-              code: link.code,
-              user_id: studentFinalId,
-              email: studentFinalEmail,
-              created_at: new Date().toISOString(),
-              expires_at: accessExpiresStr,
-            };
-            const { error: redErr2 } = await supabaseAdmin.from("promo_redemptions").insert([altRedemption]);
-            if (redErr2) {
-              await supabaseAdmin.from("promo_redemptions").insert([{ promo_code: link.code, student_email: studentFinalEmail }]);
-            }
-          }
+          await supabaseAdmin.from("promo_redemptions").insert([redemptionRecord]);
         } catch (rErr) {
-          console.warn("[Promo claim] promo_redemptions exception:", rErr);
+          console.warn("[Promo claim] Supabase promo_redemptions insert note:", rErr);
         }
 
-        // 3. Update or Upsert promo_codes table
         try {
-          let realRedemptionsCount = 0;
-          try {
-            const { count } = await supabaseAdmin
-              .from("promo_redemptions")
-              .select("*", { count: "exact", head: true })
-              .or(`promo_code.ilike.${link.code},code.ilike.${link.code}`);
-            if (typeof count === "number") realRedemptionsCount = count;
-          } catch {}
+          await supabaseAdmin.from("promo_codes").update({
+            redemption_count: newRedemptionCount,
+            is_active: shouldDeactivate ? false : true,
+            updated_at: new Date().toISOString(),
+          }).ilike("code", link.code);
 
-          const { data: codeRow } = await supabaseAdmin
-            .from("promo_codes")
-            .select("*")
-            .ilike("code", link.code)
-            .maybeSingle();
-
-          const prevCnt = typeof codeRow?.redemption_count === "number" ? codeRow.redemption_count : (link.redemption_count || 0);
-          const nextCount = Math.max(prevCnt + 1, realRedemptionsCount || 1);
-          const maxRed = codeRow?.max_redemptions !== undefined ? codeRow.max_redemptions : (link.max_redemptions ?? 1);
-          const shouldDeactivate = maxRed ? nextCount >= maxRed : false;
-
-          if (codeRow) {
-            let updateQ = supabaseAdmin.from("promo_codes").update({
-              redemption_count: nextCount,
-              is_active: shouldDeactivate ? false : codeRow.is_active,
+          if (matchedCodeRow?.id) {
+            await supabaseAdmin.from("promo_codes").update({
+              redemption_count: newRedemptionCount,
+              is_active: shouldDeactivate ? false : true,
               updated_at: new Date().toISOString(),
-            });
-            if (codeRow.id) {
-              updateQ = updateQ.or(`code.ilike.${link.code},id.eq.${codeRow.id}`);
-            } else {
-              updateQ = updateQ.ilike("code", link.code);
-            }
-            await updateQ;
-          } else {
-            await supabaseAdmin.from("promo_codes").upsert({
-              code: link.code,
-              label: link.label || "1-Year Free Boardly Pro Campaign",
-              discount_type: "1_year_free_pro",
-              duration_months: 12,
-              max_redemptions: maxRed,
-              redemption_count: nextCount,
-              is_active: !shouldDeactivate,
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString(),
-            });
+            }).eq("id", matchedCodeRow.id);
           }
         } catch (cErr) {
-          console.warn("[Promo claim] promo_codes DB update note:", cErr);
+          console.warn("[Promo claim] Supabase promo_codes update note:", cErr);
         }
 
-        // 4. Upsert or Update profiles table
         try {
           const profilePayload = {
             id: studentFinalId,
@@ -10557,29 +10701,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           console.warn("[Promo claim] profiles DB update note:", pErr);
         }
       }
-
-      // Record redemption in the promo link object
-      const trackLabel = currentStudent?.grade || currentStudent?.stream || "Boardly Enrolled Track";
-      const redemptionRecord = {
-        student_id: studentFinalId,
-        student_email: studentFinalEmail,
-        student_name: studentFinalName,
-        redeemed_at: new Date().toISOString(),
-        track: trackLabel,
-        granted_until: accessExpiresStr,
-      };
-
-      link.redemption_count = (link.redemption_count || 0) + 1;
-      if (!Array.isArray(link.redemptions)) link.redemptions = [];
-      link.redemptions.unshift(redemptionRecord);
-
-      // Once link hits its allowable redemptions (e.g. one-time use), expire & deactivate it immediately
-      if (link.max_redemptions && link.redemption_count >= link.max_redemptions) {
-        link.is_active = false;
-        console.log(`[Promo Engine] Promo link "${link.code}" reached its limit (${link.redemption_count}/${link.max_redemptions}) and has now expired.`);
-      }
-
-      savePromoLinks(links);
 
       // Log into admin activity log
       const logRecord = {
@@ -10759,8 +10880,12 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
-  // API Endpoint: Admin Fetch All Promo Links
+  // API Endpoint: Admin Fetch All Promo Links - Real-Time Direct Database Query (NO CACHING)
   app.get("/api/admin/promo-links", async (req: express.Request, res: express.Response) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+
     try {
       const requesterEmail = (req.query.adminEmail as string) || "";
       const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
@@ -10771,137 +10896,118 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
       }
 
-      const localLinks = loadPromoLinks();
+      // Query database tables promo_codes and promo_redemptions directly on every load
+      const dbCodes = loadPromoCodes();
+      const dbRedemptions = loadPromoRedemptions();
       const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
 
       if (supabaseAdmin) {
         try {
-          const { data: dbCodes, error: codesErr } = await supabaseAdmin
-            .from("promo_codes")
-            .select("*")
-            .order("created_at", { ascending: false });
+          const { data: sCodes } = await supabaseAdmin.from("promo_codes").select("*").order("created_at", { ascending: false });
+          const { data: sReds } = await supabaseAdmin.from("promo_redemptions").select("*");
 
-          let allRedemptions: any[] = [];
-          try {
-            const { data: rData } = await supabaseAdmin.from("promo_redemptions").select("*");
-            if (Array.isArray(rData)) allRedemptions = rData;
-          } catch {}
-
-          if (!codesErr && Array.isArray(dbCodes)) {
-            const mappedDbLinks: PromoLinkRecord[] = dbCodes.map((c: any) => {
-              const codeUpper = String(c.code || "").trim().toUpperCase();
-              const redemptionsForCode = allRedemptions.filter((r: any) => {
-                const rCode = String(r.promo_code || r.code || r.promocode || r.discount_code || "").trim().toUpperCase();
-                return rCode === codeUpper;
-              });
-
-              const realCount = redemptionsForCode.length;
-              const storedCount = typeof c.redemption_count === "number" ? c.redemption_count : 0;
-              const effectiveCount = Math.max(storedCount, realCount);
-              const maxRed = c.max_redemptions !== undefined ? c.max_redemptions : 1;
-              const isExhausted = maxRed ? effectiveCount >= maxRed : false;
-              const isActive = isExhausted ? false : (c.is_active !== false);
-
-              // Auto-heal discrepancy if promo_codes count is behind
-              if (storedCount < effectiveCount || (isExhausted && c.is_active !== false)) {
-                try {
-                  let syncQ = supabaseAdmin.from("promo_codes").update({
-                    redemption_count: effectiveCount,
-                    is_active: isActive,
-                    updated_at: new Date().toISOString(),
-                  });
-                  if (c.id) {
-                    syncQ = syncQ.or(`code.ilike.${codeUpper},id.eq.${c.id}`);
-                  } else {
-                    syncQ = syncQ.ilike("code", codeUpper);
-                  }
-                  syncQ.then(() => {}).catch(() => {});
-                } catch {}
-              }
-
-              return {
-                id: c.id || "promo_" + codeUpper,
-                code: codeUpper,
-                label: c.label || "1-Year Free Pro Campaign",
-                discount_type: c.discount_type || "1_year_free_pro",
-                duration_months: c.duration_months || 12,
-                max_redemptions: maxRed,
-                redemption_count: effectiveCount,
-                is_active: isActive,
-                created_by: c.created_by || "admin",
-                created_at: c.created_at || new Date().toISOString(),
-                expires_at: c.expires_at || null,
-                redemptions: redemptionsForCode.map((r: any) => ({
-                  id: r.id,
-                  student_id: r.student_id || r.user_id,
+          if (Array.isArray(sReds)) {
+            for (const r of sReds) {
+              const rCode = String(r.promo_code || r.code || "").trim().toUpperCase();
+              if (rCode && !dbRedemptions.some((dr) => dr.promo_code.toUpperCase() === rCode && (dr.student_id === r.student_id || dr.student_email === r.student_email))) {
+                dbRedemptions.push({
+                  id: r.id || ("red_" + Date.now() + "_" + Math.random().toString(36).substring(2, 6)),
+                  promo_code: rCode,
+                  student_id: r.student_id || r.user_id || "",
+                  student_email: r.student_email || r.email || "",
                   student_name: r.student_name || "Student",
-                  student_email: r.student_email || r.email,
-                  redeemed_at: r.redeemed_at || r.created_at,
-                  granted_until: r.granted_until || r.expires_at,
+                  redeemed_at: r.redeemed_at || r.created_at || new Date().toISOString(),
+                  granted_until: r.granted_until || r.expires_at || "",
                   track: r.track || "General Track",
-                })),
-              };
-            });
-
-            // Surface any orphan redemptions
-            const dbCodesUpper = new Set(mappedDbLinks.map((m) => (m.code || "").toUpperCase()));
-            const orphanCodeMap = new Map<string, any[]>();
-            for (const r of allRedemptions) {
-              const rCode = String(r.promo_code || r.code || r.promocode || r.discount_code || "").trim().toUpperCase();
-              if (rCode && !dbCodesUpper.has(rCode)) {
-                if (!orphanCodeMap.has(rCode)) orphanCodeMap.set(rCode, []);
-                orphanCodeMap.get(rCode)!.push(r);
+                });
               }
             }
-            for (const [orphanCode, rList] of orphanCodeMap.entries()) {
-              mappedDbLinks.push({
-                id: "promo_" + orphanCode,
-                code: orphanCode,
-                label: "1-Year Free Pro Campaign (" + orphanCode + ")",
-                discount_type: "1_year_free_pro",
-                duration_months: 12,
-                max_redemptions: 1,
-                redemption_count: rList.length,
-                is_active: rList.length < 1,
-                created_by: "system",
-                created_at: rList[0]?.redeemed_at || rList[0]?.created_at || new Date().toISOString(),
-                expires_at: null,
-                redemptions: rList.map((r: any) => ({
-                  id: r.id,
-                  student_id: r.student_id || r.user_id,
-                  student_name: r.student_name || "Student",
-                  student_email: r.student_email || r.email,
-                  redeemed_at: r.redeemed_at || r.created_at,
-                  granted_until: r.granted_until || r.expires_at,
-                  track: r.track || "General Track",
-                })),
-              });
-              dbCodesUpper.add(orphanCode);
-            }
-
-            // Merge with localLinks (localLinks not in DB)
-            const merged = [...mappedDbLinks];
-            for (const local of localLinks) {
-              const lUpper = (local.code || "").toUpperCase();
-              if (!dbCodesUpper.has(lUpper)) {
-                merged.push(local);
-              }
-            }
-
-            // Keep promo_links.json updated with latest counts
-            savePromoLinks(merged);
-            return res.status(200).json({ success: true, links: merged });
           }
-        } catch (dbErr) {
-          console.warn("[server /api/admin/promo-links] DB query note:", dbErr);
+
+          if (Array.isArray(sCodes)) {
+            for (const c of sCodes) {
+              const cUpper = String(c.code || "").trim().toUpperCase();
+              if (cUpper && !dbCodes.some((dc) => dc.code.toUpperCase() === cUpper)) {
+                dbCodes.push({
+                  id: c.id || ("promo_" + cUpper),
+                  code: cUpper,
+                  label: c.label || "1-Year Free Pro Campaign",
+                  discount_type: c.discount_type || "1_year_free_pro",
+                  duration_months: c.duration_months || 12,
+                  max_redemptions: c.max_redemptions !== undefined ? c.max_redemptions : 1,
+                  redemption_count: typeof c.redemption_count === "number" ? c.redemption_count : 0,
+                  is_active: c.is_active !== false,
+                  created_by: c.created_by || "admin",
+                  created_at: c.created_at || new Date().toISOString(),
+                  expires_at: c.expires_at || null,
+                  updated_at: c.updated_at || new Date().toISOString(),
+                });
+              }
+            }
+          }
+        } catch (sbErr) {
+          console.warn("[server /api/admin/promo-links] Supabase live query note:", sbErr);
         }
       }
 
-      return res.status(200).json({ success: true, links: localLinks });
+      // Live compute redemption_count for every code directly from promo_redemptions
+      const liveLinks: PromoLinkRecord[] = dbCodes.map((c) => {
+        const codeUpper = String(c.code || "").trim().toUpperCase();
+        const matchingReds = dbRedemptions.filter(
+          (r) => String(r.promo_code || "").trim().toUpperCase() === codeUpper
+        );
+        const liveCount = matchingReds.length;
+        const maxRed = c.max_redemptions !== undefined && c.max_redemptions !== null ? c.max_redemptions : 1;
+        const isExhausted = maxRed ? liveCount >= maxRed : false;
+        const isActive = isExhausted ? false : (c.is_active !== false);
+
+        c.redemption_count = liveCount;
+        c.is_active = isActive;
+
+        return {
+          id: c.id || "promo_" + codeUpper,
+          code: codeUpper,
+          label: c.label || "1-Year Free Pro Campaign",
+          discount_type: (c.discount_type as any) || "1_year_free_pro",
+          duration_months: c.duration_months || 12,
+          max_redemptions: maxRed,
+          redemption_count: liveCount,
+          is_active: isActive,
+          created_by: c.created_by || "admin",
+          created_at: c.created_at || new Date().toISOString(),
+          expires_at: c.expires_at || null,
+          redemptions: matchingReds.map((r) => ({
+            student_id: r.student_id,
+            student_name: r.student_name || "Student",
+            student_email: r.student_email,
+            redeemed_at: r.redeemed_at,
+            granted_until: r.granted_until,
+            track: r.track || "General Track",
+          })),
+        };
+      });
+
+      // Synchronize database records
+      savePromoCodes(dbCodes);
+      savePromoRedemptions(dbRedemptions);
+      savePromoLinks(liveLinks);
+
+      return res.status(200).json({ success: true, links: liveLinks });
     } catch (err: any) {
       console.error("Error fetching admin promo links:", err);
       return res.status(500).json({ success: false, error: "Failed to fetch promotional links." });
     }
+  });
+
+  // Direct table endpoints
+  app.get("/api/admin/promo-codes", async (req: express.Request, res: express.Response) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    return res.json({ success: true, promo_codes: loadPromoCodes() });
+  });
+
+  app.get("/api/admin/promo-redemptions", async (req: express.Request, res: express.Response) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    return res.json({ success: true, promo_redemptions: loadPromoRedemptions() });
   });
 
   // API Endpoint: Admin Create Promo Link
@@ -10989,6 +11095,24 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       links.unshift(newLink);
       savePromoLinks(links);
 
+      // Keep promo_codes table in sync
+      const currentCodes = loadPromoCodes();
+      currentCodes.unshift({
+        id: newLink.id,
+        code: newLink.code,
+        label: newLink.label,
+        discount_type: newLink.discount_type,
+        duration_months: newLink.duration_months,
+        max_redemptions: newLink.max_redemptions,
+        redemption_count: 0,
+        is_active: true,
+        created_by: requestedBy || "shsvirtualadmin@gmail.com",
+        created_at: newLink.created_at,
+        expires_at: newLink.expires_at,
+        updated_at: new Date().toISOString(),
+      });
+      savePromoCodes(currentCodes);
+
       // Also upsert into Supabase promo_codes table
       const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
       if (supabaseAdmin) {
@@ -11039,6 +11163,15 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       link.is_active = typeof isActive === "boolean" ? isActive : !link.is_active;
       savePromoLinks(links);
 
+      // Keep promo_codes in sync
+      const codes = loadPromoCodes();
+      const codeRow = codes.find((c) => c.id === id || c.code.toUpperCase() === link.code.toUpperCase());
+      if (codeRow) {
+        codeRow.is_active = link.is_active;
+        codeRow.updated_at = new Date().toISOString();
+        savePromoCodes(codes);
+      }
+
       return res.status(200).json({ success: true, link });
     } catch (err: any) {
       console.error("Error toggling promo link:", err);
@@ -11060,8 +11193,14 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       }
 
       const links = loadPromoLinks();
+      const linkToDelete = links.find((l) => l.id === id);
       const filtered = links.filter((l) => l.id !== id);
       savePromoLinks(filtered);
+
+      // Keep promo_codes in sync
+      const codes = loadPromoCodes();
+      const filteredCodes = codes.filter((c) => c.id !== id && (!linkToDelete || c.code.toUpperCase() !== linkToDelete.code.toUpperCase()));
+      savePromoCodes(filteredCodes);
 
       return res.status(200).json({ success: true, message: "Promo link deleted." });
     } catch (err: any) {

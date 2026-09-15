@@ -1,0 +1,72 @@
+[
+  {
+    "id": "red_1789444962079_9bk9l",
+    "promo_code": "BOARDLY-1Y-WELCOME",
+    "student_id": "student_verified_live",
+    "student_email": "student_verified_live@example.com",
+    "student_name": "student_verified_live",
+    "redeemed_at": "2026-09-15T04:02:42.079Z",
+    "granted_until": "2027-09-15T04:02:42.079Z",
+    "track": "Boardly Enrolled Track"
+  },
+  {
+    "id": "red_1789444898778_yoq34",
+    "promo_code": "TEST-LIVE-PROMO-99",
+    "student_id": "student_multi_2",
+    "student_email": "student_multi_2@test.com",
+    "student_name": "student_multi_2",
+    "redeemed_at": "2026-09-15T04:01:38.778Z",
+    "granted_until": "2027-09-15T04:01:38.778Z",
+    "track": "Boardly Enrolled Track"
+  },
+  {
+    "id": "red_1789444898758_iwstz",
+    "promo_code": "TEST-LIVE-PROMO-99",
+    "student_id": "student_multi_1",
+    "student_email": "student_multi_1@test.com",
+    "student_name": "student_multi_1",
+    "redeemed_at": "2026-09-15T04:01:38.758Z",
+    "granted_until": "2027-09-15T04:01:38.758Z",
+    "track": "Boardly Enrolled Track"
+  },
+  {
+    "id": "red_1789444890369_f4qdh",
+    "promo_code": "BOARDLY-1Y-SH5HE",
+    "student_id": "student_test_verify_1789444890351",
+    "student_email": "test_verify_1789444890351@example.com",
+    "student_name": "test_verify_1789444890351",
+    "redeemed_at": "2026-09-15T04:01:30.369Z",
+    "granted_until": "2027-09-15T04:01:30.369Z",
+    "track": "Boardly Enrolled Track"
+  },
+  {
+    "id": "red_1789444629120_mtgw2",
+    "promo_code": "TEST-VERIFY-123",
+    "student_id": "test_student_456",
+    "student_email": "teststudent456@gmail.com",
+    "student_name": "teststudent456",
+    "redeemed_at": "2026-09-13T10:01:53.359Z",
+    "granted_until": "2027-09-13T10:01:53.359Z",
+    "track": "Boardly Enrolled Track"
+  },
+  {
+    "id": "red_1789444629120_pmbxa",
+    "promo_code": "BOARDLY-1Y-USUTF",
+    "student_id": "test_student_123",
+    "student_email": "teststudent@example.com",
+    "student_name": "teststudent",
+    "redeemed_at": "2026-09-13T09:56:56.264Z",
+    "granted_until": "2027-09-13T09:56:56.264Z",
+    "track": "Boardly Enrolled Track"
+  },
+  {
+    "id": "red_1789444629120_i01sd",
+    "promo_code": "BOARDLY-1Y-2HB5V",
+    "student_id": "test_student_fix",
+    "student_email": "test_fix@example.com",
+    "student_name": "test_fix",
+    "redeemed_at": "2026-09-15T03:54:56.362Z",
+    "granted_until": "2027-09-15T03:54:56.362Z",
+    "track": "Boardly Enrolled Track"
+  }
+]

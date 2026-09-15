@@ -64,24 +64,9 @@ const DEFAULT_STARTER_LINKS: PromoLink[] = [
   },
 ];
 
-function getInitialPromoLinks(): PromoLink[] {
-  try {
-    const raw = typeof window !== 'undefined' ? localStorage.getItem(STORAGE_PROMO_LINKS_KEY) : null;
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
-      }
-    }
-  } catch {
-    // fallback
-  }
-  return DEFAULT_STARTER_LINKS;
-}
-
 export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ currentUser }) => {
-  const [links, setLinks] = useState<PromoLink[]>(getInitialPromoLinks);
-  const [loading, setLoading] = useState(false);
+  const [links, setLinks] = useState<PromoLink[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -105,15 +90,19 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
     setError(null);
     try {
       const adminMail = (currentUser?.email || 'shsvirtualadmin@gmail.com').trim().toLowerCase();
-      const resp = await apiFetch(`/api/admin/promo-links?adminEmail=${encodeURIComponent(adminMail)}`, {
+      // Fetch live data directly from server with no-store cache control
+      const resp = await apiFetch(`/api/admin/promo-links?_t=${Date.now()}&adminEmail=${encodeURIComponent(adminMail)}`, {
+        cache: 'no-store',
         headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache',
           'x-admin-email': adminMail,
         },
       });
       const data = await safeJsonResponse<{ success: boolean; links: PromoLink[]; error?: string }>(resp);
-      let incomingLinks = (data?.success && Array.isArray(data.links)) ? data.links : [];
+      let liveLinks = (data?.success && Array.isArray(data.links)) ? data.links : [];
 
-      // Enrich with direct Supabase queries if accessible
+      // Query database directly for live promo_codes and promo_redemptions without caching
       try {
         const { data: dbCodes } = await supabase.from('promo_codes').select('*').order('created_at', { ascending: false });
         const { data: dbRedemptions } = await supabase.from('promo_redemptions').select('*');
@@ -132,7 +121,7 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
             const maxR = c.max_redemptions !== undefined ? c.max_redemptions : 1;
             const isExhausted = maxR ? effectiveCount >= maxR : false;
 
-            const existingIdx = incomingLinks.findIndex((l) => (l.code || '').toUpperCase() === cUpper);
+            const existingIdx = liveLinks.findIndex((l) => (l.code || '').toUpperCase() === cUpper);
             const enrichedItem: PromoLink = {
               id: c.id || 'promo_' + cUpper,
               code: cUpper,
@@ -157,38 +146,27 @@ export const AdminPromoLinksManager: React.FC<AdminPromoLinksManagerProps> = ({ 
             };
 
             if (existingIdx >= 0) {
-              incomingLinks[existingIdx] = {
-                ...incomingLinks[existingIdx],
+              liveLinks[existingIdx] = {
+                ...liveLinks[existingIdx],
                 ...enrichedItem,
-                redemption_count: Math.max(incomingLinks[existingIdx].redemption_count || 0, effectiveCount),
-                redemptions: enrichedItem.redemptions?.length ? enrichedItem.redemptions : incomingLinks[existingIdx].redemptions,
+                redemption_count: effectiveCount,
+                redemptions: enrichedItem.redemptions?.length ? enrichedItem.redemptions : liveLinks[existingIdx].redemptions,
               };
             } else {
-              incomingLinks.push(enrichedItem);
+              liveLinks.push(enrichedItem);
             }
           }
         }
       } catch (dbErr) {
-        // Continue with incomingLinks from backend
+        // Continue with liveLinks from backend
       }
 
-      if (incomingLinks.length > 0) {
-        setLinks((prev) => {
-          const merged = [...incomingLinks];
-          for (const localLink of prev) {
-            const lCode = (localLink.code || '').toUpperCase();
-            if (!merged.some((m) => (m.code || '').toUpperCase() === lCode)) {
-              merged.push(localLink);
-            }
-          }
-          try {
-            localStorage.setItem(STORAGE_PROMO_LINKS_KEY, JSON.stringify(merged));
-          } catch {}
-          return merged;
-        });
-      }
+      // Update state directly with live data - no stale caching
+      setLinks(liveLinks);
     } catch (err: any) {
-      console.warn('[AdminPromoLinksManager] fetch note:', err);
+      console.warn('[AdminPromoLinksManager] live fetch note:', err);
+    } finally {
+      setLoading(false);
     }
   };
 

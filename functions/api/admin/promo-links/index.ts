@@ -106,7 +106,7 @@ export const onRequestGet = async (context: PagesContext) => {
               } else {
                 syncQ = syncQ.ilike("code", codeUpper);
               }
-              syncQ.then(() => {}).catch(() => {});
+              syncQ.then(() => {}, () => {});
             } catch {}
           }
 
