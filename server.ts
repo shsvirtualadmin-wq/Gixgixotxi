@@ -988,7 +988,7 @@ const inMemoryStudents: ServerStudentItem[] = [
   {
     id: "std-khadija-05",
     name: "Khadija Jameel",
-    email: "dj.khadijajameel19@gmail.com",
+    email: "demo.khadija.mdcat@boardly.test",
     phone: "+92 300 1234567",
     grade: "MDCAT",
     stream: "Medical (FSc Pre-Medical)",
@@ -1068,9 +1068,9 @@ const inMemoryMCQAttempts: MCQAttemptItem[] = [
   { id: "att-seed-14", studentId: "std-bilal-04", studentEmail: "bilal.raza.11th@gmail.com", subject: "Physics", chapter: "Vectors & Equilibrium", questionId: "p-q3", questionText: "Torque equilibrium conditions", selectedAnswer: 3, correctAnswer: 0, isCorrect: false, timeTakenSeconds: 36, createdAt: new Date(Date.now() - 5 * 86400000).toISOString() },
 
   // Khadija Jameel
-  { id: "att-seed-15", studentId: "std-khadija-05", studentEmail: "dj.khadijajameel19@gmail.com", subject: "Biology", chapter: "Bioenergetics & Respiration", questionId: "bio-k1", questionText: "Krebs cycle ATP and electron yields", selectedAnswer: 2, correctAnswer: 2, isCorrect: true, timeTakenSeconds: 20, createdAt: new Date(Date.now() - 1 * 86400000).toISOString() },
-  { id: "att-seed-16", studentId: "std-khadija-05", studentEmail: "dj.khadijajameel19@gmail.com", subject: "Chemistry", chapter: "Organic Synthesis", questionId: "ch-k1", questionText: "Grignard reagent preparation", selectedAnswer: 1, correctAnswer: 1, isCorrect: true, timeTakenSeconds: 22, createdAt: new Date(Date.now() - 3 * 86400000).toISOString() },
-  { id: "att-seed-17", studentId: "std-khadija-05", studentEmail: "dj.khadijajameel19@gmail.com", subject: "Physics", chapter: "Atomic & Nuclear Physics", questionId: "phy-k1", questionText: "Half-life and decay constant", selectedAnswer: 0, correctAnswer: 0, isCorrect: true, timeTakenSeconds: 28, createdAt: new Date(Date.now() - 7 * 86400000).toISOString() },
+  { id: "att-seed-15", studentId: "std-khadija-05", studentEmail: "demo.khadija.mdcat@boardly.test", subject: "Biology", chapter: "Bioenergetics & Respiration", questionId: "bio-k1", questionText: "Krebs cycle ATP and electron yields", selectedAnswer: 2, correctAnswer: 2, isCorrect: true, timeTakenSeconds: 20, createdAt: new Date(Date.now() - 1 * 86400000).toISOString() },
+  { id: "att-seed-16", studentId: "std-khadija-05", studentEmail: "demo.khadija.mdcat@boardly.test", subject: "Chemistry", chapter: "Organic Synthesis", questionId: "ch-k1", questionText: "Grignard reagent preparation", selectedAnswer: 1, correctAnswer: 1, isCorrect: true, timeTakenSeconds: 22, createdAt: new Date(Date.now() - 3 * 86400000).toISOString() },
+  { id: "att-seed-17", studentId: "std-khadija-05", studentEmail: "demo.khadija.mdcat@boardly.test", subject: "Physics", chapter: "Atomic & Nuclear Physics", questionId: "phy-k1", questionText: "Half-life and decay constant", selectedAnswer: 0, correctAnswer: 0, isCorrect: true, timeTakenSeconds: 28, createdAt: new Date(Date.now() - 7 * 86400000).toISOString() },
 ];
 
 export interface SavedTestResultItem {
@@ -5755,165 +5755,8 @@ ${scopeInstruction}${excludeInstruction}`;
     }
   });
 
-  // API Endpoint: Admin Remove Student (Full Account Wipe)
-  app.all("/api/admin/remove-student", async (req, res) => {
-    if (req.method === "OPTIONS") {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-      res.setHeader("Access-Control-Allow-Methods", "POST, DELETE, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      return res.status(204).end();
-    }
-
-    try {
-      const { user, isAdmin } = await verifyAuthToken(req);
-      if (!user || !isAdmin) {
-        return res.status(403).json({
-          success: false,
-          error: "Forbidden: Only administrators can wipe student accounts.",
-        });
-      }
-
-      const studentId = req.body?.studentId || req.query?.studentId || "";
-      const studentEmail = req.body?.studentEmail || req.query?.studentEmail || "";
-
-      if (!studentId && !studentEmail) {
-        return res.status(400).json({
-          success: false,
-          error: "Missing parameters: studentId or studentEmail is required.",
-        });
-      }
-
-      console.log(`[api/admin/remove-student] Initiating full wipe for studentId="${studentId}", email="${studentEmail}" by admin="${user.email}"`);
-
-      const db = getSupabaseAdminClient() || supabaseServer;
-      const errors: string[] = [];
-
-      let targetStudentId = studentId;
-      let targetStudentEmail = studentEmail;
-
-      if (db) {
-        // Resolve studentId or studentEmail if missing
-        if (!targetStudentId && targetStudentEmail) {
-          try {
-            const { data: sData } = await db.from("students").select("id").eq("email", targetStudentEmail).maybeSingle();
-            if (sData?.id) targetStudentId = sData.id;
-          } catch (rErr: any) {
-            console.warn(`[api/admin/remove-student] Warning resolving studentId by email:`, rErr?.message);
-          }
-        }
-        if (!targetStudentEmail && targetStudentId) {
-          try {
-            const { data: sData } = await db.from("students").select("email").eq("id", targetStudentId).maybeSingle();
-            if (sData?.email) targetStudentEmail = sData.email;
-          } catch (rErr: any) {
-            console.warn(`[api/admin/remove-student] Warning resolving studentEmail by id:`, rErr?.message);
-          }
-        }
-
-        // Step 1: Delete from related child tables first to prevent FK constraint issues
-        const childTasks: Array<{ table: string; field: string; val: string }> = [];
-
-        if (targetStudentId) {
-          childTasks.push(
-            { table: "test_results", field: "student_id", val: targetStudentId },
-            { table: "mcq_attempts", field: "student_id", val: targetStudentId },
-            { table: "student_mcq_usage", field: "student_id", val: targetStudentId },
-            { table: "mcq_usage", field: "student_id", val: targetStudentId },
-            { table: "student_progress", field: "student_id", val: targetStudentId },
-            { table: "ai_history", field: "student_id", val: targetStudentId },
-            { table: "study_buddy_history", field: "student_id", val: targetStudentId },
-            { table: "study_buddy_usage", field: "student_id", val: targetStudentId },
-            { table: "student_achievements", field: "student_id", val: targetStudentId },
-            { table: "achievements", field: "student_id", val: targetStudentId }
-          );
-        }
-
-        if (targetStudentEmail) {
-          childTasks.push(
-            { table: "student_mcq_usage", field: "email", val: targetStudentEmail },
-            { table: "mcq_usage", field: "email", val: targetStudentEmail }
-          );
-        }
-
-        for (const task of childTasks) {
-          try {
-            const { error } = await db.from(task.table).delete().eq(task.field, task.val);
-            if (error) {
-              console.warn(`[api/admin/remove-student] Warning clearing ${task.table} (${task.field}=${task.val}):`, error.message);
-              errors.push(`${task.table}: ${error.message}`);
-            } else {
-              console.log(`[api/admin/remove-student] Cleared ${task.table} (${task.field}=${task.val})`);
-            }
-          } catch (tErr: any) {
-            console.warn(`[api/admin/remove-student] Exception deleting ${task.table}:`, tErr?.message || String(tErr));
-          }
-        }
-
-        // Step 2: Delete from main 'students' table
-        if (targetStudentId) {
-          try {
-            const { error } = await db.from("students").delete().eq("id", targetStudentId);
-            if (error) {
-              console.error(`[api/admin/remove-student] Error deleting student row (id=${targetStudentId}):`, error.message);
-              errors.push(`students(id): ${error.message}`);
-            } else {
-              console.log(`[api/admin/remove-student] Successfully deleted student row (id=${targetStudentId})`);
-            }
-          } catch (sErr: any) {
-            console.error(`[api/admin/remove-student] Exception deleting student row (id=${targetStudentId}):`, sErr?.message);
-          }
-        }
-
-        if (targetStudentEmail) {
-          try {
-            const { error } = await db.from("students").delete().eq("email", targetStudentEmail);
-            if (error) {
-              console.warn(`[api/admin/remove-student] Warning deleting student row by email (${targetStudentEmail}):`, error.message);
-            } else {
-              console.log(`[api/admin/remove-student] Successfully deleted student row (email=${targetStudentEmail})`);
-            }
-          } catch (seErr: any) {
-            console.warn(`[api/admin/remove-student] Exception deleting student row by email:`, seErr?.message);
-          }
-        }
-
-        // Step 3: Revoke all active Supabase sessions server-side and delete auth user
-        const adminClient = getSupabaseAdminClient();
-        if (adminClient && targetStudentId && (adminClient as any).auth?.admin) {
-          try {
-            if (typeof (adminClient as any).auth.admin.signOut === 'function') {
-              await (adminClient as any).auth.admin.signOut(targetStudentId, 'global');
-              console.log(`[api/admin/remove-student] Revoked all sessions/JWTs for user (${targetStudentId})`);
-            }
-          } catch (soErr: any) {
-            console.warn(`[api/admin/remove-student] Auth admin signOut warning:`, soErr?.message);
-          }
-          try {
-            const { error: authErr } = await (adminClient as any).auth.admin.deleteUser(targetStudentId);
-            if (authErr) {
-              console.warn(`[api/admin/remove-student] Auth admin delete warning:`, authErr.message);
-            } else {
-              console.log(`[api/admin/remove-student] Deleted auth user (${targetStudentId}) from Supabase Auth`);
-            }
-          } catch (aErr: any) {
-            console.warn(`[api/admin/remove-student] Exception deleting auth user:`, aErr?.message);
-          }
-        }
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: "Student account, test history, and registration wiped successfully.",
-        warnings: errors.length > 0 ? errors : undefined,
-      });
-    } catch (err: any) {
-      console.error("[api/admin/remove-student exception]:", err);
-      return res.status(500).json({
-        success: false,
-        error: err?.message || "Failed to remove student account",
-      });
-    }
-  });
+  // API Endpoint: Admin Remove Student (Full Account Wipe) - delegates to comprehensive handlePermanentUserDeletion
+  app.all("/api/admin/remove-student", (req, res) => handlePermanentUserDeletion(req, res));
 
   // API Endpoint: Admin Update Student Status (Suspend / Reactivate)
   app.all("/api/admin/update-student-status", async (req, res) => {
@@ -11330,8 +11173,10 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req) || supabaseServer;
       const errors: string[] = [];
       const wipedSummary: Record<string, number | boolean> = {};
+      const idsToWipe = new Set<string>();
+      if (studentId) idsToWipe.add(studentId);
 
-      // Resolve missing studentId or studentEmail if one is missing
+      // Resolve missing studentId or studentEmail, and gather all historical IDs for this email
       if (supabaseAdmin) {
         if (!studentEmail && studentId) {
           try {
@@ -11342,15 +11187,30 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
               if (p?.email) studentEmail = p.email.trim().toLowerCase();
             }
           } catch {}
-        } else if (!studentId && studentEmail) {
+        }
+        if (studentEmail) {
           try {
-            const { data: s } = await supabaseAdmin.from("students").select("id").ilike("email", studentEmail).maybeSingle();
-            if (s?.id) studentId = s.id;
-            if (!studentId) {
-              const { data: p } = await supabaseAdmin.from("profiles").select("id").ilike("email", studentEmail).maybeSingle();
-              if (p?.id) studentId = p.id;
+            const { data: sList } = await supabaseAdmin.from("students").select("id").ilike("email", studentEmail);
+            if (Array.isArray(sList)) {
+              for (const row of sList) {
+                if (row?.id) idsToWipe.add(row.id);
+              }
             }
-          } catch {}
+            const { data: pList } = await supabaseAdmin.from("profiles").select("id").ilike("email", studentEmail);
+            if (Array.isArray(pList)) {
+              for (const row of pList) {
+                if (row?.id) idsToWipe.add(row.id);
+              }
+            }
+            const { data: tList } = await supabaseAdmin.from("test_results").select("student_id").ilike("student_email", studentEmail);
+            if (Array.isArray(tList)) {
+              for (const row of tList) {
+                if (row?.student_id) idsToWipe.add(row.student_id);
+              }
+            }
+          } catch (rErr) {
+            console.warn("[remove-student] Resolution of associated IDs note:", rErr);
+          }
         }
       }
 
@@ -11359,8 +11219,9 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         if (!studentEmail && studentId && s.id === studentId && s.email) {
           studentEmail = s.email.trim().toLowerCase();
         }
-        if (!studentId && studentEmail && s.email && s.email.trim().toLowerCase() === studentEmail) {
-          studentId = s.id;
+        if (studentEmail && s.email && s.email.trim().toLowerCase() === studentEmail) {
+          if (s.id) idsToWipe.add(s.id);
+          if (!studentId) studentId = s.id;
         }
       }
 
@@ -11372,7 +11233,14 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           const { data: avatarFiles } = await supabaseAdmin.storage.from("avatars").list("avatars");
           if (Array.isArray(avatarFiles) && avatarFiles.length > 0) {
             const filesToRemove = avatarFiles
-              .filter((f: any) => f.name.includes(safeUserId) || (studentId && f.name.includes(studentId)))
+              .filter((f: any) => {
+                const name = String(f.name || "");
+                if (name.includes(safeUserId)) return true;
+                for (const uid of idsToWipe) {
+                  if (name.includes(uid)) return true;
+                }
+                return false;
+              })
               .map((f: any) => `avatars/${f.name}`);
             if (filesToRemove.length > 0) {
               await supabaseAdmin.storage.from("avatars").remove(filesToRemove);
@@ -11403,13 +11271,14 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         ];
 
         for (const tbl of childTablesWithStudentId) {
-          if (studentId) {
+          // Delete by all resolved IDs
+          for (const uid of idsToWipe) {
             try {
               const idCol = tbl === "admin_activity_logs" ? "target_student_id" : "student_id";
               const { error, count } = await supabaseAdmin
                 .from(tbl)
                 .delete({ count: "exact" })
-                .eq(idCol, studentId);
+                .eq(idCol, uid);
               if (error && !error.message?.includes("does not exist") && !error.message?.includes("not find column")) {
                 errors.push(`${tbl}(${idCol}): ${error.message}`);
               } else {
@@ -11420,6 +11289,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
             }
           }
 
+          // Delete by email for tables with email column
           if (studentEmail) {
             try {
               let emailCol = "student_email";
@@ -11463,8 +11333,8 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           }
 
           let deletedPromoRedemptionsCount = 0;
-          if (studentId) {
-            const { count } = await supabaseAdmin.from("promo_redemptions").delete({ count: "exact" }).eq("student_id", studentId);
+          for (const uid of idsToWipe) {
+            const { count } = await supabaseAdmin.from("promo_redemptions").delete({ count: "exact" }).eq("student_id", uid);
             deletedPromoRedemptionsCount += count || 0;
           }
           if (studentEmail) {
@@ -11501,9 +11371,9 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
 
         // 4. Delete from public parent tables: students & profiles
         try {
-          if (studentId) {
-            await supabaseAdmin.from("students").delete().eq("id", studentId);
-            await supabaseAdmin.from("profiles").delete().eq("id", studentId);
+          for (const uid of idsToWipe) {
+            await supabaseAdmin.from("students").delete().eq("id", uid);
+            await supabaseAdmin.from("profiles").delete().eq("id", uid);
           }
           if (studentEmail) {
             await supabaseAdmin.from("students").delete().ilike("email", studentEmail);
@@ -11515,41 +11385,47 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           console.warn("[remove-student] Error deleting students/profiles:", stErr?.message);
         }
 
-        // 5. Delete Supabase Auth User record (auth.users) via service role key
+        // 5. Delete Supabase Auth User records (auth.users) via service role key
         let authUserDeleted = false;
         const authAdmin = (supabaseAdmin as any).auth?.admin;
-        if (authAdmin && typeof authAdmin.deleteUser === "function") {
-          // A. Look up user by email in auth.users
+        if (authAdmin) {
+          // Invalidate active sessions first
+          for (const uid of idsToWipe) {
+            try {
+              if (typeof authAdmin.signOut === "function") {
+                await authAdmin.signOut(uid, "global");
+              }
+              if (typeof authAdmin.deleteUser === "function") {
+                const { error: delErr } = await authAdmin.deleteUser(uid);
+                if (!delErr) authUserDeleted = true;
+              }
+            } catch (aErr: any) {
+              console.warn(`[remove-student] Error deleting auth user ${uid}:`, aErr?.message);
+            }
+          }
+
+          // Also look up and delete any user with studentEmail
           if (studentEmail && typeof authAdmin.listUsers === "function") {
             try {
               const { data: authList, error: listErr } = await authAdmin.listUsers({ page: 1, perPage: 1000 });
               if (!listErr && authList?.users) {
-                const matchedAuth = authList.users.find(
+                const matchedAuths = authList.users.filter(
                   (u: any) => (u.email || "").trim().toLowerCase() === studentEmail.toLowerCase()
                 );
-                if (matchedAuth?.id) {
-                  const { error: delAuthErr } = await authAdmin.deleteUser(matchedAuth.id);
-                  if (!delAuthErr) {
-                    authUserDeleted = true;
-                  } else {
-                    console.warn("[remove-student] auth.admin.deleteUser by email error:", delAuthErr.message);
+                for (const matchedAuth of matchedAuths) {
+                  try {
+                    if (typeof authAdmin.signOut === "function") await authAdmin.signOut(matchedAuth.id, "global");
+                    if (typeof authAdmin.deleteUser === "function") {
+                      const { error: delAuthErr } = await authAdmin.deleteUser(matchedAuth.id);
+                      if (!delAuthErr) authUserDeleted = true;
+                    }
+                  } catch (delE: any) {
+                    console.warn("[remove-student] auth.admin.deleteUser by email error:", delE?.message);
                   }
                 }
               }
             } catch (listException) {
               console.warn("[remove-student] Exception listing auth users for deletion:", listException);
-            }
-          }
-
-          // B. If studentId is a UUID and user not deleted yet, call deleteUser with studentId directly
-          if (!authUserDeleted && studentId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId)) {
-            try {
-              const { error: delIdErr } = await authAdmin.deleteUser(studentId);
-              if (!delIdErr) {
-                authUserDeleted = true;
-              }
-            } catch (aErr: any) {
-              console.warn("[remove-student] Exception deleting auth user by id:", aErr?.message);
             }
           }
         }
@@ -11561,10 +11437,9 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       let memoryStudentsRemoved = 0;
       for (let i = inMemoryStudents.length - 1; i >= 0; i--) {
         const s = inMemoryStudents[i];
-        if (
-          (studentId && s.id === studentId) ||
-          (studentEmail && s.email && s.email.trim().toLowerCase() === studentEmail)
-        ) {
+        const matchId = idsToWipe.has(s.id);
+        const matchEmail = studentEmail && s.email && s.email.trim().toLowerCase() === studentEmail;
+        if (matchId || matchEmail) {
           inMemoryStudents.splice(i, 1);
           memoryStudentsRemoved++;
         }
@@ -11575,10 +11450,9 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       let memoryPaymentsRemoved = 0;
       for (let i = inMemoryPaymentRequests.length - 1; i >= 0; i--) {
         const p = inMemoryPaymentRequests[i];
-        if (
-          (studentId && p.student_id === studentId) ||
-          (studentEmail && p.student_email && p.student_email.trim().toLowerCase() === studentEmail)
-        ) {
+        const matchId = idsToWipe.has(p.student_id);
+        const matchEmail = studentEmail && p.student_email && p.student_email.trim().toLowerCase() === studentEmail;
+        if (matchId || matchEmail) {
           inMemoryPaymentRequests.splice(i, 1);
           memoryPaymentsRemoved++;
         }
@@ -11589,10 +11463,9 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       let memoryTestsRemoved = 0;
       for (let i = inMemoryTestResults.length - 1; i >= 0; i--) {
         const t = inMemoryTestResults[i];
-        if (
-          (studentId && t.student_id === studentId) ||
-          (studentEmail && t.student_email && t.student_email.trim().toLowerCase() === studentEmail)
-        ) {
+        const matchId = idsToWipe.has(t.student_id);
+        const matchEmail = studentEmail && t.student_email && t.student_email.trim().toLowerCase() === studentEmail;
+        if (matchId || matchEmail) {
           inMemoryTestResults.splice(i, 1);
           memoryTestsRemoved++;
         }
@@ -11604,10 +11477,9 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
 
       let sessionsRemoved = 0;
       persistentTestSessions.forEach((val, key) => {
-        if (
-          (studentId && val.student_id === studentId) ||
-          (studentEmail && val.student_email && val.student_email.trim().toLowerCase() === studentEmail)
-        ) {
+        const matchId = idsToWipe.has(val.student_id);
+        const matchEmail = studentEmail && val.student_email && val.student_email.trim().toLowerCase() === studentEmail;
+        if (matchId || matchEmail) {
           persistentTestSessions.delete(key);
           sessionsRemoved++;
         }
@@ -11617,22 +11489,79 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       }
       wipedSummary["persistentTestSessions_removed"] = sessionsRemoved;
 
-      // D. memoryActivityLogs
+      // Invalidate inMemoryActiveTestSessions
+      for (const [key, session] of inMemoryActiveTestSessions.entries()) {
+        const sId = (session as any).userId || (session as any).student_id;
+        const sEmail = (session as any).userEmail || (session as any).student_email;
+        const matchId = sId ? idsToWipe.has(sId) : false;
+        const matchEmail = studentEmail && sEmail && typeof sEmail === 'string' && sEmail.trim().toLowerCase() === studentEmail;
+        if (matchId || matchEmail) {
+          inMemoryActiveTestSessions.delete(key);
+        }
+      }
+
+      // D. inMemoryMCQAttempts
+      for (let i = inMemoryMCQAttempts.length - 1; i >= 0; i--) {
+        const a = inMemoryMCQAttempts[i];
+        const matchId = idsToWipe.has(a.studentId);
+        const matchEmail = studentEmail && a.studentEmail && a.studentEmail.trim().toLowerCase() === studentEmail;
+        if (matchId || matchEmail) {
+          inMemoryMCQAttempts.splice(i, 1);
+        }
+      }
+
+      // E. inMemoryStudyBuddyLogs
+      let buddyLogsRemoved = 0;
+      for (let i = inMemoryStudyBuddyLogs.length - 1; i >= 0; i--) {
+        const l = inMemoryStudyBuddyLogs[i];
+        const matchId = idsToWipe.has(l.student_id);
+        const matchEmail = studentEmail && l.student_email && l.student_email.trim().toLowerCase() === studentEmail;
+        if (matchId || matchEmail) {
+          inMemoryStudyBuddyLogs.splice(i, 1);
+          buddyLogsRemoved++;
+        }
+      }
+      if (buddyLogsRemoved > 0) {
+        savePersistentStudyBuddyLogs();
+      }
+      wipedSummary["study_buddy_logs_removed"] = buddyLogsRemoved;
+
+      // F. memoryActivityLogs
       for (let i = memoryActivityLogs.length - 1; i >= 0; i--) {
         const l = memoryActivityLogs[i];
-        if (
-          (studentId && l.target_student_id === studentId) ||
-          (studentEmail && l.target_student_email && l.target_student_email.trim().toLowerCase() === studentEmail)
-        ) {
+        const matchId = idsToWipe.has(l.target_student_id);
+        const matchEmail = studentEmail && l.target_student_email && l.target_student_email.trim().toLowerCase() === studentEmail;
+        if (matchId || matchEmail) {
           memoryActivityLogs.splice(i, 1);
         }
       }
 
-      // E. inMemoryUsageStore
-      if (studentId && inMemoryUsageStore) {
+      // G. inMemoryTestAttemptStore & inMemoryUsageStore (Monthly Usage Count Wipe)
+      if (inMemoryTestAttemptStore) {
+        for (const period of Object.keys(inMemoryTestAttemptStore)) {
+          for (const uid of idsToWipe) {
+            delete inMemoryTestAttemptStore[period][uid];
+          }
+          if (studentEmail) {
+            delete inMemoryTestAttemptStore[period][studentEmail];
+          }
+        }
+      }
+
+      if (inMemoryUsageStore) {
         for (const period of Object.keys(inMemoryUsageStore)) {
-          delete inMemoryUsageStore[period][studentId];
-          if (studentEmail) delete inMemoryUsageStore[period][studentEmail];
+          for (const uid of idsToWipe) {
+            delete inMemoryUsageStore[period][uid];
+          }
+          if (studentEmail) {
+            delete inMemoryUsageStore[period][studentEmail];
+          }
+        }
+      }
+
+      if (inMemoryPdfDownloadStore) {
+        for (const uid of idsToWipe) {
+          delete inMemoryPdfDownloadStore[uid];
         }
       }
 

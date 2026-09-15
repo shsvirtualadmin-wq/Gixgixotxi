@@ -96,10 +96,6 @@ export function saveHistoryOffline(historyItems: any[], userId?: string): void {
   try {
     const key = userId ? `${HISTORY_CACHE_KEY}_${userId}` : HISTORY_CACHE_KEY;
     localStorage.setItem(key, JSON.stringify(historyItems));
-    if (userId) {
-      // ALSO save to global key as fallback
-      localStorage.setItem(HISTORY_CACHE_KEY, JSON.stringify(historyItems));
-    }
   } catch (err) {
     console.warn('Failed to save offline history:', err);
   }
@@ -112,7 +108,7 @@ export function loadHistoryOffline(userId?: string): any[] {
   try {
     const map = new Map<string, any>();
 
-    // 1. Load from specific user key if provided
+    // 1. If userId is provided, ONLY load from that specific user's key
     if (userId) {
       const userKey = `${HISTORY_CACHE_KEY}_${userId}`;
       const rawUser = localStorage.getItem(userKey);
@@ -124,9 +120,10 @@ export function loadHistoryOffline(userId?: string): any[] {
           }
         }
       }
+      return Array.from(map.values());
     }
 
-    // 2. Load from global key
+    // 2. Load from global key (ONLY for unauthenticated guest)
     const rawGlobal = localStorage.getItem(HISTORY_CACHE_KEY);
     if (rawGlobal) {
       const parsed = JSON.parse(rawGlobal);
@@ -151,10 +148,29 @@ export function loadHistoryOffline(userId?: string): any[] {
  */
 export function clearHistoryOffline(userId?: string): void {
   try {
-    const key = userId ? `${HISTORY_CACHE_KEY}_${userId}` : HISTORY_CACHE_KEY;
-    localStorage.removeItem(key);
-    localStorage.removeItem(HISTORY_CACHE_KEY);
+    if (userId) {
+      localStorage.removeItem(`${HISTORY_CACHE_KEY}_${userId}`);
+    } else {
+      localStorage.removeItem(HISTORY_CACHE_KEY);
+    }
   } catch (err) {
     console.warn('Failed to clear offline history:', err);
+  }
+}
+
+/**
+ * Completely purge ALL offline test history for all users and guest
+ */
+export function clearAllHistoryOffline(): void {
+  try {
+    localStorage.removeItem(HISTORY_CACHE_KEY);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(HISTORY_CACHE_KEY)) {
+        localStorage.removeItem(k);
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to clear all offline history:', err);
   }
 }

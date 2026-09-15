@@ -39,25 +39,43 @@ export function getSeenQuestionsMap(studentId?: string): Map<string, SeenMcqReco
       }
     }
 
-    // Also merge from guest storage if user logged in recently
-    if (studentId && studentId !== 'guest') {
-      const guestRaw = localStorage.getItem(getStorageKey('guest'));
-      if (guestRaw) {
-        const guestParsed: SeenMcqRecord[] = JSON.parse(guestRaw);
-        if (Array.isArray(guestParsed)) {
-          for (const item of guestParsed) {
-            if (item && item.stem && !map.has(item.stem)) {
-              map.set(item.stem, item);
-            }
-          }
-        }
-      }
-    }
+    // Note: Do not automatically merge guest seen questions into a real student's session
+    // to keep student records cleanly isolated per account.
   } catch (err) {
     console.warn('[SeenTracker] Error loading seen questions from storage:', err);
   }
 
   return map;
+}
+
+/**
+ * Clear seen questions for a specific student or guest
+ */
+export function clearSeenQuestions(studentId?: string): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const key = getStorageKey(studentId);
+    localStorage.removeItem(key);
+  } catch (err) {
+    console.warn('[SeenTracker] Error clearing seen questions:', err);
+  }
+}
+
+/**
+ * Completely purge ALL seen question tracking records from localStorage
+ */
+export function clearAllSeenQuestions(): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(STORAGE_PREFIX)) {
+        localStorage.removeItem(k);
+      }
+    }
+  } catch (err) {
+    console.warn('[SeenTracker] Error clearing all seen questions:', err);
+  }
 }
 
 /**

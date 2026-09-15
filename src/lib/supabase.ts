@@ -731,13 +731,14 @@ export function clearAllClientAuthAndSessionData(): void {
       'boardly_pending_promo_code',
       'boardly_reopen_study_buddy',
       'boardly_deleted_resources',
-      'boardly_admin_promo_links',
+      'boardly_bookmarks',
+      'shs_offline_history_v1',
     ];
     specificKeysToRemove.forEach((key) => {
       try { localStorage.removeItem(key); } catch {}
     });
 
-    // 2. Remove dynamic pattern keys (boardly_profile_*, boardly_active_pro_grant_*, sb-*, supabase.*)
+    // 2. Remove dynamic pattern keys (boardly_profile_*, boardly_active_pro_grant_*, shs_offline_history_v1_*, boardly_seen_mcqs_*, sb-*, supabase.*)
     const keysToPurge: string[] = [];
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
@@ -745,6 +746,11 @@ export function clearAllClientAuthAndSessionData(): void {
         k.startsWith('boardly_profile_') ||
         k.startsWith('boardly_active_pro_grant_') ||
         k.startsWith('boardly_registration_') ||
+        k.startsWith('boardly_seen_mcqs_') ||
+        k.startsWith('shs_offline_history_v1') ||
+        k.startsWith('boardly_payment_proof_') ||
+        k.startsWith('boardly_notes_') ||
+        k.startsWith('boardly_highlights_') ||
         k.startsWith('sb-') ||
         k.startsWith('supabase.')
       )) {
@@ -3256,16 +3262,58 @@ export async function removeStudentAccountInSupabase(
       }
     }
 
+    const purgeLocalStudentCaches = () => {
+      if (typeof window === 'undefined') return;
+      try {
+        if (studentId) {
+          clearProfileCache(studentId);
+          localStorage.removeItem(`boardly_profile_${studentId}`);
+          localStorage.removeItem(`boardly_active_pro_grant_${studentId}`);
+          localStorage.removeItem(`shs_offline_history_v1_${studentId}`);
+          localStorage.removeItem(`boardly_seen_mcqs_${studentId}`);
+          localStorage.removeItem(`boardly_payment_proof_${studentId}`);
+          localStorage.removeItem(`boardly_notes_${studentId}`);
+          localStorage.removeItem(`boardly_highlights_${studentId}`);
+        }
+        if (studentEmail) {
+          const normEmail = studentEmail.toLowerCase().trim();
+          localStorage.removeItem(`boardly_active_pro_grant_${normEmail}`);
+        }
+
+        // If the wiped student matches currently cached student session, wipe client auth and session data
+        const cachedUserRaw = localStorage.getItem('boardly_cached_user');
+        const cachedProfileRaw = localStorage.getItem('boardly_cached_profile');
+        let currentWiped = false;
+        if (cachedUserRaw) {
+          try {
+            const u = JSON.parse(cachedUserRaw);
+            if ((studentId && u?.id === studentId) || (studentEmail && u?.email?.toLowerCase().trim() === studentEmail.toLowerCase().trim())) {
+              currentWiped = true;
+            }
+          } catch {}
+        }
+        if (cachedProfileRaw && !currentWiped) {
+          try {
+            const p = JSON.parse(cachedProfileRaw);
+            if ((studentId && p?.id === studentId) || (studentEmail && p?.email?.toLowerCase().trim() === studentEmail.toLowerCase().trim())) {
+              currentWiped = true;
+            }
+          } catch {}
+        }
+        if (currentWiped) {
+          clearAllClientAuthAndSessionData();
+        }
+
+        window.dispatchEvent(
+          new CustomEvent('boardly_user_permanently_deleted', {
+            detail: { studentId, studentEmail },
+          })
+        );
+      } catch (evtErr) {}
+    };
+
     if (resp.ok && resData.success) {
-      if (typeof window !== 'undefined') {
-        try {
-          window.dispatchEvent(
-            new CustomEvent('boardly_user_permanently_deleted', {
-              detail: { studentId, studentEmail },
-            })
-          );
-        } catch (evtErr) {}
-      }
+      purgeLocalStudentCaches();
       return { success: true, message: resData.message || 'Student account and all associated records permanently wiped.' };
     }
 
@@ -3304,15 +3352,7 @@ export async function removeStudentAccountInSupabase(
           deleted = true;
         }
         if (deleted) {
-          if (typeof window !== 'undefined') {
-            try {
-              window.dispatchEvent(
-                new CustomEvent('boardly_user_permanently_deleted', {
-                  detail: { studentId, studentEmail },
-                })
-              );
-            } catch (evtErr) {}
-          }
+          purgeLocalStudentCaches();
           return { success: true, message: 'Student account and records permanently wiped.' };
         }
       } catch (e) {
