@@ -729,6 +729,7 @@ export function clearAllClientAuthAndSessionData(): void {
       'boardly_active_test_session',
       'boardly_active_test_time',
       'boardly_pending_promo_code',
+      'boardly_pending_registration_data',
       'boardly_reopen_study_buddy',
       'boardly_deleted_resources',
       'boardly_bookmarks',

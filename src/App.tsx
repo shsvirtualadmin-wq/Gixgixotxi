@@ -3828,11 +3828,11 @@ export function App() {
                     }}
                   />
                 )}
-                {(screen === 'checkout' || screen === 'plan_selection') && (
+                {screen === 'checkout' && (
                   <CheckoutDuesPage
                     user={currentUser}
                     registrationData={pendingRegistrationData}
-                    initialPath={(new URLSearchParams(window.location.search).get('path') as any) || (screen === 'plan_selection' ? 'pro' : 'choose')}
+                    initialPath={(new URLSearchParams(window.location.search).get('path') as any) || 'choose'}
                     paymentStatus={userProfile?.payment_status || 'Unpaid'}
                     onContinueFreeTier={async () => {
                       const targetTrack = pendingRegistrationData?.category || 'NUST (NET)';
@@ -4330,7 +4330,7 @@ export function App() {
                     </div>
                   )
                 )}
-                {!['intro', 'dashboard', 'stats', 'guided_wizard', 'pricing', 'plan_selection', 'payment_required', 'grades_flow', 'group', 'auth', 'subjects', 'subject', 'duration', 'test', 'results', 'admin', 'profile'].includes(screen) && (
+                {!['intro', 'dashboard', 'stats', 'guided_wizard', 'checkout', 'pricing', 'plan_selection', 'payment_required', 'grades_flow', 'group', 'auth', 'subjects', 'subject', 'duration', 'test', 'results', 'admin', 'profile'].includes(screen) && (
                   !currentUser ? (
                     <IntroScreen
                       onContinue={() => setScreen('auth')}
