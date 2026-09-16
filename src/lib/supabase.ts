@@ -763,18 +763,16 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
   const isAdmin = isAdminEmail(email);
 
   // 1. Canonical: registration_completed
-  const hasAcademicTrack = Boolean(
-    data.grade &&
-    String(data.grade).trim() &&
-    data.grade !== 'General Student' &&
-    data.stream &&
-    String(data.stream).trim()
-  );
-  const isReg = isAdmin || Boolean(
-    data.registration_completed === true ||
-    data.enrolled_track_id ||
-    data.is_registered === true ||
-    hasAcademicTrack
+  // If explicitly true or 'true', registration is completed.
+  // If undefined/null, backwards-compatible fallback for database rows migrated from earlier schemas that already had an enrolled track.
+  // If explicitly false, registration is NOT completed.
+  const isReg = isAdmin || (
+    data.registration_completed !== false &&
+    Boolean(
+      data.registration_completed === true ||
+      data.registration_completed === 'true' ||
+      (data.registration_completed === undefined && (data.enrolled_track_id || (data.grade && String(data.grade).trim() && data.grade !== 'General Student')))
+    )
   );
 
   // 2. Canonical: enrolled tracks
@@ -857,6 +855,20 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
   };
 }
 
+/**
+ * Canonical check for student registration completion.
+ * The ONLY condition anywhere in the codebase that decides guided_wizard vs dashboard.
+ * Evaluates the student's actual profile/database record — not localStorage or synthesized aliases.
+ */
+export function isStudentRegistrationCompleted(
+  profile?: StudentProfile | null,
+  isAdmin?: boolean
+): boolean {
+  if (isAdmin) return true;
+  if (!profile) return false;
+  return profile.registration_completed === true;
+}
+
 // Helper to sync or create student profile in Supabase Postgres 'students' table
 export async function syncUserProfile(
   user: SupabaseUser,
@@ -905,14 +917,14 @@ export async function syncUserProfile(
 
     try {
       // Check if student exists by ID, or fallback to email
-      let { data: existing } = await supabase
+      let { data: existing, error: fetchErr } = await supabase
         .from('students')
         .select('*')
         .eq('id', user.id)
         .maybeSingle();
 
       if (!existing && user.email) {
-        const { data: existingByEmail } = await supabase
+        const { data: existingByEmail, error: fetchEmailErr } = await supabase
           .from('students')
           .select('*')
           .eq('email', user.email.toLowerCase().trim())
@@ -920,6 +932,37 @@ export async function syncUserProfile(
         if (existingByEmail) {
           existing = existingByEmail;
         }
+      }
+
+      // Check backend server profile endpoint before assuming student does not exist
+      if (!existing) {
+        try {
+          const sResp = await apiFetch(`/api/student-profile?id=${encodeURIComponent(user.id)}&email=${encodeURIComponent(user.email || '')}`);
+          const sData = await safeJsonResponse<{ profile?: any }>(sResp);
+          if (sData?.profile) {
+            existing = sData.profile;
+          }
+        } catch (serverProfileErr) {
+          console.warn('[syncUserProfile] Failed to query server for profile:', serverProfileErr);
+        }
+      }
+
+      // Check local cache before declaring a student brand-new or wiping anything
+      if (!existing) {
+        try {
+          const mem = profileMemoryCache.get(userId);
+          if (mem?.profile) {
+            existing = mem.profile;
+          } else {
+            const cachedStr = localStorage.getItem(`boardly_profile_${userId}`);
+            if (cachedStr) {
+              const parsed = JSON.parse(cachedStr);
+              if (parsed && (parsed.id === user.id || (user.email && parsed.email?.toLowerCase() === user.email.toLowerCase()))) {
+                existing = parsed;
+              }
+            }
+          }
+        } catch {}
       }
 
       let finalProfile: StudentProfile;
@@ -983,25 +1026,8 @@ export async function syncUserProfile(
 
         finalProfile = normalizeStudentProfileFromRow(combinedRow, user.id);
       } else {
-        // If database query returned no student record for user.id AND user.email,
-        // this is a brand-new user or an account that was permanently deleted by admin.
-        // Wipe any stale local caches for this user to guarantee clean onboarding!
-        try {
-          localStorage.removeItem(`boardly_profile_${userId}`);
-          localStorage.removeItem('boardly_cached_profile');
-          localStorage.removeItem('boardly_target_university');
-          localStorage.removeItem('boardly_registration_is_success');
-          localStorage.removeItem('boardly_registration_completed');
-          localStorage.removeItem('boardly_registration_step');
-          localStorage.removeItem('boardly_guided_wizard_step');
-          localStorage.removeItem(`boardly_active_pro_grant_${userId}`);
-          if (user.email) {
-            localStorage.removeItem(`boardly_active_pro_grant_${user.email.toLowerCase().trim()}`);
-            localStorage.removeItem(`boardly_profile_${user.email.toLowerCase().trim()}`);
-          }
-        } catch {}
-
-        // Insert new student record for genuine brand new signups
+        // Only reached if database, server, and local caches ALL confirmed no record exists at all.
+        // Genuine brand-new signup: create initial student record.
         const newDefaultProfile: StudentProfile = {
           ...defaultProfile,
           registration_completed: isAdmin,
@@ -1115,7 +1141,20 @@ export async function syncUserProfile(
     }
   })();
 
-  const timedSyncPromise = withTimeout(syncPromise, 6000, defaultProfile, `syncUserProfile(${userId})`);
+  // Do not fall back to an un-registered blank defaultProfile on timeout if a cached profile exists!
+  let cachedFallback: StudentProfile | null = null;
+  const memCached = profileMemoryCache.get(userId);
+  if (memCached?.profile) {
+    cachedFallback = memCached.profile;
+  } else {
+    try {
+      const stored = localStorage.getItem(`boardly_profile_${userId}`);
+      if (stored) cachedFallback = JSON.parse(stored);
+    } catch {}
+  }
+  const fallbackOnTimeout = cachedFallback || defaultProfile;
+
+  const timedSyncPromise = withTimeout(syncPromise, 6000, fallbackOnTimeout, `syncUserProfile(${userId})`);
   syncInFlightPromises.set(userId, timedSyncPromise);
   try {
     return await timedSyncPromise;
@@ -1870,6 +1909,20 @@ export async function completeOneQuestionRegistration(
     updated_at: new Date().toISOString(),
   };
 
+  // Also sync backend server memory so in-memory store and server endpoints immediately reflect registration
+  apiFetch('/api/admin/update-student-grade-stream', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      studentId: userId,
+      studentEmail: email,
+      grade: trackId,
+      stream: trackName,
+      registration_completed: true,
+      enrolled_track_id: trackId,
+    }),
+  }).catch(() => {});
+
   try {
     if (isSupabaseConfigured) {
       const { data, error } = await supabase
@@ -2577,6 +2630,8 @@ export async function updateStudentGradeAndStreamInSupabase(
             stream,
             subjects,
             assigned_classes: [`${grade} ${stream}`.trim()],
+            registration_completed: true,
+            enrolled_track_id: grade,
             is_registered: true,
             updated_at: new Date().toISOString(),
           })
@@ -2590,6 +2645,8 @@ export async function updateStudentGradeAndStreamInSupabase(
             .update({
               grade,
               stream,
+              registration_completed: true,
+              enrolled_track_id: grade,
               is_registered: true,
               updated_at: new Date().toISOString(),
             })
@@ -2605,6 +2662,8 @@ export async function updateStudentGradeAndStreamInSupabase(
             .update({
               grade,
               stream,
+              registration_completed: true,
+              enrolled_track_id: grade,
               is_registered: true,
               updated_at: new Date().toISOString(),
             })
@@ -2658,6 +2717,8 @@ export async function updateStudentGradeAndStreamInSupabase(
       stream,
       subjects,
       assigned_classes: [`${grade} ${stream}`.trim()],
+      registration_completed: true,
+      enrolled_track_id: grade,
       is_registered: true,
     };
 
@@ -2677,6 +2738,8 @@ export async function updateStudentGradeAndStreamInSupabase(
         .update({
           grade,
           stream,
+          registration_completed: true,
+          enrolled_track_id: grade,
           is_registered: true,
           updated_at: new Date().toISOString(),
         })
@@ -2690,6 +2753,8 @@ export async function updateStudentGradeAndStreamInSupabase(
           .update({
             grade,
             stream,
+            registration_completed: true,
+            enrolled_track_id: grade,
             is_registered: true,
             updated_at: new Date().toISOString(),
           })

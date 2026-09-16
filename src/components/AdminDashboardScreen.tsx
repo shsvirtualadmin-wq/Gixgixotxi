@@ -2037,7 +2037,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                         )}
 
                         {/* Registration Status Badge */}
-                        {Boolean(student.is_registered || (student.grade && student.grade !== 'General Student' && student.stream)) ? (
+                        {Boolean(student.registration_completed || student.is_registered) ? (
                           <span
                             className="text-[10px] font-extrabold bg-emerald-500/10 text-emerald-800 border border-emerald-500/20 px-2 py-0.5 rounded-lg flex items-center gap-1 shrink-0"
                             title="Student is registered with locked class track"
@@ -3222,7 +3222,7 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
                         No Track Assigned
                       </span>
                     )}
-                    {Boolean(selectedStudent.is_registered || (selectedStudent.grade && selectedStudent.grade !== 'General Student' && selectedStudent.stream)) ? (
+                    {Boolean(selectedStudent.registration_completed || selectedStudent.is_registered) ? (
                       <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                         Registered
                       </span>

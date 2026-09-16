@@ -765,6 +765,8 @@ export interface ServerStudentItem {
   phone?: string;
   grade: string;
   stream: string;
+  is_registered?: boolean;
+  registration_completed?: boolean;
   is_pro: boolean;
   package_name?: string;
   subscribed_plans?: string[];
@@ -783,6 +785,8 @@ const inMemoryStudents: ServerStudentItem[] = [
     phone: "+92 301 4567890",
     grade: "MDCAT",
     stream: "Medical (FSc Pre-Medical)",
+    is_registered: true,
+    registration_completed: true,
     is_pro: true,
     package_name: "MDCAT Pro Prep",
     subscribed_plans: ["MDCAT"],
@@ -797,6 +801,8 @@ const inMemoryStudents: ServerStudentItem[] = [
     phone: "+92 321 9876543",
     grade: "TCAT",
     stream: "Engineering (FSc Pre-Engineering)",
+    is_registered: true,
+    registration_completed: true,
     is_pro: true,
     package_name: "TCAT Pro Exam Pack",
     subscribed_plans: ["TCAT"],
@@ -811,6 +817,8 @@ const inMemoryStudents: ServerStudentItem[] = [
     phone: "+92 333 1122334",
     grade: "12th",
     stream: "Pre-Medical",
+    is_registered: true,
+    registration_completed: true,
     is_pro: false,
     package_name: "Free Trial",
     subscribed_plans: [],
@@ -825,6 +833,8 @@ const inMemoryStudents: ServerStudentItem[] = [
     phone: "+92 345 5544332",
     grade: "11th",
     stream: "Computer Science",
+    is_registered: true,
+    registration_completed: true,
     is_pro: true,
     package_name: "HSSC-I Pro Access",
     subscribed_plans: ["11th"],
@@ -839,6 +849,8 @@ const inMemoryStudents: ServerStudentItem[] = [
     phone: "+92 300 1234567",
     grade: "MDCAT",
     stream: "Medical (FSc Pre-Medical)",
+    is_registered: true,
+    registration_completed: true,
     is_pro: true,
     package_name: "Full Access MDCAT Mastery",
     subscribed_plans: ["MDCAT", "12th"],

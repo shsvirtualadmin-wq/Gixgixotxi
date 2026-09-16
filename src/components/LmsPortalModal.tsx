@@ -5,6 +5,7 @@ import {
   fetchStudentProfileFromSupabase,
   syncUserProfile,
   isAdminEmail,
+  isStudentRegistrationCompleted,
   User,
   StudentProfile,
 } from '../lib/supabase';
@@ -120,14 +121,7 @@ export const LmsPortalModal: React.FC<LmsPortalModalProps> = ({
   };
 
   const isAdmin = Boolean(currentUser?.email && isAdminEmail(currentUser.email));
-  const hasGradeAndStream = Boolean(
-    userProfile?.grade &&
-    userProfile?.grade.trim() &&
-    userProfile?.grade !== 'General Student' &&
-    userProfile?.stream &&
-    userProfile?.stream.trim()
-  );
-  const isRegisteredStudent = isAdmin || Boolean(userProfile?.is_registered) || hasGradeAndStream;
+  const isRegisteredStudent = isStudentRegistrationCompleted(userProfile, isAdmin);
 
   return (
     <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">

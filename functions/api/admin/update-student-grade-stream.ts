@@ -144,6 +144,7 @@ export const onRequestPost = async (context: PagesContext) => {
       stream: cleanStream,
       subjects,
       assigned_classes,
+      registration_completed: true,
       is_registered: true,
       updated_at: new Date().toISOString(),
     };
@@ -151,6 +152,7 @@ export const onRequestPost = async (context: PagesContext) => {
     const minimalPayload = {
       grade: cleanGrade,
       stream: cleanStream,
+      registration_completed: true,
       is_registered: true,
       updated_at: new Date().toISOString(),
     };

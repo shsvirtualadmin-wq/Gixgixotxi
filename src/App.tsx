@@ -92,7 +92,7 @@ import {
   validatePromoCode,
 } from './lib/promoCode';
 
-import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveStudentRegistration, submitPaymentProofApi, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, clearAllClientAuthAndSessionData, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack, completeOneQuestionRegistration } from './lib/supabase';
+import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveStudentRegistration, submitPaymentProofApi, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, clearAllClientAuthAndSessionData, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack, completeOneQuestionRegistration, isStudentRegistrationCompleted } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
@@ -859,16 +859,7 @@ export function App() {
   }, [userProfile, currentUser?.id]);
 
   const isAdmin = Boolean(currentUser?.email && isAdminEmail(currentUser.email));
-  const hasGradeAndStream = Boolean(
-    userProfile?.grade &&
-    userProfile?.grade.trim() &&
-    userProfile?.grade !== 'General Student' &&
-    userProfile?.stream &&
-    userProfile?.stream.trim()
-  );
-  const isRegisteredStudent = isAdmin ||
-    Boolean(userProfile?.is_registered) ||
-    hasGradeAndStream;
+  const isRegisteredStudent = isStudentRegistrationCompleted(userProfile, isAdmin);
 
   // Access Gating Rule: Boardly is 100% free and Pro for all users!
   const isStudentProOrPaid = true;
@@ -1089,6 +1080,9 @@ export function App() {
   const showCommunityModalRef = useRef(showCommunityModal);
   const currentUserRef = useRef(currentUser);
   const isRegisteredStudentRef = useRef(isRegisteredStudent);
+  useEffect(() => {
+    isRegisteredStudentRef.current = isRegisteredStudent;
+  }, [isRegisteredStudent]);
   const isAdminRef = useRef(isAdmin);
   const authBackScreenRef = useRef<ScreenType>('intro');
   const isExitingTestRef = useRef(false);
@@ -1333,30 +1327,18 @@ export function App() {
 
       // 3. Post-Signup Onboarding & Track Access Guard Enforcement
       if (!isAdmin) {
-        if (profileSyncing) return; // Wait for profile sync to finish
+        // Fix race condition: do NOT make a routing decision while userProfile is still null or syncing
+        if (profileSyncing || userProfile === null) return;
 
-        const activeProf = userProfile;
-        const hasAcademicTrack = Boolean(
-          activeProf?.grade &&
-          activeProf.grade.trim() &&
-          activeProf.grade !== 'General Student' &&
-          activeProf?.stream &&
-          activeProf.stream.trim()
-        );
-        const isUserRegistered = Boolean(
-          isAdmin ||
-          activeProf?.is_registered ||
-          hasAcademicTrack ||
-          isRegisteredStudent ||
-          localStorage.getItem('boardly_registration_is_success') === 'true'
-        );
+        const isUserRegistered = isStudentRegistrationCompleted(userProfile, isAdmin);
 
         if (!isUserRegistered) {
           if (screen !== 'guided_wizard' && screen !== 'auth' && screen !== 'intro') {
             setScreen('guided_wizard');
           }
         } else {
-          if (['payment_required', 'pricing', 'plan_selection', 'checkout'].includes(screen)) {
+          // Escape hatch: if a student is on guided_wizard or payment gates AND registration_completed is true, redirect to dashboard immediately!
+          if (screen === 'guided_wizard' || ['payment_required', 'pricing', 'plan_selection', 'checkout'].includes(screen)) {
             setScreen('dashboard');
           }
         }
@@ -1380,8 +1362,8 @@ export function App() {
   // Route Guard Enforcement for registered non-admin students
   useEffect(() => {
     if (currentUser && !isAdmin && isRegisteredStudent) {
-      if (screen === 'grades_flow' || screen === 'group') {
-        // Redirect selection screen attempts straight to their authorized dashboard
+      if (screen === 'grades_flow' || screen === 'group' || screen === 'guided_wizard') {
+        // Redirect selection screen and wizard attempts straight to their authorized dashboard
         setScreen('dashboard');
       }
     }
@@ -1701,20 +1683,13 @@ export function App() {
       // Sync student's previously seen questions from server database in the background
       syncSeenQuestionsWithServer(user.id, user.email).catch(() => {});
 
-      // 2. Check registration status
-      const validGrade = Boolean(
-        (profile?.grade && profile.grade.trim() && profile.grade !== 'General Student') ||
-        (userProfile?.grade && userProfile.grade.trim() && userProfile.grade !== 'General Student')
-      );
-      const validStream = Boolean(
-        (profile?.stream && profile.stream.trim()) ||
-        (userProfile?.stream && userProfile.stream.trim())
-      );
-      const isReg = isUserAdmin ||
-        Boolean(profile?.is_registered) ||
-        Boolean(userProfile?.is_registered) ||
-        (validGrade && validStream) ||
-        localStorage.getItem('boardly_registration_is_success') === 'true';
+      // 2. Check registration status: single source of truth is registration_completed
+      const resolvedProfile = profile || userProfile;
+      if (!isUserAdmin && !resolvedProfile) {
+        console.warn('[processAuthUser] Profile not resolved yet. Deferring registration routing decision until profile resolves.');
+        return;
+      }
+      const isReg = isStudentRegistrationCompleted(resolvedProfile, isUserAdmin);
 
       const hasHashToken = window.location.hash.includes('access_token');
       const hasSearchCode = window.location.search.includes('code=');
@@ -1747,7 +1722,7 @@ export function App() {
         } else {
           console.log('[Auth Flow] Returning Google OAuth user detected. Routing to destination...');
           const activeScreen = screenRef.current;
-          if (activeScreen === 'auth' || activeScreen === 'intro') {
+          if (activeScreen === 'auth' || activeScreen === 'intro' || activeScreen === 'guided_wizard') {
             if (pendingTestParamsRef.current && executeStartTestRef.current) {
               executeStartTestRef.current(pendingTestParamsRef.current);
             } else if (nextScreenAfterAuthRef.current) {
@@ -1771,6 +1746,12 @@ export function App() {
       } else {
         // Registered or Admin user on normal session restore / refresh / sign-in
         const activeScreen = screenRef.current;
+        if (activeScreen === 'guided_wizard') {
+          console.log('[Auth Flow] Registered user caught on guided_wizard. Activating escape hatch -> dashboard');
+          setScreen(isUserAdmin ? 'admin' : 'dashboard');
+          return;
+        }
+
         const params = new URLSearchParams(window.location.search);
         const rawUrlScreen = params.get('screen')?.trim();
         const isAuthOrIntroOrEmpty =
@@ -1785,7 +1766,7 @@ export function App() {
           console.log('[Auth Flow] Authenticated user on root/intro/auth screen. Routing to destination...');
           const savedActiveScreen = localStorage.getItem('boardly_active_screen');
           let target: ScreenType = isUserAdmin ? 'admin' : 'dashboard';
-          if (savedActiveScreen && VALID_SCREENS.includes(savedActiveScreen as ScreenType)) {
+          if (savedActiveScreen && VALID_SCREENS.includes(savedActiveScreen as ScreenType) && savedActiveScreen !== 'guided_wizard') {
             if (savedActiveScreen === 'admin') {
               if (isUserAdmin) target = 'admin';
             } else {
@@ -3301,7 +3282,7 @@ export function App() {
 
   const showSplash =
     authLoading ||
-    (profileSyncing && (!userProfile || !userProfile.is_registered)) ||
+    (profileSyncing && (!userProfile || !isStudentRegistrationCompleted(userProfile, isAdmin))) ||
     (authTimedOut && !currentUser && !userProfile);
 
   if (showSplash) {
@@ -3622,7 +3603,6 @@ export function App() {
                       } catch (err) {
                         console.error('Registration error:', err);
                       }
-                      localStorage.setItem('boardly_registration_is_success', 'true');
                       localStorage.setItem('boardly_active_screen', 'dashboard');
                       try {
                         await refreshUserProfile();
@@ -3667,11 +3647,16 @@ export function App() {
                     if (isUserAdmin || nextScreenAfterAuth === 'admin') {
                       setScreen('admin');
                       setNextScreenAfterAuth(null);
-                    } else if (!userProfile?.is_registered) {
+                    } else if (userProfile && !isStudentRegistrationCompleted(userProfile, isUserAdmin)) {
                       setScreen('guided_wizard');
-                    } else {
+                    } else if (userProfile && isStudentRegistrationCompleted(userProfile, isUserAdmin)) {
                       setScreen(nextScreenAfterAuth || 'dashboard');
                       setNextScreenAfterAuth(null);
+                    } else {
+                      if (nextScreenAfterAuth) {
+                        setScreen(nextScreenAfterAuth);
+                        setNextScreenAfterAuth(null);
+                      }
                     }
                   }} selectedGradeContext={selectedClass?.toString()} onBack={() => setScreen(authBackScreen || 'intro')} />
                 )}
