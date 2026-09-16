@@ -12,29 +12,6 @@ import {
   QuestionDifficulty,
   TestMode
 } from './types';
-import { PREBUILT_QUESTIONS, getPrebuiltQuestionsForSubject } from './data/prebuiltQuestions';
-import { generateTCATFullMockBank, getTCATPrebuiltQuestions } from './data/tcatPrebuiltQuestions';
-import { generateMDCATFullMockBank, getMDCATPrebuiltQuestions } from './data/mdcatPrebuiltQuestions';
-import {
-  generateNetFullMockBank,
-  generateFastFullMockBank,
-  generateEcatFullMockBank,
-  generateEteaFullMockBank,
-  generateNumsFullMockBank,
-  generateGikiFullMockBank,
-  generateUsatFullMockBank,
-  generateNedFullMockBank,
-  generatePieasFullMockBank,
-  generateNatFullMockBank,
-  generateIbaFullMockBank,
-  generateAkuFullMockBank,
-  generateMuetFullMockBank,
-  generateLumsFullMockBank,
-  generateNumlFullMockBank,
-  generateHitecFullMockBank,
-  generateNutechFullMockBank,
-  getEntranceExamQuestions,
-} from './data/entranceExamQuestions';
 import {
   getSeenStemsForStudent,
   recordQuestionsAsSeen,
@@ -58,8 +35,6 @@ import { HeaderLogo } from './components/HeaderLogo';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { IntroScreen } from './components/IntroScreen';
 import { StudentHomeDashboard } from './components/StudentHomeDashboard';
-import { TestScreen } from './components/TestScreen';
-import { ResultsScreen } from './components/ResultsScreen';
 import { ChunkErrorBoundary } from './components/ChunkErrorBoundary';
 import { lazyWithRetry } from './lib/lazyWithRetry';
 import { SiteSettingsProvider } from './context/SiteSettingsContext';
@@ -78,7 +53,9 @@ const DurationScreen = lazyWithRetry(() => import('./components/DurationScreen')
 const LmsAuthScreen = lazyWithRetry(() => import('./components/LmsAuthScreen').then(m => ({ default: m.LmsAuthScreen })), 'LmsAuth');
 const AdminDashboardScreen = lazyWithRetry(() => import('./components/AdminDashboardScreen').then(m => ({ default: m.AdminDashboardScreen })), 'AdminDashboard');
 const ClassStreamDashboard = lazyWithRetry(() => import('./components/ClassStreamDashboard').then(m => ({ default: m.ClassStreamDashboard })), 'ClassStream');
-import { StudentProfileView } from './components/StudentProfileView';
+const TestScreen = lazyWithRetry(() => import('./components/TestScreen').then(m => ({ default: m.TestScreen })), 'TestScreen');
+const ResultsScreen = lazyWithRetry(() => import('./components/ResultsScreen').then(m => ({ default: m.ResultsScreen })), 'ResultsScreen');
+const StudentProfileView = lazyWithRetry(() => import('./components/StudentProfileView').then(m => ({ default: m.StudentProfileView })), 'StudentProfileView');
 import { PromoCelebrationModal, PromoModalMode } from './components/PromoCelebrationModal';
 import {
   extractPromoCodeFromUrl,
@@ -592,24 +569,12 @@ export function App() {
   const [authTimedOut, setAuthTimedOut] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
-  // Hard timeout (8-10s) on loading state to prevent infinite spinning
+  // Ensure loading flags are resolved when auth completes
   useEffect(() => {
-    const masterTimeout = setTimeout(() => {
-      setAuthLoading((prevLoading) => {
-        setProfileSyncing((prevSyncing) => {
-          if (prevLoading || prevSyncing) {
-            console.warn('[Loading Guard] Overall loading state exceeded 8.5s threshold. Forcing retry/error state.');
-            setAuthTimedOut(true);
-            return false;
-          }
-          return prevSyncing;
-        });
-        return false;
-      });
-    }, 8500);
-
-    return () => clearTimeout(masterTimeout);
-  }, []);
+    if (!authLoading) {
+      setAuthTimedOut(false);
+    }
+  }, [authLoading]);
 
   // 1-Year Free Pro Promotional Link Modal States
   const [promoModalOpen, setPromoModalOpen] = useState<boolean>(false);
@@ -1059,6 +1024,7 @@ export function App() {
       if (screen === 'test' && activeQuestions.length === 0 && !localParsedSession) {
         const targetSub = selectedSubject || getSubjectsForClassAndGroup(selectedClass || 9, selectedGroup || 'Medical')[0] || 'Physics';
         const targetTop = testConfig?.customTopic;
+        const { getPrebuiltQuestionsForSubject } = await import('./data/prebuiltQuestions');
         const prebuiltPool = getPrebuiltQuestionsForSubject(targetSub, targetTop);
         if (prebuiltPool && prebuiltPool.length > 0) {
           const shuffled = [...prebuiltPool].sort(() => 0.5 - Math.random()).slice(0, 10);
@@ -1748,7 +1714,10 @@ export function App() {
             sign_up_method: 'Google',
             created_at: new Date().toISOString(),
           });
-          await processAuthUser(user, 'getSession');
+          // Process full database profile synchronization in background without blocking initial render
+          processAuthUser(user, 'getSession').catch((err) => {
+            console.warn('[initSession background profile sync error]:', err);
+          });
         } else {
           setUserProfile(null);
         }
@@ -2414,6 +2383,7 @@ export function App() {
       // If API attempt failed or returned no valid questions after retries, top up from authentic scoped prebuilt pool
       if (!batchAppended && !bgAbort.signal.aborted) {
         console.warn(`[MCQ Background Gen] Fallback topping up for ${targetSubject} at index ${currentQuestions.length}`);
+        const { getPrebuiltQuestionsForSubject } = await import('./data/prebuiltQuestions');
         const prebuiltPool = getPrebuiltQuestionsForSubject(
           targetSubject,
           targetTopic,
@@ -2558,6 +2528,7 @@ export function App() {
 
     // Entrance Tracks: Assemble questions from verified hardcoded banks, prioritizing unseen questions
     if (isTcat) {
+      const { generateTCATFullMockBank, getTCATPrebuiltQuestions } = await import('./data/tcatPrebuiltQuestions');
       const isTcatMock = params.isFullMock || targetSubject.toLowerCase().includes('tcat full') || targetSubject.toLowerCase().includes('tcat mock') || targetTotalCount >= 100;
       if (isTcatMock) {
         initialSet = deduplicateQuestions(generateTCATFullMockBank(params.groupSubjects || params.chapterName || targetTopic || targetSubject, seenStems));
@@ -2569,6 +2540,7 @@ export function App() {
         effectiveTargetTotalCount = initialSet.length;
       }
     } else if (isMdcat) {
+      const { generateMDCATFullMockBank, getMDCATPrebuiltQuestions } = await import('./data/mdcatPrebuiltQuestions');
       // MDCAT Track: Exclusively assemble questions from verified hardcoded bank, prioritizing unseen questions
       const isMdcatMock = params.isFullMock || targetSubject.toLowerCase().includes('mdcat full') || targetSubject.toLowerCase().includes('full mock') || targetTotalCount >= 180;
       if (isMdcatMock) {
@@ -2580,16 +2552,37 @@ export function App() {
       if (initialSet.length < targetTotalCount) {
         effectiveTargetTotalCount = initialSet.length;
       }
-    } else if (isNet) {
-      const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 100;
-      if (isMock) {
-        initialSet = deduplicateQuestions(generateNetFullMockBank(seenStems));
-      } else {
-        initialSet = deduplicateQuestions(getEntranceExamQuestions('NET', targetSubject, targetTotalCount, seenStems));
-      }
-      if (initialSet.length < targetTotalCount) {
-        effectiveTargetTotalCount = initialSet.length;
-      }
+    } else if (isNet || isFast || isEcat || isEtea || isNums || isGiki || isUsat || isNed || isPieas || isNat || isIba || isAku || isMuet || isLums || isNuml || isHitec || isNutech) {
+      const {
+        generateNetFullMockBank,
+        generateFastFullMockBank,
+        generateEcatFullMockBank,
+        generateEteaFullMockBank,
+        generateNumsFullMockBank,
+        generateGikiFullMockBank,
+        generateUsatFullMockBank,
+        generateNedFullMockBank,
+        generatePieasFullMockBank,
+        generateNatFullMockBank,
+        generateIbaFullMockBank,
+        generateAkuFullMockBank,
+        generateMuetFullMockBank,
+        generateLumsFullMockBank,
+        generateNumlFullMockBank,
+        generateHitecFullMockBank,
+        generateNutechFullMockBank,
+        getEntranceExamQuestions,
+      } = await import('./data/entranceExamQuestions');
+      if (isNet) {
+        const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 100;
+        if (isMock) {
+          initialSet = deduplicateQuestions(generateNetFullMockBank(seenStems));
+        } else {
+          initialSet = deduplicateQuestions(getEntranceExamQuestions('NET', targetSubject, targetTotalCount, seenStems));
+        }
+        if (initialSet.length < targetTotalCount) {
+          effectiveTargetTotalCount = initialSet.length;
+        }
     } else if (isFast) {
       const isMock = params.isFullMock || targetSubject.toLowerCase().includes('mock') || targetTotalCount >= 80;
       if (isMock) {
@@ -2762,8 +2755,10 @@ export function App() {
       if (initialSet.length < targetTotalCount) {
         effectiveTargetTotalCount = initialSet.length;
       }
-    } else {
+    }
+  } else {
       // 1. Instantly assemble initial questions from cache & prebuilt bank, prioritizing unseen questions
+      const { getPrebuiltQuestionsForSubject } = await import('./data/prebuiltQuestions');
       const cached = getCachedQuestions(targetSubject, targetTopic) || [];
       const prebuiltPool = getPrebuiltQuestionsForSubject(targetSubject, targetTopic, selectedClass, params.chapterName, params.subtopic, seenStems);
       const combinedPool = deduplicateQuestions([...cached, ...prebuiltPool]);
@@ -2839,6 +2834,7 @@ export function App() {
 
       if (initialSet.length === 0) {
         // Fallback: fetch without seen filter to serve revision set
+        const { getPrebuiltQuestionsForSubject } = await import('./data/prebuiltQuestions');
         const fallback = getPrebuiltQuestionsForSubject(targetSubject, targetTopic, selectedClass, params.chapterName, params.subtopic);
         if (fallback.length > 0) {
           initialSet = fallback;
@@ -3566,7 +3562,7 @@ export function App() {
                         );
                       }
                     }}
-                    onLoadPracticeBank={() => {
+                    onLoadPracticeBank={async () => {
                       setBgGenError(null);
                       const targetSub = testConfig?.subject || selectedSubject || 'Physics';
                       const targetTop = testConfig?.customTopic;
@@ -3577,6 +3573,7 @@ export function App() {
                       
                       const newSet = [...activeQuestions];
                       if (isTcat) {
+                        const { getTCATPrebuiltQuestions } = await import('./data/tcatPrebuiltQuestions');
                         const tcatPool = getTCATPrebuiltQuestions(targetSub, targetCount, targetTop, testConfig?.chapterName, undefined, seenStems);
                         for (const q of tcatPool) {
                           if (newSet.length >= targetCount) break;
@@ -3585,6 +3582,7 @@ export function App() {
                           }
                         }
                       } else if (isMdcatTest) {
+                        const { getMDCATPrebuiltQuestions } = await import('./data/mdcatPrebuiltQuestions');
                         const mdcatPool = getMDCATPrebuiltQuestions(targetSub, targetCount, targetTop, testConfig?.chapterName, undefined, seenStems);
                         for (const q of mdcatPool) {
                           if (newSet.length >= targetCount) break;
@@ -3593,6 +3591,7 @@ export function App() {
                           }
                         }
                       } else if (testConfig?.path && ['net', 'fast', 'ecat', 'etea', 'nums', 'giki', 'usat', 'ned', 'pieas', 'nat', 'iba', 'aku', 'muet', 'lums', 'numl', 'hitec', 'nutech'].includes(testConfig.path)) {
+                        const { getEntranceExamQuestions } = await import('./data/entranceExamQuestions');
                         const entrancePool = getEntranceExamQuestions(testConfig.path.toUpperCase(), targetSub, targetCount, seenStems);
                         for (const q of entrancePool) {
                           if (newSet.length >= targetCount) break;
@@ -3601,6 +3600,7 @@ export function App() {
                           }
                         }
                       } else {
+                        const { getPrebuiltQuestionsForSubject } = await import('./data/prebuiltQuestions');
                         const prebuiltPool = getPrebuiltQuestionsForSubject(targetSub, targetTop, selectedClass, testConfig?.chapterName, undefined, seenStems);
                         const prioritized = selectPrioritizedQuestions(prebuiltPool, targetCount, seenStems);
                         
