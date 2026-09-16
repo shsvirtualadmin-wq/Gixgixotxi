@@ -327,6 +327,18 @@ export const INSTITUTIONS: Record<string, Institution> = {
     logoUrl: '/logos/academic/uet-taxila.png',
     description: 'Official UET Taxila TCAT engineering entry test authority.',
   },
+  'uet-taxila': {
+    id: 'uet-taxila',
+    name: 'University of Engineering and Technology (UET Taxila)',
+    shortName: 'UET TCAT',
+    category: 'university',
+    bgGradient: 'from-[#0F172A] to-[#082F49]',
+    textColor: 'text-cyan-400',
+    borderColor: 'border-cyan-500/30',
+    badgeInitials: 'TCAT',
+    logoUrl: '/logos/academic/uet-taxila.png',
+    description: 'Official UET Taxila TCAT engineering entry test authority.',
+  },
   ecat: {
     id: 'ecat',
     name: 'UET Lahore (ECAT)',
@@ -485,6 +497,7 @@ export const R2_FALLBACK_URLS: Record<string, string> = {
   'iba-karachi': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000736c82118bb66504edef22ad.png',
   'iba karachi': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000736c82118bb66504edef22ad.png',
   numl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000001f108208b064cbd5b8dc77f5.png',
+  'uet-taxila': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png',
 };
 
 export const InstitutionBadge: React.FC<InstitutionBadgeProps> = ({
@@ -646,3 +659,113 @@ export function renderTargetUniversityBadge(targetUniStr?: string, size: 'sm' | 
     </button>
   );
 }
+
+export interface ExamTrackLogoProps {
+  id: string;
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  className?: string;
+  altText?: string;
+}
+
+export const ExamTrackLogo: React.FC<ExamTrackLogoProps> = ({
+  id,
+  size = 'xl',
+  className = '',
+  altText,
+}) => {
+  const normKey = (id || '').toLowerCase().trim();
+  const inst = INSTITUTIONS[normKey] || {
+    id,
+    name: id.toUpperCase(),
+    shortName: id.toUpperCase(),
+    category: 'university' as const,
+    bgGradient: '',
+    textColor: 'text-slate-700',
+    borderColor: '',
+    badgeInitials: id.slice(0, 4).toUpperCase(),
+  };
+
+  const canonicalId = (() => {
+    if (normKey === 'uet-taxila' || normKey === 'tcat') return 'uet-taxila';
+    if (normKey === 'ecat') return 'uet-taxila';
+    if (normKey === 'etea') return 'uet-peshawar';
+    if (normKey === 'usat' || normKey === 'hec-usat' || normKey === 'hec usat') return 'usat';
+    if (normKey === 'nat') return 'nat';
+    if (normKey === 'pmdc') return 'pmdc';
+    if (normKey === 'fbise') return 'fbise';
+    if (normKey === 'nums') return 'nums';
+    if (normKey === 'aku' || normKey === 'agakhan' || normKey === 'aga-khan') return 'aku';
+    if (normKey === 'iba' || normKey === 'iba-karachi') return 'iba';
+    if (normKey === 'muet' || normKey === 'mehran') return 'muet';
+    if (normKey === 'lums') return 'lums';
+    if (normKey === 'nust') return 'nust';
+    if (normKey === 'fast') return 'fast';
+    if (normKey === 'giki') return 'giki';
+    if (normKey === 'ned') return 'ned';
+    if (normKey === 'pieas') return 'pieas';
+    if (normKey === 'numl') return 'numl';
+    if (normKey === 'hitec') return 'hitec';
+    if (normKey === 'nutech') return 'nutech';
+    return inst.id ? inst.id.toLowerCase() : normKey;
+  })();
+
+  const primaryLogo = inst.logoUrl || `/logos/academic/${canonicalId}.png`;
+  const [currentSrc, setCurrentSrc] = React.useState<string | undefined>(primaryLogo);
+  const [imgError, setImgError] = React.useState(false);
+  const [fallbackAttempt, setFallbackAttempt] = React.useState(0);
+
+  React.useEffect(() => {
+    const nextLogo = inst.logoUrl || `/logos/academic/${canonicalId}.png`;
+    setCurrentSrc(nextLogo);
+    setImgError(false);
+    setFallbackAttempt(0);
+  }, [id, canonicalId, inst.logoUrl]);
+
+  const handleImageError = () => {
+    const remoteUrl = R2_FALLBACK_URLS[normKey] || R2_FALLBACK_URLS[canonicalId];
+    if (fallbackAttempt === 0) {
+      setFallbackAttempt(1);
+      setCurrentSrc(`/logos/${canonicalId}.png`);
+    } else if (fallbackAttempt === 1) {
+      setFallbackAttempt(2);
+      setCurrentSrc(`/logos/${canonicalId}.svg`);
+    } else if (fallbackAttempt === 2 && remoteUrl) {
+      setFallbackAttempt(3);
+      setCurrentSrc(remoteUrl);
+    } else {
+      setImgError(true);
+    }
+  };
+
+  const sizeClasses = {
+    sm: 'w-7 h-7',
+    md: 'w-10 h-10',
+    lg: 'w-12 h-12',
+    xl: 'w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18',
+    '2xl': 'w-20 h-20 sm:w-24 sm:h-24',
+  }[size];
+
+  const displayName = altText || inst.name || id.toUpperCase();
+
+  return (
+    <div
+      className={`relative shrink-0 flex items-center justify-center select-none bg-transparent ${sizeClasses} ${className}`}
+      title={displayName}
+    >
+      {currentSrc && !imgError ? (
+        <img
+          src={currentSrc}
+          alt={displayName}
+          className="w-full h-full object-contain filter drop-shadow-xs transition-transform duration-200"
+          referrerPolicy="no-referrer"
+          onError={handleImageError}
+        />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center font-black text-slate-700 tracking-tighter text-sm sm:text-base border border-slate-300 rounded-2xl bg-transparent">
+          {inst.badgeInitials || id.slice(0, 4).toUpperCase()}
+        </div>
+      )}
+    </div>
+  );
+};
+

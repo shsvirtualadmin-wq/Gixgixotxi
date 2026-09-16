@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 import { BoardClass, QuestionDifficulty, TestMode, HistoryItem } from '../types';
 import { User, StudentProfile, isUserProOrPaid } from '../lib/supabase';
-import { InstitutionBadge } from './InstitutionBadge';
+import { InstitutionBadge, ExamTrackLogo } from './InstitutionBadge';
 import { BoardlyProBadge } from './BoardlyProBadge';
 
 export type EntranceTrackType =
@@ -1005,8 +1005,8 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
               <ArrowLeft className="w-5 h-5" />
             </button>
           )}
-          <div className="flex items-center gap-2.5">
-            <InstitutionBadge id={trackData.institutionId} size="md" />
+          <div className="flex items-center gap-3.5 sm:gap-4.5">
+            <ExamTrackLogo id={trackData.institutionId} size="xl" />
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
@@ -1057,8 +1057,8 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
                         isSelected ? 'bg-blue-50 text-blue-700' : 'text-slate-800 hover:bg-slate-100'
                       }`}
                     >
-                      <div className="flex items-center gap-2 truncate">
-                        <InstitutionBadge id={item.institutionId} size="sm" />
+                      <div className="flex items-center gap-2.5 truncate">
+                        <ExamTrackLogo id={item.institutionId} size="sm" />
                         <span className="truncate">{item.id} — {item.fullName.split('(')[0].trim()}</span>
                       </div>
                       <span className="text-[10px] text-slate-400 ml-1 shrink-0">{item.totalMcqs} Qs</span>
