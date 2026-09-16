@@ -554,6 +554,17 @@ export function App() {
         const cachedGeneral = localStorage.getItem('boardly_cached_profile');
         if (cachedGeneral) profile = JSON.parse(cachedGeneral);
       }
+      if (!profile && cachedUser?.id) {
+        profile = {
+          id: cachedUser.id,
+          name: cachedUser.user_metadata?.full_name || cachedUser.email?.split('@')[0] || 'Student',
+          email: cachedUser.email || '',
+          grade: 'Class 11',
+          stream: 'General Track',
+          sign_up_method: 'Google',
+          created_at: new Date().toISOString(),
+        };
+      }
       const isProfileAdmin = Boolean(
         (profile?.email && isAdminEmail(profile.email)) ||
         profile?.role === 'admin'
@@ -1728,6 +1739,15 @@ export function App() {
         setCurrentUser(user);
 
         if (user) {
+          setUserProfile((prev) => prev || {
+            id: user.id,
+            name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Student',
+            email: user.email || '',
+            grade: 'Class 11',
+            stream: 'General Track',
+            sign_up_method: 'Google',
+            created_at: new Date().toISOString(),
+          });
           await processAuthUser(user, 'getSession');
         } else {
           setUserProfile(null);
@@ -3186,78 +3206,6 @@ export function App() {
 
   const displayName = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0];
 
-  const showSplash =
-    authLoading ||
-    (Boolean(currentUser) && (profileSyncing || userProfile === null)) ||
-    (authTimedOut && !currentUser && !userProfile);
-
-  if (showSplash) {
-    if (authTimedOut || authError) {
-      return (
-        <div className="min-h-dvh h-dvh sm:min-h-screen bg-[#F8F9FB] text-slate-900 flex flex-col items-center justify-center p-4 relative">
-          <div className="rounded-2xl p-6 sm:p-8 max-w-sm w-full flex flex-col items-center gap-4 text-center shadow-lg border border-slate-200 bg-white">
-            <div className="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-600">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-
-            <div className="space-y-1.5">
-              <h3 className="font-['Space_Grotesk'] font-bold text-base text-slate-900">
-                Connection Taking Longer Than Usual
-              </h3>
-              <p className="text-xs text-slate-500 leading-relaxed max-w-xs">
-                {authError || "We're having trouble contacting authentication servers or loading your profile. You can retry connection or continue directly to the dashboard."}
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-2 w-full pt-2">
-              <button
-                onClick={handleRetryAuth}
-                className="w-full py-2.5 px-4 bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-bold rounded-xl text-xs shadow-sm active:scale-98 transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <RefreshCw className="w-4 h-4" />
-                <span>Retry Connection</span>
-              </button>
-
-              <button
-                onClick={() => {
-                  setAuthTimedOut(false);
-                  setAuthLoading(false);
-                  setProfileSyncing(false);
-                  setScreen('dashboard');
-                }}
-                className="w-full py-2 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <span>Continue to Dashboard</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={() => {
-                  setAuthTimedOut(false);
-                  setAuthLoading(false);
-                  setProfileSyncing(false);
-                  setScreen('auth');
-                }}
-                className="text-[11px] font-semibold text-[#1E5AFF] hover:underline pt-1 cursor-pointer"
-              >
-                Sign In with Email / Password
-              </button>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return (
-      <BrandedLoadingSpinner
-        fullScreen
-        size="md"
-        label="Loading Boardly..."
-        sublabel="Preparing your practice workspace"
-      />
-    );
-  }
-
   return (
     <div className="min-h-dvh flex flex-col bg-[#F8F9FB]  text-slate-900  selection:bg-[#1E5AFF] selection:text-white relative">
       <MainHeader 
@@ -3531,11 +3479,6 @@ export function App() {
                     const defaultClassGroup = userProfile ? getStudentDefaultClassAndGroup(userProfile) : null;
                     const effectiveClass = selectedClass || defaultClassGroup?.classNum || 11;
                     const effectiveGroup = selectedGroup || defaultClassGroup?.group || 'Pre-Medical';
-                    const isDashboardLoading = authLoading || (Boolean(currentUser) && !userProfile && profileSyncing);
-
-                    if (isDashboardLoading) {
-                      return null;
-                    }
 
                     return (
                       <ClassStreamDashboard
