@@ -855,20 +855,6 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
   };
 }
 
-/**
- * Canonical check for student registration completion.
- * The ONLY condition anywhere in the codebase that decides guided_wizard vs dashboard.
- * Evaluates the student's actual profile/database record — not localStorage or synthesized aliases.
- */
-export function isStudentRegistrationCompleted(
-  profile?: StudentProfile | null,
-  isAdmin?: boolean
-): boolean {
-  if (isAdmin) return true;
-  if (!profile) return false;
-  return profile.registration_completed === true;
-}
-
 // Helper to sync or create student profile in Supabase Postgres 'students' table
 export async function syncUserProfile(
   user: SupabaseUser,
@@ -1786,7 +1772,7 @@ export async function saveStudentRegistration(
     } catch {}
   }
 
-  if (existing?.is_registered && existing?.grade && existing?.stream && !isAdmin) {
+  if (existing?.registration_completed && existing?.grade && existing?.stream && !isAdmin) {
     if (existing.grade !== data.grade || existing.stream !== data.stream) {
       console.warn(`[saveStudentRegistration] Grade/Stream change attempt blocked. Retaining locked grade (${existing.grade}) and stream (${existing.stream}).`);
       data.grade = existing.grade;

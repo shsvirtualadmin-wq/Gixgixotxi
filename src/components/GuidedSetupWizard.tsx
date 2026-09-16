@@ -75,26 +75,7 @@ export const GuidedSetupWizard: React.FC<GuidedSetupWizardProps> = ({
   onBackToHome,
   initialData,
 }) => {
-  const [currentStep, setCurrentStepState] = useState<number>(() => {
-    try {
-      const savedStep = localStorage.getItem('boardly_guided_wizard_step');
-      if (savedStep) {
-        const parsed = parseInt(savedStep, 10);
-        if (parsed >= 1 && parsed <= 4) return parsed;
-      }
-    } catch (e) {}
-    return 1;
-  });
-
-  const setCurrentStep = (stepOrFn: number | ((prev: number) => number)) => {
-    setCurrentStepState((prev) => {
-      const nextStep = typeof stepOrFn === 'function' ? stepOrFn(prev) : stepOrFn;
-      try {
-        localStorage.setItem('boardly_guided_wizard_step', String(nextStep));
-      } catch (e) {}
-      return nextStep;
-    });
-  };
+  const [currentStep, setCurrentStep] = useState<number>(1);
 
   // Form State
   const [exam, setExam] = useState<'FBISE' | 'MDCAT' | 'TCAT'>(initialData?.exam || 'FBISE');

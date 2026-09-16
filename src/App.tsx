@@ -92,7 +92,7 @@ import {
   validatePromoCode,
 } from './lib/promoCode';
 
-import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveStudentRegistration, submitPaymentProofApi, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, clearAllClientAuthAndSessionData, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack, completeOneQuestionRegistration, isStudentRegistrationCompleted } from './lib/supabase';
+import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveStudentRegistration, submitPaymentProofApi, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, clearAllClientAuthAndSessionData, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack, completeOneQuestionRegistration } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
@@ -859,7 +859,6 @@ export function App() {
   }, [userProfile, currentUser?.id]);
 
   const isAdmin = Boolean(currentUser?.email && isAdminEmail(currentUser.email));
-  const isRegisteredStudent = isStudentRegistrationCompleted(userProfile, isAdmin);
 
   // Access Gating Rule: Boardly is 100% free and Pro for all users!
   const isStudentProOrPaid = true;
@@ -868,7 +867,7 @@ export function App() {
   // Synchronize selectedClass & selectedGroup with student's profile grade & stream
   const lastKnownProfileTrackRef = useRef<string>('');
   useEffect(() => {
-    if (userProfile && isRegisteredStudent && !isAdmin) {
+    if (userProfile?.registration_completed === true && !isAdmin) {
       const currentTrackKey = `${userProfile.grade || ''}|${userProfile.stream || ''}|${(userProfile.assigned_classes || []).join(',')}`;
       if (lastKnownProfileTrackRef.current && lastKnownProfileTrackRef.current !== currentTrackKey) {
         // Admin changed student track/stream! Update selectedClass and selectedGroup immediately
@@ -886,7 +885,7 @@ export function App() {
       }
       lastKnownProfileTrackRef.current = currentTrackKey;
     }
-  }, [userProfile, isRegisteredStudent, isAdmin, selectedClass, selectedGroup]);
+  }, [userProfile, isAdmin, selectedClass, selectedGroup]);
 
   // Keep local storage and backend server synchronized with active test progress
   useEffect(() => {
@@ -1079,10 +1078,10 @@ export function App() {
   const showHistoryModalRef = useRef(showHistoryModal);
   const showCommunityModalRef = useRef(showCommunityModal);
   const currentUserRef = useRef(currentUser);
-  const isRegisteredStudentRef = useRef(isRegisteredStudent);
+  const userProfileRef = useRef(userProfile);
   useEffect(() => {
-    isRegisteredStudentRef.current = isRegisteredStudent;
-  }, [isRegisteredStudent]);
+    userProfileRef.current = userProfile;
+  }, [userProfile]);
   const isAdminRef = useRef(isAdmin);
   const authBackScreenRef = useRef<ScreenType>('intro');
   const isExitingTestRef = useRef(false);
@@ -1123,7 +1122,7 @@ export function App() {
         stream: targetG,
         subjects: data.focusSubjects,
         target_exam: data.exam,
-        is_registered: true,
+        registration_completed: true,
         updated_at: new Date().toISOString(),
       };
 
@@ -1151,7 +1150,6 @@ export function App() {
     showHistoryModalRef.current = showHistoryModal;
     showCommunityModalRef.current = showCommunityModal;
     currentUserRef.current = currentUser;
-    isRegisteredStudentRef.current = isRegisteredStudent;
     isAdminRef.current = isAdmin;
     authBackScreenRef.current = authBackScreen;
     isGeneratingRef.current = isGenerating;
@@ -1165,7 +1163,6 @@ export function App() {
     showHistoryModal,
     showCommunityModal,
     currentUser,
-    isRegisteredStudent,
     isAdmin,
     authBackScreen,
     isGenerating,
@@ -1330,15 +1327,13 @@ export function App() {
         // Fix race condition: do NOT make a routing decision while userProfile is still null or syncing
         if (profileSyncing || userProfile === null) return;
 
-        const isUserRegistered = isStudentRegistrationCompleted(userProfile, isAdmin);
-
-        if (!isUserRegistered) {
+        if (userProfile.registration_completed !== true) {
           if (screen !== 'guided_wizard' && screen !== 'auth' && screen !== 'intro') {
             setScreen('guided_wizard');
           }
         } else {
-          // Escape hatch: if a student is on guided_wizard or payment gates AND registration_completed is true, redirect to dashboard immediately!
-          if (screen === 'guided_wizard' || ['payment_required', 'pricing', 'plan_selection', 'checkout'].includes(screen)) {
+          // Escape hatch: if a student is on guided_wizard or selection gates AND registration_completed is true, redirect to dashboard immediately!
+          if (screen === 'guided_wizard' || ['payment_required', 'pricing', 'plan_selection', 'checkout', 'grades_flow', 'group'].includes(screen)) {
             setScreen('dashboard');
           }
         }
@@ -1359,15 +1354,23 @@ export function App() {
     }
   }, [screen, currentUser, isAdmin]);
 
+  // ONE-WAY DOOR ESCAPE HATCH: On every render where current screen is guided_wizard,
+  // if registration_completed is actually true in the loaded profile, immediately redirect to dashboard.
+  useEffect(() => {
+    if (screen === 'guided_wizard' && userProfile?.registration_completed === true) {
+      setScreen(isAdmin ? 'admin' : 'dashboard');
+    }
+  }, [screen, userProfile?.registration_completed, isAdmin]);
+
   // Route Guard Enforcement for registered non-admin students
   useEffect(() => {
-    if (currentUser && !isAdmin && isRegisteredStudent) {
+    if (currentUser && !isAdmin && userProfile?.registration_completed === true) {
       if (screen === 'grades_flow' || screen === 'group' || screen === 'guided_wizard') {
         // Redirect selection screen and wizard attempts straight to their authorized dashboard
         setScreen('dashboard');
       }
     }
-  }, [currentUser, isAdmin, isRegisteredStudent, screen]);
+  }, [currentUser, isAdmin, userProfile?.registration_completed, screen]);
 
   // Clean OAuth URL parameters immediately from browser history on mount
   useEffect(() => {
@@ -1683,13 +1686,25 @@ export function App() {
       // Sync student's previously seen questions from server database in the background
       syncSeenQuestionsWithServer(user.id, user.email).catch(() => {});
 
-      // 2. Check registration status: single source of truth is registration_completed
+      // 2. Check registration status: registration_completed is God!
+      // Admin routing stays completely separate
+      if (isUserAdmin) {
+        const activeScreen = screenRef.current;
+        if (activeScreen === 'auth' || activeScreen === 'intro' || activeScreen === 'guided_wizard') {
+          setScreen('admin');
+        }
+        return;
+      }
+
+      // Student routing: NEVER evaluate while profile is still loading or null
       const resolvedProfile = profile || userProfile;
-      if (!isUserAdmin && !resolvedProfile) {
+      if (!resolvedProfile) {
         console.warn('[processAuthUser] Profile not resolved yet. Deferring registration routing decision until profile resolves.');
         return;
       }
-      const isReg = isStudentRegistrationCompleted(resolvedProfile, isUserAdmin);
+
+      // ONE boolean, read from the real database row, decides this, full stop.
+      const isRegistered = resolvedProfile.registration_completed === true;
 
       const hasHashToken = window.location.hash.includes('access_token');
       const hasSearchCode = window.location.search.includes('code=');
@@ -1716,11 +1731,11 @@ export function App() {
           localStorage.removeItem('shs_intended_group');
         }
 
-        if (!isReg) {
-          console.log('[Auth Flow] First-time Google OAuth sign-in detected. Routing to setup wizard...');
+        if (!isRegistered) {
+          console.log('[Auth Flow] Unregistered student detected. Routing to setup wizard...');
           setScreen('guided_wizard');
         } else {
-          console.log('[Auth Flow] Returning Google OAuth user detected. Routing to destination...');
+          console.log('[Auth Flow] Registered student detected. Routing to destination...');
           const activeScreen = screenRef.current;
           if (activeScreen === 'auth' || activeScreen === 'intro' || activeScreen === 'guided_wizard') {
             if (pendingTestParamsRef.current && executeStartTestRef.current) {
@@ -1729,26 +1744,26 @@ export function App() {
               setScreen(nextScreenAfterAuthRef.current);
               setNextScreenAfterAuth(null);
             } else {
-              setScreen(isUserAdmin ? 'admin' : 'dashboard');
+              setScreen('dashboard');
             }
           }
         }
-      } else if (!isReg) {
-        // Unregistered user on normal session restore
+      } else if (!isRegistered) {
+        // Unregistered student on normal session restore
         const currentScreen = screenRef.current;
         const params = new URLSearchParams(window.location.search);
         const urlScreen = params.get('screen') as ScreenType | null;
 
         if (currentScreen === 'auth' || (currentScreen === 'dashboard' && (!urlScreen || urlScreen === 'guided_wizard'))) {
-          console.log('[Auth Flow] Unregistered user detected. Triggering guided setup wizard...');
+          console.log('[Auth Flow] Unregistered student detected. Triggering guided setup wizard...');
           setScreen('guided_wizard');
         }
       } else {
-        // Registered or Admin user on normal session restore / refresh / sign-in
+        // Registered student on normal session restore / refresh / sign-in
         const activeScreen = screenRef.current;
         if (activeScreen === 'guided_wizard') {
-          console.log('[Auth Flow] Registered user caught on guided_wizard. Activating escape hatch -> dashboard');
-          setScreen(isUserAdmin ? 'admin' : 'dashboard');
+          console.log('[Auth Flow] Registered student caught on guided_wizard. Activating escape hatch -> dashboard');
+          setScreen('dashboard');
           return;
         }
 
@@ -1763,15 +1778,11 @@ export function App() {
           !VALID_SCREENS.includes(rawUrlScreen as ScreenType);
 
         if (isAuthOrIntroOrEmpty) {
-          console.log('[Auth Flow] Authenticated user on root/intro/auth screen. Routing to destination...');
+          console.log('[Auth Flow] Authenticated student on root/intro/auth screen. Routing to destination...');
           const savedActiveScreen = localStorage.getItem('boardly_active_screen');
-          let target: ScreenType = isUserAdmin ? 'admin' : 'dashboard';
-          if (savedActiveScreen && VALID_SCREENS.includes(savedActiveScreen as ScreenType) && savedActiveScreen !== 'guided_wizard') {
-            if (savedActiveScreen === 'admin') {
-              if (isUserAdmin) target = 'admin';
-            } else {
-              target = savedActiveScreen as ScreenType;
-            }
+          let target: ScreenType = 'dashboard';
+          if (savedActiveScreen && VALID_SCREENS.includes(savedActiveScreen as ScreenType) && savedActiveScreen !== 'guided_wizard' && savedActiveScreen !== 'admin') {
+            target = savedActiveScreen as ScreenType;
           }
           if (nextScreenAfterAuthRef.current) {
             target = nextScreenAfterAuthRef.current;
@@ -2178,7 +2189,7 @@ export function App() {
 
   const handleGlobalBackInternal = () => {
     const scr = screenRef.current;
-    const isRegistered = currentUserRef.current && isRegisteredStudentRef.current && !isAdminRef.current;
+    const isRegistered = currentUserRef.current && userProfileRef.current?.registration_completed === true && !isAdminRef.current;
 
     switch (scr) {
       case 'grades_flow':
@@ -3282,7 +3293,7 @@ export function App() {
 
   const showSplash =
     authLoading ||
-    (profileSyncing && (!userProfile || !isStudentRegistrationCompleted(userProfile, isAdmin))) ||
+    (Boolean(currentUser) && (profileSyncing || userProfile === null)) ||
     (authTimedOut && !currentUser && !userProfile);
 
   if (showSplash) {
@@ -3629,7 +3640,6 @@ export function App() {
                     onSelectClass={handleSelectClass}
                     onBack={() => setScreen('intro')}
                     userProfile={userProfile}
-                    isRegisteredStudent={isRegisteredStudent}
                     isAdmin={isAdmin}
                     onAutoRedirectLocked={(cNum, grp) => {
                       setSelectedClass(cNum);
@@ -3647,16 +3657,19 @@ export function App() {
                     if (isUserAdmin || nextScreenAfterAuth === 'admin') {
                       setScreen('admin');
                       setNextScreenAfterAuth(null);
-                    } else if (userProfile && !isStudentRegistrationCompleted(userProfile, isUserAdmin)) {
-                      setScreen('guided_wizard');
-                    } else if (userProfile && isStudentRegistrationCompleted(userProfile, isUserAdmin)) {
+                      return;
+                    }
+
+                    // Fix race condition: do NOT evaluate registration_completed while userProfile is null or loading
+                    if (profileSyncing || userProfile === null) {
+                      return;
+                    }
+
+                    if (userProfile.registration_completed === true) {
                       setScreen(nextScreenAfterAuth || 'dashboard');
                       setNextScreenAfterAuth(null);
                     } else {
-                      if (nextScreenAfterAuth) {
-                        setScreen(nextScreenAfterAuth);
-                        setNextScreenAfterAuth(null);
-                      }
+                      setScreen('guided_wizard');
                     }
                   }} selectedGradeContext={selectedClass?.toString()} onBack={() => setScreen(authBackScreen || 'intro')} />
                 )}

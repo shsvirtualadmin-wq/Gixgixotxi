@@ -1002,7 +1002,7 @@ export const onRequestPost = async (context: PagesContext) => {
 
       const isValidGrade = Boolean(studentRecord?.grade && studentRecord.grade.trim() && studentRecord.grade !== 'General Student');
       const isValidStream = Boolean(studentRecord?.stream && studentRecord.stream.trim());
-      const isRegistered = Boolean(studentRecord?.is_registered && isValidGrade && isValidStream);
+      const isRegistered = Boolean(studentRecord?.registration_completed === true || studentRecord?.is_registered);
 
       if (!isRegistered) {
         return new Response(JSON.stringify({

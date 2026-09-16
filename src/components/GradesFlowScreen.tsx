@@ -9,7 +9,6 @@ interface GradesFlowScreenProps {
   onSelectClass?: (grade: BoardClass, group?: string) => void;
   onBack?: () => void;
   userProfile?: StudentProfile | null;
-  isRegisteredStudent?: boolean;
   isAdmin?: boolean;
   onAutoRedirectLocked?: (c: BoardClass, s: string) => void;
 }
@@ -21,7 +20,6 @@ export const GradesFlowScreen: React.FC<GradesFlowScreenProps> = React.memo(({
   onSelectClass,
   onBack,
   userProfile,
-  isRegisteredStudent,
   isAdmin,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<FilterCategory>('All');

@@ -22,7 +22,7 @@ import {
   Check,
   Crown
 } from 'lucide-react';
-import { User, StudentProfile, fetchStudentWeaknessProfile, StudentWeaknessProfileData, evaluateStudentAccess, isUserProOrPaid, downgradeExpiredProStudent, isAdminEmail, isStudentRegistrationCompleted } from '../lib/supabase';
+import { User, StudentProfile, fetchStudentWeaknessProfile, StudentWeaknessProfileData, evaluateStudentAccess, isUserProOrPaid, downgradeExpiredProStudent, isAdminEmail } from '../lib/supabase';
 import { HistoryItem } from '../types';
 import { InstitutionBadge, renderTargetUniversityBadge } from './InstitutionBadge';
 import { TargetUniversityModal } from './TargetUniversityModal';
@@ -307,7 +307,6 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
   // Student locked class & stream format
   const gradeStr = userProfile?.grade;
   const streamStr = userProfile?.stream;
-  const isRegistered = isStudentRegistrationCompleted(userProfile, isAdmin);
 
   const classStreamDisplay = gradeStr && streamStr
     ? `${gradeStr} — ${streamStr}`
