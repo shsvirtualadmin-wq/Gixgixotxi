@@ -189,127 +189,12 @@ function getNextMonthResetDate(): string {
 }
 
 async function checkStudentIsPro(
-  userId: string,
-  userEmail?: string
+  _userId: string,
+  _userEmail?: string
 ): Promise<boolean> {
-  console.log(`[checkStudentIsPro] Evaluating server-side pro check:`, {
-    userId,
-    userEmail,
-  });
-
-  if (userEmail && isAdminEmail(userEmail)) {
-    console.log(`[checkStudentIsPro] Allowed via admin email`);
-    return true;
-  }
-
-  if (!userId || userId === "guest") {
-    if (userEmail && isAdminEmail(userEmail)) return true;
-    if (!userEmail) {
-      console.log(`[checkStudentIsPro] Denied: Guest without email`);
-      return false;
-    }
-  }
-
-  try {
-    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-    let stData: any = null;
-    let db: any = null;
-    try {
-      db = getSupabaseAdminClient();
-    } catch {
-      db = supabaseServer;
-    }
-
-    if (db && userId && uuidRegex.test(userId)) {
-      const { data, error } = await db
-        .from("students")
-        .select("is_pro, plan_tier, package_name, payment_status, plan_status, access_expires, subscribed_plans, updated_at, created_at, requires_payment")
-        .eq("id", userId)
-        .maybeSingle();
-      if (error) console.warn("[checkStudentIsPro] Supabase query by id error:", error);
-      stData = data;
-    }
-
-    if (db && !stData && userEmail) {
-      const { data, error } = await db
-        .from("students")
-        .select("is_pro, plan_tier, package_name, payment_status, plan_status, access_expires, subscribed_plans, updated_at, created_at, requires_payment")
-        .eq("email", userEmail)
-        .maybeSingle();
-      if (error) console.warn("[checkStudentIsPro] Supabase query by email error:", error);
-      stData = data;
-    }
-
-    if (stData) {
-      const pStatus = String(stData.payment_status || '').trim().toLowerCase();
-      const isPaidStatus = pStatus === 'verified & paid' || pStatus === 'verified' || pStatus === 'paid';
-      const planStatus = String(stData.plan_status || '').trim().toLowerCase();
-      const isProTier = stData.plan_tier === 'pro';
-      const isProFlag = Boolean(stData.is_pro);
-      const isVerifiedProPlan = planStatus === 'verified_pro';
-
-      // Check if subscribed_plans array contains pro
-      const hasProPlanInArray = Array.isArray(stData.subscribed_plans) && stData.subscribed_plans.some((p: any) => {
-        const pl = String(p).toLowerCase();
-        return pl !== 'free' && ['pro', 'boardly_pro', 'premium', 'fsc', 'mdcat', 'tcat'].includes(pl);
-      });
-
-      const rawIsPro = isProTier || isProFlag || isPaidStatus || isVerifiedProPlan || hasProPlanInArray;
-
-      console.log(`[checkStudentIsPro] Database record evaluation:`, {
-        userId,
-        userEmail,
-        isProTier,
-        isProFlag,
-        isPaidStatus,
-        isVerifiedProPlan,
-        hasProPlanInArray,
-        rawIsPro,
-      });
-
-      if (rawIsPro) {
-        if (stData.access_expires) {
-          const expTime = new Date(stData.access_expires).getTime();
-          if (!isNaN(expTime)) {
-            const valid = expTime > Date.now();
-            console.log(`[checkStudentIsPro] DB rawIsPro=true with access_expires=${stData.access_expires}, valid=${valid}`);
-            if (!valid && db && stData.id) {
-              console.log(`[checkStudentIsPro] Pro access expired for student ${stData.id} (${userEmail}). Automatically downgrading to free tier.`);
-              db.from("students").update({
-                is_pro: false,
-                plan_tier: "free",
-                plan_status: "free",
-                payment_status: "Free Plan",
-                package_name: "Free Plan",
-                subscribed_plans: ["free"],
-                access_expires: null,
-                updated_at: new Date().toISOString()
-              }).eq("id", stData.id).then(() => {}, (e: any) => console.warn("[checkStudentIsPro] Downgrade error:", e));
-
-              db.from("profiles").update({
-                is_pro: false,
-                subscription_tier: "free",
-                subscription_expires_at: null
-              }).eq("id", stData.id).catch(() => {});
-            }
-            return valid;
-          }
-        }
-        console.log(`[checkStudentIsPro] Allowed via verified DB student record`);
-        return true;
-      }
-    } else {
-      console.log(`[checkStudentIsPro] No student record found in DB for userId=${userId}, email=${userEmail}`);
-    }
-  } catch (e) {
-    console.warn("[checkStudentIsPro] Error checking pro status:", e);
-  }
-  console.log(`[checkStudentIsPro] Result: DENIED (isPro=false)`);
-  return false;
+  // Boardly is 100% free and unlimited for all students
+  return true;
 }
-
-const inMemoryTestAttemptStore: Record<string, Record<string, number>> = {};
-const inMemoryPdfDownloadStore: Record<string, string> = {};
 
 interface ServerActiveTestSession {
   sessionId: string;
@@ -503,20 +388,8 @@ async function getStudentMonthlyTestCount(userId: string, userEmail: string | un
   return 0;
 }
 
-function recordStudentTestStart(userId: string, userEmail: string | undefined): number {
-  // Tests are counted towards the monthly quota strictly upon completion in /api/save-test-result
-  const period = getCurrentMonthPeriod();
-  const cleanEmail = userEmail ? userEmail.trim().toLowerCase() : null;
-  const isRealUser = Boolean(userId && userId !== "guest");
-
-  let current = 0;
-  if (isRealUser && inMemoryTestAttemptStore[period]?.[userId]) {
-    current = Math.max(current, inMemoryTestAttemptStore[period][userId]);
-  }
-  if (cleanEmail && inMemoryTestAttemptStore[period]?.[cleanEmail]) {
-    current = Math.max(current, inMemoryTestAttemptStore[period][cleanEmail]);
-  }
-  return current;
+function recordStudentTestStart(_userId: string, _userEmail: string | undefined): number {
+  return 0;
 }
 
 async function getStudentMonthlyUsage(userId: string, userEmail: string | undefined, req: express.Request | null): Promise<number> {
@@ -3093,293 +2966,17 @@ async function startServer() {
     });
   });
 
-  // API Endpoint: Query current test usage for a student
-  app.get("/api/mcq-usage", async (req, res) => {
-    const { user, isAdmin: verifiedAdmin } = await verifyAuthToken(req);
-    const userId = user ? user.id : String(req.query.userId || "guest");
-    const userEmail = user ? user.email : (req.query.userEmail ? String(req.query.userEmail) : undefined);
-    const isAdmin = verifiedAdmin || isAdminEmail(userEmail);
-
-    const isPro = isAdmin ? true : await checkStudentIsPro(userId, userEmail);
-
-    const currentUsage = isAdmin ? 0 : await getStudentMonthlyTestCount(userId, userEmail, req);
-    const resetDateStr = getNextMonthResetDate();
-    const limit = isPro ? 999999 : 2;
-    const remaining = isPro ? 999999 : Math.max(0, 2 - currentUsage);
-
+  // API Endpoint: Query current test usage for a student (unlimited for all)
+  app.get("/api/mcq-usage", async (_req, res) => {
     res.json({
       success: true,
-      currentUsage,
-      limit,
-      remaining,
-      resetDate: resetDateStr,
-      isAdmin,
-      isPro,
+      currentUsage: 0,
+      limit: 999999,
+      remaining: 999999,
+      resetDate: getNextMonthResetDate(),
+      isAdmin: false,
+      isPro: true,
     });
-  });
-
-  // API Endpoint: Server-side check if student can start a new test
-  app.post("/api/check-test-limit", async (req, res) => {
-    try {
-      const { userId, userEmail } = req.body;
-      const { user, isAdmin: verifiedAdmin } = await verifyAuthToken(req);
-      const activeUserId = user ? user.id : String(userId || "guest");
-      const activeEmail = user ? user.email : (userEmail || undefined);
-      const isAdmin = verifiedAdmin || isAdminEmail(activeEmail);
-
-      const isPro = isAdmin ? true : await checkStudentIsPro(activeUserId, activeEmail);
-      const resetDateStr = getNextMonthResetDate();
-
-      if (isAdmin || isPro) {
-        return res.json({
-          success: true,
-          allowed: true,
-          isPro: true,
-          currentUsage: 0,
-          limit: 999999,
-          remaining: 999999,
-          resetDate: resetDateStr,
-        });
-      }
-
-      // If unauthenticated guest without email, advise authentication
-      if (activeUserId === "guest" && !activeEmail) {
-        return res.json({
-          success: true,
-          allowed: false,
-          requiresAuth: true,
-          message: "Please sign in or create a free account to take practice tests.",
-          currentUsage: 0,
-          limit: 2,
-          remaining: 2,
-          resetDate: resetDateStr,
-        });
-      }
-
-      const testsTaken = await getStudentMonthlyTestCount(activeUserId, activeEmail, req);
-      if (testsTaken >= 2) {
-        const msg = `You've used your 2 free tests this month — upgrade to continue. Limit resets on ${resetDateStr}.`;
-        return res.status(403).json({
-          success: false,
-          allowed: false,
-          limitExceeded: true,
-          error: msg,
-          message: msg,
-          currentUsage: testsTaken,
-          limit: 2,
-          remaining: 0,
-          resetDate: resetDateStr,
-        });
-      }
-
-      return res.json({
-        success: true,
-        allowed: true,
-        currentUsage: testsTaken,
-        limit: 2,
-        remaining: Math.max(0, 2 - testsTaken),
-        resetDate: resetDateStr,
-      });
-    } catch (err: any) {
-      console.error("[/api/check-test-limit error]:", err);
-      return res.status(500).json({ success: false, error: err?.message || "Failed to check test limit" });
-    }
-  });
-
-  // API Endpoint: Register test start attempt server-side
-  app.post("/api/record-test-start", async (req, res) => {
-    try {
-      const { userId, userEmail } = req.body;
-      const { user, isAdmin: verifiedAdmin } = await verifyAuthToken(req);
-      const activeUserId = user ? user.id : String(userId || "guest");
-      const activeEmail = user ? user.email : (userEmail || undefined);
-      const isAdmin = verifiedAdmin || isAdminEmail(activeEmail);
-
-      const isPro = isAdmin ? true : await checkStudentIsPro(activeUserId, activeEmail);
-      const resetDateStr = getNextMonthResetDate();
-
-      if (!isAdmin && !isPro) {
-        const testsTaken = await getStudentMonthlyTestCount(activeUserId, activeEmail, req);
-        if (testsTaken >= 2) {
-          const msg = `Free Plan Monthly Limit Reached: You've used your 2 free tests this month — upgrade to continue. Limit resets on ${resetDateStr}.`;
-          return res.status(403).json({
-            success: false,
-            allowed: false,
-            limitExceeded: true,
-            error: msg,
-            message: msg,
-            currentUsage: testsTaken,
-            limit: 2,
-            remaining: 0,
-            resetDate: resetDateStr,
-          });
-        }
-      }
-
-      const newAttemptCount = recordStudentTestStart(activeUserId, activeEmail);
-      return res.json({
-        success: true,
-        allowed: true,
-        currentUsage: newAttemptCount,
-        limit: isPro || isAdmin ? 999999 : 2,
-        remaining: isPro || isAdmin ? 999999 : Math.max(0, 2 - newAttemptCount),
-        resetDate: resetDateStr,
-      });
-    } catch (err: any) {
-      console.error("[/api/record-test-start error]:", err);
-      return res.status(500).json({ success: false, error: err?.message || "Failed to record test start" });
-    }
-  });
-
-function formatRemainingTimeString(ms: number): string {
-  if (ms <= 0) return "0 minutes";
-  const totalMins = Math.ceil(ms / (1000 * 60));
-  const hours = Math.floor(totalMins / 60);
-  const mins = totalMins % 60;
-
-  if (hours > 0) {
-    if (mins > 0) {
-      return `${hours} ${hours === 1 ? 'hour' : 'hours'} and ${mins} ${mins === 1 ? 'minute' : 'minutes'}`;
-    }
-    return `${hours} ${hours === 1 ? 'hour' : 'hours'}`;
-  }
-  return `${mins} ${mins === 1 ? 'minute' : 'minutes'}`;
-}
-
-  // API Endpoint: Server-side check & record PDF download limits
-  app.post("/api/check-pdf-download", async (req, res) => {
-    try {
-      const { userId, userEmail } = req.body || {};
-      const { user, isAdmin: verifiedAdmin } = await verifyAuthToken(req);
-      const activeUserId = user ? user.id : String(userId || "guest");
-      const activeEmail = user ? user.email : (userEmail || undefined);
-      const isAdmin = verifiedAdmin || isAdminEmail(activeEmail);
-
-      // Server-side check if user is Paid/Pro or Admin strictly from verified database record
-      const isPro = isAdmin ? true : await checkStudentIsPro(activeUserId, activeEmail);
-
-      console.log(`[/api/check-pdf-download] Entitlement evaluation for activeUser=${activeUserId} (${activeEmail}):`, {
-        isAdmin,
-        isProResult: isPro,
-      });
-
-      // Requirement 1: Free tier users are blocked from downloading PDFs entirely
-      if (!isPro) {
-        return res.status(200).json({
-          success: false,
-          allowed: false,
-          reason: "FREE_USER",
-          isPro: false,
-          message: "PDF downloads are a Pro feature — upgrade to unlock unlimited access",
-        });
-      }
-
-      // Pro / Paid user confirmed: Pro users have unlimited back-to-back PDF downloads (no cooldown / rate limit)
-      const nowMs = Date.now();
-      const nowIso = new Date(nowMs).toISOString();
-      const activeUserKey = activeUserId && activeUserId !== "guest" ? activeUserId : (activeEmail ? activeEmail.toLowerCase() : "guest");
-
-      // Record download timestamp in-memory & DB for history, but DO NOT block or rate-limit Pro users
-      inMemoryPdfDownloadStore[activeUserKey] = nowIso;
-      if (activeEmail) {
-        inMemoryPdfDownloadStore[activeEmail.toLowerCase()] = nowIso;
-      }
-
-      console.log(`[/api/check-pdf-download] Authorized Pro user! Updated inMemoryPdfDownloadStore for ${activeUserKey}:`, inMemoryPdfDownloadStore[activeUserKey]);
-
-      const db = getSupabaseAdminClient() || supabaseServer;
-      if (db) {
-        try {
-          const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-          const updateObj = {
-            last_pdf_download_at: nowIso,
-            last_pdf_download_date: nowIso,
-          };
-          let updateRes: any = null;
-          if (activeUserId && uuidRegex.test(activeUserId)) {
-            updateRes = await db.from("students").update(updateObj).eq("id", activeUserId);
-          } else if (activeEmail) {
-            updateRes = await db.from("students").update(updateObj).eq("email", activeEmail);
-          }
-
-          if (updateRes?.error) {
-            if (activeUserId && uuidRegex.test(activeUserId)) {
-              await db.from("students").update({ last_pdf_download_date: nowIso }).eq("id", activeUserId);
-            } else if (activeEmail) {
-              await db.from("students").update({ last_pdf_download_date: nowIso }).eq("email", activeEmail);
-            }
-          }
-        } catch (err) {
-          console.warn("[/api/check-pdf-download] Supabase update error:", err);
-        }
-      }
-
-      return res.status(200).json({
-        success: true,
-        allowed: true,
-        isPro: true,
-        message: "PDF download authorized",
-        lastPdfDownloadAt: nowIso,
-        lastPdfDownloadDate: nowIso,
-        serverDate: nowIso,
-      });
-    } catch (err: any) {
-      console.error("[/api/check-pdf-download error]:", err);
-      return res.status(500).json({
-        success: false,
-        allowed: false,
-        reason: "ERROR",
-        message: err?.message || "Failed to check PDF download permission.",
-      });
-    }
-  });
-
-  // Admin endpoint: reset or adjust PDF download limit for testing
-  app.post("/api/admin/reset-pdf-limit", async (req, res) => {
-    try {
-      const { userId, userEmail, adjustMinutes } = req.body || {};
-      const { user } = await verifyAuthToken(req);
-      const activeUserId = user ? user.id : String(userId || "");
-      const activeEmail = user ? user.email : (userEmail || undefined);
-
-      const keysToClear = Array.from(new Set([
-        activeUserId,
-        activeEmail ? activeEmail.toLowerCase() : "",
-        userId ? String(userId) : "",
-        userEmail ? String(userEmail).toLowerCase() : ""
-      ].filter(Boolean)));
-
-      const targetTime = typeof adjustMinutes === "number"
-        ? new Date(Date.now() - adjustMinutes * 60 * 1000).toISOString()
-        : null;
-
-      for (const k of keysToClear) {
-        if (targetTime) {
-          inMemoryPdfDownloadStore[k] = targetTime;
-        } else {
-          delete inMemoryPdfDownloadStore[k];
-        }
-      }
-
-      const db = getSupabaseAdminClient() || supabaseServer;
-      if (db) {
-        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        if (activeUserId && uuidRegex.test(activeUserId)) {
-          await db.from("students").update({ last_pdf_download_at: targetTime, last_pdf_download_date: targetTime }).eq("id", activeUserId);
-        } else if (activeEmail) {
-          await db.from("students").update({ last_pdf_download_at: targetTime, last_pdf_download_date: targetTime }).eq("email", activeEmail);
-        }
-      }
-
-      return res.json({
-        success: true,
-        message: targetTime
-          ? `PDF download timestamp adjusted to ${targetTime}`
-          : "PDF download limit cleared/reset successfully.",
-      });
-    } catch (err: any) {
-      return res.status(500).json({ success: false, error: err?.message || "Reset failed" });
-    }
   });
   app.get("/api/custom-topics", async (req, res) => {
     try {
@@ -4713,21 +4310,6 @@ ${scopeInstruction}${excludeInstruction}`;
       }
       savePersistentTestResults();
 
-      // Authoritative in-memory tracking upon test completion
-      const currentPeriod = getCurrentMonthPeriod();
-      if (!inMemoryTestAttemptStore[currentPeriod]) {
-        inMemoryTestAttemptStore[currentPeriod] = {};
-      }
-      if (studentId && studentId !== "guest") {
-        const prevCount = inMemoryTestAttemptStore[currentPeriod][studentId] || 0;
-        inMemoryTestAttemptStore[currentPeriod][studentId] = prevCount + 1;
-      }
-      const cleanEmail = studentEmail ? studentEmail.trim().toLowerCase() : (studentId.includes("@") ? studentId.trim().toLowerCase() : "");
-      if (cleanEmail) {
-        const prevEmailCount = inMemoryTestAttemptStore[currentPeriod][cleanEmail] || 0;
-        inMemoryTestAttemptStore[currentPeriod][cleanEmail] = prevEmailCount + 1;
-      }
-
       let supabaseSuccess = false;
       let supabaseErrorMsg: string | null = null;
 
@@ -4736,6 +4318,7 @@ ${scopeInstruction}${excludeInstruction}`;
         try {
           const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
           const validStudentUuid = uuidRegex.test(studentId) ? studentId : null;
+          const cleanEmail = (studentEmail || (studentId.includes("@") ? studentId : "")).trim().toLowerCase();
 
           const rowToInsert = {
             student_id: validStudentUuid,
@@ -5689,23 +5272,6 @@ ${scopeInstruction}${excludeInstruction}`;
       }
       if ((!updateRes || updateRes.error || !updateRes.data) && userEmail) {
         updateRes = await db.from("students").update(downgradePayload).eq("email", userEmail.toLowerCase().trim()).select().maybeSingle();
-      }
-
-      // Also update profiles table
-      if (userId) {
-        await db.from("profiles").update({
-          is_pro: false,
-          subscription_tier: "free",
-          subscription_expires_at: null,
-          updated_at: nowIso
-        }).eq("id", userId).catch(() => {});
-      } else if (userEmail) {
-        await db.from("profiles").update({
-          is_pro: false,
-          subscription_tier: "free",
-          subscription_expires_at: null,
-          updated_at: nowIso
-        }).eq("email", userEmail.toLowerCase().trim()).catch(() => {});
       }
 
       console.log(`[/api/student/downgrade-expired] Successfully downgraded student ${userId || userEmail} to Free Tier in DB.`);
@@ -9492,33 +9058,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           dbWriteError = e?.message || String(e);
         }
 
-        // 2. Also update profiles table in Supabase atomically
-        try {
-          const profilePayload: any = {
-            grade: finalGrade,
-            stream: finalStream,
-            target_university: finalTargetUni,
-            dream_university: finalTargetUni,
-            is_registered: true,
-            assigned_classes: finalAssignedClasses,
-            subscribed_plans: dbUpdatePayload.subscribed_plans,
-            package_name: dbUpdatePayload.package_name,
-            is_pro: dbUpdatePayload.is_pro,
-            subscription_tier: finalIsPro ? 'pro' : 'free',
-            subscription_expires_at: dbUpdatePayload.access_expires,
-            payment_status: dbUpdatePayload.payment_status,
-            plan_status: dbUpdatePayload.plan_status,
-            requires_payment: dbUpdatePayload.requires_payment,
-            status: 'active',
-            updated_at: new Date().toISOString(),
-          };
-          await supabaseAdmin.from('profiles').update(profilePayload).eq('id', currentStudent.id);
-          if (currentStudent.email) {
-            await supabaseAdmin.from('profiles').update(profilePayload).ilike('email', currentStudent.email);
-          }
-        } catch (pErr) {
-          console.warn('Notice: updating profiles table in Supabase:', pErr);
-        }
       }
 
       // 3. Atomically update in-memory student store
@@ -9971,25 +9510,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           if (Array.isArray(claims) && claims.length > 0) {
             alreadyRedeemed = true;
             existingExpiry = claims[0].granted_until || claims[0].expires_at || null;
-          }
-        } catch {}
-      }
-
-      // Check profiles table in Supabase
-      if (supabaseAdmin && (studentId || studentEmail)) {
-        try {
-          let profData: any = null;
-          if (studentEmail) {
-            const { data } = await supabaseAdmin.from("profiles").select("*").ilike("email", studentEmail).maybeSingle();
-            if (data) profData = data;
-          }
-          if (!profData && studentId) {
-            const { data } = await supabaseAdmin.from("profiles").select("*").eq("id", studentId).maybeSingle();
-            if (data) profData = data;
-          }
-          if (profData && (profData.subscription_tier === "pro" || profData.is_pro || profData.promo_code_redeemed === code)) {
-            alreadyRedeemed = true;
-            existingExpiry = profData.subscription_expires_at || existingExpiry;
           }
         } catch {}
       }
@@ -10521,28 +10041,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           console.warn("[Promo claim] Supabase promo_codes update note:", cErr);
         }
 
-        try {
-          const profilePayload = {
-            id: studentFinalId,
-            email: studentFinalEmail,
-            name: studentFinalName,
-            subscription_tier: "pro",
-            subscription_expires_at: accessExpiresStr,
-            is_pro: true,
-            updated_at: new Date().toISOString(),
-          };
-          const { error: profErr } = await supabaseAdmin.from("profiles").upsert(profilePayload);
-          if (profErr && studentFinalEmail) {
-            await supabaseAdmin.from("profiles").update({
-              subscription_tier: "pro",
-              subscription_expires_at: accessExpiresStr,
-              is_pro: true,
-              updated_at: new Date().toISOString(),
-            }).ilike("email", studentFinalEmail);
-          }
-        } catch (pErr) {
-          console.warn("[Promo claim] profiles DB update note:", pErr);
-        }
       }
 
       // Log into admin activity log
@@ -11157,10 +10655,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           try {
             const { data: s } = await supabaseAdmin.from("students").select("email").eq("id", studentId).maybeSingle();
             if (s?.email) studentEmail = s.email.trim().toLowerCase();
-            if (!studentEmail) {
-              const { data: p } = await supabaseAdmin.from("profiles").select("email").eq("id", studentId).maybeSingle();
-              if (p?.email) studentEmail = p.email.trim().toLowerCase();
-            }
           } catch {}
         }
         if (studentEmail) {
@@ -11168,12 +10662,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
             const { data: sList } = await supabaseAdmin.from("students").select("id").ilike("email", studentEmail);
             if (Array.isArray(sList)) {
               for (const row of sList) {
-                if (row?.id) idsToWipe.add(row.id);
-              }
-            }
-            const { data: pList } = await supabaseAdmin.from("profiles").select("id").ilike("email", studentEmail);
-            if (Array.isArray(pList)) {
-              for (const row of pList) {
                 if (row?.id) idsToWipe.add(row.id);
               }
             }
@@ -11344,20 +10832,17 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           console.warn("[remove-student] Error deleting promo_redemptions:", prErr?.message);
         }
 
-        // 4. Delete from public parent tables: students & profiles
+        // 4. Delete from public parent table: students
         try {
           for (const uid of idsToWipe) {
             await supabaseAdmin.from("students").delete().eq("id", uid);
-            await supabaseAdmin.from("profiles").delete().eq("id", uid);
           }
           if (studentEmail) {
             await supabaseAdmin.from("students").delete().ilike("email", studentEmail);
-            await supabaseAdmin.from("profiles").delete().ilike("email", studentEmail);
           }
           wipedSummary["students"] = true;
-          wipedSummary["profiles"] = true;
         } catch (stErr: any) {
-          console.warn("[remove-student] Error deleting students/profiles:", stErr?.message);
+          console.warn("[remove-student] Error deleting students:", stErr?.message);
         }
 
         // 5. Delete Supabase Auth User records (auth.users) via service role key
@@ -11511,18 +10996,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         }
       }
 
-      // G. inMemoryTestAttemptStore & inMemoryUsageStore (Monthly Usage Count Wipe)
-      if (inMemoryTestAttemptStore) {
-        for (const period of Object.keys(inMemoryTestAttemptStore)) {
-          for (const uid of idsToWipe) {
-            delete inMemoryTestAttemptStore[period][uid];
-          }
-          if (studentEmail) {
-            delete inMemoryTestAttemptStore[period][studentEmail];
-          }
-        }
-      }
-
+      // G. inMemoryUsageStore (Monthly Usage Count Wipe)
       if (inMemoryUsageStore) {
         for (const period of Object.keys(inMemoryUsageStore)) {
           for (const uid of idsToWipe) {
@@ -11531,12 +11005,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
           if (studentEmail) {
             delete inMemoryUsageStore[period][studentEmail];
           }
-        }
-      }
-
-      if (inMemoryPdfDownloadStore) {
-        for (const uid of idsToWipe) {
-          delete inMemoryPdfDownloadStore[uid];
         }
       }
 
@@ -11676,7 +11144,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       if (supabaseAdmin) {
         const tablesToCheck = [
           { table: "students", cols: ["id", "email"] },
-          { table: "profiles", cols: ["id", "email"] },
           { table: "test_results", cols: ["student_id", "student_email"] },
           { table: "mcq_attempts", cols: ["student_id", "student_email"] },
           { table: "student_attempted_mcqs", cols: ["student_id"] },
@@ -11848,55 +11315,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       res.sendFile(path.join(distPath, "index.html"));
     });
   }
-
-  // Background Scheduled Job: Check and downgrade expired Pro students automatically every 60s
-  const runProExpiryCheck = async () => {
-    try {
-      const db = getSupabaseAdminClient() || supabaseServer;
-      if (!db) return;
-      const now = Date.now();
-      const { data: proStudents, error } = await db
-        .from("students")
-        .select("id, email, access_expires, is_pro, plan_tier")
-        .or("is_pro.eq.true,plan_tier.eq.pro")
-        .not("access_expires", "is", null);
-
-      if (error || !proStudents || proStudents.length === 0) return;
-
-      for (const st of proStudents) {
-        if (st.email && isAdminEmail(st.email)) continue;
-        if (st.access_expires) {
-          const expTime = new Date(st.access_expires).getTime();
-          if (!isNaN(expTime) && expTime <= now) {
-            console.log(`[Pro Expiry Cron] Automatically downgrading expired student ${st.id} (${st.email})`);
-            const nowIso = new Date().toISOString();
-            await db.from("students").update({
-              is_pro: false,
-              plan_tier: "free",
-              plan_status: "free",
-              payment_status: "Free Plan",
-              package_name: "Free Plan",
-              subscribed_plans: ["free"],
-              access_expires: null,
-              updated_at: nowIso,
-            }).eq("id", st.id);
-
-            await db.from("profiles").update({
-              is_pro: false,
-              subscription_tier: "free",
-              subscription_expires_at: null,
-              updated_at: nowIso,
-            }).eq("id", st.id).catch(() => {});
-          }
-        }
-      }
-    } catch (cronErr) {
-      console.warn("[Pro Expiry Cron] Background job error:", cronErr);
-    }
-  };
-
-  setTimeout(runProExpiryCheck, 5000);
-  setInterval(runProExpiryCheck, 60000);
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`SHS Virtual Academy MCQs Server running on http://0.0.0.0:${PORT}`);

@@ -951,17 +951,7 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
             </button>
           )}
 
-          {isProStudent ? (
-            <BoardlyProBadge userProfile={userProfile} isAdmin={isAdmin} label="Pro Entrance Pass" />
-          ) : (
-            <button
-              onClick={onUpgradeClick}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-extrabold text-amber-900 bg-gradient-to-r from-amber-200 to-amber-300 border border-amber-400/60 shadow-xs hover:brightness-105 active:scale-95 transition-all cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-900" />
-              <span>Unlock Full Grand Mocks</span>
-            </button>
-          )}
+          <BoardlyProBadge userProfile={userProfile} isAdmin={isAdmin} label="Full Access Entrance Pass" />
         </div>
       </div>
 
@@ -1082,13 +1072,13 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
             </ul>
           </div>
 
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs space-y-2">
-            <div className="font-extrabold text-slate-900 flex items-center gap-1.5">
-              <Flame className="w-4 h-4 text-amber-500" />
-              <span>Free Practice Tier Allowance</span>
+          <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-xs space-y-2">
+            <div className="font-extrabold text-emerald-900 flex items-center gap-1.5">
+              <Flame className="w-4 h-4 text-emerald-600" />
+              <span>Unlimited Practice Access</span>
             </div>
-            <p className="text-slate-600 leading-relaxed">
-              Enrolled students enjoy 2 free high-yield practice drills every month. Pro subscribers enjoy unlimited access to full-length timed mock exams.
+            <p className="text-emerald-800 leading-relaxed">
+              All enrolled students enjoy 100% free, unlimited access to chapter drills and full-length timed entrance exam mocks.
             </p>
           </div>
         </div>

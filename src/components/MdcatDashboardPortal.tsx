@@ -557,19 +557,12 @@ export const MdcatDashboardPortal: React.FC<MdcatDashboardPortalProps> = React.m
                 <button
                   type="button"
                   onClick={() => {
-                    if (isTestLimitReached) {
-                      if (onUpgradeClick) onUpgradeClick();
-                      return;
-                    }
                     handleConfirmStartTest();
                   }}
-                  className={isTestLimitReached
-                    ? "flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer border border-amber-400"
-                    : "flex-1 bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer border border-[#1E5AFF]"
-                  }
+                  className="flex-1 bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer border border-[#1E5AFF]"
                 >
                   <Zap className="w-4 h-4 fill-current text-current" />
-                  <span>{isTestLimitReached ? '2/2 free tests used — Upgrade to Pro' : currentUser ? 'Start Practice Test' : 'Sign In & Start Test'}</span>
+                  <span>{currentUser ? 'Start Practice Test' : 'Sign In & Start Test'}</span>
                 </button>
               </div>
             </motion.div>

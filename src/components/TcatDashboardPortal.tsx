@@ -152,14 +152,6 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
   };
 
   const handleOpenFullMockModal = () => {
-    if (!isProStudent) {
-      if (onUpgradeClick) {
-        onUpgradeClick();
-      } else {
-        alert("Grand Mock Exams (100 MCQs) are locked on the Free Starter plan. Upgrade to Pro for full access.");
-      }
-      return;
-    }
     setIsFullMockConfig(true);
     setSelectedSubjectName(null);
     setSelectedTopic(null);
@@ -170,7 +162,6 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
   };
 
   const handleConfirmStartTest = () => {
-    if (isTestLimitReached) return;
     triggerHaptic(HAPTIC_PATTERNS.medium);
     const testParams = {
       subject: isFullMockConfig ? `TCAT Full Mock - ${activeGroup.title}` : activeSubject ? activeSubject.name : 'Mathematics',
@@ -625,19 +616,12 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
                 <button
                   type="button"
                   onClick={() => {
-                    if (isTestLimitReached) {
-                      if (onUpgradeClick) onUpgradeClick();
-                      return;
-                    }
                     handleConfirmStartTest();
                   }}
-                  className={isTestLimitReached
-                    ? "flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer border border-amber-400"
-                    : "flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer border border-cyan-300/30"
-                  }
+                  className="flex-1 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-extrabold py-3 px-4 rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95 cursor-pointer border border-cyan-300/30"
                 >
                   <Zap className="w-4 h-4 fill-current" />
-                  <span>{isTestLimitReached ? '2/2 free tests used — Upgrade to Pro' : currentUser ? 'Start Practice Test' : 'Sign In & Start Test'}</span>
+                  <span>{currentUser ? 'Start Practice Test' : 'Sign In & Start Test'}</span>
                 </button>
               </div>
             </motion.div>

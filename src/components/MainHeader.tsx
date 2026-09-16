@@ -408,12 +408,6 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                 <span>Progress / Analytics</span>
               </button>
               <button
-                onClick={() => onNavigateSubscription?.()}
-                className="hover:text-[#1E5AFF] transition-colors cursor-pointer flex items-center gap-1.5"
-              >
-                <span>Subscription / Plan</span>
-              </button>
-              <button
                 onClick={() => (onNavigateProfile ? onNavigateProfile() : onOpenLmsPortal?.())}
                 className="hover:text-[#1E5AFF] transition-colors cursor-pointer flex items-center gap-1.5"
                 title="View Student Profile"
@@ -769,18 +763,6 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                       {historyCount} Tests
                     </span>
                   )}
-                </button>
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    if (onNavigateSubscription) onNavigateSubscription();
-                  }}
-                  className="text-left py-2.5 px-3 hover:bg-slate-100  rounded-xl flex items-center justify-between cursor-pointer transition-colors"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Crown className="w-4 h-4 text-[#1E5AFF]" />
-                    <span>Subscription / Plan</span>
-                  </div>
                 </button>
                 <button
                   onClick={() => {

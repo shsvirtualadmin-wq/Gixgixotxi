@@ -67,8 +67,7 @@ import { ThemeProvider } from './context/ThemeContext';
 import { ModalProvider, useModals } from './context/ModalContext';
 import { GlobalModals } from './components/GlobalModals';
 import { LeaveConfirmationModal } from './components/LeaveConfirmationModal';
-import { PLAN_OPTIONS, type PlanId } from './components/PlanSelectionScreen';
-import { getPricingTrackFromProfile, type PricingTrack, type BillingCycle } from './components/PricingPage';
+import { OneQuestionRegistrationScreen } from './components/OneQuestionRegistrationScreen';
 import { setPageMeta, DEFAULT_PAGE_META } from './utils/seo';
 import type { SetupWizardData } from './components/GuidedSetupWizard';
 import type { MCQContext } from './types';
@@ -76,19 +75,13 @@ import type { MCQContext } from './types';
 // Code-split heavy secondary screens with retry and self-healing reload on chunk update
 const GradesFlowScreen = lazyWithRetry(() => import('./components/GradesFlowScreen').then(m => ({ default: m.GradesFlowScreen })), 'GradesFlow');
 const GuidedSetupWizard = lazyWithRetry(() => import('./components/GuidedSetupWizard').then(m => ({ default: m.GuidedSetupWizard })), 'GuidedSetup');
-const StudentRegistrationFlow = lazyWithRetry(() => import('./components/StudentRegistrationFlow').then(m => ({ default: m.StudentRegistrationFlow })), 'Registration');
 const ClassGroupScreen = lazyWithRetry(() => import('./components/ClassGroupScreen').then(m => ({ default: m.ClassGroupScreen })), 'ClassGroup');
 const SubjectScreen = lazyWithRetry(() => import('./components/SubjectScreen').then(m => ({ default: m.SubjectScreen })), 'Subject');
 const DurationScreen = lazyWithRetry(() => import('./components/DurationScreen').then(m => ({ default: m.DurationScreen })), 'Duration');
 const LmsAuthScreen = lazyWithRetry(() => import('./components/LmsAuthScreen').then(m => ({ default: m.LmsAuthScreen })), 'LmsAuth');
 const AdminDashboardScreen = lazyWithRetry(() => import('./components/AdminDashboardScreen').then(m => ({ default: m.AdminDashboardScreen })), 'AdminDashboard');
 const ClassStreamDashboard = lazyWithRetry(() => import('./components/ClassStreamDashboard').then(m => ({ default: m.ClassStreamDashboard })), 'ClassStream');
-const PaymentRequiredScreen = lazyWithRetry(() => import('./components/PaymentRequiredScreen').then(m => ({ default: m.PaymentRequiredScreen })), 'PaymentRequired');
-const PlanSelectionScreen = lazyWithRetry(() => import('./components/PlanSelectionScreen').then(m => ({ default: m.PlanSelectionScreen })), 'PlanSelection');
-const PricingPage = lazyWithRetry(() => import('./components/PricingPage').then(m => ({ default: m.PricingPage })), 'Pricing');
 import { StudentProfileView } from './components/StudentProfileView';
-import { RegistrationPage, RegistrationFormData } from './components/RegistrationPage';
-import { CheckoutDuesPage } from './components/CheckoutDuesPage';
 import { PromoCelebrationModal, PromoModalMode } from './components/PromoCelebrationModal';
 import {
   extractPromoCodeFromUrl,
@@ -99,7 +92,7 @@ import {
   validatePromoCode,
 } from './lib/promoCode';
 
-import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveStudentRegistration, submitPaymentProofApi, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, clearAllClientAuthAndSessionData, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack } from './lib/supabase';
+import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveStudentRegistration, submitPaymentProofApi, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, clearAllClientAuthAndSessionData, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack, completeOneQuestionRegistration } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
@@ -147,12 +140,10 @@ export const VALID_SCREENS: ScreenType[] = [
 ];
 
 export function checkIsStudentProOrPaid(
-  profile: StudentProfile | null | undefined,
-  isAdmin: boolean
+  _profile?: StudentProfile | null,
+  _isAdmin?: boolean
 ): boolean {
-  if (isAdmin) return true;
-  if (!profile) return false;
-  return evaluateStudentAccess(profile, 0, isAdmin).isPro;
+  return true;
 }
 
 export { isTrackAllowedForUser } from './lib/supabase';
@@ -388,20 +379,6 @@ export function App() {
   });
   const [selectedSubject, setSelectedSubject] = useState<string>(initialUrlState.selectedSubject);
   const [customTopic, setCustomTopic] = useState<string | undefined>(undefined);
-
-  const [selectedPricingTrack, setSelectedPricingTrack] = useState<PricingTrack>(() => {
-    return getPricingTrackFromProfile(null, initialUrlState.selectedClass ? String(initialUrlState.selectedClass) : undefined, initialUrlState.selectedGroup);
-  });
-  const [selectedPricingCycle, setSelectedPricingCycle] = useState<BillingCycle>('annual');
-
-  const [pendingRegistrationData, setPendingRegistrationData] = useState<RegistrationFormData | null>(() => {
-    try {
-      const saved = localStorage.getItem('boardly_pending_registration_data');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
 
   const [showExitToast, setShowExitToast] = useState<boolean>(false);
   const lastExitPressTimeRef = useRef<number>(0);
@@ -893,9 +870,9 @@ export function App() {
     Boolean(userProfile?.is_registered) ||
     hasGradeAndStream;
 
-  // Access Gating Rule: Only Admins OR students whose evaluated access isPro is true have Pro access!
-  const isStudentProOrPaid = userProfile ? evaluateStudentAccess(userProfile, 0, isAdmin).isPro : false;
-  const isPaymentApprovedOrExempt = isAdmin || isStudentProOrPaid;
+  // Access Gating Rule: Boardly is 100% free and Pro for all users!
+  const isStudentProOrPaid = true;
+  const isPaymentApprovedOrExempt = true;
 
   // Synchronize selectedClass & selectedGroup with student's profile grade & stream
   const lastKnownProfileTrackRef = useRef<string>('');
@@ -1170,90 +1147,6 @@ export function App() {
     setScreen('dashboard');
   };
 
-  const handleSelectPlans = async (selectedPlanIds: PlanId[]) => {
-    if (!currentUser) {
-      setScreen('auth');
-      return;
-    }
-
-    const planNames = selectedPlanIds
-      .map((id) => PLAN_OPTIONS.find((p) => p.id === id)?.name)
-      .filter(Boolean)
-      .join(' + ');
-
-    const hasPaidPlan = selectedPlanIds.some((id) => {
-      const opt = PLAN_OPTIONS.find((p) => p.id === id);
-      return opt && opt.numericPrice > 0;
-    });
-
-    const provider = currentUser.app_metadata?.provider || 'email';
-
-    let nextPaymentStatus = userProfile?.payment_status || 'Unpaid';
-    let nextRequiresPayment = true;
-
-    const isAlreadyPro = Boolean(userProfile?.is_pro || userProfile?.payment_status === 'Verified & Paid');
-
-    if (isAlreadyPro) {
-      nextPaymentStatus = 'Verified & Paid';
-      nextRequiresPayment = false;
-    } else if (!hasPaidPlan) {
-      nextPaymentStatus = 'Free Plan';
-      nextRequiresPayment = false;
-    } else {
-      if (userProfile?.payment_status === 'Pending Verification') {
-        nextPaymentStatus = 'Pending Verification';
-        nextRequiresPayment = true;
-      } else {
-        nextPaymentStatus = 'Unpaid';
-        nextRequiresPayment = true;
-      }
-    }
-
-    const updatedProfile: StudentProfile = {
-      ...(userProfile || {
-        id: currentUser.id,
-        name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'Student',
-        email: currentUser.email || '',
-        grade: selectedClass ? selectedClass.toString() : 'General Student',
-        sign_up_method: provider === 'google' ? 'Google' : 'Email/Password',
-        created_at: new Date().toISOString(),
-      }),
-      is_registered: true,
-      subscribed_plans: selectedPlanIds,
-      package_name: planNames || (hasPaidPlan ? 'Paid Subscription' : 'Free Plan'),
-      payment_status: nextPaymentStatus,
-      requires_payment: nextRequiresPayment,
-      updated_at: new Date().toISOString(),
-    };
-
-    setUserProfile(updatedProfile);
-    localStorage.setItem(`boardly_profile_${currentUser.id}`, JSON.stringify(updatedProfile));
-    localStorage.setItem('boardly_cached_profile', JSON.stringify(updatedProfile));
-
-    try {
-      await supabase.from('students').upsert(sanitizeStudentForDb(updatedProfile));
-    } catch (err) {
-      console.warn('Error syncing profile after plan selection:', err);
-    }
-
-    if (selectedPlanIds.includes('mdcat')) {
-      setSelectedClass('MDCAT');
-      setSelectedGroup('MDCAT');
-    } else if (selectedPlanIds.includes('tcat')) {
-      setSelectedClass('TCAT');
-      setSelectedGroup('TCAT');
-    } else if (selectedPlanIds.includes('fsc')) {
-      setSelectedClass(11);
-      setSelectedGroup('Pre-Medical');
-    } else if (selectedPlanIds.includes('matric')) {
-      setSelectedClass(9);
-      setSelectedGroup('Medical');
-    }
-
-    setTrackNotice(null);
-    setScreen('dashboard');
-  };
-
   useEffect(() => {
     screenRef.current = screen;
     selectedClassRef.current = selectedClass;
@@ -1392,13 +1285,12 @@ export function App() {
     return () => clearInterval(intervalId);
   }, [currentUser?.id, currentUser?.email, screen]);
 
-  // Auto-redirect verified/approved students off the payment_required screen to dashboard
+  // Auto-redirect off legacy payment/pricing screens to dashboard
   useEffect(() => {
-    if (screen === 'payment_required' && isPaymentApprovedOrExempt) {
-      console.log('[Payment Guard]: User is verified/approved. Redirecting from payment_required to dashboard automatically.');
+    if (['payment_required', 'pricing', 'plan_selection', 'checkout'].includes(screen)) {
       setScreen('dashboard');
     }
-  }, [screen, isPaymentApprovedOrExempt]);
+  }, [screen]);
 
   // Comprehensive Security & Route Guard Enforcement (Auth & RBAC)
   useEffect(() => {
@@ -1409,7 +1301,7 @@ export function App() {
     const enforceSecurity = async () => {
       // 1. Unauthenticated User Protection for Protected Routes
       if (!currentUser) {
-        if (['dashboard', 'subject', 'duration', 'test', 'results', 'guided_wizard', 'checkout', 'plan_selection', 'group', 'grades_flow', 'admin'].includes(screen)) {
+        if (['dashboard', 'subject', 'duration', 'test', 'results', 'guided_wizard', 'group', 'grades_flow', 'admin'].includes(screen)) {
           // Double-check active session directly with Supabase before bouncing to auth screen
           const { data: { session } } = await supabase.auth.getSession();
           if (!isMounted) return;
@@ -1444,8 +1336,6 @@ export function App() {
         if (profileSyncing) return; // Wait for profile sync to finish
 
         const activeProf = userProfile;
-        const isApprovedOrExempt = isAdmin || checkIsStudentProOrPaid(activeProf, isAdmin);
-
         const hasAcademicTrack = Boolean(
           activeProf?.grade &&
           activeProf.grade.trim() &&
@@ -1462,22 +1352,12 @@ export function App() {
         );
 
         if (!isUserRegistered) {
-          if (screen !== 'guided_wizard' && screen !== 'checkout' && screen !== 'auth' && screen !== 'intro') {
+          if (screen !== 'guided_wizard' && screen !== 'auth' && screen !== 'intro') {
             setScreen('guided_wizard');
           }
         } else {
-          // Free-tier and pending-verification students are allowed on dashboard without checks
-          if (isApprovedOrExempt) {
-            // Verified pro students with valid access_expires are allowed everywhere; auto-redirect off payment_required
-            if (screen === 'payment_required') {
-              setScreen('dashboard');
-            }
-            return;
-          }
-
-          // Non-pro students (free tier / pending verification) accessing test attempt screens
-          if (['subject', 'duration', 'test'].includes(screen)) {
-            // Free-tier students are permitted to attempt practice tests without automatic payment redirect
+          if (['payment_required', 'pricing', 'plan_selection', 'checkout'].includes(screen)) {
+            setScreen('dashboard');
           }
         }
       }
@@ -2182,8 +2062,8 @@ export function App() {
     return Math.max(mcqUsageCount, profileTestsUsed, currentMonthHistoryCount);
   }, [history, mcqUsageCount, userProfile?.tests_used_this_month]);
 
-  const usedTestAttempts = currentMonthlyTestCount;
-  const isTestLimitReached = !isPaymentApprovedOrExempt && usedTestAttempts >= 2;
+  const usedTestAttempts = 0;
+  const isTestLimitReached = false;
 
   const handleClearHistory = async () => {
     if (currentUser?.id) {
@@ -3205,44 +3085,6 @@ export function App() {
       return;
     }
 
-    // Pre-flight check against local count
-    if (!isPaymentApprovedOrExempt && currentMonthlyTestCount >= 2) {
-      setIsGenerating(false);
-      openTestLimitModal(testLimitResetDate, currentMonthlyTestCount);
-      return;
-    }
-
-    // Pre-flight limit check against server endpoint for non-Pro students
-    if (!isPaymentApprovedOrExempt) {
-      try {
-        const checkRes = await apiFetch('/api/check-test-limit', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: currentUser.id,
-            userEmail: currentUser.email,
-          }),
-        });
-        const checkData = await safeJsonResponse(checkRes);
-        if (checkData?.requiresAuth) {
-          setIsGenerating(false);
-          setPendingTestParams(params);
-          setScreen('auth');
-          return;
-        }
-        if (checkRes.status === 403 && (checkData?.limitExceeded === true || checkData?.allowed === false)) {
-          setIsGenerating(false);
-          const resetDate = checkData?.resetDate || testLimitResetDate;
-          if (checkData?.resetDate) setTestLimitResetDate(checkData.resetDate);
-          const usageToPass = Math.max(currentMonthlyTestCount, checkData?.currentUsage ?? 0);
-          openTestLimitModal(resetDate, usageToPass);
-          return;
-        }
-      } catch (checkErr) {
-        console.warn('[handleStartTest check-test-limit warning]:', checkErr);
-      }
-    }
-
     // Immediately trigger loading feedback for 1st tap
     setIsGenerating(true);
 
@@ -3609,15 +3451,7 @@ export function App() {
         onOpenStudyBuddy={() => openStudyBuddy()}
         onNavigateSubscription={() => {
           confirmExitTestIfActive(() => {
-            const userTrack = getPricingTrackFromProfile(userProfile, selectedClass ? String(selectedClass) : undefined, selectedGroup);
-            setSelectedPricingTrack(userTrack);
-            try {
-              const newUrl = new URL(window.location.href);
-              newUrl.searchParams.set('screen', 'pricing');
-              newUrl.searchParams.set('track', userTrack);
-              window.history.pushState({}, '', newUrl.toString());
-            } catch {}
-            setScreen('pricing');
+            setScreen('dashboard');
             window.scrollTo({ top: 0, behavior: 'smooth' });
           });
         }}
@@ -3768,13 +3602,32 @@ export function App() {
                   )
                 )}
                 {screen === 'guided_wizard' && (
-                  <RegistrationPage
+                  <OneQuestionRegistrationScreen
                     user={currentUser}
-                    onProceedToCheckout={(data) => {
-                      setPendingRegistrationData(data);
-                      localStorage.setItem('boardly_pending_registration_data', JSON.stringify(data));
-                      setScreen('checkout');
-                      localStorage.setItem('boardly_active_screen', 'checkout');
+                    onCompleteRegistration={async (trackId, trackName) => {
+                      const userId = currentUser?.id || `anon-${Date.now()}`;
+                      try {
+                        const saved = await completeOneQuestionRegistration(
+                          userId,
+                          trackId,
+                          trackName,
+                          currentUser?.email
+                        );
+                        if (saved) {
+                          setUserProfile(saved);
+                          const defaultInfo = getStudentDefaultClassAndGroup(saved);
+                          setSelectedClass(defaultInfo.classNum);
+                          setSelectedGroup(defaultInfo.group);
+                        }
+                      } catch (err) {
+                        console.error('Registration error:', err);
+                      }
+                      localStorage.setItem('boardly_registration_is_success', 'true');
+                      localStorage.setItem('boardly_active_screen', 'dashboard');
+                      try {
+                        await refreshUserProfile();
+                      } catch (e) {}
+                      setScreen('dashboard');
                       window.scrollTo({ top: 0, behavior: 'smooth' });
                     }}
                     onSignOut={async () => {
@@ -3786,163 +3639,10 @@ export function App() {
                     }}
                   />
                 )}
-                {screen === 'checkout' && (
-                  <CheckoutDuesPage
-                    user={currentUser}
-                    registrationData={pendingRegistrationData}
-                    initialPath={(new URLSearchParams(window.location.search).get('path') as any) || 'choose'}
-                    paymentStatus={userProfile?.payment_status || 'Unpaid'}
-                    onContinueFreeTier={async () => {
-                      const targetTrack = pendingRegistrationData?.category || 'NUST (NET)';
-                      const targetUni = pendingRegistrationData?.targetUniversity || 'NUST';
-                      const studentName = pendingRegistrationData?.fullName || currentUser?.user_metadata?.full_name || 'Student';
-                      const userId = currentUser?.id || `anon-${Date.now()}`;
-                      
-                      try {
-                        const savedProfile = await saveStudentRegistration(userId, {
-                          name: studentName,
-                          phone: pendingRegistrationData?.phone || '',
-                          email: currentUser?.email || '',
-                          grade: pendingRegistrationData?.grade || 'NET',
-                          stream: pendingRegistrationData?.stream || 'Pre-Engineering Stream',
-                          subjects: pendingRegistrationData?.subjects || [],
-                          dream_university: targetUni,
-                          payment_status: 'Free Plan',
-                        });
-                        if (savedProfile) {
-                          setUserProfile(savedProfile);
-                        }
-                      } catch (err) {
-                        console.error('Failed to save free plan registration:', err);
-                      }
-
-                      localStorage.setItem('boardly_registration_is_success', 'true');
-                      localStorage.setItem('boardly_active_screen', 'dashboard');
-                      try {
-                        await refreshUserProfile();
-                      } catch (e) {}
-                      setScreen('dashboard');
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    onSubmitProof={async (details) => {
-                      const targetTrack = pendingRegistrationData?.category || 'NUST (NET)';
-                      const targetUni = pendingRegistrationData?.targetUniversity || 'NUST';
-                      const studentName = pendingRegistrationData?.fullName || currentUser?.user_metadata?.full_name || 'Student';
-                      const userId = currentUser?.id || `anon-${Date.now()}`;
-
-                      try {
-                        const savedProfile = await saveStudentRegistration(userId, {
-                          name: studentName,
-                          phone: pendingRegistrationData?.phone || '',
-                          email: currentUser?.email || '',
-                          grade: pendingRegistrationData?.grade || 'NET',
-                          stream: pendingRegistrationData?.stream || 'Pre-Engineering Stream',
-                          subjects: pendingRegistrationData?.subjects || [],
-                          dream_university: targetUni,
-                          payment_status: 'Pending Verification',
-                          payment_method: details.method,
-                          transaction_reference: details.transactionId || 'WhatsApp Submission',
-                        });
-                        if (savedProfile) {
-                          setUserProfile(savedProfile);
-                        }
-
-                        try {
-                          await submitPaymentProofApi({
-                            student_id: savedProfile?.id || userId,
-                            student_name: studentName,
-                            student_email: currentUser?.email || '',
-                            payment_method: details.method,
-                            amount: details.amount,
-                            transaction_reference: details.transactionId || 'WhatsApp Submission',
-                            course_tier: targetTrack,
-                          });
-                        } catch (pErr) {
-                          console.warn('Payment proof submission notice:', pErr);
-                        }
-                      } catch (err) {
-                        console.error('Failed to save proof registration:', err);
-                      }
-
-                      localStorage.setItem('boardly_registration_is_success', 'true');
-                      localStorage.setItem('boardly_active_screen', 'dashboard');
-                      try {
-                        await refreshUserProfile();
-                      } catch (e) {}
-                      setScreen('dashboard');
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    onBackToRegistration={() => {
-                      setScreen('guided_wizard');
-                      localStorage.setItem('boardly_active_screen', 'guided_wizard');
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                  />
-                )}
-                {(screen === 'pricing' || screen === 'plan_selection') && (
-                  <div className="w-full space-y-4 animate-fadeIn">
-                    {trackNotice && (
-                      <div className="bg-blue-500/10 border border-blue-500/30 rounded-2xl p-4 text-center text-xs font-bold text-blue-300 flex items-center justify-center gap-2">
-                        <ShieldAlert className="w-4 h-4 shrink-0 text-blue-400" />
-                        <span>{trackNotice}</span>
-                      </div>
-                    )}
-                    <PricingPage
-                      userProfile={userProfile}
-                      selectedClass={selectedClass ? String(selectedClass) : undefined}
-                      selectedGroup={selectedGroup}
-                      selectedTrackOverride={selectedPricingTrack}
-                      currentTestsUsed={history.length}
-                      onOpenPaymentModal={() => openPaymentModal(selectedPricingTrack, selectedPricingCycle)}
-                      onContinueFree={() => {
-                        setScreen(currentUser ? 'dashboard' : 'intro');
-                      }}
-                      onSelectProPlan={(track, cycle) => {
-                        setSelectedPricingTrack(track);
-                        setSelectedPricingCycle(cycle);
-                        openPaymentModal(track, cycle);
-                      }}
-                      onBack={() => {
-                        setScreen(currentUser ? 'dashboard' : 'intro');
-                      }}
-                    />
+                {(screen === 'checkout' || screen === 'pricing' || screen === 'plan_selection' || screen === 'payment_required') && (
+                  <div className="w-full flex justify-center py-12">
+                    <BrandedLoadingSpinner label="Redirecting to your free dashboard..." size="md" />
                   </div>
-                )}
-                {screen === 'payment_required' && (
-                  currentUser ? (
-                    <PaymentRequiredScreen
-                      currentUser={currentUser}
-                      userProfile={userProfile}
-                      onOpenPaymentModal={() => openPaymentModal(selectedPricingTrack, selectedPricingCycle)}
-                      onRefreshProfile={async () => {
-                        await refreshUserProfile();
-                      }}
-                      onSignOut={async () => {
-                        await supabase.auth.signOut();
-                        setCurrentUser(null);
-                        setUserProfile(null);
-                        setScreen('intro');
-                      }}
-                    />
-                  ) : (
-                    <div className="bg-white  border border-slate-200  rounded-3xl p-8 max-w-lg mx-auto text-center space-y-5 shadow-2xl animate-ios-spring my-8">
-                      <div className="w-16 h-16 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-[#1E5AFF] mx-auto">
-                        <Lock className="w-8 h-8" />
-                      </div>
-                      <div className="space-y-2">
-                        <h2 className="text-xl font-bold text-slate-900 ">Sign In Required</h2>
-                        <p className="text-xs text-slate-600  leading-relaxed">
-                          Please sign in to check your subscription status or review payment verification.
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => setScreen('auth')}
-                        className="w-full bg-[#1E5AFF] hover:bg-[#1546CC] text-white font-extrabold py-3 px-4 rounded-xl text-xs transition-all cursor-pointer shadow-md active:scale-95"
-                      >
-                        Sign In / Register
-                      </button>
-                    </div>
-                  )
                 )}
                 {screen === 'grades_flow' && (
                   <GradesFlowScreen

@@ -26,14 +26,6 @@ const PrintableTestModal = lazyWithRetry(
   () => import('./PrintableTestModal').then((m) => ({ default: m.PrintableTestModal })),
   'PrintableTestModal'
 );
-const PaymentProofModal = lazyWithRetry(
-  () => import('./PaymentProofModal').then((m) => ({ default: m.PaymentProofModal })),
-  'PaymentProofModal'
-);
-const TestLimitModal = lazyWithRetry(
-  () => import('./TestLimitModal').then((m) => ({ default: m.TestLimitModal })),
-  'TestLimitModal'
-);
 
 interface GlobalModalsProps {
   currentUser: User | null;
@@ -165,44 +157,8 @@ export const GlobalModals: React.FC<GlobalModalsProps> = React.memo(({
           currentUser={currentUser}
           userProfile={userProfile}
           onClose={closePrintModal}
-          onUpgradeClick={() => {
-            closePrintModal();
-            setScreen('plan_selection');
-          }}
         />
       )}
-
-      {showPaymentModal && currentUser && (
-        <PaymentProofModal
-          isOpen={showPaymentModal}
-          onClose={closePaymentModal}
-          currentUser={currentUser}
-          studentProfile={userProfile}
-          selectedTrackOverride={paymentOverrides.track}
-          selectedCycleOverride={paymentOverrides.cycle}
-          onSubmitted={async () => {
-            if (currentUser?.id) {
-              const updated = await fetchStudentProfileFromSupabase(currentUser.id, true, currentUser.email);
-              if (updated) setUserProfile(updated);
-            }
-          }}
-        />
-      )}
-
-      <TestLimitModal
-        isOpen={showTestLimitModal}
-        onClose={closeTestLimitModal}
-        resetDate={testLimitData.resetDate}
-        currentUsage={testLimitData.currentUsage}
-        onUpgradeClick={() => {
-          closeTestLimitModal();
-          setScreen('pricing');
-        }}
-        onSubmitPaymentProofClick={() => {
-          closeTestLimitModal();
-          openPaymentModal();
-        }}
-      />
       </Suspense>
     </ChunkErrorBoundary>
   );

@@ -226,30 +226,6 @@ export async function validatePromoCode(
         };
       }
 
-      // Check profiles table for active Pro tier
-      let profQuery = supabase.from('profiles').select('*');
-      if (normalizedEmail && studentId) {
-        profQuery = profQuery.or(`id.eq.${studentId},email.ilike.${normalizedEmail}`);
-      } else if (normalizedEmail) {
-        profQuery = profQuery.ilike('email', normalizedEmail);
-      } else if (studentId) {
-        profQuery = profQuery.eq('id', studentId);
-      }
-      const { data: profData } = await profQuery.maybeSingle();
-      if (profData && (profData.subscription_tier === 'pro' || profData.is_pro || profData.promo_code_redeemed === cleanCode)) {
-        const expiry = profData.subscription_expires_at || null;
-        return {
-          valid: true,
-          alreadyRedeemed: true,
-          alreadyRedeemedByAccount: true,
-          code: cleanCode,
-          label: '1-Year Free Boardly Pro Access',
-          expiresDate: expiry,
-          grantedUntil: expiry,
-          message: `Already activated on this account (expires ${expiry ? new Date(expiry).toLocaleDateString() : 'in 1 year'}).`,
-        };
-      }
-
       // Check students table for active Pro tier
       let stQuery = supabase.from('students').select('*');
       if (normalizedEmail && studentId) {
@@ -354,31 +330,7 @@ export async function claimPromoCode(
   const commitDirectSupabaseWrites = async (grantedExpires: string) => {
     if (!studentId && !normalizedEmail) return;
 
-    // 1. Write to profiles table (subscription_tier, subscription_expires_at, is_pro)
-    try {
-      const profileData: any = {
-        id: studentId,
-        email: normalizedEmail,
-        subscription_tier: 'pro',
-        subscription_expires_at: grantedExpires,
-        is_pro: true,
-        updated_at: new Date().toISOString(),
-      };
-      await supabase.from('profiles').upsert(profileData);
-      if (normalizedEmail) {
-        await supabase.from('profiles').update({
-          subscription_tier: 'pro',
-          subscription_expires_at: grantedExpires,
-          is_pro: true,
-          updated_at: new Date().toISOString(),
-        }).ilike('email', normalizedEmail);
-      }
-      console.log('[claimPromoCode] Successfully wrote Pro grant to profiles table.');
-    } catch (profErr) {
-      console.warn('[claimPromoCode] profiles write note:', profErr);
-    }
-
-    // 2. Write to students table (plan_tier, access_expires, is_pro, payment_status)
+    // Write to students table (plan_tier, access_expires, is_pro, payment_status)
     let studentWriteSuccess = false;
     let studentWriteError: any = null;
     let updatedStudentRows: any[] = [];

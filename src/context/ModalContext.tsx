@@ -91,23 +91,18 @@ export const ModalProvider: React.FC<{ children: ReactNode }> = ({ children }) =
   const openLmsModal = useCallback(() => setShowLmsModal(true), []);
   const closeLmsModal = useCallback(() => setShowLmsModal(false), []);
 
-  const openPaymentModal = useCallback((trackOverride?: string, cycleOverride?: string) => {
-    setPaymentOverrides({ track: trackOverride, cycle: cycleOverride });
-    setShowPaymentModal(true);
+  const openPaymentModal = useCallback((_trackOverride?: string, _cycleOverride?: string) => {
+    // Decommissioned: Boardly is 100% free and open for all students
+    setShowPaymentModal(false);
   }, []);
   const closePaymentModal = useCallback(() => {
     setShowPaymentModal(false);
     setPaymentOverrides({});
   }, []);
 
-  const openTestLimitModal = useCallback((resetDate = '', currentUsage = 2) => {
-    // Defense-in-depth: Never open test limit modal if student has completed fewer than 2 tests
-    if (typeof currentUsage === 'number' && currentUsage < 2) {
-      console.warn(`[openTestLimitModal suppressed]: Student has completed ${currentUsage}/2 tests. Limit not reached.`);
-      return;
-    }
-    setTestLimitData({ resetDate, currentUsage: Math.max(currentUsage, 2) });
-    setShowTestLimitModal(true);
+  const openTestLimitModal = useCallback((_resetDate = '', _currentUsage = 0) => {
+    // Decommissioned: Boardly has unlimited practice tests for all students
+    setShowTestLimitModal(false);
   }, []);
   const closeTestLimitModal = useCallback(() => setShowTestLimitModal(false), []);
 

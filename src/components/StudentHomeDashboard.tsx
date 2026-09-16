@@ -173,102 +173,10 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
 
   const resolvedTrack = resolveStudentTrackDetails(userProfile);
 
-  // Live Pro Countdown & Expiry Engine
-  const [nowTime, setNowTime] = useState<number>(() => Date.now());
-  const [isLocallyDowngraded, setIsLocallyDowngraded] = useState<boolean>(false);
-  const hasTriggeredDowngradeRef = useRef<boolean>(false);
-
-  // Set up 1-second interval to update live countdown in real time on the dashboard ONLY for students
-  useEffect(() => {
-    if (isEffectiveAdmin) return;
-    const timer = setInterval(() => {
-      setNowTime(Date.now());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [isEffectiveAdmin]);
-
-  // Determine if the student profile holds a Pro grant (strictly for student accounts)
-  const hasProGrant = Boolean(
-    !isEffectiveAdmin &&
-    !isLocallyDowngraded &&
-    (userProfile?.is_pro || userProfile?.plan_tier === 'pro')
-  );
-
-  // Parse access_expires timestamp strictly for real student accounts with an actual access_expires date
-  const expiryTimestamp = React.useMemo(() => {
-    if (isEffectiveAdmin) return null;
-    if (!userProfile?.access_expires) return null;
-    const t = new Date(userProfile.access_expires).getTime();
-    return isNaN(t) ? null : t;
-  }, [isEffectiveAdmin, userProfile?.access_expires]);
-
-  // Reset local downgrade state if profile receives a valid future expiration
-  useEffect(() => {
-    if (isEffectiveAdmin) return;
-    if (expiryTimestamp && expiryTimestamp > Date.now()) {
-      hasTriggeredDowngradeRef.current = false;
-      setIsLocallyDowngraded(false);
-    }
-  }, [isEffectiveAdmin, expiryTimestamp]);
-
-  // Target expiry time: ONLY applied to real student accounts with an actual access_expires date
-  const targetExpiryTime = React.useMemo(() => {
-    if (isEffectiveAdmin || !hasProGrant) return null;
-    return expiryTimestamp;
-  }, [isEffectiveAdmin, hasProGrant, expiryTimestamp]);
-
-  const remainingMs = targetExpiryTime ? targetExpiryTime - nowTime : 0;
-  // A student has active Pro if they have a pro grant and either no expiry or it hasn't expired yet
-  const isProActive = Boolean(hasProGrant && (!targetExpiryTime || remainingMs > 0));
-
-  // Feature gate access on dashboard: Admin always gets permanent unlimited access; Students get access when active
-  const isProStudent = isEffectiveAdmin || isProActive;
-
-  // Format countdown string: "199d 14h 22m 05s left"
-  const countdownString = React.useMemo(() => {
-    if (isEffectiveAdmin || !targetExpiryTime || remainingMs <= 0) return '';
-    const totalSeconds = Math.max(0, Math.floor(remainingMs / 1000));
-    const days = Math.floor(totalSeconds / 86400);
-    const hours = Math.floor((totalSeconds % 86400) / 3600);
-    const minutes = Math.floor((totalSeconds % 3600) / 60);
-    const seconds = totalSeconds % 60;
-
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${days}d ${pad(hours)}h ${pad(minutes)}m ${pad(seconds)}s left`;
-  }, [isEffectiveAdmin, targetExpiryTime, remainingMs]);
-
-  // Exact automatic downgrade when countdown hits zero (strictly for real student accounts with an actual access_expires date)
-  useEffect(() => {
-    if (isEffectiveAdmin) return;
-    if (
-      targetExpiryTime &&
-      remainingMs <= 0 &&
-      (userProfile?.is_pro || userProfile?.plan_tier === 'pro') &&
-      !hasTriggeredDowngradeRef.current
-    ) {
-      hasTriggeredDowngradeRef.current = true;
-      setIsLocallyDowngraded(true);
-
-      const downgradedProfile: StudentProfile = {
-        ...userProfile,
-        is_pro: false,
-        plan_tier: 'free',
-        plan_status: 'free',
-        payment_status: 'Free Plan',
-        package_name: 'Free Plan',
-        subscribed_plans: ['free'],
-        access_expires: null,
-      };
-
-      if (onUpdateProfile) {
-        onUpdateProfile(downgradedProfile);
-      }
-
-      const uid = userProfile?.id || currentUser?.id || '';
-      const uemail = userProfile?.email || currentUser?.email || undefined;
-      downgradeExpiredProStudent(uid, uemail);
-    }
-  }, [isEffectiveAdmin, targetExpiryTime, remainingMs, userProfile, currentUser, onUpdateProfile]);
+  // Boardly is 100% free with unlimited access for all students
+  const isProStudent = true;
+  const isProActive = true;
+  const countdownString = '';
 
   const [weaknessProfile, setWeaknessProfile] = useState<StudentWeaknessProfileData | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState<boolean>(true);
@@ -565,21 +473,6 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
 
   return (
     <section className="animate-ios-spring flex-1 flex flex-col gap-5 py-2">
-      {/* Pending Verification Notice Banner */}
-      {Boolean(
-        (userProfile?.payment_status === 'Pending Verification' ||
-         userProfile?.plan_status === 'pending_verification') &&
-        !evaluateStudentAccess(userProfile, monthlyTestCount, isAdmin).isPro
-      ) && (
-        <div className="bg-amber-500/10 border border-amber-500/30  rounded-2xl p-4 text-amber-800  flex items-start sm:items-center gap-3 shadow-sm animate-fadeIn">
-          <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5 sm:mt-0" />
-          <div className="flex-1 text-xs sm:text-sm leading-relaxed">
-            <span className="font-black text-amber-700  mr-1.5">Pending Verification:</span>
-            Your registration / payment proof is under review. You have full access to practice tests and dashboard features while our team verifies your account.
-          </div>
-        </div>
-      )}
-
       {/* Personalized Welcome Card */}
       <div className="bg-white  text-slate-900  rounded-3xl p-6 sm:p-7 border border-black/10  shadow-xl relative overflow-hidden flex flex-col gap-6 transition-colors">
         <div className="absolute top-0 right-0 w-72 h-72 bg-[#F2B90C]/15  rounded-full blur-3xl pointer-events-none" />
@@ -595,21 +488,13 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
               <ShieldCheck className="w-3.5 h-3.5 text-purple-600 shrink-0" />
               <span>Admin — Unlimited (999+)</span>
             </div>
-          ) : isProActive ? (
+          ) : (
             <div
               id="student-dashboard-status-label"
               className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-xs whitespace-nowrap shrink-0"
             >
-              <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-500 shrink-0" />
-              <span>Pro — {countdownString || 'Active'}</span>
-            </div>
-          ) : (
-            <div
-              id="student-dashboard-status-label"
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200 shadow-xs whitespace-nowrap shrink-0"
-            >
-              <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
-              <span>Free Tier</span>
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span>Full Access — Free Forever</span>
             </div>
           )}
         </div>
@@ -688,7 +573,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
             >
               <Zap className="w-4 h-4 text-[#0A0A0A] fill-[#0A0A0A]" />
               <span>
-                {!isProStudent && isTestLimitReached ? "2/2 free tests used this month" : resolvedTrack.practiceButtonText}
+                {resolvedTrack.practiceButtonText}
               </span>
             </button>
           )}
@@ -719,32 +604,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
           </span>
         </div>
 
-        {!isProStudent ? (
-          <div className="bg-gradient-to-r from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 rounded-2xl p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-sm">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center shrink-0 text-amber-500">
-                <Lock className="w-5 h-5" />
-              </div>
-              <div className="space-y-1">
-                <h4 className="font-bold text-sm text-slate-900">
-                  Weakness Detection is a Pro Feature
-                </h4>
-                <p className="text-xs text-slate-500">
-                  Free Starter tier displays basic overall test scores only. Upgrade to Pro for chapter-level weakness analysis &amp; targeted retries.
-                </p>
-              </div>
-            </div>
-            {onUpgradeClick && (
-              <button
-                type="button"
-                onClick={onUpgradeClick}
-                className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition-all shrink-0 cursor-pointer shadow-sm"
-              >
-                Upgrade to Pro
-              </button>
-            )}
-          </div>
-        ) : isLoadingProfile ? null : weakAreas.length > 0 ? (
+        {isLoadingProfile ? null : weakAreas.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {weakAreas.map((area, idx) => (
               <div

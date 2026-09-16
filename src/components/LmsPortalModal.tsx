@@ -10,7 +10,6 @@ import {
 } from '../lib/supabase';
 import { LmsAuthScreen } from './LmsAuthScreen';
 import { LmsDashboard } from './LmsDashboard';
-import { StudentRegistrationFlow } from './StudentRegistrationFlow';
 import { X } from 'lucide-react';
 
 interface LmsPortalModalProps {

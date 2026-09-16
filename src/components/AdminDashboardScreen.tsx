@@ -32,7 +32,12 @@ import {
   StudyBuddyMessage,
   evaluateStudentAccess,
 } from '../lib/supabase';
-import { findDuplicatePaymentGroups } from '../lib/paymentDeduplication';
+// Local helper for legacy payment requests deduplication
+interface DuplicatePaymentGroup {
+  original: PaymentRequest;
+  duplicates: PaymentRequest[];
+}
+const findDuplicatePaymentGroups = (_requests: PaymentRequest[]): DuplicatePaymentGroup[] => [];
 import { getPrebuiltQuestionsForSubject } from '../data/prebuiltQuestions';
 import { getDynamicQuestionBankStats } from '../lib/questionBankStats';
 import { AVAILABLE_ASSIGNABLE_CLASSES, deriveTrackDetailsFromAssignableClass } from '../data/portalMasterTracks';

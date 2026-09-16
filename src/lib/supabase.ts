@@ -1,6 +1,7 @@
 import { createClient, User as SupabaseUser } from '@supabase/supabase-js';
 import { HistoryItem, TestResult, BoardClass, ResourceCategory, ResourceItem } from '../types';
-import { normalizePackageTrack, findDuplicatePaymentGroups } from './paymentDeduplication';
+export const normalizePackageTrack = (val: string): string => String(val || '').toLowerCase().trim();
+export const findDuplicatePaymentGroups = (_requests: any[]): any[] => [];
 import { deriveTrackDetailsFromAssignableClass } from '../data/portalMasterTracks';
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://wbvzbbnapowwmrjecdyt.supabase.co';
@@ -449,38 +450,17 @@ export function parseAssignedTrack(
 }
 
 export function isTrackAllowedForUser(
-  profile: StudentProfile | null,
-  targetClass: BoardClass | string | undefined,
-  isAdmin: boolean
+  _profile?: StudentProfile | null,
+  _targetClass?: BoardClass | string | undefined,
+  _isAdmin?: boolean
 ): boolean {
-  if (isAdmin) return true;
-  if (!profile) return false;
-  if (targetClass === undefined || targetClass === null) return true;
-
-  // Pro users or users with verified payments have full access to all tracks
-  const hasProPlan = Array.isArray(profile.subscribed_plans) && profile.subscribed_plans.some(p => p && String(p).toLowerCase() !== 'free');
-  if (profile.is_pro || profile.payment_status === 'Verified & Paid' || hasProPlan) {
-    return true;
-  }
-
-  const { allowedClasses } = parseAssignedTrack(profile.grade, profile.stream, profile.assigned_classes);
-
-  const normTarget = typeof targetClass === 'number' ? targetClass : String(targetClass).trim().toUpperCase();
-
-  return allowedClasses.some(c => {
-    if (typeof c === 'number') {
-      if (normTarget === c || normTarget === `${c}TH` || normTarget === `CLASS ${c}`) return true;
-    }
-    if (typeof c === 'string') {
-      if (String(normTarget) === c.toUpperCase() || String(normTarget).includes(c.toUpperCase())) return true;
-    }
-    return false;
-  });
+  // Boardly is 100% free and unlocked for all tracks and students
+  return true;
 }
 
 export function evaluateStudentAccess(
   profile: StudentProfile | null,
-  monthlyTestsTaken: number = 0,
+  _monthlyTestsTaken: number = 0,
   isAdminOverride?: boolean
 ): StudentAccessEvaluation {
   const email = profile?.email || '';
@@ -493,131 +473,28 @@ export function evaluateStudentAccess(
     return `${monthName} 1st`;
   })();
 
-  if (isAdmin) {
-    const { assignedTrack, assignedStream, allowedClasses } = parseAssignedTrack(profile?.grade, profile?.stream, profile?.assigned_classes);
-    return {
-      isPro: true,
-      isProExpired: false,
-      accessExpiresDate: null,
-      daysRemaining: 999,
-      effectivePlanName: '⭐ Admin Master Access',
-      paymentStatus: 'Verified & Paid',
-      currentMonthlyTests: monthlyTestsTaken,
-      monthlyTestLimit: 999999,
-      remainingTests: 999999,
-      isMonthlyLimitReached: false,
-      resetDateStr: fallbackReset,
-      assignedTrack,
-      assignedStream,
-      allowedClasses: [9, 10, 11, 12, 'MDCAT', 'TCAT', 'NET', 'FAST', 'ECAT', 'ETEA', 'NUMS', 'GIKI', 'USAT'],
-      isTrackAllowed: () => true,
-    };
-  }
-
-  if (!profile) {
-    return {
-      isPro: false,
-      isProExpired: false,
-      accessExpiresDate: null,
-      daysRemaining: 0,
-      effectivePlanName: 'Free Plan',
-      paymentStatus: 'Free Plan',
-      currentMonthlyTests: monthlyTestsTaken,
-      monthlyTestLimit: 2,
-      remainingTests: Math.max(0, 2 - monthlyTestsTaken),
-      isMonthlyLimitReached: monthlyTestsTaken >= 2,
-      resetDateStr: fallbackReset,
-      assignedTrack: 11,
-      assignedStream: 'General Track',
-      allowedClasses: [11],
-      isTrackAllowed: () => false,
-    };
-  }
-
-  // 1. Single Source of Truth: subscription_tier determines Pro vs Free
-  const canonicalPro = profile.subscription_tier === 'pro' || (profile.subscription_tier as string) === 'pro';
-  const legacyPro = Boolean(profile.is_pro || profile.plan_tier === 'pro');
-  const isCandidatePro = canonicalPro || (profile.subscription_tier !== 'free' && legacyPro);
-
-  let isPro = isCandidatePro;
-  let isProExpired = false;
-  let daysRemaining = 0;
-  let expiresDateStr: string | null = profile.pro_expires_at || profile.access_expires || null;
-
-  if (isCandidatePro) {
-    if (expiresDateStr) {
-      const expTime = new Date(expiresDateStr).getTime();
-      if (!isNaN(expTime)) {
-        const now = Date.now();
-        if (expTime <= now) {
-          isPro = false;
-          isProExpired = true;
-          daysRemaining = 0;
-        } else {
-          isPro = true;
-          daysRemaining = Math.max(1, Math.ceil((expTime - now) / (1000 * 60 * 60 * 24)));
-        }
-      } else {
-        isPro = true;
-        daysRemaining = 365;
-      }
-    } else {
-      // Lifetime / permanent Pro plan
-      isPro = true;
-      daysRemaining = 9999;
-    }
-  } else {
-    isPro = false;
-    isProExpired = false;
-    daysRemaining = 0;
-  }
-
-  // 2. Free Tier Usage Limit (Step 3: Single Source of Truth)
-  const actualMonthlyTestsTaken = Math.max(
-    Number(profile.free_tests_used_this_month ?? profile.tests_used_this_month ?? 0),
-    Number(monthlyTestsTaken || 0)
+  const parsedTrack = parseAssignedTrack(
+    profile?.enrolled_track_id || profile?.grade,
+    profile?.enrolled_stream_id || profile?.stream,
+    profile?.assigned_classes
   );
 
-  // Pro = Unlimited, Free = 2/month
-  const monthlyTestLimit = isPro ? 999999 : 2;
-  const remainingTests = isPro ? 999999 : Math.max(0, 2 - actualMonthlyTestsTaken);
-  const isMonthlyLimitReached = !isPro && actualMonthlyTestsTaken >= 2;
-
-  // 3. Track Access: Unlocked for Pro users across all tracks
-  const parsedTrack = parseAssignedTrack(profile.grade, profile.stream, profile.assigned_classes);
-  const assignedTrack = parsedTrack.assignedTrack;
-  const assignedStream = parsedTrack.assignedStream;
-  const allowedClasses: (BoardClass | string)[] = isPro ? ([9, 10, 11, 12, 'MDCAT', 'TCAT'] as (BoardClass | string)[]) : parsedTrack.allowedClasses;
-
-  let defaultPkgName = 'Free Plan';
-  if (isPro) {
-    if (assignedTrack === 'MDCAT') defaultPkgName = '⭐ MDCAT Pro';
-    else if (assignedTrack === 'TCAT') defaultPkgName = '⭐ TCAT Pro';
-    else defaultPkgName = '⭐ Boardly Pro Pass';
-  }
-
-  const effectivePlanName = isPro
-    ? (profile.package_name && !profile.package_name.toLowerCase().includes('free') ? profile.package_name : defaultPkgName)
-    : (isProExpired ? 'Free Plan (Pro Expired)' : (profile.payment_status === 'Pending Verification' ? 'Pending Verification' : 'Free Plan'));
-
-  const paymentStatus = isPro ? 'Verified & Paid' : (profile.payment_status || 'Free Plan');
-
   return {
-    isPro,
-    isProExpired,
-    accessExpiresDate: expiresDateStr,
-    daysRemaining,
-    effectivePlanName,
-    paymentStatus,
-    currentMonthlyTests: actualMonthlyTestsTaken,
-    monthlyTestLimit,
-    remainingTests,
-    isMonthlyLimitReached,
+    isPro: true,
+    isProExpired: false,
+    accessExpiresDate: null,
+    daysRemaining: 99999,
+    effectivePlanName: isAdmin ? '⭐ Admin Master Access' : 'Boardly Free & Unlimited',
+    paymentStatus: 'Verified & Paid',
+    currentMonthlyTests: 0,
+    monthlyTestLimit: 999999,
+    remainingTests: 999999,
+    isMonthlyLimitReached: false,
     resetDateStr: fallbackReset,
-    assignedTrack,
-    assignedStream,
-    allowedClasses,
-    isTrackAllowed: (targetClass) => isTrackAllowedForUser(profile, targetClass, isAdmin),
+    assignedTrack: parsedTrack.assignedTrack || 'MDCAT',
+    assignedStream: parsedTrack.assignedStream || 'Medical Entry',
+    allowedClasses: [9, 10, 11, 12, 'MDCAT', 'TCAT', 'NET', 'FAST', 'ECAT', 'ETEA', 'NUMS', 'GIKI', 'USAT'],
+    isTrackAllowed: () => true,
   };
 }
 
@@ -625,60 +502,14 @@ export function evaluateStudentAccess(
 export const PAYMENT_RULE_DEPLOYMENT_DATE = '2026-08-01T09:00:00.000Z';
 
 /**
- * Entitlement check helper: Returns true if student is an active Pro subscriber, paid user, or admin.
- * Supports passing (user, profile), (profile), or (user).
+ * Entitlement check helper: Boardly is 100% free for all students! Always returns true.
  */
 export function isUserProOrPaid(
-  userOrProfile?: SupabaseUser | StudentProfile | null,
-  profile?: StudentProfile | null,
-  isAdmin?: boolean
+  _userOrProfile?: SupabaseUser | StudentProfile | null,
+  _profile?: StudentProfile | null,
+  _isAdmin?: boolean
 ): boolean {
-  if (typeof isAdmin === 'boolean' && isAdmin) return true;
-
-  let user: SupabaseUser | null = null;
-  let activeProfile: StudentProfile | null = null;
-
-  if (userOrProfile) {
-    if ('grade' in userOrProfile || 'sign_up_method' in userOrProfile || 'subscribed_plans' in userOrProfile || 'payment_status' in userOrProfile) {
-      activeProfile = userOrProfile as StudentProfile;
-    } else {
-      user = userOrProfile as SupabaseUser;
-    }
-  }
-
-  if (profile) {
-    if ('grade' in profile || 'sign_up_method' in profile || 'subscribed_plans' in profile || 'payment_status' in profile) {
-      activeProfile = profile as StudentProfile;
-    } else if (!user) {
-      user = profile as any;
-    }
-  }
-
-  if (!user) {
-    try {
-      const cachedUserStr = localStorage.getItem('boardly_cached_user');
-      if (cachedUserStr) user = JSON.parse(cachedUserStr);
-    } catch (e) {}
-  }
-
-  if (!activeProfile && user?.id) {
-    try {
-      const cachedStr = localStorage.getItem(`boardly_profile_${user.id}`);
-      if (cachedStr) activeProfile = JSON.parse(cachedStr);
-    } catch (e) {}
-  }
-
-  if (user?.email && isAdminEmail(user.email)) return true;
-  if (activeProfile?.email && isAdminEmail(activeProfile.email)) return true;
-
-  // Evaluate verified profile from database (or user-scoped verified profile cache)
-  if (activeProfile) {
-    if (activeProfile.email && isAdminEmail(activeProfile.email)) return true;
-    const access = evaluateStudentAccess(activeProfile, 0, isAdmin);
-    if (access.isPro) return true;
-  }
-
-  return false;
+  return true;
 }
 
 export function isStudentExistingBeforeRule(createdAtStr?: string): boolean {
@@ -857,91 +688,8 @@ export function invalidateStudentProfileCache(studentId?: string, updatedProfile
  * Automatically downgrades an expired student account to Free Tier both in localStorage
  * and remotely in Supabase (students + profiles tables) and via the server endpoint.
  */
-export async function downgradeExpiredProStudent(userId: string, email?: string): Promise<StudentProfile | null> {
-  // Admin accounts have permanent unlimited access and must NEVER be downgraded
-  if ((email && isAdminEmail(email)) || (userId && isAdminEmail(userId))) {
-    console.log(`[downgradeExpiredProStudent] Bailing out: ${userId || email} is an admin account.`);
-    return null;
-  }
-
-  console.log(`[downgradeExpiredProStudent] Triggering downgrade for student ${userId} (${email})`);
-
-  // 1. Clear caches and write downgraded profile into local cache immediately
-  clearProfileCache(userId);
-  try {
-    if (userId) {
-      localStorage.removeItem(`boardly_active_pro_grant_${userId}`);
-      const cached = localStorage.getItem(`boardly_profile_${userId}`);
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        const downgraded = {
-          ...parsed,
-          is_pro: false,
-          plan_tier: 'free',
-          plan_status: 'free',
-          payment_status: 'Free Plan',
-          package_name: 'Free Plan',
-          subscribed_plans: ['free'],
-          access_expires: null,
-        };
-        localStorage.setItem(`boardly_profile_${userId}`, JSON.stringify(downgraded));
-      }
-    }
-    if (email) {
-      localStorage.removeItem(`boardly_active_pro_grant_${email.toLowerCase().trim()}`);
-    }
-    localStorage.removeItem('boardly_cached_profile');
-  } catch (e) {}
-
-  const nowIso = new Date().toISOString();
-  const downgradePayload = {
-    is_pro: false,
-    plan_tier: 'free',
-    plan_status: 'free',
-    payment_status: 'Free Plan',
-    package_name: 'Free Plan',
-    subscribed_plans: ['free'],
-    access_expires: null,
-    updated_at: nowIso,
-  };
-
-  // 2. Direct Supabase update
-  try {
-    if (userId && !userId.includes('@')) {
-      await supabase.from('students').update(downgradePayload).eq('id', userId);
-      try {
-        await supabase.from('profiles').update({
-          is_pro: false,
-          subscription_tier: 'free',
-          subscription_expires_at: null,
-        }).eq('id', userId);
-      } catch (profUpdateErr) {}
-    } else if (email) {
-      await supabase.from('students').update(downgradePayload).eq('email', email.toLowerCase().trim());
-    }
-  } catch (directErr) {
-    console.warn('[downgradeExpiredProStudent] Direct Supabase write note:', directErr);
-  }
-
-  // 3. Server administrative endpoint call to guarantee database update
-  try {
-    const res = await apiFetch('/api/student/downgrade-expired', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, userEmail: email, force: true }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (data?.profile) {
-        const norm = normalizeStudentProfileFromRow(data.profile, userId);
-        invalidateStudentProfileCache(userId, norm);
-        return norm;
-      }
-    }
-  } catch (apiErr) {
-    console.warn('[downgradeExpiredProStudent] Server endpoint error:', apiErr);
-  }
-
+export async function downgradeExpiredProStudent(_userId: string, _email?: string): Promise<StudentProfile | null> {
+  // Boardly is 100% free and unlimited for all students - downgrade is deactivated
   return null;
 }
 
@@ -1024,6 +772,7 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
   );
   const isReg = isAdmin || Boolean(
     data.registration_completed === true ||
+    data.enrolled_track_id ||
     data.is_registered === true ||
     hasAcademicTrack
   );
@@ -1033,50 +782,12 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
   const enrolledUni = data.enrolled_university_id || data.dream_university || data.target_university || null;
   const enrolledStream = data.enrolled_stream_id || data.stream || null;
 
-  // 3. Canonical: subscription_tier ('free' | 'pro')
-  const proExpiresAt = data.pro_expires_at || data.access_expires || data.subscription_expires_at || null;
-  let isProExpired = false;
-  if (proExpiresAt) {
-    const expTime = new Date(proExpiresAt).getTime();
-    if (!isNaN(expTime) && expTime <= Date.now()) {
-      isProExpired = true;
-    }
-  }
-
-  let subTier: 'free' | 'pro' = 'free';
-  if (isAdmin) {
-    subTier = 'pro';
-  } else if (!isProExpired && (data.subscription_tier === 'pro' || data.plan_tier === 'pro' || data.is_pro === true || data.is_pro === 'true')) {
-    subTier = 'pro';
-  } else {
-    subTier = 'free';
-  }
-
-  // 4. Canonical: payment_status ('unpaid' | 'pending_verification' | 'verified')
-  let payStatus: 'unpaid' | 'pending_verification' | 'verified' | string = 'unpaid';
-  const rawPay = String(data.payment_status || '').trim().toLowerCase();
-  if (isAdmin || subTier === 'pro' || rawPay === 'verified' || rawPay === 'verified & paid' || rawPay === 'paid') {
-    payStatus = 'verified';
-  } else if (rawPay.includes('pending')) {
-    payStatus = 'pending_verification';
-  } else {
-    payStatus = 'unpaid';
-  }
-
-  // 5. Canonical: free_tests_used_this_month & free_tests_reset_at
-  let resetAt = data.free_tests_reset_at
-    ? String(data.free_tests_reset_at).slice(0, 10)
-    : (data.created_at ? new Date(data.created_at).toISOString().slice(0, 10) : todayDateStr);
-
-  let freeTestsUsed = Number(data.free_tests_used_this_month ?? data.tests_used_this_month ?? data.mcq_count_this_month ?? 0);
-  if (isNaN(freeTestsUsed) || freeTestsUsed < 0) freeTestsUsed = 0;
-
-  // Calendar month reset check
-  const resetMonth = resetAt.slice(0, 7);
-  if (resetMonth && resetMonth !== currentMonthStr) {
-    freeTestsUsed = 0;
-    resetAt = todayDateStr;
-  }
+  // 3. Boardly is 100% FREE & UNLIMITED for all students
+  const subTier: 'free' | 'pro' = 'pro';
+  const payStatus = 'verified';
+  const isPro = true;
+  const freeTestsUsed = 0;
+  const resetAt = todayDateStr;
 
   // Derived legacy fields
   let assignedClasses: string[] = [];
@@ -1095,14 +806,9 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
     if (derived) assignedClasses = [derived];
   }
 
-  const isPro = subTier === 'pro';
-  const finalPackageName = isPro
-    ? (data.package_name && !data.package_name.toLowerCase().includes('free') ? data.package_name : '⭐ Boardly Pro Pass')
-    : 'Free Plan';
-  const finalSubscribedPlans = isPro ? ['boardly_pro'] : ['free'];
-  const finalLegacyPaymentStatus = isPro
-    ? 'Verified & Paid'
-    : (payStatus === 'pending_verification' ? 'Pending Verification' : 'Free Plan');
+  const finalPackageName = '⭐ Boardly Full Access';
+  const finalSubscribedPlans = ['boardly_pro'];
+  const finalLegacyPaymentStatus = 'Verified & Paid';
 
   return {
     id: data.id || fallbackUserId || '',
@@ -1120,8 +826,8 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
     enrolled_stream_id: enrolledStream,
     subscription_tier: subTier,
     payment_status: payStatus,
-    pro_expires_at: isPro ? proExpiresAt : null,
-    free_tests_used_this_month: freeTestsUsed,
+    pro_expires_at: null,
+    free_tests_used_this_month: 0,
     free_tests_reset_at: resetAt,
 
     // Legacy Compatibility Fields
@@ -1134,17 +840,17 @@ export function normalizeStudentProfileFromRow(data: any, fallbackUserId?: strin
     package_name: finalPackageName,
     subscribed_plans: finalSubscribedPlans,
     assigned_classes: assignedClasses,
-    is_pro: isPro,
-    plan_tier: subTier,
+    is_pro: true,
+    plan_tier: 'pro',
     ai_messages_used_today: Number(data.ai_messages_used_today || 0),
     last_ai_message_date: String(data.last_ai_message_date || ''),
     enrollment_date: data.created_at
       ? new Date(data.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
       : new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
-    plan_status: payStatus === 'pending_verification' ? 'pending_verification' : (isPro ? 'verified_pro' : 'free'),
+    plan_status: 'verified_pro',
     transaction_reference: data.transaction_reference || '',
-    requires_payment: !isPro,
-    access_expires: isPro ? proExpiresAt : null,
+    requires_payment: false,
+    access_expires: null,
     tests_used_this_month: freeTestsUsed,
     created_at: data.created_at || new Date().toISOString(),
     updated_at: data.updated_at || new Date().toISOString(),
@@ -1275,38 +981,6 @@ export async function syncUserProfile(
           console.warn('[syncUserProfile] promo_redemptions cross-check note:', redErr);
         }
 
-        // Cross-check profiles table safely for subscription_tier = 'pro'
-        try {
-          let profData: any = null;
-          const searchUid = existing.id || user.id;
-          if (searchUid && !searchUid.includes('@')) {
-            const { data: p1 } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', searchUid)
-              .maybeSingle();
-            if (p1) profData = p1;
-          }
-          if (!profData && user.email) {
-            const { data: p2 } = await supabase
-              .from('profiles')
-              .select('*')
-              .ilike('email', user.email.trim().toLowerCase())
-              .maybeSingle();
-            if (p2) profData = p2;
-          }
-
-          if (profData && (profData.subscription_tier === 'pro' || profData.is_pro)) {
-            combinedRow.is_pro = true;
-            combinedRow.plan_tier = 'pro';
-            combinedRow.access_expires = profData.subscription_expires_at || combinedRow.access_expires;
-            combinedRow.payment_status = 'Verified & Paid';
-            combinedRow.plan_status = 'verified_pro';
-          }
-        } catch (profCrossErr) {
-          console.warn('[syncUserProfile] profiles table cross-check note:', profCrossErr);
-        }
-
         finalProfile = normalizeStudentProfileFromRow(combinedRow, user.id);
       } else {
         // If database query returned no student record for user.id AND user.email,
@@ -1317,6 +991,7 @@ export async function syncUserProfile(
           localStorage.removeItem('boardly_cached_profile');
           localStorage.removeItem('boardly_target_university');
           localStorage.removeItem('boardly_registration_is_success');
+          localStorage.removeItem('boardly_registration_completed');
           localStorage.removeItem('boardly_registration_step');
           localStorage.removeItem('boardly_guided_wizard_step');
           localStorage.removeItem(`boardly_active_pro_grant_${userId}`);
@@ -1327,17 +1002,18 @@ export async function syncUserProfile(
         } catch {}
 
         // Insert new student record for genuine brand new signups
-        const requiresPay = !isAdmin;
         const newDefaultProfile: StudentProfile = {
           ...defaultProfile,
+          registration_completed: isAdmin,
+          enrolled_track_id: null,
           is_registered: isAdmin,
           grade: isAdmin ? 'Admin' : '',
           stream: isAdmin ? 'Admin Stream' : '',
           dream_university: '',
           target_university: '',
-          requires_payment: requiresPay,
-          payment_status: isAdmin ? 'Verified & Paid' : 'Unpaid',
-          status: requiresPay ? 'pending admin approval' : 'active',
+          requires_payment: false,
+          payment_status: 'Verified & Paid',
+          status: 'active',
         };
 
         const { data: inserted, error: insertErr } = await supabase
@@ -2100,21 +1776,10 @@ export async function saveStudentRegistration(
     hasPendingPromo
   );
 
-  const isProUser = isAdmin || isExistingPro;
-  const requiresPayment = !isProUser;
+  const isProUser = true;
+  const requiresPayment = false;
 
   const targetUniVal = data.dream_university || existing?.dream_university || existing?.target_university || '';
-
-  const effectivePackageName = isProUser
-    ? (isAdmin ? '⭐ Admin Master Access' : (existing?.package_name || '⭐ Boardly 1-Year Pro (Promotional Pass)'))
-    : 'Free Plan';
-  const effectiveSubscribedPlans = isProUser
-    ? (Array.isArray(existing?.subscribed_plans) && existing.subscribed_plans.length > 0 && !existing.subscribed_plans.includes('free') ? existing.subscribed_plans : ['boardly_pro', 'pro'])
-    : ['free'];
-  const effectivePlanTier: 'free' | 'pro' = isProUser ? 'pro' : 'free';
-  const effectivePaymentStatus = isProUser ? 'Verified & Paid' : (data.payment_status || 'Free Plan');
-  const effectivePlanStatus = isProUser ? 'verified_pro' : (data.payment_status === 'Pending Verification' ? 'pending_verification' : 'trial');
-  const effectiveAccessExpires = isProUser ? (existing?.access_expires || expiresDateStr) : null;
 
   const profile: StudentProfile = {
     id: userId,
@@ -2128,16 +1793,18 @@ export async function saveStudentRegistration(
     target_university: targetUniVal,
     sign_up_method: 'Google',
     status: 'active',
+    registration_completed: true,
+    enrolled_track_id: data.grade,
     is_registered: true,
-    package_name: effectivePackageName,
-    subscribed_plans: effectiveSubscribedPlans,
-    is_pro: isProUser,
-    plan_tier: effectivePlanTier,
+    package_name: isAdmin ? '⭐ Admin Master Access' : 'Boardly Free & Unlimited',
+    subscribed_plans: ['boardly_pro', 'pro'],
+    is_pro: true,
+    plan_tier: 'pro',
     enrollment_date: enrollmentDateStr,
-    payment_status: effectivePaymentStatus,
-    plan_status: effectivePlanStatus,
-    requires_payment: requiresPayment,
-    access_expires: effectiveAccessExpires,
+    payment_status: 'Verified & Paid',
+    plan_status: 'verified_pro',
+    requires_payment: false,
+    access_expires: null,
     created_at: now.toISOString(),
     updated_at: now.toISOString(),
   };
@@ -2179,6 +1846,70 @@ export async function saveStudentRegistration(
   }
 
   return profile;
+}
+
+/**
+ * One-Question Registration: Save student's chosen academic track.
+ * Single question flow — after this, full unlimited access forever.
+ */
+export async function completeOneQuestionRegistration(
+  userId: string,
+  trackId: string,
+  trackName: string,
+  email?: string
+): Promise<StudentProfile | null> {
+  const updatePayload = {
+    registration_completed: true,
+    enrolled_track_id: trackId,
+    grade: trackId,
+    stream: trackName,
+    status: 'active',
+    payment_status: 'Verified & Paid',
+    is_registered: true,
+    requires_payment: false,
+    updated_at: new Date().toISOString(),
+  };
+
+  try {
+    if (isSupabaseConfigured) {
+      const { data, error } = await supabase
+        .from('students')
+        .update(sanitizeStudentForDb(updatePayload))
+        .eq('id', userId)
+        .select();
+
+      if (!error && data && data.length > 0) {
+        const normalized = normalizeStudentProfileFromRow(data[0], userId);
+        invalidateStudentProfileCache(userId, normalized);
+        return normalized;
+      }
+
+      if (email) {
+        const { data: dataEmail, error: errorEmail } = await supabase
+          .from('students')
+          .update(sanitizeStudentForDb(updatePayload))
+          .ilike('email', email.toLowerCase().trim())
+          .select();
+
+        if (!errorEmail && dataEmail && dataEmail.length > 0) {
+          const normalized = normalizeStudentProfileFromRow(dataEmail[0], userId);
+          invalidateStudentProfileCache(userId, normalized);
+          return normalized;
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Failed to complete one-question registration in Supabase:', err);
+  }
+
+  // Fallback local update
+  const fallback = normalizeStudentProfileFromRow({
+    id: userId,
+    email: email || '',
+    ...updatePayload,
+  }, userId);
+  invalidateStudentProfileCache(userId, fallback);
+  return fallback;
 }
 
 export async function saveStudentTargetUniversity(
@@ -3241,7 +2972,6 @@ export async function removeStudentAccountInSupabase(
           await supabase.from('payment_requests').delete().eq('student_id', studentId);
           await supabase.from('promo_redemptions').delete().eq('student_id', studentId);
           await supabase.from('students').delete().eq('id', studentId);
-          await supabase.from('profiles').delete().eq('id', studentId);
           deleted = true;
         }
         if (studentEmail) {
@@ -3253,7 +2983,6 @@ export async function removeStudentAccountInSupabase(
           await supabase.from('payment_requests').delete().eq('student_email', studentEmail);
           await supabase.from('promo_redemptions').delete().ilike('student_email', studentEmail);
           await supabase.from('students').delete().ilike('email', studentEmail);
-          await supabase.from('profiles').delete().ilike('email', studentEmail);
           deleted = true;
         }
         if (deleted) {
@@ -4358,11 +4087,6 @@ export async function updateStudentPlanInSupabase(params: {
         .update(dbPayload)
         .eq('id', targetId)
         .select();
-
-      // Also update profiles table
-      try {
-        await supabase.from('profiles').update(dbPayload).eq('id', targetId);
-      } catch (pErr) {}
 
       const updatedStudent = updatedStudentData && updatedStudentData[0];
       if (!updateErr) {
