@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { triggerHaptic, HAPTIC_PATTERNS } from '../lib/haptics';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -30,6 +30,8 @@ import {
   AlertCircle,
   TrendingUp,
   Target,
+  X,
+  Crown,
 } from 'lucide-react';
 import { BoardClass, QuestionDifficulty, TestMode, HistoryItem } from '../types';
 import { User, StudentProfile, isUserProOrPaid } from '../lib/supabase';
@@ -879,10 +881,44 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
   const isProStudent = isUserProOrPaid(currentUser, userProfile, isAdmin);
   const [currentTrack, setCurrentTrack] = useState<EntranceTrackType>(track);
   const [showTrackDropdown, setShowTrackDropdown] = useState<boolean>(false);
+  const trackDropdownRef = useRef<HTMLDivElement>(null);
+  const trackSwitcherButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setCurrentTrack(track);
   }, [track]);
+
+  useEffect(() => {
+    if (!showTrackDropdown) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowTrackDropdown(false);
+      }
+    };
+
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (
+        trackDropdownRef.current &&
+        !trackDropdownRef.current.contains(target) &&
+        trackSwitcherButtonRef.current &&
+        !trackSwitcherButtonRef.current.contains(target)
+      ) {
+        setShowTrackDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showTrackDropdown]);
 
   const trackData = ENTRANCE_TRACKS_DATA[currentTrack] || ENTRANCE_TRACKS_DATA.NUMS;
 
@@ -1020,69 +1056,143 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
           </div>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 sm:gap-2.5 shrink-0 flex-wrap sm:flex-nowrap">
           {/* Quick Portal Switcher (All 20 Tracks) */}
           <div className="relative">
             <button
+              ref={trackSwitcherButtonRef}
               onClick={() => {
                 triggerHaptic(HAPTIC_PATTERNS.light);
                 setShowTrackDropdown(!showTrackDropdown);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-white border border-slate-200 shadow-xs hover:bg-slate-50 transition-all cursor-pointer"
+              className="inline-flex items-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-white border border-slate-200 shadow-xs hover:bg-slate-50 transition-all cursor-pointer whitespace-nowrap shrink-0"
               title="Switch Exam Portal"
+              id="entrance-switch-exam-btn"
             >
-              <Layers className="w-3.5 h-3.5 text-blue-600" />
-              <span>Switch Exam ({Object.keys(ENTRANCE_TRACKS_DATA).length} Tracks)</span>
-              <ChevronDown className="w-3 h-3 text-slate-400" />
+              <Layers className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span>Switch Exam</span>
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-100/80 leading-none">
+                {Object.keys(ENTRANCE_TRACKS_DATA).length}
+              </span>
+              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${showTrackDropdown ? 'rotate-180 text-blue-600' : ''}`} />
             </button>
 
             {showTrackDropdown && (
-              <div className="absolute right-0 top-10 z-50 w-72 bg-white border border-slate-200 rounded-2xl p-2 shadow-2xl max-h-88 overflow-y-auto">
-                <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider px-2.5 py-1.5 border-b border-slate-100 mb-1">
-                  All 20 Exam Portals
-                </div>
-                {(Object.keys(ENTRANCE_TRACKS_DATA) as EntranceTrackType[]).map((tKey) => {
-                  const item = ENTRANCE_TRACKS_DATA[tKey];
-                  const isSelected = tKey === currentTrack;
-                  return (
+              <>
+                {/* Mobile backdrop for tap-outside dismiss */}
+                <div
+                  className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-40 sm:hidden transition-opacity"
+                  onClick={() => setShowTrackDropdown(false)}
+                  aria-hidden="true"
+                />
+
+                <div
+                  ref={trackDropdownRef}
+                  className="fixed inset-x-3 top-20 z-50 max-w-sm mx-auto sm:max-w-none sm:inset-auto sm:absolute sm:right-0 sm:top-full sm:mt-2 sm:w-80 bg-white border border-slate-200 rounded-2xl p-2.5 sm:p-2 shadow-2xl overflow-hidden flex flex-col max-h-[75vh] sm:max-h-96 animate-in fade-in zoom-in-95 duration-150"
+                >
+                  <div className="flex items-center justify-between px-2.5 py-2 border-b border-slate-100 mb-1 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
+                        All 20 Exam Portals
+                      </span>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                        20 Tracks
+                      </span>
+                    </div>
                     <button
-                      key={tKey}
-                      onClick={() => {
-                        triggerHaptic(HAPTIC_PATTERNS.light);
-                        setCurrentTrack(tKey);
-                        setShowTrackDropdown(false);
-                        if (onSelectTrack) onSelectTrack(tKey);
-                      }}
-                      className={`w-full text-left px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-between transition-colors cursor-pointer ${
-                        isSelected ? 'bg-blue-50 text-blue-700' : 'text-slate-800 hover:bg-slate-100'
-                      }`}
+                      onClick={() => setShowTrackDropdown(false)}
+                      className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors sm:hidden"
+                      title="Close list"
+                      aria-label="Close track list"
                     >
-                      <div className="flex items-center gap-2.5 truncate">
-                        <ExamTrackLogo id={item.institutionId} size="sm" />
-                        <span className="truncate">{item.id} — {item.fullName.split('(')[0].trim()}</span>
-                      </div>
-                      <span className="text-[10px] text-slate-400 ml-1 shrink-0">{item.totalMcqs} Qs</span>
+                      <X className="w-4 h-4" />
                     </button>
-                  );
-                })}
-              </div>
+                  </div>
+
+                  <div className="overflow-y-auto flex-1 divide-y divide-slate-100/80 pr-0.5">
+                    {(Object.keys(ENTRANCE_TRACKS_DATA) as EntranceTrackType[]).map((tKey) => {
+                      const item = ENTRANCE_TRACKS_DATA[tKey];
+                      const isSelected = tKey === currentTrack;
+                      return (
+                        <button
+                          key={tKey}
+                          onClick={() => {
+                            triggerHaptic(HAPTIC_PATTERNS.light);
+                            setCurrentTrack(tKey);
+                            setShowTrackDropdown(false);
+                            if (onSelectTrack) onSelectTrack(tKey);
+                          }}
+                          className={`w-full text-left px-2.5 py-2.5 sm:py-2 rounded-xl text-xs font-bold flex items-center justify-between transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'bg-blue-50/90 text-blue-700 font-black'
+                              : 'text-slate-800 hover:bg-slate-100/80'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 truncate min-w-0 pr-2">
+                            <div className="shrink-0">
+                              <ExamTrackLogo id={item.institutionId} size="sm" />
+                            </div>
+                            <div className="truncate">
+                              <div className="truncate text-xs text-slate-900 flex items-center gap-1.5">
+                                <span className="font-extrabold text-blue-600">{item.id}</span>
+                                <span className="text-slate-400">•</span>
+                                <span className="truncate">{item.fullName.split('(')[0].trim()}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0 ml-1">
+                            <span className="text-[10px] text-slate-400 font-medium">{item.totalMcqs} Qs</span>
+                            {isSelected && (
+                              <Check className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
             )}
           </div>
 
-          {trackHistory.length > 0 && (
+          {/* Upgraded Premium CTA (Replaces plain Full Access badge) */}
+          {isProStudent ? (
+            <div
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-amber-500/10 text-amber-900 border border-amber-300/80 text-xs font-black shadow-xs shrink-0 select-none whitespace-nowrap"
+              title="Active Boardly Pro Subscription — All 20 Tracks Unlocked"
+            >
+              <Crown className="w-3.5 h-3.5 text-amber-600 fill-amber-500 shrink-0" />
+              <span>All 20 Tracks Unlocked</span>
+            </div>
+          ) : (
             <button
               onClick={() => {
-                triggerHaptic(HAPTIC_PATTERNS.light);
-                onOpenHistory();
+                triggerHaptic(HAPTIC_PATTERNS.medium);
+                if (onUpgradeClick) onUpgradeClick();
               }}
-              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-white border border-slate-200 shadow-xs hover:bg-slate-50 transition-all cursor-pointer"
+              className="group relative inline-flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 py-1.5 sm:py-2 rounded-xl bg-gradient-to-r from-amber-500 via-amber-400 to-yellow-400 hover:from-amber-600 hover:via-amber-500 hover:to-yellow-500 text-slate-950 font-black shadow-xs hover:shadow-md active:scale-[0.98] transition-all duration-200 border border-amber-300/90 cursor-pointer shrink-0 text-left"
+              id="entrance-upgrade-cta-btn"
+              title="Upgrade to Boardly Pro — Unlock All 20 Tracks"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-blue-600" />
-              <span>Past Attempts ({trackHistory.length})</span>
+              <div className="w-6 h-6 rounded-lg bg-slate-950/10 flex items-center justify-center shrink-0">
+                <Crown className="w-3.5 h-3.5 text-slate-950 fill-slate-950/80 shrink-0" />
+              </div>
+              <div className="flex flex-col pr-0.5">
+                <div className="flex items-center gap-1.5 leading-tight">
+                  <span className="text-xs font-black tracking-tight whitespace-nowrap">
+                    Unlock All 20 Tracks
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-slate-950 text-amber-300 leading-none shrink-0">
+                    PRO
+                  </span>
+                </div>
+                <span className="text-[10px] font-semibold text-slate-950/80 tracking-tight whitespace-nowrap leading-tight mt-0.5 hidden md:block">
+                  Full mock exams • Detailed analytics • Unlimited attempts
+                </span>
+              </div>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-950/70 group-hover:translate-x-0.5 transition-transform shrink-0 ml-auto hidden xs:block sm:block" />
             </button>
           )}
-
-          <BoardlyProBadge userProfile={userProfile} isAdmin={isAdmin} label="Full Access Entrance Pass" />
         </div>
       </div>
 
