@@ -991,7 +991,7 @@ export const onRequestPost = async (context: PagesContext) => {
   let activeClassNum = Number(classNum) || 11;
   let activeGroup = String(group || "Pre-Medical");
 
-  // Registration & Lock Check
+  // Academic Class & Stream Alignment
   if (userId && userId !== "guest" && !isAdmin && !isMdcat && supabaseClient) {
     try {
       const { data: studentRecord } = await supabaseClient
@@ -1000,24 +1000,8 @@ export const onRequestPost = async (context: PagesContext) => {
         .eq("id", userId)
         .maybeSingle();
 
-      const isValidGrade = Boolean(studentRecord?.grade && studentRecord.grade.trim() && studentRecord.grade !== 'General Student');
-      const isValidStream = Boolean(studentRecord?.stream && studentRecord.stream.trim());
-      const isRegistered = Boolean(studentRecord?.registration_completed === true || studentRecord?.is_registered);
-
-      if (!isRegistered) {
-        return new Response(JSON.stringify({
-          success: false,
-          locked: true,
-          error: "Course Registration Required: Please select your Class and Stream before generating MCQs.",
-          message: "Course Registration Required: You must complete your Grade and Stream selection in your Course Registration before accessing practice MCQs."
-        }), {
-          status: 403,
-          headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
-        });
-      }
-
-      const savedGrade = studentRecord.grade || "";
-      const savedStream = studentRecord.stream || "";
+      const savedGrade = studentRecord?.grade || "";
+      const savedStream = studentRecord?.stream || "";
 
       let lockedClassNum = 11;
       if (savedGrade.includes("9")) lockedClassNum = 9;

@@ -66,11 +66,6 @@ export const DEFAULT_PAGE_META: Record<string, PageMetaConfig> = {
     description:
       'Access the Boardly student portal by SHS Virtual Academy to resume MCQ practice tests and track your academic progress.',
   },
-  guided_wizard: {
-    title: 'Configure Practice Test — Boardly',
-    description:
-      'Customize test parameters, chapter selection, question count, and time limits for targeted board exam prep on Boardly.',
-  },
   payment_required: {
     title: 'Membership Activation — Boardly',
     description:

@@ -67,14 +67,11 @@ import { ThemeProvider } from './context/ThemeContext';
 import { ModalProvider, useModals } from './context/ModalContext';
 import { GlobalModals } from './components/GlobalModals';
 import { LeaveConfirmationModal } from './components/LeaveConfirmationModal';
-import { OneQuestionRegistrationScreen } from './components/OneQuestionRegistrationScreen';
 import { setPageMeta, DEFAULT_PAGE_META } from './utils/seo';
-import type { SetupWizardData } from './components/GuidedSetupWizard';
 import type { MCQContext } from './types';
 
 // Code-split heavy secondary screens with retry and self-healing reload on chunk update
 const GradesFlowScreen = lazyWithRetry(() => import('./components/GradesFlowScreen').then(m => ({ default: m.GradesFlowScreen })), 'GradesFlow');
-const GuidedSetupWizard = lazyWithRetry(() => import('./components/GuidedSetupWizard').then(m => ({ default: m.GuidedSetupWizard })), 'GuidedSetup');
 const ClassGroupScreen = lazyWithRetry(() => import('./components/ClassGroupScreen').then(m => ({ default: m.ClassGroupScreen })), 'ClassGroup');
 const SubjectScreen = lazyWithRetry(() => import('./components/SubjectScreen').then(m => ({ default: m.SubjectScreen })), 'Subject');
 const DurationScreen = lazyWithRetry(() => import('./components/DurationScreen').then(m => ({ default: m.DurationScreen })), 'Duration');
@@ -92,7 +89,7 @@ import {
   validatePromoCode,
 } from './lib/promoCode';
 
-import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveStudentRegistration, submitPaymentProofApi, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, clearAllClientAuthAndSessionData, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack, completeOneQuestionRegistration } from './lib/supabase';
+import { supabase, isSupabaseConfigured, apiFetch, safeJsonResponse, syncUserProfile, saveStudentRegistration, submitPaymentProofApi, saveTestToSupabase, fetchUserTestHistoryFromSupabase, clearUserTestHistoryInSupabase, fetchStudentProfileFromSupabase, fetchStudentMcqUsage, clearProfileCache, clearAllClientAuthAndSessionData, checkUserExistsInDatabase, isStudentExistingBeforeRule, isAdminEmail, verifyEmailTokenHash, sanitizeStudentForDb, withTimeout, User, StudentProfile, evaluateStudentAccess, downgradeExpiredProStudent, parseAssignedTrack } from './lib/supabase';
 import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
@@ -100,7 +97,6 @@ import { BrandedLoadingSpinner } from './components/BrandedLoadingSpinner';
 
 export type ScreenType =
   | 'intro'
-  | 'guided_wizard'
   | 'plan_selection'
   | 'pricing'
   | 'payment_required'
@@ -123,7 +119,6 @@ export const VALID_SCREENS: ScreenType[] = [
   'intro',
   'profile',
   'admin',
-  'guided_wizard',
   'plan_selection',
   'pricing',
   'payment_required',
@@ -867,7 +862,7 @@ export function App() {
   // Synchronize selectedClass & selectedGroup with student's profile grade & stream
   const lastKnownProfileTrackRef = useRef<string>('');
   useEffect(() => {
-    if (userProfile?.registration_completed === true && !isAdmin) {
+    if (userProfile && !isAdmin) {
       const currentTrackKey = `${userProfile.grade || ''}|${userProfile.stream || ''}|${(userProfile.assigned_classes || []).join(',')}`;
       if (lastKnownProfileTrackRef.current && lastKnownProfileTrackRef.current !== currentTrackKey) {
         // Admin changed student track/stream! Update selectedClass and selectedGroup immediately
@@ -1090,56 +1085,6 @@ export function App() {
   const [nextScreenAfterAuth, setNextScreenAfterAuth] = useState<ScreenType | null>(null);
   const [authBackScreen, setAuthBackScreen] = useState<ScreenType>('intro');
 
-  const handleWizardComplete = async (data: SetupWizardData) => {
-    let targetC: BoardClass = 11;
-    let targetG: string = 'Pre-Medical';
-
-    if (data.exam === 'MDCAT') {
-      targetC = 'MDCAT';
-      targetG = 'MDCAT';
-    } else if (data.exam === 'TCAT') {
-      targetC = 'TCAT';
-      targetG = data.group || 'Pre-Engineering';
-    } else {
-      targetC = data.classNum || 11;
-      targetG = data.group || 'Pre-Medical';
-    }
-
-    setSelectedClass(targetC);
-    setSelectedGroup(targetG);
-
-    if (currentUser) {
-      const provider = currentUser.app_metadata?.provider || 'email';
-      const updatedProfile: StudentProfile = {
-        ...(userProfile || {
-          id: currentUser.id,
-          name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'Student',
-          email: currentUser.email || '',
-          sign_up_method: provider === 'google' ? 'Google' : 'Email/Password',
-          created_at: new Date().toISOString(),
-        }),
-        grade: typeof targetC === 'number' ? `Class ${targetC}` : targetC,
-        stream: targetG,
-        subjects: data.focusSubjects,
-        target_exam: data.exam,
-        registration_completed: true,
-        updated_at: new Date().toISOString(),
-      };
-
-      setUserProfile(updatedProfile);
-      localStorage.setItem(`boardly_profile_${currentUser.id}`, JSON.stringify(updatedProfile));
-      localStorage.setItem('boardly_cached_profile', JSON.stringify(updatedProfile));
-
-      try {
-        await supabase.from('students').upsert(sanitizeStudentForDb(updatedProfile));
-      } catch (err) {
-        console.warn('Error saving setup wizard profile:', err);
-      }
-    }
-
-    setScreen('dashboard');
-  };
-
   useEffect(() => {
     screenRef.current = screen;
     selectedClassRef.current = selectedClass;
@@ -1292,7 +1237,7 @@ export function App() {
     const enforceSecurity = async () => {
       // 1. Unauthenticated User Protection for Protected Routes
       if (!currentUser) {
-        if (['dashboard', 'subject', 'duration', 'test', 'results', 'guided_wizard', 'group', 'grades_flow', 'admin'].includes(screen)) {
+        if (['dashboard', 'subject', 'duration', 'test', 'results', 'group', 'grades_flow', 'admin'].includes(screen)) {
           // Double-check active session directly with Supabase before bouncing to auth screen
           const { data: { session } } = await supabase.auth.getSession();
           if (!isMounted) return;
@@ -1322,20 +1267,10 @@ export function App() {
         return;
       }
 
-      // 3. Post-Signup Onboarding & Track Access Guard Enforcement
+      // 3. Authenticated Student Navigation Guard
       if (!isAdmin) {
-        // Fix race condition: do NOT make a routing decision while userProfile is still null or syncing
-        if (profileSyncing || userProfile === null) return;
-
-        if (userProfile.registration_completed !== true) {
-          if (screen !== 'guided_wizard' && screen !== 'auth' && screen !== 'intro') {
-            setScreen('guided_wizard');
-          }
-        } else {
-          // Escape hatch: if a student is on guided_wizard or selection gates AND registration_completed is true, redirect to dashboard immediately!
-          if (screen === 'guided_wizard' || ['payment_required', 'pricing', 'plan_selection', 'checkout', 'grades_flow', 'group'].includes(screen)) {
-            setScreen('dashboard');
-          }
+        if (['payment_required', 'pricing', 'plan_selection', 'checkout', 'grades_flow', 'group'].includes(screen)) {
+          setScreen('dashboard');
         }
       }
     };
@@ -1354,23 +1289,15 @@ export function App() {
     }
   }, [screen, currentUser, isAdmin]);
 
-  // ONE-WAY DOOR ESCAPE HATCH: On every render where current screen is guided_wizard,
-  // if registration_completed is actually true in the loaded profile, immediately redirect to dashboard.
+  // Route Guard Enforcement for non-admin students
   useEffect(() => {
-    if (screen === 'guided_wizard' && userProfile?.registration_completed === true) {
-      setScreen(isAdmin ? 'admin' : 'dashboard');
-    }
-  }, [screen, userProfile?.registration_completed, isAdmin]);
-
-  // Route Guard Enforcement for registered non-admin students
-  useEffect(() => {
-    if (currentUser && !isAdmin && userProfile?.registration_completed === true) {
-      if (screen === 'grades_flow' || screen === 'group' || screen === 'guided_wizard') {
-        // Redirect selection screen and wizard attempts straight to their authorized dashboard
+    if (currentUser && !isAdmin) {
+      if (screen === 'grades_flow' || screen === 'group') {
+        // Redirect selection screen attempts straight to dashboard
         setScreen('dashboard');
       }
     }
-  }, [currentUser, isAdmin, userProfile?.registration_completed, screen]);
+  }, [currentUser, isAdmin, screen]);
 
   // Clean OAuth URL parameters immediately from browser history on mount
   useEffect(() => {
@@ -1686,25 +1613,14 @@ export function App() {
       // Sync student's previously seen questions from server database in the background
       syncSeenQuestionsWithServer(user.id, user.email).catch(() => {});
 
-      // 2. Check registration status: registration_completed is God!
-      // Admin routing stays completely separate
+      // 2. Admin routing stays completely separate
       if (isUserAdmin) {
         const activeScreen = screenRef.current;
-        if (activeScreen === 'auth' || activeScreen === 'intro' || activeScreen === 'guided_wizard') {
+        if (activeScreen === 'auth' || activeScreen === 'intro') {
           setScreen('admin');
         }
         return;
       }
-
-      // Student routing: NEVER evaluate while profile is still loading or null
-      const resolvedProfile = profile || userProfile;
-      if (!resolvedProfile) {
-        console.warn('[processAuthUser] Profile not resolved yet. Deferring registration routing decision until profile resolves.');
-        return;
-      }
-
-      // ONE boolean, read from the real database row, decides this, full stop.
-      const isRegistered = resolvedProfile.registration_completed === true;
 
       const hasHashToken = window.location.hash.includes('access_token');
       const hasSearchCode = window.location.search.includes('code=');
@@ -1731,42 +1647,21 @@ export function App() {
           localStorage.removeItem('shs_intended_group');
         }
 
-        if (!isRegistered) {
-          console.log('[Auth Flow] Unregistered student detected. Routing to setup wizard...');
-          setScreen('guided_wizard');
-        } else {
-          console.log('[Auth Flow] Registered student detected. Routing to destination...');
-          const activeScreen = screenRef.current;
-          if (activeScreen === 'auth' || activeScreen === 'intro' || activeScreen === 'guided_wizard') {
-            if (pendingTestParamsRef.current && executeStartTestRef.current) {
-              executeStartTestRef.current(pendingTestParamsRef.current);
-            } else if (nextScreenAfterAuthRef.current) {
-              setScreen(nextScreenAfterAuthRef.current);
-              setNextScreenAfterAuth(null);
-            } else {
-              setScreen('dashboard');
-            }
+        console.log('[Auth Flow] Authenticated student detected. Routing directly to destination...');
+        const activeScreen = screenRef.current;
+        if (activeScreen === 'auth' || activeScreen === 'intro') {
+          if (pendingTestParamsRef.current && executeStartTestRef.current) {
+            executeStartTestRef.current(pendingTestParamsRef.current);
+          } else if (nextScreenAfterAuthRef.current) {
+            setScreen(nextScreenAfterAuthRef.current);
+            setNextScreenAfterAuth(null);
+          } else {
+            setScreen('dashboard');
           }
         }
-      } else if (!isRegistered) {
-        // Unregistered student on normal session restore
-        const currentScreen = screenRef.current;
-        const params = new URLSearchParams(window.location.search);
-        const urlScreen = params.get('screen') as ScreenType | null;
-
-        if (currentScreen === 'auth' || (currentScreen === 'dashboard' && (!urlScreen || urlScreen === 'guided_wizard'))) {
-          console.log('[Auth Flow] Unregistered student detected. Triggering guided setup wizard...');
-          setScreen('guided_wizard');
-        }
       } else {
-        // Registered student on normal session restore / refresh / sign-in
+        // Authenticated student on normal session restore / refresh / sign-in
         const activeScreen = screenRef.current;
-        if (activeScreen === 'guided_wizard') {
-          console.log('[Auth Flow] Registered student caught on guided_wizard. Activating escape hatch -> dashboard');
-          setScreen('dashboard');
-          return;
-        }
-
         const params = new URLSearchParams(window.location.search);
         const rawUrlScreen = params.get('screen')?.trim();
         const isAuthOrIntroOrEmpty =
@@ -1781,7 +1676,7 @@ export function App() {
           console.log('[Auth Flow] Authenticated student on root/intro/auth screen. Routing to destination...');
           const savedActiveScreen = localStorage.getItem('boardly_active_screen');
           let target: ScreenType = 'dashboard';
-          if (savedActiveScreen && VALID_SCREENS.includes(savedActiveScreen as ScreenType) && savedActiveScreen !== 'guided_wizard' && savedActiveScreen !== 'admin') {
+          if (savedActiveScreen && VALID_SCREENS.includes(savedActiveScreen as ScreenType) && savedActiveScreen !== 'admin') {
             target = savedActiveScreen as ScreenType;
           }
           if (nextScreenAfterAuthRef.current) {
@@ -2189,17 +2084,17 @@ export function App() {
 
   const handleGlobalBackInternal = () => {
     const scr = screenRef.current;
-    const isRegistered = currentUserRef.current && userProfileRef.current?.registration_completed === true && !isAdminRef.current;
+    const isStudent = Boolean(currentUserRef.current && !isAdminRef.current);
 
     switch (scr) {
       case 'grades_flow':
-        setScreen(isRegistered ? 'dashboard' : 'intro');
+        setScreen(isStudent ? 'dashboard' : 'intro');
         break;
       case 'group':
         setScreen('grades_flow');
         break;
       case 'subject':
-        setScreen(isRegistered ? 'dashboard' : 'group');
+        setScreen(isStudent ? 'dashboard' : 'group');
         break;
       case 'duration':
         setScreen('subject');
@@ -2223,7 +2118,7 @@ export function App() {
         });
         break;
       case 'results':
-        setScreen(isRegistered ? 'dashboard' : 'intro');
+        setScreen(isStudent ? 'dashboard' : 'intro');
         break;
       case 'admin':
         setScreen('intro');
@@ -3467,14 +3362,14 @@ export function App() {
       )}
 
       <main className={`flex-1 w-full mx-auto flex flex-col items-center justify-start p-2 sm:p-6 overflow-x-hidden ${
-        ['intro', 'dashboard', 'admin', 'guided_wizard', 'checkout', 'plan_selection'].includes(screen)
+        ['intro', 'dashboard', 'admin', 'checkout', 'plan_selection'].includes(screen)
           ? 'max-w-7xl'
           : ['grades_flow', 'test', 'results'].includes(screen)
           ? 'max-w-4xl'
           : 'max-w-3xl'
       }`}>
         <div className={`w-full mx-auto relative flex flex-col flex-1 min-w-0 ${
-          ['intro', 'dashboard', 'admin', 'guided_wizard', 'checkout', 'plan_selection'].includes(screen)
+          ['intro', 'dashboard', 'admin', 'checkout', 'plan_selection'].includes(screen)
             ? 'max-w-7xl'
             : ['grades_flow', 'test', 'results'].includes(screen)
             ? 'max-w-3xl'
@@ -3563,6 +3458,11 @@ export function App() {
                       isTestLimitReached={isTestLimitReached}
                       monthlyTestCount={currentMonthlyTestCount}
                       onUpdateProfile={(updated) => setUserProfile(updated)}
+                      onTrackChanged={(track) => {
+                        const cNum = (typeof track.grade === 'number' ? track.grade : String(track.grade)) as BoardClass;
+                        setSelectedClass(cNum);
+                        setSelectedGroup(track.defaultGroup || track.name);
+                      }}
                       onNavigateDashboard={() => setScreen('subjects')}
                       onSelectMdcat={() => handleSelectClass('MDCAT')}
                       onSelectTcat={() => handleSelectClass('TCAT')}
@@ -3593,43 +3493,6 @@ export function App() {
                     />
                   )
                 )}
-                {screen === 'guided_wizard' && (
-                  <OneQuestionRegistrationScreen
-                    user={currentUser}
-                    onCompleteRegistration={async (trackId, trackName) => {
-                      const userId = currentUser?.id || `anon-${Date.now()}`;
-                      try {
-                        const saved = await completeOneQuestionRegistration(
-                          userId,
-                          trackId,
-                          trackName,
-                          currentUser?.email
-                        );
-                        if (saved) {
-                          setUserProfile(saved);
-                          const defaultInfo = getStudentDefaultClassAndGroup(saved);
-                          setSelectedClass(defaultInfo.classNum);
-                          setSelectedGroup(defaultInfo.group);
-                        }
-                      } catch (err) {
-                        console.error('Registration error:', err);
-                      }
-                      localStorage.setItem('boardly_active_screen', 'dashboard');
-                      try {
-                        await refreshUserProfile();
-                      } catch (e) {}
-                      setScreen('dashboard');
-                      window.scrollTo({ top: 0, behavior: 'smooth' });
-                    }}
-                    onSignOut={async () => {
-                      await supabase.auth.signOut();
-                      clearAllClientAuthAndSessionData();
-                      setCurrentUser(null);
-                      setUserProfile(null);
-                      setScreen('intro');
-                    }}
-                  />
-                )}
                 {(screen === 'checkout' || screen === 'pricing' || screen === 'plan_selection' || screen === 'payment_required') && (
                   <div className="w-full flex justify-center py-12">
                     <BrandedLoadingSpinner label="Redirecting to your free dashboard..." size="md" />
@@ -3659,18 +3522,8 @@ export function App() {
                       setNextScreenAfterAuth(null);
                       return;
                     }
-
-                    // Fix race condition: do NOT evaluate registration_completed while userProfile is null or loading
-                    if (profileSyncing || userProfile === null) {
-                      return;
-                    }
-
-                    if (userProfile.registration_completed === true) {
-                      setScreen(nextScreenAfterAuth || 'dashboard');
-                      setNextScreenAfterAuth(null);
-                    } else {
-                      setScreen('guided_wizard');
-                    }
+                    setScreen(nextScreenAfterAuth || 'dashboard');
+                    setNextScreenAfterAuth(null);
                   }} selectedGradeContext={selectedClass?.toString()} onBack={() => setScreen(authBackScreen || 'intro')} />
                 )}
                 {screen === 'subjects' && (
@@ -3986,7 +3839,7 @@ export function App() {
                     </div>
                   )
                 )}
-                {!['intro', 'dashboard', 'stats', 'guided_wizard', 'checkout', 'pricing', 'plan_selection', 'payment_required', 'grades_flow', 'group', 'auth', 'subjects', 'subject', 'duration', 'test', 'results', 'admin', 'profile'].includes(screen) && (
+                {!['intro', 'dashboard', 'stats', 'checkout', 'pricing', 'plan_selection', 'payment_required', 'grades_flow', 'group', 'auth', 'subjects', 'subject', 'duration', 'test', 'results', 'admin', 'profile'].includes(screen) && (
                   !currentUser ? (
                     <IntroScreen
                       onContinue={() => setScreen('auth')}
@@ -4022,6 +3875,11 @@ export function App() {
                       isTestLimitReached={isTestLimitReached}
                       monthlyTestCount={currentMonthlyTestCount}
                       onUpdateProfile={(updated) => setUserProfile(updated)}
+                      onTrackChanged={(track) => {
+                        const cNum = (typeof track.grade === 'number' ? track.grade : String(track.grade)) as BoardClass;
+                        setSelectedClass(cNum);
+                        setSelectedGroup(track.defaultGroup || track.name);
+                      }}
                       onNavigateDashboard={() => setScreen('subjects')}
                       onSelectMdcat={() => handleSelectClass('MDCAT')}
                       onSelectTcat={() => handleSelectClass('TCAT')}

@@ -22,15 +22,16 @@ import {
   Check,
   Crown
 } from 'lucide-react';
-import { User, StudentProfile, fetchStudentWeaknessProfile, StudentWeaknessProfileData, evaluateStudentAccess, isUserProOrPaid, downgradeExpiredProStudent, isAdminEmail } from '../lib/supabase';
+import { User, StudentProfile, fetchStudentWeaknessProfile, StudentWeaknessProfileData, evaluateStudentAccess, isUserProOrPaid, downgradeExpiredProStudent, isAdminEmail, supabase, isSupabaseConfigured, apiFetch, sanitizeStudentForDb } from '../lib/supabase';
 import { HistoryItem } from '../types';
 import { InstitutionBadge, renderTargetUniversityBadge } from './InstitutionBadge';
 import { TargetUniversityModal } from './TargetUniversityModal';
+import { TrackSelectorModal } from './TrackSelectorModal';
 import { UserAvatar } from './UserAvatar';
 import { AnimatedCounter } from './AnimatedCounter';
 import { ResourcesHub } from './ResourcesHub';
 import { triggerHaptic, HAPTIC_PATTERNS } from '../lib/haptics';
-import { resolveStudentTrackDetails } from '../data/portalMasterTracks';
+import { MasterPortalTrack, resolveStudentTrackDetails } from '../data/portalMasterTracks';
 
 /**
  * Accuracy threshold percentage cutoff for identifying weak subject/chapter areas.
@@ -112,6 +113,7 @@ interface StudentHomeDashboardProps {
   onOpenHistory: () => void;
   onOpenCommunity?: () => void;
   onUpdateProfile?: (updatedProfile: StudentProfile) => void;
+  onTrackChanged?: (track: MasterPortalTrack) => void;
   isAdmin?: boolean;
   isTestLimitReached?: boolean;
   monthlyTestCount?: number;
@@ -157,6 +159,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
   onOpenHistory,
   onOpenCommunity,
   onUpdateProfile,
+  onTrackChanged,
   isAdmin = false,
   isTestLimitReached = false,
   monthlyTestCount = 0,
@@ -181,6 +184,57 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
   const [weaknessProfile, setWeaknessProfile] = useState<StudentWeaknessProfileData | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState<boolean>(true);
   const [showUniModal, setShowUniModal] = useState<boolean>(false);
+  const [showTrackModal, setShowTrackModal] = useState<boolean>(false);
+
+  const handleSelectTrack = async (track: MasterPortalTrack) => {
+    setShowTrackModal(false);
+    const gradeVal = typeof track.grade === 'number' ? `Class ${track.grade}` : String(track.grade);
+    const streamVal = track.defaultGroup || track.name;
+    const updatedProfile: StudentProfile = {
+      ...(userProfile || {
+        id: currentUser.id,
+        name: currentUser.user_metadata?.full_name || currentUser.email?.split('@')[0] || 'Student',
+        email: currentUser.email || '',
+        sign_up_method: 'Google',
+        created_at: new Date().toISOString(),
+      }),
+      grade: gradeVal,
+      stream: streamVal,
+      assigned_classes: [track.assignableKey],
+      enrolled_track_id: track.id,
+      updated_at: new Date().toISOString(),
+    };
+
+    if (onUpdateProfile) {
+      onUpdateProfile(updatedProfile);
+    }
+    if (onTrackChanged) {
+      onTrackChanged(track);
+    }
+
+    try {
+      if (isSupabaseConfigured) {
+        await supabase
+          .from('students')
+          .update(sanitizeStudentForDb(updatedProfile))
+          .eq('id', currentUser.id);
+      }
+      apiFetch('/api/admin/update-student-grade-stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          studentId: currentUser.id,
+          studentEmail: currentUser.email,
+          grade: gradeVal,
+          stream: streamVal,
+          assigned_classes: [track.assignableKey],
+          enrolled_track_id: track.id,
+        }),
+      }).catch(() => {});
+    } catch (e) {
+      console.warn('Error saving track selection:', e);
+    }
+  };
 
   // Fetch logged-in student's weakness profile securely via API
   useEffect(() => {
@@ -304,15 +358,22 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
   // Capitalize name cleanly
   const studentName = rawName.charAt(0).toUpperCase() + rawName.slice(1);
 
-  // Student locked class & stream format
+  // Student target class & stream format
   const gradeStr = userProfile?.grade;
   const streamStr = userProfile?.stream;
+
+  const hasExplicitTrack = Boolean(
+    (gradeStr && gradeStr.trim() && gradeStr !== 'General Student') ||
+    (streamStr && streamStr.trim()) ||
+    (userProfile?.assigned_classes && userProfile.assigned_classes.length > 0) ||
+    userProfile?.enrolled_track_id
+  );
 
   const classStreamDisplay = gradeStr && streamStr
     ? `${gradeStr} — ${streamStr}`
     : gradeStr
       ? `${gradeStr}`
-      : 'Course Registration Required';
+      : 'Select Target Exam';
 
   // Statistics calculation from history
   const getItemPct = (item: HistoryItem): number => {
@@ -476,7 +537,7 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
       <div className="bg-white  text-slate-900  rounded-3xl p-6 sm:p-7 border border-black/10  shadow-xl relative overflow-hidden flex flex-col gap-6 transition-colors">
         <div className="absolute top-0 right-0 w-72 h-72 bg-[#F2B90C]/15  rounded-full blur-3xl pointer-events-none" />
 
-        <div className="flex items-center justify-between gap-3 relative z-10">
+        <div className="flex flex-wrap items-center justify-between gap-3 relative z-10">
           {/* Single Status Label */}
           {isEffectiveAdmin ? (
             <div
@@ -496,7 +557,56 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
               <span>Full Access — Free Forever</span>
             </div>
           )}
+
+          {/* Target Exam Track Pill - Opens non-blocking track selector modal */}
+          <button
+            id="student-dashboard-change-track-btn"
+            type="button"
+            onClick={() => {
+              triggerHaptic(HAPTIC_PATTERNS.light);
+              setShowTrackModal(true);
+            }}
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-bold bg-amber-50 hover:bg-amber-100 text-slate-800 border border-amber-300 transition-all cursor-pointer shadow-xs active:scale-95 shrink-0"
+            title="Click to switch your target exam or board track"
+          >
+            <GraduationCap className="w-4 h-4 text-[#D99A00] shrink-0" />
+            <span className="font-extrabold text-slate-900">
+              {hasExplicitTrack ? resolvedTrack.enrolledTrackLabel : 'Choose Target Exam'}
+            </span>
+            <span className="text-[10px] text-amber-800 bg-amber-200/70 px-2 py-0.5 rounded-full font-extrabold uppercase tracking-wide">
+              {hasExplicitTrack ? 'Change' : 'Select'}
+            </span>
+          </button>
         </div>
+
+        {/* If no track selected yet, show a gentle, non-blocking prompt */}
+        {!hasExplicitTrack && (
+          <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 relative z-10">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="w-9 h-9 rounded-xl bg-[#F2B90C]/20 border border-[#F2B90C]/40 flex items-center justify-center shrink-0 text-slate-900">
+                <GraduationCap className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="text-xs sm:text-sm font-extrabold text-slate-900">
+                  Select Your Target Exam or Board
+                </h4>
+                <p className="text-[11px] sm:text-xs text-slate-600">
+                  Pick FBISE 9–12, MDCAT, TCAT, FAST, or NUST to personalize your dashboard and practice questions.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic(HAPTIC_PATTERNS.medium);
+                setShowTrackModal(true);
+              }}
+              className="self-start sm:self-auto bg-slate-900 hover:bg-black text-white text-xs font-extrabold px-4 py-2.5 rounded-xl transition-all active:scale-95 cursor-pointer shadow-xs whitespace-nowrap"
+            >
+              Choose Track
+            </button>
+          </div>
+        )}
 
         {/* Greeting Banner */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative z-10">
@@ -520,11 +630,21 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
         {/* Assigned Classes & Test Series Box */}
         {resolvedTrack.assignedClasses && resolvedTrack.assignedClasses.length > 0 && (
           <div className="bg-slate-50/80  border border-slate-200  rounded-2xl p-4 space-y-2 relative z-10">
-            <div className="flex items-center">
+            <div className="flex items-center justify-between">
               <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500  flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                 <span>Assigned Classes & Active Test Series</span>
               </span>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic(HAPTIC_PATTERNS.light);
+                  setShowTrackModal(true);
+                }}
+                className="text-xs font-extrabold text-blue-600 hover:text-blue-700 hover:underline cursor-pointer"
+              >
+                Change Track
+              </button>
             </div>
 
             <div className="flex flex-wrap gap-2 pt-0.5">
@@ -869,6 +989,13 @@ export const StudentHomeDashboard: React.FC<StudentHomeDashboardProps> = React.m
             onUpdateProfile(updated);
           }
         }}
+      />
+
+      <TrackSelectorModal
+        isOpen={showTrackModal}
+        onClose={() => setShowTrackModal(false)}
+        currentTrackId={userProfile?.enrolled_track_id || resolvedTrack.primaryClass}
+        onSelectTrack={handleSelectTrack}
       />
     </section>
   );

@@ -558,9 +558,6 @@ export function clearAllClientAuthAndSessionData(): void {
       'boardly_cached_profile',
       'boardly_cached_access',
       'boardly_target_university',
-      'boardly_registration_is_success',
-      'boardly_registration_step',
-      'boardly_guided_wizard_step',
       'boardly_student_grade',
       'boardly_student_package',
       'boardly_student_stream',
@@ -1873,84 +1870,6 @@ export async function saveStudentRegistration(
   return profile;
 }
 
-/**
- * One-Question Registration: Save student's chosen academic track.
- * Single question flow — after this, full unlimited access forever.
- */
-export async function completeOneQuestionRegistration(
-  userId: string,
-  trackId: string,
-  trackName: string,
-  email?: string
-): Promise<StudentProfile | null> {
-  const updatePayload = {
-    registration_completed: true,
-    enrolled_track_id: trackId,
-    grade: trackId,
-    stream: trackName,
-    status: 'active',
-    payment_status: 'Verified & Paid',
-    is_registered: true,
-    requires_payment: false,
-    updated_at: new Date().toISOString(),
-  };
-
-  // Also sync backend server memory so in-memory store and server endpoints immediately reflect registration
-  apiFetch('/api/admin/update-student-grade-stream', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      studentId: userId,
-      studentEmail: email,
-      grade: trackId,
-      stream: trackName,
-      registration_completed: true,
-      enrolled_track_id: trackId,
-    }),
-  }).catch(() => {});
-
-  try {
-    if (isSupabaseConfigured) {
-      const { data, error } = await supabase
-        .from('students')
-        .update(sanitizeStudentForDb(updatePayload))
-        .eq('id', userId)
-        .select();
-
-      if (!error && data && data.length > 0) {
-        const normalized = normalizeStudentProfileFromRow(data[0], userId);
-        invalidateStudentProfileCache(userId, normalized);
-        return normalized;
-      }
-
-      if (email) {
-        const { data: dataEmail, error: errorEmail } = await supabase
-          .from('students')
-          .update(sanitizeStudentForDb(updatePayload))
-          .ilike('email', email.toLowerCase().trim())
-          .select();
-
-        if (!errorEmail && dataEmail && dataEmail.length > 0) {
-          const normalized = normalizeStudentProfileFromRow(dataEmail[0], userId);
-          invalidateStudentProfileCache(userId, normalized);
-          return normalized;
-        }
-      }
-    }
-  } catch (err) {
-    console.error('Failed to complete one-question registration in Supabase:', err);
-  }
-
-  // Fallback local update
-  const fallback = normalizeStudentProfileFromRow({
-    id: userId,
-    email: email || '',
-    ...updatePayload,
-  }, userId);
-  invalidateStudentProfileCache(userId, fallback);
-  return fallback;
-}
-
 export async function saveStudentTargetUniversity(
   userId: string,
   targetUniversity: string,
@@ -2908,13 +2827,10 @@ export async function removeStudentAccountInSupabase(
       } catch {}
     }
 
-    // Wipe any pending/stale registration keys from this client
+    // Wipe any pending/stale keys from this client
     try {
       localStorage.removeItem('boardly_cached_profile');
       localStorage.removeItem('boardly_target_university');
-      localStorage.removeItem('boardly_registration_is_success');
-      localStorage.removeItem('boardly_registration_step');
-      localStorage.removeItem('boardly_guided_wizard_step');
       localStorage.removeItem('boardly_student_grade');
       localStorage.removeItem('boardly_student_package');
       localStorage.removeItem('boardly_student_stream');
