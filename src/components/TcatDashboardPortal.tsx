@@ -235,24 +235,62 @@ export const TcatDashboardPortal: React.FC<TcatDashboardPortalProps> = React.mem
 
         <div className="relative z-10 space-y-4">
           <div className="flex flex-wrap items-center gap-2">
-            <BoardlyProBadge userProfile={userProfile} isAdmin={isAdmin} />
-            <span className="bg-cyan-500/10  text-cyan-700  border border-cyan-500/30  text-xs font-extrabold px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1.5 whitespace-nowrap shrink-0">
-              <Award className="w-3.5 h-3.5 text-cyan-600  shrink-0" />
-              UET Taxila Admission Standard
-            </span>
-            <span className="bg-blue-500/10  text-blue-700  border border-blue-500/30 text-xs font-black px-3 py-1 rounded-full uppercase tracking-wider flex items-center gap-1 whitespace-nowrap shrink-0">
-              <Flame className="w-3.5 h-3.5 text-blue-500  fill-blue-500  shrink-0" />
-              100 MCQs • 100 Minutes • 400 Total Marks (0 Negative Marking)
-            </span>
+            <BoardlyProBadge userProfile={userProfile} isAdmin={isAdmin} label="Full Access Entrance Pass" />
           </div>
 
           <div className="space-y-2">
-            <h1 className="font-['Space_Grotesk'] font-extrabold text-2xl sm:text-4xl text-slate-900  tracking-tight leading-tight">
-              TCAT / UET Taxila Series — <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 via-sky-500 to-blue-500">Boardly by SHS Virtual Academy</span>
+            <h1 className="font-['Space_Grotesk'] font-extrabold text-2xl sm:text-4xl text-slate-900 tracking-tight leading-tight">
+              UET Taxila Combined Admission Test (TCAT)
             </h1>
-            <p className="text-xs sm:text-sm text-slate-600  max-w-3xl leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-600 max-w-3xl leading-relaxed">
               Comprehensive engineering entrance preparation tailored for UET Taxila degree programs. Practice FSc Part I & II subjects with real formula-driven MCQs, quick numerical calculations, and detailed step-by-step solutions.
             </p>
+          </div>
+
+          {/* Continuous Track Stats Marquee Ticker Strip */}
+          <div className="w-full overflow-hidden rounded-2xl bg-slate-900 text-white py-3 px-4 my-2 select-none border border-slate-800">
+            <div className="animate-marquee-scroll flex items-center whitespace-nowrap">
+              <div className="flex items-center gap-4 pr-4">
+                <span className="flex items-center gap-1.5 text-white font-bold text-xs">
+                  <span className="text-amber-400">●</span>
+                  100 Questions
+                </span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-slate-200 font-semibold text-xs">100 Minutes</span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-emerald-400 font-semibold text-xs">No Negative Marking (0)</span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-cyan-300 font-semibold text-xs">4 Marks per correct answer (Total: 400 Marks)</span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-slate-300 font-medium text-xs">Mathematics (30 MCQs)</span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-slate-300 font-medium text-xs">Physics (30 MCQs)</span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-slate-300 font-medium text-xs">Chemistry / Computer Science (30 MCQs)</span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-slate-300 font-medium text-xs">English (10 MCQs)</span>
+              </div>
+              <div className="flex items-center gap-4 pr-4" aria-hidden="true">
+                <span className="flex items-center gap-1.5 text-white font-bold text-xs">
+                  <span className="text-amber-400">●</span>
+                  100 Questions
+                </span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-slate-200 font-semibold text-xs">100 Minutes</span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-emerald-400 font-semibold text-xs">No Negative Marking (0)</span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-cyan-300 font-semibold text-xs">4 Marks per correct answer (Total: 400 Marks)</span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-slate-300 font-medium text-xs">Mathematics (30 MCQs)</span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-slate-300 font-medium text-xs">Physics (30 MCQs)</span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-slate-300 font-medium text-xs">Chemistry / Computer Science (30 MCQs)</span>
+                <span className="text-slate-500 text-xs">•</span>
+                <span className="text-slate-300 font-medium text-xs">English (10 MCQs)</span>
+              </div>
+            </div>
           </div>
 
           {/* Action CTAs */}

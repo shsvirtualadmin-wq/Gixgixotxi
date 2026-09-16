@@ -79,72 +79,10 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = React.m
   onUpdateProfile,
   onUpgradeClick,
 }) => {
-  if (String(classNum) === 'TCAT' || String(group) === 'TCAT') {
-    return (
-      <TcatDashboardPortal
-        currentUser={currentUser || null}
-        userProfile={userProfile}
-        history={history}
-        isTestLimitReached={isTestLimitReached}
-        onStartTcatTest={(params) => {
-          const effectiveTopic = params.topic || (params.subtopic ? `${params.chapterName ? params.chapterName + ' - ' : ''}${params.subtopic}` : params.chapterName);
-          onStartTest({
-            subject: params.subject,
-            customTopic: effectiveTopic,
-            topic: effectiveTopic,
-            subtopic: params.subtopic,
-            chapterName: params.chapterName,
-            durationMinutes: params.durationMinutes,
-            questionCount: params.questionCount,
-            difficulty: params.difficulty,
-            mode: params.mode,
-            instantFeedback: params.mode !== 'ai-custom',
-            groupSubjects: params.groupSubjects,
-            isFullMock: params.isFullMock,
-          });
-        }}
-        onOpenAuth={onOpenAuth || (() => {})}
-        onOpenHistory={onOpenHistory || (() => {})}
-        onBackToMainScreen={onBackToClasses}
-        isAdmin={isAdmin}
-        onUpgradeClick={onUpgradeClick}
-      />
-    );
-  }
-
-  if (String(classNum) === 'MDCAT' || String(group) === 'MDCAT') {
-    return (
-      <MdcatDashboardPortal
-        currentUser={currentUser || null}
-        userProfile={userProfile}
-        history={history}
-        isTestLimitReached={isTestLimitReached}
-        onStartMdcatTest={(params) => {
-          const effectiveTopic = params.topic || (params.subtopic ? `${params.chapterName ? params.chapterName + ' - ' : ''}${params.subtopic}` : params.chapterName);
-          onStartTest({
-            subject: params.subject,
-            customTopic: effectiveTopic,
-            durationMinutes: params.durationMinutes,
-            questionCount: params.questionCount,
-            difficulty: params.difficulty,
-            mode: params.mode,
-            instantFeedback: params.mode !== 'ai-custom',
-            subtopic: params.subtopic,
-            chapterName: params.chapterName,
-          } as any);
-        }}
-        onOpenAuth={onOpenAuth || (() => {})}
-        onOpenHistory={onOpenHistory || (() => {})}
-        onBackToMainScreen={onBackToClasses}
-        isAdmin={isAdmin}
-        onUpgradeClick={onUpgradeClick}
-      />
-    );
-  }
-
   const rawTrackStr = `${String(classNum)} ${String(group)}`.toUpperCase();
   const matchedEntranceTrack: EntranceTrackType | null = (() => {
     const directKeys: EntranceTrackType[] = [
+      'FBISE', 'MDCAT', 'TCAT',
       'NET', 'FAST', 'ECAT', 'ETEA', 'NUMS', 'GIKI', 'USAT',
       'NED', 'PIEAS', 'NAT', 'IBA', 'AKU', 'MUET', 'LUMS',
       'NUML', 'HITEC', 'NUTECH'
@@ -154,6 +92,8 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = React.m
     for (const key of directKeys) {
       if (upperClass === key || upperGroup === key) return key;
     }
+    if (rawTrackStr.includes('MDCAT') || rawTrackStr.includes('PMDC')) return 'MDCAT';
+    if (rawTrackStr.includes('TCAT') || rawTrackStr.includes('UET TAXILA')) return 'TCAT';
     if (rawTrackStr.includes('NET') || rawTrackStr.includes('NUST')) return 'NET';
     if (rawTrackStr.includes('FAST-NU') || (rawTrackStr.includes('FAST') && !rawTrackStr.includes('NTS'))) return 'FAST';
     if (rawTrackStr.includes('ECAT') || rawTrackStr.includes('UET LAHORE')) return 'ECAT';
@@ -184,6 +124,11 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = React.m
         history={history}
         isTestLimitReached={isTestLimitReached}
         isAdmin={isAdmin}
+        onSelectTrack={(newTrack) => {
+          if (onSelectStream) {
+            onSelectStream(newTrack as any, newTrack);
+          }
+        }}
         onStartTest={(params) => {
           const effectiveTopic = params.topic || (params.subtopic ? `${params.chapterName ? params.chapterName + ' - ' : ''}${params.subtopic}` : params.chapterName);
           onStartTest({
@@ -196,7 +141,7 @@ export const ClassStreamDashboard: React.FC<ClassStreamDashboardProps> = React.m
             questionCount: params.questionCount,
             difficulty: params.difficulty,
             mode: params.mode,
-            instantFeedback: params.instantFeedback,
+            instantFeedback: params.mode !== 'ai-custom',
             groupSubjects: params.groupSubjects,
             isFullMock: params.isFullMock,
           });

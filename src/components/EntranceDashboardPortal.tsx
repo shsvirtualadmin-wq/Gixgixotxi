@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { triggerHaptic, HAPTIC_PATTERNS } from '../lib/haptics';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -17,6 +17,7 @@ import {
   Layers,
   Award,
   ChevronRight,
+  ChevronDown,
   Play,
   RotateCcw,
   BarChart3,
@@ -36,6 +37,9 @@ import { InstitutionBadge } from './InstitutionBadge';
 import { BoardlyProBadge } from './BoardlyProBadge';
 
 export type EntranceTrackType =
+  | 'FBISE'
+  | 'MDCAT'
+  | 'TCAT'
   | 'NET'
   | 'FAST'
   | 'ECAT'
@@ -80,6 +84,80 @@ interface EntranceTrackDetails {
 }
 
 export const ENTRANCE_TRACKS_DATA: Record<EntranceTrackType, EntranceTrackDetails> = {
+  FBISE: {
+    id: 'FBISE',
+    fullName: 'Federal Board of Intermediate & Secondary Education (FBISE)',
+    institutionId: 'fbise',
+    testName: 'FBISE Board Examinations — Full-Length Grand Mock',
+    badgeBg: 'bg-[#00703C]',
+    badgeText: 'text-[#00703C]',
+    totalMcqs: 85,
+    totalTimeMinutes: 120,
+    negativeMarking: 'No Negative Marking (0)',
+    scoringScheme: '1 Mark per correct answer (Total: 85 Marks)',
+    sections: [
+      { subject: 'Mathematics', mcqs: 20, percentage: '24%', desc: 'Algebra, Geometry, Trigonometry, Calculus' },
+      { subject: 'Physics', mcqs: 20, percentage: '24%', desc: 'Mechanics, Electromagnetism, Modern Physics' },
+      { subject: 'Chemistry', mcqs: 20, percentage: '24%', desc: 'Physical, Inorganic & Organic Chemistry' },
+      { subject: 'English', mcqs: 15, percentage: '18%', desc: 'Grammar, Comprehension, Vocabulary & Writing' },
+      { subject: 'Biology / CS', mcqs: 10, percentage: '12%', desc: 'Cell Biology, Ecology or Computer Architecture' },
+    ],
+    overview: 'Official Federal Board (FBISE) examination curriculum. Full-length model mock papers and chapter-wise MCQs strictly aligned with National Curriculum standards and Student Learning Outcomes (SLOs).',
+    specialRules: [
+      'No negative marking for incorrect answers.',
+      'Strictly aligned with FBISE Student Learning Outcomes (SLOs).',
+      'Standardized board examination timing and question distribution.',
+    ],
+  },
+  MDCAT: {
+    id: 'MDCAT',
+    fullName: 'Pakistan Medical & Dental Council (PMDC MDCAT)',
+    institutionId: 'pmdc',
+    testName: 'PMDC MDCAT — National Medical & Dental College Admission Test',
+    badgeBg: 'bg-[#1E7B47]',
+    badgeText: 'text-[#1E7B47]',
+    totalMcqs: 180,
+    totalTimeMinutes: 180,
+    negativeMarking: 'No Negative Marking (0)',
+    scoringScheme: '1 Mark per correct answer (Total: 180 Marks)',
+    sections: [
+      { subject: 'Biology', mcqs: 68, percentage: '38%', desc: 'Cell Structure, Genetics, Human Physiology, Evolution, Biodiversity' },
+      { subject: 'Chemistry', mcqs: 54, percentage: '30%', desc: 'Physical Chemistry, Inorganic Chemistry, Organic Reaction Mechanisms' },
+      { subject: 'Physics', mcqs: 36, percentage: '20%', desc: 'Mechanics, Thermodynamics, Electromagnetism, Nuclear & Modern Physics' },
+      { subject: 'English', mcqs: 12, percentage: '7%', desc: 'Vocabulary in Context, Sentence Correction, Reading Comprehension' },
+      { subject: 'Logical Reasoning', mcqs: 10, percentage: '5%', desc: 'Critical Thinking, Letter & Symbol Series, Logical Deductions' },
+    ],
+    overview: 'Official PMDC MDCAT uniform curriculum for MBBS and BDS admissions across all public and private medical colleges in Pakistan.',
+    specialRules: [
+      'No negative marking across any section.',
+      'Unified PMDC syllabus covering UHS, DUHS, KMU, SZABMU, and BUMHS.',
+      'Full-length 180-minute countdown simulation matching official hall protocol.',
+    ],
+  },
+  TCAT: {
+    id: 'TCAT',
+    fullName: 'University of Engineering & Technology (UET Taxila TCAT)',
+    institutionId: 'uet-taxila',
+    testName: 'UET Taxila Combined Admission Test (TCAT)',
+    badgeBg: 'bg-[#0891B2]',
+    badgeText: 'text-[#0891B2]',
+    totalMcqs: 100,
+    totalTimeMinutes: 100,
+    negativeMarking: 'No Negative Marking (0)',
+    scoringScheme: '4 Marks per correct answer (Total: 400 Marks)',
+    sections: [
+      { subject: 'Mathematics', mcqs: 30, percentage: '30%', desc: 'Calculus, Analytic Geometry, Trigonometry, Vectors' },
+      { subject: 'Physics', mcqs: 30, percentage: '30%', desc: 'Mechanics, Oscillations, Electromagnetism, Modern Physics' },
+      { subject: 'Chemistry / Computer Science', mcqs: 30, percentage: '30%', desc: 'Physical/Organic Chemistry or Programming & Architecture' },
+      { subject: 'English', mcqs: 10, percentage: '10%', desc: 'Grammar, Analytical Comprehension, Vocabulary' },
+    ],
+    overview: 'Comprehensive engineering and computing admission test for UET Taxila undergraduate degree programs in engineering, technology, and computer sciences.',
+    specialRules: [
+      '4 marks per correct answer, 0 marks for incorrect (400 total marks).',
+      'Focus on rapid calculation and fundamental physics & math formulas.',
+      'Simulated online computer-based testing interface.',
+    ],
+  },
   NET: {
     id: 'NET',
     fullName: 'National University of Sciences & Technology (NUST)',
@@ -235,16 +313,15 @@ export const ENTRANCE_TRACKS_DATA: Record<EntranceTrackType, EntranceTrackDetail
     testName: 'NUMS Entry Test — MBBS & BDS Admissions',
     badgeBg: 'bg-[#006837]',
     badgeText: 'text-[#006837]',
-    totalMcqs: 200,
-    totalTimeMinutes: 180,
+    totalMcqs: 150,
+    totalTimeMinutes: 150,
     negativeMarking: 'No Negative Marking',
-    scoringScheme: 'Part A: 150 MCQs (95% Weight) + Part B: 50 MCQs (5% Weight)',
+    scoringScheme: '1 Mark per correct answer (Total: 150 Marks)',
     sections: [
-      { subject: 'Biology', mcqs: 55, percentage: '27.5%', desc: 'Part A: Cell Biology, Genetics, Human Physiology & Anatomy' },
-      { subject: 'Chemistry', mcqs: 40, percentage: '20.0%', desc: 'Part A: Organic, Inorganic & Physical Chemistry' },
-      { subject: 'Physics', mcqs: 40, percentage: '20.0%', desc: 'Part A: Mechanics, Optics, Electricity & Magnetism' },
-      { subject: 'English', mcqs: 15, percentage: '7.5%', desc: 'Part A: Vocabulary, Tenses & Grammar structure' },
-      { subject: 'Psychological Assessment', mcqs: 50, percentage: '25.0%', desc: 'Part B: Situational Judgment, Medical Ethics, Empathy & Resilience' },
+      { subject: 'Biology', mcqs: 55, percentage: '36.7%', desc: 'Cell Biology, Genetics, Human Physiology & Anatomy' },
+      { subject: 'Chemistry', mcqs: 40, percentage: '26.7%', desc: 'Organic, Inorganic & Physical Chemistry' },
+      { subject: 'Physics', mcqs: 40, percentage: '26.7%', desc: 'Mechanics, Optics, Electricity & Magnetism' },
+      { subject: 'English', mcqs: 15, percentage: '10.0%', desc: 'Vocabulary, Tenses & Grammar structure' },
     ],
     overview: 'The NUMS Entry Test qualifies students for Army Medical College (AMC) Rawalpindi and all NUMS military and affiliated private medical colleges. It features a unique 50-MCQ Psychological Assessment component.',
     specialRules: [
@@ -781,6 +858,7 @@ interface EntranceDashboardPortalProps {
   onOpenHistory: () => void;
   onBackToMainScreen?: () => void;
   onUpgradeClick?: () => void;
+  onSelectTrack?: (track: EntranceTrackType) => void;
 }
 
 export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = React.memo(({
@@ -796,9 +874,17 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
   onOpenHistory,
   onBackToMainScreen,
   onUpgradeClick,
+  onSelectTrack,
 }) => {
   const isProStudent = isUserProOrPaid(currentUser, userProfile, isAdmin);
-  const trackData = ENTRANCE_TRACKS_DATA[track] || ENTRANCE_TRACKS_DATA.NET;
+  const [currentTrack, setCurrentTrack] = useState<EntranceTrackType>(track);
+  const [showTrackDropdown, setShowTrackDropdown] = useState<boolean>(false);
+
+  useEffect(() => {
+    setCurrentTrack(track);
+  }, [track]);
+
+  const trackData = ENTRANCE_TRACKS_DATA[currentTrack] || ENTRANCE_TRACKS_DATA.NUMS;
 
   // Elective group state (for ECAT, ETEA, USAT)
   const [activeElectiveGroupId, setActiveElectiveGroupId] = useState<string>(() => {
@@ -860,7 +946,7 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
 
     onStartTest({
       subject: `${trackData.id} Full-Length Grand Mock Exam`,
-      customTopic: `${trackData.fullName} Official Pattern`,
+      customTopic: `${trackData.fullName} Exam Pattern`,
       chapterName: groupLabel || `${trackData.id} Standard Pattern`,
       questionCount: trackData.totalMcqs,
       durationMinutes: trackData.totalTimeMinutes,
@@ -926,9 +1012,6 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
                 <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
                   Entrance Examination Portal
                 </span>
-                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-blue-50 text-blue-700 border border-blue-200">
-                  Official Pattern
-                </span>
               </div>
               <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
                 {trackData.fullName}
@@ -938,6 +1021,54 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
         </div>
 
         <div className="flex items-center gap-2.5">
+          {/* Quick Portal Switcher (All 20 Tracks) */}
+          <div className="relative">
+            <button
+              onClick={() => {
+                triggerHaptic(HAPTIC_PATTERNS.light);
+                setShowTrackDropdown(!showTrackDropdown);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-white border border-slate-200 shadow-xs hover:bg-slate-50 transition-all cursor-pointer"
+              title="Switch Exam Portal"
+            >
+              <Layers className="w-3.5 h-3.5 text-blue-600" />
+              <span>Switch Exam ({Object.keys(ENTRANCE_TRACKS_DATA).length} Tracks)</span>
+              <ChevronDown className="w-3 h-3 text-slate-400" />
+            </button>
+
+            {showTrackDropdown && (
+              <div className="absolute right-0 top-10 z-50 w-72 bg-white border border-slate-200 rounded-2xl p-2 shadow-2xl max-h-88 overflow-y-auto">
+                <div className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider px-2.5 py-1.5 border-b border-slate-100 mb-1">
+                  All 20 Exam Portals
+                </div>
+                {(Object.keys(ENTRANCE_TRACKS_DATA) as EntranceTrackType[]).map((tKey) => {
+                  const item = ENTRANCE_TRACKS_DATA[tKey];
+                  const isSelected = tKey === currentTrack;
+                  return (
+                    <button
+                      key={tKey}
+                      onClick={() => {
+                        triggerHaptic(HAPTIC_PATTERNS.light);
+                        setCurrentTrack(tKey);
+                        setShowTrackDropdown(false);
+                        if (onSelectTrack) onSelectTrack(tKey);
+                      }}
+                      className={`w-full text-left px-2.5 py-2 rounded-xl text-xs font-bold flex items-center justify-between transition-colors cursor-pointer ${
+                        isSelected ? 'bg-blue-50 text-blue-700' : 'text-slate-800 hover:bg-slate-100'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 truncate">
+                        <InstitutionBadge id={item.institutionId} size="sm" />
+                        <span className="truncate">{item.id} — {item.fullName.split('(')[0].trim()}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 ml-1 shrink-0">{item.totalMcqs} Qs</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {trackHistory.length > 0 && (
             <button
               onClick={() => {
@@ -991,17 +1122,9 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Full-Length Mock Card */}
         <div className="lg:col-span-2 bg-gradient-to-br from-slate-900 via-slate-850 to-slate-900 text-white rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden border border-slate-800 flex flex-col justify-between">
-          <div className="relative z-10 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/15 text-xs font-semibold backdrop-blur-xs">
-                <Zap className="w-3.5 h-3.5 text-amber-400" />
-                <span>Full-Length Exam Simulation</span>
-              </div>
-              <InstitutionBadge id={trackData.institutionId} size="lg" />
-            </div>
-
+          <div className="relative z-10 space-y-3">
             <div className="space-y-2">
-              <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
+              <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
                 {trackData.testName}
               </h2>
               <p className="text-slate-300 text-sm leading-relaxed max-w-2xl">
@@ -1009,33 +1132,66 @@ export const EntranceDashboardPortal: React.FC<EntranceDashboardPortalProps> = R
               </p>
             </div>
 
-            {/* Quick Metrics */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
-                <div className="text-[11px] font-bold text-slate-400">Total MCQs</div>
-                <div className="text-xl font-black text-white">{trackData.totalMcqs} Questions</div>
-              </div>
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
-                <div className="text-[11px] font-bold text-slate-400">Allocated Time</div>
-                <div className="text-xl font-black text-white">{trackData.totalTimeMinutes} Mins</div>
-              </div>
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
-                <div className="text-[11px] font-bold text-slate-400">Negative Marking</div>
-                <div className="text-sm font-black text-emerald-400 truncate">{trackData.negativeMarking}</div>
-              </div>
-              <div className="bg-white/5 border border-white/10 rounded-2xl p-3">
-                <div className="text-[11px] font-bold text-slate-400">Scoring Formula</div>
-                <div className="text-xs font-extrabold text-cyan-300 truncate">{trackData.scoringScheme}</div>
+            {/* Continuous Track Stats Marquee Ticker Strip */}
+            <div className="w-full overflow-hidden rounded-2xl bg-white/[0.06] border border-white/10 py-3 px-4 my-2 select-none">
+              <div className="animate-marquee-scroll flex items-center whitespace-nowrap">
+                <div className="flex items-center gap-4 pr-4">
+                  <span className="flex items-center gap-1.5 text-white font-bold text-xs">
+                    <span className="text-amber-400">●</span>
+                    {trackData.totalMcqs} Questions
+                  </span>
+                  <span className="text-slate-500 text-xs">•</span>
+                  <span className="text-slate-200 font-semibold text-xs">
+                    {trackData.totalTimeMinutes} Minutes
+                  </span>
+                  <span className="text-slate-500 text-xs">•</span>
+                  <span className="text-emerald-400 font-semibold text-xs">
+                    {trackData.negativeMarking}
+                  </span>
+                  <span className="text-slate-500 text-xs">•</span>
+                  <span className="text-cyan-300 font-semibold text-xs">
+                    {trackData.scoringScheme}
+                  </span>
+                  {activeSections.map((sec, idx) => (
+                    <React.Fragment key={idx}>
+                      <span className="text-slate-500 text-xs">•</span>
+                      <span className="text-slate-300 font-medium text-xs">
+                        {sec.subject} ({sec.mcqs} MCQs)
+                      </span>
+                    </React.Fragment>
+                  ))}
+                </div>
+                <div className="flex items-center gap-4 pr-4" aria-hidden="true">
+                  <span className="flex items-center gap-1.5 text-white font-bold text-xs">
+                    <span className="text-amber-400">●</span>
+                    {trackData.totalMcqs} Questions
+                  </span>
+                  <span className="text-slate-500 text-xs">•</span>
+                  <span className="text-slate-200 font-semibold text-xs">
+                    {trackData.totalTimeMinutes} Minutes
+                  </span>
+                  <span className="text-slate-500 text-xs">•</span>
+                  <span className="text-emerald-400 font-semibold text-xs">
+                    {trackData.negativeMarking}
+                  </span>
+                  <span className="text-slate-500 text-xs">•</span>
+                  <span className="text-cyan-300 font-semibold text-xs">
+                    {trackData.scoringScheme}
+                  </span>
+                  {activeSections.map((sec, idx) => (
+                    <React.Fragment key={idx}>
+                      <span className="text-slate-500 text-xs">•</span>
+                      <span className="text-slate-300 font-medium text-xs">
+                        {sec.subject} ({sec.mcqs} MCQs)
+                      </span>
+                    </React.Fragment>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="relative z-10 pt-6 mt-4 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="text-xs text-slate-400 flex items-center gap-1.5">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>100% Verified syllabus questions with step-by-step explanations</span>
-            </div>
-
+          <div className="relative z-10 pt-5 mt-3 border-t border-white/10 flex items-center justify-between gap-4">
             <button
               onClick={handleLaunchFullMock}
               className="w-full sm:w-auto px-7 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-500 active:scale-95 text-white font-extrabold text-sm shadow-lg shadow-blue-600/30 flex items-center justify-center gap-2.5 transition-all cursor-pointer"
