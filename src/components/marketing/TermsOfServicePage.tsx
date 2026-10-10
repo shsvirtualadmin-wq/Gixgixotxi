@@ -65,7 +65,7 @@ export const TermsOfServicePage: React.FC<TermsOfServicePageProps> = ({ onNaviga
           <ul className="list-disc pl-5 space-y-1.5 text-sm text-slate-600">
             <li>Scrape, extract, copy, or spider question banks, diagrams, or derivations via automated bots or crawlers.</li>
             <li>Redistribute, commercially resell, or republish Boardly question compilations and PDF mock examinations without explicit written permission.</li>
-            <li>Attempt to reverse-engineer, decompile, or tamper with the diagnostic scoring algorithms, Ustaad AI endpoints, or server infrastructure.</li>
+            <li>Attempt to reverse-engineer, decompile, or tamper with the diagnostic scoring algorithms, Boardy endpoints, or server infrastructure.</li>
             <li>Engage in abusive, defamatory, or disruptive conduct in community events, live Boardly Blitz chat, or student forums.</li>
           </ul>
         </section>

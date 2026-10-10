@@ -21,6 +21,9 @@ import {
   Zap,
 } from 'lucide-react';
 import { MarketingPage } from './Navbar';
+import { UNIVERSITIES } from '../../data/universities';
+import { UniversityLogoBadge } from '../UniversityLogoBadge';
+import { BoardyMascot } from '../BoardyMascot';
 
 interface HomePageProps {
   onNavigate: (page: MarketingPage) => void;
@@ -34,22 +37,6 @@ const TYPEWRITER_PHRASES = [
   'FSc Confidence',
   'Entry Test Wins',
   'Academic Excellence',
-];
-
-// Top Universities with text badges (original, no copied logos)
-const UNIVERSITIES = [
-  { name: 'NUST', code: 'NUST', full: 'National Univ. of Sciences & Tech' },
-  { name: 'FAST-NUCES', code: 'FAST', full: 'National Univ. of Computer & Emerging Sciences' },
-  { name: 'GIKI', code: 'GIKI', full: 'Ghulam Ishaq Khan Institute' },
-  { name: 'LUMS', code: 'LUMS', full: 'Lahore Univ. of Management Sciences' },
-  { name: 'AKU', code: 'AKU', full: 'Aga Khan Medical University' },
-  { name: 'PIEAS', code: 'PIEAS', full: 'Pakistan Inst. of Engineering & Applied Sciences' },
-  { name: 'UET Taxila', code: 'UET', full: 'Univ. of Engineering & Technology Taxila' },
-  { name: 'IBA', code: 'IBA', full: 'Institute of Business Administration' },
-  { name: 'NUMS', code: 'NUMS', full: 'National Univ. of Medical Sciences' },
-  { name: 'COMSATS', code: 'CUI', full: 'COMSATS Univ. Islamabad' },
-  { name: 'UHS', code: 'UHS', full: 'Univ. of Health Sciences Lahore' },
-  { name: 'NED', code: 'NED', full: 'NED Univ. of Engineering & Tech' },
 ];
 
 // "Where Boardly Stands" Comparison Data
@@ -166,7 +153,7 @@ const PLACEHOLDER_TESTIMONIALS: TestimonialCard[] = [
   {
     id: 3,
     quote:
-      '[REPLACE WITH REAL REVIEWS] "Ustaad AI explained organic reaction mechanisms step-by-step whenever I had doubts late at night."',
+      '[REPLACE WITH REAL REVIEWS] "Boardy explained organic reaction mechanisms step-by-step whenever I had doubts late at night."',
     name: 'Student Reviewer 3 · REPLACE WITH REAL REVIEWS',
     exam: 'NUST NET Candidate',
     scoreOrCity: 'Engineering Track',
@@ -318,7 +305,7 @@ export const HomePage: React.FC<HomePageProps> = ({
           <p className="text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
             Boardly is Pakistan’s diagnostic exam preparation platform for Matric, FSC, and entrance test candidates.
             <span className="block text-slate-700 font-medium mt-1">
-              Practice verified questions, see where you lose marks, and get tricky doubts explained fast with Ustaad AI.
+              Practice verified questions, see where you lose marks, and get tricky doubts explained with Boardy, your 24/7 study buddy.
             </span>
           </p>
 
@@ -396,19 +383,15 @@ export const HomePage: React.FC<HomePageProps> = ({
                 isMarqueePaused ? '[animation-play-state:paused]' : ''
               }`}
             >
-              {/* Double array for seamless infinite scroll with plain text badges */}
+              {/* Double array for seamless infinite scroll with real university logo badges */}
               {[...UNIVERSITIES, ...UNIVERSITIES].map((uni, index) => (
                 <div
-                  key={`${uni.name}-${index}`}
+                  key={`${uni.id}-${index}`}
                   className="flex flex-col items-center justify-center shrink-0 w-24 sm:w-28 text-center group cursor-default"
                 >
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-white shadow-sm border border-slate-200/90 flex items-center justify-center transition-all group-hover:scale-105 group-hover:border-indigo-300 group-hover:shadow-md bg-gradient-to-b from-white to-slate-50/80">
-                    <span className="font-poppins font-black text-xs sm:text-sm text-indigo-700 tracking-tight">
-                      {uni.code}
-                    </span>
-                  </div>
+                  <UniversityLogoBadge university={uni} size="lg" />
                   <span className="text-xs font-bold text-slate-700 mt-2 truncate max-w-full">
-                    {uni.name}
+                    {uni.shortName}
                   </span>
                 </div>
               ))}
@@ -436,7 +419,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               </mark>
               , provides instant mathematical derivations, and connects you with{' '}
               <mark className="bg-amber-100/90 text-amber-950 font-semibold px-2 py-0.5 rounded-md">
-                24/7 Ustaad AI conceptual guidance
+                Boardy, your 24/7 study buddy
               </mark>{' '}
               without requiring expensive private academy tuition fees.
             </p>
@@ -477,7 +460,7 @@ export const HomePage: React.FC<HomePageProps> = ({
                   24/7
                 </span>
                 <span className="text-xs font-bold text-amber-600 block">
-                  Ustaad AI
+                  Boardy
                 </span>
                 <span className="text-[11px] text-slate-500 block">
                   Instant formula derivations

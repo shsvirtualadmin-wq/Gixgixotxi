@@ -40,6 +40,8 @@ import { lazyWithRetry } from './lib/lazyWithRetry';
 import { SiteSettingsProvider } from './context/SiteSettingsContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ModalProvider, useModals } from './context/ModalContext';
+import { AuthProvider } from './context/AuthContext';
+import { BoardlyAppRouter } from './components/BoardlyAppRouter';
 import { GlobalModals } from './components/GlobalModals';
 import { LeaveConfirmationModal } from './components/LeaveConfirmationModal';
 import { setPageMeta, DEFAULT_PAGE_META } from './utils/seo';
@@ -166,9 +168,35 @@ const getInitialUrlState = (): {
   const params = new URLSearchParams(window.location.search);
   const rawUrlScreen = params.get('screen')?.trim();
   const pageParam = params.get('page')?.trim();
+  const pathname = window.location.pathname.toLowerCase().replace(/\/$/, '');
 
-  // If a marketing page is directly requested (e.g. ?page=pricing or ?page=features)
-  if (pageParam) {
+  const isMarketingPath = [
+    '/blitz',
+    '/blitz/register',
+    '/blitz/leaderboard',
+    '/arena',
+    '/arena/leaderboard',
+    '/circles',
+    '/circles/apply',
+    '/boardy',
+    '/study-buddy',
+    '/ai',
+    '/ustaad',
+    '/jojo',
+    '/zehni',
+    '/socratic',
+    '/features',
+    '/pricing',
+    '/faqs',
+    '/faq',
+    '/contact',
+    '/privacy',
+    '/terms',
+    '/about',
+  ].includes(pathname);
+
+  // If a marketing page or event route is directly requested (e.g. /blitz, /arena, /boardy, or ?page=...)
+  if (pageParam || isMarketingPath) {
     return { screen: 'intro', selectedSubject: '' };
   }
 
@@ -3997,7 +4025,9 @@ export const AppWithSettings: React.FC = () => {
     <ThemeProvider>
       <SiteSettingsProvider>
         <ModalProvider>
-          <App />
+          <AuthProvider>
+            <BoardlyAppRouter />
+          </AuthProvider>
         </ModalProvider>
       </SiteSettingsProvider>
     </ThemeProvider>

@@ -2505,7 +2505,85 @@ async function startServer() {
 
   // Health check
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", service: "SHS Virtual Academy MCQs Generator API" });
+    res.json({ status: "ok", service: "Boardly Student & MCQs API" });
+  });
+
+  // Seamless Supabase migration fallback check for existing students
+  app.post("/api/auth/migrate-check", async (req, res) => {
+    try {
+      const { email, password } = req.body || {};
+      if (!email || !password) {
+        return res.status(400).json({ migrated: false, error: "Email and password required" });
+      }
+
+      const normalizedEmail = String(email).trim().toLowerCase();
+      // Try Supabase auth check if configured
+      if (supabaseServer) {
+        try {
+          const { data, error } = await supabaseServer.auth.signInWithPassword({
+            email: normalizedEmail,
+            password: String(password),
+          });
+          if (!error && data?.user) {
+            return res.json({
+              migrated: true,
+              email: normalizedEmail,
+              message: "We've upgraded our login. You're all set.",
+            });
+          }
+        } catch (sbErr) {
+          console.warn("[migrate-check Supabase error]:", sbErr);
+        }
+      }
+
+      return res.status(401).json({ migrated: false, error: "Invalid credentials" });
+    } catch (e: any) {
+      return res.status(500).json({ migrated: false, error: e?.message || "Internal server error" });
+    }
+  });
+
+  // Boardy AI Study Partner chat endpoint
+  app.post("/api/study-buddy/chat", async (req, res) => {
+    try {
+      const { message, userQuestion, history } = req.body || {};
+      const promptText = message || userQuestion || "";
+
+      if (!promptText.trim()) {
+        return res.status(400).json({ error: "Message is required" });
+      }
+
+      // Check if Gemini API is available
+      const geminiApiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
+      if (geminiApiKey) {
+        try {
+          const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+          const response = await ai.models.generateContent({
+            model: "gemini-2.5-flash",
+            contents: promptText,
+            config: {
+              systemInstruction: `You are Boardy, an encouraging, step-by-step 24/7 AI study partner for Pakistani high school (FSC/Matric) and university entrance exam students (FAST, NUST NET, GIKI, PIEAS, ECAT, IBA, LUMS, MDCAT).
+Format mathematical formulas cleanly using standard LaTeX notation ($...$ or $$...$$).
+Break explanations into numbered steps with concise exam tips and trick shortcuts.
+Keep tone warm, confident, and encouraging without robotic fluff.`,
+            },
+          });
+
+          const replyText = response.text || "";
+          if (replyText) {
+            return res.json({ reply: replyText });
+          }
+        } catch (aiErr) {
+          console.warn("[Boardy Gemini error fallback]:", aiErr);
+        }
+      }
+
+      // Contextual fallback response
+      return res.json({
+        reply: `### Step-by-Step Explanation by Boardy 🎓\n\n1. **Core Concept**: Break the given problem into initial knowns and unknowns.\n2. **Standard Formula**: Apply standard FSC/Entrance Test definitions carefully.\n3. **Quick Test Tip**: Avoid long multi-page expansions when practicing entry tests—test options for edge values ($x=0$ or $x=1$).\n\nLet me know if you would like me to work through a specific problem or verify your answer!`,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || "Internal server error" });
+    }
   });
 
   // ========================================================
@@ -6571,7 +6649,9 @@ Explain step-by-step in 3 clear bullet points:
     return { allowed: true };
   }
 
-  const STUDY_BUDDY_SYSTEM_INSTRUCTION = `You are 'Study Buddy 🎓', an AI academic tutor and onboarding guide for Boardly (Board Exams, MDCAT, TCAT).
+  const STUDY_BUDDY_SYSTEM_INSTRUCTION = `You are 'Boardy', the 24/7 AI study partner for Boardly (Board Exams, MDCAT, TCAT).
+Chat greeting: "Hey! I'm Boardy. Ask me any question and I'll walk you through it step by step."
+The tone is friendly, short and encouraging. You give clear step-by-step explanations, formulas, and derivations, and ask a guiding question first when that helps the student learn.
 
 STRICT RESPONSE FORMAT & MARKDOWN HEADINGS MANDATE:
 1. SHORT & DIRECT: Keep answers concise, direct, and well-structured. Absolutely NO long walls of text or conversational fluff.
@@ -6597,7 +6677,7 @@ EXAMPLE REQUIRED OUTPUT STRUCTURE FOR MULTI-TOPIC QUESTIONS:
 
 ## Free Trial
 
-Access sample past papers, test series preview, and Study Buddy AI.
+Access sample past papers, test series preview, and Boardy chats.
 
 ## Paid Plan
 
@@ -7665,7 +7745,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
               <strong style="font-size: 13px; color: #0f172a;">What's Unlocked for You:</strong>
               <ul>
                 <li>Unlimited MDCAT &amp; Federal Board Practice Tests</li>
-                <li>AI Study Buddy Instant Step-by-Step Explanations</li>
+                <li>Boardy Instant Step-by-Step Explanations</li>
                 <li>Chapter-wise Analytics &amp; Weakness Tracking</li>
                 <li>Full Past Papers &amp; Printable Test Generation</li>
               </ul>

@@ -53,9 +53,9 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate, onGetStarted }
             <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
               <Sparkles className="w-5 h-5" />
             </div>
-            <h4 className="font-bold text-slate-900 text-base">Ustaad AI</h4>
+            <h4 className="font-bold text-slate-900 text-base">Boardy AI Partner</h4>
             <p className="text-xs text-slate-500 leading-relaxed">
-              Instead of passive answer keys, Ustaad AI guides you step-by-step to calculate derivations and master concepts.
+              Boardy, your 24/7 study buddy, guides you step-by-step to calculate derivations and master concepts.
             </p>
           </div>
 

@@ -1,0 +1,54 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (request.auth.token.role == 'admin' || request.auth.token.admin == true);
+    }
+
+    // Users collection
+    match /users/{userId} {
+      // User can read their own document, or admins can read
+      allow read: if isOwner(userId) || isAdmin();
+
+      // Create: user can create their own doc with default starter plan and student role
+      allow create: if isOwner(userId)
+        && request.resource.data.uid == userId
+        && (!('role' in request.resource.data) || request.resource.data.role == 'student')
+        && (!('plan' in request.resource.data) || request.resource.data.plan == 'starter');
+
+      // Update: user can update profile details, preferences, and onboarding fields,
+      // but plan, role, and usage limits cannot be changed directly by client.
+      allow update: if isOwner(userId)
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'plan', 'testsUsedToday', 'boardyQuestionsUsedToday']))
+        || isAdmin();
+
+      allow delete: if isAdmin();
+
+      // Test attempts subcollection
+      match /testAttempts/{attemptId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      // Boardy chat messages subcollection
+      match /boardyChats/{messageId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // Public or test papers collection if present
+    match /testPapers/{paperId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+  }
+}

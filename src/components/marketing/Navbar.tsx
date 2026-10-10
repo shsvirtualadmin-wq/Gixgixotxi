@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Menu, X, ArrowRight, Sparkles, Trophy, Users, HelpCircle, Mail } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
+import { BoardyMascot } from '../BoardyMascot';
 
 export type MarketingPage =
   | 'home'
@@ -10,7 +11,15 @@ export type MarketingPage =
   | 'contact'
   | 'privacy'
   | 'terms'
-  | 'about';
+  | 'about'
+  | 'blitz'
+  | 'blitz/register'
+  | 'blitz/leaderboard'
+  | 'arena'
+  | 'arena/leaderboard'
+  | 'circles'
+  | 'circles/apply'
+  | 'boardy';
 
 interface NavbarProps {
   currentPage: MarketingPage;
@@ -139,6 +148,22 @@ export const Navbar: React.FC<NavbarProps> = ({
             </button>
 
             <button
+              onClick={() => onNavigate('boardy')}
+              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1.5 ${
+                currentPage === 'boardy'
+                  ? 'text-indigo-600 font-semibold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <BoardyMascot size={18} />
+              <span>Boardy</span>
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              {currentPage === 'boardy' && (
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
+              )}
+            </button>
+
+            <button
               onClick={() => onNavigate('faqs')}
               className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded ${
                 currentPage === 'faqs'
@@ -168,7 +193,19 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Right Action on Desktop */}
-          <div className="hidden md:flex items-center gap-3">
+          <div className="hidden md:flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', '/login');
+                  window.dispatchEvent(new PopStateEvent('popstate'));
+                }
+              }}
+              className="text-xs font-semibold text-slate-600 hover:text-slate-900 px-3.5 py-2 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+            >
+              Log in
+            </button>
             <button
               onClick={onGetStarted}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 glow-btn transition-transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
@@ -260,15 +297,23 @@ export const Navbar: React.FC<NavbarProps> = ({
                 )}
               </button>
 
-              {/* Ustaad AI */}
+              {/* Boardy */}
               <button
-                onClick={() => handleMobileNav('features')}
-                className="flex items-center justify-between py-3.5 text-left text-xl font-bold text-slate-900 hover:text-indigo-600 transition-colors border-b border-slate-100/80"
+                onClick={() => handleMobileNav('boardy')}
+                className={`flex items-center justify-between py-3.5 text-left text-xl font-bold transition-colors border-b border-slate-100/80 ${
+                  currentPage === 'boardy'
+                    ? 'text-indigo-600'
+                    : 'text-slate-900 hover:text-indigo-600'
+                }`}
               >
-                <div className="flex items-center gap-2">
-                  <span>Ustaad AI</span>
+                <div className="flex items-center gap-2.5">
+                  <BoardyMascot size={22} />
+                  <span>Boardy</span>
                   <Sparkles className="w-4 h-4 text-amber-500" />
                 </div>
+                {currentPage === 'boardy' && (
+                  <span className="w-2 h-2 rounded-full bg-indigo-600" />
+                )}
               </button>
 
               {/* Events Section */}
@@ -278,7 +323,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
                 <div className="flex flex-col gap-1 mt-2">
                   <button
-                    onClick={() => handleEventClick('blitz')}
+                    onClick={() => handleMobileNav('blitz')}
                     className="flex items-center justify-between py-2 text-left text-base font-semibold text-slate-800 hover:text-indigo-600 transition-colors"
                   >
                     <div className="flex items-center gap-2">
@@ -290,7 +335,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     </span>
                   </button>
                   <button
-                    onClick={() => handleEventClick('arena')}
+                    onClick={() => handleMobileNav('arena')}
                     className="flex items-center justify-between py-2 text-left text-base font-semibold text-slate-800 hover:text-indigo-600 transition-colors"
                   >
                     <div className="flex items-center gap-2">
@@ -311,7 +356,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </span>
                 <div className="flex flex-col gap-1 mt-2">
                   <button
-                    onClick={() => handleProgramClick('circles')}
+                    onClick={() => handleMobileNav('circles')}
                     className="flex items-center justify-between py-2 text-left text-base font-semibold text-slate-800 hover:text-indigo-600 transition-colors"
                   >
                     <div className="flex items-center gap-2">
@@ -351,7 +396,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
 
             {/* Full-width gradient "Get started" button at bottom */}
-            <div className="pt-5 mt-auto">
+            <div className="pt-5 mt-auto space-y-2">
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
@@ -361,6 +406,19 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <span>Get started</span>
                 <ArrowRight className="w-5 h-5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  if (typeof window !== 'undefined') {
+                    window.history.pushState({}, '', '/login');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }
+                }}
+                className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer text-center"
+              >
+                Already have an account? Log in
               </button>
             </div>
           </div>

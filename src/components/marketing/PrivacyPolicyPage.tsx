@@ -110,7 +110,7 @@ export const PrivacyPolicyPage: React.FC<PrivacyPolicyPageProps> = ({ onNavigate
           </p>
           <ul className="list-disc pl-5 space-y-1.5 text-sm text-slate-600">
             <li>Generating chapter-level diagnostic analytics and predictive board score estimates.</li>
-            <li>Providing contextual tutoring via the 24/7 Ustaad AI assistant.</li>
+            <li>Providing contextual tutoring via Boardy, your 24/7 study buddy.</li>
             <li>Enforcing fair play and preventing multiple simultaneous logins on shared accounts.</li>
             <li>Sending critical account notifications, subscription renewal notices, and event confirmations (such as Boardly Blitz schedules).</li>
           </ul>

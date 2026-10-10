@@ -1,7 +1,8 @@
 import React from 'react';
 import { BrandLogo } from './BrandLogo';
-import { MessageCircle, Instagram, Linkedin, Youtube, ArrowRight, Shield, Award } from 'lucide-react';
+import { MessageCircle, Instagram, Linkedin, Youtube, ArrowRight, Shield, Award, Sparkles } from 'lucide-react';
 import { MarketingPage } from './Navbar';
+import { UNIVERSITY_DISCLAIMER } from '../../data/universities';
 
 interface FooterProps {
   onNavigate: (page: MarketingPage) => void;
@@ -122,10 +123,10 @@ export const Footer: React.FC<FooterProps> = ({
                 </li>
                 <li>
                   <button
-                    onClick={() => onNavigate('features')}
+                    onClick={() => onNavigate('boardy')}
                     className="hover:text-indigo-400 transition-colors text-left flex items-center gap-1.5"
                   >
-                    <span>Ustaad AI</span>
+                    <span>Boardy</span>
                     <span className="text-[10px] text-amber-400 font-bold bg-amber-400/10 px-1.5 py-0.2 rounded">
                       24/7
                     </span>
@@ -150,7 +151,7 @@ export const Footer: React.FC<FooterProps> = ({
               <ul className="space-y-2.5 text-sm">
                 <li>
                   <button
-                    onClick={() => (onOpenEventModal ? onOpenEventModal('blitz') : onNavigate('features'))}
+                    onClick={() => onNavigate('blitz')}
                     className="hover:text-indigo-400 transition-colors text-left"
                   >
                     Boardly Blitz
@@ -158,7 +159,7 @@ export const Footer: React.FC<FooterProps> = ({
                 </li>
                 <li>
                   <button
-                    onClick={() => (onOpenEventModal ? onOpenEventModal('arena') : onNavigate('features'))}
+                    onClick={() => onNavigate('arena')}
                     className="hover:text-indigo-400 transition-colors text-left"
                   >
                     Boardly Arena
@@ -166,10 +167,18 @@ export const Footer: React.FC<FooterProps> = ({
                 </li>
                 <li>
                   <button
-                    onClick={() => onNavigate('features')}
+                    onClick={() => onNavigate('blitz/leaderboard')}
                     className="hover:text-indigo-400 transition-colors text-left"
                   >
-                    Leaderboard
+                    Blitz Leaderboard
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => onNavigate('arena/leaderboard')}
+                    className="hover:text-indigo-400 transition-colors text-left"
+                  >
+                    Arena Leaderboard
                   </button>
                 </li>
               </ul>
@@ -191,7 +200,7 @@ export const Footer: React.FC<FooterProps> = ({
                 </li>
                 <li>
                   <button
-                    onClick={() => (onOpenProgramModal ? onOpenProgramModal('circles') : onNavigate('about'))}
+                    onClick={() => onNavigate('circles')}
                     className="hover:text-indigo-400 transition-colors text-left"
                   >
                     Study Circles
@@ -257,6 +266,11 @@ export const Footer: React.FC<FooterProps> = ({
           <p className="text-slate-400 text-center sm:text-right">
             Designed for academic rigor & conceptual mastery across Pakistan.
           </p>
+        </div>
+
+        {/* Small line for university names and logos disclaimer */}
+        <div className="pt-4 text-center text-[11px] text-slate-500 max-w-2xl mx-auto leading-relaxed">
+          {UNIVERSITY_DISCLAIMER}
         </div>
 
         {/* Huge Faded Gradient "Boardly" Wordmark at the Bottom */}

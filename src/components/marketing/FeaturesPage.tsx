@@ -112,20 +112,20 @@ export const FeaturesPage: React.FC<FeaturesPageProps> = ({
         </div>
       </section>
 
-      {/* Feature 2: 24/7 Ustaad AI (with generated image) */}
+      {/* Feature 2: 24/7 Boardy AI Tutor (with generated image) */}
       <section className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
         {/* Visual Slot with generated image */}
         <div className="order-2 lg:order-1 rounded-[28px] overflow-hidden border border-slate-200/80 shadow-2xl bg-white">
           <div className="relative aspect-[4/3] w-full overflow-hidden">
             <img
               src="/src/assets/images/boardly_ai_tutor_1791645485264.jpg"
-              alt="Ustaad AI conceptual guidance assistant"
+              alt="Boardy, your 24/7 study buddy"
               className="w-full h-full object-cover object-center"
               referrerPolicy="no-referrer"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/20 to-transparent flex items-end p-6">
               <p className="text-xs sm:text-sm font-medium text-slate-200">
-                Ustaad AI breaks complex numericals down to fundamental physical constants and formulas.
+                Boardy breaks complex numericals down to fundamental physical constants and formulas.
               </p>
             </div>
           </div>
@@ -139,10 +139,10 @@ export const FeaturesPage: React.FC<FeaturesPageProps> = ({
             Pillar 02 · 24/7 Cognitive Assistance
           </span>
           <h2 className="text-2xl sm:text-4xl font-bold font-poppins text-[#0A1330]">
-            Ustaad AI: Your Personal 24/7 Conceptual Tutor
+            Boardy: Your Personal 24/7 Conceptual Study Buddy
           </h2>
           <p className="text-slate-600 text-sm sm:text-base leading-relaxed">
-            Forget generic chatbots that hallucinate confusing formulas. Boardly’s Ustaad AI is specifically instructed with Pakistani curriculum standards and teaches you step-by-step how to arrive at the solution.
+            Forget generic chatbots that hallucinate confusing formulas. Boardly’s Boardy is specifically instructed with Pakistani curriculum standards and teaches you step-by-step how to arrive at the solution.
           </p>
           <ul className="space-y-2.5 text-sm text-slate-700 font-medium">
             <li className="flex items-center gap-2">

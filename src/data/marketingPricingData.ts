@@ -88,7 +88,7 @@ export const MARKETING_PLANS: PlanTier[] = [
     features: [
       { name: 'Limited tests (up to 3 daily mock drills)', included: true },
       { name: 'Smaller starter question bank', included: true },
-      { name: 'Basic Ustaad AI chats (5 daily chats)', included: true },
+      { name: '150 Boardy chats/month', included: true },
       { name: '7-day analytics and history', included: true },
       { name: 'Community support forum', included: true },
       { name: 'Full board-aligned question bank', included: false },
@@ -105,8 +105,8 @@ export const MARKETING_PLANS: PlanTier[] = [
     name: 'Pro',
     highlighted: true,
     badge: 'Most Popular',
-    tagline: 'Steady Climb',
-    description: 'Unrestricted question access with deeper Ustaad AI explanations and targeted weak-area feedback.',
+    tagline: 'Boardy, your 24/7 study buddy.',
+    description: 'Unrestricted question access with deeper Boardy explanations and targeted weak-area feedback.',
     pricing: {
       monthly: {
         pricePkr: 199,
@@ -138,7 +138,7 @@ export const MARKETING_PLANS: PlanTier[] = [
     features: [
       { name: 'More tests (up to 25 daily custom drills)', included: true },
       { name: 'Full question bank (Matric, FSC, entry exams)', included: true },
-      { name: 'More Ustaad AI chats (50 chats / day)', included: true },
+      { name: '1,500 Boardy chats/month', included: true },
       { name: '30-day analytics and progression curves', included: true },
       { name: 'Weak-area hints and topic recommendations', included: true },
       { name: 'Priority email support', included: true },
@@ -153,7 +153,7 @@ export const MARKETING_PLANS: PlanTier[] = [
     id: 'premium',
     name: 'Premium',
     tagline: 'All Access',
-    description: 'The complete prep ecosystem with adaptive testing, printable tests, and 24/7 dedicated assistance.',
+    description: 'The complete prep ecosystem with adaptive testing, printable tests, and Boardy, your 24/7 study buddy.',
     pricing: {
       monthly: {
         pricePkr: 449,
@@ -185,7 +185,7 @@ export const MARKETING_PLANS: PlanTier[] = [
     features: [
       { name: 'Unlimited tests and custom timed drills', included: true },
       { name: 'Full question bank + national entrance exam banks', included: true },
-      { name: 'Unlimited Ustaad AI chats (Priority queue)', included: true },
+      { name: 'Unlimited priority Boardy chats/month', included: true },
       { name: 'All-time analytics, retention & mastery graphs', included: true },
       { name: 'Smart weak-area detection and automatic remedial sets', included: true },
       { name: 'Adaptive tests that calibrate to your skill level', included: true },
@@ -244,15 +244,15 @@ export const COMPARISON_FEATURES: ComparisonFeatureRow[] = [
     premiumValue: 'Real-time (instant update rollouts)',
   },
   {
-    category: 'Ustaad AI & Remedials',
-    name: 'Ustaad AI chats/month',
-    freeValue: '150 chats / month',
-    proValue: '1,500 chats / month',
-    premiumValue: 'Unlimited priority chats',
+    category: 'Boardy & Remedials',
+    name: 'Boardy chats/month',
+    freeValue: '150 Boardy chats/month',
+    proValue: '1,500 Boardy chats/month',
+    premiumValue: 'Unlimited priority Boardy chats/month',
     highlight: true,
   },
   {
-    category: 'Ustaad AI & Remedials',
+    category: 'Boardy & Remedials',
     name: 'Smart weak-area detection',
     freeValue: false,
     proValue: 'Basic chapter hints',
@@ -314,7 +314,7 @@ export const PRICING_FAQS: FaqItem[] = [
     id: 'is-free-really-free',
     question: 'Is Free really free forever?',
     answer:
-      'Yes! There are no hidden fees, zero credit card requirements, and no mandatory trial countdowns. You can practice with the core starter question bank and use Ustaad AI for fundamental doubts at no cost for as long as you wish.',
+      'Yes! There are no hidden fees, zero credit card requirements, and no mandatory trial countdowns. You can practice with the core starter question bank and chat with Boardy, your 24/7 study buddy, for fundamental doubts at no cost for as long as you wish.',
   },
   {
     id: 'duration-savings',

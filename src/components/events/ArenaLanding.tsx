@@ -1,24 +1,13 @@
 import React, { useState } from 'react';
-import { ArrowRight, Trophy, ChevronDown, CheckCircle2, BookOpen, Clock, Building2 } from 'lucide-react';
+import { ArrowRight, Trophy, ChevronDown, BookOpen, Clock } from 'lucide-react';
 import { FrostedBackgroundDecor } from './FrostedBackgroundDecor';
-import { INITIAL_SESSIONS, EventSession } from '../../data/eventsStore';
+import { INITIAL_SESSIONS } from '../../data/eventsStore';
+import { UNIVERSITIES, UNIVERSITY_DISCLAIMER } from '../../data/universities';
+import { UniversityLogoBadge } from '../UniversityLogoBadge';
 
 interface ArenaLandingProps {
   onNavigate: (route: string) => void;
 }
-
-const UNIVERSITIES_LIST = [
-  'NUST',
-  'FAST-NUCES',
-  'GIKI',
-  'LUMS',
-  'PIEAS',
-  'UET Lahore',
-  'IBA Karachi',
-  'AKU Medical',
-  'NUMS',
-  'NED Karachi',
-];
 
 const FAQS = [
   {
@@ -39,18 +28,18 @@ export const ArenaLanding: React.FC<ArenaLandingProps> = ({ onNavigate }) => {
   const [activeTab, setActiveTab] = useState<'All Universities' | 'Engineering' | 'Business'>('All Universities');
   const [openFaq, setOpenFaq] = useState<number | null>(null);
 
-  const arenaSessions = INITIAL_SESSIONS.filter(s => s.type === 'arena');
+  const arenaSessions = INITIAL_SESSIONS.filter((s) => s.type === 'arena');
 
-  const filteredUpcoming = arenaSessions.filter(s => {
+  const filteredUpcoming = arenaSessions.filter((s) => {
     if (s.status === 'ended') return false;
     if (activeTab === 'All Universities') return true;
     return s.category === activeTab;
   });
 
-  const pastSessions = arenaSessions.filter(s => s.status === 'ended');
+  const pastSessions = arenaSessions.filter((s) => s.status === 'ended');
 
   return (
-    <div className="relative min-h-screen pt-28 pb-20 px-4 sm:px-6 max-w-6xl mx-auto">
+    <div className="relative min-h-screen pt-28 pb-20 px-4 sm:px-6 max-w-6xl mx-auto selection:bg-indigo-600 selection:text-white">
       <FrostedBackgroundDecor />
 
       {/* Pill */}
@@ -63,7 +52,7 @@ export const ArenaLanding: React.FC<ArenaLandingProps> = ({ onNavigate }) => {
 
       {/* Huge Heading ARENA */}
       <div className="text-center max-w-4xl mx-auto mb-10">
-        <h1 className="text-6xl sm:text-8xl md:text-9xl font-black tracking-tight text-[#0A1330] leading-none mb-3">
+        <h1 className="text-6xl sm:text-8xl md:text-9xl font-black tracking-tight text-[#0A1330] leading-none mb-3 font-poppins">
           ARENA
         </h1>
         <p className="text-xl sm:text-2xl font-bold tracking-tight text-indigo-600 uppercase mb-6">
@@ -71,7 +60,7 @@ export const ArenaLanding: React.FC<ArenaLandingProps> = ({ onNavigate }) => {
         </p>
 
         <p className="text-lg sm:text-xl text-slate-700 leading-relaxed max-w-2xl mx-auto font-normal">
-          Full-length, timed grand tournaments mirroring entrance exams for Pakistan’s premier engineering and business universities.
+          Full-length, timed grand tournaments mirroring entrance exams for Pakistan’s premier engineering, medical, and business universities.
         </p>
       </div>
 
@@ -100,18 +89,21 @@ export const ArenaLanding: React.FC<ArenaLandingProps> = ({ onNavigate }) => {
           UNIVERSITY-SPECIFIC MOCKS FOR
         </div>
 
-        <div className="overflow-x-auto pb-4 scrollbar-none flex items-center justify-center flex-wrap gap-3 sm:gap-4 max-w-4xl mx-auto">
-          {UNIVERSITIES_LIST.map((uni) => (
-            <div
-              key={uni}
-              className="px-4 py-2 rounded-full glass border border-slate-200/80 text-xs sm:text-sm font-bold text-slate-700 shadow-xs flex items-center gap-2"
-            >
-              <div className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 text-[10px] font-black flex items-center justify-center">
-                {uni.charAt(0)}
+        {/* Scrolling slowly */}
+        <div className="relative w-full overflow-hidden [mask-image:linear-gradient(to_right,transparent_0%,black_10%,black_90%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_10%,black_90%,transparent_100%)]">
+          <div className="flex items-center gap-4 sm:gap-6 py-2 animate-marquee-scroll hover:[animation-play-state:paused]">
+            {[...UNIVERSITIES, ...UNIVERSITIES].map((uni, idx) => (
+              <div
+                key={`${uni.id}-${idx}`}
+                className="shrink-0 px-4 py-2 rounded-full glass border border-slate-200/80 flex items-center gap-2.5 shadow-2xs hover:scale-105 transition-transform cursor-default"
+              >
+                <UniversityLogoBadge university={uni} size="sm" />
+                <span className="text-xs sm:text-sm font-bold text-slate-800 whitespace-nowrap">
+                  {uni.shortName}
+                </span>
               </div>
-              <span>{uni}</span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
@@ -161,7 +153,7 @@ export const ArenaLanding: React.FC<ArenaLandingProps> = ({ onNavigate }) => {
       {/* Simulate the Real Exam Section */}
       <section id="simulate-exam" className="mb-20 scroll-mt-28">
         <div className="text-center mb-8">
-          <h2 className="text-3xl sm:text-4xl font-black text-[#0A1330] mb-3">
+          <h2 className="text-3xl sm:text-4xl font-black text-[#0A1330] mb-3 font-poppins">
             Simulate the Real Exam
           </h2>
           <p className="text-slate-600 text-sm sm:text-base max-w-xl mx-auto">
@@ -192,17 +184,16 @@ export const ArenaLanding: React.FC<ArenaLandingProps> = ({ onNavigate }) => {
             <div key={item.id} className="glass-card p-6 rounded-[28px] flex flex-col justify-between">
               <div>
                 <div className="flex items-center justify-between mb-4">
-                  {/* University Logo Placeholder */}
-                  <div className="w-12 h-12 rounded-2xl bg-[#0A1330] text-white flex items-center justify-center font-black text-base tracking-wider">
-                    {item.university || 'UNI'}
-                  </div>
+                  {/* University Round Logo Badge */}
+                  <UniversityLogoBadge university={item.university} size="md" />
+
                   <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-800 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
                     COMING SOON
                   </span>
                 </div>
 
                 <h3 className="text-lg font-bold text-[#0A1330] mb-2">{item.title}</h3>
-                <p className="text-xs text-slate-600 mb-4 line-clamp-2">{item.description}</p>
+                <p className="text-xs text-slate-600 mb-4 line-clamp-2 leading-relaxed">{item.description}</p>
 
                 {/* Chips */}
                 <div className="flex flex-wrap gap-1.5 mb-6">
@@ -235,7 +226,7 @@ export const ArenaLanding: React.FC<ArenaLandingProps> = ({ onNavigate }) => {
 
       {/* Past Sessions List */}
       <section className="mb-20">
-        <h2 className="text-2xl sm:text-3xl font-black text-[#0A1330] mb-6">
+        <h2 className="text-2xl sm:text-3xl font-black text-[#0A1330] mb-6 font-poppins">
           Past Sessions
         </h2>
 
@@ -246,9 +237,8 @@ export const ArenaLanding: React.FC<ArenaLandingProps> = ({ onNavigate }) => {
               className="glass-card p-5 sm:p-6 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-4"
             >
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-bold text-sm shrink-0">
-                  {past.university || 'UNI'}
-                </div>
+                <UniversityLogoBadge university={past.university} size="md" />
+
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
@@ -282,8 +272,8 @@ export const ArenaLanding: React.FC<ArenaLandingProps> = ({ onNavigate }) => {
       </section>
 
       {/* FAQ Accordion */}
-      <section className="max-w-3xl mx-auto">
-        <h2 className="text-2xl sm:text-3xl font-black text-[#0A1330] mb-6 text-center">
+      <section className="max-w-3xl mx-auto mb-16">
+        <h2 className="text-2xl sm:text-3xl font-black text-[#0A1330] mb-6 text-center font-poppins">
           Frequently Asked Questions
         </h2>
 
@@ -294,7 +284,7 @@ export const ArenaLanding: React.FC<ArenaLandingProps> = ({ onNavigate }) => {
               <div key={idx} className="glass-card rounded-2xl overflow-hidden transition-all">
                 <button
                   onClick={() => setOpenFaq(isOpen ? null : idx)}
-                  className="w-full px-6 py-4 text-left flex items-center justify-between font-bold text-base text-slate-900 hover:text-indigo-600 transition-colors"
+                  className="w-full px-6 py-4 text-left flex items-center justify-between font-bold text-base text-slate-900 hover:text-indigo-600 transition-colors cursor-pointer"
                 >
                   <span>{faq.q}</span>
                   <ChevronDown
@@ -313,6 +303,11 @@ export const ArenaLanding: React.FC<ArenaLandingProps> = ({ onNavigate }) => {
           })}
         </div>
       </section>
+
+      {/* Small Disclaimer Line */}
+      <div className="text-center max-w-2xl mx-auto text-xs text-slate-400 leading-relaxed pt-4 border-t border-slate-200/60">
+        {UNIVERSITY_DISCLAIMER}
+      </div>
     </div>
   );
 };

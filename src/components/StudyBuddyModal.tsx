@@ -9,6 +9,7 @@ import {
 } from '../lib/supabase';
 import { sanitizeStudyBuddyText, isGarbledResponse } from '../lib/studyBuddySanitizer';
 import { StudyBuddyFormattedMessage } from './StudyBuddyFormattedMessage';
+import { BoardyMascot } from './BoardyMascot';
 import {
   GraduationCap,
   X,
@@ -100,7 +101,7 @@ export function getTrackInfo(
       greetingSubject: 'Boardly Onboarding & Account Support',
       headerTag: 'Boardly Assistant • Onboarding',
       placeholder: 'Ask about sign up, free trial, or payment verification...',
-      welcomeText: "I'm your onboarding assistant for Boardly. What would you like to know about signing up, pricing, or getting started?",
+      welcomeText: "Hey! I'm Boardy. Ask me any question and I'll walk you through it step by step.",
       chips: [
         {
           id: 'chip-signup',
@@ -147,7 +148,7 @@ export function getTrackInfo(
       greetingSubject,
       headerTag,
       placeholder: currentSub ? `Ask any MDCAT ${currentSub} question...` : 'Ask any MDCAT subject or question...',
-      welcomeText: `I'm your dedicated AI tutor for ${greetingSubject}. What concept or problem would you like to master today?`,
+      welcomeText: "Hey! I'm Boardy. Ask me any question and I'll walk you through it step by step.",
       chips: [
         {
           id: 'chip-mdcat-topics',
@@ -194,7 +195,7 @@ export function getTrackInfo(
       greetingSubject,
       headerTag,
       placeholder: currentSub ? `Ask any TCAT ${currentSub} question...` : 'Ask any TCAT subject or question...',
-      welcomeText: `I'm your dedicated AI tutor for ${greetingSubject}. What concept or problem would you like to master today?`,
+      welcomeText: "Hey! I'm Boardy. Ask me any question and I'll walk you through it step by step.",
       chips: [
         {
           id: 'chip-tcat-math',
@@ -249,7 +250,7 @@ export function getTrackInfo(
     greetingSubject,
     headerTag,
     placeholder: currentSub ? `Ask any ${currentSub} question or topic...` : `Ask any ${classStreamStr} subject or question...`,
-    welcomeText: `I'm your dedicated AI tutor for ${greetingSubject}. What concept or problem would you like to master today?`,
+    welcomeText: "Hey! I'm Boardy. Ask me any question and I'll walk you through it step by step.",
     chips: [
       {
         id: 'chip-concept',
@@ -840,16 +841,16 @@ export const StudyBuddyModal: React.FC<StudyBuddyModalProps> = ({
         {/* HEADER BAR */}
         <div className="flex items-center justify-between px-4 py-3.5 bg-gradient-to-r from-blue-500/15 via-[#0E1522] to-blue-500/10 border-b border-blue-500/20">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-blue-500/15 border border-blue-500/35 text-blue-400 shrink-0 shadow-inner">
-              <GraduationCap className="w-6 h-6" />
+            <div className="flex items-center justify-center w-10 h-10 sm:w-11 sm:h-11 rounded-xl bg-indigo-500/15 border border-indigo-500/35 shrink-0 shadow-inner p-1">
+              <BoardyMascot size={32} />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <h2 className="text-base sm:text-lg font-bold text-blue-300 truncate tracking-tight">
-                  Study Buddy 🎓
+                  Boardy
                 </h2>
-                <span className="px-2 py-0.5 text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded-full shrink-0">
-                  AI Tutor
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 rounded-full shrink-0">
+                  AI Partner
                 </span>
               </div>
               <div className="flex items-center gap-2 mt-0.5">
@@ -909,8 +910,8 @@ export const StudyBuddyModal: React.FC<StudyBuddyModalProps> = ({
             /* EMPTY / NEW SESSION STATE WITH QUICK START CHIPS */
             <div className="h-full flex flex-col items-center justify-center text-center p-4 sm:p-6 my-auto max-w-lg mx-auto space-y-5 animate-in fade-in duration-300">
               <div className="relative">
-                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 shadow-xl shadow-blue-500/10 mx-auto">
-                  <GraduationCap className="w-9 h-9 sm:w-11 sm:h-11" />
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl sm:rounded-3xl bg-indigo-500/15 border border-indigo-500/30 flex items-center justify-center shadow-xl shadow-indigo-500/10 mx-auto p-2">
+                  <BoardyMascot size={56} animated />
                 </div>
                 <span className="absolute -bottom-1 -right-1 flex h-4 w-4">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
@@ -920,11 +921,7 @@ export const StudyBuddyModal: React.FC<StudyBuddyModalProps> = ({
 
               <div className="space-y-1.5">
                 <h3 className="text-lg sm:text-xl font-extrabold text-blue-300 tracking-tight">
-                  {trackInfo.isOnboarding
-                    ? 'Welcome to Boardly! 🎓'
-                    : studentFirstName
-                    ? `Welcome, ${studentFirstName}! 🎓`
-                    : 'Welcome to Study Buddy! 🎓'}
+                  {studentFirstName ? `Hey, ${studentFirstName}! Meet Boardy.` : "Hey! I'm Boardy."}
                 </h3>
                 <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
                   {trackInfo.welcomeText}

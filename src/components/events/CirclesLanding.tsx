@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Award, ShieldCheck, ArrowRight, Zap, Trophy, Sparkles, CheckCircle2, ChevronRight } from 'lucide-react';
 import { BrandLogo } from '../marketing/BrandLogo';
+import { UNIVERSITIES } from '../../data/universities';
+import { UniversityLogoBadge } from '../UniversityLogoBadge';
 
 interface CirclesLandingProps {
   onNavigate: (route: string) => void;
@@ -69,14 +71,18 @@ export const CirclesLanding: React.FC<CirclesLandingProps> = ({ onNavigate }) =>
         />
 
         <div className="max-w-5xl mx-auto text-center">
-          {/* Pill */}
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass-dark border border-indigo-500/30 text-indigo-300 text-xs sm:text-sm font-semibold mb-6">
-            <Zap className="w-4 h-4 text-amber-400" />
-            <span>Run mocks for NUST, FAST-NUCES and more</span>
+          {/* Pill with three small overlapping university logo circles */}
+          <div className="inline-flex items-center gap-3 px-4 py-1.5 rounded-full glass-dark border border-indigo-500/30 text-indigo-200 text-xs sm:text-sm font-semibold mb-6 shadow-sm">
+            <div className="flex items-center -space-x-2">
+              <UniversityLogoBadge university="NUST" size="xs" />
+              <UniversityLogoBadge university="FAST" size="xs" />
+              <UniversityLogoBadge university="GIKI" size="xs" />
+            </div>
+            <span>Run mocks for NUST, FAST and more</span>
           </div>
 
           {/* Heading in heavy condensed font in two colors */}
-          <h1 className="text-4xl sm:text-6xl md:text-7xl font-black uppercase tracking-tight leading-none mb-6">
+          <h1 className="text-4xl sm:text-6xl md:text-7xl font-black uppercase tracking-tight leading-none mb-6 font-poppins">
             <span className="text-white block sm:inline">HOST BLITZ SESSIONS FOR YOUR BATCH </span>
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-sky-400 to-indigo-300">
               WITH STUDY CIRCLES
@@ -114,13 +120,13 @@ export const CirclesLanding: React.FC<CirclesLandingProps> = ({ onNavigate }) =>
             <div className="flex items-center gap-4 text-xs font-semibold">
               <button
                 onClick={() => onNavigate('/blitz')}
-                className="text-slate-300 hover:text-white transition-colors"
+                className="text-slate-300 hover:text-white transition-colors cursor-pointer"
               >
                 Blitz
               </button>
               <button
                 onClick={() => onNavigate('/arena')}
-                className="text-slate-300 hover:text-white transition-colors"
+                className="text-slate-300 hover:text-white transition-colors cursor-pointer"
               >
                 Arena
               </button>
@@ -139,7 +145,7 @@ export const CirclesLanding: React.FC<CirclesLandingProps> = ({ onNavigate }) =>
               By Students. For Their Communities. Backed by Boardly.
             </div>
 
-            <div className="text-3xl sm:text-5xl font-extrabold tracking-tight min-h-[96px] flex items-center justify-center flex-col sm:flex-row gap-2">
+            <div className="text-3xl sm:text-5xl font-extrabold tracking-tight min-h-[96px] flex items-center justify-center flex-col sm:flex-row gap-2 font-poppins">
               <span className="text-slate-200">Scale Your Prep</span>
               <span className="text-indigo-400 border-b-2 border-indigo-400 pb-0.5">
                 {displayText}
@@ -182,7 +188,7 @@ export const CirclesLanding: React.FC<CirclesLandingProps> = ({ onNavigate }) =>
           {/* 4. COMPARISON SECTION: A hundred thousand students. One official team. */}
           <section className="my-20">
             <div className="text-center mb-10">
-              <h2 className="text-2xl sm:text-4xl font-black text-white mb-3">
+              <h2 className="text-2xl sm:text-4xl font-black text-white mb-3 font-poppins">
                 A hundred thousand students. One official team.
               </h2>
               <p className="text-sm sm:text-base text-slate-400 max-w-xl mx-auto">
@@ -197,7 +203,7 @@ export const CirclesLanding: React.FC<CirclesLandingProps> = ({ onNavigate }) =>
                   <div className="w-10 h-10 rounded-2xl bg-white/10 text-slate-300 flex items-center justify-center font-bold mb-4 text-xs">
                     OFFICIAL
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-2">Centralized Capacity</h3>
+                  <h3 className="text-xl font-bold text-white mb-2 font-poppins">Centralized Capacity</h3>
                   <p className="text-sm text-slate-400 leading-relaxed mb-6">
                     Our core academic team can realistically run only 1 to 2 nationwide sessions per week to ensure question quality control and server stability.
                   </p>
@@ -216,7 +222,7 @@ export const CirclesLanding: React.FC<CirclesLandingProps> = ({ onNavigate }) =>
                   <div className="w-10 h-10 rounded-2xl bg-indigo-500/30 text-indigo-300 flex items-center justify-center font-bold mb-4 text-xs">
                     DECENTRALIZED
                   </div>
-                  <h3 className="text-xl font-bold text-white mb-2">Campus-Driven Scale</h3>
+                  <h3 className="text-xl font-bold text-white mb-2 font-poppins">Campus-Driven Scale</h3>
                   <p className="text-sm text-indigo-200 leading-relaxed mb-6">
                     Thousands of students are spread across hundreds of colleges and academies with diverse exam dates. Student organizers create targeted drills for their exact classmates.
                   </p>
@@ -237,7 +243,7 @@ export const CirclesLanding: React.FC<CirclesLandingProps> = ({ onNavigate }) =>
           {/* 5. THE REAL PERKS OF ORGANIZING */}
           <section className="my-20">
             <div className="text-center mb-10">
-              <h2 className="text-2xl sm:text-4xl font-black text-white mb-3">
+              <h2 className="text-2xl sm:text-4xl font-black text-white mb-3 font-poppins">
                 The Real Perks of Organizing
               </h2>
               <p className="text-sm text-slate-400 max-w-xl mx-auto">
@@ -250,7 +256,7 @@ export const CirclesLanding: React.FC<CirclesLandingProps> = ({ onNavigate }) =>
                 <div className="w-10 h-10 rounded-2xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center mb-4">
                   <Award className="w-5 h-5" />
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">Verified Certificate</h3>
+                <h3 className="text-base font-bold text-white mb-2 font-poppins">Verified Certificate</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
                   Receive an official Boardly Leadership Certificate documenting the verified cohort size you managed.
                 </p>
@@ -260,7 +266,7 @@ export const CirclesLanding: React.FC<CirclesLandingProps> = ({ onNavigate }) =>
                 <div className="w-10 h-10 rounded-2xl bg-teal-500/20 text-teal-400 flex items-center justify-center mb-4">
                   <Trophy className="w-5 h-5" />
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">Branded Standings</h3>
+                <h3 className="text-base font-bold text-white mb-2 font-poppins">Branded Standings</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
                   Every drill leaderboard carries your organizer badge and college affiliation publicly.
                 </p>
@@ -270,7 +276,7 @@ export const CirclesLanding: React.FC<CirclesLandingProps> = ({ onNavigate }) =>
                 <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-400 flex items-center justify-center mb-4">
                   <ShieldCheck className="w-5 h-5" />
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">Priority Tech Line</h3>
+                <h3 className="text-base font-bold text-white mb-2 font-poppins">Priority Tech Line</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
                   Direct WhatsApp access to the Boardly engineering team for instant support during live tests.
                 </p>
@@ -280,9 +286,9 @@ export const CirclesLanding: React.FC<CirclesLandingProps> = ({ onNavigate }) =>
                 <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-400 flex items-center justify-center mb-4">
                   <Sparkles className="w-5 h-5" />
                 </div>
-                <h3 className="text-base font-bold text-white mb-2">Early Feature Access</h3>
+                <h3 className="text-base font-bold text-white mb-2 font-poppins">Early Feature Access</h3>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Preview upcoming mock papers, Ustaad AI prompts, and diagnostic drills before public releases.
+                  Preview upcoming mock papers, Boardy features, and diagnostic drills before public releases.
                 </p>
               </div>
             </div>

@@ -21,10 +21,10 @@ const EXTENDED_FAQS: FaqItem[] = [
   },
   {
     id: 'ai-queries-accuracy',
-    category: 'Ustaad AI',
-    question: 'How accurate is Ustaad AI with complex numericals?',
+    category: 'Boardy',
+    question: 'How accurate is Boardy with complex numericals?',
     answer:
-      'Ustaad AI is specifically trained on Pakistani board textbooks and physics/chemistry equations. Rather than simply giving you an answer, it breaks problems down into standard units (SI), identifies relevant formulas, and explains why a specific method is applied so you learn the underlying derivation.',
+      'Boardy is specifically tuned to Pakistani board textbooks and physics/chemistry equations. Rather than simply giving you an answer, it breaks problems down into standard units (SI), identifies relevant formulas, and explains why a specific method is applied so you learn the underlying derivation.',
   },
   {
     id: 'offline-pdf',
@@ -45,7 +45,7 @@ export const FaqPage: React.FC<FaqPageProps> = ({ onNavigate, onGetStarted }) =>
   const [selectedCategory, setSelectedCategory] = useState<string>('All');
   const [openId, setOpenId] = useState<string | null>(EXTENDED_FAQS[0]?.id || null);
 
-  const categories = ['All', 'Pricing & Plans', 'Curriculum & Content', 'Ustaad AI', 'Platform & Devices'];
+  const categories = ['All', 'Pricing & Plans', 'Curriculum & Content', 'Boardy', 'Platform & Devices'];
 
   const filteredFaqs = useMemo(() => {
     return EXTENDED_FAQS.filter((faq) => {

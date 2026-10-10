@@ -1,0 +1,79 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Student profile, preferences, onboarding choices, and plan metadata.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "plan": { "type": "string", "enum": ["starter", "steady_climb", "all_access"] },
+        "role": { "type": "string", "enum": ["student", "organizer", "admin"] },
+        "createdAt": { "type": "string" },
+        "termsAcceptedAt": { "type": "string" },
+        "termsVersion": { "type": "string" },
+        "referralSource": { "type": "string" },
+        "onboardingCompleted": { "type": "boolean" },
+        "testTrack": { "type": "string" },
+        "targetUniversityId": { "type": "string" },
+        "targetExamDate": { "type": "string" },
+        "weakSubjects": { "type": "array" },
+        "testsUsedToday": { "type": "number" },
+        "boardyQuestionsUsedToday": { "type": "number" },
+        "lastUsageDate": { "type": "string" }
+      },
+      "required": ["uid", "email", "name", "plan", "role"]
+    },
+    "TestAttempt": {
+      "title": "TestAttempt",
+      "description": "Recorded test or sprint attempt by a student with question analytics.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "testType": { "type": "string" },
+        "universityId": { "type": "string" },
+        "subject": { "type": "string" },
+        "score": { "type": "number" },
+        "totalQuestions": { "type": "number" },
+        "correctCount": { "type": "number" },
+        "wrongCount": { "type": "number" },
+        "unattemptedCount": { "type": "number" },
+        "timeSpentSeconds": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "testType", "score", "totalQuestions"]
+    },
+    "BoardyChatMessage": {
+      "title": "BoardyChatMessage",
+      "description": "Chat message exchanged between student and Boardy AI study partner.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "sessionId": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "role", "content", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Private student user profile documents."
+    },
+    "/users/{userId}/testAttempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/TestAttempt" },
+      "description": "Individual test attempt history for the student."
+    },
+    "/users/{userId}/boardyChats/{messageId}": {
+      "schema": { "$ref": "#/entities/BoardyChatMessage" },
+      "description": "Archived chats with Boardy AI."
+    }
+  }
+}

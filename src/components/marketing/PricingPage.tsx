@@ -39,7 +39,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
       <div className="text-center max-w-3xl mx-auto space-y-4 mb-10 sm:mb-14">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-200/60 text-indigo-700 text-xs font-semibold">
           <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Transparent, Student-First Pricing in PKR</span>
+          <span>Boardy, your 24/7 study buddy.</span>
         </div>
 
         {/* Reworded Heading: Pick the plan that fits your prep */}
@@ -48,7 +48,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
         </h1>
 
         <p className="text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          From self-paced daily drills to high-stakes entrance test simulations, choose the exact depth of practice and Ustaad AI guidance you need.
+          From self-paced daily drills to high-stakes entrance test simulations, choose the exact depth of practice and Boardy guidance you need.
         </p>
       </div>
 
@@ -227,7 +227,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
             Free vs Pro vs Premium
           </h2>
           <p className="text-sm text-slate-600">
-            A granular comparison of every test engine capability, question limit, and Ustaad AI chat quota.
+            A granular comparison of every test engine capability, question limit, and Boardy chat quota.
           </p>
         </div>
 

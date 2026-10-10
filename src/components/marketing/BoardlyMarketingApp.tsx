@@ -9,6 +9,13 @@ import { TermsOfServicePage } from './TermsOfServicePage';
 import { FaqPage } from './FaqPage';
 import { ContactPage } from './ContactPage';
 import { AboutPage } from './AboutPage';
+import { BoardyPage } from './BoardyPage';
+import { BlitzLanding } from '../events/BlitzLanding';
+import { BlitzRegister } from '../events/BlitzRegister';
+import { LeaderboardView } from '../events/LeaderboardView';
+import { ArenaLanding } from '../events/ArenaLanding';
+import { CirclesLanding } from '../events/CirclesLanding';
+import { OrganizerApply } from '../events/OrganizerApply';
 import { EventsModal } from './EventsModal';
 import { ProgramsModal } from './ProgramsModal';
 import { BillingDuration } from '../../data/marketingPricingData';
@@ -18,33 +25,112 @@ interface BoardlyMarketingAppProps {
   onLaunchPortal?: (planChoice?: { planId: string; duration: BillingDuration }) => void;
 }
 
+function parseMarketingPageFromLocation(): MarketingPage {
+  if (typeof window === 'undefined') return 'home';
+
+  const pathname = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
+
+  // Redirect legacy AI routes to /boardy
+  if (['/study-buddy', '/ai', '/ustaad', '/jojo', '/zehni', '/socratic'].includes(pathname)) {
+    try {
+      window.history.replaceState({ page: 'boardy' }, '', '/boardy');
+    } catch {}
+    return 'boardy';
+  }
+
+  if (pathname === '/blitz') return 'blitz';
+  if (pathname === '/blitz/register') return 'blitz/register';
+  if (pathname === '/blitz/leaderboard') return 'blitz/leaderboard';
+  if (pathname === '/arena') return 'arena';
+  if (pathname === '/arena/leaderboard') return 'arena/leaderboard';
+  if (pathname === '/circles') return 'circles';
+  if (pathname === '/circles/apply') return 'circles/apply';
+  if (pathname === '/boardy') return 'boardy';
+  if (pathname === '/features') return 'features';
+  if (pathname === '/pricing') return 'pricing';
+  if (pathname === '/faqs' || pathname === '/faq') return 'faqs';
+  if (pathname === '/contact') return 'contact';
+  if (pathname === '/privacy') return 'privacy';
+  if (pathname === '/terms') return 'terms';
+  if (pathname === '/about') return 'about';
+
+  // Fallback query parameters
+  const params = new URLSearchParams(window.location.search);
+  const pageParam = params.get('page')?.toLowerCase();
+  if (pageParam) {
+    if (pageParam === 'blitz') return 'blitz';
+    if (pageParam === 'blitz-register' || pageParam === 'blitz/register') return 'blitz/register';
+    if (pageParam === 'blitz-leaderboard' || pageParam === 'blitz/leaderboard') return 'blitz/leaderboard';
+    if (pageParam === 'arena') return 'arena';
+    if (pageParam === 'arena-leaderboard' || pageParam === 'arena/leaderboard') return 'arena/leaderboard';
+    if (pageParam === 'circles') return 'circles';
+    if (pageParam === 'circles-apply' || pageParam === 'circles/apply') return 'circles/apply';
+    if (pageParam === 'boardy') return 'boardy';
+    if (
+      ['home', 'features', 'pricing', 'faqs', 'contact', 'privacy', 'terms', 'about'].includes(
+        pageParam
+      )
+    ) {
+      return pageParam as MarketingPage;
+    }
+  }
+
+  // Fallback hash
+  const hash = window.location.hash.replace('#', '').toLowerCase();
+  if (hash === 'blitz') return 'blitz';
+  if (hash === 'arena') return 'arena';
+  if (hash === 'circles') return 'circles';
+  if (hash === 'boardy') return 'boardy';
+
+  return 'home';
+}
+
+function getPathForMarketingPage(page: MarketingPage): string {
+  switch (page) {
+    case 'home':
+      return '/';
+    case 'features':
+      return '/features';
+    case 'pricing':
+      return '/pricing';
+    case 'faqs':
+      return '/faqs';
+    case 'contact':
+      return '/contact';
+    case 'privacy':
+      return '/privacy';
+    case 'terms':
+      return '/terms';
+    case 'about':
+      return '/about';
+    case 'blitz':
+      return '/blitz';
+    case 'blitz/register':
+      return '/blitz/register';
+    case 'blitz/leaderboard':
+      return '/blitz/leaderboard';
+    case 'arena':
+      return '/arena';
+    case 'arena/leaderboard':
+      return '/arena/leaderboard';
+    case 'circles':
+      return '/circles';
+    case 'circles/apply':
+      return '/circles/apply';
+    case 'boardy':
+      return '/boardy';
+    default:
+      return '/';
+  }
+}
+
 export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
-  initialPage = 'home',
+  initialPage,
   onLaunchPortal,
 }) => {
   const [currentPage, setCurrentPage] = useState<MarketingPage>(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const pageParam = params.get('page');
-      if (
-        pageParam &&
-        ['home', 'features', 'pricing', 'faqs', 'contact', 'privacy', 'terms', 'about'].includes(
-          pageParam
-        )
-      ) {
-        return pageParam as MarketingPage;
-      }
-      const hash = window.location.hash.replace('#', '');
-      if (
-        hash &&
-        ['home', 'features', 'pricing', 'faqs', 'contact', 'privacy', 'terms', 'about'].includes(
-          hash
-        )
-      ) {
-        return hash as MarketingPage;
-      }
-    }
-    return initialPage;
+    if (initialPage && initialPage !== 'home') return initialPage;
+    return parseMarketingPageFromLocation();
   });
 
   const [activeEventModal, setActiveEventModal] = useState<'blitz' | 'arena' | null>(null);
@@ -56,10 +142,32 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
+      const targetPath = getPathForMarketingPage(page);
       const url = new URL(window.location.href);
-      url.searchParams.set('page', page);
+      url.pathname = targetPath;
+      url.searchParams.delete('page');
       window.history.pushState({ page }, '', url.toString());
     } catch {}
+  };
+
+  const handleRouteNavigate = (route: string) => {
+    const clean = route.replace(/^\//, '').toLowerCase();
+    if (clean === 'blitz/register') handleNavigate('blitz/register');
+    else if (clean === 'blitz/leaderboard') handleNavigate('blitz/leaderboard');
+    else if (clean === 'arena/leaderboard') handleNavigate('arena/leaderboard');
+    else if (clean === 'circles/apply') handleNavigate('circles/apply');
+    else if (clean === 'blitz') handleNavigate('blitz');
+    else if (clean === 'arena') handleNavigate('arena');
+    else if (clean === 'circles') handleNavigate('circles');
+    else if (clean === 'boardy') handleNavigate('boardy');
+    else if (clean === 'terms') handleNavigate('terms');
+    else if (clean === 'privacy') handleNavigate('privacy');
+    else if (clean === 'contact') handleNavigate('contact');
+    else if (clean === 'about') handleNavigate('about');
+    else if (clean === 'pricing') handleNavigate('pricing');
+    else if (clean === 'features') handleNavigate('features');
+    else if (clean === 'faqs' || clean === 'faq') handleNavigate('faqs');
+    else handleNavigate('home');
   };
 
   useEffect(() => {
@@ -67,9 +175,7 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
       if (e.state && e.state.page) {
         setCurrentPage(e.state.page);
       } else {
-        const params = new URLSearchParams(window.location.search);
-        const p = params.get('page') as MarketingPage;
-        if (p) setCurrentPage(p);
+        setCurrentPage(parseMarketingPageFromLocation());
       }
     };
     window.addEventListener('popstate', handlePopState);
@@ -80,7 +186,6 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
     if (onLaunchPortal) {
       onLaunchPortal();
     } else {
-      // Default to pricing selection
       handleNavigate('pricing');
     }
   };
@@ -89,10 +194,18 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
     if (onLaunchPortal) {
       onLaunchPortal({ planId, duration });
     } else {
-      // Show confirmation alert or navigate to contact/checkout
       alert(`Selected plan: ${planId.toUpperCase()} (${duration}). Redirecting to registration...`);
     }
   };
+
+  // Minimal standalone pages that come with their own header/footer
+  if (currentPage === 'blitz/register') {
+    return <BlitzRegister onNavigate={handleRouteNavigate} />;
+  }
+
+  if (currentPage === 'circles/apply') {
+    return <OrganizerApply onNavigate={handleRouteNavigate} onSignIn={handleGetStarted} />;
+  }
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] bg-grid-faint text-[#0A1330] flex flex-col selection:bg-indigo-600 selection:text-white font-poppins relative">
@@ -100,8 +213,8 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
       <Navbar
         currentPage={currentPage}
         onNavigate={handleNavigate}
-        onOpenEventModal={(ev) => setActiveEventModal(ev)}
-        onOpenProgramModal={(prog) => setActiveProgramModal(prog)}
+        onOpenEventModal={(ev) => handleNavigate(ev === 'blitz' ? 'blitz' : 'arena')}
+        onOpenProgramModal={(prog) => (prog === 'circles' ? handleNavigate('circles') : setActiveProgramModal('captains'))}
         onGetStarted={handleGetStarted}
       />
 
@@ -111,7 +224,7 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
           <HomePage
             onNavigate={handleNavigate}
             onGetStarted={handleGetStarted}
-            onOpenEventModal={(ev) => setActiveEventModal(ev)}
+            onOpenEventModal={(ev) => handleNavigate(ev === 'blitz' ? 'blitz' : 'arena')}
           />
         )}
 
@@ -119,7 +232,7 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
           <FeaturesPage
             onNavigate={handleNavigate}
             onGetStarted={handleGetStarted}
-            onOpenEventModal={(ev) => setActiveEventModal(ev)}
+            onOpenEventModal={(ev) => handleNavigate(ev === 'blitz' ? 'blitz' : 'arena')}
           />
         )}
 
@@ -155,13 +268,37 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
             onGetStarted={handleGetStarted}
           />
         )}
+
+        {currentPage === 'blitz' && (
+          <BlitzLanding onNavigate={handleRouteNavigate} />
+        )}
+
+        {currentPage === 'blitz/leaderboard' && (
+          <LeaderboardView type="blitz" onNavigate={handleRouteNavigate} />
+        )}
+
+        {currentPage === 'arena' && (
+          <ArenaLanding onNavigate={handleRouteNavigate} />
+        )}
+
+        {currentPage === 'arena/leaderboard' && (
+          <LeaderboardView type="arena" onNavigate={handleRouteNavigate} />
+        )}
+
+        {currentPage === 'circles' && (
+          <CirclesLanding onNavigate={handleRouteNavigate} />
+        )}
+
+        {currentPage === 'boardy' && (
+          <BoardyPage onNavigate={handleRouteNavigate} onGetStarted={handleGetStarted} />
+        )}
       </main>
 
-      {/* Dark Footer with huge faded wordmark and rounded corners */}
+      {/* Dark Footer with huge faded wordmark, links, and university disclaimer */}
       <Footer
         onNavigate={handleNavigate}
-        onOpenEventModal={(ev) => setActiveEventModal(ev)}
-        onOpenProgramModal={(prog) => setActiveProgramModal(prog)}
+        onOpenEventModal={(ev) => handleNavigate(ev === 'blitz' ? 'blitz' : 'arena')}
+        onOpenProgramModal={(prog) => (prog === 'circles' ? handleNavigate('circles') : setActiveProgramModal('captains'))}
       />
 
       {/* Modals */}
