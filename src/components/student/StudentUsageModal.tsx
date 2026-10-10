@@ -262,7 +262,7 @@ export const StudentUsageModal: React.FC<StudentUsageModalProps> = ({
 
           <div className="flex items-center justify-between pt-2">
             <p className="text-xs text-slate-500 max-w-sm">
-              Steady Climb opens every chapter and gives you 10 tests and 7 Boardy questions a day.
+              Pro opens every chapter and gives you 25 tests/day and full Boardy AI assistance.
             </p>
             <button
               type="button"

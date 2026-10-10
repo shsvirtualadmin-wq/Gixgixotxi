@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Award, CheckCircle2, XCircle, Clock, ArrowRight, RotateCw, Sparkles, MessageSquare, ChevronDown, ChevronUp } from 'lucide-react';
 import { Question } from '../../types';
 import { MathText } from '../MathText';
+import { StudyBuddyFormattedMessage } from '../StudyBuddyFormattedMessage';
 import { BoardyMascot } from '../BoardyMascot';
 
 interface StudentTestResultProps {
@@ -289,7 +290,7 @@ export const StudentTestResult: React.FC<StudentTestResultProps> = ({
                   <div className="mt-4 pt-4 border-t border-slate-100 space-y-3">
                     <div className="p-3.5 rounded-xl bg-blue-50/60 border border-blue-100 text-xs text-slate-700 space-y-1">
                       <span className="font-bold text-blue-900 block">Explanation:</span>
-                      <MathText text={q.explain || q.explanation || 'No step-by-step explanation available.'} />
+                      <StudyBuddyFormattedMessage content={q.explain || q.explanation || 'No step-by-step explanation available.'} theme="light" />
                     </div>
 
                     <div className="flex justify-end">

@@ -25,7 +25,7 @@ service cloud.firestore {
       allow create: if isOwner(userId)
         && request.resource.data.uid == userId
         && (!('role' in request.resource.data) || request.resource.data.role == 'student' || isAdmin())
-        && (!('plan' in request.resource.data) || request.resource.data.plan == 'starter' || isAdmin());
+        && (!('plan' in request.resource.data) || request.resource.data.plan == 'starter' || request.resource.data.plan == 'free' || isAdmin());
 
       allow update: if (isOwner(userId)
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'plan'])))

@@ -12,11 +12,13 @@ import {
 } from 'firebase/auth';
 import {
   auth,
+  db,
   googleProvider,
   fetchUserProfile,
   saveUserProfile,
   StudentUserProfile,
 } from '../lib/firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { PLAN_LIMITS, getKarachiTodayString } from '../data/planLimits';
 
 export interface SignUpFormData {
@@ -33,6 +35,8 @@ export interface SignUpFormData {
 export interface AuthContextType {
   user: User | null;
   profile: StudentUserProfile | null;
+  documentExists: boolean;
+  isAdmin: boolean;
   loading: boolean;
   sessionExpired: boolean;
   migratedBanner: boolean;
@@ -115,6 +119,7 @@ export function friendlyAuthError(err: any): string {
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<StudentUserProfile | null>(null);
+  const [documentExists, setDocumentExists] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
   const [sessionExpired, setSessionExpired] = useState<boolean>(false);
   const [migratedBanner, setMigratedBanner] = useState<boolean>(() => {
@@ -130,91 +135,125 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSessionExpired(false);
   }, []);
 
-  const syncProfile = useCallback(async (firebaseUser: User | null) => {
+  const userEmail = (user?.email || '').trim().toLowerCase();
+  const isAdmin = Boolean(
+    profile?.role === 'admin' ||
+    userEmail === 'shsvirtualadmin@gmail.com' ||
+    userEmail === 'support@boardly.cfd'
+  );
+
+  const syncProfile = useCallback(async (firebaseUser: User | null): Promise<boolean> => {
     if (!firebaseUser) {
       setProfile(null);
-      return;
+      setDocumentExists(false);
+      return false;
     }
 
     try {
-      let p = await fetchUserProfile(firebaseUser.uid);
-      const todayStr = getKarachiTodayString();
-
       const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
       const isSystemAdmin = normalizedEmail === 'shsvirtualadmin@gmail.com' || normalizedEmail === 'support@boardly.cfd';
 
-      if (!p) {
-        // Create initial user document if it doesn't exist yet
-        const newProfile: StudentUserProfile = {
-          uid: firebaseUser.uid,
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Student',
-          email: firebaseUser.email || '',
-          plan: isSystemAdmin ? 'all_access' : 'starter',
-          role: isSystemAdmin ? 'admin' : 'student',
-          createdAt: new Date().toISOString(),
-          termsAcceptedAt: new Date().toISOString(),
-          termsVersion: '2026.1',
-          onboardingCompleted: isSystemAdmin,
-          testsUsedToday: 0,
-          boardyQuestionsUsedToday: 0,
-          lastUsageDate: todayStr,
-          migratedFromSupabase: false,
-        };
-        await saveUserProfile(firebaseUser.uid, newProfile);
-        p = newProfile;
-      } else {
-        // Automatically enforce admin role for authorized administrative accounts
-        if (isSystemAdmin && p.role !== 'admin') {
-          await saveUserProfile(firebaseUser.uid, { role: 'admin', plan: 'all_access' });
-          p = { ...p, role: 'admin', plan: 'all_access' };
-        }
-
-        // Daily usage reset check at Pakistan midnight
-        if (p.lastUsageDate !== todayStr) {
-          const updated = {
-            ...p,
-            testsUsedToday: 0,
-            boardyQuestionsUsedToday: 0,
-            lastUsageDate: todayStr,
-          };
-          await saveUserProfile(firebaseUser.uid, {
-            testsUsedToday: 0,
-            boardyQuestionsUsedToday: 0,
-            lastUsageDate: todayStr,
-          });
-          p = updated;
-        }
-      }
-
-      // Supabase to Firebase lazy-linking migration on first login
-      if (!p.migratedFromSupabase && normalizedEmail) {
+      // 1. Query the Firestore users collection directly
+      const userRef = doc(db, 'users', firebaseUser.uid);
+      let snap: any = null;
+      try {
+        snap = await getDoc(userRef);
+      } catch (readErr) {
+        console.warn('[Firebase Auth] getDoc error, checking offline cache:', readErr);
         try {
-          const migRes = await fetch('/api/auth/migrate-student-history', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ uid: firebaseUser.uid, email: normalizedEmail }),
-          });
-          if (migRes.ok) {
-            const migData = await migRes.json();
-            if (migData.migrated) {
-              const updates = {
-                migratedFromSupabase: true,
-                onboardingCompleted: true,
-                ...(migData.profileUpdates || {}),
-              };
-              await saveUserProfile(firebaseUser.uid, updates);
-              p = { ...p, ...updates };
-              setMigratedBanner(true);
-            }
+          const cached = localStorage.getItem(`boardly_cached_profile_${firebaseUser.uid}`);
+          if (cached) {
+            snap = { exists: () => true, data: () => JSON.parse(cached) };
           }
-        } catch (migErr) {
-          console.warn('[Migration Lazy Linking]:', migErr);
-        }
+        } catch {}
       }
 
-      setProfile(p);
+      const docFound = Boolean(snap && typeof snap.exists === 'function' && snap.exists());
+      const todayStr = getKarachiTodayString();
+
+      if (docFound) {
+        // Document exists in Firestore! Load their saved data and persist across reloads
+        let p = snap.data() as StudentUserProfile;
+
+        if (isSystemAdmin) {
+          // HARDCODED ADMIN ROLE OVERRIDE:
+          // shsvirtualadmin@gmail.com MUST be assigned Admin role, bypass all paywalls, and access Admin Dashboard
+          p = {
+            ...p,
+            uid: firebaseUser.uid,
+            email: normalizedEmail,
+            role: 'admin',
+            plan: 'all_access',
+            onboardingCompleted: true,
+            name: p?.name && p.name !== 'Student' ? p.name : 'Admin',
+          };
+          saveUserProfile(firebaseUser.uid, {
+            role: 'admin',
+            plan: 'all_access',
+            onboardingCompleted: true,
+          }).catch(console.warn);
+        } else {
+          // Daily usage reset check at Pakistan midnight
+          if (p.lastUsageDate !== todayStr) {
+            const updated = {
+              ...p,
+              testsUsedToday: 0,
+              boardyQuestionsUsedToday: 0,
+              lastUsageDate: todayStr,
+            };
+            saveUserProfile(firebaseUser.uid, {
+              testsUsedToday: 0,
+              boardyQuestionsUsedToday: 0,
+              lastUsageDate: todayStr,
+            }).catch(console.warn);
+            p = updated;
+          }
+        }
+
+        // Cache profile in localStorage for instantaneous restoration
+        try {
+          localStorage.setItem(`boardly_cached_profile_${firebaseUser.uid}`, JSON.stringify(p));
+        } catch {}
+
+        setProfile(p);
+        setDocumentExists(true);
+        return true;
+      } else {
+        // No Firestore document exists for this UID!
+        if (isSystemAdmin) {
+          // Auto-provision admin profile immediately
+          const adminProfile: StudentUserProfile = {
+            uid: firebaseUser.uid,
+            name: 'Admin',
+            email: normalizedEmail,
+            plan: 'all_access',
+            role: 'admin',
+            createdAt: new Date().toISOString(),
+            termsAcceptedAt: new Date().toISOString(),
+            termsVersion: '2026.1',
+            onboardingCompleted: true,
+            testsUsedToday: 0,
+            boardyQuestionsUsedToday: 0,
+            lastUsageDate: todayStr,
+            migratedFromSupabase: false,
+          };
+          await saveUserProfile(firebaseUser.uid, adminProfile);
+          try {
+            localStorage.setItem(`boardly_cached_profile_${firebaseUser.uid}`, JSON.stringify(adminProfile));
+          } catch {}
+          setProfile(adminProfile);
+          setDocumentExists(true);
+          return true;
+        }
+
+        // Regular student with NO Firestore document: ONLY route to registration if no document exists
+        setProfile(null);
+        setDocumentExists(false);
+        return false;
+      }
     } catch (err) {
       console.warn('[AuthContext] syncProfile error:', err);
+      return false;
     }
   }, []);
 
@@ -225,6 +264,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         await syncProfile(currentUser);
       } else {
         setProfile(null);
+        setDocumentExists(false);
       }
       setLoading(false);
     });
@@ -298,6 +338,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[Firebase] Initial profile save warning (handled gracefully):', profileErr);
       }
       setProfile(newProfile);
+      setDocumentExists(true);
+      try {
+        localStorage.setItem(`boardly_cached_profile_${cred.user.uid}`, JSON.stringify(newProfile));
+      } catch {}
 
       // Send verification email
       try {
@@ -330,9 +374,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logOut = async () => {
     try {
+      if (user?.uid) {
+        localStorage.removeItem(`boardly_cached_profile_${user.uid}`);
+      }
       await signOut(auth);
       setUser(null);
       setProfile(null);
+      setDocumentExists(false);
     } catch (err) {
       console.error('[Firebase] Sign out error:', err);
     }
@@ -384,8 +432,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateProfileData = async (fields: Partial<StudentUserProfile>) => {
     if (!user) return;
     try {
-      await saveUserProfile(user.uid, fields);
-      setProfile((prev) => (prev ? { ...prev, ...fields } : null));
+      const updated = profile ? { ...profile, ...fields } : (fields as StudentUserProfile);
+      await saveUserProfile(user.uid, updated);
+      setProfile(updated);
+      setDocumentExists(true);
+      try {
+        localStorage.setItem(`boardly_cached_profile_${user.uid}`, JSON.stringify(updated));
+      } catch {}
     } catch (err) {
       console.error('[Firebase] updateProfileData error:', err);
     }
@@ -402,6 +455,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         user,
         profile,
+        documentExists,
+        isAdmin,
         loading,
         sessionExpired,
         migratedBanner,

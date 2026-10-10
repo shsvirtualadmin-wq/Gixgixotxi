@@ -1,8 +1,8 @@
-export type PlanType = 'starter' | 'steady_climb' | 'all_access';
+export type PlanType = 'starter' | 'steady_climb' | 'all_access' | 'free' | 'pro' | 'premium';
 
 export interface PlanLimitConfig {
-  id: PlanType;
-  name: string;
+  id: string;
+  name: 'Free' | 'Pro' | 'Premium';
   badge: string;
   testsPerDay: number; // 999 represents unlimited
   boardyPerDay: number;
@@ -10,32 +10,59 @@ export interface PlanLimitConfig {
   priceMonthlyPkr: number;
 }
 
-export const PLAN_LIMITS: Record<PlanType, PlanLimitConfig> = {
+export const PLAN_LIMITS: Record<string, PlanLimitConfig> = {
+  free: {
+    id: 'free',
+    name: 'Free',
+    badge: 'Starter',
+    testsPerDay: 3,
+    boardyPerDay: 5,
+    description: '3 tests and Boardy AI access every day (150 chats/month). Perfect for consistency.',
+    priceMonthlyPkr: 0,
+  },
   starter: {
     id: 'starter',
-    name: 'Starter',
-    badge: 'Free Forever',
-    testsPerDay: 2,
-    boardyPerDay: 3,
-    description: '2 tests and 3 Boardy questions every day. Perfect for daily consistency.',
+    name: 'Free',
+    badge: 'Starter',
+    testsPerDay: 3,
+    boardyPerDay: 5,
+    description: '3 tests and Boardy AI access every day (150 chats/month). Perfect for consistency.',
     priceMonthlyPkr: 0,
+  },
+  pro: {
+    id: 'pro',
+    name: 'Pro',
+    badge: 'Most Popular',
+    testsPerDay: 25,
+    boardyPerDay: 50,
+    description: 'Pro opens every chapter with 25 tests/day and 1500 Boardy chats/month.',
+    priceMonthlyPkr: 2499,
   },
   steady_climb: {
     id: 'steady_climb',
-    name: 'Steady Climb',
+    name: 'Pro',
     badge: 'Most Popular',
-    testsPerDay: 10,
-    boardyPerDay: 7,
-    description: 'Steady Climb opens every chapter and gives you 10 tests and 7 Boardy questions a day.',
+    testsPerDay: 25,
+    boardyPerDay: 50,
+    description: 'Pro opens every chapter with 25 tests/day and 1500 Boardy chats/month.',
     priceMonthlyPkr: 2499,
+  },
+  premium: {
+    id: 'premium',
+    name: 'Premium',
+    badge: 'Top Rank',
+    testsPerDay: 999,
+    boardyPerDay: 999,
+    description: 'Unlimited practice tests, grand national mocks, and unlimited Boardy AI.',
+    priceMonthlyPkr: 3999,
   },
   all_access: {
     id: 'all_access',
-    name: 'All Access',
-    badge: 'Pro Prep',
-    testsPerDay: 999, // Unlimited
-    boardyPerDay: 15,
-    description: 'Unlimited practice tests, all university full mocks, and 15 Boardy questions daily.',
+    name: 'Premium',
+    badge: 'Top Rank',
+    testsPerDay: 999,
+    boardyPerDay: 999,
+    description: 'Unlimited practice tests, grand national mocks, and unlimited Boardy AI.',
     priceMonthlyPkr: 3999,
   },
 };

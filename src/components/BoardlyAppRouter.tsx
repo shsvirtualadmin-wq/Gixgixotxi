@@ -16,6 +16,8 @@ export const BoardlyAppRouter: React.FC = () => {
   const {
     user,
     profile,
+    documentExists,
+    isAdmin,
     loading,
     migratedBanner,
     dismissMigratedBanner,
@@ -52,21 +54,33 @@ export const BoardlyAppRouter: React.FC = () => {
     ? new URLSearchParams(window.location.search).get('returnUrl') || '/app'
     : '/app';
 
-  // SESSIONS & ROUTE PROTECTION
-  // If user is logged in and visits /login or /signup, redirect to /app (or onboarding/verify)
+  // SESSIONS & AUTH GUARDS
+  // If user is authenticated:
+  // 1. If their Firestore document exists, route them directly to /app (or /admin).
+  // 2. If user clicks "back" or visits / or /login, automatically redirect them to /app.
+  // 3. ONLY route to registration/onboarding if no Firestore document exists for that UID.
   useEffect(() => {
     if (!loading && user) {
-      if (currentPath === '/login' || currentPath === '/signup') {
-        if (!user.emailVerified) {
-          navigate('/verify-email');
-        } else if (!profile?.onboardingCompleted) {
-          navigate('/onboarding');
-        } else {
+      if (documentExists || profile) {
+        // Document exists: user is registered, route directly to /app and load their data
+        if (
+          currentPath === '/' ||
+          currentPath === '' ||
+          currentPath === '/login' ||
+          currentPath === '/signup' ||
+          currentPath === '/onboarding' ||
+          currentPath === '/verify-email'
+        ) {
           navigate('/app');
+        }
+      } else {
+        // ONLY route to registration/onboarding if no Firestore document exists for that UID
+        if (currentPath !== '/onboarding' && currentPath !== '/signup') {
+          navigate('/onboarding');
         }
       }
     }
-  }, [loading, user, profile, currentPath, navigate]);
+  }, [loading, user, profile, documentExists, isAdmin, currentPath, navigate]);
 
   // Strict route protection for all internal authenticated routes
   useEffect(() => {
@@ -145,6 +159,21 @@ export const BoardlyAppRouter: React.FC = () => {
 
       {/* Route Switcher */}
       {(() => {
+        // AUTH GUARD FOR AUTHENTICATED USERS:
+        // If logged-in user visits root /, /login, /signup, or clicks back to root, render dashboard immediately!
+        if (user && (documentExists || profile)) {
+          if (currentPath === '/' || currentPath === '' || currentPath === '/login' || currentPath === '/signup') {
+            return (
+              <StudentAppShell
+                onNavigateMarketing={(p) => navigate(p)}
+                onOpenMeritMeter={() => navigate('/features')}
+                onOpenBlitz={() => navigate('/blitz')}
+                onOpenArena={() => navigate('/arena')}
+              />
+            );
+          }
+        }
+
         // 1. Sign Up
         if (currentPath === '/signup') {
           return <SignUpPage onNavigate={navigate} />;

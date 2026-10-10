@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Send, Sparkles, Plus, Menu, X, Bot, User as UserIcon, Loader2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BoardyMascot } from '../BoardyMascot';
-import { MathText } from '../MathText';
+import { StudyBuddyFormattedMessage } from '../StudyBuddyFormattedMessage';
 import { PLAN_LIMITS, PlanType } from '../../data/planLimits';
 
 export interface ChatMessage {
@@ -23,14 +23,19 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
   onOpenUsage,
   onUpgrade,
 }) => {
-  const { profile, updateProfileData } = useAuth();
-  const firstName = profile?.name?.trim().split(' ')[0] || 'Student';
+  const { profile, user, updateProfileData } = useAuth();
+  const isAdmin = Boolean(
+    profile?.role === 'admin' ||
+    (user?.email && (user.email.toLowerCase() === 'shsvirtualadmin@gmail.com' || user.email.toLowerCase() === 'support@boardly.cfd'))
+  );
+  const firstName = isAdmin ? 'Admin' : (profile?.name?.trim().split(' ')[0] || 'Student');
 
   const userPlan: PlanType = (profile?.plan as PlanType) || 'starter';
   const planConfig = PLAN_LIMITS[userPlan] || PLAN_LIMITS.starter;
   const boardyUsedToday = profile?.boardyQuestionsUsedToday || 0;
-  const boardyRemaining = Math.max(0, planConfig.boardyPerDay - boardyUsedToday);
-  const isBoardyExhausted = boardyRemaining <= 0;
+  const isUnlimited = isAdmin || planConfig.boardyPerDay >= 999;
+  const boardyRemaining = isUnlimited ? 999 : Math.max(0, planConfig.boardyPerDay - boardyUsedToday);
+  const isBoardyExhausted = !isAdmin && !isUnlimited && boardyRemaining <= 0;
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
@@ -249,7 +254,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                       : 'bg-slate-50 border border-slate-200/80 text-slate-800 rounded-tl-none shadow-sm'
                   }`}
                 >
-                  <MathText text={m.content} />
+                  <StudyBuddyFormattedMessage content={m.content} isUser={isUser} theme="light" />
                 </div>
               </div>
             );
@@ -281,7 +286,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
               onClick={onUpgrade}
               className="font-bold underline text-blue-700 hover:text-blue-900 cursor-pointer"
             >
-              Upgrade to Steady Climb &rarr;
+              Upgrade to Pro &rarr;
             </button>
           </div>
         ) : (

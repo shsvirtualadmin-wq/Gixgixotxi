@@ -132,21 +132,55 @@ export async function saveUserProfile(uid: string, profile: Partial<StudentUserP
 export async function logTestAttempt(attempt: Omit<StoredTestAttempt, 'createdAt'>): Promise<string> {
   const coll = collection(db, 'users', attempt.userId, 'testAttempts');
   const nowStr = new Date().toISOString();
-  const res = await addDoc(coll, {
-    ...attempt,
-    createdAt: nowStr,
-  });
-  return res.id;
+  let id = `att_${Date.now()}`;
+  try {
+    const res = await addDoc(coll, {
+      ...attempt,
+      createdAt: nowStr,
+    });
+    id = res.id;
+  } catch (err) {
+    console.warn('[Firebase] addDoc notice in logTestAttempt, updating local cache:', err);
+  }
+
+  // Also update local cache for instant resilience across reloads
+  if (typeof window !== 'undefined') {
+    try {
+      const cacheKey = `boardly_attempts_${attempt.userId}`;
+      const existing = JSON.parse(localStorage.getItem(cacheKey) || '[]');
+      const newEntry = { id, ...attempt, createdAt: nowStr };
+      const updated = [newEntry, ...existing];
+      localStorage.setItem(cacheKey, JSON.stringify(updated));
+    } catch {}
+  }
+  return id;
 }
 
 export async function getTestAttempts(userId: string): Promise<StoredTestAttempt[]> {
   try {
     const coll = collection(db, 'users', userId, 'testAttempts');
-    const q = query(coll, orderBy('createdAt', 'desc'), limit(50));
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    let snap;
+    try {
+      const q = query(coll, orderBy('createdAt', 'desc'), limit(50));
+      snap = await getDocs(q);
+    } catch (orderErr) {
+      console.warn('[Firebase] getTestAttempts ordered query notice, using unordered fallback:', orderErr);
+      snap = await getDocs(coll);
+    }
+    const docs = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    docs.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    if (typeof window !== 'undefined' && docs.length > 0) {
+      localStorage.setItem(`boardly_attempts_${userId}`, JSON.stringify(docs));
+    }
+    return docs;
   } catch (err) {
     console.warn('[Firebase] getTestAttempts fallback error:', err);
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem(`boardly_attempts_${userId}`);
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
     return [];
   }
 }

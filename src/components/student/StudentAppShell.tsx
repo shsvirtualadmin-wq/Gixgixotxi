@@ -20,6 +20,7 @@ import {
   Flame,
   Coins,
   Bell,
+  Shield,
 } from 'lucide-react';
 import { BrandLogo } from '../marketing/BrandLogo';
 import { useAuth } from '../../context/AuthContext';
@@ -54,6 +55,13 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
   onOpenArena,
 }) => {
   const { user, profile, logOut, updateProfileData } = useAuth();
+
+  const userEmail = (user?.email || '').toLowerCase().trim();
+  const isAdmin = Boolean(
+    profile?.role === 'admin' ||
+    userEmail === 'shsvirtualadmin@gmail.com' ||
+    userEmail === 'support@boardly.cfd'
+  );
 
   const [activeTab, setActiveTab] = useState<StudentTab>('overview');
   const [showMoreSheet, setShowMoreSheet] = useState<boolean>(false);
@@ -258,6 +266,19 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
 
             {/* Counters, Bell & Profile Right */}
             <div className="flex items-center gap-2 sm:gap-2.5">
+              {/* Admin Dashboard shortcut button if admin */}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => onNavigateMarketing('/admin')}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 hover:bg-purple-200 text-purple-800 text-xs font-black shadow-xs transition-colors cursor-pointer"
+                  title="Open Admin Dashboard"
+                >
+                  <Shield className="w-3.5 h-3.5 text-purple-700" />
+                  <span>Admin</span>
+                </button>
+              )}
+
               {/* Streak Counter */}
               <div
                 className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200/80 text-amber-800 text-xs font-black shadow-xs cursor-default"
@@ -291,10 +312,14 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
               <button
                 type="button"
                 onClick={() => setShowMoreSheet(true)}
-                className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-extrabold text-xs shadow-xs hover:ring-2 hover:ring-blue-400 transition-all cursor-pointer"
+                className={`flex items-center justify-center w-8 h-8 rounded-full ${
+                  isAdmin
+                    ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 ring-2 ring-purple-300'
+                    : 'bg-gradient-to-tr from-blue-600 to-indigo-600 hover:ring-2 hover:ring-blue-400'
+                } text-white font-extrabold text-xs shadow-xs transition-all cursor-pointer`}
                 aria-label="Open student profile and more options"
               >
-                {profile?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'S'}
+                {isAdmin ? 'A' : (profile?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'S')}
               </button>
             </div>
           </header>
@@ -476,16 +501,24 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
             {/* User Profile Header */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-3.5">
-                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-black text-lg flex items-center justify-center shadow-md shadow-blue-500/20">
-                  {profile?.name?.[0] || 'S'}
+                <div className={`w-12 h-12 rounded-2xl ${
+                  isAdmin
+                    ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 shadow-purple-500/20'
+                    : 'bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-blue-500/20'
+                } text-white font-black text-lg flex items-center justify-center shadow-md`}>
+                  {isAdmin ? 'A' : (profile?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'S')}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="font-extrabold text-base text-slate-900">
-                      {profile?.name || 'Student'}
+                      {isAdmin ? 'Admin' : (profile?.name || 'Student')}
                     </h3>
-                    <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-blue-100 text-blue-800">
-                      {profile?.plan ? PLAN_LIMITS[profile.plan]?.name : 'Starter'}
+                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                      isAdmin
+                        ? 'bg-purple-100 text-purple-800'
+                        : 'bg-blue-100 text-blue-800'
+                    }`}>
+                      {isAdmin ? 'Admin (Full Access)' : (profile?.plan ? (PLAN_LIMITS[profile.plan]?.name || 'Free') : 'Free')}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 break-all">{profile?.email || user?.email}</p>
@@ -632,16 +665,30 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
 
             {/* Bottom Actions: Log out */}
             <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMoreSheet(false);
-                  onNavigateMarketing('/pricing');
-                }}
-                className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
-              >
-                Upgrade to Steady Climb &rarr;
-              </button>
+              {isAdmin ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMoreSheet(false);
+                    onNavigateMarketing('/admin');
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold transition-colors cursor-pointer"
+                >
+                  <Shield className="w-4 h-4 text-purple-600" />
+                  <span>Admin Dashboard &rarr;</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowMoreSheet(false);
+                    onNavigateMarketing('/pricing');
+                  }}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
+                >
+                  Upgrade to Pro &rarr;
+                </button>
+              )}
 
               <button
                 type="button"

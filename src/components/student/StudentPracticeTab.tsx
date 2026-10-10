@@ -18,14 +18,18 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
   onOpenUsage,
   onUpgrade,
 }) => {
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
+  const isAdmin = Boolean(
+    profile?.role === 'admin' ||
+    (user?.email && (user.email.toLowerCase() === 'shsvirtualadmin@gmail.com' || user.email.toLowerCase() === 'support@boardly.cfd'))
+  );
 
   const userPlan: PlanType = (profile?.plan as PlanType) || 'starter';
   const planConfig = PLAN_LIMITS[userPlan] || PLAN_LIMITS.starter;
   const testsUsedToday = profile?.testsUsedToday || 0;
-  const isUnlimited = planConfig.testsPerDay >= 999;
+  const isUnlimited = isAdmin || planConfig.testsPerDay >= 999;
   const testsLeft = isUnlimited ? 999 : Math.max(0, planConfig.testsPerDay - testsUsedToday);
-  const isAllowanceExhausted = !isUnlimited && testsLeft <= 0;
+  const isAllowanceExhausted = !isAdmin && !isUnlimited && testsLeft <= 0;
 
   const [uniCategoryFilter, setUniCategoryFilter] = useState<'All' | 'Engineering & CS' | 'Business & Finance' | 'NTS'>('All');
   const [showAllSubjects, setShowAllSubjects] = useState(false);
@@ -261,7 +265,7 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
                       className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <Lock className="w-3.5 h-3.5" />
-                      <span>Upgrade to Steady Climb to practice</span>
+                      <span>Upgrade to Pro to practice</span>
                     </button>
                   ) : (
                     <button

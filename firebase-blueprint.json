@@ -9,7 +9,7 @@
         "name": { "type": "string" },
         "email": { "type": "string" },
         "phone": { "type": "string" },
-        "plan": { "type": "string", "enum": ["starter", "steady_climb", "all_access"] },
+        "plan": { "type": "string", "enum": ["starter", "steady_climb", "all_access", "free", "pro", "premium"] },
         "role": { "type": "string", "enum": ["student", "organizer", "admin"] },
         "createdAt": { "type": "string" },
         "termsAcceptedAt": { "type": "string" },

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { BoardyMascot } from '../BoardyMascot';
+import { StudyBuddyFormattedMessage } from '../StudyBuddyFormattedMessage';
 import { FrostedBackgroundDecor } from '../events/FrostedBackgroundDecor';
 import { Sparkles, ArrowRight, MessageCircle, Send, CheckCircle2, BookOpen, Lightbulb, Zap, ShieldCheck } from 'lucide-react';
 
@@ -209,7 +210,7 @@ Would you like to drill 3 rapid practice MCQs on this topic right now?`,
                         : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-medium'
                     }`}
                   >
-                    <p className="whitespace-pre-line">{m.text}</p>
+                    <StudyBuddyFormattedMessage content={m.text} isUser={!isBot} theme="light" />
 
                     {m.formula && (
                       <div className="my-3 p-3 rounded-xl bg-slate-900 text-emerald-300 font-mono text-xs overflow-x-auto border border-slate-800">
