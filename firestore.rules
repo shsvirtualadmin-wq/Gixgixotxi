@@ -25,7 +25,7 @@ service cloud.firestore {
         && (!('plan' in request.resource.data) || request.resource.data.plan == 'starter');
 
       allow update: if isOwner(userId)
-        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'plan', 'testsUsedToday', 'boardyQuestionsUsedToday']))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'plan']))
         || isAdmin();
 
       allow delete: if isAdmin();

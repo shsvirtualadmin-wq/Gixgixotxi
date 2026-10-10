@@ -53,41 +53,63 @@ export interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function friendlyAuthError(err: any): string {
-  const code = err?.code || '';
-  const msg = err?.message || '';
+  console.error('[Firebase Auth Error Details]:', err);
+  const code: string = err?.code || '';
+  const rawMsg: string = err?.message || (typeof err === 'string' ? err : '');
+  const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'current domain';
 
+  if (code === 'auth/unauthorized-domain') {
+    return `Unauthorized Domain: "${currentHost}" is not listed in authorized domains. In Firebase Console, go to Authentication > Settings > Authorized domains and add "${currentHost}". [auth/unauthorized-domain]`;
+  }
+  if (code === 'auth/operation-not-allowed') {
+    return 'Sign-in method disabled: This provider is not enabled. In Firebase Console, go to Authentication > Sign-in method and enable Email/Password or Google. [auth/operation-not-allowed]';
+  }
+  if (code === 'auth/invalid-api-key') {
+    return 'Invalid Firebase API Key: The configured API key is not accepted by Google Firebase. [auth/invalid-api-key]';
+  }
+  if (code === 'auth/configuration-not-found') {
+    return 'Firebase project configuration not found. Please verify Identity Platform settings. [auth/configuration-not-found]';
+  }
   if (code === 'auth/email-already-in-use') {
-    return 'This email address is already registered. Please log in instead.';
+    return 'This email address is already registered. Please log in instead. [auth/email-already-in-use]';
   }
   if (code === 'auth/invalid-email') {
-    return 'Please enter a valid email address.';
+    return 'Please enter a valid email address. [auth/invalid-email]';
   }
   if (code === 'auth/weak-password') {
-    return 'Your password must be at least 8 characters with an uppercase letter, lowercase letter, and a number.';
+    return 'Password is too weak. Please use at least 8 characters with an uppercase letter, lowercase letter, and a number. [auth/weak-password]';
   }
   if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/user-not-found') {
-    return 'Incorrect email or password. Please verify and try again.';
+    return `Incorrect email or password. Please verify and try again. [${code || 'auth/invalid-credential'}]`;
   }
   if (code === 'auth/user-disabled') {
-    return 'This account has been disabled. Please contact support@boardly.cfd for assistance.';
+    return 'This user account has been disabled. [auth/user-disabled]';
   }
   if (code === 'auth/too-many-requests') {
-    return 'Too many login attempts. For security, please wait a few minutes before trying again.';
+    return 'Too many login attempts. For security, please wait a few minutes before trying again. [auth/too-many-requests]';
   }
   if (code === 'auth/popup-closed-by-user') {
-    return 'Google sign-in was cancelled before completion.';
+    return 'Google sign-in was cancelled before completion. [auth/popup-closed-by-user]';
   }
   if (code === 'auth/popup-blocked') {
-    return 'The sign-in popup was blocked by your browser. Please allow popups for Boardly.';
+    return 'Sign-in popup was blocked by your browser. Please allow popups for Boardly. [auth/popup-blocked]';
+  }
+  if (code === 'auth/cancelled-popup-request') {
+    return 'Google sign-in popup was superseded by another request. [auth/cancelled-popup-request]';
   }
   if (code === 'auth/account-exists-with-different-credential') {
-    return 'An account already exists with this email address. Please sign in with your email and password to link them.';
+    return 'An account already exists with this email using a different sign-in method. [auth/account-exists-with-different-credential]';
   }
   if (code === 'auth/network-request-failed') {
-    return 'Network connection lost. Please check your internet connection and try again.';
+    return 'Network connection failed. Please check your internet connection or ad-blocker. [auth/network-request-failed]';
   }
 
-  return msg.replace('Firebase: ', '').replace(/\(auth\/[^)]+\)\.?/, '').trim() || 'An error occurred during authentication. Please try again.';
+  // Fallback: ALWAYS include code and full message instead of stripping down to "Error"
+  const cleanMsg = rawMsg ? rawMsg.replace(/^Firebase:\s*/i, '') : 'Authentication failed';
+  if (code) {
+    return `${cleanMsg} [${code}]`;
+  }
+  return cleanMsg || 'Authentication error occurred. Please try again.';
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -231,7 +253,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         lastUsageDate: todayStr,
       };
 
-      await saveUserProfile(cred.user.uid, newProfile);
+      try {
+        await saveUserProfile(cred.user.uid, newProfile);
+      } catch (profileErr) {
+        console.warn('[Firebase] Initial profile save warning (handled gracefully):', profileErr);
+      }
       setProfile(newProfile);
 
       // Send verification email
@@ -243,6 +269,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return { success: true };
     } catch (err: any) {
+      console.error('[Firebase] signUpEmail failed:', err);
       return { success: false, error: friendlyAuthError(err) };
     }
   };
@@ -250,9 +277,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signInGoogle = async (): Promise<{ success: boolean; error?: string }> => {
     try {
       const cred = await signInWithPopup(auth, googleProvider);
-      await syncProfile(cred.user);
+      try {
+        await syncProfile(cred.user);
+      } catch (syncErr) {
+        console.warn('[Firebase] Google sign-in syncProfile warning:', syncErr);
+      }
       return { success: true };
     } catch (err: any) {
+      console.error('[Firebase] signInGoogle failed:', err);
       return { success: false, error: friendlyAuthError(err) };
     }
   };
