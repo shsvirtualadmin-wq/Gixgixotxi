@@ -15,7 +15,7 @@ export const onRequestPost = async (context) => {
 
   try {
     const adminEmail = (request.headers.get("x-admin-email") || "").trim().toLowerCase();
-    const ADMIN_EMAILS = ["shsvirtualadmin@gmail.com", "dj.khadijajameel19@gmail.com", "syedrayyanf1@gmail.com"];
+    const ADMIN_EMAILS = ["shsvirtualadmin@gmail.com", "support@boardly.cfd"];
     const isAdmin = ADMIN_EMAILS.includes(adminEmail);
 
     if (!isAdmin) {

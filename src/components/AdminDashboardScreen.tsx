@@ -3,6 +3,10 @@ import { UserAvatar } from './UserAvatar';
 import { StudyBuddyFormattedMessage } from './StudyBuddyFormattedMessage';
 import { SegmentedControl } from './SegmentedControl';
 import { AdminPromoLinksManager } from './AdminPromoLinksManager';
+import { AdminSubscriptionsTab } from './admin/AdminSubscriptionsTab';
+import { AdminEventsTab } from './admin/AdminEventsTab';
+import { AdminProgramsTab } from './admin/AdminProgramsTab';
+import { AdminSupportTab } from './admin/AdminSupportTab';
 import {
   supabase,
   isAdminEmail,
@@ -93,11 +97,24 @@ import {
   Image as ImageIcon,
   ZoomIn,
   Gift,
+  Trophy,
 } from 'lucide-react';
+
+export type AdminDashboardTab =
+  | 'students'
+  | 'subscriptions'
+  | 'events'
+  | 'programs'
+  | 'support'
+  | 'payment_requests'
+  | 'promo_links'
+  | 'activity_logs'
+  | 'tests'
+  | 'progress';
 
 interface AdminDashboardScreenProps {
   currentUser: User | null;
-  initialTab?: 'students' | 'payment_requests' | 'promo_links' | 'activity_logs' | 'tests' | 'progress';
+  initialTab?: AdminDashboardTab;
   onBack: () => void;
 }
 
@@ -106,7 +123,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = React.m
   initialTab = 'students',
   onBack,
 }) => {
-  const [activeTab, setActiveTab] = useState<'students' | 'payment_requests' | 'promo_links' | 'activity_logs' | 'tests' | 'progress'>(initialTab);
+  const [activeTab, setActiveTab] = useState<AdminDashboardTab>(initialTab);
 
   useEffect(() => {
     if (initialTab) {
@@ -1726,65 +1743,224 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
         </div>
       </div>
 
-      {/* Responsive Admin Tab Navigation using Unified SegmentedControl */}
-      <div className="w-full overflow-hidden">
-        <SegmentedControl<'students' | 'payment_requests' | 'promo_links' | 'activity_logs' | 'tests' | 'progress'>
-          id="admin-main-segmented-tabs"
-          options={[
-            {
-              value: 'students',
-              label: 'Students',
-              icon: Users,
-              badge: students.length,
-            },
-            {
-              value: 'payment_requests',
-              label: 'Payments',
-              icon: CreditCard,
-              badge:
-                paymentRequests.filter((r) => r.status === 'pending').length > 0
-                  ? paymentRequests.filter((r) => r.status === 'pending').length
-                  : paymentRequests.length,
-              badgeClassName:
-                paymentRequests.filter((r) => r.status === 'pending').length > 0
-                  ? 'bg-amber-500 text-white animate-pulse'
-                  : undefined,
-            },
-            {
-              value: 'promo_links',
-              label: 'Promo Links',
-              icon: Gift,
-            },
-            {
-              value: 'activity_logs',
-              label: 'Activity',
-              icon: Activity,
-              badge: activityLogs.length,
-            },
-            {
-              value: 'tests',
-              label: 'Results',
-              icon: FileText,
-              badge: allTestResults.length,
-            },
-            {
-              value: 'progress',
-              label: 'Progress',
-              icon: BarChart2,
-            },
-          ]}
-          value={activeTab}
-          onChange={(tab) => setActiveTab(tab as any)}
-          theme="light"
-          size="md"
-          className="w-full shadow-sm"
-        />
-      </div>
+      {/* Layout with Persistent Left-Hand Sidebar and Workspace */}
+      <div className="flex flex-col lg:flex-row gap-6 items-start w-full min-w-0">
+        {/* Persistent Left-Hand Sidebar */}
+        <aside className="w-full lg:w-64 shrink-0 bg-white/90 backdrop-blur-xl border border-slate-200/90 rounded-3xl p-3 sm:p-4 shadow-sm space-y-1.5 sticky top-4 z-20">
+          <div className="px-3 py-2 text-[11px] font-black uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-2 flex items-center justify-between">
+            <span>Admin Navigation</span>
+            <span className="text-[10px] text-violet-600 bg-violet-50 px-2 py-0.5 rounded-full font-bold">RBAC</span>
+          </div>
 
-      {/* TAB CONTENT: PROMO & REFERRAL LINKS (1-YEAR FREE PRO) */}
-      {activeTab === 'promo_links' && (
-        <AdminPromoLinksManager currentUser={currentUser} />
-      )}
+          {/* Primary Navigation Modules */}
+          <button
+            onClick={() => setActiveTab('students')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'students'
+                ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Users className="w-4 h-4" />
+              <span>Users / Students</span>
+            </div>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+              activeTab === 'students' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+            }`}>
+              {students.length}
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('subscriptions')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'subscriptions'
+                ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <CreditCard className="w-4 h-4" />
+              <span>Subscriptions &amp; Quotas</span>
+            </div>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              activeTab === 'subscriptions' ? 'bg-white/20 text-white' : 'bg-violet-100 text-violet-700'
+            }`}>
+              3 Tiers
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('events')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'events'
+                ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Trophy className="w-4 h-4" />
+              <span>Events (Blitz &amp; Arena)</span>
+            </div>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              activeTab === 'events' ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-800'
+            }`}>
+              Live
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('programs')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'programs'
+                ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <GraduationCap className="w-4 h-4" />
+              <span>Programs &amp; Captains</span>
+            </div>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              activeTab === 'programs' ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
+            }`}>
+              CRM
+            </span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('support')}
+            className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'support'
+                ? 'bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-md'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Mail className="w-4 h-4" />
+              <span>Support &amp; Inquiries</span>
+            </div>
+            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+              activeTab === 'support' ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-700'
+            }`}>
+              Inbox
+            </span>
+          </button>
+
+          {/* Secondary Divider & Admin Tools */}
+          <div className="pt-2 mt-2 border-t border-slate-100 text-[10px] font-black uppercase tracking-wider text-slate-400 px-3 pb-1">
+            System Operations
+          </div>
+
+          <button
+            onClick={() => setActiveTab('payment_requests')}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'payment_requests'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Zap className="w-3.5 h-3.5" />
+              <span>Payment Proofs</span>
+            </div>
+            {paymentRequests.filter((r) => r.status === 'pending').length > 0 && (
+              <span className="text-[10px] font-black bg-amber-500 text-white px-1.5 py-0.2 rounded-full">
+                {paymentRequests.filter((r) => r.status === 'pending').length}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('promo_links')}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'promo_links'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Gift className="w-3.5 h-3.5" />
+              <span>Promo Links</span>
+            </div>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('activity_logs')}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'activity_logs'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <Activity className="w-3.5 h-3.5" />
+              <span>Activity Audit</span>
+            </div>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('tests')}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'tests'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <FileText className="w-3.5 h-3.5" />
+              <span>Test Results</span>
+            </div>
+            <span className="text-[10px] text-slate-400 font-mono">{allTestResults.length}</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('progress')}
+            className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              activeTab === 'progress'
+                ? 'bg-slate-900 text-white shadow-xs'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+            }`}
+          >
+            <div className="flex items-center gap-2.5">
+              <BarChart2 className="w-3.5 h-3.5" />
+              <span>Student Progress</span>
+            </div>
+          </button>
+        </aside>
+
+        {/* Right Main Content Pane */}
+        <div className="flex-1 min-w-0 w-full space-y-6">
+          {/* TAB CONTENT: SUBSCRIPTIONS & USAGE QUOTAS */}
+          {activeTab === 'subscriptions' && (
+            <AdminSubscriptionsTab
+              currentUserEmail={detectedEmail}
+              onRefreshData={() => {
+                fetchAllStudentsFromSupabase().then((refreshed) => setStudents(applyOverridesToStudents(refreshed)));
+              }}
+            />
+          )}
+
+          {/* TAB CONTENT: EVENTS (BLITZ LIVE DRILLS & ARENA GRAND MOCKS) */}
+          {activeTab === 'events' && (
+            <AdminEventsTab currentUserEmail={detectedEmail} />
+          )}
+
+          {/* TAB CONTENT: PROGRAMS (STUDY CIRCLES & CAMPUS CAPTAINS CRM) */}
+          {activeTab === 'programs' && (
+            <AdminProgramsTab currentUserEmail={detectedEmail} />
+          )}
+
+          {/* TAB CONTENT: SUPPORT & INQUIRIES ROUTING (support@boardly.cfd) */}
+          {activeTab === 'support' && (
+            <AdminSupportTab currentUserEmail={detectedEmail} />
+          )}
+
+          {/* TAB CONTENT: PROMO & REFERRAL LINKS (1-YEAR FREE PRO) */}
+          {activeTab === 'promo_links' && (
+            <AdminPromoLinksManager currentUser={currentUser} />
+          )}
 
       {/* TAB CONTENT 1: STUDENTS DIRECTORY */}
       {activeTab === 'students' && (
@@ -3118,6 +3294,8 @@ function normalizeStreamForSelect(stream?: string, grade?: string): string {
           )}
         </div>
       )}
+        </div>
+      </div>
 
       {/* REJECT PAYMENT REQUEST MODAL */}
       {rejectingRequest && (

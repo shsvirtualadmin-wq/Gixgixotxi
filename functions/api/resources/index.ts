@@ -14,9 +14,7 @@ function getSupabaseClient(env: Record<string, any>) {
 
 const ADMIN_EMAILS = [
   "shsvirtualadmin@gmail.com",
-  "dj.khadijajameel19@gmail.com",
-  "syedrayyanf1@gmail.com",
-  "shs.academy.virtual@gmail.com",
+  "support@boardly.cfd",
 ];
 
 function parseAssignedClasses(record: any): string[] {

@@ -1,0 +1,41 @@
+[
+  {
+    "id": "circle-01",
+    "name": "NUST NET Engineering Aspirants 2026",
+    "description": "Daily mathematics & physics problem solvers aiming for NET-1 and NET-2 top merit.",
+    "creatorEmail": "zain.khan.prep@gmail.com",
+    "creatorName": "Zain Khan",
+    "track": "NUST NET Engineering",
+    "memberCount": 8,
+    "maxMembers": 10,
+    "weeklyGoal": "150 MCQs / week",
+    "status": "active",
+    "createdAt": "2026-10-02T12:00:00.000Z"
+  },
+  {
+    "id": "circle-02",
+    "name": "FBISE 11 Pre-Med Biology Masters",
+    "description": "Collaborative group dissecting Cell Biology, Enzymes, and Bioenergetics past paper questions.",
+    "creatorEmail": "ayesha.malik.bio@gmail.com",
+    "creatorName": "Ayesha Malik",
+    "track": "FBISE 11 Pre-Medical",
+    "memberCount": 6,
+    "maxMembers": 10,
+    "weeklyGoal": "100 MCQs / week",
+    "status": "active",
+    "createdAt": "2026-10-04T15:30:00.000Z"
+  },
+  {
+    "id": "circle-03",
+    "name": "FAST-NU CS Speed Coders & Math Circle",
+    "description": "Advance maths shortcuts and analytical series solving for FAST entrance test.",
+    "creatorEmail": "hamza.fast@gmail.com",
+    "creatorName": "Hamza Tariq",
+    "track": "FAST-NU CS & Engineering",
+    "memberCount": 9,
+    "maxMembers": 10,
+    "weeklyGoal": "200 MCQs / week",
+    "status": "active",
+    "createdAt": "2026-10-06T09:15:00.000Z"
+  }
+]

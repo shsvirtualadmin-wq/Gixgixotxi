@@ -979,7 +979,7 @@ export const onRequestPost = async (context: PagesContext) => {
 
   const subject = normalizeSubjectKey(body.subject || "Physics");
   const requestedCount = Math.max(1, Number(questionCount) || 10);
-  const ADMIN_EMAILS = ["shsvirtualadmin@gmail.com", "dj.khadijajameel19@gmail.com", "syedrayyanf1@gmail.com"];
+  const ADMIN_EMAILS = ["shsvirtualadmin@gmail.com", "support@boardly.cfd"];
   const isAdmin = Boolean(userEmail && ADMIN_EMAILS.includes(userEmail.trim().toLowerCase()));
   const isMdcat = (body.pathType === 'mdcat') || (body.path === 'mdcat') || String(classNum) === 'MDCAT' || String(group) === 'MDCAT' || (body.subject && String(body.subject).toLowerCase().includes('mdcat'));
   const resetDateStr = getNextMonthResetDate();

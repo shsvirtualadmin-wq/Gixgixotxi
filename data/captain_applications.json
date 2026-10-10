@@ -1,0 +1,47 @@
+[
+  {
+    "id": "cap-app-01",
+    "studentName": "Bilal Ahmed",
+    "email": "bilal.ahmed.punjab@gmail.com",
+    "phone": "+92 301 2345678",
+    "institution": "Punjab College of Science, Lahore",
+    "grade": "12th (HSSC-II Pre-Medical)",
+    "city": "Lahore",
+    "statement": "I have been using Boardly for 4 months to prepare for MDCAT and helped 15 of my classmates set up study routines. As Campus Captain, I want to lead our college test series.",
+    "status": "pending",
+    "appliedAt": "2026-10-08T11:20:00.000Z",
+    "reviewedBy": null,
+    "reviewedAt": null,
+    "adminNote": ""
+  },
+  {
+    "id": "cap-app-02",
+    "studentName": "Fatima Noor",
+    "email": "fatima.noor.khi@gmail.com",
+    "phone": "+92 321 9876543",
+    "institution": "Army Public College, Saddar Karachi",
+    "grade": "11th (HSSC-I Pre-Engineering)",
+    "city": "Karachi",
+    "statement": "President of our college Science Club. I want to organize weekly Boardly Blitz speed drills for 11th and 12th graders before midterms.",
+    "status": "approved",
+    "appliedAt": "2026-10-05T14:10:00.000Z",
+    "reviewedBy": "shsvirtualadmin@gmail.com",
+    "reviewedAt": "2026-10-06T10:00:00.000Z",
+    "adminNote": "Strong student leadership background. Approved for Karachi region."
+  },
+  {
+    "id": "cap-app-03",
+    "studentName": "Saad Qureshi",
+    "email": "saad.q.isb@gmail.com",
+    "phone": "+92 333 4567890",
+    "institution": "Islamabad Model College for Boys, F-8/4",
+    "grade": "12th (HSSC-II Computer Science)",
+    "city": "Islamabad",
+    "statement": "Keen on spreading computer science and NET test readiness across federal colleges in Islamabad.",
+    "status": "pending",
+    "appliedAt": "2026-10-09T09:45:00.000Z",
+    "reviewedBy": null,
+    "reviewedAt": null,
+    "adminNote": ""
+  }
+]

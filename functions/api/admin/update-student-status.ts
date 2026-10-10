@@ -14,8 +14,7 @@ function getSupabaseAdminClient(env: Record<string, string | undefined>) {
 
 const ADMIN_EMAILS = [
   "shsvirtualadmin@gmail.com",
-  "dj.khadijajameel19@gmail.com",
-  "syedrayyanf1@gmail.com",
+  "support@boardly.cfd",
 ];
 
 function isAdminEmail(email?: string | null): boolean {

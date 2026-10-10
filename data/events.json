@@ -1,0 +1,34 @@
+[
+  {
+    "id": "event-blitz-01",
+    "type": "blitz",
+    "title": "Boardly Blitz: Fast-Paced Physics Mechanics Drill",
+    "description": "High-intensity 15-minute live speed drill covering Kinematics, Newton's Laws, and Circular Motion.",
+    "tierGating": "all",
+    "subject": "Physics",
+    "targetClass": "FBISE 11 & Entrance",
+    "questionCount": 20,
+    "durationMinutes": 15,
+    "scheduledAt": "2026-10-18T16:00:00.000Z",
+    "status": "scheduled",
+    "registeredCount": 48,
+    "createdBy": "shsvirtualadmin@gmail.com",
+    "createdAt": "2026-10-10T10:00:00.000Z"
+  },
+  {
+    "id": "event-arena-01",
+    "type": "arena",
+    "title": "Boardly Arena: National Grand Mock 2026 (MDCAT & Engineering)",
+    "description": "Full-scale statewide grand mock simulation with negative marking, percentile rankings, and AI breakdown.",
+    "tierGating": "pro_and_above",
+    "subject": "Full Entrance Mock",
+    "targetClass": "MDCAT / ECAT / NET",
+    "questionCount": 100,
+    "durationMinutes": 120,
+    "scheduledAt": "2026-10-25T14:00:00.000Z",
+    "status": "published",
+    "registeredCount": 132,
+    "createdBy": "shsvirtualadmin@gmail.com",
+    "createdAt": "2026-10-10T11:00:00.000Z"
+  }
+]

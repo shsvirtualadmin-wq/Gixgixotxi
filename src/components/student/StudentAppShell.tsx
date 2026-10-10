@@ -357,12 +357,20 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       )}
 
       {/* Floating Glassmorphism Bottom Navigation Bubble */}
+      {/* Floating Glassmorphism Bottom Navigation Detached Bubble */}
       {!activeTest && !completedResult && (
         <nav
-          className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-1.75rem)] max-w-md pointer-events-none transition-all duration-300"
-          aria-label="Student Navigation"
+          className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] max-w-md pointer-events-none transition-all duration-300"
+          aria-label="Student Floating Navigation"
         >
-          <div className="pointer-events-auto bg-white/75 backdrop-blur-2xl border border-white/60 shadow-[0_16px_40px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.06)] ring-1 ring-slate-900/5 rounded-[28px] sm:rounded-[32px] px-2.5 py-2 grid grid-cols-5 items-center gap-1">
+          <div
+            style={{
+              backgroundColor: 'rgba(255, 255, 255, 0.82)',
+              backdropFilter: 'blur(20px)',
+              WebkitBackdropFilter: 'blur(20px)',
+            }}
+            className="pointer-events-auto border border-white/70 shadow-[0_20px_45px_rgba(15,23,42,0.12),0_4px_16px_rgba(15,23,42,0.06)] ring-1 ring-slate-900/5 rounded-full sm:rounded-full px-3 py-2 grid grid-cols-5 items-center gap-1.5 transition-transform"
+          >
             {/* Overview Tab */}
             <button
               type="button"

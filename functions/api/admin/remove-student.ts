@@ -25,15 +25,9 @@ function isAdminEmail(email?: string | null): boolean {
   const normalized = email.trim().toLowerCase();
   const ADMIN_EMAILS = [
     "shsvirtualadmin@gmail.com",
-    "dj.khadijajameel19@gmail.com",
-    "syedrayyanf1@gmail.com",
+    "support@boardly.cfd",
   ];
-  return (
-    ADMIN_EMAILS.includes(normalized) ||
-    normalized.includes("admin") ||
-    normalized.endsWith("@boardly.cfd") ||
-    normalized.endsWith("@boardly.com")
-  );
+  return ADMIN_EMAILS.includes(normalized);
 }
 
 const handleRemoveStudent = async (context: PagesContext) => {

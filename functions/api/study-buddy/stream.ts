@@ -206,7 +206,7 @@ Tailor all answers, formulas, practice tips, and explanations to match the stude
 
   const todayStr = new Date().toISOString().split('T')[0]; // Format: YYYY-MM-DD
   const MAX_DAILY_LIMIT = 5;
-  const ADMIN_EMAILS = ["shsvirtualadmin@gmail.com", "dj.khadijajameel19@gmail.com", "syedrayyanf1@gmail.com"];
+  const ADMIN_EMAILS = ["shsvirtualadmin@gmail.com", "support@boardly.cfd"];
   const isAdmin = Boolean(userEmail && ADMIN_EMAILS.includes(userEmail.trim().toLowerCase()));
 
   let currentDailyCount = 0;

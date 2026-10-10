@@ -84,5 +84,24 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow write: if isAdmin();
     }
+
+    // Platform-wide Events (Blitz & Arena)
+    match /events/{eventId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Community Study Circles
+    match /studyCircles/{circleId} {
+      allow read: if isAuthenticated() || isAdmin();
+      allow write: if isAuthenticated() || isAdmin();
+    }
+
+    // Campus Captains CRM Applications
+    match /captainApplications/{appId} {
+      allow read: if isAdmin();
+      allow create: if true;
+      allow update, delete: if isAdmin();
+    }
   }
 }

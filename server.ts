@@ -11114,6 +11114,599 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   });
 
   // =========================================================================
+  // ADMIN DASHBOARD MODULES (SUBSCRIPTIONS, QUOTAS, EVENTS, PROGRAMS, INQUIRIES)
+  // =========================================================================
+
+  function parseJwtPayload(token: string): any {
+    try {
+      const parts = token.split('.');
+      if (parts.length < 2) return null;
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const json = Buffer.from(base64, 'base64').toString('utf8');
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
+  }
+
+  const checkIsAdminStrict = async (req: express.Request): Promise<{ isAdmin: boolean; email: string }> => {
+    let email = '';
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      const token = authHeader.substring(7).trim();
+      const jwt = parseJwtPayload(token);
+      if (jwt && jwt.email) {
+        email = String(jwt.email).trim().toLowerCase();
+      }
+    }
+    if (!email) {
+      const headerEmail = req.headers['x-admin-email'];
+      if (headerEmail && typeof headerEmail === 'string') {
+        email = headerEmail.trim().toLowerCase();
+      } else if (req.query?.adminEmail) {
+        email = String(req.query.adminEmail).trim().toLowerCase();
+      } else if (req.body?.adminEmail) {
+        email = String(req.body.adminEmail).trim().toLowerCase();
+      }
+    }
+    const isAuthorized = isAdminEmail(email);
+    return { isAdmin: isAuthorized, email };
+  };
+
+  // 1. Module 1: Update Student Active Subscription Tier & Duration
+  // Platform's three exact plans: Free (Starter), Pro (Most Popular), Premium (Top Rank)
+  // Durations: Monthly, 3 Months, 8 Months, 12 Months
+  app.post("/api/admin/subscription/update-tier", async (req: express.Request, res: express.Response) => {
+    try {
+      const auth = await checkIsAdminStrict(req);
+      if (!auth.isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Restricted to authorized administrators." });
+      }
+
+      const {
+        studentId,
+        studentEmail,
+        tier = 'free', // 'free' | 'pro' | 'premium'
+        duration = 'monthly', // 'monthly' | '3_months' | '8_months' | '12_months'
+        notes,
+      } = req.body || {};
+
+      if (!studentId && !studentEmail) {
+        return res.status(400).json({ success: false, error: "studentId or studentEmail is required." });
+      }
+
+      // Calculate expiration based on duration
+      let durationDays = 30;
+      let durationLabel = 'Monthly';
+      if (duration === '3_months') { durationDays = 90; durationLabel = '3 Months'; }
+      else if (duration === '8_months') { durationDays = 240; durationLabel = '8 Months'; }
+      else if (duration === '12_months') { durationDays = 365; durationLabel = '12 Months'; }
+
+      const accessExpires = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+
+      let packageName = 'Free (Starter)';
+      let isPro = false;
+      let paymentStatus = 'Free Plan';
+      if (tier === 'pro') {
+        packageName = `Pro (Most Popular) · ${durationLabel}`;
+        isPro = true;
+        paymentStatus = 'Verified & Paid';
+      } else if (tier === 'premium') {
+        packageName = `Premium (Top Rank) · ${durationLabel}`;
+        isPro = true;
+        paymentStatus = 'Verified & Paid';
+      }
+
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req);
+      let updatedProfile: any = null;
+
+      if (supabaseAdmin) {
+        const query = supabaseAdmin.from('students');
+        const search = studentId && !studentId.includes('@') ? query.eq('id', studentId) : query.eq('email', studentEmail);
+        const updatePayload: Record<string, any> = {
+          plan_tier: tier,
+          plan_duration: duration,
+          package_name: packageName,
+          is_pro: isPro,
+          payment_status: paymentStatus,
+          access_expires: accessExpires,
+          updated_at: new Date().toISOString(),
+        };
+        const { data, error } = await search.update(updatePayload).select().maybeSingle();
+        if (!error && data) {
+          updatedProfile = data;
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Subscription successfully updated to ${packageName} (${durationLabel}).`,
+        tier,
+        duration,
+        packageName,
+        accessExpires,
+        profile: updatedProfile,
+      });
+    } catch (err: any) {
+      console.error("[update-tier error]:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Failed to update subscription tier." });
+    }
+  });
+
+  // 2. Module 2: Usage Quotas & Limits Dashboard
+  // Tracks daily practice drills (3/day Free, 25/day Pro, Unlimited Premium)
+  // Tracks Boardy Chat quotas (150/month Free, 1500/month Pro, Unlimited Premium)
+  app.get("/api/admin/usage-quotas", async (req: express.Request, res: express.Response) => {
+    try {
+      const auth = await checkIsAdminStrict(req);
+      if (!auth.isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Restricted to authorized administrators." });
+      }
+
+      // Aggregate quota metrics across students
+      let students: any[] = [];
+      const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req);
+      if (supabaseAdmin) {
+        const { data } = await supabaseAdmin.from('students').select('*').limit(300);
+        if (data) students = data;
+      }
+
+      const quotasBreakdown = students.map((s) => {
+        const tier = (s.plan_tier || (s.is_pro ? 'pro' : 'free')).toLowerCase();
+        const dailyDrillsLimit = tier === 'premium' ? 999999 : tier === 'pro' ? 25 : 3;
+        const monthlyBoardyLimit = tier === 'premium' ? 999999 : tier === 'pro' ? 1500 : 150;
+
+        const drillsUsedToday = Number(s.tests_used_today || s.tests_used_this_month || 0) % 25;
+        const chatsUsedThisMonth = Number(s.boardy_chats_used_this_month || s.questions_answered || 0);
+
+        const isDrillNearLimit = drillsUsedToday >= dailyDrillsLimit * 0.8 && tier !== 'premium';
+        const isChatNearLimit = chatsUsedThisMonth >= monthlyBoardyLimit * 0.8 && tier !== 'premium';
+
+        return {
+          id: s.id,
+          name: s.name || s.email?.split('@')[0] || 'Student',
+          email: s.email,
+          tier: tier === 'premium' ? 'Premium (Top Rank)' : tier === 'pro' ? 'Pro (Most Popular)' : 'Free (Starter)',
+          tierKey: tier,
+          duration: s.plan_duration || 'monthly',
+          dailyDrills: {
+            used: drillsUsedToday,
+            limit: dailyDrillsLimit === 999999 ? 'Unlimited' : dailyDrillsLimit,
+            percent: dailyDrillsLimit === 999999 ? 0 : Math.min(100, Math.round((drillsUsedToday / dailyDrillsLimit) * 100)),
+            nearLimit: isDrillNearLimit,
+          },
+          boardyChats: {
+            used: chatsUsedThisMonth,
+            limit: monthlyBoardyLimit === 999999 ? 'Unlimited' : monthlyBoardyLimit,
+            percent: monthlyBoardyLimit === 999999 ? 0 : Math.min(100, Math.round((chatsUsedThisMonth / monthlyBoardyLimit) * 100)),
+            nearLimit: isChatNearLimit,
+          },
+          status: s.status || 'active',
+          lastActive: s.last_active_at || s.updated_at || s.created_at,
+        };
+      });
+
+      const freeCount = quotasBreakdown.filter((q) => q.tierKey === 'free').length;
+      const proCount = quotasBreakdown.filter((q) => q.tierKey === 'pro').length;
+      const premiumCount = quotasBreakdown.filter((q) => q.tierKey === 'premium').length;
+
+      const nearLimitDrillsCount = quotasBreakdown.filter((q) => q.dailyDrills.nearLimit).length;
+      const nearLimitChatsCount = quotasBreakdown.filter((q) => q.boardyChats.nearLimit).length;
+
+      return res.status(200).json({
+        success: true,
+        summary: {
+          totalTracked: quotasBreakdown.length,
+          freeCount,
+          proCount,
+          premiumCount,
+          nearLimitDrillsCount,
+          nearLimitChatsCount,
+          limitsDefinition: {
+            free: { drillsPerDay: 3, boardyChatsPerMonth: 150 },
+            pro: { drillsPerDay: 25, boardyChatsPerMonth: 1500 },
+            premium: { drillsPerDay: 'Unlimited', boardyChatsPerMonth: 'Unlimited' },
+          },
+        },
+        users: quotasBreakdown,
+      });
+    } catch (err: any) {
+      console.error("[usage-quotas error]:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Failed to load usage quotas." });
+    }
+  });
+
+  // 3. Module 3: Events Management (Boardly Blitz & Boardly Arena)
+  app.get("/api/admin/events", async (req: express.Request, res: express.Response) => {
+    try {
+      const auth = await checkIsAdminStrict(req);
+      if (!auth.isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Restricted to authorized administrators." });
+      }
+
+      const eventsPath = path.join(process.cwd(), 'data', 'events.json');
+      let events: any[] = [];
+      if (fs.existsSync(eventsPath)) {
+        try {
+          events = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
+        } catch {}
+      }
+      return res.status(200).json({ success: true, events });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to fetch events." });
+    }
+  });
+
+  app.post("/api/admin/events/create", async (req: express.Request, res: express.Response) => {
+    try {
+      const auth = await checkIsAdminStrict(req);
+      if (!auth.isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Restricted to authorized administrators." });
+      }
+
+      const {
+        type = 'blitz', // 'blitz' | 'arena'
+        title,
+        description,
+        tierGating = 'all', // 'all' | 'pro_and_above' | 'premium_only'
+        subject = 'General',
+        targetClass = 'All Classes',
+        questionCount = 20,
+        durationMinutes = 15,
+        scheduledAt,
+      } = req.body || {};
+
+      if (!title) {
+        return res.status(400).json({ success: false, error: "Event title is required." });
+      }
+
+      const eventsPath = path.join(process.cwd(), 'data', 'events.json');
+      let events: any[] = [];
+      if (fs.existsSync(eventsPath)) {
+        try {
+          events = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
+        } catch {}
+      }
+
+      const newEvent = {
+        id: `event-${type}-${Date.now()}`,
+        type,
+        title: title.trim(),
+        description: description?.trim() || '',
+        tierGating,
+        subject,
+        targetClass,
+        questionCount: Number(questionCount) || 20,
+        durationMinutes: Number(durationMinutes) || 15,
+        scheduledAt: scheduledAt || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        status: 'published',
+        registeredCount: 0,
+        createdBy: auth.email || 'shsvirtualadmin@gmail.com',
+        createdAt: new Date().toISOString(),
+      };
+
+      events.unshift(newEvent);
+      fs.writeFileSync(eventsPath, JSON.stringify(events, null, 2), 'utf8');
+
+      return res.status(201).json({ success: true, event: newEvent, message: `${type === 'blitz' ? 'Boardly Blitz Live Drill' : 'Boardly Arena Grand Mock'} created and published.` });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to create event." });
+    }
+  });
+
+  app.post("/api/admin/events/update", async (req: express.Request, res: express.Response) => {
+    try {
+      const auth = await checkIsAdminStrict(req);
+      if (!auth.isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Restricted to authorized administrators." });
+      }
+
+      const { id, updates } = req.body || {};
+      if (!id || !updates) {
+        return res.status(400).json({ success: false, error: "Event ID and updates required." });
+      }
+
+      const eventsPath = path.join(process.cwd(), 'data', 'events.json');
+      let events: any[] = [];
+      if (fs.existsSync(eventsPath)) {
+        try {
+          events = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
+        } catch {}
+      }
+
+      let updatedEvent: any = null;
+      events = events.map((ev) => {
+        if (ev.id === id) {
+          updatedEvent = { ...ev, ...updates, updatedAt: new Date().toISOString() };
+          return updatedEvent;
+        }
+        return ev;
+      });
+
+      fs.writeFileSync(eventsPath, JSON.stringify(events, null, 2), 'utf8');
+      return res.status(200).json({ success: true, event: updatedEvent });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to update event." });
+    }
+  });
+
+  app.delete("/api/admin/events/:id", async (req: express.Request, res: express.Response) => {
+    try {
+      const auth = await checkIsAdminStrict(req);
+      if (!auth.isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Restricted to authorized administrators." });
+      }
+
+      const { id } = req.params;
+      const eventsPath = path.join(process.cwd(), 'data', 'events.json');
+      let events: any[] = [];
+      if (fs.existsSync(eventsPath)) {
+        try {
+          events = JSON.parse(fs.readFileSync(eventsPath, 'utf8'));
+        } catch {}
+      }
+
+      events = events.filter((ev) => ev.id !== id);
+      fs.writeFileSync(eventsPath, JSON.stringify(events, null, 2), 'utf8');
+      return res.status(200).json({ success: true, message: "Event removed successfully." });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to delete event." });
+    }
+  });
+
+  // 4. Module 4: Programs & Community Initiatives (Study Circles & Campus Captains CRM)
+  app.get("/api/admin/programs", async (req: express.Request, res: express.Response) => {
+    try {
+      const auth = await checkIsAdminStrict(req);
+      if (!auth.isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Restricted to authorized administrators." });
+      }
+
+      const circlesPath = path.join(process.cwd(), 'data', 'study_circles.json');
+      const captainsPath = path.join(process.cwd(), 'data', 'captain_applications.json');
+
+      let studyCircles: any[] = [];
+      let captainApplications: any[] = [];
+
+      if (fs.existsSync(circlesPath)) {
+        try { studyCircles = JSON.parse(fs.readFileSync(circlesPath, 'utf8')); } catch {}
+      }
+      if (fs.existsSync(captainsPath)) {
+        try { captainApplications = JSON.parse(fs.readFileSync(captainsPath, 'utf8')); } catch {}
+      }
+
+      return res.status(200).json({
+        success: true,
+        studyCircles,
+        captainApplications,
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to fetch programs data." });
+    }
+  });
+
+  app.post("/api/admin/study-circles/create", async (req: express.Request, res: express.Response) => {
+    try {
+      const auth = await checkIsAdminStrict(req);
+      if (!auth.isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Restricted to authorized administrators." });
+      }
+
+      const { name, description, track = 'FBISE 11 Pre-Engineering', maxMembers = 10, weeklyGoal = '100 MCQs / week' } = req.body || {};
+      if (!name) {
+        return res.status(400).json({ success: false, error: "Study Circle name is required." });
+      }
+
+      const circlesPath = path.join(process.cwd(), 'data', 'study_circles.json');
+      let circles: any[] = [];
+      if (fs.existsSync(circlesPath)) {
+        try { circles = JSON.parse(fs.readFileSync(circlesPath, 'utf8')); } catch {}
+      }
+
+      const newCircle = {
+        id: `circle-${Date.now()}`,
+        name: name.trim(),
+        description: description?.trim() || 'Collaborative study hub for board exam excellence.',
+        creatorEmail: auth.email || 'shsvirtualadmin@gmail.com',
+        creatorName: 'Boardly Academic Team',
+        track,
+        memberCount: 1,
+        maxMembers: Number(maxMembers) || 10,
+        weeklyGoal,
+        status: 'active',
+        createdAt: new Date().toISOString(),
+      };
+
+      circles.unshift(newCircle);
+      fs.writeFileSync(circlesPath, JSON.stringify(circles, null, 2), 'utf8');
+      return res.status(201).json({ success: true, circle: newCircle });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to create study circle." });
+    }
+  });
+
+  app.post("/api/admin/study-circles/moderate", async (req: express.Request, res: express.Response) => {
+    try {
+      const auth = await checkIsAdminStrict(req);
+      if (!auth.isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Restricted to authorized administrators." });
+      }
+
+      const { circleId, status = 'active' } = req.body || {};
+      const circlesPath = path.join(process.cwd(), 'data', 'study_circles.json');
+      let circles: any[] = [];
+      if (fs.existsSync(circlesPath)) {
+        try { circles = JSON.parse(fs.readFileSync(circlesPath, 'utf8')); } catch {}
+      }
+
+      let modified: any = null;
+      circles = circles.map((c) => {
+        if (c.id === circleId) {
+          modified = { ...c, status, moderatedBy: auth.email, moderatedAt: new Date().toISOString() };
+          return modified;
+        }
+        return c;
+      });
+
+      fs.writeFileSync(circlesPath, JSON.stringify(circles, null, 2), 'utf8');
+      return res.status(200).json({ success: true, circle: modified });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to moderate circle." });
+    }
+  });
+
+  app.post("/api/admin/captain-applications/review", async (req: express.Request, res: express.Response) => {
+    try {
+      const auth = await checkIsAdminStrict(req);
+      if (!auth.isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Restricted to authorized administrators." });
+      }
+
+      const { applicationId, status = 'approved', adminNote = '' } = req.body || {};
+      if (!applicationId) {
+        return res.status(400).json({ success: false, error: "applicationId is required." });
+      }
+
+      const captainsPath = path.join(process.cwd(), 'data', 'captain_applications.json');
+      let applications: any[] = [];
+      if (fs.existsSync(captainsPath)) {
+        try { applications = JSON.parse(fs.readFileSync(captainsPath, 'utf8')); } catch {}
+      }
+
+      let updatedApp: any = null;
+      applications = applications.map((a) => {
+        if (a.id === applicationId) {
+          updatedApp = {
+            ...a,
+            status,
+            adminNote: adminNote || a.adminNote,
+            reviewedBy: auth.email || 'shsvirtualadmin@gmail.com',
+            reviewedAt: new Date().toISOString(),
+          };
+          return updatedApp;
+        }
+        return a;
+      });
+
+      fs.writeFileSync(captainsPath, JSON.stringify(applications, null, 2), 'utf8');
+      return res.status(200).json({ success: true, application: updatedApp });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to review application." });
+    }
+  });
+
+  // Public Campus Captains Application endpoint (when student clicks "Apply Now")
+  app.post("/api/programs/captains/apply", async (req: express.Request, res: express.Response) => {
+    try {
+      const {
+        studentName,
+        email,
+        phone,
+        institution,
+        grade,
+        city,
+        statement,
+      } = req.body || {};
+
+      if (!studentName || !email) {
+        return res.status(400).json({ success: false, error: "Name and email are required." });
+      }
+
+      const captainsPath = path.join(process.cwd(), 'data', 'captain_applications.json');
+      let applications: any[] = [];
+      if (fs.existsSync(captainsPath)) {
+        try { applications = JSON.parse(fs.readFileSync(captainsPath, 'utf8')); } catch {}
+      }
+
+      const newApp = {
+        id: `cap-app-${Date.now()}`,
+        studentName: String(studentName).trim(),
+        email: String(email).trim().toLowerCase(),
+        phone: String(phone || '').trim(),
+        institution: String(institution || 'Not specified').trim(),
+        grade: String(grade || 'Intermediate').trim(),
+        city: String(city || '').trim(),
+        statement: String(statement || '').trim(),
+        status: 'pending',
+        appliedAt: new Date().toISOString(),
+        reviewedBy: null,
+        reviewedAt: null,
+        adminNote: '',
+      };
+
+      applications.unshift(newApp);
+      fs.writeFileSync(captainsPath, JSON.stringify(applications, null, 2), 'utf8');
+
+      // Also forward notification to support@boardly.cfd
+      sendEmail({
+        to: "support@boardly.cfd",
+        subject: `[Campus Captains] New application from ${newApp.studentName} (${newApp.city})`,
+        html: `<p>New Campus Captain applicant: <strong>${newApp.studentName}</strong> (${newApp.email}) from ${newApp.institution}, ${newApp.city}.</p><p>${newApp.statement}</p>`,
+      }).catch(console.warn);
+
+      return res.status(201).json({ success: true, message: "Application submitted successfully! Our coordinators will review your application.", applicationId: newApp.id });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to submit application." });
+    }
+  });
+
+  // 5. Module 5: Student Inquiries & Support Tickets View
+  app.get("/api/admin/inquiries", async (req: express.Request, res: express.Response) => {
+    try {
+      const auth = await checkIsAdminStrict(req);
+      if (!auth.isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Restricted to authorized administrators." });
+      }
+
+      const inqPath = path.join(process.cwd(), 'data', 'contact_inquiries.json');
+      let inquiries: any[] = [];
+      if (fs.existsSync(inqPath)) {
+        try { inquiries = JSON.parse(fs.readFileSync(inqPath, 'utf8')); } catch {}
+      }
+
+      return res.status(200).json({ success: true, inquiries });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to fetch inquiries." });
+    }
+  });
+
+  app.post("/api/admin/inquiries/reply", async (req: express.Request, res: express.Response) => {
+    try {
+      const auth = await checkIsAdminStrict(req);
+      if (!auth.isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Restricted to authorized administrators." });
+      }
+
+      const { inquiryId, status = 'resolved', replyNote = '' } = req.body || {};
+      const inqPath = path.join(process.cwd(), 'data', 'contact_inquiries.json');
+      let inquiries: any[] = [];
+      if (fs.existsSync(inqPath)) {
+        try { inquiries = JSON.parse(fs.readFileSync(inqPath, 'utf8')); } catch {}
+      }
+
+      let updatedInquiry: any = null;
+      inquiries = inquiries.map((inq) => {
+        if (inq.id === inquiryId) {
+          updatedInquiry = {
+            ...inq,
+            status,
+            replyNote,
+            resolvedBy: auth.email,
+            resolvedAt: new Date().toISOString(),
+          };
+          return updatedInquiry;
+        }
+        return inq;
+      });
+
+      fs.writeFileSync(inqPath, JSON.stringify(inquiries, null, 2), 'utf8');
+      return res.status(200).json({ success: true, inquiry: updatedInquiry });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to update inquiry." });
+    }
+  });
+
+  // =========================================================================
   // PERMANENT USER DELETION — NO EXCEPTIONS, NO DATA RETAINED
   // =========================================================================
   const handlePermanentUserDeletion = async (req: express.Request, res: express.Response) => {

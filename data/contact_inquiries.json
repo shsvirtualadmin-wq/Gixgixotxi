@@ -1,0 +1,13 @@
+[
+  {
+    "id": "inq-sample-01",
+    "name": "Mariam Tariq",
+    "email": "mariam.tariq@gmail.com",
+    "phone": "+92 345 1122334",
+    "category": "Academic / Syllabus Question",
+    "message": "Hello, I noticed the Physics section for Class 11 includes Rotational Motion. Is this aligned with the 2026 FBISE SLO blueprint?",
+    "createdAt": "2026-10-09T18:30:00.000Z",
+    "status": "resolved",
+    "replyNote": "Confirmed: All questions are verified against the 2026 SLO syllabus blueprint."
+  }
+]
