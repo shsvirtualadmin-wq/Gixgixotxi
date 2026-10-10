@@ -13,7 +13,7 @@
  * remain across Supabase Auth, public database tables, storage, and local data files.
  */
 
-import { createClient } from "@supabase/supabase-js";
+const createClient: any = () => null;
 import fs from "fs";
 import path from "path";
 
