@@ -2545,32 +2545,66 @@ async function startServer() {
   // Boardy AI Study Partner chat endpoint
   app.post(["/api/study-buddy/chat", "/api/boardy/chat"], async (req, res) => {
     try {
-      const { message, userQuestion, history } = req.body || {};
-      const promptText = message || userQuestion || "";
+      const { message, userQuestion, history = [] } = req.body || {};
+      const promptText = String(message || userQuestion || "").trim();
 
-      if (!promptText.trim()) {
-        return res.status(400).json({ error: "Message is required" });
+      if (!promptText) {
+        return res.status(400).json({ success: false, error: "Message is required" });
       }
 
-      // Check if Gemini API is available
-      const geminiApiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || "";
-      if (geminiApiKey) {
+      const ai = getGeminiClient();
+      if (ai) {
         try {
-          const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+          const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+
+          if (Array.isArray(history)) {
+            for (const item of history.slice(-6)) {
+              const role = item.role === 'user' ? 'user' : 'model';
+              const text = String(item.content || item.text || item.message || '').trim();
+              if (text) {
+                contents.push({ role, parts: [{ text }] });
+              }
+            }
+          }
+
+          contents.push({ role: 'user', parts: [{ text: promptText }] });
+
+          while (contents.length > 0 && contents[0].role !== 'user') {
+            contents.shift();
+          }
+
           const response = await ai.models.generateContent({
-            model: "gemini-2.5-flash",
-            contents: promptText,
+            model: "gemini-3.8-flash",
+            contents,
             config: {
               systemInstruction: `You are Boardy, an encouraging, step-by-step 24/7 AI study partner for Pakistani high school (FSC/Matric) and university entrance exam students (FAST, NUST NET, GIKI, PIEAS, ECAT, IBA, LUMS, MDCAT).
 Format mathematical formulas cleanly using standard LaTeX notation ($...$ or $$...$$).
 Break explanations into numbered steps with concise exam tips and trick shortcuts.
 Keep tone warm, confident, and encouraging without robotic fluff.`,
+              temperature: 0.3,
             },
           });
 
           const replyText = response.text || "";
           if (replyText) {
-            return res.json({ reply: replyText });
+            inMemoryStudyBuddyLogs.unshift({
+              id: `sb-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+              student_id: req.body?.userId || "chat-user",
+              student_name: req.body?.studentName || "Student",
+              student_email: req.body?.userEmail || "",
+              role: 'model',
+              message_text: replyText,
+              created_at: new Date().toISOString(),
+            });
+            if (inMemoryStudyBuddyLogs.length > 500) inMemoryStudyBuddyLogs.pop();
+            savePersistentStudyBuddyLogs();
+
+            return res.json({
+              success: true,
+              reply: replyText,
+              explanation: replyText,
+              answer: replyText,
+            });
           }
         } catch (aiErr) {
           console.warn("[Boardy Gemini error fallback]:", aiErr);
@@ -2579,10 +2613,11 @@ Keep tone warm, confident, and encouraging without robotic fluff.`,
 
       // Contextual fallback response
       return res.json({
+        success: true,
         reply: `### Step-by-Step Explanation by Boardy 🎓\n\n1. **Core Concept**: Break the given problem into initial knowns and unknowns.\n2. **Standard Formula**: Apply standard FSC/Entrance Test definitions carefully.\n3. **Quick Test Tip**: Avoid long multi-page expansions when practicing entry tests—test options for edge values ($x=0$ or $x=1$).\n\nLet me know if you would like me to work through a specific problem or verify your answer!`,
       });
     } catch (err: any) {
-      return res.status(500).json({ error: err?.message || "Internal server error" });
+      return res.status(500).json({ success: false, error: err?.message || "Internal server error" });
     }
   });
 
@@ -5702,7 +5737,149 @@ ${scopeInstruction}${excludeInstruction}`;
   });
 
 
-  // API Endpoint: Get Site Settings (Public)
+
+  // SSE Streaming endpoint for Study Buddy Modal
+  app.post("/api/study-buddy/stream", async (req: express.Request, res: express.Response) => {
+    try {
+      const { messages = [], mcqContext, sessionContext, trackInfo } = req.body || {};
+
+      res.setHeader("Content-Type", "text/event-stream");
+      res.setHeader("Cache-Control", "no-cache");
+      res.setHeader("Connection", "keep-alive");
+      res.setHeader("X-Accel-Buffering", "no");
+      if (typeof (res as any).flushHeaders === "function") {
+        (res as any).flushHeaders();
+      }
+
+      const send = (data: string) => {
+        res.write(data);
+      };
+
+      const ai = getGeminiClient();
+      if (!ai) {
+        send(`data: ${JSON.stringify({ error: "Gemini API key is not configured on the server." })}\n\n`);
+        send(`data: [DONE]\n\n`);
+        return res.end();
+      }
+
+      const activeTrack = trackInfo?.trackName || sessionContext?.grade || "FSC & Entry Test";
+      const activeSubject = sessionContext?.subject || "Core Concepts";
+      const activeTopic = sessionContext?.topic || "";
+
+      const dynamicSystemInstruction = `You are 'Study Buddy 🎓', an AI academic tutor and onboarding guide for Boardly (Board Exams, MDCAT, TCAT).
+ACTIVE STUDENT SESSION CONTEXT:
+- Student Track/Exam: ${activeTrack}
+- Current Subject Focus: ${activeSubject}${activeTopic ? ` (Topic: ${activeTopic})` : ''}
+
+STRICT CONCISE FORMAT RULES:
+- Directly answer the question for ${activeTrack} ${activeSubject}.
+- Format every point or topic using a real Markdown heading starting with '## ' (e.g. ## Section Title) on its own separate line, followed by a blank line, and 1-2 short sentences of body text below it.
+- Keep tone encouraging, clear, and mathematically precise with LaTeX formatting ($...$ and $$...$$).
+- Begin immediately with the answer.`;
+
+      const rawContents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+
+      if (Array.isArray(messages) && messages.length > 0) {
+        for (const msg of messages) {
+          if (msg && msg.text && typeof msg.text === "string" && msg.text.trim().length > 0) {
+            const role = msg.role === "model" ? "model" : "user";
+            rawContents.push({
+              role,
+              parts: [{ text: msg.text.trim() }],
+            });
+          }
+        }
+      }
+
+      while (rawContents.length > 0 && rawContents[0].role !== "user") {
+        rawContents.shift();
+      }
+
+      const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+      for (const item of rawContents) {
+        if (contents.length > 0 && contents[contents.length - 1].role === item.role) {
+          contents[contents.length - 1].parts[0].text += `\n${item.parts[0].text}`;
+        } else {
+          contents.push(item);
+        }
+      }
+
+      if (contents.length === 0) {
+        contents.push({
+          role: "user",
+          parts: [{ text: "Hello Study Buddy! Please introduce yourself and explain how you can help me with my studies." }],
+        });
+      }
+
+      if (mcqContext && mcqContext.question) {
+        const optionLetters = ["A", "B", "C", "D"];
+        const correctChoiceStr = mcqContext.options?.[mcqContext.correctOption] || "Correct Option";
+        const userChoiceStr =
+          mcqContext.selectedOption !== null && mcqContext.selectedOption !== undefined && mcqContext.options?.[mcqContext.selectedOption]
+            ? mcqContext.options[mcqContext.selectedOption]
+            : "Skipped";
+
+        const contextHeader = `[MCQ Explanation Context]
+Subject: ${mcqContext.subject || activeSubject}
+Topic: ${mcqContext.topic || activeTopic || "Core Concept"}
+Question: ${mcqContext.question}
+Options: ${mcqContext.options?.map((opt: string, i: number) => `${optionLetters[i]}) ${opt}`).join(", ")}
+Correct Answer: Option ${optionLetters[mcqContext.correctOption || 0]} (${correctChoiceStr})
+Student Selected: ${userChoiceStr}
+
+Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption || 0]} is correct, why other choices or common mistakes are wrong, and provide a helpful study tip!`;
+
+        const lastMsgText = contents[contents.length - 1].parts[0].text;
+        if (!lastMsgText.includes(mcqContext.question)) {
+          contents[contents.length - 1].parts[0].text = `${contextHeader}\n\n${lastMsgText}`;
+        }
+      }
+
+      const responseStream = await ai.models.generateContentStream({
+        model: "gemini-3.8-flash",
+        contents,
+        config: {
+          systemInstruction: dynamicSystemInstruction,
+          temperature: 0.2,
+          topP: 0.95,
+        },
+      });
+
+      let fullGenerated = "";
+      for await (const chunk of responseStream) {
+        const chunkText = chunk.text;
+        if (chunkText) {
+          fullGenerated += chunkText;
+          send(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+        }
+      }
+
+      send(`data: [DONE]\n\n`);
+      res.end();
+
+      // Log conversation
+      if (fullGenerated) {
+        inMemoryStudyBuddyLogs.unshift({
+          id: `sb-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+          student_id: req.body?.userId || "anonymous",
+          student_name: req.body?.studentName || "Student",
+          student_email: req.body?.userEmail || "",
+          role: "model",
+          message_text: fullGenerated,
+          created_at: new Date().toISOString(),
+        });
+        if (inMemoryStudyBuddyLogs.length > 500) inMemoryStudyBuddyLogs.pop();
+        savePersistentStudyBuddyLogs();
+      }
+    } catch (err: any) {
+      console.error("[/api/study-buddy/stream error]:", err);
+      try {
+        res.write(`data: ${JSON.stringify({ error: err?.message || "Streaming failed" })}\n\n`);
+        res.write(`data: [DONE]\n\n`);
+        res.end();
+      } catch {}
+    }
+  });
   const handleGetSiteSettings = async (req: express.Request, res: express.Response) => {
     try {
       res.setHeader("Access-Control-Allow-Origin", "*");

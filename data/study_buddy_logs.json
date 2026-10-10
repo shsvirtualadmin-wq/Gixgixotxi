@@ -1,1 +1,20 @@
-[]
+[
+  {
+    "id": "sb-1791658339686-6hmbh",
+    "student_id": "anonymous",
+    "student_name": "Student",
+    "student_email": "",
+    "role": "model",
+    "message_text": "## Ohm's Law\n\nOhm's law states that the current ($I$) passing through a conductor is directly proportional to the potential difference ($V$) across its ends, provided physical states such as temperature remain constant ($V = IR$).",
+    "created_at": "2026-10-10T18:52:19.686Z"
+  },
+  {
+    "id": "sb-1791658312731-negnh",
+    "student_id": "chat-user",
+    "student_name": "Student",
+    "student_email": "",
+    "role": "model",
+    "message_text": "Newton’s Second Law of Motion is one of the most frequently tested concepts in both your Board exams (Matric/FSc) and university entrance tests (NET, ECAT, MDCAT). Let’s break it down clearly and simply!\n\n---\n\n### 1. The Statement\nNewton's Second Law can be stated in two equivalent ways:\n\n1. **Acceleration Form:** \n   When a net external force acts on an object, it produces an acceleration in the direction of the force. This acceleration is:\n   * Directly proportional to the net force ($a \\propto F_{\\text{net}}$)\n   * Inversely proportional to the mass of the object ($a \\propto \\frac{1}{m}$)\n\n2. **Momentum Form (FSc Physics Chapter 3 standard):** \n   The time rate of change of linear momentum of a body is equal to the applied net force and takes place in the direction of the force.\n\n---\n\n### 2. Mathematical Formulation\n\n#### Case A: Constant Mass (Standard $F = ma$)\nCombining the proportionalities:\n$$a \\propto \\frac{F}{m} \\implies F \\propto ma$$\n\nIn SI units, the constant of proportionality is $k = 1$:\n$$F = ma$$\n\n* $F = \\text{Net force (in Newtons, N)}$\n* $m = \\text{Mass of the body (in kg)}$\n* $a = \\text{Acceleration (in } \\text{m/s}^2\\text{)}$\n\n#### Case B: Momentum Form (Universal)\nSince linear momentum is $p = mv$:\n$$F = \\frac{\\Delta p}{\\Delta t}$$\n\nIf mass $m$ is constant:\n$$F = \\frac{m\\Delta v}{\\Delta t} = ma \\quad \\left(\\text{since } a = \\frac{\\Delta v}{\\Delta t}\\right)$$\n\n---\n\n### 3. Units and Dimensions\n\n* **SI Unit:** Newton ($\\text{N}$)\n  $$1\\text{ N} = 1\\text{ kg} \\cdot \\text{m/s}^2$$\n  *(Definition: $1\\text{ N}$ is the force that produces an acceleration of $1\\text{ m/s}^2$ in a body of mass $1\\text{ kg}$.)*\n* **CGS Unit:** Dyne ($1\\text{ N} = 10^5\\text{ dynes}$)\n* **Dimensions:** $[F] = [\\text{M}\\text{L}\\text{T}^{-2}]$\n\n---\n\n### 💡 Board & Entry Test Shortcuts (NET / ECAT / MDCAT)\n\n1. **Slope of Momentum-Time Graph:**\n   * The slope of a $p\\text{-}t$ graph gives **Force** ($\\text{Slope} = \\frac{\\Delta p}{\\Delta t} = F$).\n   * The area under an $F\\text{-}t$ graph gives **Impulse** or **Change in Momentum** ($\\Delta p$).\n\n2. **Variable Mass Trap (Rockets / Conveyor Belts):**\n   * If mass is changing (like a rocket ejecting fuel), $F = ma$ fails! You must use:\n     $$F = v_{\\text{rel}} \\left(\\frac{\\Delta m}{\\Delta t}\\right)$$\n\n3. **\"Net Force\" vs \"Applied Force\":**\n   * Remember, $a = \\frac{F_{\\text{net}}}{m}$. If a question mentions friction, always subtract it first:\n     $$F_{\\text{net}} = F_{\\text{applied}} - f_{\\text{friction}}$$",
+    "created_at": "2026-10-10T18:51:52.731Z"
+  }
+]
