@@ -6,5 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 # Cloudflare Pages Build Output
 pages_build_output_dir = "dist"
 
+[build]
+command = "npm run build"
+
 [vars]
 NODE_ENV = "production"
