@@ -30,7 +30,7 @@ export const firebaseConfig = {
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || 'gen-lang-client-0365509316.firebasestorage.app',
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '556734245207',
   appId: import.meta.env.VITE_FIREBASE_APP_ID || '1:556734245207:web:4797f3915b424209b03612',
-  firestoreDatabaseId: 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712',
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712',
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
