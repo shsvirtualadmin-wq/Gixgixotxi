@@ -193,6 +193,7 @@ export const BoardlyAppRouter: React.FC = () => {
         else if (currentPath === '/circles/apply') initialMarketingPage = 'circles/apply';
         else if (currentPath === '/boardy' || currentPath === '/study-buddy' || currentPath === '/ai') initialMarketingPage = 'boardy';
         else if (currentPath === '/pricing') initialMarketingPage = 'pricing';
+        else if (currentPath === '/reviews') initialMarketingPage = 'reviews';
         else if (currentPath === '/features') initialMarketingPage = 'features';
         else if (currentPath === '/terms') initialMarketingPage = 'terms';
         else if (currentPath === '/privacy') initialMarketingPage = 'privacy';

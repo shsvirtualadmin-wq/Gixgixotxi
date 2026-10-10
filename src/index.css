@@ -37,6 +37,49 @@
     --ios-border: rgba(30, 90, 255, 0.15);
   }
 
+  /* True Frosted Glass System (Strict anti-smear discipline) */
+  .glass-navbar-pill {
+    background-color: rgba(255, 255, 255, 0.65);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    backdrop-filter: blur(16px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 4px 20px -2px rgba(10, 19, 48, 0.06);
+  }
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .glass-navbar-pill {
+      background-color: rgba(255, 255, 255, 0.94);
+    }
+  }
+
+  .glass-menu-card {
+    background-color: rgba(255, 255, 255, 0.55);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    box-shadow: 0 20px 40px -15px rgba(10, 19, 48, 0.12);
+  }
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .glass-menu-card {
+      background-color: rgba(255, 255, 255, 0.96);
+    }
+  }
+
+  .glass-floating-card {
+    background-color: rgba(255, 255, 255, 0.65);
+    -webkit-backdrop-filter: blur(16px) saturate(160%);
+    backdrop-filter: blur(16px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 10px 30px -10px rgba(10, 19, 48, 0.08);
+  }
+
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .glass-floating-card {
+      background-color: rgba(255, 255, 255, 0.95);
+    }
+  }
+
   html, body {
     background-color: #F8F9FB !important;
     color: #0A1330 !important;
@@ -644,6 +687,28 @@
   background: #ffffff;
   border-color: #6366f1;
   box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.18);
+}
+
+@keyframes tickerLeft {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@keyframes tickerRight {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
+}
+
+.animate-ticker-left {
+  display: flex;
+  width: max-content;
+  animation: tickerLeft 35s linear infinite;
+}
+
+.animate-ticker-right {
+  display: flex;
+  width: max-content;
+  animation: tickerRight 35s linear infinite;
 }
 
 

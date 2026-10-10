@@ -24,6 +24,7 @@ import { MarketingPage } from './Navbar';
 import { UNIVERSITIES } from '../../data/universities';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
 import { BoardyMascot } from '../BoardyMascot';
+import { ReviewsWall } from './ReviewsWall';
 
 interface HomePageProps {
   onNavigate: (page: MarketingPage) => void;
@@ -122,72 +123,6 @@ const COMPARISON_ROWS: ComparisonRow[] = [
 ];
 
 // Placeholder Testimonials (marked as requested: REPLACE WITH REAL REVIEWS)
-interface TestimonialCard {
-  id: number;
-  quote: string;
-  name: string;
-  exam: string;
-  scoreOrCity: string;
-  isDark?: boolean;
-}
-
-const PLACEHOLDER_TESTIMONIALS: TestimonialCard[] = [
-  {
-    id: 1,
-    quote:
-      '[REPLACE WITH REAL REVIEWS] "The chapter-wise breakdown and instant formula derivations helped me systematically eliminate recurring numerical errors before the final exam."',
-    name: 'Student Reviewer 1 · REPLACE WITH REAL REVIEWS',
-    exam: 'MDCAT Aspirant',
-    scoreOrCity: 'Lahore Medical Track',
-    isDark: true,
-  },
-  {
-    id: 2,
-    quote:
-      '[REPLACE WITH REAL REVIEWS] "Practicing with authentic timer bounds and instant derivations changed how I approached the physics section on my board papers."',
-    name: 'Student Reviewer 2 · REPLACE WITH REAL REVIEWS',
-    exam: 'FBISE Class 12 Pre-Engineering',
-    scoreOrCity: 'Islamabad Federal Board',
-    isDark: false,
-  },
-  {
-    id: 3,
-    quote:
-      '[REPLACE WITH REAL REVIEWS] "Boardy explained organic reaction mechanisms step-by-step whenever I had doubts late at night."',
-    name: 'Student Reviewer 3 · REPLACE WITH REAL REVIEWS',
-    exam: 'NUST NET Candidate',
-    scoreOrCity: 'Engineering Track',
-    isDark: false,
-  },
-  {
-    id: 4,
-    quote:
-      '[REPLACE WITH REAL REVIEWS] "Generating printable mock tests with official bubble OMR sheets allowed me to simulate the exam room atmosphere completely."',
-    name: 'Student Reviewer 4 · REPLACE WITH REAL REVIEWS',
-    exam: 'Matric Science Candidate',
-    scoreOrCity: 'Punjab Board Exam',
-    isDark: true,
-  },
-  {
-    id: 5,
-    quote:
-      '[REPLACE WITH REAL REVIEWS] "Competing in the weekend Boardly Blitz drills showed me my true percentile among candidates from across Pakistan."',
-    name: 'Student Reviewer 5 · REPLACE WITH REAL REVIEWS',
-    exam: 'FAST-NUCES CS Aspirant',
-    scoreOrCity: 'Karachi Center',
-    isDark: false,
-  },
-  {
-    id: 6,
-    quote:
-      '[REPLACE WITH REAL REVIEWS] "The weak-topic detection identified my blind spots in electrostatics and algebra after just two practice sets."',
-    name: 'Student Reviewer 6 · REPLACE WITH REAL REVIEWS',
-    exam: 'UET ECAT Candidate',
-    scoreOrCity: 'Taxila Track',
-    isDark: true,
-  },
-];
-
 // Helper: Animated Counting Hook
 function useCountUp(target: number, durationMs: number = 1800): number {
   const [count, setCount] = useState(0);
@@ -599,62 +534,8 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </section>
 
-      {/* 4. TESTIMONIALS (Masonry layout, mixed cards, auto-scroll with edge fades, strictly marked as placeholder) */}
-      <section className="px-4 sm:px-6 max-w-6xl mx-auto my-16 sm:my-24">
-        <div className="text-center max-w-2xl mx-auto mb-10 space-y-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-            Student Voices
-          </span>
-          <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0A1330] font-poppins">
-            Candidate Testimonials
-          </h2>
-          <p className="text-xs text-slate-400 uppercase tracking-wider">
-            REPLACE WITH REAL REVIEWS AS REVIEWS ARE SUBMITTED
-          </p>
-        </div>
-
-        {/* Fading Edge Mask for Testimonials Grid */}
-        <div className="relative [mask-image:linear-gradient(to_bottom,transparent_0%,black_6%,black_94%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_bottom,transparent_0%,black_6%,black_94%,transparent_100%)] py-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            {PLACEHOLDER_TESTIMONIALS.map((t) => (
-              <div
-                key={t.id}
-                className={`p-6 sm:p-7 rounded-[26px] transition-transform hover:-translate-y-1 duration-200 flex flex-col justify-between space-y-4 ${
-                  t.isDark
-                    ? 'bg-gradient-to-br from-[#0A1330] via-slate-900 to-indigo-950 text-white shadow-xl border border-indigo-500/20'
-                    : 'bg-white text-slate-800 border border-slate-200/90 shadow-md'
-                }`}
-              >
-                <div className="space-y-3">
-                  {/* Large Quote Mark */}
-                  <Quote
-                    className={`w-8 h-8 ${
-                      t.isDark ? 'text-indigo-400 opacity-60' : 'text-indigo-600 opacity-40'
-                    }`}
-                  />
-                  <p className="text-sm leading-relaxed italic">{t.quote}</p>
-                </div>
-
-                <div
-                  className={`pt-3 border-t ${
-                    t.isDark ? 'border-slate-800' : 'border-slate-100'
-                  }`}
-                >
-                  <span className="block font-bold text-sm">{t.name}</span>
-                  <div className="flex items-center justify-between text-xs mt-0.5">
-                    <span className={t.isDark ? 'text-indigo-300' : 'text-indigo-600 font-medium'}>
-                      {t.exam}
-                    </span>
-                    <span className={t.isDark ? 'text-slate-400' : 'text-slate-500'}>
-                      {t.scoreOrCity}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+      {/* 4. REAL STUDENT REVIEWS & ANIMATED TICKER WALL */}
+      <ReviewsWall />
 
       {/* 5. FINAL CALL TO ACTION */}
       <section className="px-4 sm:px-6 max-w-5xl mx-auto my-14 sm:my-20">

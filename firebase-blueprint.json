@@ -26,40 +26,38 @@
       },
       "required": ["uid", "email", "name", "plan", "role"]
     },
-    "TestAttempt": {
-      "title": "TestAttempt",
-      "description": "Recorded test or sprint attempt by a student with question analytics.",
+    "Review": {
+      "title": "Review",
+      "description": "Student review and rating with moderation status and verified badge.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "userId": { "type": "string" },
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "nameDisplayChoice": { "type": "string", "enum": ["first_initial", "first_only", "anonymous"] },
+        "rating": { "type": "number" },
         "title": { "type": "string" },
-        "testType": { "type": "string" },
-        "universityId": { "type": "string" },
-        "subject": { "type": "string" },
-        "score": { "type": "number" },
-        "totalQuestions": { "type": "number" },
-        "correctCount": { "type": "number" },
-        "wrongCount": { "type": "number" },
-        "unattemptedCount": { "type": "number" },
-        "timeSpentSeconds": { "type": "number" },
-        "createdAt": { "type": "string" }
+        "text": { "type": "string" },
+        "exam": { "type": "string" },
+        "city": { "type": "string" },
+        "tags": { "type": "array" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "rejectionReason": { "type": "string" },
+        "isVerifiedStudent": { "type": "boolean" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
+        "moderatedBy": { "type": "string" }
       },
-      "required": ["userId", "testType", "score", "totalQuestions"]
+      "required": ["uid", "rating", "text", "status", "createdAt"]
     },
-    "BoardyChatMessage": {
-      "title": "BoardyChatMessage",
-      "description": "Chat message exchanged between student and Boardy AI study partner.",
+    "AppConfig": {
+      "title": "AppConfig",
+      "description": "System runtime configurations including reviews display toggles.",
       "type": "object",
       "properties": {
-        "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "sessionId": { "type": "string" },
-        "role": { "type": "string", "enum": ["user", "assistant"] },
-        "content": { "type": "string" },
-        "createdAt": { "type": "string" }
-      },
-      "required": ["userId", "role", "content", "createdAt"]
+        "showPlaceholders": { "type": "boolean" },
+        "placeholderTarget": { "type": "number" }
+      }
     }
   },
   "firestore": {
@@ -67,13 +65,13 @@
       "schema": { "$ref": "#/entities/User" },
       "description": "Private student user profile documents."
     },
-    "/users/{userId}/testAttempts/{attemptId}": {
-      "schema": { "$ref": "#/entities/TestAttempt" },
-      "description": "Individual test attempt history for the student."
+    "/reviews/{reviewId}": {
+      "schema": { "$ref": "#/entities/Review" },
+      "description": "Student reviews and ratings submitted for moderation."
     },
-    "/users/{userId}/boardyChats/{messageId}": {
-      "schema": { "$ref": "#/entities/BoardyChatMessage" },
-      "description": "Archived chats with Boardy AI."
+    "/config/{configDoc}": {
+      "schema": { "$ref": "#/entities/AppConfig" },
+      "description": "Global application configuration documents."
     }
   }
 }

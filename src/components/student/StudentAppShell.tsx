@@ -17,7 +17,11 @@ import {
   LogOut,
   X,
   ExternalLink,
+  Flame,
+  Coins,
+  Bell,
 } from 'lucide-react';
+import { BrandLogo } from '../marketing/BrandLogo';
 import { useAuth } from '../../context/AuthContext';
 import { StoredTestAttempt, getTestAttempts, logTestAttempt } from '../../lib/firebase';
 import { StudentOverviewTab } from './StudentOverviewTab';
@@ -237,7 +241,64 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           onAskBoardyAboutQuestion={handleAskBoardyAboutQuestion}
         />
       ) : (
-        <div className="relative z-10 max-w-4xl mx-auto w-full px-4 sm:px-6 pt-6 flex-1">
+        <div className="relative z-10 max-w-4xl mx-auto w-full px-4 sm:px-6 pt-4 flex-1">
+          {/* Student App Top Header Bar */}
+          <header className="flex items-center justify-between pb-3.5 mb-4 border-b border-slate-200/70">
+            {/* Logo Left */}
+            <div className="flex items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setActiveTab('overview')}
+                className="cursor-pointer focus:outline-none"
+                aria-label="Boardly Home"
+              >
+                <BrandLogo size="sm" />
+              </button>
+            </div>
+
+            {/* Counters, Bell & Profile Right */}
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              {/* Streak Counter */}
+              <div
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200/80 text-amber-800 text-xs font-black shadow-xs cursor-default"
+                title={`${profile?.streakDays || 1} day study streak`}
+              >
+                <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                <span>{profile?.streakDays || 1}d</span>
+              </div>
+
+              {/* Coin / Points Counter */}
+              <div
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200/80 text-indigo-700 text-xs font-black shadow-xs cursor-default"
+                title="Boardly prep points"
+              >
+                <Coins className="w-3.5 h-3.5 text-indigo-600" />
+                <span>{profile?.points || 120}</span>
+              </div>
+
+              {/* Notification Bell */}
+              <button
+                type="button"
+                onClick={() => setShowUsageModal(true)}
+                className="relative p-2 rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
+                aria-label="Notifications and usage"
+              >
+                <Bell className="w-4 h-4" />
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-600" />
+              </button>
+
+              {/* Profile Avatar / Initials */}
+              <button
+                type="button"
+                onClick={() => setShowMoreSheet(true)}
+                className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-to-tr from-blue-600 to-indigo-600 text-white font-extrabold text-xs shadow-xs hover:ring-2 hover:ring-blue-400 transition-all cursor-pointer"
+                aria-label="Open student profile and more options"
+              >
+                {profile?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'S'}
+              </button>
+            </div>
+          </header>
+
           {activeTab === 'overview' && (
             <StudentOverviewTab
               attempts={attempts}

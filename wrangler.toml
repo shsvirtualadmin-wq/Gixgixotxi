@@ -1,24 +1,10 @@
-# Cloudflare Configuration for Boardly SHS Prep App
+# Cloudflare Configuration for Boardly
 name = "boardly"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
-# Cloudflare Pages Build Settings
+# Cloudflare Pages Build Output
 pages_build_output_dir = "dist"
 
-# Environment Variables (Non-sensitive)
 [vars]
 NODE_ENV = "production"
-VITE_SUPABASE_URL = "https://wbvzbbnapowwmrjecdyt.supabase.co"
-PUBLIC_R2_DOMAIN = "pub-51ccade1f191417389ac7df61830c670.r2.dev"
-
-# R2 Storage Bucket Binding for Resources Hub (PDF Past Papers & MCQ Drills)
-[[r2_buckets]]
-binding = "RESOURCES_BUCKET"
-bucket_name = "boardly-resources"
-
-# Note: Sensitive variables (GEMINI_API_KEY, VITE_SUPABASE_ANON_KEY)
-# should be added via Cloudflare Dashboard or Wrangler CLI:
-# npx wrangler secret put GEMINI_API_KEY
-# npx wrangler secret put VITE_SUPABASE_ANON_KEY
-

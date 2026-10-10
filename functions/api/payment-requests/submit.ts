@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "../../_utils/supabaseStub.js";
 import { normalizePackageTrack } from "../../../src/lib/paymentDeduplication";
 
 interface PagesContext {

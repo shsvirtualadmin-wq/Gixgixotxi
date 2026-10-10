@@ -140,6 +140,14 @@ export const Footer: React.FC<FooterProps> = ({
                     Pricing
                   </button>
                 </li>
+                <li>
+                  <button
+                    onClick={() => onNavigate('reviews')}
+                    className="hover:text-indigo-400 transition-colors text-left"
+                  >
+                    Student Reviews
+                  </button>
+                </li>
               </ul>
             </div>
 

@@ -17,35 +17,66 @@ service cloud.firestore {
 
     // Users collection
     match /users/{userId} {
-      // User can read their own document, or admins can read
       allow read: if isOwner(userId) || isAdmin();
 
-      // Create: user can create their own doc with default starter plan and student role
       allow create: if isOwner(userId)
         && request.resource.data.uid == userId
         && (!('role' in request.resource.data) || request.resource.data.role == 'student')
         && (!('plan' in request.resource.data) || request.resource.data.plan == 'starter');
 
-      // Update: user can update profile details, preferences, and onboarding fields,
-      // but plan, role, and usage limits cannot be changed directly by client.
       allow update: if isOwner(userId)
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'plan', 'testsUsedToday', 'boardyQuestionsUsedToday']))
         || isAdmin();
 
       allow delete: if isAdmin();
 
-      // Test attempts subcollection
       match /testAttempts/{attemptId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
 
-      // Boardy chat messages subcollection
       match /boardyChats/{messageId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
     }
 
-    // Public or test papers collection if present
+    // Reviews collection
+    match /reviews/{reviewId} {
+      // Anyone can read approved reviews, student can read their own, admin can read all
+      allow read: if (resource.data.status == 'approved')
+        || (isAuthenticated() && resource.data.uid == request.auth.uid)
+        || isAdmin();
+
+      // Submit: Logged in, verified email, only with own uid, initial status MUST be pending
+      allow create: if isAuthenticated()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.rating >= 1 && request.resource.data.rating <= 5
+        && request.resource.data.text.size() >= 20 && request.resource.data.text.size() <= 500;
+
+      // Update by student: editing resets status to 'pending'
+      // Update by admin: can approve or reject, but CANNOT approve their own review
+      allow update: if (
+          isAuthenticated()
+          && resource.data.uid == request.auth.uid
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.rating >= 1 && request.resource.data.rating <= 5
+          && request.resource.data.text.size() >= 20 && request.resource.data.text.size() <= 500
+        ) || (
+          isAdmin()
+          // Self-approval check: admin cannot approve their own review
+          && !(resource.data.uid == request.auth.uid && request.resource.data.status == 'approved')
+        );
+
+      allow delete: if (isAuthenticated() && resource.data.uid == request.auth.uid) || isAdmin();
+    }
+
+    // App config
+    match /config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /testPapers/{paperId} {
       allow read: if isAuthenticated();
       allow write: if isAdmin();

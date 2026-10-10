@@ -7,6 +7,7 @@ export type MarketingPage =
   | 'home'
   | 'features'
   | 'pricing'
+  | 'reviews'
   | 'faqs'
   | 'contact'
   | 'privacy'
@@ -85,13 +86,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <>
       {/* Floating Rounded Pill Top Bar */}
-      <header className="fixed top-4 left-0 right-0 z-50 px-4 sm:px-6 max-w-6xl mx-auto transition-all duration-300">
+      <header className="fixed top-4 left-0 right-0 z-50 px-4 sm:px-6 max-w-6xl mx-auto pointer-events-none">
         <nav
-          className={`flex items-center justify-between px-4 sm:px-6 py-2.5 sm:py-3 rounded-full border transition-all duration-300 ${
-            scrolled
-              ? 'bg-white/90 backdrop-blur-md shadow-lg shadow-indigo-900/5 border-slate-200/80'
-              : 'bg-white/80 backdrop-blur-sm shadow-md shadow-slate-900/5 border-slate-200/60'
-          }`}
+          className="pointer-events-auto flex items-center justify-between px-4 sm:px-6 py-2.5 sm:py-3 rounded-full glass-navbar-pill transition-all duration-200"
           aria-label="Main Navigation"
         >
           {/* Logo on Left */}
@@ -229,10 +226,10 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
       </header>
 
-      {/* Mobile Card Overlay with Blurred Backdrop */}
+      {/* Mobile Card Overlay: Very light transparent dim only with NO blur on background */}
       {mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden flex flex-col justify-start p-4 sm:p-6 bg-slate-950/40 backdrop-blur-md animate-in fade-in duration-200">
-          <div className="w-full max-w-lg mx-auto bg-white/95 backdrop-blur-xl rounded-[28px] border border-slate-200/80 shadow-2xl p-6 flex flex-col max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 md:hidden flex flex-col justify-start p-4 sm:p-6 bg-[rgba(15,23,42,0.12)] animate-in fade-in duration-150">
+          <div className="w-full max-w-lg mx-auto glass-menu-card rounded-3xl p-6 flex flex-col max-h-[92vh] overflow-y-auto">
             {/* Header: Logo and Close (X) button */}
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <button

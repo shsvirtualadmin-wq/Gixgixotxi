@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "../../_utils/supabaseStub.js";
 import { generateAcademicExplanation } from "../../../src/lib/curriculumEngine.ts";
 
 function createSupabaseServerClient(env: Record<string, string | undefined>, authHeader?: string | null) {

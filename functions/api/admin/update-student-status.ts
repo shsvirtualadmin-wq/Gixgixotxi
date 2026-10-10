@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "../../_utils/supabaseStub.js";
 
 interface PagesContext {
   request: Request;

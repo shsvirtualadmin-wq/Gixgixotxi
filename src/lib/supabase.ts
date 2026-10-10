@@ -1,26 +1,40 @@
-import { createClient, User as SupabaseUser } from '@supabase/supabase-js';
+export interface SupabaseUser {
+  id: string;
+  email?: string;
+  user_metadata?: Record<string, any>;
+  app_metadata?: Record<string, any>;
+  identities?: any[];
+}
 import { HistoryItem, TestResult, BoardClass, ResourceCategory, ResourceItem } from '../types';
 export const normalizePackageTrack = (val: string): string => String(val || '').toLowerCase().trim();
 export const findDuplicatePaymentGroups = (_requests: any[]): any[] => [];
 import { deriveTrackDetailsFromAssignableClass } from '../data/portalMasterTracks';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://wbvzbbnapowwmrjecdyt.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
+export const isSupabaseConfigured = false;
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
-
-export const supabase = createClient(
-  supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key',
-  {
-    auth: {
-      autoRefreshToken: true,
-      persistSession: true,
-      detectSessionInUrl: true,
-      flowType: 'pkce',
-    },
-  }
-);
+// Lightweight client shim to safely decouple legacy screens without crashing
+export const supabase: any = {
+  auth: {
+    getUser: async () => ({ data: { user: null }, error: null }),
+    getSession: async () => ({ data: { session: null }, error: null }),
+    signInWithPassword: async () => ({ data: { user: null }, error: new Error('Supabase migrated to Firebase Auth') }),
+    signOut: async () => ({ error: null }),
+    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+  },
+  from: () => ({
+    select: () => ({
+      eq: () => ({
+        single: async () => ({ data: null, error: null }),
+        order: async () => ({ data: [], error: null }),
+        limit: async () => ({ data: [], error: null }),
+      }),
+      order: () => ({ data: [], error: null }),
+    }),
+    insert: async () => ({ data: null, error: null }),
+    update: async () => ({ data: null, error: null }),
+    delete: async () => ({ data: null, error: null }),
+  }),
+};
 
 export const ADMIN_EMAILS = [
   'shsvirtualadmin@gmail.com',

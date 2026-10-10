@@ -10,6 +10,7 @@ import { FaqPage } from './FaqPage';
 import { ContactPage } from './ContactPage';
 import { AboutPage } from './AboutPage';
 import { BoardyPage } from './BoardyPage';
+import { ReviewsWall } from './ReviewsWall';
 import { BlitzLanding } from '../events/BlitzLanding';
 import { BlitzRegister } from '../events/BlitzRegister';
 import { LeaderboardView } from '../events/LeaderboardView';
@@ -48,6 +49,7 @@ function parseMarketingPageFromLocation(): MarketingPage {
   if (pathname === '/boardy') return 'boardy';
   if (pathname === '/features') return 'features';
   if (pathname === '/pricing') return 'pricing';
+  if (pathname === '/reviews') return 'reviews';
   if (pathname === '/faqs' || pathname === '/faq') return 'faqs';
   if (pathname === '/contact') return 'contact';
   if (pathname === '/privacy') return 'privacy';
@@ -67,7 +69,7 @@ function parseMarketingPageFromLocation(): MarketingPage {
     if (pageParam === 'circles-apply' || pageParam === 'circles/apply') return 'circles/apply';
     if (pageParam === 'boardy') return 'boardy';
     if (
-      ['home', 'features', 'pricing', 'faqs', 'contact', 'privacy', 'terms', 'about'].includes(
+      ['home', 'features', 'pricing', 'reviews', 'faqs', 'contact', 'privacy', 'terms', 'about'].includes(
         pageParam
       )
     ) {
@@ -93,6 +95,8 @@ function getPathForMarketingPage(page: MarketingPage): string {
       return '/features';
     case 'pricing':
       return '/pricing';
+    case 'reviews':
+      return '/reviews';
     case 'faqs':
       return '/faqs';
     case 'contact':
@@ -241,6 +245,12 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
             onSelectPlan={handleSelectPlan}
             onNavigateContact={() => handleNavigate('contact')}
           />
+        )}
+
+        {currentPage === 'reviews' && (
+          <div className="pt-24 min-h-[85vh]">
+            <ReviewsWall isFullPage={true} />
+          </div>
         )}
 
         {currentPage === 'faqs' && (
