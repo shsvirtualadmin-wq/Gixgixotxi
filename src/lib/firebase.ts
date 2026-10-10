@@ -25,7 +25,7 @@ import {
 // Production Firebase configuration for Boardly
 export const firebaseConfig = {
   apiKey: "AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs",
-  authDomain: "gen-lang-client-0365509316.firebaseapp.com",
+  authDomain: "boardly.cfd",
   projectId: "gen-lang-client-0365509316",
   storageBucket: "gen-lang-client-0365509316.firebasestorage.app",
   messagingSenderId: "556734245207",

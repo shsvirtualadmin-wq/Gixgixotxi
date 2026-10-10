@@ -8,6 +8,8 @@ import { ResetPasswordPage } from './auth/ResetPasswordPage';
 import { OnboardingFlow } from './onboarding/OnboardingFlow';
 import { StudentAppShell } from './student/StudentAppShell';
 import { BoardlyMarketingApp } from './marketing/BoardlyMarketingApp';
+import { AdminDashboardScreen } from './AdminDashboardScreen';
+import { isAdminEmail } from '../lib/supabase';
 import { X, CheckCircle, AlertCircle } from 'lucide-react';
 
 export const BoardlyAppRouter: React.FC = () => {
@@ -66,10 +68,23 @@ export const BoardlyAppRouter: React.FC = () => {
     }
   }, [loading, user, profile, currentPath, navigate]);
 
-  // Route protection for /app and /onboarding
+  // Strict route protection for all internal authenticated routes
   useEffect(() => {
     if (!loading && !user) {
-      if (currentPath.startsWith('/app') || currentPath === '/onboarding') {
+      const protectedPrefixes = [
+        '/app',
+        '/onboarding',
+        '/admin',
+        '/dashboard',
+        '/profile',
+        '/practice',
+        '/test',
+        '/results',
+      ];
+      const isProtected = protectedPrefixes.some(
+        (prefix) => currentPath === prefix || currentPath.startsWith(`${prefix}/`)
+      );
+      if (isProtected) {
         navigate(`/login?returnUrl=${encodeURIComponent(currentPath)}`);
       }
     }
@@ -181,7 +196,39 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
-        // 8. Marketing Website
+        // 8. Admin Dashboard (/admin or /admin/*)
+        if (currentPath === '/admin' || currentPath.startsWith('/admin/')) {
+          if (!user) {
+            return <LoginPage onNavigate={navigate} returnUrl="/admin" />;
+          }
+          const isUserAdmin = Boolean(
+            profile?.role === 'admin' ||
+            (user.email && (user.email.toLowerCase() === 'shsvirtualadmin@gmail.com' || user.email.toLowerCase() === 'support@boardly.cfd'))
+          );
+          if (!isUserAdmin) {
+            return (
+              <div className="min-h-screen bg-[#F8F9FB] flex flex-col items-center justify-center p-6 text-center space-y-4">
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-sm font-bold">
+                  Unauthorized: This area is restricted to administrators only.
+                </div>
+                <button
+                  onClick={() => navigate('/app')}
+                  className="px-5 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 cursor-pointer"
+                >
+                  Return to Student Dashboard
+                </button>
+              </div>
+            );
+          }
+          return (
+            <AdminDashboardScreen
+              currentUser={user as any}
+              onBack={() => navigate('/app')}
+            />
+          );
+        }
+
+        // 9. Marketing Website
         // Determine initial page from path if applicable (e.g. /blitz, /arena, /boardy, /pricing, etc.)
         let initialMarketingPage: any = 'home';
         if (currentPath === '/blitz') initialMarketingPage = 'blitz';
@@ -208,7 +255,7 @@ export const BoardlyAppRouter: React.FC = () => {
               if (user) {
                 navigate('/app');
               } else {
-                navigate('/signup');
+                navigate('/login');
               }
             }}
           />

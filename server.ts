@@ -125,16 +125,12 @@ function getAuthClient(req: express.Request | null) {
 
 const ADMIN_EMAILS = [
   "shsvirtualadmin@gmail.com",
-  "dj.khadijajameel19@gmail.com",
-  "syedrayyanf1@gmail.com"
+  "support@boardly.cfd"
 ];
 function isAdminEmail(email?: string | null): boolean {
   if (!email) return false;
   const normalized = email.trim().toLowerCase();
-  return ADMIN_EMAILS.includes(normalized) ||
-    normalized.includes("admin") ||
-    normalized.endsWith("@boardly.cfd") ||
-    normalized.endsWith("@boardly.com");
+  return ADMIN_EMAILS.includes(normalized);
 }
 
 const PAYMENT_RULE_DEPLOYMENT_DATE = '2026-08-01T09:00:00.000Z';
@@ -8313,6 +8309,189 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     } catch (err: any) {
       console.error("[api/send-welcome-email error]:", err);
       return res.status(500).json({ success: false, error: err?.message || "Error sending welcome email." });
+    }
+  });
+
+  // API Endpoint: Student Inquiry & Contact Routing (Emailed to support@boardly.cfd)
+  app.post("/api/contact", async (req: express.Request, res: express.Response) => {
+    try {
+      const { name, email, phone, category, message } = req.body || {};
+      const studentName = String(name || '').trim();
+      const studentEmail = String(email || '').trim().toLowerCase();
+      const studentPhone = String(phone || '').trim();
+      const inquiryCategory = String(category || 'General Academic').trim();
+      const studentMessage = String(message || '').trim();
+
+      if (!studentName || !studentEmail || !studentMessage) {
+        return res.status(400).json({
+          success: false,
+          error: "Please provide your name, email, and message.",
+        });
+      }
+
+      console.log(`[Contact Submission] Inquiry received from: ${studentName} (${studentEmail}), Category: ${inquiryCategory}`);
+
+      // Persistent record
+      const inquiryRecord = {
+        id: `inq-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        name: studentName,
+        email: studentEmail,
+        phone: studentPhone,
+        category: inquiryCategory,
+        message: studentMessage,
+        createdAt: new Date().toISOString(),
+      };
+
+      try {
+        const inqPath = path.join(process.cwd(), 'data', 'contact_inquiries.json');
+        let existingInquiries: any[] = [];
+        if (fs.existsSync(inqPath)) {
+          existingInquiries = JSON.parse(fs.readFileSync(inqPath, 'utf8'));
+        }
+        existingInquiries.unshift(inquiryRecord);
+        fs.writeFileSync(inqPath, JSON.stringify(existingInquiries.slice(0, 500), null, 2), 'utf8');
+      } catch (fErr) {
+        console.warn("[Contact File Log notice]:", fErr);
+      }
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 24px; color: #0f172a; }
+            .container { max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; border: 1px solid #e2e8f0; box-shadow: 0 4px 14px rgba(0,0,0,0.06); }
+            .header { background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); color: #ffffff; padding: 28px 24px; text-align: center; }
+            .header h1 { margin: 0; font-size: 20px; font-weight: 800; }
+            .header p { margin: 6px 0 0; opacity: 0.9; font-size: 13px; }
+            .body { padding: 24px; }
+            .field { margin-bottom: 14px; }
+            .label { font-size: 11px; font-weight: 800; text-transform: uppercase; color: #64748b; letter-spacing: 0.5px; }
+            .value { font-size: 14px; font-weight: 600; color: #0f172a; margin-top: 2px; }
+            .msg-box { background: #f1f5f9; border-radius: 12px; padding: 16px; margin-top: 16px; border: 1px solid #e2e8f0; font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+            .footer { padding: 16px 24px; background: #f8fafc; font-size: 12px; color: #64748b; text-align: center; border-top: 1px solid #e2e8f0; }
+          </style>
+        </head>
+        <body>
+          <div class="container">
+            <div class="header">
+              <h1>New Student Inquiry · Boardly Support</h1>
+              <p>Submitted via boardly.cfd Contact Form</p>
+            </div>
+            <div class="body">
+              <div class="field">
+                <div class="label">Student Name</div>
+                <div class="value">${studentName}</div>
+              </div>
+              <div class="field">
+                <div class="label">Student Email</div>
+                <div class="value"><a href="mailto:${studentEmail}">${studentEmail}</a></div>
+              </div>
+              ${studentPhone ? `
+              <div class="field">
+                <div class="label">Phone / WhatsApp</div>
+                <div class="value">${studentPhone}</div>
+              </div>` : ''}
+              <div class="field">
+                <div class="label">Inquiry Category</div>
+                <div class="value">${inquiryCategory}</div>
+              </div>
+              <div class="field">
+                <div class="label">Student Question / Message</div>
+                <div class="msg-box">${studentMessage.replace(/</g, "&lt;").replace(/>/g, "&gt;")}</div>
+              </div>
+            </div>
+            <div class="footer">
+              This message was sent to support@boardly.cfd and shsvirtualadmin@gmail.com
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      // Dispatch directly to support@boardly.cfd via Nodemailer
+      await sendEmail({
+        to: "support@boardly.cfd",
+        subject: `[Boardly Inquiry] [${inquiryCategory}] New message from ${studentName}`,
+        html,
+      }).catch((mailErr) => {
+        console.warn("[Contact Mail Dispatch notice]:", mailErr?.message || mailErr);
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: "Your inquiry has been received and routed directly to support@boardly.cfd.",
+        ticketId: inquiryRecord.id,
+      });
+    } catch (err: any) {
+      console.error("[api/contact error]:", err);
+      return res.status(500).json({
+        success: false,
+        error: err?.message || "Failed to process contact inquiry.",
+      });
+    }
+  });
+
+  // API Endpoint: Supabase to Firebase Student History Migration Routine
+  app.post("/api/auth/migrate-student-history", async (req: express.Request, res: express.Response) => {
+    try {
+      const { uid, email } = req.body || {};
+      const normalizedEmail = String(email || '').trim().toLowerCase();
+      if (!uid || !normalizedEmail) {
+        return res.status(400).json({ migrated: false, error: "uid and email required" });
+      }
+
+      console.log(`[Migration Matcher] Scanning historical records for student: ${normalizedEmail}`);
+
+      let testResults: any[] = [];
+      const testResultsPath = path.join(process.cwd(), 'data', 'test_results.json');
+      if (fs.existsSync(testResultsPath)) {
+        try {
+          testResults = JSON.parse(fs.readFileSync(testResultsPath, 'utf8'));
+        } catch {}
+      }
+
+      // Find all matching historical test attempts
+      const matchedAttempts = testResults.filter((tr: any) => {
+        const trEmail = String(tr.student_email || '').toLowerCase().trim();
+        return trEmail === normalizedEmail;
+      });
+
+      console.log(`[Migration Matcher] Found ${matchedAttempts.length} historical test attempts for ${normalizedEmail}`);
+
+      // Check if student had a promo redemption
+      let promoHistory: any[] = [];
+      const promoPath = path.join(process.cwd(), 'data', 'promo_redemptions.json');
+      if (fs.existsSync(promoPath)) {
+        try {
+          const allPromos = JSON.parse(fs.readFileSync(promoPath, 'utf8'));
+          promoHistory = allPromos.filter((p: any) => String(p.email || p.studentEmail || '').toLowerCase().trim() === normalizedEmail);
+        } catch {}
+      }
+
+      const hasProPass = promoHistory.length > 0;
+      const profileUpdates: Record<string, any> = {
+        migratedFromSupabase: true,
+        onboardingCompleted: true,
+      };
+      if (hasProPass) {
+        profileUpdates.plan = 'all_access';
+      }
+      if (matchedAttempts.length > 0) {
+        profileUpdates.points = Math.max(150, matchedAttempts.length * 35);
+        profileUpdates.streakDays = Math.max(2, Math.min(14, matchedAttempts.length));
+      }
+
+      return res.status(200).json({
+        migrated: true,
+        matchedCount: matchedAttempts.length,
+        attempts: matchedAttempts,
+        profileUpdates,
+      });
+    } catch (err: any) {
+      console.error("[migrate-student-history error]:", err);
+      return res.status(500).json({ migrated: false, error: err?.message || "Migration lookup failed." });
     }
   });
 

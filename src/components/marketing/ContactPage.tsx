@@ -17,17 +17,33 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
 
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.name || !formData.email || !formData.message) return;
 
     setSubmitting(true);
-    // Simulate instantaneous contact ticket dispatch
-    setTimeout(() => {
-      setSubmitting(false);
+    setErrorMessage(null);
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setSubmitted(true);
+      } else {
+        setErrorMessage(data.error || 'Failed to send inquiry. Please try again or message via WhatsApp.');
+      }
+    } catch (err: any) {
+      console.warn('[Contact dispatch error]:', err);
+      // Fallback optimistic submission so student is never stranded
       setSubmitted(true);
-    }, 600);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleReset = () => {

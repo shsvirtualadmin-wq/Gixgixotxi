@@ -241,7 +241,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           onAskBoardyAboutQuestion={handleAskBoardyAboutQuestion}
         />
       ) : (
-        <div className="relative z-10 max-w-4xl mx-auto w-full px-4 sm:px-6 pt-4 flex-1">
+        <div className="relative z-10 max-w-4xl mx-auto w-full px-4 sm:px-6 pt-4 pb-28 sm:pb-32 flex-1">
           {/* Student App Top Header Bar */}
           <header className="flex items-center justify-between pb-3.5 mb-4 border-b border-slate-200/70">
             {/* Logo Left */}
@@ -356,29 +356,29 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         </div>
       )}
 
-      {/* Glass Bottom Tab Bar (hidden when taking active test) */}
+      {/* Floating Glassmorphism Bottom Navigation Bubble */}
       {!activeTest && !completedResult && (
-        <nav className="fixed bottom-0 left-0 right-0 z-40 bg-white/85 backdrop-blur-2xl border-t border-slate-200/80 px-2 py-1 shadow-lg">
-          <div className="max-w-md mx-auto grid grid-cols-5 items-center">
+        <nav
+          className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-1.75rem)] max-w-md pointer-events-none transition-all duration-300"
+          aria-label="Student Navigation"
+        >
+          <div className="pointer-events-auto bg-white/75 backdrop-blur-2xl border border-white/60 shadow-[0_16px_40px_rgba(15,23,42,0.14),0_2px_8px_rgba(15,23,42,0.06)] ring-1 ring-slate-900/5 rounded-[28px] sm:rounded-[32px] px-2.5 py-2 grid grid-cols-5 items-center gap-1">
             {/* Overview Tab */}
             <button
               type="button"
               onClick={() => setActiveTab('overview')}
-              className="relative py-2 flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer group"
+              className={`relative py-1.5 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 cursor-pointer ${
+                activeTab === 'overview'
+                  ? 'bg-blue-600/10 text-blue-600'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/60'
+              }`}
             >
-              {activeTab === 'overview' && (
-                <span className="absolute -top-1 w-8 h-1 bg-blue-600 rounded-full" />
-              )}
               <Home
-                className={`w-5 h-5 transition-transform group-hover:scale-105 ${
-                  activeTab === 'overview' ? 'text-blue-600' : 'text-slate-400'
+                className={`w-5 h-5 transition-transform duration-200 ${
+                  activeTab === 'overview' ? 'scale-110 text-blue-600 stroke-[2.5]' : 'text-slate-400 group-hover:scale-105'
                 }`}
               />
-              <span
-                className={`text-[10px] font-bold ${
-                  activeTab === 'overview' ? 'text-blue-600' : 'text-slate-500'
-                }`}
-              >
+              <span className={`text-[10px] ${activeTab === 'overview' ? 'font-black text-blue-600' : 'font-semibold text-slate-500'}`}>
                 Overview
               </span>
             </button>
@@ -387,21 +387,18 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('practice')}
-              className="relative py-2 flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer group"
+              className={`relative py-1.5 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 cursor-pointer ${
+                activeTab === 'practice'
+                  ? 'bg-blue-600/10 text-blue-600'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/60'
+              }`}
             >
-              {activeTab === 'practice' && (
-                <span className="absolute -top-1 w-8 h-1 bg-blue-600 rounded-full" />
-              )}
               <BookOpen
-                className={`w-5 h-5 transition-transform group-hover:scale-105 ${
-                  activeTab === 'practice' ? 'text-blue-600' : 'text-slate-400'
+                className={`w-5 h-5 transition-transform duration-200 ${
+                  activeTab === 'practice' ? 'scale-110 text-blue-600 stroke-[2.5]' : 'text-slate-400 group-hover:scale-105'
                 }`}
               />
-              <span
-                className={`text-[10px] font-bold ${
-                  activeTab === 'practice' ? 'text-blue-600' : 'text-slate-500'
-                }`}
-              >
+              <span className={`text-[10px] ${activeTab === 'practice' ? 'font-black text-blue-600' : 'font-semibold text-slate-500'}`}>
                 Practice
               </span>
             </button>
@@ -410,21 +407,18 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('history')}
-              className="relative py-2 flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer group"
+              className={`relative py-1.5 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 cursor-pointer ${
+                activeTab === 'history'
+                  ? 'bg-blue-600/10 text-blue-600'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/60'
+              }`}
             >
-              {activeTab === 'history' && (
-                <span className="absolute -top-1 w-8 h-1 bg-blue-600 rounded-full" />
-              )}
               <Clock
-                className={`w-5 h-5 transition-transform group-hover:scale-105 ${
-                  activeTab === 'history' ? 'text-blue-600' : 'text-slate-400'
+                className={`w-5 h-5 transition-transform duration-200 ${
+                  activeTab === 'history' ? 'scale-110 text-blue-600 stroke-[2.5]' : 'text-slate-400 group-hover:scale-105'
                 }`}
               />
-              <span
-                className={`text-[10px] font-bold ${
-                  activeTab === 'history' ? 'text-blue-600' : 'text-slate-500'
-                }`}
-              >
+              <span className={`text-[10px] ${activeTab === 'history' ? 'font-black text-blue-600' : 'font-semibold text-slate-500'}`}>
                 Test History
               </span>
             </button>
@@ -433,21 +427,18 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('boardy')}
-              className="relative py-2 flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer group"
+              className={`relative py-1.5 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 cursor-pointer ${
+                activeTab === 'boardy'
+                  ? 'bg-blue-600/10 text-blue-600'
+                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/60'
+              }`}
             >
-              {activeTab === 'boardy' && (
-                <span className="absolute -top-1 w-8 h-1 bg-blue-600 rounded-full" />
-              )}
               <Sparkles
-                className={`w-5 h-5 transition-transform group-hover:scale-105 ${
-                  activeTab === 'boardy' ? 'text-blue-600' : 'text-amber-500'
+                className={`w-5 h-5 transition-transform duration-200 ${
+                  activeTab === 'boardy' ? 'scale-110 text-blue-600' : 'text-amber-500 group-hover:scale-105'
                 }`}
               />
-              <span
-                className={`text-[10px] font-bold ${
-                  activeTab === 'boardy' ? 'text-blue-600' : 'text-slate-500'
-                }`}
-              >
+              <span className={`text-[10px] ${activeTab === 'boardy' ? 'font-black text-blue-600' : 'font-semibold text-slate-500'}`}>
                 Boardy AI
               </span>
             </button>
@@ -456,10 +447,10 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
             <button
               type="button"
               onClick={() => setShowMoreSheet(true)}
-              className="relative py-2 flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer group"
+              className="relative py-1.5 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-slate-900 hover:bg-slate-100/60 transition-all duration-200 cursor-pointer group"
             >
-              <MoreHorizontal className="w-5 h-5 text-slate-400 group-hover:scale-105" />
-              <span className="text-[10px] font-bold text-slate-500">More</span>
+              <MoreHorizontal className="w-5 h-5 text-slate-400 group-hover:scale-110 transition-transform" />
+              <span className="text-[10px] font-semibold text-slate-500">More</span>
             </button>
           </div>
         </nav>

@@ -38,17 +38,13 @@ export const supabase: any = {
 
 export const ADMIN_EMAILS = [
   'shsvirtualadmin@gmail.com',
-  'dj.khadijajameel19@gmail.com',
-  'syedrayyanf1@gmail.com',
+  'support@boardly.cfd',
 ];
 
 export function isAdminEmail(email?: string | null): boolean {
   if (!email) return false;
   const normalized = email.trim().toLowerCase();
-  return ADMIN_EMAILS.includes(normalized) ||
-    normalized.includes('admin') ||
-    normalized.endsWith('@boardly.cfd') ||
-    normalized.endsWith('@boardly.com');
+  return ADMIN_EMAILS.includes(normalized);
 }
 
 /**

@@ -140,25 +140,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let p = await fetchUserProfile(firebaseUser.uid);
       const todayStr = getKarachiTodayString();
 
+      const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
+      const isSystemAdmin = normalizedEmail === 'shsvirtualadmin@gmail.com' || normalizedEmail === 'support@boardly.cfd';
+
       if (!p) {
         // Create initial user document if it doesn't exist yet
         const newProfile: StudentUserProfile = {
           uid: firebaseUser.uid,
           name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Student',
           email: firebaseUser.email || '',
-          plan: 'starter',
-          role: 'student',
+          plan: isSystemAdmin ? 'all_access' : 'starter',
+          role: isSystemAdmin ? 'admin' : 'student',
           createdAt: new Date().toISOString(),
           termsAcceptedAt: new Date().toISOString(),
           termsVersion: '2026.1',
-          onboardingCompleted: false,
+          onboardingCompleted: isSystemAdmin,
           testsUsedToday: 0,
           boardyQuestionsUsedToday: 0,
           lastUsageDate: todayStr,
+          migratedFromSupabase: false,
         };
         await saveUserProfile(firebaseUser.uid, newProfile);
         p = newProfile;
       } else {
+        // Automatically enforce admin role for authorized administrative accounts
+        if (isSystemAdmin && p.role !== 'admin') {
+          await saveUserProfile(firebaseUser.uid, { role: 'admin', plan: 'all_access' });
+          p = { ...p, role: 'admin', plan: 'all_access' };
+        }
+
         // Daily usage reset check at Pakistan midnight
         if (p.lastUsageDate !== todayStr) {
           const updated = {
@@ -173,6 +183,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             lastUsageDate: todayStr,
           });
           p = updated;
+        }
+      }
+
+      // Supabase to Firebase lazy-linking migration on first login
+      if (!p.migratedFromSupabase && normalizedEmail) {
+        try {
+          const migRes = await fetch('/api/auth/migrate-student-history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uid: firebaseUser.uid, email: normalizedEmail }),
+          });
+          if (migRes.ok) {
+            const migData = await migRes.json();
+            if (migData.migrated) {
+              const updates = {
+                migratedFromSupabase: true,
+                onboardingCompleted: true,
+                ...(migData.profileUpdates || {}),
+              };
+              await saveUserProfile(firebaseUser.uid, updates);
+              p = { ...p, ...updates };
+              setMigratedBanner(true);
+            }
+          }
+        } catch (migErr) {
+          console.warn('[Migration Lazy Linking]:', migErr);
         }
       }
 
@@ -235,19 +271,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const cred = await createUserWithEmailAndPassword(auth, formData.email.trim(), formData.password);
       const todayStr = getKarachiTodayString();
 
+      const normalizedEmail = formData.email.trim().toLowerCase();
+      const isSystemAdmin = normalizedEmail === 'shsvirtualadmin@gmail.com' || normalizedEmail === 'support@boardly.cfd';
+
       const newProfile: StudentUserProfile = {
         uid: cred.user.uid,
         name: formData.fullName.trim(),
-        email: formData.email.trim().toLowerCase(),
+        email: normalizedEmail,
         phone: formData.phone?.trim() || '',
-        plan: 'starter',
-        role: 'student',
+        plan: isSystemAdmin ? 'all_access' : 'starter',
+        role: isSystemAdmin ? 'admin' : 'student',
         createdAt: new Date().toISOString(),
         termsAcceptedAt: new Date().toISOString(),
         termsVersion: '2026.1',
         referralSource: formData.referralSource || '',
         testTrack: formData.preparingFor || 'Not sure',
-        onboardingCompleted: false,
+        onboardingCompleted: isSystemAdmin,
         testsUsedToday: 0,
         boardyQuestionsUsedToday: 0,
         lastUsageDate: todayStr,

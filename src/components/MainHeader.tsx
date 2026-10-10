@@ -233,8 +233,15 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
   const handleLogoClick = () => {
     triggerHaptic(HAPTIC_PATTERNS.light);
     setMobileMenuOpen(false);
-    if (onNavigateDashboard) {
-      onNavigateDashboard();
+    if (!isLoggedOut) {
+      if (onNavigateDashboard) {
+        onNavigateDashboard();
+      } else {
+        if (typeof window !== 'undefined') {
+          window.history.pushState({}, '', '/app');
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }
+      }
     } else if (onGoHome) {
       onGoHome();
     } else {
@@ -557,34 +564,42 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
 
           {onGoHome && canGoBack && (
             <button
-              onClick={onGoHome}
-              className="p-2 rounded-full bg-black/5  hover:bg-[#1E5AFF] hover:text-white text-[#0A1330]  transition-all active:scale-95 cursor-pointer"
-              title="Go to Main Home"
+              onClick={() => {
+                if (!isLoggedOut && onNavigateDashboard) {
+                  onNavigateDashboard();
+                } else if (onGoHome) {
+                  onGoHome();
+                }
+              }}
+              className="p-2 rounded-full bg-black/5 hover:bg-[#1E5AFF] hover:text-white text-[#0A1330] transition-all active:scale-95 cursor-pointer"
+              title="Go to Dashboard"
             >
               <Home className="w-4 h-4" />
             </button>
           )}
 
-          {/* Single Hamburger / Menu Icon */}
-          <button
-            onClick={() => {
-              setMobileMenuOpen(!mobileMenuOpen);
-            }}
-            className="p-2 rounded-full hover:bg-black/5  transition-colors active:scale-95 cursor-pointer text-[#0A0A0A] "
-            aria-label="Toggle navigation menu"
-            title="Toggle Navigation Menu"
-          >
-            {mobileMenuOpen ? (
-              <X className="w-5 h-5" />
-            ) : (
-              <Menu className="w-5 h-5" />
-            )}
-          </button>
+          {/* Single Hamburger / Menu Icon: Only show for unauthenticated guests per Requirement 6 */}
+          {isLoggedOut && (
+            <button
+              onClick={() => {
+                setMobileMenuOpen(!mobileMenuOpen);
+              }}
+              className="p-2 rounded-full hover:bg-black/5 transition-colors active:scale-95 cursor-pointer text-[#0A0A0A]"
+              aria-label="Toggle navigation menu"
+              title="Toggle Navigation Menu"
+            >
+              {mobileMenuOpen ? (
+                <X className="w-5 h-5" />
+              ) : (
+                <Menu className="w-5 h-5" />
+              )}
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Mobile Mega-Menu Drawer */}
-      {mobileMenuOpen && (
+      {/* Mobile Mega-Menu Drawer: Only show for unauthenticated guests per Requirement 6 */}
+      {isLoggedOut && mobileMenuOpen && (
         <div className="max-w-7xl mx-auto w-full pt-3 pb-2 border-t border-slate-200/80  mt-3 space-y-3 animate-ios-spring">
           {/* Mobile Menu Logo Header */}
           <div

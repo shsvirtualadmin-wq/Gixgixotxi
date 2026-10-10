@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Menu, X, ArrowRight, Sparkles, Trophy, Users, HelpCircle, Mail } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { BoardyMascot } from '../BoardyMascot';
+import { useAuth } from '../../context/AuthContext';
 
 export type MarketingPage =
   | 'home'
@@ -37,6 +38,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenProgramModal,
   onGetStarted,
 }) => {
+  const { user } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -60,9 +62,41 @@ export const Navbar: React.FC<NavbarProps> = ({
     };
   }, [mobileMenuOpen]);
 
+  const handleHomeNav = () => {
+    if (user) {
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', '/app');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    } else {
+      onNavigate('home');
+    }
+  };
+
   const handleMobileNav = (page: MarketingPage) => {
-    onNavigate(page);
     setMobileMenuOpen(false);
+    if (page === 'home' && user) {
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', '/app');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      return;
+    }
+    onNavigate(page);
+  };
+
+  const handleGetStartedAction = () => {
+    if (user) {
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', '/app');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    } else {
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', '/login');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+    }
   };
 
   const handleEventClick = (event: 'blitz' | 'arena') => {
@@ -93,8 +127,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         >
           {/* Logo on Left */}
           <button
-            onClick={() => onNavigate('home')}
-            className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg p-1 text-left"
+            onClick={handleHomeNav}
+            className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg p-1 text-left cursor-pointer"
             aria-label="Boardly Home"
           >
             <BrandLogo size="md" />
@@ -103,8 +137,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Desktop Nav Links in Center */}
           <div className="hidden md:flex items-center gap-7 text-sm font-medium">
             <button
-              onClick={() => onNavigate('home')}
-              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded ${
+              onClick={handleHomeNav}
+              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded cursor-pointer ${
                 currentPage === 'home'
                   ? 'text-indigo-600 font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -118,7 +152,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onNavigate('features')}
-              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded ${
+              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded cursor-pointer ${
                 currentPage === 'features'
                   ? 'text-indigo-600 font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -132,7 +166,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onNavigate('pricing')}
-              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded ${
+              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded cursor-pointer ${
                 currentPage === 'pricing'
                   ? 'text-indigo-600 font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -146,7 +180,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onNavigate('boardy')}
-              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1.5 ${
+              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1.5 cursor-pointer ${
                 currentPage === 'boardy'
                   ? 'text-indigo-600 font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -162,7 +196,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onNavigate('faqs')}
-              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded ${
+              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded cursor-pointer ${
                 currentPage === 'faqs'
                   ? 'text-indigo-600 font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -176,7 +210,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             <button
               onClick={() => onNavigate('contact')}
-              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded ${
+              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded cursor-pointer ${
                 currentPage === 'contact'
                   ? 'text-indigo-600 font-semibold'
                   : 'text-slate-600 hover:text-slate-900'
@@ -191,43 +225,63 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Right Action on Desktop */}
           <div className="hidden md:flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  window.history.pushState({}, '', '/login');
-                  window.dispatchEvent(new PopStateEvent('popstate'));
-                }
-              }}
-              className="text-xs font-semibold text-slate-600 hover:text-slate-900 px-3.5 py-2 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
-            >
-              Log in
-            </button>
-            <button
-              onClick={onGetStarted}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 glow-btn transition-transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
-            >
-              <span>Get started</span>
-              <ArrowRight className="w-4 h-4" />
-            </button>
+            {user ? (
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.history.pushState({}, '', '/app');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }
+                }}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer"
+              >
+                <span>Student Dashboard</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      window.history.pushState({}, '', '/login');
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }
+                  }}
+                  className="text-xs font-semibold text-slate-600 hover:text-slate-900 px-3.5 py-2 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Log in
+                </button>
+                <button
+                  onClick={handleGetStartedAction}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 glow-btn transition-transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                >
+                  <span>Get started</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              </>
+            )}
           </div>
 
-          {/* Mobile Hamburger Button on Right (minimum 44x44px hitbox) */}
-          <div className="flex md:hidden items-center">
-            <button
-              onClick={() => setMobileMenuOpen(true)}
-              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-              aria-label="Open mobile navigation menu"
-              aria-expanded={mobileMenuOpen}
-            >
-              <Menu className="w-6 h-6" />
-            </button>
-          </div>
+          {/* Mobile Hamburger Button on Right: ONLY shown for unauthenticated visitors per Requirement 6 */}
+          {!user && (
+            <div className="flex md:hidden items-center">
+              <button
+                onClick={() => setMobileMenuOpen(true)}
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
+                aria-label="Open mobile navigation menu"
+                aria-expanded={mobileMenuOpen}
+              >
+                <Menu className="w-6 h-6" />
+              </button>
+            </div>
+          )}
         </nav>
       </header>
 
-      {/* Mobile Card Overlay: Very light transparent dim only with NO blur on background */}
-      {mobileMenuOpen && (
+      {/* Mobile Card Overlay: Only rendered for unauthenticated guests per Requirement 6 */}
+      {!user && mobileMenuOpen && (
         <div className="fixed inset-0 z-50 md:hidden flex flex-col justify-start p-4 sm:p-6 bg-[rgba(15,23,42,0.12)] animate-in fade-in duration-150">
           <div className="w-full max-w-lg mx-auto glass-menu-card rounded-3xl p-6 flex flex-col max-h-[92vh] overflow-y-auto">
             {/* Header: Logo and Close (X) button */}
@@ -397,7 +451,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={() => {
                   setMobileMenuOpen(false);
-                  onGetStarted();
+                  handleGetStartedAction();
                 }}
                 className="w-full py-3.5 px-6 rounded-2xl text-base font-bold text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 glow-btn flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-[0.99] transition-transform"
               >
