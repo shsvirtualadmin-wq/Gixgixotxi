@@ -334,7 +334,7 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                 onClick={() => scrollToSection('study-buddy')}
                 className="hover:text-[#1E5AFF] transition-colors cursor-pointer"
               >
-                Study Buddy AI
+                Ustaad AI
               </button>
               <button
                 onClick={() => scrollToSection('testimonials')}
@@ -399,7 +399,7 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                 }}
                 className="hover:text-[#1E5AFF] transition-colors cursor-pointer flex items-center gap-1.5"
               >
-                <span>Study Buddy AI</span>
+                <span>Ustaad AI</span>
               </button>
               <button
                 onClick={() => onOpenHistory?.()}
@@ -433,7 +433,7 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                 }}
                 className="hover:text-[#1E5AFF] transition-colors cursor-pointer flex items-center gap-1.5"
               >
-                <span>Study Buddy AI</span>
+                <span>Ustaad AI</span>
               </button>
               <button
                 onClick={() => onNavigateAdmin?.('students')}
@@ -636,7 +636,7 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                   onClick={() => scrollToSection('study-buddy')}
                   className="text-left py-2.5 px-3 hover:bg-slate-100  rounded-xl flex items-center justify-between cursor-pointer transition-colors"
                 >
-                  <span>Study Buddy AI</span>
+                  <span>Ustaad AI</span>
                   <Bot className="w-4 h-4 text-[#1E5AFF]" />
                 </button>
                 <button
@@ -743,9 +743,9 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                 >
                   <div className="flex items-center gap-2.5">
                     <Bot className="w-4 h-4 text-[#1E5AFF]" />
-                    <span>Study Buddy AI</span>
+                    <span>Ustaad AI</span>
                   </div>
-                  <span className="text-[10px] bg-purple-500/15 text-purple-700  font-bold px-2 py-0.5 rounded-full">AI Assistant</span>
+                  <span className="text-[10px] bg-purple-500/15 text-purple-700  font-bold px-2 py-0.5 rounded-full">Ustaad AI</span>
                 </button>
                 <button
                   onClick={() => {
@@ -809,9 +809,9 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                 >
                   <div className="flex items-center gap-2.5">
                     <Bot className="w-4 h-4 text-[#1E5AFF]" />
-                    <span>Study Buddy AI</span>
+                    <span>Ustaad AI</span>
                   </div>
-                  <span className="text-[10px] bg-purple-500/15 text-purple-700 font-bold px-2 py-0.5 rounded-full">AI Assistant</span>
+                  <span className="text-[10px] bg-purple-500/15 text-purple-700 font-bold px-2 py-0.5 rounded-full">Ustaad AI</span>
                 </button>
                 <button
                   onClick={() => {

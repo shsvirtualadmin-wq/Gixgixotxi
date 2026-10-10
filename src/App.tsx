@@ -71,9 +71,11 @@ import { App as CapacitorApp } from '@capacitor/app';
 import { ShieldCheck, WifiOff, AlertTriangle, Lock, ShieldAlert, GraduationCap, Sparkles, ArrowRight, RefreshCw, X, LogOut } from 'lucide-react';
 import { cacheGeneratedQuestions, getCachedQuestions, saveHistoryOffline, loadHistoryOffline, clearHistoryOffline } from './lib/offlineCache';
 import { BrandedLoadingSpinner } from './components/BrandedLoadingSpinner';
+import { BoardlyMarketingApp } from './components/marketing/BoardlyMarketingApp';
 
 export type ScreenType =
   | 'intro'
+  | 'marketing'
   | 'plan_selection'
   | 'pricing'
   | 'payment_required'
@@ -94,6 +96,7 @@ export type ScreenType =
 export const VALID_SCREENS: ScreenType[] = [
   'dashboard',
   'intro',
+  'marketing',
   'profile',
   'admin',
   'plan_selection',
@@ -162,13 +165,19 @@ const getInitialUrlState = (): {
 
   const params = new URLSearchParams(window.location.search);
   const rawUrlScreen = params.get('screen')?.trim();
+  const pageParam = params.get('page')?.trim();
 
-  // Hard fallback: default is 'dashboard' if screen is missing, empty, or invalid
-  let initialScreen: ScreenType = 'dashboard';
+  // If a marketing page is directly requested (e.g. ?page=pricing or ?page=features)
+  if (pageParam) {
+    return { screen: 'intro', selectedSubject: '' };
+  }
+
+  // Default is 'intro' (marketing website) for new visitors, or cached dashboard for logged-in students
+  let initialScreen: ScreenType = 'intro';
   if (rawUrlScreen && VALID_SCREENS.includes(rawUrlScreen as ScreenType)) {
     initialScreen = rawUrlScreen as ScreenType;
   } else if (!params.has('screen')) {
-    // Only check background/offline resumption if no explicit screen parameter was passed in URL
+    // Check background/offline resumption
     try {
       // 1. Prioritize active test session resume if present and non-expired
       const savedSession = localStorage.getItem('boardly_active_test_session');
@@ -184,27 +193,32 @@ const getInitialUrlState = (): {
           initialScreen = 'test';
         }
       }
-      if (initialScreen === 'dashboard') {
-        const saved = localStorage.getItem('boardly_active_screen')?.trim();
-        if (saved && VALID_SCREENS.includes(saved as ScreenType)) {
-          initialScreen = saved as ScreenType;
+      if (initialScreen === 'intro') {
+        const cachedUser = localStorage.getItem('boardly_cached_user');
+        if (cachedUser) {
+          const saved = localStorage.getItem('boardly_active_screen')?.trim();
+          if (saved && VALID_SCREENS.includes(saved as ScreenType) && saved !== 'intro') {
+            initialScreen = saved as ScreenType;
+          } else {
+            initialScreen = 'dashboard';
+          }
         }
       }
     } catch {}
   } else {
-    // When ?screen= was explicitly provided but is empty or invalid,
-    // immediately default to 'dashboard'
-    initialScreen = 'dashboard';
+    // When ?screen= was explicitly provided but is empty or invalid
+    const cachedUser = typeof window !== 'undefined' ? localStorage.getItem('boardly_cached_user') : null;
+    initialScreen = cachedUser ? 'dashboard' : 'intro';
   }
 
   // If the URL has an empty or invalid screen parameter (?screen= or ?screen=invalid),
-  // immediately default to the dashboard route (both URL/state and localStorage)
+  // cleanly normalize it
   if (params.has('screen') && (!rawUrlScreen || !VALID_SCREENS.includes(rawUrlScreen as ScreenType))) {
     try {
       const cleanParams = new URLSearchParams(window.location.search);
-      cleanParams.set('screen', 'dashboard');
-      window.history.replaceState({ screen: 'dashboard' }, '', `?${cleanParams.toString()}`);
-      localStorage.setItem('boardly_active_screen', 'dashboard');
+      cleanParams.set('screen', initialScreen);
+      window.history.replaceState({ screen: initialScreen }, '', `?${cleanParams.toString()}`);
+      localStorage.setItem('boardly_active_screen', initialScreen);
     } catch {}
   }
 
@@ -3202,6 +3216,24 @@ export function App() {
 
   const displayName = currentUser?.user_metadata?.full_name || currentUser?.email?.split('@')[0];
 
+  if (screen === 'intro' || screen === 'marketing' || screen === 'pricing') {
+    const pageParam = typeof window !== 'undefined' ? (new URLSearchParams(window.location.search).get('page') as any) : null;
+    const initialPage = screen === 'pricing' ? 'pricing' : pageParam || 'home';
+
+    return (
+      <BoardlyMarketingApp
+        initialPage={initialPage}
+        onLaunchPortal={() => {
+          if (currentUser) {
+            setScreen('dashboard');
+          } else {
+            setScreen('auth');
+          }
+        }}
+      />
+    );
+  }
+
   return (
     <div className="min-h-dvh flex flex-col bg-[#F8F9FB]  text-slate-900  selection:bg-[#1E5AFF] selection:text-white relative">
       <MainHeader 
@@ -3223,8 +3255,8 @@ export function App() {
             window.scrollTo({ top: 0, behavior: 'smooth' });
           });
         }}
-        canGoBack={screen !== 'intro' && screen !== 'dashboard' && screen !== 'admin'}
-        isIntroScreen={screen === 'intro' && !currentUser}
+        canGoBack={(screen as string) !== 'intro' && screen !== 'dashboard' && screen !== 'admin'}
+        isIntroScreen={false}
         historyCount={history.length}
         onOpenHistory={() => openHistoryModal()}
         onOpenLmsPortal={() => openLmsModal()}
@@ -3366,34 +3398,8 @@ export function App() {
             ) : (
               <ChunkErrorBoundary>
                 <React.Suspense fallback={null}>
-                {(screen === 'intro' || screen === 'dashboard' || screen === 'stats') && (
-                  !currentUser ? (
-                    <IntroScreen
-                      onContinue={() => setScreen('auth')}
-                      onSelectGradesFlow={() => setScreen('auth')}
-                      onSelectMdcat={() => {
-                        setSelectedClass('MDCAT');
-                        setSelectedGroup('MDCAT');
-                        setScreen('auth');
-                      }}
-                      onSelectTcat={() => {
-                        setSelectedClass('TCAT');
-                        setSelectedGroup('TCAT');
-                        setScreen('auth');
-                      }}
-                      onSelectEntranceTrack={(track) => {
-                        const t = track.toUpperCase() as BoardClass;
-                        setSelectedClass(t);
-                        setSelectedGroup(String(t));
-                        setScreen('auth');
-                      }}
-                      onOpenCommunity={() => openCommunityModal()}
-                      onOpenHistory={() => openHistoryModal()}
-                      onOpenLmsPortal={() => setScreen('auth')}
-                      onOpenStudyBuddy={() => openStudyBuddy()}
-                      historyCount={history.length}
-                    />
-                  ) : (
+                {(screen === 'dashboard' || screen === 'stats') && (
+                  currentUser && (
                     <StudentHomeDashboard
                       currentUser={currentUser}
                       userProfile={userProfile}
@@ -3437,7 +3443,7 @@ export function App() {
                     />
                   )
                 )}
-                {(screen === 'checkout' || screen === 'pricing' || screen === 'plan_selection' || screen === 'payment_required') && (
+                {(screen === 'checkout' || screen === 'plan_selection' || screen === 'payment_required') && (
                   <div className="w-full flex justify-center py-12">
                     <BrandedLoadingSpinner label="Redirecting to your free dashboard..." size="md" />
                   </div>

@@ -12,9 +12,9 @@ export const OG_IMAGE_URL = 'https://boardly.cfd/logo.png';
 
 export const DEFAULT_PAGE_META: Record<string, PageMetaConfig> = {
   intro: {
-    title: 'Boardly — MCQ Practice for FSC & Matric',
+    title: 'Boardly',
     description:
-      'Boardly by SHS Virtual Academy provides MCQ practice and test prep for FSC Matric and Post FSC students. Visit shsvirtualacademy.pro to learn more.',
+      'Boardly is Pakistan’s diagnostic exam preparation platform for Matric, FSC, and entrance test candidates.',
   },
   pricing: {
     title: 'Plans & Pricing — Boardly by SHS Virtual Academy',
