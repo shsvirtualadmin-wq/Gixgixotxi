@@ -22,8 +22,8 @@ export const StudentUsageModal: React.FC<StudentUsageModalProps> = ({
 
   if (!isOpen) return null;
 
-  const userPlan: PlanType = (profile?.plan as PlanType) || 'starter';
-  const planConfig = PLAN_LIMITS[userPlan] || PLAN_LIMITS.starter;
+  const userPlan: PlanType = (profile?.plan as PlanType) || 'free';
+  const planConfig = PLAN_LIMITS[userPlan] || PLAN_LIMITS.free;
 
   const testsUsedToday = profile?.testsUsedToday || 0;
   const boardyUsedToday = profile?.boardyQuestionsUsedToday || 0;
@@ -232,7 +232,7 @@ export const StudentUsageModal: React.FC<StudentUsageModalProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {(['starter', 'steady_climb', 'all_access'] as PlanType[]).map((planKey) => {
+                {(['free', 'pro', 'premium'] as PlanType[]).map((planKey) => {
                   const cfg = PLAN_LIMITS[planKey];
                   const isUserPlan = userPlan === planKey;
                   return (

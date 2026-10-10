@@ -4,11 +4,13 @@ import { FrostedBackgroundDecor } from './FrostedBackgroundDecor';
 import { ArrowLeft, CheckCircle2, ShieldCheck, Lock, Mail, User, AlertCircle, Eye, EyeOff } from 'lucide-react';
 
 interface OrganizerApplyProps {
-  onNavigate: (route: string) => void;
+  onNavigate?: (route: string) => void;
   onSignIn?: () => void;
+  onBack?: () => void;
+  onSuccess?: () => void;
 }
 
-export const OrganizerApply: React.FC<OrganizerApplyProps> = ({ onNavigate, onSignIn }) => {
+export const OrganizerApply: React.FC<OrganizerApplyProps> = ({ onNavigate, onSignIn, onBack, onSuccess }) => {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -51,6 +53,16 @@ export const OrganizerApply: React.FC<OrganizerApplyProps> = ({ onNavigate, onSi
     confirmPassword === password &&
     agreeTerms;
 
+  const goBack = () => {
+    if (onBack) onBack();
+    else if (onNavigate) onNavigate('/circles');
+  };
+
+  const handleSuccessfulApply = () => {
+    if (onSuccess) onSuccess();
+    else if (onNavigate) onNavigate('/organizer');
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setTouched({
@@ -85,19 +97,19 @@ export const OrganizerApply: React.FC<OrganizerApplyProps> = ({ onNavigate, onSi
       {/* Top minimal bar */}
       <header className="max-w-4xl mx-auto w-full flex items-center justify-between pb-6">
         <button
-          onClick={() => onNavigate('/circles')}
-          className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded p-1"
+          onClick={goBack}
+          className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-indigo-500 rounded p-1"
           aria-label="Back to Study Circles"
         >
           <BrandLogo size="md" />
         </button>
 
         <button
-          onClick={() => onNavigate('/circles')}
+          onClick={goBack}
           className="text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 flex items-center gap-1.5 transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>Back to Circles</span>
+          <span>Back</span>
         </button>
       </header>
 
@@ -122,10 +134,10 @@ export const OrganizerApply: React.FC<OrganizerApplyProps> = ({ onNavigate, onSi
               Our student community coordinators review submissions within 24 hours to issue your verification badge and custom session builder links.
             </div>
             <button
-              onClick={() => onNavigate('/circles')}
+              onClick={handleSuccessfulApply}
               className="w-full py-3.5 rounded-full text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-md cursor-pointer"
             >
-              Back to Study Circles
+              Continue to Dashboard
             </button>
           </div>
         ) : (

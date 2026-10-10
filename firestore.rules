@@ -11,11 +11,18 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      return isAuthenticated() &&
-        (request.auth.token.role == 'admin' ||
-         request.auth.token.admin == true ||
-         request.auth.token.email == 'shsvirtualadmin@gmail.com' ||
-         request.auth.token.email == 'support@boardly.cfd');
+      return isAuthenticated() && (
+        (request.auth.token.email == 'shsvirtualadmin@gmail.com' && request.auth.token.email_verified == true) ||
+        request.auth.token.email == 'support@boardly.cfd' ||
+        request.auth.token.role == 'admin' ||
+        request.auth.token.admin == true ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
     }
 
     // Users collection
@@ -25,83 +32,187 @@ service cloud.firestore {
       allow create: if isOwner(userId)
         && request.resource.data.uid == userId
         && (!('role' in request.resource.data) || request.resource.data.role == 'student' || isAdmin())
-        && (!('plan' in request.resource.data) || request.resource.data.plan == 'starter' || request.resource.data.plan == 'free' || isAdmin());
+        && (!('plan' in request.resource.data) || request.resource.data.plan in ['free', 'starter'] || isAdmin());
 
       allow update: if (isOwner(userId)
-        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'plan'])))
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'roles', 'plan', 'planExpiry', 'status'])))
         || isAdmin();
 
       allow delete: if isAdmin();
 
       match /testAttempts/{attemptId} {
-        allow read, write: if isOwner(userId) || isAdmin();
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) || isAdmin();
+        allow update, delete: if isAdmin();
       }
 
       match /boardyChats/{messageId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
+
+      match /notifications/{notifId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) || isAdmin();
+        allow update: if isOwner(userId) || isAdmin();
+        allow delete: if isOwner(userId) || isAdmin();
+      }
     }
 
     // Reviews collection
     match /reviews/{reviewId} {
-      // Anyone can read approved reviews, student can read their own, admin can read all
       allow read: if (resource.data.status == 'approved')
         || (isAuthenticated() && resource.data.uid == request.auth.uid)
         || isAdmin();
 
-      // Submit: Logged in, verified email, only with own uid, initial status MUST be pending
       allow create: if isAuthenticated()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.status == 'pending'
         && request.resource.data.rating >= 1 && request.resource.data.rating <= 5
-        && request.resource.data.text.size() >= 20 && request.resource.data.text.size() <= 500;
+        && request.resource.data.text.size() >= 10 && request.resource.data.text.size() <= 800;
 
-      // Update by student: editing resets status to 'pending'
-      // Update by admin: can approve or reject, but CANNOT approve their own review
       allow update: if (
           isAuthenticated()
           && resource.data.uid == request.auth.uid
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.status == 'pending'
-          && request.resource.data.rating >= 1 && request.resource.data.rating <= 5
-          && request.resource.data.text.size() >= 20 && request.resource.data.text.size() <= 500
         ) || (
           isAdmin()
-          // Self-approval check: admin cannot approve their own review
           && !(resource.data.uid == request.auth.uid && request.resource.data.status == 'approved')
         );
 
       allow delete: if (isAuthenticated() && resource.data.uid == request.auth.uid) || isAdmin();
     }
 
-    // App config
+    // System configurations and Admin access list
     match /config/{configId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    match /testPapers/{paperId} {
-      allow read: if isAuthenticated();
+    match /admins/{adminId} {
+      allow read: if isAdmin();
       allow write: if isAdmin();
     }
 
-    // Platform-wide Events (Blitz & Arena)
+    // Payment upgrade requests
+    match /paymentRequests/{requestId} {
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
+    // Competitive event sessions (Blitz, Arena, Study Circles)
+    match /sessions/{sessionId} {
+      allow read: if true;
+      allow create: if (isAuthenticated() && request.resource.data.organizerId == request.auth.uid) || isAdmin();
+      allow update: if (isAuthenticated() && resource.data.organizerId == request.auth.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
     match /events/{eventId} {
       allow read: if true;
       allow write: if isAdmin();
     }
 
-    // Community Study Circles
-    match /studyCircles/{circleId} {
-      allow read: if isAuthenticated() || isAdmin();
-      allow write: if isAuthenticated() || isAdmin();
+    match /registrations/{regId} {
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
     }
 
-    // Campus Captains CRM Applications
+    match /sessionResults/{resultId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /certificates/{certId} {
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Organizer applications & management
+    match /organizerApplications/{appId} {
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /organizers/{orgId} {
+      allow read: if isAuthenticated() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    // Campus Captains
     match /captainApplications/{appId} {
-      allow read: if isAdmin();
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /captains/{captainId} {
+      allow read: if isAuthenticated() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /referrals/{refId} {
+      allow read: if (isAuthenticated() && resource.data.captainId == request.auth.uid) || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /missions/{missionId} {
+      allow read: if isAuthenticated() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /rewards/{rewardId} {
+      allow read: if isAuthenticated() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /rewardRedemptions/{redemptionId} {
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // Support tickets
+    match /supportTickets/{ticketId} {
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
       allow create: if true;
       allow update, delete: if isAdmin();
+    }
+
+    // Content: questions, sheets, universities, formulas
+    match /questions/{qId} {
+      allow read: if isAuthenticated() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /sheets/{sheetId} {
+      allow read: if isAuthenticated() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /universities/{univId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /meritFormulas/{formId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /announcements/{annId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Immutable Audit Logs: read-only by admin, create by admin, no delete/update
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin();
+      allow update, delete: if false;
     }
   }
 }

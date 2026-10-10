@@ -21,25 +21,30 @@ import {
   Coins,
   Bell,
   Shield,
+  Star,
+  Award,
+  Calendar,
+  Lock,
 } from 'lucide-react';
-import { BrandLogo } from '../marketing/BrandLogo';
 import { useAuth } from '../../context/AuthContext';
-import { StoredTestAttempt, getTestAttempts, logTestAttempt } from '../../lib/firebase';
+import { StoredTestAttempt, getTestAttempts, logTestAttempt, UserRole } from '../../lib/firebase';
 import { StudentOverviewTab } from './StudentOverviewTab';
 import { StudentPracticeTab } from './StudentPracticeTab';
 import { StudentHistoryTab } from './StudentHistoryTab';
 import { StudentBoardyChatTab } from './StudentBoardyChatTab';
+import { StudentEventsTab } from './StudentEventsTab';
 import { StudentTestRunner } from './StudentTestRunner';
 import { StudentTestResult } from './StudentTestResult';
 import { StudentUsageModal } from './StudentUsageModal';
 import { MeritMeterModal } from './MeritMeterModal';
-import { UserAvatar } from '../UserAvatar';
+import { BottomSheet } from '../ui/Drawer';
+import { Modal } from '../ui/Modal';
+import { AppShell } from '../ui/AppShell';
 import { getEntranceExamQuestions } from '../../data/entranceExamQuestions';
 import { University, UNIVERSITIES } from '../../data/universities';
 import { Question } from '../../types';
-import { PLAN_LIMITS } from '../../data/planLimits';
-
-type StudentTab = 'overview' | 'practice' | 'history' | 'boardy';
+import { getPlanConfig } from '../../data/planLimits';
+import { EventSession } from '../../data/eventsStore';
 
 interface StudentAppShellProps {
   onNavigateMarketing: (path: string) => void;
@@ -54,20 +59,27 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
   onOpenBlitz,
   onOpenArena,
 }) => {
-  const { user, profile, logOut, updateProfileData } = useAuth();
+  const { user, profile, isAdmin, logOut, updateProfileData, activeRole, switchRole } = useAuth();
 
-  const userEmail = (user?.email || '').toLowerCase().trim();
-  const isAdmin = Boolean(
-    profile?.role === 'admin' ||
-    userEmail === 'shsvirtualadmin@gmail.com' ||
-    userEmail === 'support@boardly.cfd'
-  );
-
-  const [activeTab, setActiveTab] = useState<StudentTab>('overview');
+  const [activeTab, setActiveTab] = useState<string>('overview');
   const [showMoreSheet, setShowMoreSheet] = useState<boolean>(false);
   const [showUsageModal, setShowUsageModal] = useState<boolean>(false);
   const [showMeritMeterModal, setShowMeritMeterModal] = useState<boolean>(false);
+  const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
+  const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
   const [boardyPrompt, setBoardyPrompt] = useState<string>('');
+
+  // Review Form State
+  const [reviewRating, setReviewRating] = useState<number>(5);
+  const [reviewText, setReviewText] = useState<string>('');
+  const [reviewSubmitted, setReviewSubmitted] = useState<boolean>(false);
+
+  // Upgrade Request State
+  const [upgradeTargetPlan, setUpgradeTargetPlan] = useState<'pro' | 'premium'>('pro');
+  const [upgradeMonths, setUpgradeMonths] = useState<number>(1);
+  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'jazzcash' | 'easypaisa'>('jazzcash');
+  const [transactionId, setTransactionId] = useState<string>('');
+  const [upgradeSubmitted, setUpgradeSubmitted] = useState<boolean>(false);
 
   // Test Runner State
   const [activeTest, setActiveTest] = useState<{
@@ -91,7 +103,6 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
   // Test Attempts History
   const [attempts, setAttempts] = useState<StoredTestAttempt[]>([]);
 
-  // Load test attempts
   useEffect(() => {
     if (user?.uid) {
       getTestAttempts(user.uid).then((data) => {
@@ -102,10 +113,8 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     }
   }, [user]);
 
-  // Start a Timed Sprint in subject
   const handleStartSprint = (subject: string) => {
     const rawQuestions = getEntranceExamQuestions('fast', subject, 30);
-    // Ensure we have 30 questions
     const finalQuestions = rawQuestions.slice(0, 30);
 
     setActiveTest({
@@ -118,7 +127,6 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     setCompletedResult(null);
   };
 
-  // Start University Mock
   const handleStartUniversityPaper = (uni: University) => {
     const rawQuestions = getEntranceExamQuestions(uni.id, 'Advance Maths', 40);
     const negPercent = uni.id === 'fast' || uni.id === 'giki' || uni.id === 'iba' ? 0.25 : 0;
@@ -133,7 +141,17 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     setCompletedResult(null);
   };
 
-  // Complete Test & Save to Firestore
+  const handleStartEventTest = (session: EventSession) => {
+    const rawQuestions = getEntranceExamQuestions('nust', session.subject || 'Advance Maths', session.totalQuestions || 40);
+    setActiveTest({
+      title: session.title,
+      questions: rawQuestions,
+      durationMinutes: session.durationMinutes || 40,
+      negativeMarkingPercent: session.type === 'arena' ? 0.25 : 0,
+    });
+    setCompletedResult(null);
+  };
+
   const handleCompleteTest = async (results: {
     title: string;
     questions: Question[];
@@ -175,10 +193,8 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
 
     setAttempts((prev) => [newAttempt, ...prev]);
 
-    // Save to Firestore
     if (user?.uid) {
       logTestAttempt(newAttempt).catch(console.warn);
-      // Increment testsUsedToday
       const currentUsed = profile?.testsUsedToday || 0;
       updateProfileData({ testsUsedToday: currentUsed + 1 }).catch(console.warn);
     }
@@ -195,7 +211,9 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
 
   const handleAskBoardyAboutQuestion = (q: Question, studentAnsIndex: number | null) => {
     const studentChoice =
-      studentAnsIndex !== null ? `Option ${String.fromCharCode(65 + studentAnsIndex)}: "${q.options[studentAnsIndex]}"` : 'unattempted';
+      studentAnsIndex !== null
+        ? `Option ${String.fromCharCode(65 + studentAnsIndex)}: "${q.options[studentAnsIndex]}"`
+        : 'unattempted';
     const prompt = `Please explain this question step-by-step:\n\n**Question**: ${q.q || q.question}\n\n**Options**:\nA) ${q.options[0]}\nB) ${q.options[1]}\nC) ${q.options[2]}\nD) ${q.options[3]}\n\nI answered ${studentChoice}. The correct answer is Option ${String.fromCharCode(65 + q.correct)}. Where did my logic go wrong?`;
 
     setBoardyPrompt(prompt);
@@ -203,524 +221,463 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     setCompletedResult(null);
   };
 
-  return (
-    <div className="min-h-screen bg-[#F8F9FB] flex flex-col justify-between selection:bg-blue-100 selection:text-blue-900 font-sans">
-      {/* Background Grid Pattern */}
-      <div
-        className="fixed inset-0 pointer-events-none opacity-[0.4]"
-        style={{
-          backgroundImage:
-            'radial-gradient(circle at 1px 1px, #CBD5E1 1px, transparent 0)',
-          backgroundSize: '24px 24px',
-        }}
+  const handleSubmitReview = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewText.trim() || reviewText.length < 10) return;
+    try {
+      const { collection, addDoc } = await import('firebase/firestore');
+      const { db } = await import('../../lib/firebase');
+      await addDoc(collection(db, 'reviews'), {
+        uid: user?.uid || 'guest',
+        name: profile?.name || 'Student',
+        nameDisplayChoice: 'first_initial',
+        rating: reviewRating,
+        text: reviewText.trim(),
+        exam: profile?.testTrack || 'FSC / Entry Test',
+        status: 'pending',
+        isVerifiedStudent: true,
+        createdAt: new Date().toISOString(),
+      });
+      setReviewSubmitted(true);
+      setTimeout(() => {
+        setShowReviewModal(false);
+        setReviewSubmitted(false);
+        setReviewText('');
+      }, 2500);
+    } catch (err) {
+      console.warn('[Review submit notice]:', err);
+      setShowReviewModal(false);
+    }
+  };
+
+  const handleSubmitUpgradeRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transactionId.trim()) return;
+    try {
+      const { collection, addDoc } = await import('firebase/firestore');
+      const { db } = await import('../../lib/firebase');
+      const amount = upgradeTargetPlan === 'pro' ? 2499 * upgradeMonths : 3999 * upgradeMonths;
+      await addDoc(collection(db, 'paymentRequests'), {
+        userId: user?.uid || 'guest',
+        userEmail: user?.email || '',
+        userName: profile?.name || 'Student',
+        planId: upgradeTargetPlan,
+        durationMonths: upgradeMonths,
+        amountPkr: amount,
+        paymentMethod,
+        transactionId: transactionId.trim(),
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+      });
+      setUpgradeSubmitted(true);
+      setTimeout(() => {
+        setShowUpgradeModal(false);
+        setUpgradeSubmitted(false);
+        setTransactionId('');
+      }, 3000);
+    } catch (err) {
+      console.warn('[Upgrade submit notice]:', err);
+      setShowUpgradeModal(false);
+    }
+  };
+
+  // If a test is actively running, render the dedicated runner
+  if (activeTest) {
+    return (
+      <StudentTestRunner
+        title={activeTest.title}
+        questions={activeTest.questions}
+        durationMinutes={activeTest.durationMinutes}
+        negativeMarkingPercent={activeTest.negativeMarkingPercent}
+        onComplete={handleCompleteTest}
+        onExit={() => setActiveTest(null)}
       />
+    );
+  }
 
-      {/* Main Content View (if test is active, show test runner) */}
-      {activeTest ? (
-        <StudentTestRunner
-          title={activeTest.title}
-          questions={activeTest.questions}
-          durationMinutes={activeTest.durationMinutes}
-          negativeMarkingPercent={activeTest.negativeMarkingPercent}
-          onComplete={handleCompleteTest}
-          onExit={() => setActiveTest(null)}
+  // If test is completed, render detailed result screen
+  if (completedResult) {
+    return (
+      <StudentTestResult
+        title={completedResult.title}
+        questions={completedResult.questions}
+        userAnswers={completedResult.userAnswers}
+        timeSpentSeconds={completedResult.timeSpentSeconds}
+        negativeMarkingPercent={completedResult.negativeMarkingPercent}
+        onRetake={() => {
+          const rawQuestions = getEntranceExamQuestions('fast', 'Advance Maths', 30);
+          setActiveTest({
+            title: completedResult.title,
+            questions: rawQuestions,
+            durationMinutes: 10,
+            negativeMarkingPercent: completedResult.negativeMarkingPercent,
+          });
+          setCompletedResult(null);
+        }}
+        onGoHome={() => {
+          setCompletedResult(null);
+          setActiveTab('overview');
+        }}
+        onAskBoardyAboutQuestion={handleAskBoardyAboutQuestion}
+      />
+    );
+  }
+
+  return (
+    <AppShell
+      role="student"
+      title={
+        activeTab === 'overview'
+          ? 'Dashboard'
+          : activeTab === 'practice'
+          ? 'Practice Question Bank'
+          : activeTab === 'events'
+          ? 'Events & Blitz'
+          : activeTab === 'boardy'
+          ? 'Boardy AI Tutor'
+          : activeTab === 'history'
+          ? 'Test History'
+          : 'Student Portal'
+      }
+      subtitle="FSC & University Test Prep Portal"
+      activeNav={activeTab}
+      onSelectNav={(id) => {
+        setActiveTab(id);
+        setShowMoreSheet(false);
+      }}
+      onNavigateUpgrade={() => setShowUpgradeModal(true)}
+      onNavigateProfile={() => setShowUsageModal(true)}
+      onOpenMoreSheet={() => setShowMoreSheet(true)}
+      onLogout={logOut}
+    >
+      {/* Tab Switcher */}
+      {activeTab === 'overview' && (
+        <StudentOverviewTab
+          attempts={attempts}
+          onStartSprint={handleStartSprint}
+          onGoToPractice={() => setActiveTab('practice')}
+          onGoToEvents={() => setActiveTab('events')}
+          onWriteReview={() => setShowReviewModal(true)}
         />
-      ) : completedResult ? (
-        <StudentTestResult
-          title={completedResult.title}
-          questions={completedResult.questions}
-          userAnswers={completedResult.userAnswers}
-          timeSpentSeconds={completedResult.timeSpentSeconds}
-          negativeMarkingPercent={completedResult.negativeMarkingPercent}
-          onRetake={() => {
-            const rawQuestions = getEntranceExamQuestions('fast', 'Advance Maths', 30);
-            setActiveTest({
-              title: completedResult.title,
-              questions: rawQuestions,
-              durationMinutes: 10,
-              negativeMarkingPercent: completedResult.negativeMarkingPercent,
-            });
-            setCompletedResult(null);
-          }}
-          onGoHome={() => {
-            setCompletedResult(null);
-            setActiveTab('overview');
-          }}
-          onAskBoardyAboutQuestion={handleAskBoardyAboutQuestion}
-        />
-      ) : (
-        <div className="relative z-10 max-w-4xl mx-auto w-full px-4 sm:px-6 pt-4 pb-28 sm:pb-32 flex-1">
-          {/* Student App Top Header Bar */}
-          <header className="flex items-center justify-between pb-3.5 mb-4 border-b border-slate-200/70">
-            {/* Logo Left */}
-            <div className="flex items-center gap-2.5">
-              <button
-                type="button"
-                onClick={() => setActiveTab('overview')}
-                className="cursor-pointer focus:outline-none"
-                aria-label="Boardly Home"
-              >
-                <BrandLogo size="sm" />
-              </button>
-            </div>
-
-            {/* Counters, Bell & Profile Right */}
-            <div className="flex items-center gap-2 sm:gap-2.5">
-              {/* Admin Dashboard shortcut button if admin */}
-              {isAdmin && (
-                <button
-                  type="button"
-                  onClick={() => onNavigateMarketing('/admin')}
-                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-100 hover:bg-purple-200 text-purple-800 text-xs font-black shadow-xs transition-colors cursor-pointer"
-                  title="Open Admin Dashboard"
-                >
-                  <Shield className="w-3.5 h-3.5 text-purple-700" />
-                  <span>Admin</span>
-                </button>
-              )}
-
-              {/* Streak Counter */}
-              <div
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200/80 text-amber-800 text-xs font-black shadow-xs cursor-default"
-                title={`${profile?.streakDays || 1} day study streak`}
-              >
-                <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                <span>{profile?.streakDays || 1}d</span>
-              </div>
-
-              {/* Coin / Points Counter */}
-              <div
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200/80 text-indigo-700 text-xs font-black shadow-xs cursor-default"
-                title="Boardly prep points"
-              >
-                <Coins className="w-3.5 h-3.5 text-indigo-600" />
-                <span>{profile?.points || 120}</span>
-              </div>
-
-              {/* Notification Bell */}
-              <button
-                type="button"
-                onClick={() => setShowUsageModal(true)}
-                className="relative p-2 rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
-                aria-label="Notifications and usage"
-              >
-                <Bell className="w-4 h-4" />
-                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-blue-600" />
-              </button>
-
-              {/* Profile Avatar / Initials */}
-              <button
-                type="button"
-                onClick={() => setShowMoreSheet(true)}
-                className={`flex items-center justify-center w-8 h-8 rounded-full ${
-                  isAdmin
-                    ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 ring-2 ring-purple-300'
-                    : 'bg-gradient-to-tr from-blue-600 to-indigo-600 hover:ring-2 hover:ring-blue-400'
-                } text-white font-extrabold text-xs shadow-xs transition-all cursor-pointer`}
-                aria-label="Open student profile and more options"
-              >
-                {isAdmin ? 'A' : (profile?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'S')}
-              </button>
-            </div>
-          </header>
-
-          {activeTab === 'overview' && (
-            <StudentOverviewTab
-              attempts={attempts}
-              onStartSprint={handleStartSprint}
-              onGoToPractice={() => setActiveTab('practice')}
-              onReviewAttempt={(att) => {
-                // Generate review questions
-                const qReview = getEntranceExamQuestions('fast', att.subject || 'Advance Maths', att.totalQuestions || 30);
-                const dummyAns = Array(qReview.length).fill(null).map((_, i) => (i % 2 === 0 ? qReview[i].correct : 0));
-                setCompletedResult({
-                  title: att.title,
-                  questions: qReview,
-                  userAnswers: dummyAns,
-                  timeSpentSeconds: att.timeSpentSeconds || 600,
-                  negativeMarkingPercent: 0,
-                });
-              }}
-            />
-          )}
-
-          {activeTab === 'practice' && (
-            <StudentPracticeTab
-              onStartSprint={handleStartSprint}
-              onStartUniversityPaper={handleStartUniversityPaper}
-              onOpenUsage={() => setShowUsageModal(true)}
-              onUpgrade={() => onNavigateMarketing('/pricing')}
-            />
-          )}
-
-          {activeTab === 'history' && (
-            <StudentHistoryTab
-              attempts={attempts}
-              onStartNewTest={() => setActiveTab('practice')}
-              onReviewAttempt={(att) => {
-                const qReview = getEntranceExamQuestions('fast', att.subject || 'Advance Maths', att.totalQuestions || 30);
-                const dummyAns = Array(qReview.length).fill(null).map((_, i) => (i % 2 === 0 ? qReview[i].correct : 0));
-                setCompletedResult({
-                  title: att.title,
-                  questions: qReview,
-                  userAnswers: dummyAns,
-                  timeSpentSeconds: att.timeSpentSeconds || 600,
-                  negativeMarkingPercent: 0,
-                });
-              }}
-            />
-          )}
-
-          {activeTab === 'boardy' && (
-            <StudentBoardyChatTab
-              initialPrompt={boardyPrompt}
-              onOpenUsage={() => setShowUsageModal(true)}
-              onUpgrade={() => onNavigateMarketing('/pricing')}
-            />
-          )}
-        </div>
       )}
 
-      {/* Floating Glassmorphism Bottom Navigation Bubble */}
-      {/* Floating Glassmorphism Bottom Navigation Detached Bubble */}
-      {!activeTest && !completedResult && (
-        <nav
-          className="fixed bottom-4 sm:bottom-6 left-1/2 -translate-x-1/2 z-40 w-[calc(100%-2rem)] max-w-md pointer-events-none transition-all duration-300"
-          aria-label="Student Floating Navigation"
-        >
-          <div
-            style={{
-              backgroundColor: 'rgba(255, 255, 255, 0.82)',
-              backdropFilter: 'blur(20px)',
-              WebkitBackdropFilter: 'blur(20px)',
-            }}
-            className="pointer-events-auto border border-white/70 shadow-[0_20px_45px_rgba(15,23,42,0.12),0_4px_16px_rgba(15,23,42,0.06)] ring-1 ring-slate-900/5 rounded-full sm:rounded-full px-3 py-2 grid grid-cols-5 items-center gap-1.5 transition-transform"
-          >
-            {/* Overview Tab */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('overview')}
-              className={`relative py-1.5 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 cursor-pointer ${
-                activeTab === 'overview'
-                  ? 'bg-blue-600/10 text-blue-600'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/60'
-              }`}
-            >
-              <Home
-                className={`w-5 h-5 transition-transform duration-200 ${
-                  activeTab === 'overview' ? 'scale-110 text-blue-600 stroke-[2.5]' : 'text-slate-400 group-hover:scale-105'
-                }`}
-              />
-              <span className={`text-[10px] ${activeTab === 'overview' ? 'font-black text-blue-600' : 'font-semibold text-slate-500'}`}>
-                Overview
-              </span>
-            </button>
-
-            {/* Practice Tab */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('practice')}
-              className={`relative py-1.5 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 cursor-pointer ${
-                activeTab === 'practice'
-                  ? 'bg-blue-600/10 text-blue-600'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/60'
-              }`}
-            >
-              <BookOpen
-                className={`w-5 h-5 transition-transform duration-200 ${
-                  activeTab === 'practice' ? 'scale-110 text-blue-600 stroke-[2.5]' : 'text-slate-400 group-hover:scale-105'
-                }`}
-              />
-              <span className={`text-[10px] ${activeTab === 'practice' ? 'font-black text-blue-600' : 'font-semibold text-slate-500'}`}>
-                Practice
-              </span>
-            </button>
-
-            {/* History Tab */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('history')}
-              className={`relative py-1.5 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 cursor-pointer ${
-                activeTab === 'history'
-                  ? 'bg-blue-600/10 text-blue-600'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/60'
-              }`}
-            >
-              <Clock
-                className={`w-5 h-5 transition-transform duration-200 ${
-                  activeTab === 'history' ? 'scale-110 text-blue-600 stroke-[2.5]' : 'text-slate-400 group-hover:scale-105'
-                }`}
-              />
-              <span className={`text-[10px] ${activeTab === 'history' ? 'font-black text-blue-600' : 'font-semibold text-slate-500'}`}>
-                Test History
-              </span>
-            </button>
-
-            {/* Boardy AI Tab */}
-            <button
-              type="button"
-              onClick={() => setActiveTab('boardy')}
-              className={`relative py-1.5 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 cursor-pointer ${
-                activeTab === 'boardy'
-                  ? 'bg-blue-600/10 text-blue-600'
-                  : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100/60'
-              }`}
-            >
-              <Sparkles
-                className={`w-5 h-5 transition-transform duration-200 ${
-                  activeTab === 'boardy' ? 'scale-110 text-blue-600' : 'text-amber-500 group-hover:scale-105'
-                }`}
-              />
-              <span className={`text-[10px] ${activeTab === 'boardy' ? 'font-black text-blue-600' : 'font-semibold text-slate-500'}`}>
-                Boardy AI
-              </span>
-            </button>
-
-            {/* More Sheet Tab */}
-            <button
-              type="button"
-              onClick={() => setShowMoreSheet(true)}
-              className="relative py-1.5 px-1 rounded-2xl flex flex-col items-center justify-center gap-1 text-slate-500 hover:text-slate-900 hover:bg-slate-100/60 transition-all duration-200 cursor-pointer group"
-            >
-              <MoreHorizontal className="w-5 h-5 text-slate-400 group-hover:scale-110 transition-transform" />
-              <span className="text-[10px] font-semibold text-slate-500">More</span>
-            </button>
-          </div>
-        </nav>
+      {activeTab === 'practice' && (
+        <StudentPracticeTab
+          onStartSprint={handleStartSprint}
+          onStartUniversityPaper={handleStartUniversityPaper}
+          onOpenUsage={() => setShowUsageModal(true)}
+          onUpgrade={() => setShowUpgradeModal(true)}
+        />
       )}
 
-      {/* "More" Glass Bottom Sheet */}
-      {showMoreSheet && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end">
-          <div
-            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm animate-fadeIn"
-            onClick={() => setShowMoreSheet(false)}
-          />
+      {activeTab === 'events' && (
+        <StudentEventsTab onStartEventTest={handleStartEventTest} />
+      )}
 
-          <div className="relative w-full max-w-lg mx-auto bg-white/95 backdrop-blur-2xl border-t border-slate-200/90 shadow-2xl rounded-t-3xl p-6 space-y-6 z-10 animate-slideUp max-h-[85vh] overflow-y-auto">
-            {/* User Profile Header */}
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <div className="flex items-center gap-3.5">
-                <div className={`w-12 h-12 rounded-2xl ${
-                  isAdmin
-                    ? 'bg-gradient-to-tr from-purple-600 to-indigo-600 shadow-purple-500/20'
-                    : 'bg-gradient-to-tr from-blue-600 to-indigo-600 shadow-blue-500/20'
-                } text-white font-black text-lg flex items-center justify-center shadow-md`}>
-                  {isAdmin ? 'A' : (profile?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'S')}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="font-extrabold text-base text-slate-900">
-                      {isAdmin ? 'Admin' : (profile?.name || 'Student')}
-                    </h3>
-                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                      isAdmin
-                        ? 'bg-purple-100 text-purple-800'
-                        : 'bg-blue-100 text-blue-800'
-                    }`}>
-                      {isAdmin ? 'Admin (Full Access)' : (profile?.plan ? (PLAN_LIMITS[profile.plan]?.name || 'Free') : 'Free')}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 break-all">{profile?.email || user?.email}</p>
-                </div>
-              </div>
+      {activeTab === 'boardy' && (
+        <StudentBoardyChatTab
+          initialPrompt={boardyPrompt}
+          onOpenUsage={() => setShowUsageModal(true)}
+          onUpgrade={() => setShowUpgradeModal(true)}
+        />
+      )}
 
-              <button
-                type="button"
-                onClick={() => setShowMoreSheet(false)}
-                className="p-1.5 rounded-xl text-slate-400 hover:text-slate-700 cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      {activeTab === 'history' && (
+        <StudentHistoryTab
+          attempts={attempts}
+          onStartTest={() => setActiveTab('practice')}
+        />
+      )}
 
-            {/* Grid of 8 Icon Tiles */}
-            <div className="grid grid-cols-4 gap-3 text-center text-xs">
-              {/* 1. Sessions (Blitz / Arena) */}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMoreSheet(false);
-                  onOpenBlitz();
-                }}
-                className="p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-300 transition-all cursor-pointer flex flex-col items-center gap-2 group"
-              >
-                <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <Zap className="w-4 h-4" />
-                </div>
-                <span className="font-bold text-[11px] text-slate-800 leading-tight">Sessions</span>
-              </button>
-
-              {/* 2. Topic Mastery */}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMoreSheet(false);
-                  setActiveTab('practice');
-                }}
-                className="p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-300 transition-all cursor-pointer flex flex-col items-center gap-2 group"
-              >
-                <div className="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <Layers className="w-4 h-4" />
-                </div>
-                <span className="font-bold text-[11px] text-slate-800 leading-tight">Topic Mastery</span>
-              </button>
-
-              {/* 3. Formula Sheets */}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMoreSheet(false);
-                  onNavigateMarketing('/features');
-                }}
-                className="p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-300 transition-all cursor-pointer flex flex-col items-center gap-2 group"
-              >
-                <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <FileText className="w-4 h-4" />
-                </div>
-                <span className="font-bold text-[11px] text-slate-800 leading-tight">Formula Sheets</span>
-              </button>
-
-              {/* 4. Past Papers (Beta tag) */}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMoreSheet(false);
-                  setActiveTab('practice');
-                }}
-                className="p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-300 transition-all cursor-pointer flex flex-col items-center gap-2 group relative"
-              >
-                <span className="absolute -top-1.5 right-1 bg-amber-400 text-amber-950 font-black text-[8px] px-1.5 py-0.2 rounded-full shadow-xs">
-                  BETA
-                </span>
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <BookOpen className="w-4 h-4" />
-                </div>
-                <span className="font-bold text-[11px] text-slate-800 leading-tight">Past Papers</span>
-              </button>
-
-              {/* 5. Progress */}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMoreSheet(false);
-                  setActiveTab('history');
-                }}
-                className="p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-300 transition-all cursor-pointer flex flex-col items-center gap-2 group"
-              >
-                <div className="w-9 h-9 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <BarChart2 className="w-4 h-4" />
-                </div>
-                <span className="font-bold text-[11px] text-slate-800 leading-tight">Progress</span>
-              </button>
-
-              {/* 6. Usage */}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMoreSheet(false);
-                  setShowUsageModal(true);
-                }}
-                className="p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-300 transition-all cursor-pointer flex flex-col items-center gap-2 group"
-              >
-                <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <Clock className="w-4 h-4" />
-                </div>
-                <span className="font-bold text-[11px] text-slate-800 leading-tight">Usage</span>
-              </button>
-
-              {/* 7. Study Plan (Beta tag) */}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMoreSheet(false);
-                  onNavigateMarketing('/features');
-                }}
-                className="p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-300 transition-all cursor-pointer flex flex-col items-center gap-2 group relative"
-              >
-                <span className="absolute -top-1.5 right-1 bg-amber-400 text-amber-950 font-black text-[8px] px-1.5 py-0.2 rounded-full shadow-xs">
-                  BETA
-                </span>
-                <div className="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-700 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <Compass className="w-4 h-4" />
-                </div>
-                <span className="font-bold text-[11px] text-slate-800 leading-tight">Study Plan</span>
-              </button>
-
-              {/* 8. Merit Meter */}
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMoreSheet(false);
-                  setShowMeritMeterModal(true);
-                }}
-                className="p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-300 transition-all cursor-pointer flex flex-col items-center gap-2 group"
-              >
-                <div className="w-9 h-9 rounded-xl bg-teal-100 text-teal-700 flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <Calculator className="w-4 h-4" />
-                </div>
-                <span className="font-bold text-[11px] text-slate-800 leading-tight">Merit Meter</span>
-              </button>
-            </div>
-
-            {/* Bottom Actions: Log out */}
-            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-              {isAdmin ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMoreSheet(false);
-                    onNavigateMarketing('/admin');
-                  }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold transition-colors cursor-pointer"
-                >
-                  <Shield className="w-4 h-4 text-purple-600" />
-                  <span>Admin Dashboard &rarr;</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMoreSheet(false);
-                    onNavigateMarketing('/pricing');
-                  }}
-                  className="text-xs font-bold text-blue-600 hover:text-blue-800 cursor-pointer"
-                >
-                  Upgrade to Pro &rarr;
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={async () => {
-                  setShowMoreSheet(false);
-                  await logOut();
-                  onNavigateMarketing('/');
-                }}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-rose-600 hover:bg-rose-50 text-xs font-bold transition-colors cursor-pointer"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Log out</span>
-              </button>
-            </div>
-          </div>
+      {/* More Drawer Sheet (Mobile Navigation) */}
+      <BottomSheet
+        isOpen={showMoreSheet}
+        onClose={() => setShowMoreSheet(false)}
+        title="More Resources & Tools"
+      >
+        <div className="grid grid-cols-2 gap-3 text-xs">
+          {[
+            {
+              id: 'history',
+              label: 'Test History',
+              icon: <Clock className="w-5 h-5 text-indigo-600" />,
+              action: () => {
+                setActiveTab('history');
+                setShowMoreSheet(false);
+              },
+            },
+            {
+              id: 'merit',
+              label: 'Merit Meter',
+              icon: <Calculator className="w-5 h-5 text-violet-600" />,
+              action: () => {
+                setShowMoreSheet(false);
+                setShowMeritMeterModal(true);
+              },
+            },
+            {
+              id: 'usage',
+              label: 'Daily Usage',
+              icon: <Zap className="w-5 h-5 text-amber-600" />,
+              action: () => {
+                setShowMoreSheet(false);
+                setShowUsageModal(true);
+              },
+            },
+            {
+              id: 'reviews',
+              label: 'Write Review',
+              icon: <Star className="w-5 h-5 text-teal-600" />,
+              action: () => {
+                setShowMoreSheet(false);
+                setShowReviewModal(true);
+              },
+            },
+            {
+              id: 'upgrade',
+              label: 'Upgrade Plan',
+              icon: <Sparkles className="w-5 h-5 text-pink-600" />,
+              action: () => {
+                setShowMoreSheet(false);
+                setShowUpgradeModal(true);
+              },
+            },
+            {
+              id: 'logout',
+              label: 'Log out',
+              icon: <LogOut className="w-5 h-5 text-rose-600" />,
+              action: () => {
+                setShowMoreSheet(false);
+                logOut();
+              },
+            },
+          ].map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={item.action}
+              className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 hover:bg-indigo-50/50 flex flex-col items-center justify-center space-y-2 text-center font-bold text-slate-800 dark:text-slate-200 cursor-pointer"
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
         </div>
+      </BottomSheet>
+
+      {/* Merit Meter Modal */}
+      {showMeritMeterModal && (
+        <MeritMeterModal
+          isOpen={showMeritMeterModal}
+          onClose={() => setShowMeritMeterModal(false)}
+        />
       )}
 
       {/* Usage Modal */}
-      <StudentUsageModal
-        isOpen={showUsageModal}
-        onClose={() => setShowUsageModal(false)}
-        onStartTest={() => setActiveTab('practice')}
-        onAskBoardy={() => setActiveTab('boardy')}
-        onViewPlans={() => onNavigateMarketing('/pricing')}
-      />
+      {showUsageModal && (
+        <StudentUsageModal
+          isOpen={showUsageModal}
+          onClose={() => setShowUsageModal(false)}
+          onStartTest={() => {
+            setShowUsageModal(false);
+            setActiveTab('practice');
+          }}
+          onAskBoardy={() => {
+            setShowUsageModal(false);
+            setActiveTab('boardy');
+          }}
+          onViewPlans={() => {
+            setShowUsageModal(false);
+            setShowUpgradeModal(true);
+          }}
+        />
+      )}
 
-      {/* Merit Meter Modal */}
-      <MeritMeterModal
-        isOpen={showMeritMeterModal}
-        onClose={() => setShowMeritMeterModal(false)}
-      />
-    </div>
+      {/* Write a Review Modal */}
+      {showReviewModal && (
+        <Modal
+          isOpen={showReviewModal}
+          onClose={() => setShowReviewModal(false)}
+          title="Share your Boardly Review"
+          subtitle="Your honest feedback helps improve practice tests for all aspirants."
+        >
+          {reviewSubmitted ? (
+            <div className="py-8 text-center space-y-3">
+              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                <Star className="w-6 h-6 fill-emerald-600" />
+              </div>
+              <h4 className="font-extrabold text-base text-slate-900 dark:text-white">
+                Thank you for your review!
+              </h4>
+              <p className="text-xs text-slate-500">
+                Your review has been submitted for moderation and will appear on the wall shortly.
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmitReview} className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Rating
+                </label>
+                <div className="flex items-center gap-2">
+                  {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                      key={star}
+                      type="button"
+                      onClick={() => setReviewRating(star)}
+                      className="p-1 text-amber-400 hover:scale-110 transition-transform cursor-pointer"
+                    >
+                      <Star
+                        className={`w-6 h-6 ${
+                          star <= reviewRating ? 'fill-amber-400' : 'text-slate-300'
+                        }`}
+                      />
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Your Review
+                </label>
+                <textarea
+                  rows={4}
+                  value={reviewText}
+                  onChange={(e) => setReviewText(e.target.value)}
+                  placeholder="Tell other students how Boardly helped your test preparation..."
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowReviewModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={reviewText.length < 10}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md disabled:opacity-50 cursor-pointer"
+                >
+                  Submit Review
+                </button>
+              </div>
+            </form>
+          )}
+        </Modal>
+      )}
+
+      {/* Upgrade Plan Modal */}
+      {showUpgradeModal && (
+        <Modal
+          isOpen={showUpgradeModal}
+          onClose={() => setShowUpgradeModal(false)}
+          title="Upgrade your Boardly Plan"
+          subtitle="Unlock extended question banks, university mocks, and prioritized Boardy AI derivations."
+        >
+          {upgradeSubmitted ? (
+            <div className="py-8 text-center space-y-3">
+              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <h4 className="font-extrabold text-base text-slate-900 dark:text-white">
+                Payment Request Submitted!
+              </h4>
+              <p className="text-xs text-slate-500">
+                Our team will verify your transaction reference and activate your {upgradeTargetPlan.toUpperCase()} membership within 2 to 4 hours.
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmitUpgradeRequest} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Select Plan
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setUpgradeTargetPlan('pro')}
+                    className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${
+                      upgradeTargetPlan === 'pro'
+                        ? 'border-indigo-600 bg-indigo-50/60 text-indigo-900 dark:bg-indigo-950/40 dark:text-white'
+                        : 'border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    <p className="font-extrabold text-sm">Pro Plan</p>
+                    <p className="text-[11px] text-slate-500">PKR 2,499 / mo</p>
+                    <p className="text-[10px] text-slate-400 mt-1">10 tests + 7 Boardy chats/day</p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setUpgradeTargetPlan('premium')}
+                    className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${
+                      upgradeTargetPlan === 'premium'
+                        ? 'border-violet-600 bg-violet-50/60 text-violet-900 dark:bg-violet-950/40 dark:text-white'
+                        : 'border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    <p className="font-extrabold text-sm">Premium</p>
+                    <p className="text-[11px] text-slate-500">PKR 3,999 / mo</p>
+                    <p className="text-[10px] text-slate-400 mt-1">Unlimited tests + 15 Boardy chats/day</p>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Payment Method
+                </label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value as any)}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-bold"
+                >
+                  <option value="jazzcash">JazzCash (Till ID: 0300-1234567)</option>
+                  <option value="easypaisa">Easypaisa (Account: 0345-7654321)</option>
+                  <option value="bank_transfer">Meezan Bank (IBAN: PK64MEZN000123456789)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Transaction ID / Reference Number
+                </label>
+                <input
+                  type="text"
+                  value={transactionId}
+                  onChange={(e) => setTransactionId(e.target.value)}
+                  placeholder="e.g. TID-9876543210"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-bold"
+                  required
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowUpgradeModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!transactionId.trim()}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md disabled:opacity-50 cursor-pointer"
+                >
+                  Submit Upgrade Request
+                </button>
+              </div>
+            </form>
+          )}
+        </Modal>
+      )}
+    </AppShell>
   );
 };

@@ -5,15 +5,18 @@ import { UniversityLogoBadge } from '../UniversityLogoBadge';
 
 interface StudentHistoryTabProps {
   attempts: StoredTestAttempt[];
-  onReviewAttempt: (attempt: StoredTestAttempt) => void;
-  onStartNewTest: () => void;
+  onReviewAttempt?: (attempt: StoredTestAttempt) => void;
+  onStartNewTest?: () => void;
+  onStartTest?: () => void;
 }
 
 export const StudentHistoryTab: React.FC<StudentHistoryTabProps> = ({
   attempts,
   onReviewAttempt,
   onStartNewTest,
+  onStartTest,
 }) => {
+  const handleStart = onStartNewTest || onStartTest || (() => {});
   return (
     <div className="space-y-6 pb-20">
       <div>
@@ -36,7 +39,7 @@ export const StudentHistoryTab: React.FC<StudentHistoryTabProps> = ({
           </p>
           <div className="pt-2">
             <button
-              onClick={onStartNewTest}
+              onClick={handleStart}
               className="py-3 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-md shadow-blue-500/20 cursor-pointer"
             >
               Start your first practice test
@@ -58,7 +61,7 @@ export const StudentHistoryTab: React.FC<StudentHistoryTabProps> = ({
             return (
               <div
                 key={att.id || att.createdAt}
-                onClick={() => onReviewAttempt(att)}
+                onClick={() => onReviewAttempt && onReviewAttempt(att)}
                 className="p-5 rounded-2xl bg-white/90 backdrop-blur-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4"
               >
                 <div className="flex items-start gap-4">

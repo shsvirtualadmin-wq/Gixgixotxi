@@ -120,7 +120,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
                   )}
                   {plan.id === 'free' && (
                     <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-                      Starter
+                      Standard
                     </span>
                   )}
                 </div>

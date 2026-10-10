@@ -141,7 +141,7 @@ export const MdcatDashboardPortal: React.FC<MdcatDashboardPortalProps> = React.m
       if (onUpgradeClick) {
         onUpgradeClick();
       } else {
-        alert("Grand Mock Exams (180 MCQs) are locked on the Free Starter plan. Upgrade to Pro for full access.");
+        alert("Grand Mock Exams (180 MCQs) are locked on the Free plan. Upgrade to Pro for full access.");
       }
       return;
     }

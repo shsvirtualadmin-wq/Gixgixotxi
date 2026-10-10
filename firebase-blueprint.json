@@ -2,27 +2,32 @@
   "entities": {
     "User": {
       "title": "User",
-      "description": "Student profile, preferences, onboarding choices, and plan metadata.",
+      "description": "Student profile, preferences, onboarding choices, role, and plan metadata.",
       "type": "object",
       "properties": {
         "uid": { "type": "string" },
         "name": { "type": "string" },
         "email": { "type": "string" },
         "phone": { "type": "string" },
-        "plan": { "type": "string", "enum": ["starter", "steady_climb", "all_access", "free", "pro", "premium"] },
-        "role": { "type": "string", "enum": ["student", "organizer", "admin"] },
+        "plan": { "type": "string", "enum": ["free", "pro", "premium", "starter", "steady_climb", "all_access"] },
+        "role": { "type": "string", "enum": ["student", "organizer", "captain", "admin"] },
+        "roles": { "type": "array" },
         "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" },
         "termsAcceptedAt": { "type": "string" },
         "termsVersion": { "type": "string" },
         "referralSource": { "type": "string" },
+        "referredBy": { "type": "string" },
         "onboardingCompleted": { "type": "boolean" },
         "testTrack": { "type": "string" },
         "targetUniversityId": { "type": "string" },
         "targetExamDate": { "type": "string" },
+        "targetExamDaysLeft": { "type": "number" },
         "weakSubjects": { "type": "array" },
         "testsUsedToday": { "type": "number" },
         "boardyQuestionsUsedToday": { "type": "number" },
-        "lastUsageDate": { "type": "string" }
+        "lastUsageDate": { "type": "string" },
+        "status": { "type": "string", "enum": ["active", "suspended", "disabled"] }
       },
       "required": ["uid", "email", "name", "plan", "role"]
     },
@@ -45,29 +50,154 @@
         "rejectionReason": { "type": "string" },
         "isVerifiedStudent": { "type": "boolean" },
         "createdAt": { "type": "string" },
-        "updatedAt": { "type": "string" },
-        "moderatedBy": { "type": "string" }
+        "updatedAt": { "type": "string" }
       },
       "required": ["uid", "rating", "text", "status", "createdAt"]
     },
+    "PaymentRequest": {
+      "title": "PaymentRequest",
+      "description": "Student plan upgrade request with manual payment slip proof.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "planId": { "type": "string", "enum": ["pro", "premium"] },
+        "durationMonths": { "type": "number" },
+        "amountPkr": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["bank_transfer", "jazzcash", "easypaisa"] },
+        "proofUrl": { "type": "string" },
+        "transactionId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "rejectionReason": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "reviewedAt": { "type": "string" },
+        "reviewedBy": { "type": "string" }
+      },
+      "required": ["userId", "planId", "amountPkr", "paymentMethod", "status", "createdAt"]
+    },
+    "EventSession": {
+      "title": "EventSession",
+      "description": "Boardly Blitz, Boardly Arena, or Study Circle live competitive session.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["blitz", "arena", "circle"] },
+        "title": { "type": "string" },
+        "organizerId": { "type": "string" },
+        "scheduledAt": { "type": "string" },
+        "durationMinutes": { "type": "number" },
+        "questionCount": { "type": "number" },
+        "status": { "type": "string", "enum": ["draft", "pending", "scheduled", "live", "ended", "cancelled"] },
+        "capacity": { "type": "number" },
+        "isPublic": { "type": "boolean" },
+        "inviteCode": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["title", "type", "scheduledAt", "durationMinutes", "status"]
+    },
+    "OrganizerApplication": {
+      "title": "OrganizerApplication",
+      "description": "Application to become an approved Study Circles organizer.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "city": { "type": "string" },
+        "institution": { "type": "string" },
+        "role": { "type": "string" },
+        "audienceSize": { "type": "string" },
+        "reason": { "type": "string" },
+        "contactLink": { "type": "string" },
+        "rulesAccepted": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "suspended"] },
+        "rejectionReason": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "fullName", "city", "institution", "status", "createdAt"]
+    },
+    "CaptainApplication": {
+      "title": "CaptainApplication",
+      "description": "Application to become an official Campus Captain student ambassador.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "city": { "type": "string" },
+        "institution": { "type": "string" },
+        "academicYear": { "type": "string" },
+        "socialHandles": { "type": "string" },
+        "reason": { "type": "string" },
+        "rulesAccepted": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected", "suspended"] },
+        "rejectionReason": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "fullName", "city", "institution", "status", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable audit log entry recording administrative mutations.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "adminId": { "type": "string" },
+        "adminEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["adminId", "action", "targetType", "targetId", "createdAt"]
+    },
     "AppConfig": {
       "title": "AppConfig",
-      "description": "System runtime configurations including reviews display toggles.",
+      "description": "System runtime configurations including reviews toggles and feature flags.",
       "type": "object",
       "properties": {
         "showPlaceholders": { "type": "boolean" },
-        "placeholderTarget": { "type": "number" }
+        "placeholderTarget": { "type": "number" },
+        "boardyEnabled": { "type": "boolean" },
+        "eventsEnabled": { "type": "boolean" },
+        "maintenanceMode": { "type": "boolean" },
+        "admins": { "type": "array" }
       }
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
-      "description": "Private student user profile documents."
+      "description": "User profiles, roles, plan metadata and daily allowances."
     },
     "/reviews/{reviewId}": {
       "schema": { "$ref": "#/entities/Review" },
       "description": "Student reviews and ratings submitted for moderation."
+    },
+    "/paymentRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/PaymentRequest" },
+      "description": "Student plan upgrade requests with payment receipts."
+    },
+    "/sessions/{sessionId}": {
+      "schema": { "$ref": "#/entities/EventSession" },
+      "description": "Live Blitz, Arena, and Circle competitive testing sessions."
+    },
+    "/organizerApplications/{appId}": {
+      "schema": { "$ref": "#/entities/OrganizerApplication" },
+      "description": "Study Circles organizer registration applications."
+    },
+    "/captainApplications/{appId}": {
+      "schema": { "$ref": "#/entities/CaptainApplication" },
+      "description": "Campus Captain ambassador registration applications."
+    },
+    "/auditLogs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable administrative audit trail."
     },
     "/config/{configDoc}": {
       "schema": { "$ref": "#/entities/AppConfig" },

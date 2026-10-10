@@ -375,7 +375,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = React.memo(({
           {!isProStudent ? (
             <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl space-y-2 text-center">
               <p className="text-xs text-slate-600  font-medium">
-                Detailed chapter &amp; topic breakdown is locked on the Free Starter tier.
+                Detailed chapter &amp; topic breakdown is locked on the Free plan.
               </p>
               {onUpgradeClick && (
                 <button
@@ -433,7 +433,7 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = React.memo(({
                     Weakness Detection is a Pro Feature
                   </h4>
                   <p className="text-xs text-slate-500">
-                    Free Starter tier displays basic overall test scores only. Upgrade to Pro for chapter-level weakness analysis &amp; targeted retries.
+                    Free plan displays basic overall test scores only. Upgrade to Pro for chapter-level weakness analysis &amp; targeted retries.
                   </p>
                 </div>
               </div>

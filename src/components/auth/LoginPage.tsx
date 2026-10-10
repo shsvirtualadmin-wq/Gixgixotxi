@@ -9,7 +9,7 @@ interface LoginPageProps {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, returnUrl }) => {
-  const { signInEmail, signInGoogle, migratedBanner } = useAuth();
+  const { signInEmail, signInGoogle } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');

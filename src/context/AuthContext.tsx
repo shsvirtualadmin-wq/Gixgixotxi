@@ -1,10 +1,9 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import {
   User,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signInWithPopup,
   signOut,
   sendEmailVerification,
   sendPasswordResetEmail,
@@ -12,14 +11,14 @@ import {
 } from 'firebase/auth';
 import {
   auth,
-  db,
-  googleProvider,
   fetchUserProfile,
   saveUserProfile,
+  createInitialUserDoc,
+  performGoogleSignIn,
   StudentUserProfile,
+  UserRole,
 } from '../lib/firebase';
-import { doc, getDoc } from 'firebase/firestore';
-import { PLAN_LIMITS, getKarachiTodayString } from '../data/planLimits';
+import { getKarachiTodayString, normalizePlanId } from '../data/planLimits';
 
 export interface SignUpFormData {
   fullName: string;
@@ -32,15 +31,19 @@ export interface SignUpFormData {
   termsAccepted: boolean;
 }
 
+export type AuthStatus = 'loading' | 'signedOut' | 'signedIn';
+
 export interface AuthContextType {
   user: User | null;
   profile: StudentUserProfile | null;
   documentExists: boolean;
   isAdmin: boolean;
   loading: boolean;
+  status: AuthStatus;
+  activeRole: UserRole;
+  switchRole: (role: UserRole) => void;
+  availableRoles: UserRole[];
   sessionExpired: boolean;
-  migratedBanner: boolean;
-  dismissMigratedBanner: () => void;
   dismissSessionExpired: () => void;
   signInEmail: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   signUpEmail: (data: SignUpFormData) => Promise<{ success: boolean; error?: string }>;
@@ -63,57 +66,51 @@ export function friendlyAuthError(err: any): string {
   const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'current domain';
 
   if (code === 'auth/unauthorized-domain') {
-    return `Unauthorized Domain: "${currentHost}" is not listed in authorized domains. In Firebase Console, go to Authentication > Settings > Authorized domains and add "${currentHost}". [auth/unauthorized-domain]`;
+    return `Unauthorized Domain: "${currentHost}" is not listed in authorized domains. In Firebase Console, go to Authentication > Settings > Authorized domains and add "${currentHost}".`;
   }
   if (code === 'auth/operation-not-allowed') {
-    return 'Sign-in method disabled: This provider is not enabled. In Firebase Console, go to Authentication > Sign-in method and enable Email/Password or Google. [auth/operation-not-allowed]';
+    return 'Sign-in method is not enabled. In Firebase Console, go to Authentication > Sign-in method and enable Email/Password or Google.';
   }
   if (code === 'auth/invalid-api-key') {
-    return 'Invalid Firebase API Key: The configured API key is not accepted by Google Firebase. [auth/invalid-api-key]';
-  }
-  if (code === 'auth/configuration-not-found') {
-    return 'Firebase project configuration not found. Please verify Identity Platform settings. [auth/configuration-not-found]';
+    return 'Invalid Firebase API Key. Please verify your Firebase project credentials.';
   }
   if (code === 'auth/email-already-in-use') {
-    return 'This email address is already registered. Please log in instead. [auth/email-already-in-use]';
+    return 'This email address is already registered. Please log in instead.';
   }
   if (code === 'auth/invalid-email') {
-    return 'Please enter a valid email address. [auth/invalid-email]';
+    return 'Please enter a valid email address.';
   }
   if (code === 'auth/weak-password') {
-    return 'Password is too weak. Please use at least 8 characters with an uppercase letter, lowercase letter, and a number. [auth/weak-password]';
+    return 'Password is too weak. Please use at least 8 characters with letters and numbers.';
   }
   if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/user-not-found') {
-    return `Incorrect email or password. Please verify and try again. [${code || 'auth/invalid-credential'}]`;
+    return 'Incorrect email or password. Please verify and try again.';
   }
   if (code === 'auth/user-disabled') {
-    return 'This user account has been disabled. [auth/user-disabled]';
+    return 'This account has been disabled. Please contact support@boardly.cfd.';
   }
   if (code === 'auth/too-many-requests') {
-    return 'Too many login attempts. For security, please wait a few minutes before trying again. [auth/too-many-requests]';
+    return 'Too many login attempts. For security, please wait a few minutes before trying again.';
   }
   if (code === 'auth/popup-closed-by-user') {
-    return 'Google sign-in was cancelled before completion. [auth/popup-closed-by-user]';
+    return 'Google sign-in was closed before completion.';
   }
   if (code === 'auth/popup-blocked') {
-    return 'Sign-in popup was blocked by your browser. Please allow popups for Boardly. [auth/popup-blocked]';
-  }
-  if (code === 'auth/cancelled-popup-request') {
-    return 'Google sign-in popup was superseded by another request. [auth/cancelled-popup-request]';
-  }
-  if (code === 'auth/account-exists-with-different-credential') {
-    return 'An account already exists with this email using a different sign-in method. [auth/account-exists-with-different-credential]';
+    return 'Sign-in pop-up was blocked. Please allow pop-ups for Boardly in your browser address bar.';
   }
   if (code === 'auth/network-request-failed') {
-    return 'Network connection failed. Please check your internet connection or ad-blocker. [auth/network-request-failed]';
+    return 'Network connection failed. Please check your internet connection.';
   }
 
-  // Fallback: ALWAYS include code and full message instead of stripping down to "Error"
   const cleanMsg = rawMsg ? rawMsg.replace(/^Firebase:\s*/i, '') : 'Authentication failed';
-  if (code) {
-    return `${cleanMsg} [${code}]`;
-  }
   return cleanMsg || 'Authentication error occurred. Please try again.';
+}
+
+export function getHighestRole(roles: UserRole[]): UserRole {
+  if (roles.includes('admin')) return 'admin';
+  if (roles.includes('organizer')) return 'organizer';
+  if (roles.includes('captain')) return 'captain';
+  return 'student';
 }
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -121,150 +118,138 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<StudentUserProfile | null>(null);
   const [documentExists, setDocumentExists] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
+  const [status, setStatus] = useState<AuthStatus>('loading');
+  const [activeRole, setActiveRole] = useState<UserRole>('student');
   const [sessionExpired, setSessionExpired] = useState<boolean>(false);
-  const [migratedBanner, setMigratedBanner] = useState<boolean>(() => {
-    return localStorage.getItem('boardly_migrated_banner_seen') !== 'true';
-  });
-
-  const dismissMigratedBanner = useCallback(() => {
-    localStorage.setItem('boardly_migrated_banner_seen', 'true');
-    setMigratedBanner(false);
-  }, []);
 
   const dismissSessionExpired = useCallback(() => {
     setSessionExpired(false);
   }, []);
 
-  const userEmail = (user?.email || '').trim().toLowerCase();
+  const normalizedEmail = (user?.email || '').trim().toLowerCase();
   const isAdmin = Boolean(
+    normalizedEmail === 'shsvirtualadmin@gmail.com' ||
+    normalizedEmail === 'support@boardly.cfd' ||
     profile?.role === 'admin' ||
-    userEmail === 'shsvirtualadmin@gmail.com' ||
-    userEmail === 'support@boardly.cfd'
+    profile?.roles?.includes('admin')
   );
 
-  const syncProfile = useCallback(async (firebaseUser: User | null): Promise<boolean> => {
-    if (!firebaseUser) {
-      setProfile(null);
-      setDocumentExists(false);
-      return false;
+  const availableRoles = useMemo<UserRole[]>(() => {
+    const list: UserRole[] = [];
+    if (isAdmin) list.push('admin');
+    if (profile?.roles && Array.isArray(profile.roles)) {
+      profile.roles.forEach((r) => {
+        if (!list.includes(r)) list.push(r);
+      });
+    } else if (profile?.role && !list.includes(profile.role)) {
+      list.push(profile.role);
     }
+    if (!list.includes('student')) list.push('student');
+    return list;
+  }, [isAdmin, profile]);
 
-    try {
-      const normalizedEmail = (firebaseUser.email || '').trim().toLowerCase();
-      const isSystemAdmin = normalizedEmail === 'shsvirtualadmin@gmail.com' || normalizedEmail === 'support@boardly.cfd';
-
-      // 1. Query the Firestore users collection directly
-      const userRef = doc(db, 'users', firebaseUser.uid);
-      let snap: any = null;
+  const switchRole = useCallback((newRole: UserRole) => {
+    if (availableRoles.includes(newRole)) {
+      setActiveRole(newRole);
       try {
-        snap = await getDoc(userRef);
-      } catch (readErr) {
-        console.warn('[Firebase Auth] getDoc error, checking offline cache:', readErr);
-        try {
-          const cached = localStorage.getItem(`boardly_cached_profile_${firebaseUser.uid}`);
-          if (cached) {
-            snap = { exists: () => true, data: () => JSON.parse(cached) };
-          }
-        } catch {}
-      }
+        localStorage.setItem('boardly_active_role', newRole);
+      } catch {}
+    }
+  }, [availableRoles]);
 
-      const docFound = Boolean(snap && typeof snap.exists === 'function' && snap.exists());
-      const todayStr = getKarachiTodayString();
+  /**
+   * Syncs and loads the user's profile from Named Firestore.
+   * Never overwrites existing returning users.
+   */
+  const syncProfile = useCallback(async (firebaseUser: User): Promise<StudentUserProfile> => {
+    const email = (firebaseUser.email || '').trim().toLowerCase();
+    const isMasterAdmin = email === 'shsvirtualadmin@gmail.com' || email === 'support@boardly.cfd';
+    const todayStr = getKarachiTodayString();
 
-      if (docFound) {
-        // Document exists in Firestore! Load their saved data and persist across reloads
-        let p = snap.data() as StudentUserProfile;
+    // 1. Attempt to fetch existing document
+    let existingProfile = await fetchUserProfile(firebaseUser.uid);
 
-        if (isSystemAdmin) {
-          // HARDCODED ADMIN ROLE OVERRIDE:
-          // shsvirtualadmin@gmail.com MUST be assigned Admin role, bypass all paywalls, and access Admin Dashboard
-          p = {
-            ...p,
-            uid: firebaseUser.uid,
-            email: normalizedEmail,
-            role: 'admin',
-            plan: 'all_access',
-            onboardingCompleted: true,
-            name: p?.name && p.name !== 'Student' ? p.name : 'Admin',
-          };
-          saveUserProfile(firebaseUser.uid, {
-            role: 'admin',
-            plan: 'all_access',
-            onboardingCompleted: true,
-          }).catch(console.warn);
-        } else {
-          // Daily usage reset check at Pakistan midnight
-          if (p.lastUsageDate !== todayStr) {
-            const updated = {
-              ...p,
-              testsUsedToday: 0,
-              boardyQuestionsUsedToday: 0,
-              lastUsageDate: todayStr,
-            };
-            saveUserProfile(firebaseUser.uid, {
-              testsUsedToday: 0,
-              boardyQuestionsUsedToday: 0,
-              lastUsageDate: todayStr,
-            }).catch(console.warn);
-            p = updated;
-          }
+    if (existingProfile) {
+      // Returning user found! Load saved data without resetting progress
+      if (isMasterAdmin) {
+        existingProfile.role = 'admin';
+        existingProfile.plan = 'premium';
+        existingProfile.onboardingCompleted = true;
+        if (!existingProfile.roles?.includes('admin')) {
+          existingProfile.roles = [...(existingProfile.roles || ['student']), 'admin'];
         }
-
-        // Cache profile in localStorage for instantaneous restoration
-        try {
-          localStorage.setItem(`boardly_cached_profile_${firebaseUser.uid}`, JSON.stringify(p));
-        } catch {}
-
-        setProfile(p);
-        setDocumentExists(true);
-        return true;
+        saveUserProfile(firebaseUser.uid, {
+          role: 'admin',
+          plan: 'premium',
+          roles: existingProfile.roles,
+          onboardingCompleted: true,
+        }).catch(console.warn);
       } else {
-        // No Firestore document exists for this UID!
-        if (isSystemAdmin) {
-          // Auto-provision admin profile immediately
-          const adminProfile: StudentUserProfile = {
-            uid: firebaseUser.uid,
-            name: 'Admin',
-            email: normalizedEmail,
-            plan: 'all_access',
-            role: 'admin',
-            createdAt: new Date().toISOString(),
-            termsAcceptedAt: new Date().toISOString(),
-            termsVersion: '2026.1',
-            onboardingCompleted: true,
+        // Daily allowance reset at Pakistan midnight
+        if (existingProfile.lastUsageDate !== todayStr) {
+          existingProfile.testsUsedToday = 0;
+          existingProfile.boardyQuestionsUsedToday = 0;
+          existingProfile.lastUsageDate = todayStr;
+          saveUserProfile(firebaseUser.uid, {
             testsUsedToday: 0,
             boardyQuestionsUsedToday: 0,
             lastUsageDate: todayStr,
-            migratedFromSupabase: false,
-          };
-          await saveUserProfile(firebaseUser.uid, adminProfile);
-          try {
-            localStorage.setItem(`boardly_cached_profile_${firebaseUser.uid}`, JSON.stringify(adminProfile));
-          } catch {}
-          setProfile(adminProfile);
-          setDocumentExists(true);
-          return true;
+          }).catch(console.warn);
         }
-
-        // Regular student with NO Firestore document: ONLY route to registration if no document exists
-        setProfile(null);
-        setDocumentExists(false);
-        return false;
       }
-    } catch (err) {
-      console.warn('[AuthContext] syncProfile error:', err);
-      return false;
+
+      setProfile(existingProfile);
+      setDocumentExists(true);
+
+      const highest = getHighestRole(existingProfile.roles || [existingProfile.role]);
+      const savedRole = localStorage.getItem('boardly_active_role') as UserRole;
+      if (savedRole && (existingProfile.roles?.includes(savedRole) || (savedRole === 'admin' && isMasterAdmin))) {
+        setActiveRole(savedRole);
+      } else {
+        setActiveRole(highest);
+      }
+
+      return existingProfile;
     }
+
+    // 2. First login only: Create document ONCE with merge transaction
+    const initialPlan = isMasterAdmin ? 'premium' : 'free';
+    const initialRole: UserRole = isMasterAdmin ? 'admin' : 'student';
+
+    const created = await createInitialUserDoc(firebaseUser.uid, {
+      name: firebaseUser.displayName || (email ? email.split('@')[0] : 'Student'),
+      email,
+      plan: initialPlan,
+      role: initialRole,
+      roles: [initialRole],
+      onboardingCompleted: isMasterAdmin,
+      testsUsedToday: 0,
+      boardyQuestionsUsedToday: 0,
+      lastUsageDate: todayStr,
+      status: 'active',
+    });
+
+    setProfile(created);
+    setDocumentExists(true);
+    setActiveRole(initialRole);
+    return created;
   }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        await syncProfile(currentUser);
+        try {
+          await syncProfile(currentUser);
+          setStatus('signedIn');
+        } catch (err) {
+          console.error('[AuthContext] syncProfile failed:', err);
+          setStatus('signedIn'); // keep logged in, let UI handle retry
+        }
       } else {
         setProfile(null);
         setDocumentExists(false);
+        setStatus('signedOut');
       }
       setLoading(false);
     });
@@ -278,30 +263,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await syncProfile(cred.user);
       return { success: true };
     } catch (err: any) {
-      const code = err?.code;
-      // PART 1 #7: Seamless fallback check for students migrated from Supabase
-      if (code === 'auth/user-not-found' || code === 'auth/invalid-credential' || code === 'auth/wrong-password') {
-        try {
-          const checkRes = await fetch('/api/auth/migrate-check', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email: email.trim(), password: pass }),
-          });
-          if (checkRes.ok) {
-            const data = await checkRes.json();
-            if (data.migrated && data.firebaseToken) {
-              // Automatically sign in with custom token or credentials
-              const { signInWithCustomToken } = await import('firebase/auth');
-              const cred = await signInWithCustomToken(auth, data.firebaseToken);
-              await syncProfile(cred.user);
-              setMigratedBanner(true);
-              return { success: true };
-            }
-          }
-        } catch {
-          // If fallback fails, show standard friendly error
-        }
-      }
       return { success: false, error: friendlyAuthError(err) };
     }
   };
@@ -309,65 +270,45 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUpEmail = async (formData: SignUpFormData): Promise<{ success: boolean; error?: string }> => {
     try {
       const cred = await createUserWithEmailAndPassword(auth, formData.email.trim(), formData.password);
-      const todayStr = getKarachiTodayString();
+      const email = formData.email.trim().toLowerCase();
+      const isMasterAdmin = email === 'shsvirtualadmin@gmail.com' || email === 'support@boardly.cfd';
 
-      const normalizedEmail = formData.email.trim().toLowerCase();
-      const isSystemAdmin = normalizedEmail === 'shsvirtualadmin@gmail.com' || normalizedEmail === 'support@boardly.cfd';
-
-      const newProfile: StudentUserProfile = {
-        uid: cred.user.uid,
+      await createInitialUserDoc(cred.user.uid, {
         name: formData.fullName.trim(),
-        email: normalizedEmail,
+        email,
         phone: formData.phone?.trim() || '',
-        plan: isSystemAdmin ? 'all_access' : 'starter',
-        role: isSystemAdmin ? 'admin' : 'student',
-        createdAt: new Date().toISOString(),
-        termsAcceptedAt: new Date().toISOString(),
-        termsVersion: '2026.1',
-        referralSource: formData.referralSource || '',
+        plan: isMasterAdmin ? 'premium' : 'free',
+        role: isMasterAdmin ? 'admin' : 'student',
+        roles: isMasterAdmin ? ['admin', 'student'] : ['student'],
         testTrack: formData.preparingFor || 'Not sure',
-        onboardingCompleted: isSystemAdmin,
-        testsUsedToday: 0,
-        boardyQuestionsUsedToday: 0,
-        lastUsageDate: todayStr,
-      };
+        referralSource: formData.referralSource || '',
+        onboardingCompleted: isMasterAdmin,
+      });
 
-      try {
-        await saveUserProfile(cred.user.uid, newProfile);
-      } catch (profileErr) {
-        console.warn('[Firebase] Initial profile save warning (handled gracefully):', profileErr);
-      }
-      setProfile(newProfile);
-      setDocumentExists(true);
-      try {
-        localStorage.setItem(`boardly_cached_profile_${cred.user.uid}`, JSON.stringify(newProfile));
-      } catch {}
+      await syncProfile(cred.user);
 
-      // Send verification email
       try {
         await sendEmailVerification(cred.user);
       } catch (e) {
-        console.warn('[Firebase] Verification email send notice:', e);
+        console.warn('[Boardly Auth] Verification email send notice:', e);
       }
 
       return { success: true };
     } catch (err: any) {
-      console.error('[Firebase] signUpEmail failed:', err);
+      console.error('[Boardly Auth] signUpEmail failed:', err);
       return { success: false, error: friendlyAuthError(err) };
     }
   };
 
   const signInGoogle = async (): Promise<{ success: boolean; error?: string }> => {
     try {
-      const cred = await signInWithPopup(auth, googleProvider);
-      try {
+      const cred = await performGoogleSignIn();
+      if (cred && cred.user) {
         await syncProfile(cred.user);
-      } catch (syncErr) {
-        console.warn('[Firebase] Google sign-in syncProfile warning:', syncErr);
       }
       return { success: true };
     } catch (err: any) {
-      console.error('[Firebase] signInGoogle failed:', err);
+      console.error('[Boardly Auth] Google sign-in failed:', err);
       return { success: false, error: friendlyAuthError(err) };
     }
   };
@@ -376,37 +317,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       if (user?.uid) {
         localStorage.removeItem(`boardly_cached_profile_${user.uid}`);
+        localStorage.removeItem('boardly_active_role');
       }
       await signOut(auth);
       setUser(null);
       setProfile(null);
       setDocumentExists(false);
+      setStatus('signedOut');
     } catch (err) {
-      console.error('[Firebase] Sign out error:', err);
+      console.error('[Boardly Auth] Log out error:', err);
     }
   };
 
   const sendResetEmail = async (email: string): Promise<{ success: boolean; message: string }> => {
     try {
       await sendPasswordResetEmail(auth, email.trim());
-      // Neutral security response so nobody can guess which emails are registered
-      return {
-        success: true,
-        message: "If an account exists with that email address, we've sent a link to reset your password.",
-      };
+      return { success: true, message: 'Password reset link sent to your email.' };
     } catch (err: any) {
-      // Always return neutral security message per user requirement 5
-      return {
-        success: true,
-        message: "If an account exists with that email address, we've sent a link to reset your password.",
-      };
+      return { success: false, message: friendlyAuthError(err) };
     }
   };
 
   const resendVerification = async (): Promise<{ success: boolean; error?: string }> => {
-    if (!auth.currentUser) {
-      return { success: false, error: 'No user currently signed in.' };
-    }
+    if (!auth.currentUser) return { success: false, error: 'No user signed in' };
     try {
       await sendEmailVerification(auth.currentUser);
       return { success: true };
@@ -419,32 +352,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!auth.currentUser) return false;
     try {
       await reload(auth.currentUser);
-      const isVerified = auth.currentUser.emailVerified;
-      if (isVerified) {
-        setUser({ ...auth.currentUser });
-      }
-      return isVerified;
+      setUser({ ...auth.currentUser });
+      return auth.currentUser.emailVerified;
     } catch {
       return false;
     }
   };
 
-  const updateProfileData = async (fields: Partial<StudentUserProfile>) => {
+  const updateProfileData = async (fields: Partial<StudentUserProfile>): Promise<void> => {
     if (!user) return;
-    try {
-      const updated = profile ? { ...profile, ...fields } : (fields as StudentUserProfile);
-      await saveUserProfile(user.uid, updated);
-      setProfile(updated);
-      setDocumentExists(true);
-      try {
-        localStorage.setItem(`boardly_cached_profile_${user.uid}`, JSON.stringify(updated));
-      } catch {}
-    } catch (err) {
-      console.error('[Firebase] updateProfileData error:', err);
-    }
+    await saveUserProfile(user.uid, fields);
+    setProfile((prev) => (prev ? { ...prev, ...fields } : null));
   };
 
-  const refreshProfile = async () => {
+  const refreshProfile = async (): Promise<void> => {
     if (user) {
       await syncProfile(user);
     }
@@ -458,9 +379,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         documentExists,
         isAdmin,
         loading,
+        status,
+        activeRole,
+        switchRole,
+        availableRoles,
         sessionExpired,
-        migratedBanner,
-        dismissMigratedBanner,
         dismissSessionExpired,
         signInEmail,
         signUpEmail,
@@ -480,9 +403,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 };
 
 export const useAuth = () => {
-  const ctx = useContext(AuthContext);
-  if (!ctx) {
+  const context = useContext(AuthContext);
+  if (!context) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
-  return ctx;
+  return context;
 };

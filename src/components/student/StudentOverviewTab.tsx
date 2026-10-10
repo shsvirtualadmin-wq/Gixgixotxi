@@ -1,13 +1,31 @@
 import React, { useMemo } from 'react';
-import { ArrowRight, Zap, GraduationCap, TrendingUp, Flame, AlertCircle, Clock, ChevronRight } from 'lucide-react';
+import {
+  ArrowRight,
+  Zap,
+  GraduationCap,
+  TrendingUp,
+  Flame,
+  AlertCircle,
+  Clock,
+  ChevronRight,
+  Calendar,
+  Sparkles,
+  Star,
+  CheckCircle,
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { StoredTestAttempt } from '../../lib/firebase';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
 import { UNIVERSITIES } from '../../data/universities';
+import { getTimeUntilKarachiMidnight, getPlanConfig } from '../../data/planLimits';
+import { SparkLineTrendChart } from '../ui/Charts';
+import { Badge } from '../ui/Badge';
 
 interface StudentOverviewTabProps {
   onStartSprint: (subject: string) => void;
   onGoToPractice: () => void;
+  onGoToEvents?: () => void;
+  onWriteReview?: () => void;
   onReviewAttempt?: (attempt: StoredTestAttempt) => void;
   attempts: StoredTestAttempt[];
 }
@@ -15,16 +33,26 @@ interface StudentOverviewTabProps {
 export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
   onStartSprint,
   onGoToPractice,
+  onGoToEvents,
+  onWriteReview,
   onReviewAttempt,
   attempts,
 }) => {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
 
   const firstName = profile?.name?.trim().split(' ')[0] || 'Student';
-  const targetUniId = profile?.targetUniversityId || 'fast';
+  const targetUniId = profile?.targetUniversityId || 'nust';
   const targetUni = UNIVERSITIES.find((u) => u.id === targetUniId) || UNIVERSITIES[0];
-
   const daysLeft = profile?.targetExamDaysLeft || 21;
+
+  const planConfig = getPlanConfig(profile?.plan);
+  const countdown = getTimeUntilKarachiMidnight();
+
+  const testsUsed = profile?.testsUsedToday || 0;
+  const boardyUsed = profile?.boardyQuestionsUsedToday || 0;
+  const isUnlimited = isAdmin || planConfig.testsPerDay >= 999;
+  const testsLeft = isUnlimited ? 'Unlimited' : Math.max(0, planConfig.testsPerDay - testsUsed);
+  const boardyLeft = Math.max(0, planConfig.boardyPerDay - boardyUsed);
 
   // Time-of-day greeting
   const greeting = useMemo(() => {
@@ -47,270 +75,228 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
     ? profile.weakSubjects[0]
     : 'Advance Maths';
 
-  // Analytics if attempts exist
   const hasTests = attempts && attempts.length > 0;
   const recentAttempts = attempts.slice(0, 3);
-  const avgScore = hasTests
-    ? Math.round(attempts.reduce((acc, a) => acc + (a.percentage || 0), 0) / attempts.length)
-    : 0;
+
+  const trendData = useMemo(() => {
+    if (!attempts || attempts.length === 0) {
+      return [
+        { label: 'T1', value: 65 },
+        { label: 'T2', value: 72 },
+        { label: 'T3', value: 78 },
+        { label: 'T4', value: 85 },
+      ];
+    }
+    return attempts
+      .slice(0, 7)
+      .reverse()
+      .map((a, idx) => ({
+        label: `Test ${idx + 1}`,
+        value: a.percentage || 0,
+      }));
+  }, [attempts]);
 
   return (
     <div className="space-y-6 pb-20">
       {/* Date & Greeting Header */}
-      <div>
-        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
-          {todayFormatted}
-        </span>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
-          {greeting}, {firstName}
-        </h1>
-        <p className="mt-1 text-sm text-slate-600">
-          {hasTests
-            ? `Keep your momentum going! Your exam is ${daysLeft} days away.`
-            : `Take your first test and you will see where you stand. Your exam is ${daysLeft} days away.`}
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
+            {todayFormatted}
+          </span>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-1">
+            {greeting}, {firstName}
+          </h1>
+          <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+            {daysLeft} days until your {targetUni.shortName} entrance test. Stay consistent!
+          </p>
+        </div>
+
+        <div className="flex items-center gap-3 self-start sm:self-auto">
+          <div className="px-3.5 py-1.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300">
+            <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />
+            <span>3 Day Streak</span>
+          </div>
+          <UniversityLogoBadge university={targetUni} size="sm" />
+        </div>
       </div>
 
-      {/* Hero Card: Start Here */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-indigo-600 to-blue-700 text-white p-6 sm:p-8 shadow-xl shadow-blue-500/15">
-        {/* Subtle background glow */}
+      {/* Hero Card: Start Here Sprint */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 text-white p-6 sm:p-8 shadow-xl shadow-indigo-500/15">
         <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
         <div className="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
-          <div className="md:col-span-8 space-y-4">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-xs font-bold text-blue-100 tracking-wide uppercase">
+          <div className="md:col-span-8 space-y-3">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-xs font-bold text-indigo-100 tracking-wide uppercase">
               <Zap className="w-3.5 h-3.5 text-amber-300" />
-              <span>Start here</span>
+              <span>Recommended Drill</span>
             </div>
 
             <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">
               Timed sprint in {sprintSubject}
             </h2>
 
-            <p className="text-xs sm:text-sm text-blue-100/90 leading-relaxed max-w-lg">
-              30 questions in ten minutes, gives you a first score to build on. Tested against verified {targetUni.shortName} past patterns.
+            <p className="text-xs sm:text-sm text-indigo-100/90 leading-relaxed max-w-lg">
+              30 rapid questions in 10 minutes to benchmark speed and formula accuracy for {targetUni.shortName}.
             </p>
 
             <div className="flex flex-wrap items-center gap-4 pt-2">
               <button
                 type="button"
                 onClick={() => onStartSprint(sprintSubject)}
-                className="py-3 px-6 rounded-xl bg-white text-blue-900 hover:bg-blue-50 font-extrabold text-sm shadow-md transition-all cursor-pointer flex items-center gap-2 group"
+                className="py-3 px-6 rounded-2xl bg-white text-indigo-900 hover:bg-indigo-50 font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-2 group"
               >
-                <span>Start sprint</span>
-                <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                <span>Start Sprint Now</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </button>
-
               <button
                 type="button"
                 onClick={onGoToPractice}
-                className="text-xs font-semibold text-blue-200 hover:text-white underline underline-offset-4 cursor-pointer"
+                className="py-3 px-4 rounded-2xl bg-white/15 hover:bg-white/20 text-white font-bold text-xs transition-colors cursor-pointer"
               >
-                Choose another test
+                All Subjects
               </button>
             </div>
           </div>
 
-          {/* Answer-sheet bubble preview on right */}
-          <div className="hidden md:flex md:col-span-4 justify-end">
-            <div className="p-3.5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 w-44 space-y-2 text-[10px] select-none shadow-inner">
-              <div className="text-center font-bold text-blue-100 text-[11px] pb-1 border-b border-white/15">
-                OMR Answer Sheet
-              </div>
-              {[
-                { num: '01', chosen: 'B' },
-                { num: '02', chosen: 'A' },
-                { num: '03', chosen: 'D' },
-                { num: '04', chosen: 'C' },
-                { num: '05', chosen: 'B' },
-              ].map((row) => (
-                <div key={row.num} className="flex items-center justify-between text-blue-100 font-mono">
-                  <span className="text-[9px] opacity-75">{row.num}</span>
-                  {['A', 'B', 'C', 'D'].map((letter) => {
-                    const isSelected = row.chosen === letter;
-                    return (
-                      <span
-                        key={letter}
-                        className={`w-4 h-4 rounded-full flex items-center justify-center font-bold text-[8px] transition-all ${
-                          isSelected
-                            ? 'bg-white text-blue-700 shadow-sm'
-                            : 'border border-white/30 text-white/70'
-                        }`}
-                      >
-                        {letter}
-                      </span>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
+          <div className="md:col-span-4 hidden md:flex flex-col items-center justify-center p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 text-center">
+            <UniversityLogoBadge university={targetUni} size="lg" />
+            <span className="font-extrabold text-sm text-white mt-2">{targetUni.shortName}</span>
+            <span className="text-[11px] text-indigo-200">{targetUni.testName || 'Entrance Exam'}</span>
           </div>
         </div>
       </div>
 
-      {/* Two Side-by-Side Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        {/* Card 1: Timed Sprint */}
-        <div
-          onClick={() => onStartSprint('Advance Maths')}
-          className="p-5 rounded-3xl bg-white/85 backdrop-blur-xl border border-white/80 shadow-md hover:shadow-lg transition-all cursor-pointer group flex flex-col justify-between"
-        >
+      {/* Today's Allowance Rings & Midnight Countdown */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Tests Left */}
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex items-center justify-between">
           <div>
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-              <Zap className="w-5 h-5" />
-            </div>
-            <h3 className="font-extrabold text-slate-900 text-base group-hover:text-blue-600 transition-colors">
-              Timed sprint
-            </h3>
-            <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-              30 questions in ten minutes, in one subject. Focused speed drill with instant step-by-step solutions.
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Tests Left Today
+            </p>
+            <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+              {testsLeft}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">
+              {planConfig.name} Plan Allowance
             </p>
           </div>
-
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-            {/* Row of tiny dots */}
-            <div className="flex items-center gap-1.5">
-              {[...Array(6)].map((_, i) => (
-                <div
-                  key={i}
-                  className={`w-1.5 h-1.5 rounded-full ${i < 3 ? 'bg-blue-600' : 'bg-slate-200'}`}
-                />
-              ))}
-            </div>
-            <span className="text-xs font-bold text-blue-600 flex items-center gap-1">
-              Start sprint <ArrowRight className="w-3.5 h-3.5" />
-            </span>
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center font-black">
+            <Zap className="w-6 h-6" />
           </div>
         </div>
 
-        {/* Card 2: University Papers */}
-        <div
-          onClick={onGoToPractice}
-          className="p-5 rounded-3xl bg-white/85 backdrop-blur-xl border border-white/80 shadow-md hover:shadow-lg transition-all cursor-pointer group flex flex-col justify-between"
-        >
+        {/* Boardy Chats Left */}
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex items-center justify-between">
           <div>
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center mb-3 group-hover:scale-105 transition-transform">
-              <GraduationCap className="w-5 h-5" />
-            </div>
-            <h3 className="font-extrabold text-slate-900 text-base group-hover:text-indigo-600 transition-colors">
-              University papers
-            </h3>
-            <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-              All the entry tests, from FAST and NUST to IBA and LUMS. Full simulation with exact question counts & negative marking.
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Boardy AI Left
             </p>
+            <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+              {boardyLeft}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">Questions remaining</p>
           </div>
+          <div className="w-12 h-12 rounded-2xl bg-violet-50 dark:bg-violet-950/60 text-violet-600 flex items-center justify-center font-black">
+            <Sparkles className="w-6 h-6" />
+          </div>
+        </div>
 
-          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-            {/* Row of tiny dots */}
-            <div className="flex items-center gap-1.5">
-              {[...Array(6)].map((_, i) => (
-                <div
-                  key={i}
-                  className={`w-1.5 h-1.5 rounded-full ${i < 4 ? 'bg-indigo-600' : 'bg-slate-200'}`}
-                />
-              ))}
-            </div>
-            <span className="text-xs font-bold text-indigo-600 flex items-center gap-1">
-              Explore papers <ArrowRight className="w-3.5 h-3.5" />
-            </span>
+        {/* Countdown */}
+        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+              Refill Countdown
+            </p>
+            <p className="text-2xl font-black text-slate-900 dark:text-white mt-1 font-mono">
+              {countdown.formattedCountdown}
+            </p>
+            <p className="text-[11px] text-slate-500 mt-0.5">Resets midnight PKT</p>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center font-black">
+            <Clock className="w-6 h-6" />
           </div>
         </div>
       </div>
 
-      {/* Target University Highlight Card */}
-      <div className="p-5 rounded-3xl bg-white/85 backdrop-blur-xl border border-white/80 shadow-md flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <UniversityLogoBadge university={targetUni} size="lg" />
-          <div>
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-              Primary Goal
-            </span>
-            <h3 className="font-extrabold text-slate-900 text-base">{targetUni.fullName}</h3>
-            <p className="text-xs text-slate-500">
-              Exam in {daysLeft} days · Paced study path active
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={onGoToPractice}
-          className="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-colors cursor-pointer shrink-0"
-        >
-          View mock
-        </button>
-      </div>
-
-      {/* Stats and Results (when tests exist) */}
-      {hasTests ? (
-        <div className="space-y-4">
+      {/* Analytics Trend & Weak Topics Grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        {/* Score Trend Chart */}
+        <div className="lg:col-span-7 p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
-            <h3 className="font-extrabold text-slate-900 text-lg">Your Performance</h3>
-            <span className="text-xs text-slate-500">{attempts.length} tests completed</span>
+            <div>
+              <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white">
+                Score Accuracy Trend
+              </h3>
+              <p className="text-xs text-slate-400">Progression across recent test attempts</p>
+            </div>
+            <Badge variant="indigo">Analytics</Badge>
           </div>
+          <SparkLineTrendChart data={trendData} color="#4F46E5" height={190} />
+        </div>
 
-          {/* Metrics summary */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="p-4 rounded-2xl bg-white/80 border border-slate-200/80 text-center">
-              <TrendingUp className="w-5 h-5 text-emerald-600 mx-auto mb-1" />
-              <div className="text-xl font-black text-slate-900">{avgScore}%</div>
-              <span className="text-[11px] text-slate-500">Average Score</span>
-            </div>
-            <div className="p-4 rounded-2xl bg-white/80 border border-slate-200/80 text-center">
-              <Flame className="w-5 h-5 text-amber-500 mx-auto mb-1" />
-              <div className="text-xl font-black text-slate-900">3 Days</div>
-              <span className="text-[11px] text-slate-500">Current Streak</span>
-            </div>
-            <div className="p-4 rounded-2xl bg-white/80 border border-slate-200/80 text-center">
-              <Clock className="w-5 h-5 text-blue-600 mx-auto mb-1" />
-              <div className="text-xl font-black text-slate-900">{attempts.length}</div>
-              <span className="text-[11px] text-slate-500">Tests Taken</span>
-            </div>
-          </div>
+        {/* Weak Topics to Drill */}
+        <div className="lg:col-span-5 p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4 flex flex-col justify-between">
+          <div>
+            <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white">
+              Target Weak Areas
+            </h3>
+            <p className="text-xs text-slate-400 mt-0.5">Chapters where extra practice yields maximum aggregate gain</p>
 
-          {/* Recent attempts list */}
-          <div className="bg-white/80 rounded-2xl border border-slate-200/80 divide-y divide-slate-100 overflow-hidden">
-            <div className="p-3.5 bg-slate-50/70 text-xs font-bold text-slate-700">
-              Recent Test Results
-            </div>
-            {recentAttempts.map((att) => (
-              <div
-                key={att.id || att.createdAt}
-                onClick={() => onReviewAttempt?.(att)}
-                className="p-3.5 flex items-center justify-between hover:bg-slate-50/60 transition-colors cursor-pointer"
-              >
-                <div>
-                  <h4 className="font-bold text-sm text-slate-900">{att.title}</h4>
-                  <p className="text-xs text-slate-500">
-                    {new Date(att.createdAt).toLocaleDateString()} · {att.correctCount} / {att.totalQuestions} correct
-                  </p>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`font-black text-sm px-2.5 py-1 rounded-lg ${
-                      att.percentage >= 70
-                        ? 'bg-emerald-50 text-emerald-700'
-                        : att.percentage >= 50
-                        ? 'bg-blue-50 text-blue-700'
-                        : 'bg-amber-50 text-amber-700'
-                    }`}
+            <div className="mt-4 space-y-2.5">
+              {[
+                { subject: 'Integration & Derivatives', accuracy: '54%', priority: 'High' },
+                { subject: 'Rotational Motion & Torque', accuracy: '61%', priority: 'Medium' },
+                { subject: 'Aldehydes & Ketones', accuracy: '66%', priority: 'Medium' },
+              ].map((topic, i) => (
+                <div
+                  key={i}
+                  className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex items-center justify-between"
+                >
+                  <div>
+                    <p className="font-bold text-xs text-slate-800 dark:text-slate-200">
+                      {topic.subject}
+                    </p>
+                    <p className="text-[11px] text-slate-400">Accuracy: {topic.accuracy}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onStartSprint(topic.subject)}
+                    className="px-3 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors cursor-pointer"
                   >
-                    {att.percentage}%
-                  </span>
-                  <ChevronRight className="w-4 h-4 text-slate-400" />
+                    Drill
+                  </button>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
-      ) : (
-        <div className="p-6 rounded-3xl bg-blue-50/50 border border-blue-100 text-center space-y-2">
-          <p className="text-xs sm:text-sm text-blue-900 font-semibold">
-            Ready to measure your baseline?
-          </p>
-          <p className="text-xs text-blue-700 max-w-md mx-auto">
-            Take a 10-minute sprint to populate your score trends, identify weak topics, and receive targeted study recommendations from Boardy.
-          </p>
+      </div>
+
+      {/* Review CTA Card (for students with at least 1 attempt) */}
+      {hasTests && onWriteReview && (
+        <div className="p-6 rounded-3xl bg-gradient-to-r from-violet-500/10 via-indigo-500/10 to-transparent border border-violet-200/80 dark:border-violet-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-violet-600 text-white flex items-center justify-center font-bold">
+              <Star className="w-5 h-5 fill-white" />
+            </div>
+            <div>
+              <h4 className="font-black text-sm text-slate-900 dark:text-white">
+                Share your Boardly study experience
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                You've completed {attempts.length} test{attempts.length > 1 ? 's' : ''}! Write a review to help fellow aspirants.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onWriteReview}
+            className="px-5 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-xs shadow-md transition-all cursor-pointer whitespace-nowrap"
+          >
+            Write a Review
+          </button>
         </div>
       )}
     </div>

@@ -186,9 +186,9 @@ export const AdminSubscriptionsTab: React.FC<AdminSubscriptionsTabProps> = ({
         {/* Metric 1: Free Tier Quotas */}
         <div className="bg-white rounded-2xl border border-slate-200/80 p-5 shadow-sm space-y-3 relative overflow-hidden">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Free (Starter)</span>
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Free</span>
             <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-              Starter Tier
+              Standard
             </span>
           </div>
           <div className="flex items-baseline gap-2">
@@ -198,11 +198,11 @@ export const AdminSubscriptionsTab: React.FC<AdminSubscriptionsTabProps> = ({
           <div className="pt-2 border-t border-slate-100 text-[11px] text-slate-600 space-y-1">
             <div className="flex justify-between">
               <span>Daily Practice Drills:</span>
-              <strong className="text-slate-900 font-bold">3 tests / day</strong>
+              <strong className="text-slate-900 font-bold">2 tests / day</strong>
             </div>
             <div className="flex justify-between">
               <span>Boardy AI Chats:</span>
-              <strong className="text-slate-900 font-bold">150 chats / month</strong>
+              <strong className="text-slate-900 font-bold">3 questions / day</strong>
             </div>
           </div>
         </div>
@@ -527,7 +527,7 @@ export const AdminSubscriptionsTab: React.FC<AdminSubscriptionsTabProps> = ({
                 Select Active Subscription Tier
               </label>
               <div className="grid grid-cols-3 gap-2.5">
-                {/* 1. Free (Starter) */}
+                {/* 1. Free */}
                 <button
                   type="button"
                   onClick={() => setSelectedTier('free')}
@@ -538,8 +538,8 @@ export const AdminSubscriptionsTab: React.FC<AdminSubscriptionsTabProps> = ({
                   }`}
                 >
                   <div className="text-xs font-black text-slate-900">Free</div>
-                  <div className="text-[10px] text-slate-500">Starter</div>
-                  <div className="text-[10px] text-slate-400 mt-2 font-mono">3 drills/day</div>
+                  <div className="text-[10px] text-slate-500">Standard</div>
+                  <div className="text-[10px] text-slate-400 mt-2 font-mono">2 drills/day</div>
                 </button>
 
                 {/* 2. Pro (Most Popular) */}

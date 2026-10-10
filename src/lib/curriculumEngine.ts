@@ -233,9 +233,10 @@ The relative tendency of an atom in a covalent bond to attract the shared pair o
   if (queryLower.includes('pricing') || queryLower.includes('plan') || queryLower.includes('payment') || queryLower.includes('free trial') || queryLower.includes('account')) {
     return `## Boardly Platform & Exam Prep Overview
 
-## Free Starter vs. Pro Plan
-- **Free Trial**: Includes full access to sample past papers, test series preview, and 5 Study Buddy AI questions per day.
-- **Boardly Pro**: Complete, unlimited access to all Matric & FSC Board Exam past papers (Classes 9, 10, 11, 12), full PMDC MDCAT and UET TCAT test series, detailed performance analytics, and unlimited Study Buddy AI tutoring.
+## Boardly Plans: Free, Pro, and Premium
+- **Free Plan**: 2 practice tests and 3 Boardy AI questions daily. Foundation drills for FSC and Entry Tests.
+- **Boardly Pro**: 10 tests and 7 Boardy AI questions daily. Full chapter question banks and university past paper formats.
+- **Boardly Premium**: Unlimited practice tests and 15 Boardy AI questions daily. Merit Meter simulations and national mock sessions.
 
 ## Payment & Verification
 - **Payment Methods**: We accept EasyPaisa, JazzCash, and direct Bank Transfer.

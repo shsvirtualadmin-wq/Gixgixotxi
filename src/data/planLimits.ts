@@ -1,10 +1,10 @@
-export type PlanType = 'starter' | 'steady_climb' | 'all_access' | 'free' | 'pro' | 'premium';
+export type PlanType = 'free' | 'pro' | 'premium';
 
 export interface PlanLimitConfig {
-  id: string;
+  id: PlanType;
   name: 'Free' | 'Pro' | 'Premium';
   badge: string;
-  testsPerDay: number; // 999 represents unlimited
+  testsPerDay: number; // 999999 represents unlimited
   boardyPerDay: number;
   description: string;
   priceMonthlyPkr: number;
@@ -14,58 +14,70 @@ export const PLAN_LIMITS: Record<string, PlanLimitConfig> = {
   free: {
     id: 'free',
     name: 'Free',
-    badge: 'Starter',
-    testsPerDay: 3,
-    boardyPerDay: 5,
-    description: '3 tests and Boardy AI access every day (150 chats/month). Perfect for consistency.',
-    priceMonthlyPkr: 0,
-  },
-  starter: {
-    id: 'starter',
-    name: 'Free',
-    badge: 'Starter',
-    testsPerDay: 3,
-    boardyPerDay: 5,
-    description: '3 tests and Boardy AI access every day (150 chats/month). Perfect for consistency.',
+    badge: 'Standard',
+    testsPerDay: 2,
+    boardyPerDay: 3,
+    description: '2 practice tests and 3 Boardy AI questions daily. Foundation drills for FSC and Entry Tests.',
     priceMonthlyPkr: 0,
   },
   pro: {
     id: 'pro',
     name: 'Pro',
-    badge: 'Most Popular',
-    testsPerDay: 25,
-    boardyPerDay: 50,
-    description: 'Pro opens every chapter with 25 tests/day and 1500 Boardy chats/month.',
-    priceMonthlyPkr: 2499,
-  },
-  steady_climb: {
-    id: 'steady_climb',
-    name: 'Pro',
-    badge: 'Most Popular',
-    testsPerDay: 25,
-    boardyPerDay: 50,
-    description: 'Pro opens every chapter with 25 tests/day and 1500 Boardy chats/month.',
+    badge: 'Popular',
+    testsPerDay: 10,
+    boardyPerDay: 7,
+    description: '10 tests and 7 Boardy AI questions daily. Full chapter question banks and university past paper formats.',
     priceMonthlyPkr: 2499,
   },
   premium: {
     id: 'premium',
     name: 'Premium',
-    badge: 'Top Rank',
-    testsPerDay: 999,
-    boardyPerDay: 999,
-    description: 'Unlimited practice tests, grand national mocks, and unlimited Boardy AI.',
-    priceMonthlyPkr: 3999,
-  },
-  all_access: {
-    id: 'all_access',
-    name: 'Premium',
-    badge: 'Top Rank',
-    testsPerDay: 999,
-    boardyPerDay: 999,
-    description: 'Unlimited practice tests, grand national mocks, and unlimited Boardy AI.',
+    badge: 'Unlimited Tests',
+    testsPerDay: 999999,
+    boardyPerDay: 15,
+    description: 'Unlimited practice tests and 15 Boardy AI questions daily. Merit Meter simulations and national mock sessions.',
     priceMonthlyPkr: 3999,
   },
 };
+
+// Legacy compatibility aliases
+PLAN_LIMITS['starter'] = PLAN_LIMITS.free;
+PLAN_LIMITS['steady_climb'] = PLAN_LIMITS.pro;
+PLAN_LIMITS['all_access'] = PLAN_LIMITS.premium;
+
+/**
+ * Normalizes legacy plan names ('starter', 'steady_climb', 'all_access') to the strict 'free' | 'pro' | 'premium' paradigm.
+ */
+export function normalizePlanId(plan?: string | null): PlanType {
+  if (!plan) return 'free';
+  const clean = plan.toLowerCase().trim();
+  if (clean === 'premium' || clean === 'all_access') return 'premium';
+  if (clean === 'pro' || clean === 'steady_climb') return 'pro';
+  return 'free';
+}
+
+export function getPlanConfig(plan?: string | null): PlanLimitConfig {
+  const normalized = normalizePlanId(plan);
+  return PLAN_LIMITS[normalized] || PLAN_LIMITS.free;
+}
+
+/**
+ * Returns upgrade prompt configuration:
+ * - Free sees "Upgrade to Pro"
+ * - Pro sees "Upgrade to Premium"
+ * - Premium and Admin see no upgrade prompt (returns null)
+ */
+export function getUpgradePrompt(plan?: string | null, isAdmin?: boolean): { targetPlan: PlanType; label: string } | null {
+  if (isAdmin) return null;
+  const current = normalizePlanId(plan);
+  if (current === 'free') {
+    return { targetPlan: 'pro', label: 'Upgrade to Pro' };
+  }
+  if (current === 'pro') {
+    return { targetPlan: 'premium', label: 'Upgrade to Premium' };
+  }
+  return null;
+}
 
 export function getKarachiTodayString(): string {
   try {
@@ -98,15 +110,15 @@ export function getTimeUntilKarachiMidnight(): {
   const hours = Math.floor(diffMinutes / 60);
   const minutes = diffMinutes % 60;
 
-  // 24 hours = 1440 minutes. Elapsed today = 1440 - diffMinutes
-  const elapsedMinutes = 1440 - diffMinutes;
-  const progressPercent = Math.min(100, Math.max(0, Math.round((elapsedMinutes / 1440) * 100)));
+  const totalDayMinutes = 24 * 60;
+  const elapsedMinutes = totalDayMinutes - diffMinutes;
+  const progressPercent = Math.min(100, Math.max(0, Math.round((elapsedMinutes / totalDayMinutes) * 100)));
 
   return {
     hours,
     minutes,
     totalMinutes: diffMinutes,
     progressPercent,
-    formattedCountdown: `${hours} h ${minutes} min`,
+    formattedCountdown: `${hours}h ${minutes}m`,
   };
 }

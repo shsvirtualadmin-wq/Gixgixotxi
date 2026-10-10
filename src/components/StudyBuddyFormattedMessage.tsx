@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { sanitizeStudyBuddyText } from '../lib/studyBuddySanitizer';
 import { preprocessMathText } from '../lib/mathConverter';
+import { Copy, Check, ExternalLink } from 'lucide-react';
 
 interface StudyBuddyFormattedMessageProps {
   content: string;
@@ -12,11 +14,56 @@ interface StudyBuddyFormattedMessageProps {
   theme?: 'light' | 'dark';
 }
 
+const CodeBlock: React.FC<{ codeText: string; language?: string; isLight?: boolean }> = ({
+  codeText,
+  language,
+  isLight = true,
+}) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(codeText);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+
+  return (
+    <div className="relative my-3 rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-900 text-slate-100 shadow-sm font-mono text-xs">
+      <div className="flex items-center justify-between px-3.5 py-1.5 bg-slate-950/70 border-b border-slate-800 text-[11px] text-slate-400 font-sans">
+        <span className="uppercase tracking-wider font-semibold">{language || 'code'}</span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md hover:bg-slate-800 text-slate-300 hover:text-white transition-colors cursor-pointer"
+          title="Copy code"
+        >
+          {copied ? (
+            <>
+              <Check className="w-3 h-3 text-emerald-400" />
+              <span className="text-[10px] text-emerald-400 font-medium">Copied</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-3 h-3" />
+              <span className="text-[10px]">Copy</span>
+            </>
+          )}
+        </button>
+      </div>
+      <pre className="p-3.5 overflow-x-auto leading-relaxed text-slate-100">
+        <code>{codeText}</code>
+      </pre>
+    </div>
+  );
+};
+
 export const StudyBuddyFormattedMessage: React.FC<StudyBuddyFormattedMessageProps> = React.memo(({
   content,
   className = '',
   isUser = false,
-  theme = 'dark',
+  theme = 'light',
 }) => {
   const sanitized = sanitizeStudyBuddyText(content);
   const processed = sanitized ? preprocessMathText(sanitized) : '';
@@ -36,7 +83,7 @@ export const StudyBuddyFormattedMessage: React.FC<StudyBuddyFormattedMessageProp
       } ${className}`}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkMath]}
+        remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
           p: ({ children }) => <p className="mb-2.5 last:mb-0 leading-relaxed block">{children}</p>,
@@ -47,7 +94,7 @@ export const StudyBuddyFormattedMessage: React.FC<StudyBuddyFormattedMessageProp
                   ? 'text-white border-white/20'
                   : isLight
                   ? 'text-slate-900 border-slate-200'
-                  : 'text-blue-300 border-blue-500/30'
+                  : 'text-violet-300 border-violet-500/30'
               }`}
             >
               {children}
@@ -60,7 +107,7 @@ export const StudyBuddyFormattedMessage: React.FC<StudyBuddyFormattedMessageProp
                   ? 'text-white'
                   : isLight
                   ? 'text-slate-900'
-                  : 'text-blue-300'
+                  : 'text-violet-300'
               }`}
             >
               {children}
@@ -73,24 +120,11 @@ export const StudyBuddyFormattedMessage: React.FC<StudyBuddyFormattedMessageProp
                   ? 'text-white font-black'
                   : isLight
                   ? 'text-slate-900'
-                  : 'text-blue-300'
+                  : 'text-violet-300'
               }`}
             >
               {children}
             </h3>
-          ),
-          h4: ({ children }) => (
-            <h4
-              className={`font-bold text-xs mt-2 mb-1 block ${
-                isUser
-                  ? 'text-white'
-                  : isLight
-                  ? 'text-slate-900'
-                  : 'text-blue-300'
-              }`}
-            >
-              {children}
-            </h4>
           ),
           strong: ({ children }) => (
             <strong
@@ -98,8 +132,8 @@ export const StudyBuddyFormattedMessage: React.FC<StudyBuddyFormattedMessageProp
                 isUser
                   ? 'text-white font-black'
                   : isLight
-                  ? 'text-slate-950 font-bold'
-                  : 'text-[#60A5FA]'
+                  ? 'text-slate-950 font-extrabold'
+                  : 'text-indigo-300 font-extrabold'
               }`}
             >
               {children}
@@ -129,28 +163,20 @@ export const StudyBuddyFormattedMessage: React.FC<StudyBuddyFormattedMessageProp
             </ol>
           ),
           li: ({ children }) => <li className="pl-0.5 leading-relaxed">{children}</li>,
-          code: ({ inline, children, className: _c, ...props }: any) => {
-            return inline ? (
+          code: ({ inline, children, className: codeClassName, ...props }: any) => {
+            const match = /language-(\w+)/.exec(codeClassName || '');
+            const rawString = String(children).replace(/\n$/, '');
+            if (!inline && (codeClassName || rawString.includes('\n'))) {
+              return <CodeBlock codeText={rawString} language={match?.[1]} isLight={isLight} />;
+            }
+            return (
               <code
                 className={`px-1.5 py-0.5 rounded text-[11px] font-mono ${
                   isUser
                     ? 'bg-white/20 text-white'
                     : isLight
-                    ? 'bg-slate-200 text-slate-900 border border-slate-300/60'
-                    : 'bg-slate-900/80 text-[#60A5FA] border border-[#1E5AFF]/30'
-                }`}
-                {...props}
-              >
-                {children}
-              </code>
-            ) : (
-              <code
-                className={`block p-2.5 rounded-lg text-xs font-mono overflow-x-auto my-2 ${
-                  isUser
-                    ? 'bg-white/10 text-white'
-                    : isLight
-                    ? 'bg-slate-900 text-slate-100'
-                    : 'bg-slate-950 text-slate-200 border border-[#1E5AFF]/30'
+                    ? 'bg-slate-100 text-indigo-700 border border-slate-200 font-semibold'
+                    : 'bg-slate-900/80 text-violet-300 border border-violet-500/30'
                 }`}
                 {...props}
               >
@@ -160,16 +186,53 @@ export const StudyBuddyFormattedMessage: React.FC<StudyBuddyFormattedMessageProp
           },
           blockquote: ({ children }) => (
             <blockquote
-              className={`border-l-3 pl-3 my-2 italic py-1 rounded-r ${
+              className={`border-l-3 pl-3.5 my-2.5 italic py-1 rounded-r-xl ${
                 isUser
                   ? 'border-white/60 text-white bg-white/10'
                   : isLight
-                  ? 'border-blue-500 text-slate-700 bg-blue-50/50'
-                  : 'border-[#1E5AFF]/60 text-slate-300 bg-[#1E5AFF]/10'
+                  ? 'border-indigo-500 text-slate-700 bg-indigo-50/50'
+                  : 'border-violet-500 text-slate-300 bg-violet-950/20'
               }`}
             >
               {children}
             </blockquote>
+          ),
+          table: ({ children }) => (
+            <div className="overflow-x-auto my-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+              <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-800 text-left text-xs">
+                {children}
+              </table>
+            </div>
+          ),
+          thead: ({ children }) => (
+            <thead className={isLight ? 'bg-slate-100/90 text-slate-900 font-bold' : 'bg-slate-800 text-slate-100 font-bold'}>
+              {children}
+            </thead>
+          ),
+          tbody: ({ children }) => (
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-white dark:bg-slate-900">
+              {children}
+            </tbody>
+          ),
+          tr: ({ children }) => <tr className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">{children}</tr>,
+          th: ({ children }) => <th className="px-3.5 py-2.5 font-bold tracking-tight">{children}</th>,
+          td: ({ children }) => <td className="px-3.5 py-2 leading-normal">{children}</td>,
+          a: ({ href, children }) => (
+            <a
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`inline-flex items-center gap-0.5 underline font-semibold transition-colors ${
+                isUser
+                  ? 'text-white hover:text-white/80'
+                  : isLight
+                  ? 'text-indigo-600 hover:text-indigo-800'
+                  : 'text-violet-400 hover:text-violet-300'
+              }`}
+            >
+              <span>{children}</span>
+              <ExternalLink className="w-3 h-3 inline-block shrink-0 opacity-70" />
+            </a>
           ),
         }}
       >

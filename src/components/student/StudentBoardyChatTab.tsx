@@ -3,7 +3,7 @@ import { Send, Sparkles, Plus, Menu, X, Bot, User as UserIcon, Loader2, ArrowRig
 import { useAuth } from '../../context/AuthContext';
 import { BoardyMascot } from '../BoardyMascot';
 import { StudyBuddyFormattedMessage } from '../StudyBuddyFormattedMessage';
-import { PLAN_LIMITS, PlanType } from '../../data/planLimits';
+import { PLAN_LIMITS, PlanType, normalizePlanId } from '../../data/planLimits';
 
 export interface ChatMessage {
   id: string;
@@ -30,8 +30,8 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
   );
   const firstName = isAdmin ? 'Admin' : (profile?.name?.trim().split(' ')[0] || 'Student');
 
-  const userPlan: PlanType = (profile?.plan as PlanType) || 'starter';
-  const planConfig = PLAN_LIMITS[userPlan] || PLAN_LIMITS.starter;
+  const userPlan: PlanType = normalizePlanId(profile?.plan);
+  const planConfig = PLAN_LIMITS[userPlan] || PLAN_LIMITS.free;
   const boardyUsedToday = profile?.boardyQuestionsUsedToday || 0;
   const isUnlimited = isAdmin || planConfig.boardyPerDay >= 999;
   const boardyRemaining = isUnlimited ? 999 : Math.max(0, planConfig.boardyPerDay - boardyUsedToday);
