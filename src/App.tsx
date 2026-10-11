@@ -59,6 +59,7 @@ const TestScreen = lazyWithRetry(() => import('./components/TestScreen').then(m 
 const ResultsScreen = lazyWithRetry(() => import('./components/ResultsScreen').then(m => ({ default: m.ResultsScreen })), 'ResultsScreen');
 const StudentProfileView = lazyWithRetry(() => import('./components/StudentProfileView').then(m => ({ default: m.StudentProfileView })), 'StudentProfileView');
 import { PromoCelebrationModal, PromoModalMode } from './components/PromoCelebrationModal';
+import { configValidation } from './lib/firebase';
 import {
   extractPromoCodeFromUrl,
   storePendingPromoCode,
@@ -3998,6 +3999,49 @@ export function App() {
 };
 
 export const AppWithSettings: React.FC = () => {
+  if (!configValidation.isValid) {
+    if (import.meta.env.DEV) {
+      return (
+        <div className="min-h-screen bg-slate-900 text-white flex flex-col items-center justify-center p-6 text-center">
+          <div className="max-w-md bg-slate-800 border border-red-500/30 rounded-2xl p-6 shadow-2xl">
+            <h1 className="text-xl font-bold text-red-400 mb-2">Firebase Configuration Error</h1>
+            <p className="text-sm text-slate-300 mb-4">
+              The following required environment variable(s) failed validation or are missing:
+            </p>
+            <ul className="text-xs font-mono bg-slate-950 p-3 rounded-lg text-amber-300 space-y-1 mb-4 text-left">
+              {configValidation.badVars.map((v) => (
+                <li key={v}>• {v}</li>
+              ))}
+            </ul>
+            <p className="text-xs text-slate-400">
+              Please check your environment configuration variables.
+            </p>
+          </div>
+        </div>
+      );
+    } else {
+      return (
+        <div className="min-h-screen bg-[#F8F9FB] text-slate-900 flex flex-col items-center justify-center p-6 text-center font-sans">
+          <div className="max-w-md bg-white border border-slate-200 rounded-3xl p-8 shadow-xl">
+            <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-4 font-bold text-xl">
+              ⚙️
+            </div>
+            <h1 className="text-xl font-bold text-slate-900 mb-2">We're fixing something</h1>
+            <p className="text-sm text-slate-600 mb-6">
+              Please try again shortly. Our team is performing routine maintenance.
+            </p>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-6 py-2.5 bg-blue-600 text-white text-sm font-semibold rounded-xl hover:bg-blue-700 transition cursor-pointer"
+            >
+              Refresh Page
+            </button>
+          </div>
+        </div>
+      );
+    }
+  }
+
   return (
     <ThemeProvider>
       <SiteSettingsProvider>

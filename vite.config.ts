@@ -2,9 +2,11 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import {defineConfig, loadEnv} from 'vite';
+import firebaseAppletConfig from './firebase-applet-config.json';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
+  const isProd = mode === 'production';
   return {
     plugins: [react(), tailwindcss()],
     resolve: {
@@ -13,13 +15,13 @@ export default defineConfig(({ mode }) => {
       },
     },
     define: {
-      'import.meta.env.VITE_FIREBASE_API_KEY': JSON.stringify(env.VITE_FIREBASE_API_KEY?.trim() || process.env.VITE_FIREBASE_API_KEY?.trim() || 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs'),
-      'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify(env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || process.env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || 'gen-lang-client-0365509316.firebaseapp.com'),
-      'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(env.VITE_FIREBASE_PROJECT_ID?.trim() || process.env.VITE_FIREBASE_PROJECT_ID?.trim() || 'gen-lang-client-0365509316'),
-      'import.meta.env.VITE_FIREBASE_STORAGE_BUCKET': JSON.stringify(env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || process.env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || 'gen-lang-client-0365509316.firebasestorage.app'),
-      'import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID': JSON.stringify(env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || '556734245207'),
-      'import.meta.env.VITE_FIREBASE_APP_ID': JSON.stringify(env.VITE_FIREBASE_APP_ID?.trim() || process.env.VITE_FIREBASE_APP_ID?.trim() || '1:556734245207:web:4797f3915b424209b03612'),
-      'import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID': JSON.stringify(env.VITE_FIREBASE_FIRESTORE_DATABASE_ID?.trim() || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID?.trim() || 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712'),
+      'import.meta.env.VITE_FIREBASE_API_KEY': JSON.stringify(env.VITE_FIREBASE_API_KEY?.trim() || process.env.VITE_FIREBASE_API_KEY?.trim() || (!isProd ? firebaseAppletConfig?.apiKey : '')),
+      'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify(env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || process.env.VITE_FIREBASE_AUTH_DOMAIN?.trim() || (!isProd ? firebaseAppletConfig?.authDomain : '') || 'gen-lang-client-0365509316.firebaseapp.com'),
+      'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(env.VITE_FIREBASE_PROJECT_ID?.trim() || process.env.VITE_FIREBASE_PROJECT_ID?.trim() || (!isProd ? firebaseAppletConfig?.projectId : '')),
+      'import.meta.env.VITE_FIREBASE_STORAGE_BUCKET': JSON.stringify(env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || process.env.VITE_FIREBASE_STORAGE_BUCKET?.trim() || (!isProd ? firebaseAppletConfig?.storageBucket : '')),
+      'import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID': JSON.stringify(env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || process.env.VITE_FIREBASE_MESSAGING_SENDER_ID?.trim() || (!isProd ? firebaseAppletConfig?.messagingSenderId : '')),
+      'import.meta.env.VITE_FIREBASE_APP_ID': JSON.stringify(env.VITE_FIREBASE_APP_ID?.trim() || process.env.VITE_FIREBASE_APP_ID?.trim() || (!isProd ? firebaseAppletConfig?.appId : '')),
+      'import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID': JSON.stringify(env.VITE_FIREBASE_FIRESTORE_DATABASE_ID?.trim() || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID?.trim() || (!isProd ? firebaseAppletConfig?.firestoreDatabaseId : '')),
     },
     build: {
       target: 'esnext',

@@ -13,6 +13,31 @@ Boardly (B-O-A-R-D-L-Y) is a mobile-first, diagnostic testing and exam revision 
 
 ---
 
+## Firebase Environment Configuration
+
+The application requires seven client environment variables configured for Firebase:
+
+```env
+VITE_FIREBASE_API_KEY
+VITE_FIREBASE_AUTH_DOMAIN
+VITE_FIREBASE_PROJECT_ID
+VITE_FIREBASE_STORAGE_BUCKET
+VITE_FIREBASE_MESSAGING_SENDER_ID
+VITE_FIREBASE_APP_ID
+VITE_FIREBASE_FIRESTORE_DATABASE_ID
+```
+
+### Where to Find Values
+- Go to **Firebase Console → Project settings → General → Your apps → Web app → Config**.
+- Copy the values for `apiKey`, `authDomain`, `projectId`, `storageBucket`, `messagingSenderId`, and `appId`.
+- `VITE_FIREBASE_FIRESTORE_DATABASE_ID` corresponds to your specific named Firestore database ID (or `(default)`).
+
+### Security & Build Notes
+- **Public by Design**: These web Firebase configuration values are included in the frontend client bundle and are public by design.
+- **Never Put Secrets in `VITE_` Variables**: Backend API secrets, service account credentials, Gemini API keys, or database private keys must never be placed in `VITE_` variables or `wrangler.toml [vars]`. Those belong exclusively in server-side Pages Functions secrets or secure environment variables.
+- **Baked In at Build Time**: All `VITE_` variables are replaced statically at build time during `vite build`. Any update or change to an environment variable requires a rebuild and redeployment of the application.
+- **Cloudflare Pages `wrangler.toml [vars]` Precedence**: When `wrangler.toml` contains a `[vars]` table, Cloudflare Pages treats `wrangler.toml` as the authoritative source of truth and blocks overriding them in the Cloudflare dashboard UI. Always manage project environment variables directly in `wrangler.toml`.
+
 ## Firebase Authentication & Custom Domain SSL Setup
 
 ### 1. Authorized Domains

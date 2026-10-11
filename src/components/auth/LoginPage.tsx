@@ -79,11 +79,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
       const destination = getValidatedPostLoginPath();
       onNavigate(destination);
     } else if (res.error) {
-      if (res.error.toLowerCase().includes('popup')) {
-        setErrorMsg('Sign-in popup was blocked. Please allow pop-ups for this site in your browser to sign in with Google.');
-      } else {
-        setErrorMsg(res.error);
-      }
+      setErrorMsg(res.error);
     }
   };
 

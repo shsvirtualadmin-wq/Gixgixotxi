@@ -67,50 +67,49 @@ export interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function friendlyAuthError(err: any): string {
-  console.error('[Firebase Auth Error Details]:', err);
+  // Log the real reason for developers
+  console.error('[Firebase Auth Developer Log]:', err?.code || '', err?.message || err);
   const code: string = err?.code || '';
   const rawMsg: string = err?.message || (typeof err === 'string' ? err : '');
-  const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'current domain';
 
+  if (
+    code === 'auth/api-key-not-valid' ||
+    code === 'auth/invalid-api-key' ||
+    rawMsg.toLowerCase().includes('api-key-not-valid') ||
+    rawMsg.toLowerCase().includes('api key not valid')
+  ) {
+    return "Login is temporarily unavailable. We're on it.";
+  }
   if (code === 'auth/unauthorized-domain') {
-    return `Unauthorized Domain: "${currentHost}" is not listed in authorized domains. In Firebase Console, go to Authentication > Settings > Authorized domains and add "${currentHost}".`;
-  }
-  if (code === 'auth/operation-not-allowed') {
-    return 'Sign-in method is not enabled. In Firebase Console, go to Authentication > Sign-in method and enable Email/Password or Google.';
-  }
-  if (code === 'auth/invalid-api-key' || code === 'auth/api-key-not-valid' || rawMsg.toLowerCase().includes('api-key-not-valid') || rawMsg.toLowerCase().includes('api key not valid')) {
-    return 'Invalid Firebase API Key. Please verify your Firebase project credentials.';
-  }
-  if (code === 'auth/email-already-in-use') {
-    return 'This email address is already registered. Please log in instead.';
-  }
-  if (code === 'auth/invalid-email') {
-    return 'Please enter a valid email address.';
-  }
-  if (code === 'auth/weak-password') {
-    return 'Password is too weak. Please use at least 8 characters with letters and numbers.';
-  }
-  if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/user-not-found') {
-    return 'Incorrect email or password. Please verify and try again.';
-  }
-  if (code === 'auth/user-disabled') {
-    return 'This account has been disabled. Please contact support@boardly.cfd.';
-  }
-  if (code === 'auth/too-many-requests') {
-    return 'Too many login attempts. For security, please wait a few minutes before trying again.';
-  }
-  if (code === 'auth/popup-closed-by-user') {
-    return 'Google sign-in was closed before completion.';
-  }
-  if (code === 'auth/popup-blocked') {
-    return 'Sign-in pop-up was blocked. Please allow pop-ups for Boardly in your browser address bar.';
+    return "This website address isn't authorized yet.";
   }
   if (code === 'auth/network-request-failed') {
-    return 'Network connection failed. Please check your internet connection.';
+    return "Check your internet connection.";
+  }
+  if (code === 'auth/too-many-requests') {
+    return "Too many attempts. Try again in a few minutes.";
+  }
+  if (
+    code === 'auth/wrong-password' ||
+    code === 'auth/invalid-credential' ||
+    code === 'auth/user-not-found'
+  ) {
+    return "Email or password is incorrect.";
+  }
+  if (code === 'auth/popup-blocked') {
+    return "Allow pop-ups for this site, then try again.";
+  }
+  if (code === 'auth/email-already-in-use') {
+    return "This email address is already registered. Please log in instead.";
+  }
+  if (code === 'auth/invalid-email') {
+    return "Email or password is incorrect.";
+  }
+  if (code === 'auth/weak-password') {
+    return "Password is too weak. Please use at least 8 characters.";
   }
 
-  const cleanMsg = rawMsg ? rawMsg.replace(/^Firebase:\s*/i, '') : 'Authentication failed';
-  return cleanMsg || 'Authentication error occurred. Please try again.';
+  return "Something went wrong. Please try again.";
 }
 
 export function getHighestRole(roles: UserRole[]): UserRole {
