@@ -3,9 +3,28 @@ import { mapSubject } from '../utils/subjectMapper';
 import { shuffleQuestionOptions, deduplicateQuestions, normalizeQuestionStem } from '../lib/shuffle';
 import { selectPrioritizedQuestions } from '../lib/seenQuestionsTracker';
 import { checkQuestionTopicRelevance } from '../utils/topicValidator';
-import { TCAT_PREBUILT_QUESTIONS, getTCATPrebuiltQuestions } from './tcatPrebuiltQuestions';
-import { MDCAT_PREBUILT_QUESTIONS, getMDCATPrebuiltQuestions } from './mdcatPrebuiltQuestions';
-import { getEntranceExamQuestions } from './entranceExamQuestions';
+import { TCAT_PREBUILT_QUESTIONS, getTCATPrebuiltQuestions, generateTCATFullMockBank } from './tcatPrebuiltQuestions';
+import { MDCAT_PREBUILT_QUESTIONS, getMDCATPrebuiltQuestions, generateMDCATFullMockBank } from './mdcatPrebuiltQuestions';
+import {
+  getEntranceExamQuestions,
+  generateMuetFullMockBank,
+  generateNetFullMockBank,
+  generateFastFullMockBank,
+  generateEcatFullMockBank,
+  generateEteaFullMockBank,
+  generateNumsFullMockBank,
+  generateGikiFullMockBank,
+  generateUsatFullMockBank,
+  generateNedFullMockBank,
+  generatePieasFullMockBank,
+  generateNatFullMockBank,
+  generateIbaFullMockBank,
+  generateAkuFullMockBank,
+  generateLumsFullMockBank,
+  generateNumlFullMockBank,
+  generateHitecFullMockBank,
+  generateNutechFullMockBank,
+} from './entranceExamQuestions';
 
 export const PREBUILT_QUESTIONS: Record<string, Question[]> = {
   "Physics": [

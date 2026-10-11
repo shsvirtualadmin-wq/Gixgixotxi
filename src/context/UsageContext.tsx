@@ -32,8 +32,28 @@ export const UsageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const [loading, setLoading] = useState<boolean>(true);
   const [dateKey, setDateKey] = useState<string>(() => getKarachiTodayString());
-  const [testsUsed, setTestsUsed] = useState<number>(0);
-  const [aiChatsUsed, setAiChatsUsed] = useState<number>(0);
+  const [testsUsed, setTestsUsed] = useState<number>(() => {
+    try {
+      const today = getKarachiTodayString();
+      const saved = localStorage.getItem(`boardly_usage_${today}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.testsUsed === 'number') return parsed.testsUsed;
+      }
+    } catch {}
+    return 0;
+  });
+  const [aiChatsUsed, setAiChatsUsed] = useState<number>(() => {
+    try {
+      const today = getKarachiTodayString();
+      const saved = localStorage.getItem(`boardly_usage_${today}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.aiChatsUsed === 'number') return parsed.aiChatsUsed;
+      }
+    } catch {}
+    return 0;
+  });
   const [activeSessions, setActiveSessions] = useState<string[]>([]);
 
   // Refill countdown state targeting midnight Pakistan Standard Time (PKT)
@@ -45,6 +65,13 @@ export const UsageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // Cache latest usage to prevent flicker on subsequent visits/refreshes
+  useEffect(() => {
+    try {
+      localStorage.setItem(`boardly_usage_${dateKey}`, JSON.stringify({ testsUsed, aiChatsUsed }));
+    } catch {}
+  }, [dateKey, testsUsed, aiChatsUsed]);
 
   // Determine user plan and limits
   const userPlan: PlanType = useMemo(() => {
@@ -82,18 +109,21 @@ export const UsageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
       if (serverSnap && serverSnap.exists()) {
         const data = serverSnap.data();
-        const lastUsageDate = data.lastUsageDate || '';
+        const storedDate = data.dateKey || data.lastUsageDate || '';
         
-        if (lastUsageDate !== todayPkt) {
-          // If stored dateKey is not today's PKT date, reset counts to 0 on the server atomically
+        if (storedDate !== todayPkt) {
+          // If stored dateKey is not today's PKT date, treat both counts as 0 and reset them in the same write
           try {
             await runTransaction(db, async (txn) => {
               const freshDoc = await txn.get(userRef);
               if (freshDoc.exists()) {
                 txn.update(userRef, {
-                  testsUsedToday: 0,
-                  boardyQuestionsUsedToday: 0,
+                  dateKey: todayPkt,
                   lastUsageDate: todayPkt,
+                  testsUsed: 0,
+                  testsUsedToday: 0,
+                  aiChatsUsed: 0,
+                  boardyQuestionsUsedToday: 0,
                   activeTestSessionsToday: [],
                 });
               }
@@ -105,8 +135,15 @@ export const UsageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
           setAiChatsUsed(0);
           setActiveSessions([]);
         } else {
-          setTestsUsed(typeof data.testsUsedToday === 'number' ? data.testsUsedToday : 0);
-          setAiChatsUsed(typeof data.boardyQuestionsUsedToday === 'number' ? data.boardyQuestionsUsedToday : 0);
+          const tUsed = typeof data.testsUsed === 'number'
+            ? data.testsUsed
+            : (typeof data.testsUsedToday === 'number' ? data.testsUsedToday : 0);
+          const aiUsed = typeof data.aiChatsUsed === 'number'
+            ? data.aiChatsUsed
+            : (typeof data.boardyQuestionsUsedToday === 'number' ? data.boardyQuestionsUsedToday : 0);
+
+          setTestsUsed(tUsed);
+          setAiChatsUsed(aiUsed);
           setActiveSessions(Array.isArray(data.activeTestSessionsToday) ? data.activeTestSessionsToday : []);
         }
       }
@@ -136,7 +173,7 @@ export const UsageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     currentUidRef.current = uid;
     setLoading(true);
 
-    // 1. Initial authoritative server read
+    // 1. Initial authoritative server read first (never trust stale local cache as final)
     fetchAuthoritativeUsage(uid);
 
     // 2. Real-time live listener for multi-tab sync
@@ -145,13 +182,20 @@ export const UsageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       if (!snap.exists()) return;
       const data = snap.data();
       const todayPkt = getKarachiTodayString();
-      const lastUsageDate = data.lastUsageDate || '';
+      const storedDate = data.dateKey || data.lastUsageDate || '';
 
-      if (lastUsageDate === todayPkt) {
-        setTestsUsed(typeof data.testsUsedToday === 'number' ? data.testsUsedToday : 0);
-        setAiChatsUsed(typeof data.boardyQuestionsUsedToday === 'number' ? data.boardyQuestionsUsedToday : 0);
+      if (storedDate === todayPkt) {
+        const tUsed = typeof data.testsUsed === 'number'
+          ? data.testsUsed
+          : (typeof data.testsUsedToday === 'number' ? data.testsUsedToday : 0);
+        const aiUsed = typeof data.aiChatsUsed === 'number'
+          ? data.aiChatsUsed
+          : (typeof data.boardyQuestionsUsedToday === 'number' ? data.boardyQuestionsUsedToday : 0);
+
+        setTestsUsed(tUsed);
+        setAiChatsUsed(aiUsed);
         setActiveSessions(Array.isArray(data.activeTestSessionsToday) ? data.activeTestSessionsToday : []);
-      } else if (lastUsageDate && lastUsageDate !== todayPkt) {
+      } else if (storedDate && storedDate !== todayPkt) {
         // Different day detected, treat both counts as 0
         setTestsUsed(0);
         setAiChatsUsed(0);
@@ -229,8 +273,11 @@ export const UsageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             const freshDoc = await txn.get(userRef);
             if (freshDoc.exists()) {
               const data = freshDoc.data();
-              const curUsed = data.testsUsedToday || 0;
-              txn.update(userRef, { testsUsedToday: curUsed + 1 });
+              const curUsed = data.testsUsed ?? data.testsUsedToday ?? 0;
+              txn.update(userRef, {
+                testsUsed: curUsed + 1,
+                testsUsedToday: curUsed + 1,
+              });
             }
           });
         } catch {}
@@ -254,8 +301,10 @@ export const UsageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (!userDoc.exists()) return false;
 
         const data = userDoc.data();
-        const storedDate = data.lastUsageDate || '';
-        let currentUsed = typeof data.testsUsedToday === 'number' ? data.testsUsedToday : 0;
+        const storedDate = data.dateKey || data.lastUsageDate || '';
+        let currentUsed = typeof data.testsUsed === 'number'
+          ? data.testsUsed
+          : (typeof data.testsUsedToday === 'number' ? data.testsUsedToday : 0);
         let storedSessions: string[] = Array.isArray(data.activeTestSessionsToday) ? data.activeTestSessionsToday : [];
 
         // Reset if date rolled over
@@ -276,7 +325,9 @@ export const UsageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         const nextSessions = [...storedSessions, sessionId].slice(-50);
         txn.update(userRef, {
+          testsUsed: currentUsed + 1,
           testsUsedToday: currentUsed + 1,
+          dateKey: todayPkt,
           lastUsageDate: todayPkt,
           activeTestSessionsToday: nextSessions,
           updatedAt: new Date().toISOString(),
@@ -307,8 +358,11 @@ export const UsageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
             const freshDoc = await txn.get(userRef);
             if (freshDoc.exists()) {
               const data = freshDoc.data();
-              const curUsed = data.boardyQuestionsUsedToday || 0;
-              txn.update(userRef, { boardyQuestionsUsedToday: curUsed + 1 });
+              const curUsed = data.aiChatsUsed ?? data.boardyQuestionsUsedToday ?? 0;
+              txn.update(userRef, {
+                aiChatsUsed: curUsed + 1,
+                boardyQuestionsUsedToday: curUsed + 1,
+              });
             }
           });
         } catch {}
@@ -327,8 +381,10 @@ export const UsageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         if (!userDoc.exists()) return false;
 
         const data = userDoc.data();
-        const storedDate = data.lastUsageDate || '';
-        let currentUsed = typeof data.boardyQuestionsUsedToday === 'number' ? data.boardyQuestionsUsedToday : 0;
+        const storedDate = data.dateKey || data.lastUsageDate || '';
+        let currentUsed = typeof data.aiChatsUsed === 'number'
+          ? data.aiChatsUsed
+          : (typeof data.boardyQuestionsUsedToday === 'number' ? data.boardyQuestionsUsedToday : 0);
 
         if (storedDate !== todayPkt) {
           currentUsed = 0;
@@ -339,7 +395,9 @@ export const UsageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         txn.update(userRef, {
+          aiChatsUsed: currentUsed + 1,
           boardyQuestionsUsedToday: currentUsed + 1,
+          dateKey: todayPkt,
           lastUsageDate: todayPkt,
           updatedAt: new Date().toISOString(),
         });

@@ -33,26 +33,26 @@ export const BOARDY_MODES: BoardyModeInfo[] = [
   {
     id: 'deep-dive',
     name: 'Deep Dive',
-    tagline: 'Step-by-step teaching',
-    description: 'Thorough step-by-step teaching (use full step-by-step format for real questions).',
+    tagline: 'Thorough step-by-step teaching',
+    description: 'Thorough step-by-step teaching',
   },
   {
     id: 'quick-take',
     name: 'Quick Take',
-    tagline: '3 sentences + answer',
-    description: 'At most 3 sentences plus the final answer.',
+    tagline: 'Short and direct',
+    description: 'Short and direct',
   },
   {
     id: 'study-pal',
     name: 'Study Pal',
-    tagline: 'Friendly & short',
-    description: 'Friendly, encouraging, short messages.',
+    tagline: 'Friendly and encouraging',
+    description: 'Friendly and encouraging',
   },
   {
     id: 'game-plan',
     name: 'Game Plan',
-    tagline: 'Exam strategy & tactics',
-    description: 'Exam strategy, time per question, negative marking, elimination tricks, and target test.',
+    tagline: 'Exam strategy and time management',
+    description: 'Exam strategy and time management',
   },
 ];
 

@@ -715,10 +715,12 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     );
   }
 
-  // Full-Screen Boardy AI tab: renders with 0 chrome (no bottom nav, no top bar, no footer, no sidebar)
-  if (activeTab === 'boardy' && !activeTest && !completedResult) {
-    return (
-      <>
+  const isBoardyActive = activeTab === 'boardy' && !activeTest && !completedResult;
+
+  return (
+    <>
+      {/* Full-Screen Boardy AI tab: renders with 0 chrome (no bottom nav, no top bar, no footer, no sidebar) */}
+      <div className={isBoardyActive ? 'block' : 'hidden'}>
         <StudentBoardyChatTab
           initialPrompt={boardyPrompt}
           onOpenUsage={() => setShowUsageModal(true)}
@@ -729,110 +731,87 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           onBackToDashboard={handleBackFromBoardy}
           isFullScreen={true}
         />
-        <PricingModal
-          isOpen={showUpgradeModal}
-          onClose={() => {
-            setShowUpgradeModal(false);
-            setUpgradeFromBlocked(false);
-          }}
-          fromBlocked={upgradeFromBlocked}
-          currentPlan={profile?.plan}
-          initialTargetPlan={upgradeTargetPlan}
-          onSubmitUpgradeRequest={handlePricingUpgradeRequest}
-        />
-      </>
-    );
-  }
+      </div>
 
-  return (
-    <AppShell
-      role="student"
-      title={
-        activeTab === 'overview'
-          ? 'Dashboard'
-          : activeTab === 'practice'
-          ? 'Practice Question Bank'
-          : activeTab === 'events'
-          ? 'Events & Blitz'
-          : activeTab === 'history'
-          ? 'Test History'
-          : activeTab === 'limits'
-          ? 'Daily Limits'
-          : activeTab === 'universities'
-          ? 'University Explorer'
-          : activeTab === 'merit-meter'
-          ? 'Merit Meter'
-          : activeTab === 'predictor'
-          ? 'Admission Predictor'
-          : activeTab === 'profile'
-          ? 'Student Profile'
-          : 'Student Portal'
-      }
-      subtitle="FSC & University Test Prep Portal"
-      activeNav={activeTab}
-      onSelectNav={handleSelectTab}
-      onNavigateUpgrade={() => {
-        setUpgradeFromBlocked(false);
-        setShowUpgradeModal(true);
-      }}
-      onNavigateProfile={() => handleSelectTab('profile')}
-      onNavigateBilling={() => {
-        handleSelectTab('profile');
-        setTimeout(() => {
-          const el = document.getElementById('current-plan-card');
-          if (el) el.scrollIntoView({ behavior: 'smooth' });
-        }, 100);
-      }}
-      onLogout={logOut}
-      onOpenMore={() => setShowMoreSheet(true)}
-      isInputFocused={isBoardyFocused}
-      isInTestSession={Boolean(activeTest)}
-    >
-      {/* Tab Switcher */}
-      {activeTab === 'overview' && (
-        <StudentOverviewTab
-          attempts={attempts}
-          onStartSprint={handleStartSprint}
-          onGoToPractice={() => handleSelectTab('practice')}
-          onGoToEvents={() => handleSelectTab('events')}
-          onWriteReview={() => setShowReviewModal(true)}
-          onSelectUniversity={() => setShowUniModal(true)}
-          onUpgrade={() => {
-            setUpgradeFromBlocked(true);
+      {!isBoardyActive && (
+        <AppShell
+          role="student"
+          title={
+            activeTab === 'overview'
+              ? 'Dashboard'
+              : activeTab === 'practice'
+              ? 'Practice Question Bank'
+              : activeTab === 'events'
+              ? 'Events & Blitz'
+              : activeTab === 'history'
+              ? 'Test History'
+              : activeTab === 'limits'
+              ? 'Daily Limits'
+              : activeTab === 'universities'
+              ? 'University Explorer'
+              : activeTab === 'merit-meter'
+              ? 'Merit Meter'
+              : activeTab === 'predictor'
+              ? 'Admission Predictor'
+              : activeTab === 'profile'
+              ? 'Student Profile'
+              : 'Student Portal'
+          }
+          subtitle="FSC & University Test Prep Portal"
+          activeNav={activeTab}
+          onSelectNav={handleSelectTab}
+          onNavigateUpgrade={() => {
+            setUpgradeFromBlocked(false);
             setShowUpgradeModal(true);
           }}
-        />
-      )}
+          onNavigateProfile={() => handleSelectTab('profile')}
+          onNavigateBilling={() => {
+            handleSelectTab('profile');
+            setTimeout(() => {
+              const el = document.getElementById('current-plan-card');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+          }}
+          onLogout={logOut}
+          onOpenMore={() => setShowMoreSheet(true)}
+          isInputFocused={isBoardyFocused}
+          isInTestSession={Boolean(activeTest)}
+        >
+          {/* Tab Switcher */}
+          {activeTab === 'overview' && (
+            <StudentOverviewTab
+              attempts={attempts}
+              onStartSprint={handleStartSprint}
+              onGoToPractice={() => handleSelectTab('practice')}
+              onGoToEvents={() => handleSelectTab('events')}
+              onWriteReview={() => setShowReviewModal(true)}
+              onSelectUniversity={() => setShowUniModal(true)}
+              onUpgrade={() => {
+                setUpgradeFromBlocked(true);
+                setShowUpgradeModal(true);
+              }}
+            />
+          )}
 
-      {activeTab === 'practice' && (
-        <StudentPracticeTab
-          onStartSprint={handleStartSprint}
-          onStartUniversityPaper={handleStartUniversityPaper}
-          onOpenUsage={() => setShowUsageModal(true)}
-          onUpgrade={() => setShowUpgradeModal(true)}
-        />
-      )}
+          {activeTab === 'practice' && (
+            <StudentPracticeTab
+              onStartSprint={handleStartSprint}
+              onStartUniversityPaper={handleStartUniversityPaper}
+              onOpenUsage={() => setShowUsageModal(true)}
+              onUpgrade={() => setShowUpgradeModal(true)}
+            />
+          )}
 
-      {activeTab === 'events' && (
-        <StudentEventsTab onStartEventTest={handleStartEventTest} />
-      )}
+          {activeTab === 'events' && (
+            <StudentEventsTab onStartEventTest={handleStartEventTest} />
+          )}
 
-      {activeTab === 'boardy' && (
-        <StudentBoardyChatTab
-          initialPrompt={boardyPrompt}
-          onOpenUsage={() => setShowUsageModal(true)}
-          onUpgrade={() => setShowUpgradeModal(true)}
-          onInputFocus={() => setIsBoardyFocused(true)}
-          onInputBlur={() => setIsBoardyFocused(false)}
-        />
-      )}
-
-      {activeTab === 'history' && (
-        <StudentHistoryTab
-          attempts={attempts}
-          onStartTest={() => setActiveTab('practice')}
-        />
-      )}
+          {activeTab === 'history' && (
+            <StudentHistoryTab
+              attempts={attempts}
+              onStartTest={() => setActiveTab('practice')}
+            />
+          )}
 
       {activeTab === 'profile' && (
         <div className="max-w-2xl mx-auto animate-in fade-in pb-12">
@@ -1073,6 +1052,9 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         </Modal>
       )}
 
+        </AppShell>
+      )}
+
       {/* Redesigned Pricing & Checkout Experience */}
       <PricingModal
         isOpen={showUpgradeModal}
@@ -1101,6 +1083,6 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           });
         }}
       />
-    </AppShell>
+    </>
   );
 };

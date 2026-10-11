@@ -91,6 +91,11 @@ export interface Question {
   subject?: string;
   question?: string;
   explanation?: string;
+  universities?: string[];
+  year?: string | number;
+  examYear?: string | number;
+  source?: string;
+  [key: string]: any;
 }
 
 export type TestMode = 'instant' | 'ai-custom';
@@ -184,6 +189,3 @@ export interface MCQContext {
   explanation?: string;
   difficulty?: string;
 }
-
-
-

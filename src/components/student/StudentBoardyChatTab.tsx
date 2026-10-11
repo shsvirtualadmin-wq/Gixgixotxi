@@ -222,20 +222,50 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
   }, [isModePickerOpen]);
 
   // Auto-scroll logic with scroll detection
+  // Auto-scroll logic with scroll position saving and restoration
   const scrollToBottom = useCallback((smooth = true) => {
     messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
   }, []);
 
   useEffect(() => {
-    scrollToBottom(true);
+    // Only auto-scroll to bottom if user is already near bottom or receiving new messages
+    const el = chatScrollContainerRef.current;
+    if (el) {
+      const isUp = el.scrollHeight - el.scrollTop - el.clientHeight > 160;
+      if (!isUp) {
+        scrollToBottom(true);
+      }
+    } else {
+      scrollToBottom(true);
+    }
   }, [messages.length, isTyping, scrollToBottom]);
+
+  // Restore scroll position on active session switch
+  useEffect(() => {
+    const el = chatScrollContainerRef.current;
+    if (!el) return;
+    try {
+      const saved = sessionStorage.getItem(`boardly_scroll_${activeSessionId}`);
+      if (saved !== null) {
+        const top = Number(saved);
+        if (!isNaN(top) && top > 0) {
+          el.scrollTop = top;
+          return;
+        }
+      }
+    } catch {}
+    scrollToBottom(false);
+  }, [activeSessionId, scrollToBottom]);
 
   const handleScroll = useCallback(() => {
     const el = chatScrollContainerRef.current;
     if (!el) return;
     const isUp = el.scrollHeight - el.scrollTop - el.clientHeight > 140;
     setShowScrollBottom(isUp);
-  }, []);
+    try {
+      sessionStorage.setItem(`boardly_scroll_${activeSessionId}`, String(el.scrollTop));
+    } catch {}
+  }, [activeSessionId]);
 
   // Update mode selection and save to profile & localStorage
   const handleSelectMode = (mode: BoardyMode) => {
@@ -808,50 +838,59 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
 
                     {/* Actions under each AI reply: Copy, Regenerate, Thumbs up/down */}
                     {!msg.failed && (
-                      <div className="flex items-center gap-1 pt-1 pl-1 text-slate-400">
-                        <button
-                          type="button"
-                          onClick={() => handleCopy(msg.id, msg.content)}
-                          className="p-1.5 rounded-lg hover:bg-slate-200/60 text-slate-500 hover:text-slate-800 cursor-pointer transition-colors"
-                          title="Copy reply"
-                        >
-                          {copiedMsgId === msg.id ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1 pl-1">
+                        <div className="flex items-center gap-1 text-slate-400">
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(msg.id, msg.content)}
+                            className="p-1.5 rounded-lg hover:bg-slate-200/60 text-slate-500 hover:text-slate-800 cursor-pointer transition-colors"
+                            title="Copy reply"
+                          >
+                            {copiedMsgId === msg.id ? (
+                              <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleRegenerate(index)}
-                          className="p-1.5 rounded-lg hover:bg-slate-200/60 text-slate-500 hover:text-slate-800 cursor-pointer transition-colors"
-                          title="Regenerate answer"
-                        >
-                          <RotateCcw className="w-3.5 h-3.5" />
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRegenerate(index)}
+                            className="p-1.5 rounded-lg hover:bg-slate-200/60 text-slate-500 hover:text-slate-800 cursor-pointer transition-colors"
+                            title="Regenerate answer"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleFeedback(msg.id, 'up')}
-                          className={`p-1.5 rounded-lg hover:bg-slate-200/60 cursor-pointer transition-colors ${
-                            msg.feedback === 'up' ? 'text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                          title="Helpful"
-                        >
-                          <ThumbsUp className="w-3.5 h-3.5" />
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleFeedback(msg.id, 'up')}
+                            className={`p-1.5 rounded-lg hover:bg-slate-200/60 cursor-pointer transition-colors ${
+                              msg.feedback === 'up' ? 'text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                            title="Helpful"
+                          >
+                            <ThumbsUp className="w-3.5 h-3.5" />
+                          </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleFeedback(msg.id, 'down')}
-                          className={`p-1.5 rounded-lg hover:bg-slate-200/60 cursor-pointer transition-colors ${
-                            msg.feedback === 'down' ? 'text-rose-600 font-bold' : 'text-slate-500 hover:text-slate-800'
-                          }`}
-                          title="Not helpful"
-                        >
-                          <ThumbsDown className="w-3.5 h-3.5" />
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleFeedback(msg.id, 'down')}
+                            className={`p-1.5 rounded-lg hover:bg-slate-200/60 cursor-pointer transition-colors ${
+                              msg.feedback === 'down' ? 'text-rose-600 font-bold' : 'text-slate-500 hover:text-slate-800'
+                            }`}
+                            title="Not helpful"
+                          >
+                            <ThumbsDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {msg.mode && (
+                          <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 text-[10px] font-semibold text-slate-500 border border-slate-200/60 select-none">
+                            {getModeIcon(msg.mode)}
+                            <span>{BOARDY_MODES.find((m) => m.id === msg.mode)?.name || 'Deep Dive'}</span>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

@@ -44,15 +44,15 @@ export async function generateQuizPdfChunked({
     throw new Error('No questions available to export.');
   }
 
-  // Group questions into pages: 4 questions per standard page
-  const QUESTIONS_PER_PAGE = 4;
+  // Group questions into pages: 8 questions per standard page (cuts page count in half)
+  const QUESTIONS_PER_PAGE = 8;
   const questionPages: Question[][] = [];
   for (let i = 0; i < questions.length; i += QUESTIONS_PER_PAGE) {
     questionPages.push(questions.slice(i, i + QUESTIONS_PER_PAGE));
   }
 
-  // Answer key pages: ~20 rows per page
-  const ANSWERS_PER_PAGE = 22;
+  // Answer key pages: ~30 rows per page
+  const ANSWERS_PER_PAGE = 30;
   const totalAnswerPages = Math.ceil(questions.length / ANSWERS_PER_PAGE);
   const totalPages = questionPages.length + totalAnswerPages;
 
@@ -73,7 +73,7 @@ export async function generateQuizPdfChunked({
   pageContainer.style.backgroundColor = '#ffffff';
   pageContainer.style.color = '#0f172a';
   pageContainer.style.fontFamily = "'Inter', -apple-system, sans-serif";
-  pageContainer.style.padding = '40px 48px';
+  pageContainer.style.padding = '24px 36px 36px 36px';
   pageContainer.style.boxSizing = 'border-box';
   pageContainer.style.zIndex = '-9999';
   document.body.appendChild(pageContainer);
@@ -81,28 +81,28 @@ export async function generateQuizPdfChunked({
   try {
     let currentPageNum = 1;
 
-    // 1. Render Question Pages
+    // 1. Render Question Pages (8 MCQs per page)
     for (let pIdx = 0; pIdx < questionPages.length; pIdx++) {
       const pageQuestions = questionPages[pIdx];
       const startQIndex = pIdx * QUESTIONS_PER_PAGE;
 
       const headerHtml = `
-        <div style="border-bottom: 2px solid #1E5AFF; padding-bottom: 12px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+        <div style="border-bottom: 2px solid #1E5AFF; padding-bottom: 8px; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
           <div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 16px; font-weight: 900; color: #1E5AFF; letter-spacing: -0.5px;">BOARDLY</span>
-              <span style="font-size: 10px; font-weight: 700; color: #64748b; background: #f1f5f9; padding: 2px 8px; rounded: 4px;">TEST WORKSHEET</span>
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 14px; font-weight: 900; color: #1E5AFF; letter-spacing: -0.5px;">BOARDLY</span>
+              <span style="font-size: 9px; font-weight: 700; color: #475569; background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">TEST WORKSHEET</span>
             </div>
-            <h2 style="margin: 4px 0 0 0; font-size: 14px; font-weight: 800; color: #0f172a;">${escapeHtml(title)}</h2>
+            <h2 style="margin: 2px 0 0 0; font-size: 12px; font-weight: 800; color: #0f172a;">${escapeHtml(title)}</h2>
           </div>
-          <div style="text-align: right; font-size: 10px; color: #64748b; font-weight: 600;">
+          <div style="text-align: right; font-size: 9px; color: #64748b; font-weight: 600;">
             <div>Date: ${dateStr}</div>
             <div>${questions.length} Questions · ${durationMinutes} Mins</div>
           </div>
         </div>
       `;
 
-      let questionsHtml = '<div style="display: flex; flex-direction: column; gap: 18px;">';
+      let questionsHtml = '<div style="display: flex; flex-direction: column; gap: 8px;">';
 
       pageQuestions.forEach((q, qLocalIdx) => {
         const qNumber = startQIndex + qLocalIdx + 1;
@@ -113,20 +113,20 @@ export async function generateQuizPdfChunked({
           const letter = String.fromCharCode(65 + optIdx);
           const renderedOpt = renderMath(opt);
           return `
-            <div style="display: flex; align-items: flex-start; gap: 8px; font-size: 11px; margin-top: 4px;">
-              <span style="display: inline-block; width: 18px; height: 18px; border-radius: 4px; background-color: #f8fafc; border: 1px solid #cbd5e1; text-align: center; line-height: 18px; font-weight: 800; font-size: 10px; color: #334155; flex-shrink: 0;">${letter}</span>
-              <div style="flex: 1; color: #1e293b; line-height: 1.4;">${renderedOpt}</div>
+            <div style="display: flex; align-items: flex-start; gap: 6px; font-size: 9.5px; margin-top: 2px;">
+              <span style="display: inline-block; width: 15px; height: 15px; border-radius: 3px; background-color: #f8fafc; border: 1px solid #cbd5e1; text-align: center; line-height: 15px; font-weight: 800; font-size: 8.5px; color: #334155; flex-shrink: 0;">${letter}</span>
+              <div style="flex: 1; color: #1e293b; line-height: 1.3;">${renderedOpt}</div>
             </div>
           `;
         }).join('');
 
         questionsHtml += `
-          <div style="padding-bottom: 12px; border-bottom: 1px dashed #e2e8f0;">
-            <div style="display: flex; align-items: baseline; gap: 6px; font-size: 12px; font-weight: 700; color: #0f172a; margin-bottom: 8px;">
+          <div style="padding-bottom: 6px; border-bottom: 1px dashed #e2e8f0;">
+            <div style="display: flex; align-items: baseline; gap: 5px; font-size: 10.5px; font-weight: 700; color: #0f172a; margin-bottom: 3px;">
               <span style="color: #1E5AFF; font-weight: 900;">Q${qNumber}.</span>
-              <div style="flex: 1; line-height: 1.4;">${renderedStem}</div>
+              <div style="flex: 1; line-height: 1.35;">${renderedStem}</div>
             </div>
-            <div style="padding-left: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px;">
+            <div style="padding-left: 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 3px 14px;">
               ${optionsHtml}
             </div>
           </div>
@@ -136,7 +136,7 @@ export async function generateQuizPdfChunked({
       questionsHtml += '</div>';
 
       const footerHtml = `
-        <div style="position: absolute; bottom: 24px; left: 48px; right: 48px; border-top: 1px solid #e2e8f0; padding-top: 8px; display: flex; align-items: center; justify-content: space-between; font-size: 9px; color: #94a3b8; font-weight: 600;">
+        <div style="position: absolute; bottom: 16px; left: 36px; right: 36px; border-top: 1px solid #e2e8f0; padding-top: 6px; display: flex; align-items: center; justify-content: space-between; font-size: 8.5px; color: #94a3b8; font-weight: 600;">
           <span>boardly.cfd — Pakistan's Entrance Test &amp; Board Prep Portal</span>
           <span>Page ${currentPageNum} of ${totalPages}</span>
         </div>
@@ -211,15 +211,15 @@ export async function generateQuizPdfChunked({
         const renderedExplain = explainSnippet ? renderMath(explainSnippet) : '—';
 
         tableRows += `
-          <tr style="border-bottom: 1px solid #f1f5f9; font-size: 10px;">
-            <td style="padding: 6px 8px; font-weight: 800; color: #1E5AFF; text-align: center;">${qNumber}</td>
+          <tr style="border-bottom: 1px solid #f1f5f9; font-size: 9px;">
+            <td style="padding: 4px 6px; font-weight: 800; color: #1E5AFF; text-align: center;">${qNumber}</td>
             ${isSubmitted ? `
-              <td style="padding: 6px 8px; text-align: center; font-weight: 700; color: ${isStudentCorrect ? '#16a34a' : studentLetter === '—' ? '#94a3b8' : '#dc2626'};">
+              <td style="padding: 4px 6px; text-align: center; font-weight: 700; color: ${isStudentCorrect ? '#16a34a' : studentLetter === '—' ? '#94a3b8' : '#dc2626'};">
                 ${studentLetter} ${isStudentCorrect ? '✓' : studentLetter !== '—' ? '✗' : ''}
               </td>
             ` : ''}
-            <td style="padding: 6px 8px; text-align: center; font-weight: 800; color: #0f172a;">${correctLetter}</td>
-            <td style="padding: 6px 8px; color: #334155; line-height: 1.35;">${renderedExplain}</td>
+            <td style="padding: 4px 6px; text-align: center; font-weight: 800; color: #0f172a;">${correctLetter}</td>
+            <td style="padding: 4px 6px; color: #334155; line-height: 1.3;">${renderedExplain}</td>
           </tr>
         `;
       });
@@ -227,11 +227,11 @@ export async function generateQuizPdfChunked({
       const tableHtml = `
         <table style="width: 100%; border-collapse: collapse; text-align: left;">
           <thead>
-            <tr style="background-color: #f8fafc; border-bottom: 1.5px solid #cbd5e1; font-size: 10px; color: #475569; font-weight: 800;">
-              <th style="padding: 6px 8px; text-align: center; width: 44px;">Q#</th>
-              ${isSubmitted ? '<th style="padding: 6px 8px; text-align: center; width: 64px;">Your Ans</th>' : ''}
-              <th style="padding: 6px 8px; text-align: center; width: 54px;">Key</th>
-              <th style="padding: 6px 8px;">Step-by-step Derivation &amp; Solution</th>
+            <tr style="background-color: #f8fafc; border-bottom: 1.5px solid #cbd5e1; font-size: 9px; color: #475569; font-weight: 800;">
+              <th style="padding: 4px 6px; text-align: center; width: 38px;">Q#</th>
+              ${isSubmitted ? '<th style="padding: 4px 6px; text-align: center; width: 56px;">Your Ans</th>' : ''}
+              <th style="padding: 4px 6px; text-align: center; width: 44px;">Key</th>
+              <th style="padding: 4px 6px;">Step-by-step Derivation &amp; Solution</th>
             </tr>
           </thead>
           <tbody>
