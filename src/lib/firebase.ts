@@ -42,10 +42,10 @@ const rawAppId = (import.meta.env.VITE_FIREBASE_APP_ID || firebaseAppletConfig?.
 const rawFirestoreDbId = (import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseAppletConfig?.firestoreDatabaseId || '').trim();
 
 export const firebaseConfig = {
-  apiKey: rawApiKey || 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs',
-  authDomain: rawAuthDomain || 'auth.boardly.cfd',
+  apiKey: rawApiKey || 'AIzaSyDNnUtJ0s0ZlNuvs-5VCOl5HaQLY8F3Uqs',
+  authDomain: rawAuthDomain || 'gen-lang-client-0365509316.firebaseapp.com',
   projectId: rawProjectId || 'gen-lang-client-0365509316',
-  storageBucket: rawStorageBucket || 'gen-lang-client-0365509316.firebasestorage.app',
+  storageBucket: rawStorageBucket || 'gen-lang-client-0365509316.appspot.com',
   messagingSenderId: rawMessagingSenderId || '556734245207',
   appId: rawAppId || '1:556734245207:web:4797f3915b424209b03612',
   firestoreDatabaseId: rawFirestoreDbId || 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712',
