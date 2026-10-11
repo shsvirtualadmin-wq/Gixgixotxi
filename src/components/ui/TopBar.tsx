@@ -23,6 +23,7 @@ export interface TopBarProps {
   onOpenMobileMenu?: () => void;
   onNavigateUpgrade?: () => void;
   onNavigateProfile?: () => void;
+  onNavigateBilling?: () => void;
   onSearchChange?: (q: string) => void;
 }
 
@@ -32,6 +33,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onOpenMobileMenu,
   onNavigateUpgrade,
   onNavigateProfile,
+  onNavigateBilling,
   onSearchChange,
 }) => {
   const { user, profile, isAdmin, activeRole, switchRole, availableRoles, logOut } = useAuth();
@@ -151,10 +153,23 @@ export const TopBar: React.FC<TopBarProps> = ({
 
           {profileMenuOpen && (
             <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white border border-slate-200 shadow-2xl p-2 z-50 animate-in fade-in zoom-in-95 space-y-1">
-              <div className="px-3 py-2 border-b border-slate-100">
-                <p className="font-extrabold text-xs text-slate-900">
-                  {profile?.name || 'Student'}
-                </p>
+              {/* Clickable Header block navigating directly to Profile */}
+              <button
+                type="button"
+                onClick={() => {
+                  onNavigateProfile?.();
+                  setProfileMenuOpen(false);
+                }}
+                className="w-full text-left px-3 py-2 border-b border-slate-100 hover:bg-slate-50 rounded-t-xl transition-colors cursor-pointer group"
+              >
+                <div className="flex items-center justify-between">
+                  <p className="font-extrabold text-xs text-slate-900 group-hover:text-indigo-600 transition-colors">
+                    {profile?.name || 'Student'}
+                  </p>
+                  <span className="text-[10px] text-indigo-600 font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                    View Profile →
+                  </span>
+                </div>
                 <p className="text-[11px] text-slate-400 truncate">{user?.email}</p>
                 <div className="mt-2 flex items-center gap-1.5">
                   <span
@@ -167,7 +182,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                     {isAdmin ? 'ADMINISTRATOR' : `${planConfig.name} Plan`}
                   </span>
                 </div>
-              </div>
+              </button>
 
               {/* Direct Admin Portal Switcher */}
               {isAdmin && (
@@ -214,11 +229,15 @@ export const TopBar: React.FC<TopBarProps> = ({
                 </div>
               )}
 
-              {onNavigateProfile && (
+              {(onNavigateBilling || onNavigateProfile) && (
                 <button
                   type="button"
                   onClick={() => {
-                    onNavigateProfile();
+                    if (onNavigateBilling) {
+                      onNavigateBilling();
+                    } else if (onNavigateProfile) {
+                      onNavigateProfile();
+                    }
                     setProfileMenuOpen(false);
                   }}
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-100 cursor-pointer"

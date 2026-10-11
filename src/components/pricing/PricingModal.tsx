@@ -154,8 +154,9 @@ export const PricingModal: React.FC<PricingModalProps> = ({
             </div>
 
             {/* Pill Tabs: Monthly | 3 Months | 6 Months (Best Value) | 12 Months */}
-            <div className="flex justify-center">
-              <div className="inline-flex p-1.5 rounded-full bg-slate-200/80 border border-slate-300/80 shadow-inner max-w-full overflow-x-auto gap-1">
+            {/* Wrapper has top padding of at least 14px and no overflow clipping */}
+            <div className="flex justify-center pt-4 overflow-visible">
+              <div className="inline-flex p-1.5 rounded-full bg-slate-200/80 border border-slate-300/80 shadow-inner max-w-full overflow-visible gap-1 relative">
                 {PRICING_DURATIONS.map((dur, index) => {
                   const isActive = selectedDurationIndex === index;
                   return (
@@ -163,15 +164,18 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                       key={dur.months}
                       type="button"
                       onClick={() => setSelectedDurationIndex(index)}
-                      className={`relative px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 whitespace-nowrap flex items-center gap-1.5 cursor-pointer focus-visible:outline-none ${
+                      className={`relative px-4 sm:px-6 py-2.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 whitespace-nowrap flex items-center gap-1.5 cursor-pointer focus-visible:outline-none ${
                         isActive
                           ? 'bg-[#1a6dff] text-white shadow-md shadow-[#1a6dff]/30'
                           : 'text-slate-600 hover:text-[#0d1b3e] hover:bg-white/60'
                       }`}
                     >
-                      {/* Floating Dark "Best Value" Badge above 6 Months */}
+                      {/* Floating Dark "Best Value" Badge above 6 Months - exactly positioned to avoid any clipping */}
                       {dur.badge && (
-                        <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#0d1b3e] text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-md uppercase tracking-wider whitespace-nowrap border border-white/20">
+                        <span
+                          className="absolute -top-[10px] left-1/2 -translate-x-1/2 bg-[#0d1b3e] text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-md uppercase tracking-wider whitespace-nowrap z-10 border border-white/20 pointer-events-none"
+                          style={{ top: '-10px', left: '50%', transform: 'translateX(-50%)' }}
+                        >
                           {dur.badge}
                         </span>
                       )}
@@ -182,13 +186,13 @@ export const PricingModal: React.FC<PricingModalProps> = ({
               </div>
             </div>
 
-            {/* 3 Pricing Cards: Stacked on mobile (~380px wide), 3 across on desktop */}
+            {/* 3 Pricing Cards: Stacked on mobile (~380px wide) with Pro displayed first on mobile, 3 across on desktop */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
               {/* ---------------- CARD 1: FREE ---------------- */}
               {(() => {
                 const isCurrentPlan = userPlanKey === 'free';
                 return (
-                  <div className="flex flex-col justify-between p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all relative">
+                  <div className="order-2 md:order-1 flex flex-col justify-between p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all relative">
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-extrabold uppercase tracking-widest text-slate-500">
@@ -204,7 +208,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                       {/* Pricing block with fixed height to prevent layout shift */}
                       <div className="min-h-[88px] flex flex-col justify-end space-y-1">
                         <div className="flex items-baseline gap-1">
-                          <span className="text-3xl sm:text-4xl font-extrabold text-[#0d1b3e] font-sans">
+                          <span className="text-4xl sm:text-4xl font-extrabold text-[#0d1b3e] font-sans">
                             Rs 0
                           </span>
                         </div>
@@ -213,7 +217,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                       </div>
 
                       {/* Features */}
-                      <div className="pt-4 border-t border-slate-100 space-y-2.5 text-xs">
+                      <div className="pt-4 border-t border-slate-100 space-y-3 text-sm">
                         {PRICING_PLANS.free.features.map((feat, idx) => (
                           <div key={idx} className="flex items-start gap-2.5">
                             {feat.included ? (
@@ -234,7 +238,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                         type="button"
                         disabled={isCurrentPlan}
                         onClick={onClose}
-                        className={`w-full py-3 px-4 rounded-2xl text-xs font-bold transition-all ${
+                        className={`w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
                           isCurrentPlan
                             ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
                             : 'border-2 border-[#1a6dff] text-[#1a6dff] hover:bg-blue-50 cursor-pointer shadow-xs'
@@ -247,13 +251,13 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                 );
               })()}
 
-              {/* ---------------- CARD 2: PRO ---------------- */}
+              {/* ---------------- CARD 2: PRO (order-1 on mobile so Pro is displayed first) ---------------- */}
               {(() => {
                 const isCurrentPlan = userPlanKey === 'pro';
                 const pricing = calculatePlanPricing(PRICING_PLANS.pro.basePrice, activeDuration);
 
                 return (
-                  <div className="flex flex-col justify-between p-6 sm:p-7 rounded-3xl bg-white border-2 border-[#1a6dff] ring-4 ring-[#1a6dff]/10 shadow-xl shadow-[#1a6dff]/10 transition-all relative">
+                  <div className="order-1 md:order-2 flex flex-col justify-between p-6 sm:p-7 rounded-3xl bg-white border-2 border-[#1a6dff] ring-4 ring-[#1a6dff]/10 shadow-xl shadow-[#1a6dff]/10 transition-all relative">
                     {/* Floating "Most Popular" Pill */}
                     <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 bg-[#1a6dff] text-white text-[10px] font-extrabold uppercase tracking-wider px-3.5 py-1 rounded-full shadow-md whitespace-nowrap">
                       Most Popular
@@ -274,10 +278,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                       {/* Pricing block with smooth number animation container */}
                       <div className="min-h-[88px] flex flex-col justify-end space-y-1">
                         <div className="flex items-baseline gap-2">
-                          <span className="text-3xl sm:text-4xl font-extrabold text-[#0d1b3e] font-sans tabular-nums transition-all">
+                          <span className="text-4xl sm:text-4xl font-extrabold text-[#0d1b3e] font-sans tabular-nums transition-all">
                             Rs {pricing.effectiveMonth.toLocaleString()}
                           </span>
-                          <span className="text-xs font-bold text-slate-500">per month</span>
+                          <span className="text-xs sm:text-sm font-bold text-slate-500">per month</span>
                         </div>
 
                         {/* Struck-through total + Green Save Badge */}
@@ -294,13 +298,13 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                           )}
                         </div>
 
-                        <p className="text-[11px] font-medium text-slate-500 tabular-nums">
+                        <p className="text-xs font-medium text-slate-500 tabular-nums">
                           Rs {pricing.total.toLocaleString()} billed for {activeDuration.months} {activeDuration.months === 1 ? 'month' : 'months'}
                         </p>
                       </div>
 
                       {/* Features */}
-                      <div className="pt-4 border-t border-slate-100 space-y-2.5 text-xs">
+                      <div className="pt-4 border-t border-slate-100 space-y-3 text-sm">
                         {PRICING_PLANS.pro.features.map((feat, idx) => (
                           <div key={idx} className="flex items-start gap-2.5">
                             {feat.included ? (
@@ -321,7 +325,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                         type="button"
                         disabled={isCurrentPlan}
                         onClick={() => handleOpenCheckout('pro')}
-                        className={`w-full py-3 px-4 rounded-2xl text-xs font-bold transition-all shadow-md ${
+                        className={`w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-md ${
                           isCurrentPlan
                             ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
                             : 'bg-[#1a6dff] hover:bg-[#1558d6] text-white cursor-pointer active:scale-[0.98]'
@@ -340,7 +344,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                 const pricing = calculatePlanPricing(PRICING_PLANS.premium.basePrice, activeDuration);
 
                 return (
-                  <div className="flex flex-col justify-between p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all relative">
+                  <div className="order-3 flex flex-col justify-between p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all relative">
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] font-extrabold uppercase tracking-widest text-slate-600">
@@ -356,10 +360,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                       {/* Pricing block with smooth number animation container */}
                       <div className="min-h-[88px] flex flex-col justify-end space-y-1">
                         <div className="flex items-baseline gap-2">
-                          <span className="text-3xl sm:text-4xl font-extrabold text-[#0d1b3e] font-sans tabular-nums transition-all">
+                          <span className="text-4xl sm:text-4xl font-extrabold text-[#0d1b3e] font-sans tabular-nums transition-all">
                             Rs {pricing.effectiveMonth.toLocaleString()}
                           </span>
-                          <span className="text-xs font-bold text-slate-500">per month</span>
+                          <span className="text-xs sm:text-sm font-bold text-slate-500">per month</span>
                         </div>
 
                         {/* Struck-through total + Green Save Badge */}
@@ -376,13 +380,13 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                           )}
                         </div>
 
-                        <p className="text-[11px] font-medium text-slate-500 tabular-nums">
+                        <p className="text-xs font-medium text-slate-500 tabular-nums">
                           Rs {pricing.total.toLocaleString()} billed for {activeDuration.months} {activeDuration.months === 1 ? 'month' : 'months'}
                         </p>
                       </div>
 
                       {/* Features */}
-                      <div className="pt-4 border-t border-slate-100 space-y-2.5 text-xs">
+                      <div className="pt-4 border-t border-slate-100 space-y-3 text-sm">
                         {PRICING_PLANS.premium.features.map((feat, idx) => (
                           <div key={idx} className="flex items-start gap-2.5">
                             <Check className="w-4 h-4 text-[#1a6dff] shrink-0 mt-0.5" />
@@ -399,7 +403,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                         type="button"
                         disabled={isCurrentPlan}
                         onClick={() => handleOpenCheckout('premium')}
-                        className={`w-full py-3 px-4 rounded-2xl text-xs font-bold transition-all shadow-md ${
+                        className={`w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-md ${
                           isCurrentPlan
                             ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
                             : 'bg-[#0d1b3e] hover:bg-[#152a5c] text-white cursor-pointer active:scale-[0.98]'

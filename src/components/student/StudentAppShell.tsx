@@ -64,7 +64,15 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
 }) => {
   const { user, profile, isAdmin, logOut, updateProfileData, activeRole, switchRole } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<string>('overview');
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const p = window.location.pathname.toLowerCase();
+      if (p.includes('/profile') || p === '/app/profile') return 'profile';
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('tab') === 'profile') return 'profile';
+    }
+    return 'overview';
+  });
   const [showMoreSheet, setShowMoreSheet] = useState<boolean>(false);
   const [showUsageModal, setShowUsageModal] = useState<boolean>(false);
   const [showMeritMeterModal, setShowMeritMeterModal] = useState<boolean>(false);
@@ -433,7 +441,14 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         setActiveTab(id);
       }}
       onNavigateUpgrade={() => setShowUpgradeModal(true)}
-      onNavigateProfile={() => setShowUsageModal(true)}
+      onNavigateProfile={() => setActiveTab('profile')}
+      onNavigateBilling={() => {
+        setActiveTab('profile');
+        setTimeout(() => {
+          const el = document.getElementById('current-plan-card');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }, 100);
+      }}
       onLogout={logOut}
     >
       {/* Tab Switcher */}

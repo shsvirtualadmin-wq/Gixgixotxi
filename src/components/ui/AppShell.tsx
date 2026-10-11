@@ -13,6 +13,7 @@ export interface AppShellProps {
   children: React.ReactNode;
   onNavigateUpgrade?: () => void;
   onNavigateProfile?: () => void;
+  onNavigateBilling?: () => void;
   onLogout?: () => void;
 }
 
@@ -25,6 +26,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   children,
   onNavigateUpgrade,
   onNavigateProfile,
+  onNavigateBilling,
   onLogout,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -59,6 +61,7 @@ export const AppShell: React.FC<AppShellProps> = ({
           onOpenMobileMenu={showMobileHamburger ? () => setMobileMenuOpen(true) : undefined}
           onNavigateUpgrade={onNavigateUpgrade}
           onNavigateProfile={onNavigateProfile}
+          onNavigateBilling={onNavigateBilling}
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto pb-24 lg:pb-12">

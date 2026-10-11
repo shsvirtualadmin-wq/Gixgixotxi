@@ -650,7 +650,7 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
       {/* ========================================================= */}
       {/* 3. CURRENT PLAN CARD: Dark Gradient Card + Checklist + Upgrade/Renew */}
       {/* ========================================================= */}
-      <div className="bg-gradient-to-br from-[#0d1b3e] via-[#102554] to-[#0a142e] text-white rounded-3xl p-6 sm:p-7 shadow-xl space-y-5 relative overflow-hidden border border-white/10">
+      <div id="current-plan-card" className="bg-gradient-to-br from-[#0d1b3e] via-[#102554] to-[#0a142e] text-white rounded-3xl p-6 sm:p-7 shadow-xl space-y-5 relative overflow-hidden border border-white/10 scroll-mt-24">
         {/* Subtle accent glow */}
         <div className="absolute top-0 right-0 w-56 h-56 bg-[#1a6dff]/15 rounded-full blur-3xl pointer-events-none" />
 
