@@ -12,6 +12,7 @@ import { AdminDashboardScreen } from './AdminDashboardScreen';
 import { OrganizerDashboard } from './organizer/OrganizerDashboard';
 import { CaptainDashboard } from './captain/CaptainDashboard';
 import { OrganizerApply } from './events/OrganizerApply';
+import { SeoHead } from './common/SeoHead';
 import { AlertCircle, X } from 'lucide-react';
 
 export const BoardlyAppRouter: React.FC = () => {
@@ -226,12 +227,15 @@ export const BoardlyAppRouter: React.FC = () => {
         // 7. Student App (/app or /app/*)
         if (currentPath === '/app' || currentPath.startsWith('/app/')) {
           return (
-            <StudentAppShell
-              onNavigateMarketing={(p) => navigate(p)}
-              onOpenMeritMeter={() => navigate('/features')}
-              onOpenBlitz={() => navigate('/blitz')}
-              onOpenArena={() => navigate('/arena')}
-            />
+            <>
+              <SeoHead pathname="/app" noIndex={true} />
+              <StudentAppShell
+                onNavigateMarketing={(p) => navigate(p)}
+                onOpenMeritMeter={() => navigate('/features')}
+                onOpenBlitz={() => navigate('/blitz')}
+                onOpenArena={() => navigate('/arena')}
+              />
+            </>
           );
         }
 
@@ -375,7 +379,10 @@ export const BoardlyAppRouter: React.FC = () => {
         else if (currentPath === '/arena') initialMarketingPage = 'arena';
         else if (currentPath === '/arena/leaderboard') initialMarketingPage = 'arena/leaderboard';
         else if (currentPath === '/circles') initialMarketingPage = 'circles';
-        else if (currentPath === '/boardy' || currentPath === '/study-buddy' || currentPath === '/ai') initialMarketingPage = 'boardy';
+        else if (currentPath === '/boardly-ai' || currentPath === '/boardy' || currentPath === '/study-buddy' || currentPath === '/ai') initialMarketingPage = 'boardly-ai';
+        else if (currentPath === '/mdcat') initialMarketingPage = 'mdcat';
+        else if (currentPath === '/fsc-matric') initialMarketingPage = 'fsc-matric';
+        else if (currentPath === '/fast-nu') initialMarketingPage = 'fast-nu';
         else if (currentPath === '/pricing') initialMarketingPage = 'pricing';
         else if (currentPath === '/reviews') initialMarketingPage = 'reviews';
         else if (currentPath === '/features') initialMarketingPage = 'features';

@@ -10,6 +10,10 @@ import { FaqPage } from './FaqPage';
 import { ContactPage } from './ContactPage';
 import { AboutPage } from './AboutPage';
 import { BoardyPage } from './BoardyPage';
+import { MdcatLandingPage } from './MdcatLandingPage';
+import { FscMatricLandingPage } from './FscMatricLandingPage';
+import { FastNuLandingPage } from './FastNuLandingPage';
+import { SeoHead } from '../common/SeoHead';
 import { ReviewsWall } from './ReviewsWall';
 import { BlitzLanding } from '../events/BlitzLanding';
 import { BlitzRegister } from '../events/BlitzRegister';
@@ -46,7 +50,10 @@ function parseMarketingPageFromLocation(): MarketingPage {
   if (pathname === '/arena/leaderboard') return 'arena/leaderboard';
   if (pathname === '/circles') return 'circles';
   if (pathname === '/circles/apply') return 'circles/apply';
-  if (pathname === '/boardy') return 'boardy';
+  if (pathname === '/boardly-ai' || pathname === '/boardy') return 'boardly-ai';
+  if (pathname === '/mdcat') return 'mdcat';
+  if (pathname === '/fsc-matric') return 'fsc-matric';
+  if (pathname === '/fast-nu') return 'fast-nu';
   if (pathname === '/features') return 'features';
   if (pathname === '/pricing') return 'pricing';
   if (pathname === '/reviews') return 'reviews';
@@ -67,7 +74,10 @@ function parseMarketingPageFromLocation(): MarketingPage {
     if (pageParam === 'arena-leaderboard' || pageParam === 'arena/leaderboard') return 'arena/leaderboard';
     if (pageParam === 'circles') return 'circles';
     if (pageParam === 'circles-apply' || pageParam === 'circles/apply') return 'circles/apply';
-    if (pageParam === 'boardy') return 'boardy';
+    if (pageParam === 'boardly-ai' || pageParam === 'boardy') return 'boardly-ai';
+    if (pageParam === 'mdcat') return 'mdcat';
+    if (pageParam === 'fsc-matric') return 'fsc-matric';
+    if (pageParam === 'fast-nu') return 'fast-nu';
     if (
       ['home', 'features', 'pricing', 'reviews', 'faqs', 'contact', 'privacy', 'terms', 'about'].includes(
         pageParam
@@ -82,7 +92,10 @@ function parseMarketingPageFromLocation(): MarketingPage {
   if (hash === 'blitz') return 'blitz';
   if (hash === 'arena') return 'arena';
   if (hash === 'circles') return 'circles';
-  if (hash === 'boardy') return 'boardy';
+  if (hash === 'boardly-ai' || hash === 'boardy') return 'boardly-ai';
+  if (hash === 'mdcat') return 'mdcat';
+  if (hash === 'fsc-matric') return 'fsc-matric';
+  if (hash === 'fast-nu') return 'fast-nu';
 
   return 'home';
 }
@@ -95,6 +108,16 @@ function getPathForMarketingPage(page: MarketingPage): string {
       return '/features';
     case 'pricing':
       return '/pricing';
+    case 'boardly-ai':
+      return '/boardly-ai';
+    case 'boardy':
+      return '/boardly-ai';
+    case 'mdcat':
+      return '/mdcat';
+    case 'fsc-matric':
+      return '/fsc-matric';
+    case 'fast-nu':
+      return '/fast-nu';
     case 'reviews':
       return '/reviews';
     case 'faqs':
@@ -121,8 +144,6 @@ function getPathForMarketingPage(page: MarketingPage): string {
       return '/circles';
     case 'circles/apply':
       return '/circles/apply';
-    case 'boardy':
-      return '/boardy';
     default:
       return '/';
   }
@@ -163,7 +184,10 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
     else if (clean === 'blitz') handleNavigate('blitz');
     else if (clean === 'arena') handleNavigate('arena');
     else if (clean === 'circles') handleNavigate('circles');
-    else if (clean === 'boardy') handleNavigate('boardy');
+    else if (clean === 'boardly-ai' || clean === 'boardy') handleNavigate('boardly-ai');
+    else if (clean === 'mdcat') handleNavigate('mdcat');
+    else if (clean === 'fsc-matric') handleNavigate('fsc-matric');
+    else if (clean === 'fast-nu') handleNavigate('fast-nu');
     else if (clean === 'terms') handleNavigate('terms');
     else if (clean === 'privacy') handleNavigate('privacy');
     else if (clean === 'contact') handleNavigate('contact');
@@ -213,6 +237,9 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
 
   return (
     <div className="min-h-screen bg-[#FAF9F6] bg-grid-faint text-[#0A1330] flex flex-col selection:bg-indigo-600 selection:text-white font-poppins relative">
+      {/* Dynamic SEO Meta Tags, Canonical Link & Schema for Current Public Route */}
+      <SeoHead pathname={getPathForMarketingPage(currentPage)} />
+
       {/* Top Floating Pill Navigation */}
       <Navbar
         currentPage={currentPage}
@@ -245,6 +272,31 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
             onSelectPlan={handleSelectPlan}
             onNavigateContact={() => handleNavigate('contact')}
           />
+        )}
+
+        {currentPage === 'mdcat' && (
+          <MdcatLandingPage
+            onGetStarted={handleGetStarted}
+            onNavigatePricing={() => handleNavigate('pricing')}
+          />
+        )}
+
+        {currentPage === 'fsc-matric' && (
+          <FscMatricLandingPage
+            onGetStarted={handleGetStarted}
+            onNavigatePricing={() => handleNavigate('pricing')}
+          />
+        )}
+
+        {currentPage === 'fast-nu' && (
+          <FastNuLandingPage
+            onGetStarted={handleGetStarted}
+            onNavigatePricing={() => handleNavigate('pricing')}
+          />
+        )}
+
+        {(currentPage === 'boardly-ai' || currentPage === 'boardy') && (
+          <BoardyPage onNavigate={handleRouteNavigate} onGetStarted={handleGetStarted} />
         )}
 
         {currentPage === 'reviews' && (
@@ -297,10 +349,6 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
 
         {currentPage === 'circles' && (
           <CirclesLanding onNavigate={handleRouteNavigate} />
-        )}
-
-        {currentPage === 'boardy' && (
-          <BoardyPage onNavigate={handleRouteNavigate} onGetStarted={handleGetStarted} />
         )}
       </main>
 

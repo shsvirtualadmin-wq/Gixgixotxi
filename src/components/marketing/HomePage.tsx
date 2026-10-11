@@ -428,6 +428,127 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </section>
 
+      {/* 2.5 WHO BOARDLY IS FOR: Targeted Exam Pathways */}
+      <section className="px-4 sm:px-6 max-w-6xl mx-auto my-16 sm:my-20">
+        <div className="text-center max-w-3xl mx-auto mb-10 space-y-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
+            Targeted Examination Preparation
+          </span>
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0A1330] font-poppins">
+            Who Boardly is For: Built for Pakistan’s Top Examinations
+          </h2>
+          <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
+            Whether aiming for 1000+ board marks or securing admission to prestigious medical and engineering universities, Boardly provides structured diagnostic question vaults tailored to your exact paper format.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Pathway 1: FBISE & Provincial Boards */}
+          <div className="p-6 sm:p-7 rounded-[26px] bg-white border border-slate-200/90 shadow-md hover:shadow-xl transition-all space-y-4 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-sm">
+                FBISE
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 font-poppins">
+                FSC &amp; Matric Boards
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                For Class 9, 10, 11, and 12 students across FBISE, Punjab, Sindh, KPK, and Balochistan. Master SLO-aligned conceptual MCQs with full mathematical derivations.
+              </p>
+            </div>
+            <a
+              href="/fsc-matric"
+              onClick={(e) => {
+                e.preventDefault();
+                onNavigate('fsc-matric' as any);
+              }}
+              className="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1.5 pt-2"
+            >
+              <span>Explore FSC &amp; Matric Prep</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+
+          {/* Pathway 2: PMDC MDCAT */}
+          <div className="p-6 sm:p-7 rounded-[26px] bg-white border border-slate-200/90 shadow-md hover:shadow-xl transition-all space-y-4 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-black text-sm">
+                MDCAT
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 font-poppins">
+                Medical Entrance (PMDC)
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                For future doctors preparing for the National MDCAT. Practice 10,000+ questions in Biology, Chemistry, Physics, English, and Logical Reasoning with national percentile tracking.
+              </p>
+            </div>
+            <a
+              href="/mdcat"
+              onClick={(e) => {
+                e.preventDefault();
+                onNavigate('mdcat' as any);
+              }}
+              className="text-xs font-bold text-emerald-600 hover:text-emerald-800 flex items-center gap-1.5 pt-2"
+            >
+              <span>Explore MDCAT Prep</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+
+          {/* Pathway 3: TCAT & ECAT / UET */}
+          <div className="p-6 sm:p-7 rounded-[26px] bg-white border border-slate-200/90 shadow-md hover:shadow-xl transition-all space-y-4 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center font-black text-sm">
+                UET
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 font-poppins">
+                TCAT &amp; ECAT (Engineering)
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Targeted preparation for UET Taxila (TCAT) and UET Lahore (ECAT). Master rapid calculus, coordinate geometry, mechanics, and physical chemistry.
+              </p>
+            </div>
+            <a
+              href="/features"
+              onClick={(e) => {
+                e.preventDefault();
+                onNavigate('features');
+              }}
+              className="text-xs font-bold text-teal-600 hover:text-teal-800 flex items-center gap-1.5 pt-2"
+            >
+              <span>Explore UET &amp; TCAT Mocks</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+
+          {/* Pathway 4: FAST-NU & NUST */}
+          <div className="p-6 sm:p-7 rounded-[26px] bg-white border border-slate-200/90 shadow-md hover:shadow-xl transition-all space-y-4 flex flex-col justify-between">
+            <div className="space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center font-black text-sm">
+                FAST
+              </div>
+              <h3 className="text-lg font-bold text-slate-900 font-poppins">
+                FAST-NU &amp; NUST NET
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                For Computer Science and Software Engineering applicants. Train with authentic negative marking calibration, analytical IQ questions, and rapid math shortcuts.
+              </p>
+            </div>
+            <a
+              href="/fast-nu"
+              onClick={(e) => {
+                e.preventDefault();
+                onNavigate('fast-nu' as any);
+              }}
+              className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1.5 pt-2"
+            >
+              <span>Explore FAST-NU Prep</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </a>
+          </div>
+        </div>
+      </section>
+
       {/* 3. "WHY STUDENTS CHOOSE BOARDLY" COMPARISON */}
       <section className="px-4 sm:px-6 max-w-6xl mx-auto my-16 sm:my-24">
         <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-12 space-y-2">

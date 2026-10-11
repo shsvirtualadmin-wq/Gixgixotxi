@@ -91,13 +91,13 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
               For rapid verification of bank payments, promo codes, or test bugs, chat with our student coordinators on WhatsApp.
             </p>
             <a
-              href="https://wa.me/923000000000"
+              href="https://wa.me/923058969050?text=Hello%20Boardly%20Support,%20I%20have%20an%20inquiry%20regarding%20my%20exam%20preparation."
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center justify-center gap-2 w-full py-3 px-5 rounded-2xl bg-[#25D366] hover:bg-[#20ba59] text-slate-950 font-bold text-sm shadow-md transition-colors"
             >
               <MessageCircle className="w-4 h-4 fill-slate-950 stroke-none" />
-              <span>Message on WhatsApp</span>
+              <span>Message on WhatsApp (+92 305 8969050)</span>
             </a>
           </div>
 

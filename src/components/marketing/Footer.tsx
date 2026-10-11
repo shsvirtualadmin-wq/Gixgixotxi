@@ -117,6 +117,7 @@ export const Footer: React.FC<FooterProps> = ({
           </div>
 
           {/* Nav Columns: 2 cols on mobile, 4 on desktop */}
+          {/* Nav Columns: 2 cols on mobile, 4 on desktop */}
           <div className="md:col-span-8 grid grid-cols-2 sm:grid-cols-4 gap-8">
             {/* Product */}
             <div>
@@ -125,129 +126,217 @@ export const Footer: React.FC<FooterProps> = ({
               </h4>
               <ul className="space-y-2.5 text-sm">
                 <li>
-                  <button
-                    onClick={() => onNavigate('features')}
-                    className="hover:text-indigo-400 transition-colors text-left"
+                  <a
+                    href="/features"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('features');
+                        window.history.pushState({}, '', '/features');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
                   >
                     Features
-                  </button>
+                  </a>
                 </li>
                 <li>
-                  <button
-                    onClick={() => onNavigate('boardy')}
+                  <a
+                    href="/pricing"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('pricing');
+                        window.history.pushState({}, '', '/pricing');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
+                  >
+                    Pricing
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/boardly-ai"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('boardly-ai');
+                        window.history.pushState({}, '', '/boardly-ai');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
                     className="hover:text-indigo-400 transition-colors text-left flex items-center gap-1.5"
                   >
-                    <span>Boardy</span>
+                    <span>Boardly AI</span>
                     <span className="text-[10px] text-amber-400 font-bold bg-amber-400/10 px-1.5 py-0.2 rounded">
                       24/7
                     </span>
-                  </button>
+                  </a>
                 </li>
                 <li>
-                  <button
-                    onClick={() => onNavigate('pricing')}
-                    className="hover:text-indigo-400 transition-colors text-left"
+                  <a
+                    href="/reviews"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('reviews');
+                        window.history.pushState({}, '', '/reviews');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
                   >
-                    Pricing
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => onNavigate('reviews')}
-                    className="hover:text-indigo-400 transition-colors text-left"
-                  >
-                    Student Reviews
-                  </button>
+                    Reviews
+                  </a>
                 </li>
               </ul>
             </div>
 
-            {/* Events */}
+            {/* Exam Prep Landing Pages */}
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
-                Events
+                Exam Prep
               </h4>
               <ul className="space-y-2.5 text-sm">
                 <li>
-                  <button
-                    onClick={() => onNavigate('blitz')}
-                    className="hover:text-indigo-400 transition-colors text-left"
+                  <a
+                    href="/mdcat"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('mdcat');
+                        window.history.pushState({}, '', '/mdcat');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
+                  >
+                    MDCAT
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/fsc-matric"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('fsc-matric');
+                        window.history.pushState({}, '', '/fsc-matric');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
+                  >
+                    FSC &amp; Matric
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/fast-nu"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('fast-nu');
+                        window.history.pushState({}, '', '/fast-nu');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
+                  >
+                    FAST-NU &amp; UET
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/blitz"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('blitz');
+                        window.history.pushState({}, '', '/blitz');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
                   >
                     Boardly Blitz
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => onNavigate('arena')}
-                    className="hover:text-indigo-400 transition-colors text-left"
-                  >
-                    Boardly Arena
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => onNavigate('blitz/leaderboard')}
-                    className="hover:text-indigo-400 transition-colors text-left"
-                  >
-                    Blitz Leaderboard
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => onNavigate('arena/leaderboard')}
-                    className="hover:text-indigo-400 transition-colors text-left"
-                  >
-                    Arena Leaderboard
-                  </button>
+                  </a>
                 </li>
               </ul>
             </div>
 
-            {/* Company */}
+            {/* Company & Support */}
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
                 Company
               </h4>
               <ul className="space-y-2.5 text-sm">
                 <li>
-                  <button
-                    onClick={() => onNavigate('about')}
-                    className="hover:text-indigo-400 transition-colors text-left"
+                  <a
+                    href="/"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('home');
+                        window.history.pushState({}, '', '/');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
+                  >
+                    Home
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/about"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('about');
+                        window.history.pushState({}, '', '/about');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
                   >
                     About
-                  </button>
+                  </a>
                 </li>
                 <li>
-                  <button
-                    onClick={() => onNavigate('circles')}
-                    className="hover:text-indigo-400 transition-colors text-left"
-                  >
-                    Study Circles
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => (onOpenProgramModal ? onOpenProgramModal('captains') : onNavigate('about'))}
-                    className="hover:text-indigo-400 transition-colors text-left"
-                  >
-                    Campus Captains
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => onNavigate('faqs')}
-                    className="hover:text-indigo-400 transition-colors text-left"
-                  >
-                    FAQs
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => onNavigate('contact')}
-                    className="hover:text-indigo-400 transition-colors text-left"
+                  <a
+                    href="/contact"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('contact');
+                        window.history.pushState({}, '', '/contact');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
                   >
                     Contact
-                  </button>
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/faqs"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('faqs');
+                        window.history.pushState({}, '', '/faqs');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
+                  >
+                    FAQs
+                  </a>
                 </li>
               </ul>
             </div>
@@ -259,20 +348,36 @@ export const Footer: React.FC<FooterProps> = ({
               </h4>
               <ul className="space-y-2.5 text-sm">
                 <li>
-                  <button
-                    onClick={() => onNavigate('privacy')}
-                    className="hover:text-indigo-400 transition-colors text-left"
+                  <a
+                    href="/privacy"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('privacy');
+                        window.history.pushState({}, '', '/privacy');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
                   >
                     Privacy Policy
-                  </button>
+                  </a>
                 </li>
                 <li>
-                  <button
-                    onClick={() => onNavigate('terms')}
-                    className="hover:text-indigo-400 transition-colors text-left"
+                  <a
+                    href="/terms"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('terms');
+                        window.history.pushState({}, '', '/terms');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
                   >
                     Terms of Service
-                  </button>
+                  </a>
                 </li>
               </ul>
             </div>

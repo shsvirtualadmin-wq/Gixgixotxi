@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Menu, X, ArrowRight, Sparkles, Trophy, Users, HelpCircle, Mail } from 'lucide-react';
+import { Menu, X, ArrowRight, Sparkles } from 'lucide-react';
 import { BrandLogo } from './BrandLogo';
 import { BoardyMascot } from '../BoardyMascot';
 import { useAuth } from '../../context/AuthContext';
@@ -8,20 +8,24 @@ export type MarketingPage =
   | 'home'
   | 'features'
   | 'pricing'
-  | 'reviews'
-  | 'faqs'
+  | 'boardly-ai'
+  | 'boardy'
+  | 'mdcat'
+  | 'fsc-matric'
+  | 'fast-nu'
+  | 'about'
   | 'contact'
   | 'privacy'
   | 'terms'
-  | 'about'
+  | 'reviews'
+  | 'faqs'
   | 'blitz'
   | 'blitz/register'
   | 'blitz/leaderboard'
   | 'arena'
   | 'arena/leaderboard'
   | 'circles'
-  | 'circles/apply'
-  | 'boardy';
+  | 'circles/apply';
 
 interface NavbarProps {
   currentPage: MarketingPage;
@@ -30,6 +34,17 @@ interface NavbarProps {
   onOpenProgramModal?: (program: 'circles' | 'captains') => void;
   onGetStarted: () => void;
 }
+
+export const NAV_LINKS: Array<{ id: MarketingPage; href: string; label: string; isAi?: boolean }> = [
+  { id: 'home', href: '/', label: 'Home' },
+  { id: 'features', href: '/features', label: 'Features' },
+  { id: 'pricing', href: '/pricing', label: 'Pricing' },
+  { id: 'boardly-ai', href: '/boardly-ai', label: 'Boardly AI', isAi: true },
+  { id: 'mdcat', href: '/mdcat', label: 'MDCAT' },
+  { id: 'fsc-matric', href: '/fsc-matric', label: 'FSC & Matric' },
+  { id: 'about', href: '/about', label: 'About' },
+  { id: 'contact', href: '/contact', label: 'Contact' },
+];
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentPage,
@@ -62,19 +77,14 @@ export const Navbar: React.FC<NavbarProps> = ({
     };
   }, [mobileMenuOpen]);
 
-  const handleHomeNav = () => {
-    if (user) {
-      if (typeof window !== 'undefined') {
-        window.history.pushState({}, '', '/app');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }
-    } else {
-      onNavigate('home');
+  const handleLinkClick = (e: React.MouseEvent<HTMLAnchorElement>, page: MarketingPage, href: string) => {
+    // If middle click or holding ctrl/cmd, let the browser handle opening new tab
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+      return;
     }
-  };
-
-  const handleMobileNav = (page: MarketingPage) => {
+    e.preventDefault();
     setMobileMenuOpen(false);
+
     if (page === 'home' && user) {
       if (typeof window !== 'undefined') {
         window.history.pushState({}, '', '/app');
@@ -82,396 +92,237 @@ export const Navbar: React.FC<NavbarProps> = ({
       }
       return;
     }
+
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', href);
+    }
     onNavigate(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const handleGetStartedAction = () => {
-    if (user) {
-      if (typeof window !== 'undefined') {
-        window.history.pushState({}, '', '/app');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }
-    } else {
-      if (typeof window !== 'undefined') {
-        window.history.pushState({}, '', '/login');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }
-    }
-  };
-
-  const handleEventClick = (event: 'blitz' | 'arena') => {
-    setMobileMenuOpen(false);
-    if (onOpenEventModal) {
-      onOpenEventModal(event);
-    } else {
-      onNavigate('features');
-    }
-  };
-
-  const handleProgramClick = (program: 'circles' | 'captains') => {
-    setMobileMenuOpen(false);
-    if (onOpenProgramModal) {
-      onOpenProgramModal(program);
-    } else {
-      onNavigate('about');
+  const handleDashboardClick = () => {
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', user ? '/app' : '/login');
+      window.dispatchEvent(new PopStateEvent('popstate'));
     }
   };
 
   return (
     <>
-      {/* Floating Rounded Pill Top Bar */}
-      <header className="fixed top-4 left-0 right-0 z-50 px-4 sm:px-6 max-w-6xl mx-auto pointer-events-none">
+      {/* Floating Top Header Navigation */}
+      <header className="fixed top-3 sm:top-4 left-0 right-0 z-50 px-3 sm:px-6 max-w-7xl mx-auto pointer-events-none">
         <nav
-          className="pointer-events-auto flex items-center justify-between px-4 sm:px-6 py-2.5 sm:py-3 rounded-full glass-navbar-pill transition-all duration-200"
+          className="pointer-events-auto flex items-center justify-between px-3.5 sm:px-6 py-2.5 sm:py-3 rounded-full glass-navbar-pill transition-all duration-200"
           aria-label="Main Navigation"
         >
           {/* Logo on Left */}
-          <button
-            onClick={handleHomeNav}
+          <a
+            href="/"
+            onClick={(e) => handleLinkClick(e, 'home', '/')}
             className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-lg p-1 text-left cursor-pointer"
             aria-label="Boardly Home"
           >
             <BrandLogo size="md" />
-          </button>
+          </a>
 
-          {/* Desktop Nav Links in Center */}
-          <div className="hidden md:flex items-center gap-7 text-sm font-medium">
-            <button
-              onClick={handleHomeNav}
-              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded cursor-pointer ${
-                currentPage === 'home'
-                  ? 'text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Home
-              {currentPage === 'home' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
-              )}
-            </button>
+          {/* Desktop Nav Links in Center: Real <a href> tags for crawlers & sitelinks */}
+          <div className="hidden lg:flex items-center gap-5 xl:gap-6 text-sm font-medium">
+            {NAV_LINKS.map((link) => {
+              const isActive =
+                currentPage === link.id ||
+                (link.id === 'boardly-ai' && currentPage === 'boardy');
 
-            <button
-              onClick={() => onNavigate('features')}
-              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded cursor-pointer ${
-                currentPage === 'features'
-                  ? 'text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Features
-              {currentPage === 'features' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
-              )}
-            </button>
-
-            <button
-              onClick={() => onNavigate('pricing')}
-              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded cursor-pointer ${
-                currentPage === 'pricing'
-                  ? 'text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Pricing
-              {currentPage === 'pricing' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
-              )}
-            </button>
-
-            <button
-              onClick={() => onNavigate('boardy')}
-              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1.5 cursor-pointer ${
-                currentPage === 'boardy'
-                  ? 'text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <BoardyMascot size={18} />
-              <span>Boardy</span>
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-              {currentPage === 'boardy' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
-              )}
-            </button>
-
-            <button
-              onClick={() => onNavigate('faqs')}
-              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded cursor-pointer ${
-                currentPage === 'faqs'
-                  ? 'text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              FAQs
-              {currentPage === 'faqs' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
-              )}
-            </button>
-
-            <button
-              onClick={() => onNavigate('contact')}
-              className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded cursor-pointer ${
-                currentPage === 'contact'
-                  ? 'text-indigo-600 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Contact
-              {currentPage === 'contact' && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
-              )}
-            </button>
+              return (
+                <a
+                  key={link.id}
+                  href={link.href}
+                  onClick={(e) => handleLinkClick(e, link.id, link.href)}
+                  className={`transition-colors relative py-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded flex items-center gap-1.5 cursor-pointer ${
+                    isActive
+                      ? 'text-indigo-600 font-bold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  {link.isAi && <BoardyMascot size={16} />}
+                  <span>{link.label}</span>
+                  {link.isAi && <Sparkles className="w-3 h-3 text-amber-500" />}
+                  {isActive && (
+                    <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
+                  )}
+                </a>
+              );
+            })}
           </div>
 
           {/* Right Action on Desktop */}
-          <div className="hidden md:flex items-center gap-2">
+          <div className="hidden lg:flex items-center gap-2">
             {user ? (
               <button
                 type="button"
-                onClick={() => {
-                  if (typeof window !== 'undefined') {
-                    window.history.pushState({}, '', '/app');
-                    window.dispatchEvent(new PopStateEvent('popstate'));
-                  }
-                }}
-                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer"
+                onClick={handleDashboardClick}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs xl:text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer"
               >
                 <span>Student Dashboard</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={() => {
+                <a
+                  href="/login"
+                  onClick={(e) => {
+                    e.preventDefault();
                     if (typeof window !== 'undefined') {
                       window.history.pushState({}, '', '/login');
                       window.dispatchEvent(new PopStateEvent('popstate'));
                     }
                   }}
-                  className="text-xs font-semibold text-slate-600 hover:text-slate-900 px-3.5 py-2 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-full text-xs xl:text-sm font-semibold text-slate-700 hover:text-slate-900 transition-colors cursor-pointer"
                 >
-                  Log in
-                </button>
+                  Sign In
+                </a>
                 <button
-                  onClick={handleGetStartedAction}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-sm font-semibold text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 glow-btn transition-transform hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
+                  type="button"
+                  onClick={onGetStarted}
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full text-xs xl:text-sm font-bold text-white bg-gradient-to-r from-indigo-600 to-blue-600 shadow-md hover:scale-[1.02] active:scale-[0.98] transition-transform cursor-pointer"
                 >
-                  <span>Get started</span>
+                  <span>Start Free</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </>
             )}
           </div>
 
-          {/* Mobile Hamburger Button on Right: ONLY shown for unauthenticated visitors per Requirement 6 */}
-          {!user && (
-            <div className="flex md:hidden items-center">
+          {/* Mobile Hamburger Button */}
+          <div className="flex lg:hidden items-center gap-2">
+            {user ? (
               <button
-                onClick={() => setMobileMenuOpen(true)}
-                className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full text-slate-700 hover:text-slate-900 hover:bg-slate-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
-                aria-label="Open mobile navigation menu"
-                aria-expanded={mobileMenuOpen}
+                type="button"
+                onClick={handleDashboardClick}
+                className="px-3.5 py-1.5 rounded-full text-xs font-bold text-white bg-indigo-600 shadow-xs"
               >
-                <Menu className="w-6 h-6" />
+                Dashboard
               </button>
-            </div>
-          )}
+            ) : (
+              <button
+                type="button"
+                onClick={onGetStarted}
+                className="px-3 py-1.5 rounded-full text-xs font-bold text-white bg-indigo-600 shadow-xs"
+              >
+                Start Free
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="p-2 text-slate-700 hover:text-slate-900 rounded-full hover:bg-slate-100 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
+              aria-label="Open navigation menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          </div>
         </nav>
       </header>
 
-      {/* Mobile Card Overlay: Only rendered for unauthenticated guests per Requirement 6 */}
-      {!user && mobileMenuOpen && (
-        <div className="fixed inset-0 z-50 md:hidden flex flex-col justify-start p-4 sm:p-6 bg-[rgba(15,23,42,0.12)] animate-in fade-in duration-150">
-          <div className="w-full max-w-lg mx-auto glass-menu-card rounded-3xl p-6 flex flex-col max-h-[92vh] overflow-y-auto">
-            {/* Header: Logo and Close (X) button */}
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-              <button
-                onClick={() => handleMobileNav('home')}
-                className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded p-1"
-              >
-                <BrandLogo size="md" />
-              </button>
-              <button
-                onClick={() => setMobileMenuOpen(false)}
-                className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
-                aria-label="Close navigation menu"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
+      {/* Mobile Drawer Navigation (with plain <a> tags) */}
+      {mobileMenuOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden flex flex-col bg-white animate-in fade-in slide-in-from-top-4 duration-200">
+          <div className="flex items-center justify-between p-4 border-b border-slate-100">
+            <a
+              href="/"
+              onClick={(e) => handleLinkClick(e, 'home', '/')}
+              className="flex items-center gap-2"
+              aria-label="Boardly Home"
+            >
+              <BrandLogo size="md" />
+            </a>
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(false)}
+              className="p-2 text-slate-500 hover:text-slate-900 rounded-full hover:bg-slate-100 transition-colors cursor-pointer"
+              aria-label="Close menu"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
 
-            {/* Menu Items: Large and bold, with thin dividers */}
-            <div className="flex flex-col py-3">
-              {/* Home (active color) */}
-              <button
-                onClick={() => handleMobileNav('home')}
-                className={`flex items-center justify-between py-3.5 text-left text-xl font-bold transition-colors border-b border-slate-100/80 ${
-                  currentPage === 'home'
-                    ? 'text-indigo-600'
-                    : 'text-slate-900 hover:text-indigo-600'
-                }`}
-              >
-                <span>Home</span>
-                {currentPage === 'home' && (
-                  <span className="w-2 h-2 rounded-full bg-indigo-600" />
-                )}
-              </button>
+          <div className="flex-1 overflow-y-auto px-6 py-4 space-y-1">
+            {NAV_LINKS.map((link) => {
+              const isActive =
+                currentPage === link.id ||
+                (link.id === 'boardly-ai' && currentPage === 'boardy');
 
-              {/* Features */}
-              <button
-                onClick={() => handleMobileNav('features')}
-                className={`flex items-center justify-between py-3.5 text-left text-xl font-bold transition-colors border-b border-slate-100/80 ${
-                  currentPage === 'features'
-                    ? 'text-indigo-600'
-                    : 'text-slate-900 hover:text-indigo-600'
-                }`}
-              >
-                <span>Features</span>
-                {currentPage === 'features' && (
-                  <span className="w-2 h-2 rounded-full bg-indigo-600" />
-                )}
-              </button>
+              return (
+                <a
+                  key={link.id}
+                  href={link.href}
+                  onClick={(e) => handleLinkClick(e, link.id, link.href)}
+                  className={`flex items-center justify-between py-3 text-lg font-bold border-b border-slate-100/80 transition-colors ${
+                    isActive
+                      ? 'text-indigo-600 font-extrabold'
+                      : 'text-slate-800 hover:text-indigo-600'
+                  }`}
+                >
+                  <div className="flex items-center gap-2">
+                    {link.isAi && <BoardyMascot size={20} />}
+                    <span>{link.label}</span>
+                    {link.isAi && <Sparkles className="w-3.5 h-3.5 text-amber-500" />}
+                  </div>
+                  {isActive && <span className="w-2 h-2 rounded-full bg-indigo-600" />}
+                </a>
+              );
+            })}
 
-              {/* Pricing */}
-              <button
-                onClick={() => handleMobileNav('pricing')}
-                className={`flex items-center justify-between py-3.5 text-left text-xl font-bold transition-colors border-b border-slate-100/80 ${
-                  currentPage === 'pricing'
-                    ? 'text-indigo-600'
-                    : 'text-slate-900 hover:text-indigo-600'
-                }`}
-              >
-                <span>Pricing</span>
-                {currentPage === 'pricing' && (
-                  <span className="w-2 h-2 rounded-full bg-indigo-600" />
-                )}
-              </button>
+            {/* Additional Secondary Mobile Links */}
+            <a
+              href="/fast-nu"
+              onClick={(e) => handleLinkClick(e, 'fast-nu', '/fast-nu')}
+              className="flex items-center justify-between py-3 text-lg font-bold text-slate-800 hover:text-indigo-600 border-b border-slate-100/80"
+            >
+              <span>FAST-NU Prep</span>
+            </a>
+            <a
+              href="/privacy"
+              onClick={(e) => handleLinkClick(e, 'privacy', '/privacy')}
+              className="flex items-center justify-between py-3 text-base font-semibold text-slate-600 hover:text-indigo-600 border-b border-slate-100/80"
+            >
+              <span>Privacy Policy</span>
+            </a>
+            <a
+              href="/terms"
+              onClick={(e) => handleLinkClick(e, 'terms', '/terms')}
+              className="flex items-center justify-between py-3 text-base font-semibold text-slate-600 hover:text-indigo-600 border-b border-slate-100/80"
+            >
+              <span>Terms of Service</span>
+            </a>
+          </div>
 
-              {/* Boardy */}
-              <button
-                onClick={() => handleMobileNav('boardy')}
-                className={`flex items-center justify-between py-3.5 text-left text-xl font-bold transition-colors border-b border-slate-100/80 ${
-                  currentPage === 'boardy'
-                    ? 'text-indigo-600'
-                    : 'text-slate-900 hover:text-indigo-600'
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <BoardyMascot size={22} />
-                  <span>Boardy</span>
-                  <Sparkles className="w-4 h-4 text-amber-500" />
-                </div>
-                {currentPage === 'boardy' && (
-                  <span className="w-2 h-2 rounded-full bg-indigo-600" />
-                )}
-              </button>
-
-              {/* Events Section */}
-              <div className="pt-4 pb-2 border-b border-slate-100/80">
-                <span className="text-xs font-semibold tracking-wider text-slate-400 uppercase">
-                  Events
-                </span>
-                <div className="flex flex-col gap-1 mt-2">
-                  <button
-                    onClick={() => handleMobileNav('blitz')}
-                    className="flex items-center justify-between py-2 text-left text-base font-semibold text-slate-800 hover:text-indigo-600 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Trophy className="w-4 h-4 text-indigo-500" />
-                      <span>Boardly Blitz</span>
-                    </div>
-                    <span className="text-xs text-indigo-600 font-medium bg-indigo-50 px-2 py-0.5 rounded-full">
-                      Live Drills
-                    </span>
-                  </button>
-                  <button
-                    onClick={() => handleMobileNav('arena')}
-                    className="flex items-center justify-between py-2 text-left text-base font-semibold text-slate-800 hover:text-indigo-600 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Trophy className="w-4 h-4 text-teal-600" />
-                      <span>Boardly Arena</span>
-                    </div>
-                    <span className="text-xs text-teal-700 font-medium bg-teal-50 px-2 py-0.5 rounded-full">
-                      Grand Mocks
-                    </span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Programs Section */}
-              <div className="pt-4 pb-2 border-b border-slate-100/80">
-                <span className="text-xs font-semibold tracking-wider text-slate-400 uppercase">
-                  Programs
-                </span>
-                <div className="flex flex-col gap-1 mt-2">
-                  <button
-                    onClick={() => handleMobileNav('circles')}
-                    className="flex items-center justify-between py-2 text-left text-base font-semibold text-slate-800 hover:text-indigo-600 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-indigo-500" />
-                      <span>Study Circles</span>
-                    </div>
-                    <span className="text-xs text-slate-500 font-medium bg-slate-100 px-2 py-0.5 rounded-full">Group Study</span>
-                  </button>
-                  <button
-                    onClick={() => handleProgramClick('captains')}
-                    className="flex items-center justify-between py-2 text-left text-base font-semibold text-slate-800 hover:text-indigo-600 transition-colors"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-violet-500" />
-                      <span>Campus Captains</span>
-                    </div>
-                    <span className="text-xs text-violet-700 font-medium bg-violet-50 px-2 py-0.5 rounded-full">
-                      Apply Now
-                    </span>
-                  </button>
-                </div>
-              </div>
-
-              {/* About & Contact */}
-              <button
-                onClick={() => handleMobileNav('about')}
-                className="flex items-center justify-between py-3.5 text-left text-lg font-bold text-slate-900 hover:text-indigo-600 transition-colors border-b border-slate-100/80"
-              >
-                <span>About</span>
-              </button>
-              <button
-                onClick={() => handleMobileNav('contact')}
-                className="flex items-center justify-between py-3.5 text-left text-lg font-bold text-slate-900 hover:text-indigo-600 transition-colors border-b border-slate-100/80"
-              >
-                <span>Contact</span>
-              </button>
-            </div>
-
-            {/* Full-width gradient "Get started" button at bottom */}
-            <div className="pt-5 mt-auto space-y-2">
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  handleGetStartedAction();
-                }}
-                className="w-full py-3.5 px-6 rounded-2xl text-base font-bold text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 glow-btn flex items-center justify-center gap-2 cursor-pointer shadow-lg active:scale-[0.99] transition-transform"
-              >
-                <span>Get started</span>
-                <ArrowRight className="w-5 h-5" />
-              </button>
-              <button
-                type="button"
-                onClick={() => {
+          <div className="p-5 border-t border-slate-100 bg-slate-50 space-y-2.5">
+            <button
+              type="button"
+              onClick={() => {
+                setMobileMenuOpen(false);
+                onGetStarted();
+              }}
+              className="w-full py-3.5 rounded-2xl text-center font-bold text-white bg-indigo-600 shadow-md text-sm cursor-pointer"
+            >
+              Start Free Practice
+            </button>
+            {!user && (
+              <a
+                href="/login"
+                onClick={(e) => {
+                  e.preventDefault();
                   setMobileMenuOpen(false);
                   if (typeof window !== 'undefined') {
                     window.history.pushState({}, '', '/login');
                     window.dispatchEvent(new PopStateEvent('popstate'));
                   }
                 }}
-                className="w-full py-2.5 px-4 rounded-xl text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer text-center"
+                className="w-full py-3 rounded-2xl text-center font-bold text-slate-700 bg-white border border-slate-200 text-sm block cursor-pointer"
               >
-                Already have an account? Log in
-              </button>
-            </div>
+                Sign In to Account
+              </a>
+            )}
           </div>
         </div>
       )}

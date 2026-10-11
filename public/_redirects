@@ -1,3 +1,14 @@
 /_headers /_headers 200
 /_redirects /_redirects 200
+/features /features/index.html 200
+/pricing /pricing/index.html 200
+/boardly-ai /boardly-ai/index.html 200
+/boardy /boardly-ai/index.html 200
+/mdcat /mdcat/index.html 200
+/fsc-matric /fsc-matric/index.html 200
+/fast-nu /fast-nu/index.html 200
+/about /about/index.html 200
+/contact /contact/index.html 200
+/privacy /privacy/index.html 200
+/terms /terms/index.html 200
 /* /index.html 200

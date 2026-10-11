@@ -2,11 +2,24 @@ import React, { useState } from 'react';
 import { BoardyMascot } from '../BoardyMascot';
 import { StudyBuddyFormattedMessage } from '../StudyBuddyFormattedMessage';
 import { FrostedBackgroundDecor } from '../events/FrostedBackgroundDecor';
-import { Sparkles, ArrowRight, MessageCircle, Send, CheckCircle2, BookOpen, Lightbulb, Zap, ShieldCheck } from 'lucide-react';
+import {
+  Sparkles,
+  ArrowRight,
+  Send,
+  BookOpen,
+  Lightbulb,
+  ShieldCheck,
+  ChevronDown,
+  Brain,
+  Zap,
+  HelpCircle,
+  Calculator,
+} from 'lucide-react';
 
 interface BoardyPageProps {
   onNavigate: (route: string) => void;
   onGetStarted: () => void;
+  onNavigatePricing?: () => void;
 }
 
 interface ChatMessage {
@@ -48,7 +61,7 @@ Dividing through by (1/2) · sin(x) and taking reciprocals:`,
     hint: `💡 Guiding step: As x approaches 0, what does cos(x) approach? Exactly 1! Since sin(x)/x is trapped between cos(x) and 1, by the Squeeze Theorem it must equal 1!`,
   },
   'Derive kinetic energy formula': {
-    text: `Here is the clean, high-yield derivation from first principles using work-energy theorem and kinematics:
+    text: `Here is the clean, high-yield derivation from first principles using the work-energy theorem and kinematics:
 
 1. By definition, Work Done W = F · d
 2. From Newton's Second Law: F = m · a, so W = m · a · d
@@ -69,17 +82,22 @@ Dividing through by (1/2) · sin(x) and taking reciprocals:`,
   },
 };
 
-export const BoardyPage: React.FC<BoardyPageProps> = ({ onNavigate, onGetStarted }) => {
+export const BoardyPage: React.FC<BoardyPageProps> = ({
+  onNavigate,
+  onGetStarted,
+  onNavigatePricing,
+}) => {
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'msg-0',
       sender: 'boardy',
-      text: "Hey! I'm Boardy. Ask me any question and I'll walk you through it step by step.",
+      text: "Hey! I'm Boardy, your 24/7 study buddy. Ask me any question and I'll walk you through it step by step.",
       hint: "Try asking a numerical, formula derivation, or syllabus definition below!",
     },
   ]);
   const [inputQuery, setInputQuery] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [openFaq, setOpenFaq] = useState<number | null>(0);
 
   const handleSendPrompt = (promptText: string) => {
     if (!promptText.trim()) return;
@@ -120,37 +138,77 @@ Would you like to drill 3 rapid practice MCQs on this topic right now?`,
     }, 600);
   };
 
+  const faqs = [
+    {
+      q: 'How does Boardy AI differ from generic chat tools?',
+      a: 'Boardy is exclusively calibrated for Pakistani education standards. It understands Federal Board (FBISE), Punjab Board, Sindh, KPK, and Balochistan textbook curricula, as well as PMDC MDCAT and engineering entrance syllabus requirements. It prioritizes step-by-step reasoning rather than just blurting out final numbers.',
+    },
+    {
+      q: 'Can Boardy solve mathematical and scientific numericals?',
+      a: 'Yes. Boardy parses physics numericals, chemistry stoichiometry, organic reaction mechanisms, and calculus derivations with explicit KaTeX mathematical equations and SI units.',
+    },
+    {
+      q: 'How many AI queries do I get per day?',
+      a: 'All students on Boardly enjoy free daily chats. Upgrading to Boardly Pro provides 7 chats/day, while Premium provides 15 priority chats/day with fast response channels.',
+    },
+  ];
+
   return (
-    <div className="relative min-h-screen pt-28 pb-20 px-4 sm:px-6 max-w-6xl mx-auto selection:bg-indigo-600 selection:text-white">
+    <div className="relative min-h-screen pt-28 pb-20 px-4 sm:px-6 max-w-6xl mx-auto selection:bg-indigo-600 selection:text-white space-y-20">
       <FrostedBackgroundDecor />
 
-      {/* Hero Header */}
-      <div className="text-center max-w-3xl mx-auto mb-12">
-        {/* Mascot Avatar with sparkle badge */}
-        <div className="flex justify-center mb-5">
+      {/* 1. Hero Header */}
+      <header className="text-center max-w-3xl mx-auto space-y-4">
+        <div className="flex justify-center mb-2">
           <div className="p-3 rounded-3xl glass shadow-lg border border-white/80 relative">
             <BoardyMascot size={80} animated withSparkle />
           </div>
         </div>
 
-        {/* Status Tag */}
-        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass font-bold text-xs sm:text-sm text-indigo-900 border-indigo-200/80 mb-4 shadow-xs">
+        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full glass font-bold text-xs sm:text-sm text-indigo-900 border-indigo-200/80 shadow-xs">
           <Sparkles className="w-4 h-4 text-amber-500" />
-          <span>Boardy, your 24/7 study buddy.</span>
+          <span>24/7 Intelligent Academic Assistant</span>
         </div>
 
-        <h1 className="text-4xl sm:text-6xl font-black text-[#0A1330] tracking-tight mb-4 font-poppins">
-          Meet Boardy
+        <h1 className="text-3xl sm:text-5xl font-black text-[#0A1330] tracking-tight font-poppins">
+          Boardy AI — 24/7 Intelligent Study Buddy &amp; Solution Breakdown
         </h1>
 
-        <p className="text-base sm:text-xl text-slate-700 leading-relaxed font-normal">
-          Boardy, your 24/7 study buddy, is designed specifically for Pakistani Matric, FSc, and entrance test candidates.
-          Short, encouraging step-by-step guidance without confusing jargon.
+        <p className="text-base sm:text-lg text-slate-700 leading-relaxed font-normal max-w-2xl mx-auto">
+          Built specifically for Pakistani Matric, FSC, and entrance test candidates. Boardy provides short, encouraging step-by-step guidance without confusing jargon or dead-ends.
         </p>
-      </div>
 
-      {/* Interactive Live Chat Showcase Container */}
-      <div className="max-w-3xl mx-auto mb-20">
+        <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+          <button
+            onClick={onGetStarted}
+            className="w-full sm:w-auto px-8 py-3.5 rounded-full font-bold text-sm text-white bg-indigo-600 hover:bg-indigo-700 shadow-md transition-all cursor-pointer flex items-center justify-center gap-2"
+          >
+            <span>Ask Boardy for Free</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+          <a
+            href="/pricing"
+            onClick={(e) => {
+              e.preventDefault();
+              if (onNavigatePricing) onNavigatePricing();
+              else onNavigate('pricing');
+            }}
+            className="w-full sm:w-auto px-6 py-3.5 rounded-full font-semibold text-sm text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 shadow-xs transition-colors cursor-pointer text-center"
+          >
+            See AI Limits &amp; Plans
+          </a>
+        </div>
+      </header>
+
+      {/* 2. Interactive Live Chat Showcase Container */}
+      <section className="max-w-3xl mx-auto space-y-4">
+        <div className="text-center space-y-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">Live Interactive Demonstration</span>
+          <h2 className="text-xl sm:text-2xl font-bold font-poppins text-[#0A1330]">
+            Interactive Practice with Real-Time AI Feedback
+          </h2>
+        </div>
+
         <div className="glass-card rounded-[32px] p-6 sm:p-8 border border-white/90 shadow-2xl overflow-hidden">
           {/* Chat Window Header */}
           <div className="flex items-center justify-between pb-5 mb-5 border-b border-slate-200/70">
@@ -265,58 +323,112 @@ Would you like to drill 3 rapid practice MCQs on this topic right now?`,
             </button>
           </form>
         </div>
-      </div>
+      </section>
 
-      {/* Feature Value Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto mb-20">
-        <div className="glass-card p-6 sm:p-7 rounded-[28px]">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center mb-4">
-            <BookOpen className="w-6 h-6" />
-          </div>
-          <h3 className="text-lg font-bold text-[#0A1330] mb-2 font-poppins">
-            Step-by-Step Derivations
-          </h3>
-          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-            Never get stuck on textbook numericals. Boardy lays out exact formulas, units, SI dimensions, and working steps.
+      {/* 3. Section: Socratic Guidance for Difficult Numericals and Doubts */}
+      <section className="space-y-6">
+        <div className="text-center max-w-2xl mx-auto space-y-2">
+          <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">Educational Methodology</span>
+          <h2 className="text-2xl sm:text-3xl font-bold font-poppins text-[#0A1330]">
+            Socratic Guidance for Difficult Numericals and Conceptual Doubts
+          </h2>
+          <p className="text-sm text-slate-600 leading-relaxed">
+            Passive answer copying fails under real exam pressure. Boardy engages with Socratic checkpoints—asking you the foundational principle first before building up the mathematical formula step by step.
           </p>
         </div>
 
-        <div className="glass-card p-6 sm:p-7 rounded-[28px]">
-          <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mb-4">
-            <Lightbulb className="w-6 h-6" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          <div className="glass-card p-6 sm:p-7 rounded-[28px] space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-600 flex items-center justify-center">
+              <BookOpen className="w-6 h-6" />
+            </div>
+            <h3 className="text-lg font-bold text-[#0A1330] font-poppins">
+              Instant Step-by-Step Derivations
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Never get stuck on dense textbook numericals. Boardy lays out exact formulas, SI units, and intermediate algebraic substitutions.
+            </p>
           </div>
-          <h3 className="text-lg font-bold text-[#0A1330] mb-2 font-poppins">
-            Guiding Checkpoint Questions
-          </h3>
-          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-            Instead of spoon-feeding answers, Boardy asks a quick guiding checkpoint first so you genuinely understand the physics or math principle.
+
+          <div className="glass-card p-6 sm:p-7 rounded-[28px] space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center">
+              <Lightbulb className="w-6 h-6" />
+            </div>
+            <h3 className="text-lg font-bold text-[#0A1330] font-poppins">
+              Guiding Checkpoint Prompts
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Instead of spoon-feeding answers, Boardy presents a targeted checkpoint so you understand why a particular sign or constant is applied.
+            </p>
+          </div>
+
+          <div className="glass-card p-6 sm:p-7 rounded-[28px] space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-teal-100 text-teal-600 flex items-center justify-center">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <h3 className="text-lg font-bold text-[#0A1330] font-poppins">
+              Tailored for Matric, FSC &amp; MDCAT
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+              Grounded strictly in FBISE, Punjab, Sindh, KPK, and Balochistan textbook curricula, PMDC MDCAT, and university engineering entrance formats.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* 4. Section: FAQs */}
+      <section className="max-w-3xl mx-auto space-y-6">
+        <div className="text-center space-y-2">
+          <h2 className="text-2xl sm:text-3xl font-bold font-poppins text-[#0A1330]">
+            Frequently Asked Questions about Boardy AI Study Assistant
+          </h2>
+          <p className="text-sm text-slate-600">
+            Learn more about how Boardy assists your study sessions day and night.
           </p>
         </div>
 
-        <div className="glass-card p-6 sm:p-7 rounded-[28px]">
-          <div className="w-12 h-12 rounded-2xl bg-teal-100 text-teal-600 flex items-center justify-center mb-4">
-            <ShieldCheck className="w-6 h-6" />
-          </div>
-          <h3 className="text-lg font-bold text-[#0A1330] mb-2 font-poppins">
-            100% Board Curriculum Aligned
-          </h3>
-          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-            Grounded in Federal (FBISE), Punjab, Sindh, KPK, Balochistan textbooks, PMDC MDCAT, and university entrance test formats.
-          </p>
+        <div className="space-y-3">
+          {faqs.map((faq, index) => {
+            const isOpen = openFaq === index;
+            return (
+              <div
+                key={index}
+                className="rounded-2xl border border-slate-200/80 bg-white shadow-xs overflow-hidden"
+              >
+                <button
+                  type="button"
+                  onClick={() => setOpenFaq(isOpen ? null : index)}
+                  className="w-full p-5 text-left font-bold text-sm text-slate-900 flex items-center justify-between gap-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                >
+                  <span>{faq.q}</span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${
+                      isOpen ? 'rotate-180 text-indigo-600' : ''
+                    }`}
+                  />
+                </button>
+                {isOpen && (
+                  <div className="px-5 pb-5 text-xs sm:text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
+                    {faq.a}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
-      </div>
+      </section>
 
-      {/* Bottom CTA Banner */}
+      {/* 5. Bottom CTA Banner */}
       <div className="glass-card p-8 sm:p-12 rounded-[36px] max-w-4xl mx-auto text-center border border-white/90 shadow-2xl relative overflow-hidden">
         <div className="relative z-10 space-y-4">
           <div className="flex justify-center mb-2">
             <BoardyMascot size={48} animated />
           </div>
           <h2 className="text-2xl sm:text-4xl font-black text-[#0A1330] tracking-tight font-poppins">
-            Ready to master your syllabus with Boardy?
+            Ready to Accelerate Your Revision with Boardy?
           </h2>
           <p className="text-slate-600 text-sm sm:text-base max-w-xl mx-auto leading-relaxed">
-            Sign up for free and get instant access to 25,000+ diagnostic MCQs with step-by-step guidance.
+            Create your free account today and start practicing with verified question vaults and 24/7 AI derivations.
           </p>
           <div className="pt-2">
             <button

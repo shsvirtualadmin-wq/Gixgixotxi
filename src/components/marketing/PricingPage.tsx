@@ -1,12 +1,17 @@
 import React, { useState } from 'react';
 import { Check, X, Sparkles, HelpCircle, ArrowRight, ShieldCheck, Zap, BookOpen, Layers } from 'lucide-react';
 import {
+  PRICING_DURATIONS,
+  PRICING_PLANS,
+  calculatePlanPricing,
+  PricingDuration,
+  PlanKey,
+  MANUAL_PAYMENT_CONFIG,
+} from '../../config/pricing';
+import {
   BillingDuration,
-  BILLING_DURATIONS,
-  MARKETING_PLANS,
   COMPARISON_FEATURES,
   PRICING_FAQS,
-  PlanTier,
 } from '../../data/marketingPricingData';
 
 interface PricingPageProps {
@@ -18,8 +23,16 @@ export const PricingPage: React.FC<PricingPageProps> = ({
   onSelectPlan,
   onNavigateContact,
 }) => {
-  const [selectedDuration, setSelectedDuration] = useState<BillingDuration>('six_months');
+  const [selectedDurationIndex, setSelectedDurationIndex] = useState<number>(2); // 6 Months (Best Value) default
   const [openFaqId, setOpenFaqId] = useState<string | null>('plan-fit');
+  const activeDuration: PricingDuration = PRICING_DURATIONS[selectedDurationIndex] || PRICING_DURATIONS[0];
+
+  const durationIdMapping: Record<number, BillingDuration> = {
+    0: 'monthly',
+    1: 'quarterly',
+    2: 'six_months',
+    3: 'yearly',
+  };
 
   const toggleFaq = (id: string) => {
     setOpenFaqId((prev) => (prev === id ? null : id));
@@ -39,42 +52,39 @@ export const PricingPage: React.FC<PricingPageProps> = ({
       <div className="text-center max-w-3xl mx-auto space-y-4 mb-10 sm:mb-14">
         <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-200/60 text-indigo-700 text-xs font-semibold">
           <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Boardy, your 24/7 study buddy.</span>
+          <span>Flexible Plans for Academic Success</span>
         </div>
 
-        {/* Reworded Heading: Pick the plan that fits your prep */}
         <h1 className="text-3xl sm:text-5xl font-extrabold text-[#0A1330] font-poppins tracking-tight">
-          Pick the plan that fits your prep
+          Choose Your Path to <span className="text-[#1a6dff]">Success</span>
         </h1>
 
         <p className="text-base sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-          From self-paced daily drills to high-stakes entrance test simulations, choose the exact depth of practice and Boardy guidance you need.
+          Flexible plans designed to fit your preparation journey. Start with what works for you and upgrade anytime.
         </p>
       </div>
 
-      {/* Pill Toggle: Monthly | 3 Months | 8 Months (badge "Best Value") | 12 Months */}
-      <div className="flex justify-center mb-12">
-        <div className="inline-flex p-1.5 rounded-full bg-slate-200/70 border border-slate-300/60 shadow-inner max-w-full overflow-x-auto">
-          {BILLING_DURATIONS.map((dur) => {
-            const isActive = selectedDuration === dur.id;
+      {/* Pill Toggle: Monthly | 3 Months | 6 Months (badge "Best Value") | 12 Months */}
+      <div className="flex justify-center mb-12 overflow-visible pt-4">
+        <div className="inline-flex p-1.5 rounded-full bg-slate-200/70 border border-slate-300/60 shadow-inner max-w-full overflow-visible relative gap-1">
+          {PRICING_DURATIONS.map((dur, idx) => {
+            const isActive = selectedDurationIndex === idx;
             return (
               <button
-                key={dur.id}
-                onClick={() => setSelectedDuration(dur.id)}
-                className={`relative px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 whitespace-nowrap flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                key={dur.months}
+                type="button"
+                onClick={() => setSelectedDurationIndex(idx)}
+                className={`relative px-4 sm:px-6 py-2.5 rounded-full text-xs sm:text-sm font-semibold transition-all duration-200 whitespace-nowrap flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
                   isActive
-                    ? 'bg-white text-[#0A1330] shadow-md shadow-slate-900/10'
+                    ? 'bg-[#1a6dff] text-white shadow-md shadow-[#1a6dff]/30'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
                 }`}
               >
                 <span>{dur.label}</span>
                 {dur.badge && (
                   <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                      isActive
-                        ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white'
-                        : 'bg-amber-100 text-amber-800'
-                    }`}
+                    className="absolute -top-[10px] left-1/2 -translate-x-1/2 bg-[#0d1b3e] text-white text-[10px] font-bold px-2.5 py-0.5 rounded-full shadow-md uppercase tracking-wider whitespace-nowrap border border-white/20 pointer-events-none"
+                    style={{ top: '-10px', left: '50%', transform: 'translateX(-50%)' }}
                   >
                     {dur.badge}
                   </span>
@@ -85,44 +95,21 @@ export const PricingPage: React.FC<PricingPageProps> = ({
         </div>
       </div>
 
-      {/* 3 Pricing Cards: Free, Pro, Premium */}
+      {/* 3 Pricing Cards: Free, Pro, Premium (Derived from PRICING_PLANS single source of truth) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-stretch mb-14">
-        {MARKETING_PLANS.map((plan) => {
-          const pricingInfo = plan.pricing[selectedDuration];
-          const isHighlighted = plan.highlighted;
-
+        {/* FREE CARD */}
+        {(() => {
+          const plan = PRICING_PLANS.free;
           return (
-            <div
-              key={plan.id}
-              className={`relative flex flex-col justify-between rounded-[24px] p-6 sm:p-8 transition-all duration-300 bg-white ${
-                isHighlighted
-                  ? 'border-2 border-indigo-600 shadow-2xl shadow-indigo-600/10 ring-4 ring-indigo-500/10 scale-100 md:scale-[1.03]'
-                  : 'border border-slate-200/80 shadow-lg shadow-slate-900/5 hover:border-slate-300'
-              }`}
-            >
-              {/* Highlight Badge */}
-              {isHighlighted && plan.badge && (
-                <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 shadow-md shadow-indigo-500/25">
-                  {plan.badge}
-                </div>
-              )}
-
-              {/* Card Header */}
+            <div className="relative flex flex-col justify-between rounded-[24px] p-6 sm:p-8 transition-all duration-300 bg-white border border-slate-200/80 shadow-lg shadow-slate-900/5 hover:border-slate-300">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-2xl font-bold font-poppins text-[#0A1330]">
                     {plan.name}
                   </h3>
-                  {plan.id === 'premium' && (
-                    <span className="text-xs font-semibold text-teal-700 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200/60">
-                      Top Rank
-                    </span>
-                  )}
-                  {plan.id === 'free' && (
-                    <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
-                      Standard
-                    </span>
-                  )}
+                  <span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                    Free Forever
+                  </span>
                 </div>
 
                 <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide mb-2">
@@ -130,58 +117,40 @@ export const PricingPage: React.FC<PricingPageProps> = ({
                 </p>
 
                 <p className="text-xs sm:text-sm text-slate-600 leading-relaxed min-h-[40px] mb-6">
-                  {plan.description}
+                  Essential daily diagnostic testing and core conceptual revision at zero cost.
                 </p>
 
                 {/* Price Block */}
-                <div className="pb-6 mb-6 border-b border-slate-100">
+                <div className="pb-6 mb-6 border-b border-slate-100 min-h-[88px] flex flex-col justify-end">
                   <div className="flex items-baseline gap-2">
                     <span className="text-xs font-bold text-slate-500 uppercase">PKR</span>
                     <span className="text-4xl sm:text-5xl font-black font-poppins text-[#0A1330]">
-                      {pricingInfo.pricePkr.toLocaleString()}
+                      0
                     </span>
-                    {pricingInfo.originalPricePkr && (
-                      <span className="text-base text-slate-400 line-through">
-                        PKR {pricingInfo.originalPricePkr.toLocaleString()}
-                      </span>
-                    )}
                   </div>
-
-                  <div className="flex items-center gap-2 mt-2">
-                    <span className="text-xs font-medium text-slate-500">
-                      {plan.priceNote || pricingInfo.billingPeriodLabel}
-                    </span>
-                    {pricingInfo.savingsTag && (
-                      <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                        {pricingInfo.savingsTag}
-                      </span>
-                    )}
-                  </div>
+                  <span className="text-xs font-medium text-slate-500 mt-2 block">
+                    Free forever · No credit card required
+                  </span>
                 </div>
 
                 {/* CTA Button */}
                 <button
-                  onClick={() => onSelectPlan(plan.id, selectedDuration)}
-                  className={`w-full py-3.5 px-6 rounded-2xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer mb-8 ${
-                    isHighlighted
-                      ? 'text-white bg-gradient-to-r from-indigo-600 via-indigo-500 to-violet-600 glow-btn hover:scale-[1.02] active:scale-[0.98]'
-                      : plan.id === 'premium'
-                      ? 'text-white bg-gradient-to-r from-slate-900 to-indigo-950 hover:bg-slate-800 shadow-md hover:scale-[1.02] active:scale-[0.98]'
-                      : 'text-slate-800 bg-slate-100 hover:bg-slate-200 hover:text-slate-950 active:scale-[0.98]'
-                  }`}
+                  type="button"
+                  onClick={() => onSelectPlan('free', durationIdMapping[selectedDurationIndex])}
+                  className="w-full py-3.5 px-6 rounded-2xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer mb-8 text-slate-800 bg-slate-100 hover:bg-slate-200 hover:text-slate-950 active:scale-[0.98]"
                 >
-                  <span>{pricingInfo.buttonLabel}</span>
+                  <span>Start for Free</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
 
-                {/* Checklist (Green check for included, Grey X for excluded) */}
+                {/* Features List */}
                 <div className="space-y-3">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">
                     What's included:
                   </span>
-                  {plan.features.map((feature, idx) => (
+                  {plan.features.map((feat, idx) => (
                     <div key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm">
-                      {feature.included ? (
+                      {feat.included ? (
                         <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
                           <Check className="w-3.5 h-3.5 stroke-[2.5]" />
                         </div>
@@ -190,14 +159,8 @@ export const PricingPage: React.FC<PricingPageProps> = ({
                           <X className="w-3.5 h-3.5 stroke-[2]" />
                         </div>
                       )}
-                      <span
-                        className={
-                          feature.included
-                            ? 'text-slate-700 font-medium'
-                            : 'text-slate-400 line-through decoration-slate-300'
-                        }
-                      >
-                        {feature.name}
+                      <span className={feat.included ? 'text-slate-700 font-medium' : 'text-slate-400 line-through decoration-slate-300'}>
+                        {feat.text}
                       </span>
                     </div>
                   ))}
@@ -205,7 +168,182 @@ export const PricingPage: React.FC<PricingPageProps> = ({
               </div>
             </div>
           );
-        })}
+        })()}
+
+        {/* PRO CARD */}
+        {(() => {
+          const plan = PRICING_PLANS.pro;
+          const pricing = calculatePlanPricing(plan.basePrice, activeDuration);
+          return (
+            <div className="relative flex flex-col justify-between rounded-[24px] p-6 sm:p-8 transition-all duration-300 bg-white border-2 border-[#1a6dff] shadow-2xl shadow-[#1a6dff]/15 ring-4 ring-[#1a6dff]/10 scale-100 md:scale-[1.03]">
+              {/* Highlight Badge */}
+              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full text-xs font-bold uppercase tracking-wider text-white bg-[#1a6dff] shadow-md whitespace-nowrap">
+                Most Popular
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-2xl font-bold font-poppins text-[#0A1330]">
+                    {plan.name}
+                  </h3>
+                  <span className="text-xs font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-200/60">
+                    High Yield
+                  </span>
+                </div>
+
+                <p className="text-xs font-semibold text-[#1a6dff] uppercase tracking-wide mb-2">
+                  {plan.tagline}
+                </p>
+
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed min-h-[40px] mb-6">
+                  Full chapter unlocks, extended Boardy AI queries, and full diagnostic analytics.
+                </p>
+
+                {/* Price Block */}
+                <div className="pb-6 mb-6 border-b border-slate-100 min-h-[88px] flex flex-col justify-end">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase">PKR</span>
+                    <span className="text-4xl sm:text-5xl font-black font-poppins text-[#0A1330] tabular-nums">
+                      {pricing.effectiveMonth.toLocaleString()}
+                    </span>
+                    <span className="text-xs font-bold text-slate-500">per month</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-2 text-xs">
+                    {pricing.discountPct > 0 ? (
+                      <>
+                        <span className="text-slate-400 line-through tabular-nums font-semibold">
+                          PKR {pricing.originalTotal.toLocaleString()}
+                        </span>
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                          Save {pricing.discountPct}%
+                        </span>
+                      </>
+                    ) : null}
+                    <span className="text-slate-500 font-medium">
+                      PKR {pricing.total.toLocaleString()} billed for {activeDuration.months} {activeDuration.months === 1 ? 'month' : 'months'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* CTA Button */}
+                <button
+                  type="button"
+                  onClick={() => onSelectPlan('pro', durationIdMapping[selectedDurationIndex])}
+                  className="w-full py-3.5 px-6 rounded-2xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer mb-8 text-white bg-[#1a6dff] hover:bg-[#1558d6] shadow-md shadow-[#1a6dff]/30 active:scale-[0.98]"
+                >
+                  <span>Get Pro</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                {/* Features List */}
+                <div className="space-y-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">
+                    What's included:
+                  </span>
+                  {plan.features.map((feat, idx) => (
+                    <div key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm">
+                      {feat.included ? (
+                        <div className="w-5 h-5 rounded-full bg-blue-100 text-[#1a6dff] flex items-center justify-center shrink-0 mt-0.5">
+                          <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                        </div>
+                      ) : (
+                        <div className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center shrink-0 mt-0.5">
+                          <X className="w-3.5 h-3.5 stroke-[2]" />
+                        </div>
+                      )}
+                      <span className={feat.included ? 'text-slate-700 font-medium' : 'text-slate-400 line-through decoration-slate-300'}>
+                        {feat.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* PREMIUM CARD */}
+        {(() => {
+          const plan = PRICING_PLANS.premium;
+          const pricing = calculatePlanPricing(plan.basePrice, activeDuration);
+          return (
+            <div className="relative flex flex-col justify-between rounded-[24px] p-6 sm:p-8 transition-all duration-300 bg-white border border-slate-200/80 shadow-lg shadow-slate-900/5 hover:border-slate-300">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-2xl font-bold font-poppins text-[#0A1330]">
+                    {plan.name}
+                  </h3>
+                  <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200/60">
+                    Maximum Edge
+                  </span>
+                </div>
+
+                <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">
+                  {plan.tagline}
+                </p>
+
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed min-h-[40px] mb-6">
+                  Unlimited tests, national entrance mocks, past paper vaults, and 24/7 priority support.
+                </p>
+
+                {/* Price Block */}
+                <div className="pb-6 mb-6 border-b border-slate-100 min-h-[88px] flex flex-col justify-end">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-xs font-bold text-slate-500 uppercase">PKR</span>
+                    <span className="text-4xl sm:text-5xl font-black font-poppins text-[#0A1330] tabular-nums">
+                      {pricing.effectiveMonth.toLocaleString()}
+                    </span>
+                    <span className="text-xs font-bold text-slate-500">per month</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-2 text-xs">
+                    {pricing.discountPct > 0 ? (
+                      <>
+                        <span className="text-slate-400 line-through tabular-nums font-semibold">
+                          PKR {pricing.originalTotal.toLocaleString()}
+                        </span>
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                          Save {pricing.discountPct}%
+                        </span>
+                      </>
+                    ) : null}
+                    <span className="text-slate-500 font-medium">
+                      PKR {pricing.total.toLocaleString()} billed for {activeDuration.months} {activeDuration.months === 1 ? 'month' : 'months'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* CTA Button */}
+                <button
+                  type="button"
+                  onClick={() => onSelectPlan('premium', durationIdMapping[selectedDurationIndex])}
+                  className="w-full py-3.5 px-6 rounded-2xl text-sm font-bold transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer mb-8 text-white bg-[#0d1b3e] hover:bg-[#152a5c] shadow-md active:scale-[0.98]"
+                >
+                  <span>Get Premium</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+
+                {/* Features List */}
+                <div className="space-y-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">
+                    What's included:
+                  </span>
+                  {plan.features.map((feat, idx) => (
+                    <div key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm">
+                      <div className="w-5 h-5 rounded-full bg-blue-100 text-[#1a6dff] flex items-center justify-center shrink-0 mt-0.5">
+                        <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                      </div>
+                      <span className="text-slate-700 font-medium">
+                        {feat.text}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Manual Local Payments Section (JazzCash & Easypaisa) */}
