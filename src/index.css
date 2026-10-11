@@ -553,10 +553,13 @@
   user-select: none !important;
 }
 
-/* Suppress red cursor error indicator in case of parse warnings */
+/* Suppress red cursor and color on KaTeX parse errors */
 .katex-error {
+  color: inherit !important;
   border: none !important;
   outline: none !important;
+  background: transparent !important;
+  font-family: inherit !important;
 }
 
 /* Suppress all scrollbars on any KaTeX math elements */

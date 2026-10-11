@@ -310,13 +310,20 @@ export function formatLatexContent(rawLatex: string): string {
   s = s.replace(/\^[\(\[]([^\)\]]+)[\)\]]/g, '^{$1}');
   s = s.replace(/\^([+\-]?[a-zA-Z0-9]+)(?![a-zA-Z0-9\{])/g, '^{$1}');
 
-  // Multiplication asterisks: e.g. 10*sqrt(3) -> 10 \sqrt{3}, 2*arctan(x) -> 2 \arctan(x), 3 * 10^8 -> 3 \times 10^{8}, 3*θ -> 3 \theta, a1*x -> a_{1} x
+  // Normalize align* and matrix* to aligned / matrix for KaTeX compatibility
+  s = s.replace(/\\begin\{align\*?\}/g, '\\begin{aligned}').replace(/\\end\{align\*?\}/g, '\\end{aligned}');
+  s = s.replace(/\\begin\{matrix\*?\}/g, '\\begin{matrix}').replace(/\\end\{matrix\*?\}/g, '\\end{matrix}');
+
+  // Multiplication asterisks (avoid replacing * inside environment names like align*, matrix*, or superscripts like ^*)
   s = s.replace(/(\d+(?:\.\d+)?)\s*\*\s*10\^/g, '$1 \\times 10^');
   s = s.replace(/(\d+(?:\.\d+)?)\s*\*\s*(\d+(?:\.\d+)?)/g, '$1 \\times $2');
   s = s.replace(/([a-zA-Z0-9\)])\s*\*\s*(\\?[a-zA-Z]+)/g, '$1 $2');
   s = s.replace(/([a-zA-Z])(\d+)\s*\*\s*([a-zA-Z])/g, '$1_{$2} $3');
   s = s.replace(/([a-zA-Z0-9\)\}\]])\s*\*\s*([a-zA-Z0-9\(\{\[])/g, '$1 \\cdot $2');
-  s = s.replace(/\s*\*\s*/g, ' \\cdot ');
+  s = s.replace(/(?<!\\begin\{[a-zA-Z]+|\{align|\{matrix|\^)\s*\*\s*/g, ' \\cdot ');
+
+  // Strip any rogue unescaped dollar signs from inside formula
+  s = s.replace(/(?<!\\)\$/g, '').trim();
 
   // Convert general slash fractions outside of existing \frac and \sqrt
   s = convertSlashFractions(s);
@@ -345,7 +352,7 @@ export function formatLatexContent(rawLatex: string): string {
   s = s.replace(/\b(km\/h)\b/g, '\\text{ km/h}');
 
   // Add \displaystyle for stacked fractions, limits, and matrices in options/formulas
-  if (!s.includes('\\displaystyle') && (/\\frac\{|\\lim_|\\begin\{(?:pmatrix|bmatrix|vmatrix|matrix|array)\}/.test(s))) {
+  if (!s.includes('\\displaystyle') && (/\\frac\{|\\lim_|\\begin\{(?:pmatrix|bmatrix|vmatrix|matrix|array|aligned)\}/.test(s))) {
     s = '\\displaystyle ' + s;
   }
   s = s.replace(/(?:\\displaystyle\s*)+/g, '\\displaystyle ');
@@ -448,10 +455,10 @@ export function autoDetectAndConvertMath(text: string): string {
 
   // Otherwise, it is a mixed sentence (question text or explanation).
 
-  // 0a. Limits with argument and powers: e.g. "lim_{n→∞}(1+1/n)^{3n}", "lim_{x->0} sin(x)/x", "\lim_{x \to 0} \frac{\sin(7x)}{x}"
+  // 0a. Limits with argument and powers: e.g. "lim_{n→∞}(1+1/n)^{3n}", "lim_{x->0} sin(x)/x", "\lim_{x \to 0} \frac{\sin(7x)}{x}", "\displaystyle \lim_{x \to \infty}"
   str = applyOutsideMath(str, (chunk) =>
-    chunk.replace(/(?<![\$\w])(?:\\?lim\s*(?:_\{[^}]+\}|_\([^\)]+\)|_[a-zA-Z0-9→\-\\>∞]+))\s*(?:\\frac\{(?:[^{}]|\{[^{}]*\})+\}\{(?:[^{}]|\{[^{}]*\})+\}|(?:\((?:[^()]|\([^()]*\))+\)|\[(?:[^\[\]]|\[[^\[\]]*\])+\])(?:\^\{[^}]+\}|\^[a-zA-Z0-9]+)?|[a-zA-Z0-9\^_\{\}\\\/\+\-\*]+)/gi, (match) => {
-      return `$${formatLatexContent(match)}$`;
+    chunk.replace(/(?<![\$\w])(?:\\+displaystyle\s+)?(?:\\?lim\s*(?:_\{[^}]+\}|_\([^\)]+\)|_[a-zA-Z0-9→\-\\>∞]+))\s*(?:\\frac\{(?:[^{}]|\{[^{}]*\})+\}\{(?:[^{}]|\{[^{}]*\})+\}|(?:\((?:[^()]|\([^()]*\))+\)|\[(?:[^\[\]]|\[[^\[\]]*\])+\])(?:\^\{[^}]+\}|\^[a-zA-Z0-9]+)?|[a-zA-Z0-9\^_\{\}\\\/\+\-\*]+)?/gi, (match) => {
+      return `$${formatLatexContent(match.trim())}$`;
     })
   );
 
@@ -684,7 +691,13 @@ export function preprocessMathText(text: string): string {
       // LaTeX begin{...} ... end{...}
       textChunk = textChunk.replace(
         /(?:\\+displaystyle\s*)?\\+begin\{([a-zA-Z*]+)\}[\s\S]*?\\+end\{\1\}/g,
-        (match) => `$${formatLatexContent(match)}$`
+        (match) => `\n\n$$\n${formatLatexContent(match)}\n$$\n\n`
+      );
+
+      // LaTeX un-delimited \displaystyle blocks or formulas
+      textChunk = textChunk.replace(
+        /(?<![\$\w\\])(?:\\+displaystyle\s+)([^\n$]+?)(?=(?:\n\n|\n[A-Z]|\.$|\?$|\!$|$|\s+[A-Z][a-z]{3,}\b))/g,
+        (_m, content) => `\n\n$$\n${formatLatexContent('\\displaystyle ' + content)}\n$$\n\n`
       );
 
       // Run autoDetectAndConvertMath
@@ -695,6 +708,12 @@ export function preprocessMathText(text: string): string {
 
       result += textChunk;
     }
+  }
+
+  // Auto-close unclosed $$ block if text was truncated or streaming
+  const displayDollarCount = (result.match(/\$\$/g) || []).length;
+  if (displayDollarCount % 2 !== 0) {
+    result += '\n$$\n';
   }
 
   return result;

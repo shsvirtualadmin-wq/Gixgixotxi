@@ -4,7 +4,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { sanitizeStudyBuddyText } from '../lib/studyBuddySanitizer';
-import { preprocessMathText } from '../lib/mathConverter';
+import { preprocessMathText, renderKaTeX } from '../lib/mathConverter';
 import { Copy, Check, ExternalLink } from 'lucide-react';
 
 interface StudyBuddyFormattedMessageProps {
@@ -84,7 +84,17 @@ export const StudyBuddyFormattedMessage: React.FC<StudyBuddyFormattedMessageProp
     >
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[
+          [
+            rehypeKatex,
+            {
+              throwOnError: false,
+              strict: false,
+              trust: true,
+              errorColor: 'inherit',
+            },
+          ],
+        ]}
         components={{
           p: ({ children }) => <p className="mb-2.5 last:mb-0 leading-relaxed block">{children}</p>,
           h1: ({ children }) => (
@@ -166,6 +176,29 @@ export const StudyBuddyFormattedMessage: React.FC<StudyBuddyFormattedMessageProp
           code: ({ inline, children, className: codeClassName, ...props }: any) => {
             const match = /language-(\w+)/.exec(codeClassName || '');
             const rawString = String(children).replace(/\n$/, '');
+            const lang = (match?.[1] || '').toLowerCase();
+            const isMathCode =
+              lang === 'math' ||
+              lang === 'latex' ||
+              lang === 'katex' ||
+              /\\+(?:displaystyle|lim|frac|sqrt|int|sum|prod|alpha|beta|gamma|delta|theta|pi|lambda|mu|sigma|omega|Delta|begin|end|mathbf|mathrm|partial|infty|approx|neq|le|ge|pm|times|cdot)/.test(
+                rawString
+              );
+
+            if (isMathCode) {
+              const html = renderKaTeX(rawString, !inline || rawString.includes('\n'));
+              return (
+                <span
+                  className={
+                    inline
+                      ? 'inline-block align-middle my-0.5 px-0.5 max-w-full text-current leading-normal overflow-visible'
+                      : 'block my-2.5 overflow-x-auto text-center max-w-full py-1'
+                  }
+                  dangerouslySetInnerHTML={{ __html: html }}
+                />
+              );
+            }
+
             if (!inline && (codeClassName || rawString.includes('\n'))) {
               return <CodeBlock codeText={rawString} language={match?.[1]} isLight={isLight} />;
             }

@@ -24,7 +24,17 @@ export const FormattedExplanation: React.FC<FormattedExplanationProps> = React.m
     <div className={`formatted-explanation ${isUrduOrIslamiat ? 'font-["Noto_Nastaliq_Urdu","Noto_Sans_Arabic",serif] text-right' : ''} ${className}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[rehypeKatex]}
+        rehypePlugins={[
+          [
+            rehypeKatex,
+            {
+              throwOnError: false,
+              strict: false,
+              trust: true,
+              errorColor: 'inherit',
+            },
+          ],
+        ]}
         components={{
           p: ({ children }) => <p className="mb-2 last:mb-0 leading-relaxed text-slate-700 dark:text-slate-200">{children}</p>,
           strong: ({ children }) => <strong className="font-bold text-indigo-700 dark:text-violet-300">{children}</strong>,
