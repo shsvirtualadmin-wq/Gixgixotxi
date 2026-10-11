@@ -383,6 +383,31 @@ export interface StudentUserProfile {
   points?: number;
   lastBoardyMode?: string;
   status?: 'active' | 'suspended' | 'disabled';
+
+  // Boardly Crew Ambassador & Internship Program
+  isCrewMember?: boolean;
+  crewStatus?: 'active' | 'revoked' | 'graduated' | 'intern';
+  crewStartDate?: string;
+  crewInstitution?: string;
+  crewReferralCode?: string;
+  crewReferralsCount?: number;
+  crewActiveUsersCount?: number;
+  isPaidInternshipEligible?: boolean;
+}
+
+export interface CrewApplication {
+  id?: string;
+  userId: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  institution: string;
+  promotionPlan: string;
+  status: 'pending' | 'approved' | 'rejected';
+  rejectionReason?: string;
+  createdAt: string;
+  reviewedAt?: string;
+  reviewedBy?: string;
 }
 
 export interface StoredTestAttempt {
@@ -843,3 +868,127 @@ export async function recordAuditLog(log: Omit<StoredAuditLog, 'createdAt'>): Pr
     console.warn('[Boardly AuditLog] Write notice:', err);
   }
 }
+
+/**
+ * Submit a new Boardly Crew Ambassador Application
+ */
+export async function submitCrewApplication(appData: Omit<CrewApplication, 'id' | 'status' | 'createdAt'>): Promise<string> {
+  const coll = collection(db, 'crewApplications');
+  const now = new Date().toISOString();
+  const docRef = await addDoc(coll, {
+    ...appData,
+    status: 'pending',
+    createdAt: now,
+  });
+  return docRef.id;
+}
+
+/**
+ * Fetch all Boardly Crew applications for admin review
+ */
+export async function fetchCrewApplications(): Promise<CrewApplication[]> {
+  try {
+    const coll = collection(db, 'crewApplications');
+    const q = query(coll, orderBy('createdAt', 'desc'), limit(100));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+  } catch (err) {
+    console.warn('[Crew Applications] Fetch error:', err);
+    return [];
+  }
+}
+
+/**
+ * Approve a Crew application: updates application status & upgrades user to Premium with Crew status
+ */
+export async function approveCrewApplication(app: CrewApplication, adminEmail: string): Promise<void> {
+  const now = new Date().toISOString();
+  
+  // 1. Update application doc
+  if (app.id) {
+    const appRef = doc(db, 'crewApplications', app.id);
+    await updateDoc(appRef, {
+      status: 'approved',
+      reviewedAt: now,
+      reviewedBy: adminEmail,
+    });
+  }
+
+  // 2. Generate clean referral code: CREW-<FIRST_NAME>-<RANDOM>
+  const cleanName = (app.fullName || 'CREW').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6) || 'AMB';
+  const randSuffix = Math.floor(1000 + Math.random() * 9000);
+  const referralCode = `CREW-${cleanName}-${randSuffix}`;
+
+  // 3. Update User profile with Crew Ambassador status and automatic Premium upgrade
+  const userRef = doc(db, 'users', app.userId);
+  await updateDoc(userRef, {
+    isCrewMember: true,
+    crewStatus: 'active',
+    crewStartDate: now,
+    crewInstitution: app.institution,
+    crewReferralCode: referralCode,
+    crewReferralsCount: 0,
+    crewActiveUsersCount: 0,
+    isPaidInternshipEligible: false,
+    plan: 'premium',
+    role: 'student',
+    updatedAt: now,
+  });
+
+  // 4. Audit Log
+  await recordAuditLog({
+    adminId: 'admin',
+    adminEmail,
+    action: 'APPROVE_CREW_APPLICATION',
+    targetType: 'crewApplications',
+    targetId: app.id || app.userId,
+    details: `Approved ${app.fullName} (${app.institution}) as Crew Ambassador with Premium access & code ${referralCode}`,
+  });
+}
+
+/**
+ * Reject a Crew application
+ */
+export async function rejectCrewApplication(appId: string, userId: string, adminEmail: string, reason?: string): Promise<void> {
+  const now = new Date().toISOString();
+  const appRef = doc(db, 'crewApplications', appId);
+  await updateDoc(appRef, {
+    status: 'rejected',
+    rejectionReason: reason || 'Application did not meet current cohort criteria',
+    reviewedAt: now,
+    reviewedBy: adminEmail,
+  });
+
+  await recordAuditLog({
+    adminId: 'admin',
+    adminEmail,
+    action: 'REJECT_CREW_APPLICATION',
+    targetType: 'crewApplications',
+    targetId: appId,
+    details: `Rejected Crew application for user ${userId}. Reason: ${reason || 'N/A'}`,
+  });
+}
+
+/**
+ * Revoke Crew status (removes ambassador privileges, sets plan to free)
+ */
+export async function revokeCrewMemberStatus(userId: string, adminEmail: string, reason?: string): Promise<void> {
+  const now = new Date().toISOString();
+  const userRef = doc(db, 'users', userId);
+  await updateDoc(userRef, {
+    isCrewMember: false,
+    crewStatus: 'revoked',
+    plan: 'free',
+    updatedAt: now,
+  });
+
+  await recordAuditLog({
+    adminId: 'admin',
+    adminEmail,
+    action: 'REVOKE_CREW_STATUS',
+    targetType: 'users',
+    targetId: userId,
+    details: `Revoked Crew status for ${userId}. Plan reverted to free. Reason: ${reason || 'Inactivity / admin review'}`,
+  });
+}
+

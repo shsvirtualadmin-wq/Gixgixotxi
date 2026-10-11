@@ -328,8 +328,8 @@ export const PUBLIC_PAGES_SEO: Record<string, PageSeoConfig> = {
 
   '/programs/crew': {
     path: '/programs/crew',
-    title: 'Boardly Crew | Student Study Groups & Peer Circles',
-    description: 'Join the Boardly Crew to form collaborative study circles, share high-yield exam notes, and practice group mock papers with top student aspirants.',
+    title: 'Boardly Crew: Student Ambassador Program | SHS Virtual Academy',
+    description: 'Become a Boardly Crew member and represent Boardly and SHS Virtual Academy at your institution. Unlock 30 days of Premium access and qualify for paid internships.',
     canonical: 'https://boardly.cfd/programs/crew',
     ogImage: DEFAULT_OG_IMAGE,
     robots: 'index,follow',

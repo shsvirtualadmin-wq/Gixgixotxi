@@ -143,6 +143,26 @@
       },
       "required": ["userId", "fullName", "city", "institution", "status", "createdAt"]
     },
+    "CrewApplication": {
+      "title": "CrewApplication",
+      "description": "Application to become a Boardly Crew student ambassador representing Boardly and SHS Virtual Academy.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "institution": { "type": "string" },
+        "promotionPlan": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "rejectionReason": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "reviewedAt": { "type": "string" },
+        "reviewedBy": { "type": "string" }
+      },
+      "required": ["userId", "fullName", "email", "phone", "institution", "promotionPlan", "status", "createdAt"]
+    },
     "AuditLog": {
       "title": "AuditLog",
       "description": "Immutable audit log entry recording administrative mutations.",
@@ -197,6 +217,10 @@
     "/captainApplications/{appId}": {
       "schema": { "$ref": "#/entities/CaptainApplication" },
       "description": "Campus Captain ambassador registration applications."
+    },
+    "/crewApplications/{appId}": {
+      "schema": { "$ref": "#/entities/CrewApplication" },
+      "description": "Boardly Crew student ambassador registration applications."
     },
     "/auditLogs/{logId}": {
       "schema": { "$ref": "#/entities/AuditLog" },

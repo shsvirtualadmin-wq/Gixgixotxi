@@ -1,0 +1,621 @@
+import React, { useState, useEffect } from 'react';
+import {
+  Users,
+  Award,
+  Sparkles,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  Search,
+  Filter,
+  Check,
+  X,
+  Building,
+  Mail,
+  Phone,
+  Shield,
+  RefreshCw,
+  AlertTriangle,
+  ExternalLink,
+  ChevronRight,
+  TrendingUp,
+  DollarSign,
+  PlusCircle,
+} from 'lucide-react';
+import {
+  CrewApplication,
+  fetchCrewApplications,
+  approveCrewApplication,
+  rejectCrewApplication,
+  revokeCrewMemberStatus,
+  StudentUserProfile,
+  updateDoc,
+  doc,
+  db,
+  collection,
+  getDocs,
+  query,
+  where,
+  limit,
+} from '../../lib/firebase';
+import { CREW_TENURE_SIGNUP_TARGET, CREW_INTERNSHIP_SIGNUP_TARGET } from '../../lib/crewLogic';
+
+interface AdminCrewTabProps {
+  adminEmail: string;
+}
+
+export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
+  const [subTab, setSubTab] = useState<'applications' | 'active'>('applications');
+  const [applications, setApplications] = useState<CrewApplication[]>([]);
+  const [activeMembers, setActiveMembers] = useState<StudentUserProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Filters & search
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+
+  // Action states
+  const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [selectedApp, setSelectedApp] = useState<CrewApplication | null>(null);
+  const [rejectReasonInput, setRejectReasonInput] = useState('');
+  const [showRejectModal, setShowRejectModal] = useState(false);
+
+  // Revoke confirmation modal
+  const [revokeConfirmUser, setRevokeConfirmUser] = useState<StudentUserProfile | null>(null);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      // 1. Fetch applications
+      const apps = await fetchCrewApplications();
+      setApplications(apps);
+
+      // 2. Fetch active crew members from users collection
+      const usersColl = collection(db, 'users');
+      const q = query(usersColl, where('isCrewMember', '==', true), limit(50));
+      const snap = await getDocs(q);
+      const members = snap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
+      setActiveMembers(members);
+    } catch (err) {
+      console.error('Failed to load crew data:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadData();
+  };
+
+  const handleApprove = async (app: CrewApplication) => {
+    setActionInProgress(app.id || 'approving');
+    try {
+      await approveCrewApplication(app, adminEmail);
+      setToastMessage(`Approved ${app.fullName} as Crew Ambassador! Account upgraded to Premium.`);
+      await loadData();
+    } catch (err: any) {
+      console.error('Approve error:', err);
+      setToastMessage(`Error approving: ${err.message || 'Check connection'}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleOpenReject = (app: CrewApplication) => {
+    setSelectedApp(app);
+    setRejectReasonInput('');
+    setShowRejectModal(true);
+  };
+
+  const handleConfirmReject = async () => {
+    if (!selectedApp || !selectedApp.id) return;
+    setActionInProgress(selectedApp.id);
+    try {
+      await rejectCrewApplication(selectedApp.id, selectedApp.userId, adminEmail, rejectReasonInput.trim());
+      setToastMessage(`Rejected application for ${selectedApp.fullName}.`);
+      setShowRejectModal(false);
+      setSelectedApp(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Reject error:', err);
+      setToastMessage(`Error rejecting: ${err.message || 'Check connection'}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleConfirmRevoke = async () => {
+    if (!revokeConfirmUser || !revokeConfirmUser.uid) return;
+    setActionInProgress(revokeConfirmUser.uid);
+    try {
+      await revokeCrewMemberStatus(revokeConfirmUser.uid, adminEmail, 'Revoked by administrator');
+      setToastMessage(`Revoked Crew status for ${revokeConfirmUser.name || 'user'}. Plan reverted to Free.`);
+      setRevokeConfirmUser(null);
+      await loadData();
+    } catch (err: any) {
+      console.error('Revoke error:', err);
+      setToastMessage(`Error revoking status: ${err.message || 'Check connection'}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  // Helper for admins to simulate +1 referral for testing
+  const handleSimulateReferral = async (userDoc: StudentUserProfile) => {
+    if (!userDoc.uid) return;
+    setActionInProgress(userDoc.uid);
+    try {
+      const current = userDoc.crewReferralsCount || 0;
+      const newCount = current + 1;
+      const isEligible = newCount >= CREW_INTERNSHIP_SIGNUP_TARGET;
+      
+      const userRef = doc(db, 'users', userDoc.uid);
+      await updateDoc(userRef, {
+        crewReferralsCount: newCount,
+        crewActiveUsersCount: Math.round(newCount * 0.8),
+        isPaidInternshipEligible: isEligible,
+        updatedAt: new Date().toISOString(),
+      });
+      setToastMessage(`Added +1 referral to ${userDoc.name}. Total: ${newCount}`);
+      await loadData();
+    } catch (err: any) {
+      console.error('Simulate referral error:', err);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  // Filtered applications
+  const filteredApplications = applications.filter((app) => {
+    const matchesSearch =
+      (app.fullName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (app.institution || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (app.email || '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === 'all' || app.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  const pendingCount = applications.filter((a) => a.status === 'pending').length;
+
+  return (
+    <div className="space-y-6 animate-fade-in text-left">
+      {/* Toast feedback */}
+      {toastMessage && (
+        <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center justify-between gap-3 animate-fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{toastMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setToastMessage(null)}
+            className="text-emerald-700 hover:text-emerald-950 font-black cursor-pointer text-sm"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
+      {/* Header & Sub-Tabs */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/80 dark:border-slate-800">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
+            <Users className="w-6 h-6 text-indigo-600" />
+            <span>Crew Management</span>
+          </h2>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Approve student ambassadors, monitor peer traction, verify paid internship qualifications, and enforce tenure.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <div className="flex items-center p-1 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setSubTab('applications')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                subTab === 'applications'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <span>Applications</span>
+              {pendingCount > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-white text-[10px]">
+                  {pendingCount}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setSubTab('active')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                subTab === 'active'
+                  ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <span>Active Ambassadors</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-[10px]">
+                {activeMembers.length}
+              </span>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="p-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 cursor-pointer transition-colors"
+            title="Refresh list"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 1. APPLICATIONS SUB-TAB                                                    */}
+      {/* ========================================================================= */}
+      {subTab === 'applications' && (
+        <div className="space-y-4">
+          {/* Filter Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-md">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by student name, email, or institution…"
+                className="w-full pl-9 pr-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-indigo-500"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto text-xs font-semibold">
+              {(['all', 'pending', 'approved', 'rejected'] as const).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setStatusFilter(st)}
+                  className={`px-3 py-1.5 rounded-lg capitalize transition-colors cursor-pointer ${
+                    statusFilter === st
+                      ? 'bg-indigo-600 text-white font-bold shadow-xs'
+                      : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200'
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Applications Table (PART 2 REQUIREMENT) */}
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs divide-y divide-slate-100 dark:divide-slate-800">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="py-3 px-4">Applicant Name</th>
+                    <th className="py-3 px-4">Institution Name</th>
+                    <th className="py-3 px-4">Promotion Plan</th>
+                    <th className="py-3 px-4">Date Applied</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={6} className="py-12 text-center text-slate-400">
+                        Loading Crew applications…
+                      </td>
+                    </tr>
+                  ) : filteredApplications.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-12 text-center text-slate-400">
+                        No applications matching current filters.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredApplications.map((app) => {
+                      const isPending = app.status === 'pending';
+                      const formattedDate = new Date(app.createdAt).toLocaleDateString('en-PK', {
+                        day: 'numeric',
+                        month: 'short',
+                        year: 'numeric',
+                      });
+
+                      return (
+                        <tr key={app.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                          <td className="py-3.5 px-4 font-bold">
+                            <div>{app.fullName}</div>
+                            <div className="text-[11px] font-normal text-slate-400">{app.email}</div>
+                            <div className="text-[10px] text-slate-400">{app.phone}</div>
+                          </td>
+                          <td className="py-3.5 px-4 font-medium text-slate-700 dark:text-slate-300">
+                            <span className="font-bold text-[#0d1b3e] dark:text-white block">
+                              {app.institution}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 max-w-xs">
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
+                              {app.promotionPlan}
+                            </p>
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-500 whitespace-nowrap">
+                            {formattedDate}
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            {app.status === 'approved' && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                <Check className="w-3 h-3" /> Approved
+                              </span>
+                            )}
+                            {app.status === 'rejected' && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                <X className="w-3 h-3" /> Rejected
+                              </span>
+                            )}
+                            {app.status === 'pending' && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                <Clock className="w-3 h-3" /> Pending Review
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            {isPending ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  disabled={actionInProgress === app.id}
+                                  onClick={() => handleApprove(app)}
+                                  className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                  <span>Approve</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={actionInProgress === app.id}
+                                  onClick={() => handleOpenReject(app)}
+                                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-bold text-xs border border-slate-200 transition-all cursor-pointer flex items-center gap-1 disabled:opacity-50"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                  <span>Reject</span>
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400">
+                                Reviewed by {app.reviewedBy ? app.reviewedBy.split('@')[0] : 'Admin'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. ACTIVE CREW AMBASSADORS SUB-TAB (PART 4 REQUIREMENT)                    */}
+      {/* ========================================================================= */}
+      {subTab === 'active' && (
+        <div className="space-y-4">
+          <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-100 flex items-center justify-between text-xs text-indigo-900">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>
+                Active Crew ambassadors enjoy 30 days of free Premium access on joining. Top performers reaching <strong>{CREW_INTERNSHIP_SIGNUP_TARGET}+ signups</strong> are flagged for Paid Internships.
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs divide-y divide-slate-100 dark:divide-slate-800">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="py-3 px-4">Ambassador</th>
+                    <th className="py-3 px-4">Institution</th>
+                    <th className="py-3 px-4">Referral Code</th>
+                    <th className="py-3 px-4">Signups</th>
+                    <th className="py-3 px-4">Tenure / Days Active</th>
+                    <th className="py-3 px-4">Internship Tier</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-slate-400">
+                        Loading active ambassadors…
+                      </td>
+                    </tr>
+                  ) : activeMembers.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-slate-400">
+                        No active Crew ambassadors yet. Approve pending applications to add ambassadors.
+                      </td>
+                    </tr>
+                  ) : (
+                    activeMembers.map((m) => {
+                      const referrals = m.crewReferralsCount || 0;
+                      const isInternEligible = referrals >= CREW_INTERNSHIP_SIGNUP_TARGET || m.isPaidInternshipEligible;
+                      const startDate = m.crewStartDate ? new Date(m.crewStartDate) : new Date(m.createdAt || Date.now());
+                      const daysActive = Math.max(0, Math.floor((Date.now() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+                      const daysRemaining = Math.max(0, Math.ceil(30 - daysActive));
+
+                      return (
+                        <tr key={m.uid} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                          <td className="py-3.5 px-4 font-bold">
+                            <div>{m.name}</div>
+                            <div className="text-[11px] font-normal text-slate-400">{m.email}</div>
+                          </td>
+                          <td className="py-3.5 px-4 font-medium text-slate-700 dark:text-slate-300">
+                            {m.crewInstitution || m.targetUniversity || 'General Campus'}
+                          </td>
+                          <td className="py-3.5 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                            {m.crewReferralCode || 'CREW-AMB'}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="text-base font-black text-slate-900 dark:text-white">
+                              {referrals}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block">signups</span>
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <div className="font-semibold text-slate-800 dark:text-slate-200">
+                              {daysActive} days active
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              {daysRemaining > 0 ? `${daysRemaining} days left in trial` : 'Trial period ended'}
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            {/* PART 4 REQUIREMENT: Flag account for "Paid Internship Eligible" */}
+                            {isInternEligible ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-xs animate-scale-in">
+                                <Award className="w-3.5 h-3.5 text-amber-700" />
+                                <span>Paid Internship Eligible</span>
+                              </span>
+                            ) : referrals >= CREW_TENURE_SIGNUP_TARGET ? (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700">
+                                <Check className="w-3 h-3" /> 1-Year Locked
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-slate-400">
+                                {CREW_TENURE_SIGNUP_TARGET - referrals} needed for 1-yr
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-2">
+                              {/* Simulate +1 referral for quick testing */}
+                              <button
+                                type="button"
+                                title="Add +1 referral to test progress"
+                                onClick={() => handleSimulateReferral(m)}
+                                disabled={actionInProgress === m.uid}
+                                className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-[10px] font-bold cursor-pointer transition-colors"
+                              >
+                                +1 Referral
+                              </button>
+
+                              {/* PART 4 REQUIREMENT: Revoke Crew Status button */}
+                              <button
+                                type="button"
+                                onClick={() => setRevokeConfirmUser(m)}
+                                disabled={actionInProgress === m.uid}
+                                className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 font-bold text-xs border border-rose-200/80 transition-all cursor-pointer flex items-center gap-1"
+                              >
+                                <XCircle className="w-3.5 h-3.5" />
+                                <span>Revoke Crew Status</span>
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REJECT MODAL */}
+      {showRejectModal && selectedApp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 space-y-4 animate-scale-in text-left">
+            <h3 className="text-base font-extrabold text-slate-900">
+              Reject Application for {selectedApp.fullName}
+            </h3>
+            <p className="text-xs text-slate-500">
+              Provide an optional note explaining why the application was declined:
+            </p>
+            <textarea
+              rows={3}
+              value={rejectReasonInput}
+              onChange={(e) => setRejectReasonInput(e.target.value)}
+              placeholder="e.g. Current cohort for this campus is already filled; applicant details were incomplete."
+              className="w-full p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 outline-none focus:border-rose-500"
+            />
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowRejectModal(false);
+                  setSelectedApp(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReject}
+                disabled={actionInProgress === selectedApp.id}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer transition-colors"
+              >
+                Confirm Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* REVOKE CONFIRMATION MODAL */}
+      {revokeConfirmUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in">
+          <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 space-y-4 animate-scale-in text-left">
+            <div className="flex items-center gap-3 text-rose-600">
+              <AlertTriangle className="w-6 h-6" />
+              <h3 className="text-base font-black text-slate-900">
+                Revoke Ambassador Status?
+              </h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to revoke Crew status for <strong className="text-slate-900">{revokeConfirmUser.name}</strong> ({revokeConfirmUser.crewInstitution || 'Campus'})?
+            </p>
+            <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 text-[11px] text-rose-800 space-y-1">
+              <p>• Their ambassador dashboard access will be immediately blocked.</p>
+              <p>• Their subscription will be downgraded from Premium to Free plan.</p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setRevokeConfirmUser(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRevoke}
+                disabled={actionInProgress === revokeConfirmUser.uid}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer transition-colors shadow-xs"
+              >
+                Revoke Status Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
