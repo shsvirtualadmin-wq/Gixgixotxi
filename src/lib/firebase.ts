@@ -34,13 +34,13 @@ import { normalizePlanId, PlanType } from '../data/planLimits';
 
 // Firebase configuration from applet config and environment variables
 export const firebaseConfig = {
-  apiKey: "AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs",
-  authDomain: "auth.boardly.cfd",
-  projectId: "gen-lang-client-0365509316",
-  storageBucket: "gen-lang-client-0365509316.firebasestorage.app",
-  messagingSenderId: "556734245207",
-  appId: "1:556734245207:web:4797f3915b424209b03612",
-  firestoreDatabaseId: "ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseAppletConfig.apiKey,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseAppletConfig.authDomain,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseAppletConfig.storageBucket,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseAppletConfig.messagingSenderId,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseAppletConfig.appId,
+  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseAppletConfig.firestoreDatabaseId,
 };
 
 // Log Firebase environment and connection parameters in development
