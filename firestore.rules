@@ -12,7 +12,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        (request.auth.token.email == 'shsvirtualadmin@gmail.com' && request.auth.token.email_verified == true) ||
+        request.auth.token.email == 'shsvirtualadmin@gmail.com' ||
         request.auth.token.email == 'support@boardly.cfd' ||
         request.auth.token.role == 'admin' ||
         request.auth.token.admin == true ||
@@ -20,14 +20,12 @@ service cloud.firestore {
       );
     }
 
-    // Users collection: A logged-in user can read and write to their own user document and subcollections
+    // Users collection: A logged-in user can read and write to their own user document and subcollections; admin has full access
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
-      allow read, write: if isAdmin();
+      allow read, write: if request.auth != null && (request.auth.uid == userId || request.auth.token.email == 'shsvirtualadmin@gmail.com');
 
       match /{allSubcollections=**} {
-        allow read, write: if request.auth != null && request.auth.uid == userId;
-        allow read, write: if isAdmin();
+        allow read, write: if request.auth != null && (request.auth.uid == userId || request.auth.token.email == 'shsvirtualadmin@gmail.com');
       }
     }
 

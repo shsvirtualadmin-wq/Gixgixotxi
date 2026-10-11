@@ -35,7 +35,7 @@ import { normalizePlanId, PlanType } from '../data/planLimits';
 // Firebase configuration from applet config and environment variables
 export const firebaseConfig = {
   apiKey: "AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "auth.boardly.cfd",
+  authDomain: "auth.boardly.cfd",
   projectId: "gen-lang-client-0365509316",
   storageBucket: "gen-lang-client-0365509316.firebasestorage.app",
   messagingSenderId: "556734245207",
