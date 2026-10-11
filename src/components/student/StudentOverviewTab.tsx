@@ -60,8 +60,9 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
   const testsUsed = typeof profile?.testsUsedToday === 'number' ? profile.testsUsedToday : 0;
   const boardyUsed = typeof profile?.boardyQuestionsUsedToday === 'number' ? profile.boardyQuestionsUsedToday : 0;
   const isUnlimited = isAdmin || testsLimit >= 999;
-  const testsLeft = isUnlimited ? 'Unlimited' : Math.max(0, testsLimit - testsUsed);
-  const boardyLeft = Math.max(0, boardyLimit - boardyUsed);
+  const isBoardyUnlimited = isAdmin || boardyLimit >= 999;
+  const testsLeft = isUnlimited ? 'Unlimited' : Math.min(testsLimit, Math.max(0, testsLimit - testsUsed));
+  const boardyLeft = isBoardyUnlimited ? 'Unlimited' : Math.min(boardyLimit, Math.max(0, boardyLimit - boardyUsed));
 
   // Real streak directly from Firestore user doc
   const streak = typeof profile?.streak === 'number'

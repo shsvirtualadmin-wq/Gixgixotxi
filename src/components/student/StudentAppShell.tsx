@@ -499,7 +499,10 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
               // Handled via AuthContext
             }}
             onNavigateHome={() => setActiveTab('overview')}
-            onOpenUpgrade={() => setShowUpgradeModal(true)}
+            onOpenUpgrade={(target) => {
+              if (target) setUpgradeTargetPlan(target);
+              setShowUpgradeModal(true);
+            }}
             onStartPractice={() => setActiveTab('practice')}
             onSignOut={logOut}
           />
@@ -620,6 +623,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         isOpen={showUpgradeModal}
         onClose={() => setShowUpgradeModal(false)}
         currentPlan={profile?.plan}
+        initialTargetPlan={upgradeTargetPlan}
         onSubmitUpgradeRequest={handlePricingUpgradeRequest}
       />
     </AppShell>

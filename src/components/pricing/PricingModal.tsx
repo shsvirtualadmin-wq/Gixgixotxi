@@ -323,15 +323,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                     <div className="pt-6 mt-6 border-t border-slate-100">
                       <button
                         type="button"
-                        disabled={isCurrentPlan}
                         onClick={() => handleOpenCheckout('pro')}
-                        className={`w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-md ${
-                          isCurrentPlan
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                            : 'bg-[#1a6dff] hover:bg-[#1558d6] text-white cursor-pointer active:scale-[0.98]'
-                        }`}
+                        className="w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-md bg-[#1a6dff] hover:bg-[#1558d6] text-white cursor-pointer active:scale-[0.98]"
                       >
-                        {isCurrentPlan ? 'Current Plan' : 'Get Pro'}
+                        {isCurrentPlan ? 'Renew Pro Plan' : 'Get Pro'}
                       </button>
                     </div>
                   </div>
@@ -401,15 +396,10 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                     <div className="pt-6 mt-6 border-t border-slate-100">
                       <button
                         type="button"
-                        disabled={isCurrentPlan}
                         onClick={() => handleOpenCheckout('premium')}
-                        className={`w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-md ${
-                          isCurrentPlan
-                            ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'
-                            : 'bg-[#0d1b3e] hover:bg-[#152a5c] text-white cursor-pointer active:scale-[0.98]'
-                        }`}
+                        className="w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-md bg-[#0d1b3e] hover:bg-[#152a5c] text-white cursor-pointer active:scale-[0.98]"
                       >
-                        {isCurrentPlan ? 'Current Plan' : 'Get Premium'}
+                        {isCurrentPlan ? 'Renew Premium Plan' : 'Get Premium'}
                       </button>
                     </div>
                   </div>

@@ -32,10 +32,16 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
 
   const userPlan: PlanType = normalizePlanId(profile?.plan);
   const planConfig = PLAN_LIMITS[userPlan] || PLAN_LIMITS.free;
-  const boardyUsedToday = profile?.boardyQuestionsUsedToday || 0;
-  const isUnlimited = isAdmin || planConfig.boardyPerDay >= 999;
-  const boardyRemaining = isUnlimited ? 999 : Math.max(0, planConfig.boardyPerDay - boardyUsedToday);
-  const isBoardyExhausted = !isAdmin && !isUnlimited && boardyRemaining <= 0;
+  const boardyLimit = typeof (profile as any)?.boardyLimit === 'number'
+    ? (profile as any).boardyLimit
+    : planConfig.boardyPerDay;
+  const boardyUsedToday = typeof profile?.boardyQuestionsUsedToday === 'number'
+    ? profile.boardyQuestionsUsedToday
+    : 0;
+  const isUnlimited = isAdmin || boardyLimit >= 999;
+  // Never show a remaining count larger than the limit
+  const boardyRemaining = isUnlimited ? 'Unlimited' : Math.min(boardyLimit, Math.max(0, boardyLimit - boardyUsedToday));
+  const isBoardyExhausted = !isUnlimited && (typeof boardyRemaining === 'number' && boardyRemaining <= 0);
 
   const [messages, setMessages] = useState<ChatMessage[]>(() => {
     try {
@@ -182,7 +188,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
           >
             <Sparkles className="w-3 h-3 text-amber-500" />
             <span>
-              {boardyRemaining} of {planConfig.boardyPerDay} questions left today
+              {isUnlimited ? 'Unlimited' : `${boardyRemaining} of ${boardyLimit} questions left today`}
             </span>
           </button>
 

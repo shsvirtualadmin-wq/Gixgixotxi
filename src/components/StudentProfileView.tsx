@@ -41,7 +41,7 @@ export interface StudentProfileViewProps {
   onStartPractice?: () => void;
   onSignOut?: () => void;
   onNavigateHome?: () => void;
-  onOpenUpgrade?: () => void;
+  onOpenUpgrade?: (initialPlan?: 'pro' | 'premium') => void;
 }
 
 export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
@@ -117,6 +117,32 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
       return 'Next Month';
     }
   })();
+
+  // Check if user's subscription has expired
+  const isExpired = Boolean(
+    effectiveProfile?.status === 'expired' ||
+    effectiveProfile?.plan_status === 'expired' ||
+    effectiveProfile?.is_expired ||
+    (() => {
+      const expDate =
+        effectiveProfile?.accessExpiresDate ||
+        effectiveProfile?.pro_expires_at ||
+        effectiveProfile?.expiresAt ||
+        effectiveProfile?.access_expires;
+      if (!expDate) return false;
+      const t = new Date(expDate).getTime();
+      return !isNaN(t) && t < Date.now();
+    })()
+  );
+
+  // Check if upgrade request is currently pending review
+  const isPendingReview = Boolean(
+    effectiveProfile?.payment_status === 'pending_verification' ||
+    effectiveProfile?.payment_status === 'pending' ||
+    effectiveProfile?.status === 'pending admin approval' ||
+    effectiveProfile?.status === 'pending' ||
+    effectiveProfile?.upgrade_pending
+  );
 
   const initialLetter = (effectiveProfile?.name || effectiveUser?.displayName || effectiveUser?.email || 'S')
     .charAt(0)
@@ -278,17 +304,6 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
           >
             <Home className="w-4 h-4" />
             <span className="hidden sm:inline">Home</span>
-          </button>
-
-          {/* Crown / Upgrade Button */}
-          <button
-            type="button"
-            onClick={onOpenUpgrade}
-            className="relative z-10 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 font-black text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer border border-amber-300"
-            title="Upgrade Subscription"
-          >
-            <Crown className="w-3.5 h-3.5 fill-amber-950 text-amber-950" />
-            <span>{planKey === 'premium' ? 'Manage Plan' : 'Upgrade'}</span>
           </button>
         </div>
 
@@ -688,55 +703,72 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
             ))}
         </div>
 
-        {/* Action Button: Upgrade (for Free/Pro) OR Renew (for Paid) */}
+        {/* Action Button: Single Entry Point to Pricing Modal per FIX 1 */}
         <div className="relative z-10 pt-3 border-t border-white/10">
-          {planKey === 'free' ? (
+          {planKey !== 'free' && (
+            <div className="flex items-center justify-between text-xs text-slate-300 mb-3">
+              <span>
+                Subscription Status:{' '}
+                <strong className={isExpired ? 'text-amber-400 font-extrabold' : 'text-emerald-400 font-extrabold'}>
+                  {isExpired ? 'Expired' : `${planConfig.name} Active`}
+                </strong>
+              </span>
+              <span>Expires: <strong>{expiryDateString}</strong></span>
+            </div>
+          )}
+
+          {isPendingReview ? (
             <button
               type="button"
-              onClick={onOpenUpgrade}
-              className="w-full py-3.5 px-4 rounded-2xl bg-[#1a6dff] hover:bg-[#1558d6] text-white font-extrabold text-xs shadow-lg shadow-[#1a6dff]/30 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
+              disabled
+              className="w-full py-3.5 px-4 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-300 font-black text-xs flex items-center justify-center gap-2 cursor-not-allowed select-none opacity-90"
+              title="Payment verification under review"
             >
-              <Sparkles className="w-4 h-4" />
-              <span>Upgrade to Pro or Premium</span>
+              <Crown className="w-4 h-4 fill-amber-300 text-amber-300" />
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/20 text-amber-300 text-xs font-black border border-amber-400/40">
+                Payment under review
+              </span>
+            </button>
+          ) : isExpired ? (
+            <button
+              type="button"
+              onClick={() => onOpenUpgrade?.(planKey === 'premium' ? 'premium' : 'pro')}
+              className="w-full py-3.5 px-4 rounded-2xl bg-gradient-to-r from-amber-400 via-amber-300 to-amber-400 hover:from-amber-300 hover:to-amber-200 text-amber-950 font-black text-xs shadow-lg shadow-amber-400/30 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2 border border-amber-300"
+              title="Renew Plan"
+            >
+              <Crown className="w-4 h-4 fill-amber-950 text-amber-950" />
+              <span>Renew Plan</span>
+            </button>
+          ) : planKey === 'free' ? (
+            <button
+              type="button"
+              onClick={() => onOpenUpgrade?.('pro')}
+              className="w-full py-3.5 px-4 rounded-2xl bg-[#1a6dff] hover:bg-[#1558d6] text-white font-black text-xs shadow-lg shadow-[#1a6dff]/30 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2 border border-blue-400/30"
+              title="Upgrade to Pro"
+            >
+              <Crown className="w-4 h-4 fill-white text-white" />
+              <span>Upgrade to Pro</span>
             </button>
           ) : planKey === 'pro' ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between text-xs text-slate-300">
-                <span>Access Status: <strong className="text-emerald-400">Pro Active</strong></span>
-                <span>Expires: <strong>{expiryDateString}</strong></span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <button
-                  type="button"
-                  onClick={onOpenUpgrade}
-                  className="w-full py-3 px-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 cursor-pointer transition-all"
-                >
-                  Renew Pro Plan
-                </button>
-                <button
-                  type="button"
-                  onClick={onOpenUpgrade}
-                  className="w-full py-3 px-4 rounded-2xl bg-[#1a6dff] hover:bg-[#1558d6] text-white font-extrabold text-xs shadow-md cursor-pointer transition-all flex items-center justify-center gap-1.5"
-                >
-                  <Crown className="w-3.5 h-3.5 fill-white" />
-                  <span>Upgrade to Premium</span>
-                </button>
-              </div>
-            </div>
+            <button
+              type="button"
+              onClick={() => onOpenUpgrade?.('premium')}
+              className="w-full py-3.5 px-4 rounded-2xl bg-[#1a6dff] hover:bg-[#1558d6] text-white font-black text-xs shadow-lg shadow-[#1a6dff]/30 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2 border border-blue-400/30"
+              title="Upgrade to Premium"
+            >
+              <Crown className="w-4 h-4 fill-white text-white" />
+              <span>Upgrade to Premium</span>
+            </button>
           ) : (
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs text-slate-400">Subscription Status</span>
-                <p className="text-xs font-bold text-white">Active · Expires {expiryDateString}</p>
-              </div>
-              <button
-                type="button"
-                onClick={onOpenUpgrade}
-                className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 cursor-pointer transition-all"
-              >
-                Renew Plan
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => onOpenUpgrade?.('premium')}
+              className="w-full py-3.5 px-4 rounded-2xl bg-white/15 hover:bg-white/25 text-white font-black text-xs border border-white/25 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2 shadow-md"
+              title="Renew Plan"
+            >
+              <Crown className="w-4 h-4 fill-white text-white" />
+              <span>Renew Plan</span>
+            </button>
           )}
         </div>
       </div>
