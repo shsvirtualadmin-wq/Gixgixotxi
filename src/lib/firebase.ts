@@ -267,6 +267,7 @@ export async function fetchUserProfile(uid: string): Promise<StudentUserProfile 
     }
     const rawData = snap.data();
     const normalizedPlan = normalizePlanId(rawData.plan);
+    const plan = (rawData.plan || 'starter') as PlanType;
     const normalizedRole = (rawData.role || 'student') as UserRole;
     const roles: UserRole[] = Array.isArray(rawData.roles) && rawData.roles.length > 0
       ? rawData.roles
@@ -275,7 +276,7 @@ export async function fetchUserProfile(uid: string): Promise<StudentUserProfile 
     const profile: StudentUserProfile = {
       ...rawData,
       uid,
-      plan: normalizedPlan,
+      plan,
       role: normalizedRole,
       roles,
       streak: typeof rawData.streak === 'number' ? rawData.streak : (typeof rawData.streakDays === 'number' ? rawData.streakDays : 0),
@@ -311,7 +312,7 @@ export async function createInitialUserDoc(
   const userRef = doc(db, 'users', uid);
   const nowStr = new Date().toISOString();
   const role = initialData.role || 'student';
-  const plan = normalizePlanId(initialData.plan);
+  const plan = (initialData.plan || 'starter') as PlanType;
   const fallbackProfile: StudentUserProfile = {
     uid,
     name: initialData.name || 'Student',

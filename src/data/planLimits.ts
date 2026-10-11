@@ -1,7 +1,7 @@
-export type PlanType = 'free' | 'pro' | 'premium';
+export type PlanType = 'free' | 'pro' | 'premium' | 'starter' | 'steady_climb' | 'all_access';
 
 export interface PlanLimitConfig {
-  id: PlanType;
+  id: 'free' | 'pro' | 'premium';
   name: 'Free' | 'Pro' | 'Premium';
   badge: string;
   testsPerDay: number; // 999999 represents unlimited

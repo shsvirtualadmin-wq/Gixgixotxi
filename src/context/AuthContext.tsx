@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth';
 import {
   auth,
+  db,
   fetchUserProfile,
   saveUserProfile,
   createInitialUserDoc,
@@ -18,7 +19,8 @@ import {
   StudentUserProfile,
   UserRole,
 } from '../lib/firebase';
-import { getKarachiTodayString, normalizePlanId } from '../data/planLimits';
+import { doc, setDoc } from 'firebase/firestore';
+import { getKarachiTodayString, normalizePlanId, PlanType } from '../data/planLimits';
 
 export interface SignUpFormData {
   fullName: string;
@@ -214,7 +216,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     // 2. First login only: Create document ONCE with merge transaction
-    const initialPlan = isMasterAdmin ? 'premium' : 'free';
+    const initialPlan: PlanType = isMasterAdmin ? 'premium' : 'starter';
     const initialRole: UserRole = isMasterAdmin ? 'admin' : 'student';
 
     const created = await createInitialUserDoc(firebaseUser.uid, {
@@ -307,23 +309,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signUpEmail = async (formData: SignUpFormData): Promise<{ success: boolean; error?: string }> => {
     try {
-      const cred = await createUserWithEmailAndPassword(auth, formData.email.trim(), formData.password);
       const email = formData.email.trim().toLowerCase();
-      const isMasterAdmin = email === 'shsvirtualadmin@gmail.com' || email === 'support@boardly.cfd';
+      const name = formData.fullName.trim();
 
-      await createInitialUserDoc(cred.user.uid, {
-        name: formData.fullName.trim(),
+      // 1. Create Firebase Auth account
+      const cred = await createUserWithEmailAndPassword(auth, email, formData.password);
+      const uid = cred.user.uid;
+
+      // 2. Explicitly write to users/{uid} document immediately with required fields:
+      // - email: the email address they just registered with
+      // - name: the name they entered on the signup form
+      // - role: 'student'
+      // - plan: 'starter'
+      const nowStr = new Date().toISOString();
+      const userRef = doc(db, 'users', uid);
+      const userDocData = {
+        uid,
         email,
+        name,
+        role: 'student' as UserRole,
+        plan: 'starter' as PlanType,
+        roles: ['student'] as UserRole[],
         phone: formData.phone?.trim() || '',
-        plan: isMasterAdmin ? 'premium' : 'free',
-        role: isMasterAdmin ? 'admin' : 'student',
-        roles: isMasterAdmin ? ['admin', 'student'] : ['student'],
-        testTrack: formData.preparingFor || 'Not sure',
+        testTrack: formData.preparingFor || 'Engineering & CS',
         referralSource: formData.referralSource || '',
-        onboardingCompleted: isMasterAdmin,
-      });
+        onboardingCompleted: false,
+        onboardingComplete: false,
+        testsUsedToday: 0,
+        boardyQuestionsUsedToday: 0,
+        lastUsageDate: nowStr.slice(0, 10),
+        streak: 0,
+        streakDays: 0,
+        testHistory: [],
+        status: 'active',
+        createdAt: nowStr,
+        updatedAt: nowStr,
+        termsAcceptedAt: nowStr,
+        termsVersion: '2026.1',
+      };
 
-      await syncProfile(cred.user);
+      // Critical requirement: Ensure this database write finishes before proceeding/navigating
+      await setDoc(userRef, userDocData, { merge: true });
+
+      // Cache locally immediately so session state is in sync
+      try {
+        localStorage.setItem(`boardly_cached_profile_${uid}`, JSON.stringify(userDocData));
+      } catch {}
+
+      // Update state immediately
+      setProfile(userDocData as any);
+      setDocumentExists(true);
+      setActiveRole('student');
 
       try {
         await sendEmailVerification(cred.user);
