@@ -637,7 +637,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
   }, [usageLoading, isUnlimited, aiChatsLeft, aiChatsLimit]);
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#F8F9FB] text-[#0d1b3e] flex flex-col overflow-hidden font-sans select-text">
+    <div className="fixed inset-0 z-50 bg-[#FAFAFC] text-[#0d1b3e] flex flex-col overflow-hidden font-sans select-text">
       {/* ========================================================================= */}
       {/* 1. TOP CONTROL: ONLY a hamburger button at top-right with soft background */}
       {/* ========================================================================= */}
@@ -645,7 +645,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
         <button
           type="button"
           onClick={() => setIsSidebarOpen(true)}
-          className="p-2.5 rounded-2xl bg-white/85 hover:bg-white text-slate-700 hover:text-slate-900 border border-slate-200/90 shadow-sm backdrop-blur-md cursor-pointer transition-all active:scale-95 flex items-center justify-center"
+          className="p-2.5 rounded-2xl bg-white/90 hover:bg-white text-slate-700 hover:text-slate-900 border border-slate-200/80 shadow-sm backdrop-blur-md cursor-pointer transition-all active:scale-95 flex items-center justify-center"
           aria-label="Open chats sidebar"
         >
           <Menu className="w-5 h-5 text-slate-700" />
@@ -656,21 +656,21 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
       {/* 2. CHAT CONTENT OR EMPTY STATE                                            */}
       {/* ========================================================================= */}
       {!hasMessages ? (
-        /* ------------------ EMPTY STATE (VERTICALLY CENTERED) ------------------ */
-        <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full px-4 text-center my-auto py-6 overflow-y-auto">
-          {/* Centered Mascot */}
-          <BoardyMascot size={76} animated />
+        /* ------------------ EMPTY STATE (VERTICALLY CENTERED, CARD-LESS) ------------------ */
+        <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full px-4 text-center my-auto py-8 overflow-y-auto">
+          {/* Centered Boardy Mascot */}
+          <BoardyMascot size={78} animated />
 
-          {/* Large Greeting */}
+          {/* Large bold greeting */}
           <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0d1b3e] tracking-tight mt-4">
             {timeGreeting}, {firstName}
           </h1>
           <p className="text-sm sm:text-base font-semibold text-slate-500 mt-1">
-            What shall we tackle today?
+            What are we studying today?
           </p>
 
-          {/* Wide Rounded Input Box */}
-          <div className="w-full max-w-xl mt-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-shadow p-3.5 flex flex-col gap-2 relative text-left">
+          {/* Large heavily rounded "pill" shaped input box with soft light shadow and purple focus ring */}
+          <div className="w-full max-w-xl mt-7 rounded-[28px] bg-white border border-slate-200/90 shadow-sm hover:shadow-md focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all p-4 flex flex-col gap-2 relative text-left">
             <textarea
               ref={textareaRef}
               rows={2}
@@ -689,27 +689,27 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                   ? `Ask Boardy anything about your ${targetTest} prep…`
                   : 'Ask Boardy anything about your test prep…'
               }
-              className="w-full bg-transparent border-0 outline-none resize-none text-sm text-[#0d1b3e] placeholder:text-slate-400 min-h-[52px]"
+              className="w-full bg-transparent border-0 outline-none resize-none text-sm text-[#0d1b3e] placeholder:text-slate-400 min-h-[50px]"
             />
 
-            {/* Bottom row inside input box: Mode chip (left), Send button (right) */}
+            {/* Bottom row inside input box: Mode chip (bottom-left), Send button (bottom-right) */}
             <div className="flex items-center justify-between pt-1 relative">
               {/* Mode chip */}
               <div className="relative" ref={modePickerRef}>
                 <button
                   type="button"
                   onClick={() => setIsModePickerOpen((prev) => !prev)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200/80 text-xs font-bold text-slate-700 transition-colors cursor-pointer select-none"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200/80 text-xs font-semibold text-slate-700 transition-colors cursor-pointer select-none"
                 >
                   {getModeIcon(activeMode)}
                   <span>{activeModeInfo.name}</span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                 </button>
 
-                {/* Mode Picker Popup right above chip */}
+                {/* Mode Selector Dropdown: icon left, bold title, smaller lighter grey description strictly on line below, checkmark on right */}
                 {isModePickerOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 w-72 rounded-2xl bg-white border border-slate-200 shadow-xl p-1.5 z-40 animate-in fade-in slide-in-from-bottom-2">
-                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-3 py-1">
+                  <div className="absolute bottom-full left-0 mb-2 w-72 rounded-2xl bg-white border border-slate-200 shadow-xl p-2 z-40 animate-in fade-in slide-in-from-bottom-2">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 py-1">
                       Choose Teaching Mode
                     </p>
                     <div className="space-y-1">
@@ -720,15 +720,15 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                             key={m.id}
                             type="button"
                             onClick={() => handleSelectMode(m.id)}
-                            className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-colors cursor-pointer ${
-                              isSelected ? 'bg-indigo-50 text-indigo-900' : 'hover:bg-slate-50 text-slate-800'
+                            className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-colors cursor-pointer ${
+                              isSelected ? 'bg-indigo-50/80 text-indigo-950' : 'hover:bg-slate-50 text-slate-800'
                             }`}
                           >
-                            <div className="flex items-start gap-2.5">
-                              <div className="mt-0.5">{getModeIcon(m.id)}</div>
-                              <div>
-                                <p className="text-xs font-bold">{m.name}</p>
-                                <p className="text-[11px] text-slate-500 leading-tight">{m.tagline}</p>
+                            <div className="flex items-start gap-2.5 min-w-0 pr-2">
+                              <div className="mt-0.5 shrink-0">{getModeIcon(m.id)}</div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold leading-snug">{m.name}</p>
+                                <p className="text-[11px] text-slate-400 leading-normal mt-0.5">{m.description || m.tagline}</p>
                               </div>
                             </div>
                             {isSelected && <Check className="w-4 h-4 text-indigo-600 shrink-0" />}
@@ -740,15 +740,15 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                 )}
               </div>
 
-              {/* Round Send Button */}
+              {/* Round Send Button: arrow icon in circular background */}
               <button
                 type="button"
                 disabled={!inputValue.trim() || isTyping}
                 onClick={() => executeSendMessage(inputValue)}
                 className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer ${
                   inputValue.trim() && !isTyping
-                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
-                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm active:scale-95'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
                 }`}
                 aria-label="Send message"
               >
@@ -758,23 +758,23 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
           </div>
 
           {/* Small grey line with remaining AI chats (from shared usage store) */}
-          <p className="text-[11px] text-slate-400 font-medium mt-2.5">
+          <p className="text-[11px] text-slate-400 font-medium mt-3">
             {aiChatsLineText}
           </p>
 
-          {/* Four Suggestion Rows with colored subject labels, thin dividers, no cards, no arrows */}
-          <div className="w-full max-w-xl mt-5 divide-y divide-slate-200/80 text-left border-t border-b border-slate-200/80">
+          {/* Four Suggestion Rows: flat list, colored subject label on left, prompt on right, very thin subtle dividers */}
+          <div className="w-full max-w-xl mt-6 divide-y divide-slate-100 text-left border-t border-b border-slate-100">
             {suggestions.map((s, idx) => (
               <button
                 key={idx}
                 type="button"
                 onClick={() => executeSendMessage(s.prompt)}
-                className="w-full py-3 px-2 flex items-center gap-3 hover:bg-slate-100/60 transition-colors text-left cursor-pointer group"
+                className="w-full py-3.5 px-1 flex items-center gap-3.5 hover:bg-slate-100/50 transition-colors text-left cursor-pointer group"
               >
-                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border shrink-0 ${s.color}`}>
+                <span className="text-[11px] font-bold text-indigo-600 shrink-0 tracking-wide">
                   {s.subject}
                 </span>
-                <span className="text-xs sm:text-sm text-slate-700 group-hover:text-slate-900 font-medium line-clamp-1 flex-1">
+                <span className="text-xs sm:text-sm text-slate-700 group-hover:text-slate-900 font-normal line-clamp-1 flex-1">
                   {s.prompt}
                 </span>
               </button>
@@ -796,8 +796,8 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                 className={`w-full flex ${isUser ? 'justify-end' : 'justify-start'}`}
               >
                 {isUser ? (
-                  /* User message: blue bubble on right */
-                  <div className="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-sm px-4 py-3 bg-blue-600 text-white shadow-xs text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words">
+                  /* User message: soft light purple/grey background with dark text, rounded corners with bottom-right corner sharper */
+                  <div className="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-xs px-4 py-3 bg-[#EEF2F6] text-[#0d1b3e] text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words border border-slate-200/40">
                     {msg.content}
                   </div>
                 ) : (
@@ -836,7 +836,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                       </div>
                     )}
 
-                    {/* Actions under each AI reply: Copy, Regenerate, Thumbs up/down */}
+                    {/* Actions under each AI reply: Copy, Regenerate, Thumbs up/down, Mode label */}
                     {!msg.failed && (
                       <div className="flex flex-wrap items-center justify-between gap-2 pt-1 pl-1">
                         <div className="flex items-center gap-1 text-slate-400">
@@ -931,9 +931,9 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
       {/* 3. PINNED BOTTOM INPUT BAR (WHEN IN ACTIVE CHAT)                          */}
       {/* ========================================================================= */}
       {hasMessages && (
-        <div className="fixed bottom-0 left-0 right-0 p-3 sm:p-4 bg-[#F8F9FB]/95 backdrop-blur-md border-t border-slate-200/70 safe-area-bottom z-20 overflow-x-hidden">
+        <div className="fixed bottom-0 left-0 right-0 p-3 sm:p-4 bg-[#FAFAFC]/95 backdrop-blur-md border-t border-slate-200/60 safe-area-bottom z-20 overflow-x-hidden">
           <div className="max-w-3xl mx-auto w-full">
-            <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-2 flex flex-col gap-1.5 relative">
+            <div className="rounded-[24px] bg-white border border-slate-200 shadow-sm focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 p-2.5 flex flex-col gap-1.5 relative transition-all">
               <textarea
                 ref={textareaRef}
                 rows={1}
@@ -970,8 +970,8 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
 
                   {/* Mode Picker Popup */}
                   {isModePickerOpen && (
-                    <div className="absolute bottom-full left-0 mb-2 w-72 rounded-2xl bg-white border border-slate-200 shadow-xl p-1.5 z-40 animate-in fade-in slide-in-from-bottom-2">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-3 py-1">
+                    <div className="absolute bottom-full left-0 mb-2 w-72 rounded-2xl bg-white border border-slate-200 shadow-xl p-2 z-40 animate-in fade-in slide-in-from-bottom-2">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 py-1">
                         Choose Teaching Mode
                       </p>
                       <div className="space-y-1">
@@ -982,15 +982,15 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                               key={m.id}
                               type="button"
                               onClick={() => handleSelectMode(m.id)}
-                              className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-colors cursor-pointer ${
-                                isSelected ? 'bg-indigo-50 text-indigo-900' : 'hover:bg-slate-50 text-slate-800'
+                              className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-colors cursor-pointer ${
+                                isSelected ? 'bg-indigo-50/80 text-indigo-950' : 'hover:bg-slate-50 text-slate-800'
                               }`}
                             >
-                              <div className="flex items-start gap-2.5">
-                                <div className="mt-0.5">{getModeIcon(m.id)}</div>
-                                <div>
-                                  <p className="text-xs font-bold">{m.name}</p>
-                                  <p className="text-[11px] text-slate-500 leading-tight">{m.tagline}</p>
+                              <div className="flex items-start gap-2.5 min-w-0 pr-2">
+                                <div className="mt-0.5 shrink-0">{getModeIcon(m.id)}</div>
+                                <div className="min-w-0">
+                                  <p className="text-xs font-bold leading-snug">{m.name}</p>
+                                  <p className="text-[11px] text-slate-400 leading-normal mt-0.5">{m.description || m.tagline}</p>
                                 </div>
                               </div>
                               {isSelected && <Check className="w-4 h-4 text-indigo-600 shrink-0" />}
@@ -1009,8 +1009,8 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                   onClick={() => executeSendMessage(inputValue)}
                   className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer ${
                     inputValue.trim() && !isTyping
-                      ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
-                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs active:scale-95'
+                      : 'bg-slate-100 text-slate-400 cursor-not-allowed'
                   }`}
                   aria-label="Send message"
                 >
@@ -1161,23 +1161,28 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
               </div>
 
               {/* Usage line with thin progress bar from shared usage store */}
-              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
-                  <span>AI Daily Chats</span>
-                  <span>{isUnlimited ? 'Unlimited' : `${aiChatsLeft} left`}</span>
+              <div className="pt-2 pb-1 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600">
+                  <span>
+                    {isUnlimited
+                      ? 'Unlimited AI chats'
+                      : typeof aiChatsLeft === 'number'
+                      ? `${aiChatsLeft} of ${aiChatsLimit} AI chats left today`
+                      : 'Checking limits…'}
+                  </span>
                 </div>
                 {!isUnlimited && (
-                  <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden">
+                  <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-indigo-600 rounded-full"
+                      className="h-full bg-indigo-600 rounded-full transition-all duration-300"
                       style={{
-                        width: `${Math.min(100, Math.round((aiChatsUsed / aiChatsLimit) * 100))}%`,
+                        width: `${Math.min(100, Math.round(((aiChatsLimit - (aiChatsLeft ?? 0)) / aiChatsLimit) * 100))}%`,
                       }}
                     />
                   </div>
                 )}
                 <p className="text-[10px] text-slate-400">
-                  {isUnlimited ? 'Premium plan' : `Refills at midnight (PKT)`}
+                  {isUnlimited ? 'Premium plan' : 'Resets at midnight (PKT)'}
                 </p>
               </div>
             </div>
