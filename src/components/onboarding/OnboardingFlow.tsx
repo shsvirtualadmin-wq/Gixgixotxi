@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Check, Calendar, Sparkles, BookOpen, Clock, ArrowRight, Loader2, Target, HelpCircle, AlertCircle } from 'lucide-react';
+import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { BrandLogo } from '../marketing/BrandLogo';
 import { UNIVERSITIES, University } from '../../data/universities';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
 import { useAuth } from '../../context/AuthContext';
-import { auth } from '../../lib/firebase';
+import { auth, db } from '../../lib/firebase';
 
 interface OnboardingFlowProps {
   onComplete: (startFirstTest: boolean, firstTestConfig?: any) => void;
@@ -12,9 +13,33 @@ interface OnboardingFlowProps {
 }
 
 export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSkip }) => {
-  const { user, profile, completeOnboarding } = useAuth();
+  const { user, profile } = useAuth();
 
-  const [step, setStep] = useState<number>(1);
+  const [step, setStepState] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const saved = sessionStorage.getItem('boardly_onboarding_step');
+        if (saved) {
+          const num = parseInt(saved, 10);
+          if (num >= 1 && num <= 4) return num;
+        }
+      } catch {}
+    }
+    return 1;
+  });
+
+  const setStep = (newStep: number | ((prev: number) => number)) => {
+    setStepState((prev) => {
+      const next = typeof newStep === 'function' ? newStep(prev) : newStep;
+      if (typeof window !== 'undefined') {
+        try {
+          sessionStorage.setItem('boardly_onboarding_step', String(next));
+        } catch {}
+      }
+      return next;
+    });
+  };
+
   const [selectedTrack, setSelectedTrack] = useState<'Engineering & CS' | 'Business & Finance' | ''>(
     profile?.testTrack === 'Engineering & CS' || profile?.testTrack === 'Business & Finance'
       ? profile.testTrack
@@ -77,45 +102,46 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
     const targetUid = user?.uid || auth.currentUser?.uid;
     if (!targetUid) {
       setIsSaving(false);
-      setErrorMessage('User session not found. Please log in again.');
+      const msg = 'User session not found. Please log in again.';
+      setErrorMessage(msg);
+      alert(msg);
       return;
     }
 
-    const onboardingData = {
+    const onboardingPayload: Record<string, any> = {
       uid: targetUid,
       testTrack: selectedTrack || 'Engineering & CS',
       targetUniversityId: targetUniId,
       targetExamDate: isNotSureDate ? '' : examDate,
       targetExamDaysLeft: daysUntilTest,
       weakSubjects: selectedWorries,
-      onboardingCompleted: true,
       onboardingComplete: true,
+      onboardingCompleted: true,
+      updatedAt: new Date().toISOString(),
     };
 
     try {
-      const res = await completeOnboarding(onboardingData);
-      if (!res.success) {
-        setIsSaving(false);
-        setErrorMessage(res.error || 'Failed to save onboarding settings. Please try again.');
-        return;
+      // 1. Run updateDoc to save the data and set onboardingComplete: true
+      const userDocRef = doc(db, 'users', targetUid);
+      try {
+        await updateDoc(userDocRef, onboardingPayload);
+      } catch (updateErr: any) {
+        console.warn('[Onboarding] updateDoc failed, falling back to setDoc merge:', updateErr);
+        await setDoc(userDocRef, onboardingPayload, { merge: true });
       }
 
-      // Secondary client-side cache guarantee
-      try {
-        const cachedStr = localStorage.getItem(`boardly_cached_profile_${targetUid}`);
-        const parsed = cachedStr ? JSON.parse(cachedStr) : {};
-        localStorage.setItem(
-          `boardly_cached_profile_${targetUid}`,
-          JSON.stringify({
-            ...parsed,
-            ...onboardingData,
-            onboardingCompleted: true,
-            onboardingComplete: true,
-          })
-        );
-      } catch {}
-
-      setIsSaving(false);
+      // 2. Mark complete in local storage and session
+      if (typeof window !== 'undefined') {
+        try {
+          sessionStorage.removeItem('boardly_onboarding_step');
+          const cached = localStorage.getItem(`boardly_cached_profile_${targetUid}`);
+          const parsed = cached ? JSON.parse(cached) : {};
+          localStorage.setItem(
+            `boardly_cached_profile_${targetUid}`,
+            JSON.stringify({ ...parsed, ...onboardingPayload })
+          );
+        } catch {}
+      }
 
       if (startTest) {
         try {
@@ -123,15 +149,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
         } catch {}
       }
 
+      setIsSaving(false);
+
+      // 3. OPTIMISTIC ROUTING: Immediately force route user to /app!
       onComplete(startTest, {
         universityId: targetUniId,
         track: selectedTrack,
         weakSubjects: selectedWorries,
       });
     } catch (err: any) {
-      console.error('[OnboardingFlow] handleFinish error:', err);
+      console.error('[Onboarding] Direct save failed:', err);
       setIsSaving(false);
-      setErrorMessage(err?.message || 'Could not save onboarding profile to Firestore. Please try again.');
+      const errorText = err?.message || String(err);
+      setErrorMessage(errorText);
+      alert(`Onboarding Save Error: ${errorText}`);
     }
   };
 

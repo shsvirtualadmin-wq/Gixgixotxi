@@ -67,7 +67,9 @@ export const BoardlyAppRouter: React.FC = () => {
 
   // SESSIONS & AUTH GUARDS
   useEffect(() => {
+    // If auth is loading, or user is authenticated but their Firestore profile is still loading, DO NOT bounce!
     if (loading) return;
+    if (user && !profile) return;
 
     // 1. Authenticated users guard
     if (user) {
@@ -81,43 +83,34 @@ export const BoardlyAppRouter: React.FC = () => {
       }
 
       // Check if onboarding is completed in profile state or local cache
-      let hasCompletedOnboarding =
+      const hasCompletedOnboarding =
         profile?.onboardingCompleted === true ||
-        (profile as any)?.onboardingComplete === true;
-
-      if (!hasCompletedOnboarding && user?.uid && typeof window !== 'undefined') {
-        try {
-          const cached = localStorage.getItem(`boardly_cached_profile_${user.uid}`);
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed?.onboardingCompleted === true || parsed?.onboardingComplete === true) {
-              hasCompletedOnboarding = true;
+        (profile as any)?.onboardingComplete === true ||
+        (() => {
+          if (typeof window === 'undefined') return false;
+          try {
+            const cached = localStorage.getItem(`boardly_cached_profile_${user.uid}`);
+            if (cached) {
+              const parsed = JSON.parse(cached);
+              return parsed?.onboardingCompleted === true || parsed?.onboardingComplete === true;
             }
-          }
-        } catch {}
-      }
+          } catch {}
+          return false;
+        })();
 
-      // If documentExists or profile loaded from Firestore:
-      if (documentExists || profile) {
-        if (!hasCompletedOnboarding) {
-          // Only newly created users without completed onboarding see onboarding
-          if (currentPath !== '/onboarding' && currentPath !== '/signup') {
-            navigate('/onboarding', true);
-          }
-          return;
-        }
-
-        // Existing user who completed onboarding: prevent access to marketing, auth screens, or onboarding
-        const authRoutes = ['/', '', '/login', '/signup', '/forgot-password', '/reset-password', '/onboarding'];
-        if (authRoutes.includes(currentPath)) {
-          const targetDashboard = getHighestRolePath();
-          navigate(targetDashboard, true);
-        }
-      } else {
-        // Only if Firestore confirmed no doc exists and not marked onboarded
-        if (!hasCompletedOnboarding && currentPath !== '/onboarding' && currentPath !== '/signup') {
+      // ONLY force a user to /onboarding if we have positively confirmed their profile has onboardingComplete: false
+      if (!hasCompletedOnboarding) {
+        if (currentPath !== '/onboarding' && currentPath !== '/signup') {
           navigate('/onboarding', true);
         }
+        return;
+      }
+
+      // Existing user who completed onboarding: prevent access to marketing, auth screens, or onboarding
+      const authRoutes = ['/', '', '/login', '/signup', '/forgot-password', '/reset-password', '/onboarding'];
+      if (authRoutes.includes(currentPath)) {
+        const targetDashboard = getHighestRolePath();
+        navigate(targetDashboard, true);
       }
     } else {
       // 2. Unauthenticated users guard
@@ -146,8 +139,8 @@ export const BoardlyAppRouter: React.FC = () => {
     }
   }, [loading, user, profile, documentExists, isAdmin, currentPath, getHighestRolePath, navigate]);
 
-  // Loading skeleton state
-  if (loading) {
+  // Loading skeleton state - show spinner while auth or profile document is loading
+  if (loading || (user && !profile)) {
     return (
       <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4">
         <div className="w-14 h-14 rounded-3xl bg-indigo-100 dark:bg-violet-950/60 animate-pulse flex items-center justify-center">
