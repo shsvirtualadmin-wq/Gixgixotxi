@@ -237,14 +237,14 @@ export const BoardlyAppRouter: React.FC = () => {
           return (
             <OnboardingFlow
               onComplete={(_startTest, _config) => {
-                navigate('/app', true);
+                navigate(getHighestRolePath(), true);
               }}
             />
           );
         }
 
-        // 7. Student App (/app or /app/*)
-        if (currentPath === '/app' || currentPath.startsWith('/app/')) {
+        // 7. Student App (/app or /app/* or /dashboard)
+        if (currentPath === '/app' || currentPath.startsWith('/app/') || currentPath === '/dashboard') {
           if (!user) {
             navigate('/login', true);
             return null;

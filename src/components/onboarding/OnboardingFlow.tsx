@@ -95,6 +95,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
   };
 
   const handleSaveAndGoToDashboard = async () => {
+    if (isSaving) return;
     setErrorMessage(null);
     setIsSaving(true);
 
@@ -454,6 +455,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
                 <div className="flex items-center gap-3">
                   <input
                     type="date"
+                    min={new Date().toISOString().slice(0, 10)}
                     disabled={isNotSureDate}
                     value={examDate}
                     onChange={(e) => {
