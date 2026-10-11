@@ -277,12 +277,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       auth,
       async (currentUser) => {
         if (!isMounted) return;
-        setAuthLoading(false);
 
         try {
           if (currentUser) {
             lastKnownUserRef.current = currentUser;
             setUser(currentUser);
+            // Profile stays loading until Firestore profile read has finished
             setProfileLoading(true);
 
             try {
@@ -309,6 +309,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             } finally {
               if (isMounted) {
                 setProfileLoading(false);
+                setAuthLoading(false);
                 setInitialAuthChecked(true);
               }
             }
@@ -322,6 +323,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setStatus('signedOut');
                 lastKnownUserRef.current = null;
                 setProfileLoading(false);
+                setAuthLoading(false);
                 setInitialAuthChecked(true);
               }
               return;
@@ -349,6 +351,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setStatus('signedOut');
               lastKnownUserRef.current = null;
               setProfileLoading(false);
+              setAuthLoading(false);
               setInitialAuthChecked(true);
             }
           }
