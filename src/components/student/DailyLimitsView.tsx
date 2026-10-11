@@ -9,8 +9,10 @@ import {
   ShieldCheck,
   RefreshCw,
   Award,
+  Crown,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useUsage } from '../../context/UsageContext';
 import { getPlanConfig, getTimeUntilKarachiMidnight, PLAN_LIMITS } from '../../data/planLimits';
 import { SeoHead } from '../common/SeoHead';
 
@@ -26,23 +28,19 @@ export const DailyLimitsView: React.FC<DailyLimitsViewProps> = ({
   onNavigateBoardy,
 }) => {
   const { user, profile, isAdmin } = useAuth();
+  const {
+    loading: usageLoading,
+    isUnlimited,
+    testsLimit,
+    testsUsed,
+    testsLeft,
+    aiChatsLimit,
+    aiChatsUsed,
+    aiChatsLeft,
+    refillCountdown,
+  } = useUsage();
+
   const planConfig = getPlanConfig(profile?.plan);
-
-  // Countdown timer to midnight PKT
-  const [countdown, setCountdown] = useState(getTimeUntilKarachiMidnight());
-
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setCountdown(getTimeUntilKarachiMidnight());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Today's usage from profile or defaults
-  const testsUsedToday = profile?.testsUsedToday ?? profile?.dailyUsage?.testsTakenToday ?? 0;
-  const boardyUsedToday = profile?.boardyQuestionsUsedToday ?? profile?.dailyUsage?.questionsAskedToday ?? 0;
-
-  const isUnlimitedAccount = isAdmin || profile?.plan === 'premium';
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in pb-16">
@@ -79,7 +77,7 @@ export const DailyLimitsView: React.FC<DailyLimitsViewProps> = ({
         </div>
 
         <div className="px-4 py-2 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 font-mono font-black text-lg text-white">
-          {countdown.formattedCountdown}
+          {refillCountdown}
         </div>
       </div>
 
@@ -105,37 +103,48 @@ export const DailyLimitsView: React.FC<DailyLimitsViewProps> = ({
           </div>
 
           {/* Test Limit calculation and colored progress bar */}
-          {(() => {
-            const testPercent = isUnlimitedAccount ? 0 : Math.min(100, Math.round((testsUsedToday / planConfig.testsPerDay) * 100));
-            const testBarColor = testPercent < 50 ? 'bg-emerald-500' : testPercent <= 80 ? 'bg-amber-500' : 'bg-rose-500';
-            return (
-              <div className="space-y-1.5 pt-2">
-                <div className="flex justify-between items-baseline flex-wrap gap-1">
-                  <span className="text-lg sm:text-xl font-black text-[#0d1b3e]">
-                    {isUnlimitedAccount
-                      ? 'Unlimited'
-                      : `${testsUsedToday} of ${planConfig.testsPerDay} tests used today (resets at midnight PKT)`}
-                  </span>
-                  {!isUnlimitedAccount && (
-                    <span className="text-xs font-bold text-slate-500">
-                      {Math.max(0, planConfig.testsPerDay - testsUsedToday)} remaining
+          {usageLoading ? (
+            <div className="p-4 rounded-2xl bg-slate-50 animate-pulse space-y-2">
+              <div className="h-4 w-32 bg-slate-200 rounded-full" />
+              <div className="h-2 w-full bg-slate-200 rounded-full" />
+            </div>
+          ) : (
+            (() => {
+              const testPercent = isUnlimited ? 0 : Math.min(100, Math.round((testsUsed / testsLimit) * 100));
+              const testBarColor = testPercent < 50 ? 'bg-emerald-500' : testPercent <= 80 ? 'bg-amber-500' : 'bg-rose-500';
+              const testText = isUnlimited
+                ? 'Unlimited'
+                : testsLeft === 0
+                ? `0 of ${testsLimit} tests left today · Resets at midnight (PKT)`
+                : `${testsLeft} of ${testsLimit} tests left today`;
+
+              return (
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex justify-between items-baseline flex-wrap gap-1">
+                    <span className="text-lg sm:text-xl font-black text-[#0d1b3e]">
+                      {testText}
                     </span>
+                    {!isUnlimited && (
+                      <span className="text-xs font-bold text-slate-500">
+                        {testsUsed} taken today
+                      </span>
+                    )}
+                  </div>
+
+                  {!isUnlimited && (
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full ${testBarColor} rounded-full transition-all duration-300`}
+                        style={{
+                          width: `${testPercent}%`,
+                        }}
+                      />
+                    </div>
                   )}
                 </div>
-
-                {!isUnlimitedAccount && (
-                  <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full ${testBarColor} rounded-full transition-all duration-300`}
-                      style={{
-                        width: `${Math.min(100, (testsUsedToday / planConfig.testsPerDay) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+              );
+            })()
+          )}
 
           {onNavigatePractice && (
             <button
@@ -167,29 +176,47 @@ export const DailyLimitsView: React.FC<DailyLimitsViewProps> = ({
             </span>
           </div>
 
-          <div className="space-y-1.5 pt-2">
-            <div className="flex justify-between items-baseline">
-              <span className="text-2xl font-black text-[#0d1b3e]">
-                {isAdmin ? 'Unlimited' : `${boardyUsedToday} of ${planConfig.boardyPerDay}`}
-              </span>
-              {!isAdmin && (
-                <span className="text-xs font-bold text-slate-500">
-                  {Math.max(0, planConfig.boardyPerDay - boardyUsedToday)} remaining
-                </span>
-              )}
+          {usageLoading ? (
+            <div className="p-4 rounded-2xl bg-slate-50 animate-pulse space-y-2">
+              <div className="h-4 w-32 bg-slate-200 rounded-full" />
+              <div className="h-2 w-full bg-slate-200 rounded-full" />
             </div>
+          ) : (
+            (() => {
+              const aiPercent = isUnlimited ? 0 : Math.min(100, Math.round((aiChatsUsed / aiChatsLimit) * 100));
+              const aiText = isUnlimited
+                ? 'Unlimited'
+                : aiChatsLeft === 0
+                ? `0 of ${aiChatsLimit} AI chats left today · Resets at midnight (PKT)`
+                : `${aiChatsLeft} of ${aiChatsLimit} AI chats left today`;
 
-            {!isAdmin && (
-              <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-amber-500 rounded-full transition-all duration-300"
-                  style={{
-                    width: `${Math.min(100, (boardyUsedToday / planConfig.boardyPerDay) * 100)}%`,
-                  }}
-                />
-              </div>
-            )}
-          </div>
+              return (
+                <div className="space-y-1.5 pt-2">
+                  <div className="flex justify-between items-baseline flex-wrap gap-1">
+                    <span className="text-lg sm:text-xl font-black text-[#0d1b3e]">
+                      {aiText}
+                    </span>
+                    {!isUnlimited && (
+                      <span className="text-xs font-bold text-slate-500">
+                        {aiChatsUsed} used today
+                      </span>
+                    )}
+                  </div>
+
+                  {!isUnlimited && (
+                    <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-amber-500 rounded-full transition-all duration-300"
+                        style={{
+                          width: `${aiPercent}%`,
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })()
+          )}
 
           {onNavigateBoardy && (
             <button

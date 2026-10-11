@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
-import { X, Clock, Sparkles, Check, ArrowRight, ShieldCheck } from 'lucide-react';
+import { X, Clock, Sparkles, Check, ArrowRight, ShieldCheck, Zap } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useUsage } from '../../context/UsageContext';
 import { PLAN_LIMITS, getTimeUntilKarachiMidnight, PlanType } from '../../data/planLimits';
 
 interface StudentUsageModalProps {
@@ -19,25 +20,29 @@ export const StudentUsageModal: React.FC<StudentUsageModalProps> = ({
   onViewPlans,
 }) => {
   const { profile, isAdmin } = useAuth();
+  const {
+    loading: usageLoading,
+    isUnlimited,
+    testsLimit,
+    testsUsed,
+    testsLeft,
+    aiChatsLimit,
+    aiChatsUsed,
+    aiChatsLeft,
+    refillCountdown,
+  } = useUsage();
 
   if (!isOpen) return null;
 
   const userPlan: PlanType = (profile?.plan as PlanType) || 'free';
   const planConfig = PLAN_LIMITS[userPlan] || PLAN_LIMITS.free;
 
-  const testsLimit = typeof (profile as any)?.testsLimit === 'number'
-    ? (profile as any).testsLimit
-    : planConfig.testsPerDay;
-  const boardyLimit = typeof (profile as any)?.boardyLimit === 'number'
-    ? (profile as any).boardyLimit
-    : planConfig.boardyPerDay;
+  const testsUsedToday = testsUsed;
+  const boardyUsedToday = aiChatsUsed;
 
-  const testsUsedToday = typeof profile?.testsUsedToday === 'number' ? profile.testsUsedToday : 0;
-  const boardyUsedToday = typeof profile?.boardyQuestionsUsedToday === 'number' ? profile.boardyQuestionsUsedToday : 0;
-
-  const isUnlimitedTests = isAdmin || testsLimit >= 999;
-  const testsRemaining = isUnlimitedTests ? 'Unlimited' : Math.max(0, testsLimit - testsUsedToday);
-  const boardyRemaining = Math.max(0, boardyLimit - boardyUsedToday);
+  const isUnlimitedTests = isUnlimited;
+  const testsRemaining = isUnlimited ? 'Unlimited' : testsLeft;
+  const boardyRemaining = isUnlimited ? 'Unlimited' : aiChatsLeft;
 
   const countdown = getTimeUntilKarachiMidnight();
 
@@ -108,12 +113,18 @@ export const StudentUsageModal: React.FC<StudentUsageModalProps> = ({
                 <span>Tests</span>
                 <span className="text-[11px] text-blue-600">{testsUsedToday} started today</span>
               </div>
-              <div className="text-3xl font-extrabold text-blue-950">
-                {isUnlimitedTests ? (
+              <div className="text-2xl sm:text-3xl font-extrabold text-blue-950">
+                {usageLoading ? (
+                  <span className="text-sm font-medium text-slate-400">Checking today's limit…</span>
+                ) : isUnlimitedTests ? (
                   <span>Unlimited</span>
+                ) : testsRemaining === 0 ? (
+                  <span className="text-base sm:text-lg font-bold text-rose-700">
+                    0 of {testsLimit} tests left today · Resets at midnight (PKT)
+                  </span>
                 ) : (
                   <span>
-                    {testsRemaining} <span className="text-lg font-normal text-slate-500">of {planConfig.testsPerDay} left</span>
+                    {testsRemaining} of {testsLimit} tests left today
                   </span>
                 )}
               </div>
@@ -125,7 +136,7 @@ export const StudentUsageModal: React.FC<StudentUsageModalProps> = ({
                 {isUnlimitedTests ? (
                   <div className="h-2 w-full bg-blue-600 rounded-full" />
                 ) : (
-                  Array.from({ length: planConfig.testsPerDay }).map((_, i) => (
+                  Array.from({ length: Math.min(10, testsLimit) }).map((_, i) => (
                     <div
                       key={i}
                       className={`h-2 flex-1 rounded-full transition-all ${
@@ -152,25 +163,41 @@ export const StudentUsageModal: React.FC<StudentUsageModalProps> = ({
           <div className="p-5 rounded-2xl bg-gradient-to-br from-indigo-50/70 to-purple-50/40 border border-indigo-100 flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between text-xs font-semibold text-indigo-900 mb-2">
-                <span>Boardy questions</span>
+                <span>Boardy AI chats</span>
                 <span className="text-[11px] text-indigo-600">{boardyUsedToday} asked today</span>
               </div>
-              <div className="text-3xl font-extrabold text-indigo-950">
-                {boardyRemaining} <span className="text-lg font-normal text-slate-500">of {planConfig.boardyPerDay} left</span>
+              <div className="text-2xl sm:text-3xl font-extrabold text-indigo-950">
+                {usageLoading ? (
+                  <span className="text-sm font-medium text-slate-400">Checking today's limit…</span>
+                ) : isUnlimitedTests ? (
+                  <span>Unlimited</span>
+                ) : boardyRemaining === 0 ? (
+                  <span className="text-base sm:text-lg font-bold text-rose-700">
+                    0 of {aiChatsLimit} AI chats left today · Resets at midnight (PKT)
+                  </span>
+                ) : (
+                  <span>
+                    {boardyRemaining} of {aiChatsLimit} AI chats left today
+                  </span>
+                )}
               </div>
             </div>
 
             <div className="mt-4 pt-3 border-t border-indigo-200/50 flex items-center justify-between">
               {/* Segmented bar */}
               <div className="flex items-center gap-1.5 flex-1 mr-3">
-                {Array.from({ length: planConfig.boardyPerDay }).map((_, i) => (
-                  <div
-                    key={i}
-                    className={`h-2 flex-1 rounded-full transition-all ${
-                      i < boardyRemaining ? 'bg-indigo-600' : 'bg-indigo-200/60'
-                    }`}
-                  />
-                ))}
+                {isUnlimitedTests ? (
+                  <div className="h-2 w-full bg-indigo-600 rounded-full" />
+                ) : (
+                  Array.from({ length: Math.min(10, aiChatsLimit) }).map((_, i) => (
+                    <div
+                      key={i}
+                      className={`h-2 flex-1 rounded-full transition-all ${
+                        i < Number(boardyRemaining) ? 'bg-indigo-600' : 'bg-indigo-200/60'
+                      }`}
+                    />
+                  ))
+                )}
               </div>
               <button
                 type="button"
@@ -191,7 +218,7 @@ export const StudentUsageModal: React.FC<StudentUsageModalProps> = ({
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold text-slate-700 flex items-center gap-1.5">
               <Clock className="w-3.5 h-3.5 text-blue-600" />
-              <span>Refills in {countdown.formattedCountdown}</span>
+              <span>Refills in {refillCountdown}</span>
             </span>
             <span className="text-slate-400 font-mono">12:00 AM, Pakistan time</span>
           </div>

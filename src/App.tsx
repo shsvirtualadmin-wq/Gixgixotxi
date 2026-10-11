@@ -41,6 +41,7 @@ import { SiteSettingsProvider } from './context/SiteSettingsContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ModalProvider, useModals } from './context/ModalContext';
 import { AuthProvider } from './context/AuthContext';
+import { UsageProvider } from './context/UsageContext';
 import { BoardlyAppRouter } from './components/BoardlyAppRouter';
 import { GlobalModals } from './components/GlobalModals';
 import { LeaveConfirmationModal } from './components/LeaveConfirmationModal';
@@ -4047,7 +4048,9 @@ export const AppWithSettings: React.FC = () => {
       <SiteSettingsProvider>
         <ModalProvider>
           <AuthProvider>
-            <BoardlyAppRouter />
+            <UsageProvider>
+              <BoardlyAppRouter />
+            </UsageProvider>
           </AuthProvider>
         </ModalProvider>
       </SiteSettingsProvider>

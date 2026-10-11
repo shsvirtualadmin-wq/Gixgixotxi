@@ -2571,6 +2571,10 @@ async function startServer() {
         studentName
       );
 
+      if (process.env.NODE_ENV !== "production") {
+        console.log(`[Boardy AI Server Dev] Mode: ${mode || "deep-dive"} | System Prompt (first 80 chars): "${dynamicSystemInstruction.slice(0, 80)}..."`);
+      }
+
       const ai = getGeminiClient();
       const apiKey = getGeminiApiKey();
 

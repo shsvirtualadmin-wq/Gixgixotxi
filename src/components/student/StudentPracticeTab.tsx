@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { Zap, Clock, ArrowRight, Lock, Sparkles, Filter } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useUsage } from '../../context/UsageContext';
 import { UNIVERSITIES, University } from '../../data/universities';
 import { getUniversityPaperConfig } from '../../config/universityPapers';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
-import { PLAN_LIMITS, PlanType, normalizePlanId } from '../../data/planLimits';
+import { UsageMeter } from '../ui/UsageMeter';
 
 interface StudentPracticeTabProps {
   onStartSprint: (subject: string) => void;
@@ -20,25 +21,14 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
   onUpgrade,
 }) => {
   const { profile, user } = useAuth();
-  const isAdmin = Boolean(
-    profile?.role === 'admin' ||
-    (user?.email && (user.email.toLowerCase() === 'shsvirtualadmin@gmail.com' || user.email.toLowerCase() === 'support@boardly.cfd'))
-  );
-
-  const userPlan: PlanType = normalizePlanId(profile?.plan);
-  const planConfig = PLAN_LIMITS[userPlan] || PLAN_LIMITS.free;
-  const testsUsedToday = profile?.testsUsedToday || 0;
-  const isUnlimited = isAdmin || planConfig.testsPerDay >= 999;
-  const testsLeft = isUnlimited ? 999 : Math.max(0, planConfig.testsPerDay - testsUsedToday);
-  const isAllowanceExhausted = !isAdmin && !isUnlimited && testsLeft <= 0;
-  const testUsagePercent = isUnlimited ? 0 : Math.min(100, Math.round((testsUsedToday / planConfig.testsPerDay) * 100));
-
-  // Progress bar color: green < 50%, amber 50-80%, red > 80%
-  const testProgressBarColor = testUsagePercent < 50
-    ? 'bg-emerald-500'
-    : testUsagePercent <= 80
-    ? 'bg-amber-500'
-    : 'bg-rose-500';
+  const {
+    loading: usageLoading,
+    isUnlimited,
+    testsLimit,
+    testsUsed,
+    testsLeft,
+    canStartTest,
+  } = useUsage();
 
   const [uniCategoryFilter, setUniCategoryFilter] = useState<'All' | 'Engineering & CS' | 'Business & Finance' | 'NTS'>('All');
   const [showAllSubjects, setShowAllSubjects] = useState(false);
@@ -86,28 +76,9 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
           </p>
         </div>
 
-        {/* Usage pill on right with progress bar */}
-        <div className="flex flex-col items-start sm:items-end gap-1.5 self-start sm:self-auto">
-          <button
-            type="button"
-            onClick={onOpenUsage}
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/95 border border-slate-200/90 shadow-xs text-xs font-bold text-slate-700 hover:border-blue-400 hover:text-blue-600 transition-all cursor-pointer"
-          >
-            <span className={`w-2 h-2 rounded-full ${isUnlimited ? 'bg-emerald-500 animate-pulse' : testProgressBarColor}`} />
-            <span>
-              {isUnlimited
-                ? 'Unlimited tests today'
-                : `${testsUsedToday} of ${planConfig.testsPerDay} tests used today (resets at midnight PKT)`}
-            </span>
-          </button>
-          {!isUnlimited && (
-            <div className="w-48 sm:w-56 h-1.5 bg-slate-200/90 rounded-full overflow-hidden">
-              <div
-                className={`h-full ${testProgressBarColor} transition-all duration-300`}
-                style={{ width: `${testUsagePercent}%` }}
-              />
-            </div>
-          )}
+        {/* Unified Usage Meter */}
+        <div className="self-start sm:self-auto w-full sm:w-auto">
+          <UsageMeter type="tests" showUpgradeButton={true} onUpgrade={onUpgrade} />
         </div>
       </div>
 
@@ -133,7 +104,7 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
                   key={sub}
                   type="button"
                   onClick={() => {
-                    if (isAllowanceExhausted) {
+                    if (!canStartTest()) {
                       onUpgrade();
                     } else {
                       onStartSprint(sub);
@@ -247,23 +218,30 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
 
                 {/* Take Test or upgrade button */}
                 <div className="mt-4 pt-3 border-t border-slate-100">
-                  {isAllowanceExhausted ? (
+                  {usageLoading ? (
+                    <button
+                      type="button"
+                      disabled={true}
+                      className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed flex items-center justify-center gap-1.5"
+                    >
+                      <span>Checking today's limit…</span>
+                    </button>
+                  ) : !canStartTest() ? (
                     <div className="space-y-1.5">
                       <button
                         type="button"
                         disabled={true}
-                        title="Daily test limit reached. Resets at midnight PKT. Upgrade to Pro for unlimited tests."
-                        className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed flex items-center justify-center gap-1.5"
+                        className="w-full py-2 px-3 rounded-xl font-bold text-[11px] bg-rose-50 text-rose-700 border border-rose-200 cursor-not-allowed flex items-center justify-center gap-1.5"
                       >
-                        <Lock className="w-3.5 h-3.5" />
-                        <span>Take Test (Limit Reached)</span>
+                        <Lock className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                        <span>You have used today's free limit. Resets at midnight (PKT)</span>
                       </button>
                       <button
                         type="button"
                         onClick={onUpgrade}
                         className="w-full py-1 text-center text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
                       >
-                        Upgrade to Pro for more tests &rarr;
+                        Upgrade to keep practicing &rarr;
                       </button>
                     </div>
                   ) : (

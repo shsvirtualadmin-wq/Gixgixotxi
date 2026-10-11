@@ -1,29 +1,59 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
-  Send,
-  Sparkles,
-  Plus,
   Menu,
   X,
+  Send,
   Loader2,
-  ArrowRight,
+  Copy,
+  Check,
+  RotateCcw,
+  ThumbsUp,
+  ThumbsDown,
+  ArrowDown,
+  ChevronDown,
+  Search,
+  Plus,
+  ArrowLeft,
   Trash2,
-  Compass,
-  Zap,
+  Edit2,
   BookOpen,
-  HeartHandshake
+  Zap,
+  HeartHandshake,
+  Compass,
+  MoreVertical,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useUsage } from '../../context/UsageContext';
 import { BoardyMascot } from '../BoardyMascot';
 import { StudyBuddyFormattedMessage } from '../StudyBuddyFormattedMessage';
-import { PLAN_LIMITS, PlanType, normalizePlanId } from '../../data/planLimits';
-import { BOARDY_MODES, BoardyMode } from '../../config/boardyConfig';
+import {
+  BOARDY_MODES,
+  BoardyMode,
+  buildBoardySystemPrompt,
+  getBoardyModel
+} from '../../config/boardyConfig';
+import { db } from '../../lib/firebase';
+import {
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  getDocs,
+  query,
+  orderBy,
+  limit
+} from 'firebase/firestore';
 
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  mode?: BoardyMode;
   createdAt: string;
+  failed?: boolean;
+  feedback?: 'up' | 'down' | null;
 }
 
 export interface ChatSession {
@@ -39,41 +69,59 @@ interface StudentBoardyChatTabProps {
   initialPrompt?: string;
   onOpenUsage?: () => void;
   onUpgrade?: () => void;
+  onBackToDashboard?: () => void;
   onInputFocus?: () => void;
   onInputBlur?: () => void;
+  isFullScreen?: boolean;
 }
 
 export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
   initialPrompt,
   onOpenUsage,
   onUpgrade,
+  onBackToDashboard,
   onInputFocus,
   onInputBlur,
+  isFullScreen = true,
 }) => {
-  const { profile, user, updateProfileData } = useAuth();
-  const isAdmin = Boolean(
-    profile?.role === 'admin' ||
-    (user?.email && (user.email.toLowerCase() === 'shsvirtualadmin@gmail.com' || user.email.toLowerCase() === 'support@boardly.cfd'))
-  );
-  const firstName = isAdmin ? 'Admin' : (profile?.name?.trim().split(' ')[0] || 'Student');
+  const { user, profile, isAdmin, updateProfileData } = useAuth();
+  const {
+    loading: usageLoading,
+    isUnlimited,
+    aiChatsLimit,
+    aiChatsUsed,
+    aiChatsLeft,
+    canSendAiMessage,
+    consumeAiChatReply,
+  } = useUsage();
 
-  const userPlan: PlanType = normalizePlanId(profile?.plan);
-  const planConfig = PLAN_LIMITS[userPlan] || PLAN_LIMITS.free;
-  const boardyLimit = typeof (profile as any)?.boardyLimit === 'number'
-    ? (profile as any).boardyLimit
-    : planConfig.boardyPerDay;
-  const boardyUsedToday = typeof profile?.boardyQuestionsUsedToday === 'number'
-    ? profile.boardyQuestionsUsedToday
-    : 0;
-  const isUnlimited = isAdmin || boardyLimit >= 999;
-  // Never show a remaining count larger than the limit
-  const boardyRemaining = isUnlimited ? 'Unlimited' : Math.min(boardyLimit, Math.max(0, boardyLimit - boardyUsedToday));
-  const isBoardyExhausted = !isUnlimited && (typeof boardyRemaining === 'number' && boardyRemaining <= 0);
+  const firstName = isAdmin
+    ? 'Admin'
+    : (profile?.name?.trim().split(' ')[0] || 'Student');
 
-  // Active Pedagogical Mode
-  const [activeMode, setActiveMode] = useState<BoardyMode>('deep-dive');
+  const targetTest = profile?.targetUniversity || profile?.testTrack || '';
 
-  // Multi-session chat history
+  // Mode Selection
+  const [activeMode, setActiveMode] = useState<BoardyMode>(() => {
+    if (profile?.lastBoardyMode) return profile.lastBoardyMode as BoardyMode;
+    try {
+      const saved = localStorage.getItem('boardly_last_boardy_mode') as BoardyMode;
+      if (saved && ['deep-dive', 'quick-take', 'study-pal', 'game-plan'].includes(saved)) {
+        return saved;
+      }
+    } catch {}
+    return 'deep-dive';
+  });
+
+  const [isModePickerOpen, setIsModePickerOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sessionMenuId, setSessionMenuId] = useState<string | null>(null);
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null);
+  const [renameTitleInput, setRenameTitleInput] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  // Chat sessions state
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     try {
       const saved = localStorage.getItem('boardly_boardy_sessions');
@@ -81,540 +129,1146 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
-      // Migrate legacy single messages if found
-      const legacyMsgs = localStorage.getItem('boardly_boardy_chat_messages');
-      if (legacyMsgs) {
-        const parsedLegacy = JSON.parse(legacyMsgs);
-        if (Array.isArray(parsedLegacy) && parsedLegacy.length > 0) {
-          return [{
-            id: `session-${Date.now()}`,
-            title: parsedLegacy[0]?.content?.slice(0, 30) || 'Study Session',
-            mode: 'deep-dive',
-            messages: parsedLegacy,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          }];
-        }
-      }
     } catch {}
     return [];
   });
 
   const [activeSessionId, setActiveSessionId] = useState<string>(() => {
-    return sessions[0]?.id || `session-${Date.now()}`;
+    try {
+      const lastId = localStorage.getItem('boardly_active_boardy_session_id');
+      if (lastId) return lastId;
+    } catch {}
+    return `session-${Date.now()}`;
   });
 
-  // Current session messages
-  const activeSession = sessions.find((s) => s.id === activeSessionId);
-  const messages = activeSession?.messages || [];
+  const activeSession = useMemo(() => {
+    return sessions.find((s) => s.id === activeSessionId) || null;
+  }, [sessions, activeSessionId]);
 
-  const [inputValue, setInputValue] = useState<string>('');
-  const [isTyping, setIsTyping] = useState<boolean>(false);
-  const [showDrawer, setShowDrawer] = useState<boolean>(false);
+  const messages = useMemo(() => {
+    return activeSession?.messages || [];
+  }, [activeSession]);
+
+  const [inputValue, setInputValue] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [showScrollBottom, setShowScrollBottom] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const chatScrollContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const modePickerRef = useRef<HTMLDivElement>(null);
 
-  // Save sessions to localStorage whenever they change
+  // Load chat sessions from Firestore on mount
   useEffect(() => {
-    try {
-      localStorage.setItem('boardly_boardy_sessions', JSON.stringify(sessions));
-    } catch {}
-  }, [sessions]);
-
-  // Scroll to bottom on new message
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
-
-  // Initial prompt trigger (e.g., from question review)
-  useEffect(() => {
-    if (initialPrompt && initialPrompt.trim().length > 0) {
-      handleSendMessage(initialPrompt);
-    }
-  }, [initialPrompt]);
-
-  const promptChips = [
-    'Explain NUST Advance Maths question',
-    'FAST negative marking strategy',
-    'Solve an Integration MCQ step-by-step',
-    'Review my last test mistakes',
-  ];
-
-  const handleSendMessage = async (textToSend: string) => {
-    const text = textToSend.trim();
-    if (!text || isTyping) return;
-
-    if (isBoardyExhausted) {
-      onUpgrade?.();
-      return;
-    }
-
-    const userMsg: ChatMessage = {
-      id: `u-${Date.now()}`,
-      role: 'user',
-      content: text,
-      createdAt: new Date().toISOString(),
+    if (!user?.uid) return;
+    const loadFromDb = async () => {
+      try {
+        const chatsRef = collection(db, 'users', user.uid, 'boardyChats');
+        const q = query(chatsRef, orderBy('updatedAt', 'desc'), limit(30));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          const loaded: ChatSession[] = snap.docs.map((d) => ({
+            id: d.id,
+            ...(d.data() as any),
+          }));
+          setSessions(loaded);
+          localStorage.setItem('boardly_boardy_sessions', JSON.stringify(loaded));
+          // Restore last active session if valid
+          if (loaded.length > 0 && !loaded.some((s) => s.id === activeSessionId)) {
+            setActiveSessionId(loaded[0].id);
+          }
+        }
+      } catch (err) {
+        console.warn('[Boardy] Firestore chats load notice:', err);
+      }
     };
+    loadFromDb();
+  }, [user?.uid]);
 
-    // Update session state with user message
-    let currentSessionObj = sessions.find((s) => s.id === activeSessionId);
-    if (!currentSessionObj) {
-      currentSessionObj = {
-        id: activeSessionId,
-        title: text.length > 36 ? `${text.slice(0, 36)}…` : text,
-        mode: activeMode,
-        messages: [userMsg],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      setSessions((prev) => [currentSessionObj!, ...prev]);
-    } else {
-      const updatedMessages = [...currentSessionObj.messages, userMsg];
-      const updatedSession = {
-        ...currentSessionObj,
-        messages: updatedMessages,
-        updatedAt: new Date().toISOString(),
-      };
-      setSessions((prev) =>
-        prev.map((s) => (s.id === activeSessionId ? updatedSession : s))
-      );
-    }
-
-    setInputValue('');
-    setIsTyping(true);
-
-    // Increment usage in profile
-    const newUsed = boardyUsedToday + 1;
-    updateProfileData({ boardyQuestionsUsedToday: newUsed }).catch(console.warn);
-
+  // Save active session ID to localStorage
+  useEffect(() => {
     try {
-      // Call Boardy AI backend with full context and pedagogical mode
-      const targetExam = profile?.targetUniversity || profile?.targetUniversityId || profile?.testTrack || 'Entry Exams';
-      const res = await fetch('/api/boardy/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: text,
-          userQuestion: text,
-          history: (currentSessionObj?.messages || []).slice(-6).map((m) => ({ role: m.role, content: m.content })),
-          mode: activeMode,
-          targetExam,
-          studentName: firstName,
-        }),
+      localStorage.setItem('boardly_active_boardy_session_id', activeSessionId);
+    } catch {}
+  }, [activeSessionId]);
+
+  // Persist sessions to localStorage and Firestore
+  const saveSessionState = useCallback((updatedSessions: ChatSession[], targetSession?: ChatSession) => {
+    setSessions(updatedSessions);
+    try {
+      localStorage.setItem('boardly_boardy_sessions', JSON.stringify(updatedSessions));
+    } catch {}
+
+    if (user?.uid && targetSession) {
+      const docRef = doc(db, 'users', user.uid, 'boardyChats', targetSession.id);
+      setDoc(docRef, targetSession, { merge: true }).catch((e) => {
+        console.warn('[Boardy] Sync session doc notice:', e);
       });
-
-      let replyText = '';
-      if (res.ok) {
-        const data = await res.json();
-        replyText = data.reply || data.explanation || data.answer || '';
-      }
-
-      if (!replyText) {
-        // Fallback intelligent step-by-step response if backend is offline
-        replyText = generateLocalBoardyReply(text, firstName, activeMode);
-      }
-
-      const botMsg: ChatMessage = {
-        id: `b-${Date.now()}`,
-        role: 'assistant',
-        content: replyText,
-        createdAt: new Date().toISOString(),
-      };
-
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeSessionId
-            ? { ...s, messages: [...s.messages, botMsg], updatedAt: new Date().toISOString() }
-            : s
-        )
-      );
-    } catch (err) {
-      const fallbackMsg: ChatMessage = {
-        id: `b-${Date.now()}`,
-        role: 'assistant',
-        content: generateLocalBoardyReply(text, firstName, activeMode),
-        createdAt: new Date().toISOString(),
-      };
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === activeSessionId
-            ? { ...s, messages: [...s.messages, fallbackMsg], updatedAt: new Date().toISOString() }
-            : s
-        )
-      );
-    } finally {
-      setIsTyping(false);
     }
+  }, [user?.uid]);
+
+  // Close mode picker on outside click
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (modePickerRef.current && !modePickerRef.current.contains(e.target as Node)) {
+        setIsModePickerOpen(false);
+      }
+    };
+    if (isModePickerOpen) {
+      document.addEventListener('mousedown', handleOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [isModePickerOpen]);
+
+  // Auto-scroll logic with scroll detection
+  const scrollToBottom = useCallback((smooth = true) => {
+    messagesEndRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
+  }, []);
+
+  useEffect(() => {
+    scrollToBottom(true);
+  }, [messages.length, isTyping, scrollToBottom]);
+
+  const handleScroll = useCallback(() => {
+    const el = chatScrollContainerRef.current;
+    if (!el) return;
+    const isUp = el.scrollHeight - el.scrollTop - el.clientHeight > 140;
+    setShowScrollBottom(isUp);
+  }, []);
+
+  // Update mode selection and save to profile & localStorage
+  const handleSelectMode = (mode: BoardyMode) => {
+    setActiveMode(mode);
+    setIsModePickerOpen(false);
+    try {
+      localStorage.setItem('boardly_last_boardy_mode', mode);
+    } catch {}
+    updateProfileData({ lastBoardyMode: mode }).catch(() => {});
   };
 
-  const handleStartNewSession = () => {
+  // Create a brand new chat
+  const handleStartNewChat = () => {
     const newId = `session-${Date.now()}`;
     const newSession: ChatSession = {
       id: newId,
-      title: 'New Discussion',
+      title: 'New Study Chat',
       mode: activeMode,
       messages: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    setSessions((prev) => [newSession, ...prev]);
+    const updated = [newSession, ...sessions];
+    saveSessionState(updated, newSession);
     setActiveSessionId(newId);
-    setShowDrawer(false);
+    setInputValue('');
+    setIsSidebarOpen(false);
   };
 
-  const handleDeleteSession = (sessionId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
+  // Rename a chat
+  const handleSaveRename = (sessionId: string) => {
+    if (!renameTitleInput.trim()) return;
+    const updated = sessions.map((s) => {
+      if (s.id === sessionId) {
+        const mod = { ...s, title: renameTitleInput.trim(), updatedAt: new Date().toISOString() };
+        if (user?.uid) {
+          setDoc(doc(db, 'users', user.uid, 'boardyChats', sessionId), { title: mod.title }, { merge: true }).catch(() => {});
+        }
+        return mod;
+      }
+      return s;
+    });
+    setSessions(updated);
+    try {
+      localStorage.setItem('boardly_boardy_sessions', JSON.stringify(updated));
+    } catch {}
+    setRenamingSessionId(null);
+    setSessionMenuId(null);
+  };
+
+  // Delete a chat with confirmation
+  const handleDeleteSession = (sessionId: string) => {
     const updated = sessions.filter((s) => s.id !== sessionId);
     setSessions(updated);
+    try {
+      localStorage.setItem('boardly_boardy_sessions', JSON.stringify(updated));
+    } catch {}
+
+    if (user?.uid) {
+      deleteDoc(doc(db, 'users', user.uid, 'boardyChats', sessionId)).catch(() => {});
+    }
+
     if (activeSessionId === sessionId) {
-      if (updated.length > 0) {
-        setActiveSessionId(updated[0].id);
-      } else {
-        const newId = `session-${Date.now()}`;
-        setActiveSessionId(newId);
+      const nextId = updated[0]?.id || `session-${Date.now()}`;
+      setActiveSessionId(nextId);
+    }
+    setDeleteConfirmId(null);
+    setSessionMenuId(null);
+  };
+
+  // Generate an auto title from the first message
+  const generateAutoTitle = (text: string): string => {
+    const cleaned = text.replace(/[$*#_]/g, '').trim();
+    if (cleaned.length <= 36) return cleaned;
+    return cleaned.slice(0, 36).trim() + '…';
+  };
+
+  // Send message execution
+  const executeSendMessage = async (textToSend: string, isRetry = false) => {
+    const text = textToSend.trim();
+    if (!text || isTyping) return;
+
+    // Check usage blocking via shared usage store
+    if (!canSendAiMessage()) {
+      if (onUpgrade) onUpgrade();
+      return;
+    }
+
+    const currentSession = sessions.find((s) => s.id === activeSessionId) || {
+      id: activeSessionId,
+      title: generateAutoTitle(text),
+      mode: activeMode,
+      messages: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    let sessionMessages = [...currentSession.messages];
+
+    // If retrying, remove failed assistant message
+    if (isRetry) {
+      sessionMessages = sessionMessages.filter((m) => !m.failed);
+    } else {
+      const userMsg: ChatMessage = {
+        id: `u-${Date.now()}`,
+        role: 'user',
+        content: text,
+        createdAt: new Date().toISOString(),
+      };
+      sessionMessages.push(userMsg);
+    }
+
+    // Auto title if first message
+    const hasPreviousUserMessages = currentSession.messages.some((m) => m.role === 'user');
+    const autoTitle = hasPreviousUserMessages ? currentSession.title : generateAutoTitle(text);
+
+    const updatedSession: ChatSession = {
+      ...currentSession,
+      title: autoTitle,
+      mode: activeMode,
+      messages: sessionMessages,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const nextSessions = [
+      updatedSession,
+      ...sessions.filter((s) => s.id !== activeSessionId),
+    ];
+    saveSessionState(nextSessions, updatedSession);
+
+    setInputValue('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+    setIsTyping(true);
+
+    // Development mode logging: mode & first 80 chars of system prompt per request
+    const sysPrompt = buildBoardySystemPrompt(activeMode, targetTest, firstName);
+    if (import.meta.env.DEV) {
+      console.log(`[Boardy Dev Request] Mode: ${activeMode} | Prompt prefix: "${sysPrompt.slice(0, 80)}..."`);
+    }
+
+    try {
+      // Build conversation history payload
+      const historyPayload = sessionMessages
+        .slice(-6)
+        .map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
+
+      const res = await fetch('/api/boardy/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          mode: activeMode,
+          history: historyPayload,
+          targetExam: targetTest,
+          studentName: firstName,
+        }),
+      });
+
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok || !data || !data.reply) {
+        throw new Error(data?.error || 'Empty response received');
       }
+
+      // Successfully produced answer: atomically consume AI chat quota
+      await consumeAiChatReply();
+
+      const aiMsg: ChatMessage = {
+        id: `a-${Date.now()}`,
+        role: 'assistant',
+        content: data.reply,
+        mode: (data.mode as BoardyMode) || activeMode,
+        createdAt: new Date().toISOString(),
+      };
+
+      const finalMessages = [...sessionMessages, aiMsg];
+      const finalSession: ChatSession = {
+        ...updatedSession,
+        messages: finalMessages,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const finalSessionsList = [
+        finalSession,
+        ...sessions.filter((s) => s.id !== activeSessionId),
+      ];
+      saveSessionState(finalSessionsList, finalSession);
+    } catch (err) {
+      console.error('[Boardy Chat error]:', err);
+      // Failed request: Show error message. A failed request does NOT consume a chat quota.
+      const errorMsg: ChatMessage = {
+        id: `err-${Date.now()}`,
+        role: 'assistant',
+        content: 'Something went wrong. Tap to retry.',
+        mode: activeMode,
+        failed: true,
+        createdAt: new Date().toISOString(),
+      };
+
+      const errorMessages = [...sessionMessages, errorMsg];
+      const errorSession: ChatSession = {
+        ...updatedSession,
+        messages: errorMessages,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const errorSessionsList = [
+        errorSession,
+        ...sessions.filter((s) => s.id !== activeSessionId),
+      ];
+      saveSessionState(errorSessionsList, errorSession);
+    } finally {
+      setIsTyping(false);
     }
   };
 
-  // Greeting
-  const greeting = (() => {
+  // Initial prompt trigger (e.g. from reviewing test question)
+  useEffect(() => {
+    if (initialPrompt && initialPrompt.trim().length > 0) {
+      executeSendMessage(initialPrompt);
+    }
+  }, [initialPrompt]);
+
+  // Copy message text
+  const handleCopy = async (id: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedMsgId(id);
+      setTimeout(() => setCopiedMsgId(null), 2000);
+    } catch {}
+  };
+
+  // Feedback thumb click
+  const handleFeedback = (msgId: string, feedback: 'up' | 'down') => {
+    if (!activeSession) return;
+    const updatedMessages = activeSession.messages.map((m) => {
+      if (m.id === msgId) {
+        return { ...m, feedback: m.feedback === feedback ? null : feedback };
+      }
+      return m;
+    });
+    const updated = { ...activeSession, messages: updatedMessages };
+    saveSessionState(
+      sessions.map((s) => (s.id === activeSession.id ? updated : s)),
+      updated
+    );
+  };
+
+  // Regenerate last user response
+  const handleRegenerate = (aiMsgIndex: number) => {
+    if (!activeSession) return;
+    const previousUserMsg = [...activeSession.messages.slice(0, aiMsgIndex)]
+      .reverse()
+      .find((m) => m.role === 'user');
+    if (previousUserMsg) {
+      executeSendMessage(previousUserMsg.content, true);
+    }
+  };
+
+  // Four Suggestions tailored to student target test
+  const suggestions = useMemo(() => {
+    return [
+      {
+        subject: 'Physics',
+        color: 'bg-sky-100 text-sky-800 border-sky-200',
+        prompt: 'Why does a heavier object not fall faster?',
+      },
+      {
+        subject: 'Math',
+        color: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+        prompt: 'Solve $\\int x e^x dx$ step-by-step using integration by parts',
+      },
+      {
+        subject: 'Chemistry',
+        color: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+        prompt: 'How do conjugate acid-base pairs work with examples?',
+      },
+      {
+        subject: 'Strategy',
+        color: 'bg-amber-100 text-amber-800 border-amber-200',
+        prompt: targetTest
+          ? `Best time management strategy for ${targetTest} MCQs?`
+          : 'How to manage time and negative marking in university entrance tests?',
+      },
+    ];
+  }, [targetTest]);
+
+  // Greeting time-of-day
+  const timeGreeting = useMemo(() => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good morning';
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
-  })();
+  }, []);
 
-  const modeIcons: Record<BoardyMode, React.ReactNode> = {
-    'deep-dive': <BookOpen className="w-3.5 h-3.5" />,
-    'quick-take': <Zap className="w-3.5 h-3.5" />,
-    'study-pal': <HeartHandshake className="w-3.5 h-3.5" />,
-    'game-plan': <Compass className="w-3.5 h-3.5" />,
+  // Filtered session list for sidebar
+  const filteredSessions = useMemo(() => {
+    if (!searchQuery.trim()) return sessions;
+    const q = searchQuery.toLowerCase();
+    return sessions.filter(
+      (s) =>
+        s.title.toLowerCase().includes(q) ||
+        s.messages.some((m) => m.content.toLowerCase().includes(q))
+    );
+  }, [sessions, searchQuery]);
+
+  // Grouped sessions by Today, Yesterday, Previous 7 days, Older
+  const groupedSessions = useMemo(() => {
+    const today: ChatSession[] = [];
+    const yesterday: ChatSession[] = [];
+    const prev7Days: ChatSession[] = [];
+    const older: ChatSession[] = [];
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startOfYesterday = startOfToday - 86400000;
+    const startOf7Days = startOfToday - 7 * 86400000;
+
+    filteredSessions.forEach((s) => {
+      const time = new Date(s.updatedAt || s.createdAt).getTime();
+      if (time >= startOfToday) {
+        today.push(s);
+      } else if (time >= startOfYesterday) {
+        yesterday.push(s);
+      } else if (time >= startOf7Days) {
+        prev7Days.push(s);
+      } else {
+        older.push(s);
+      }
+    });
+
+    return { today, yesterday, prev7Days, older };
+  }, [filteredSessions]);
+
+  const activeModeInfo = BOARDY_MODES.find((m) => m.id === activeMode) || BOARDY_MODES[0];
+
+  const getModeIcon = (modeId: BoardyMode) => {
+    switch (modeId) {
+      case 'quick-take':
+        return <Zap className="w-3.5 h-3.5 text-amber-500" />;
+      case 'study-pal':
+        return <HeartHandshake className="w-3.5 h-3.5 text-rose-500" />;
+      case 'game-plan':
+        return <Compass className="w-3.5 h-3.5 text-teal-500" />;
+      case 'deep-dive':
+      default:
+        return <BookOpen className="w-3.5 h-3.5 text-indigo-500" />;
+    }
   };
 
+  const hasMessages = messages.length > 0;
+
+  // Remaining AI chat count line wording from shared usage store
+  const aiChatsLineText = useMemo(() => {
+    if (usageLoading) return 'Checking today\'s limit…';
+    if (isUnlimited) return 'Unlimited AI chats';
+    if (typeof aiChatsLeft === 'number') {
+      if (aiChatsLeft === 0) {
+        return `0 of ${aiChatsLimit} AI chats left today · Resets at midnight (PKT)`;
+      }
+      return `${aiChatsLeft} of ${aiChatsLimit} AI chats left today`;
+    }
+    return 'Unlimited AI chats';
+  }, [usageLoading, isUnlimited, aiChatsLeft, aiChatsLimit]);
+
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] max-w-4xl mx-auto bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-xl rounded-3xl overflow-hidden font-sans">
-      {/* Top Bar */}
-      <header className="px-4 sm:px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-white/90">
-        <div className="flex items-center gap-3">
-          <button
-            type="button"
-            onClick={() => setShowDrawer(true)}
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
-            aria-label="Chat history"
-          >
-            <Menu className="w-5 h-5" />
-          </button>
-          <div className="flex items-center gap-2">
-            <BoardyMascot size="sm" />
-            <div>
-              <h1 className="font-extrabold text-sm sm:text-base text-slate-900 tracking-tight leading-none">
-                Boardy AI
-              </h1>
-              <span className="text-[10px] font-semibold text-slate-400">
-                24/7 Academic Study Partner
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* Daily questions allowance indicator */}
-          <button
-            type="button"
-            onClick={onOpenUsage}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-[11px] font-bold text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
-          >
-            <Sparkles className="w-3 h-3 text-amber-500" />
-            <span>
-              {isUnlimited
-                ? 'Unlimited questions'
-                : `${boardyUsedToday} of ${boardyLimit} questions used today (resets at midnight PKT)`}
-            </span>
-          </button>
-
-          <button
-            type="button"
-            onClick={handleStartNewSession}
-            className="p-2 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
-            title="Start new conversation"
-            aria-label="New chat"
-          >
-            <Plus className="w-5 h-5" />
-          </button>
-        </div>
-      </header>
-
-      {/* Mode Switcher Bar */}
-      <div className="px-3 sm:px-5 py-2 bg-slate-50/80 border-b border-slate-100/90 flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
-        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1">
-          Mode:
-        </span>
-        {BOARDY_MODES.map((mode) => {
-          const isActive = activeMode === mode.id;
-          return (
-            <button
-              key={mode.id}
-              type="button"
-              onClick={() => setActiveMode(mode.id)}
-              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
-                isActive
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100 hover:text-slate-900'
-              }`}
-              title={mode.description}
-            >
-              {modeIcons[mode.id]}
-              <span>{mode.name}</span>
-            </button>
-          );
-        })}
+    <div className="fixed inset-0 z-50 bg-[#F8F9FB] text-[#0d1b3e] flex flex-col overflow-hidden font-sans select-text">
+      {/* ========================================================================= */}
+      {/* 1. TOP CONTROL: ONLY a hamburger button at top-right with soft background */}
+      {/* ========================================================================= */}
+      <div className="fixed top-3 right-3 z-30 pt-safe">
+        <button
+          type="button"
+          onClick={() => setIsSidebarOpen(true)}
+          className="p-2.5 rounded-2xl bg-white/85 hover:bg-white text-slate-700 hover:text-slate-900 border border-slate-200/90 shadow-sm backdrop-blur-md cursor-pointer transition-all active:scale-95 flex items-center justify-center"
+          aria-label="Open chats sidebar"
+        >
+          <Menu className="w-5 h-5 text-slate-700" />
+        </button>
       </div>
 
-      {/* Messages Scroll Area */}
-      <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
-        {messages.length === 0 ? (
-          /* Empty State */
-          <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-6">
-            <BoardyMascot size="lg" withSparkle={true} />
+      {/* ========================================================================= */}
+      {/* 2. CHAT CONTENT OR EMPTY STATE                                            */}
+      {/* ========================================================================= */}
+      {!hasMessages ? (
+        /* ------------------ EMPTY STATE (VERTICALLY CENTERED) ------------------ */
+        <div className="flex-1 flex flex-col items-center justify-center max-w-2xl mx-auto w-full px-4 text-center my-auto py-6 overflow-y-auto">
+          {/* Centered Mascot */}
+          <BoardyMascot size={76} animated />
 
-            <div className="space-y-1.5">
-              <h2 className="text-xl sm:text-2xl font-black text-slate-900">
-                {greeting}, {firstName}
-              </h2>
-              <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto">
-                What are we studying today? Ask any MCQ, formula proof, or exam strategy.
-              </p>
-            </div>
+          {/* Large Greeting */}
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-[#0d1b3e] tracking-tight mt-4">
+            {timeGreeting}, {firstName}
+          </h1>
+          <p className="text-sm sm:text-base font-semibold text-slate-500 mt-1">
+            What shall we tackle today?
+          </p>
 
-            {/* Prompt Chips */}
-            <div className="w-full max-w-md grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2">
-              {promptChips.map((chip) => (
-                <button
-                  key={chip}
-                  type="button"
-                  onClick={() => handleSendMessage(chip)}
-                  className="p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-300 text-left text-xs font-semibold text-slate-700 hover:text-blue-900 shadow-xs transition-all cursor-pointer flex items-center justify-between group"
-                >
-                  <span className="line-clamp-2">{chip}</span>
-                  <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 shrink-0 ml-1" />
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : (
-          messages.map((m) => {
-            const isUser = m.role === 'user';
-            return (
-              <div
-                key={m.id}
-                className={`flex gap-3 max-w-2xl ${isUser ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
-              >
-                {!isUser ? (
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                    <BoardyMascot size="sm" />
-                  </div>
-                ) : (
-                  <div className="w-8 h-8 rounded-full bg-slate-800 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                    {firstName[0]}
-                  </div>
-                )}
-
-                <div
-                  className={`p-4 rounded-3xl text-xs sm:text-sm leading-relaxed overflow-x-auto ${
-                    isUser
-                      ? 'bg-blue-600 text-white rounded-tr-none'
-                      : 'bg-slate-50 border border-slate-200/80 text-slate-800 rounded-tl-none shadow-xs'
-                  }`}
-                >
-                  <StudyBuddyFormattedMessage content={m.content} isUser={isUser} theme="light" />
-                </div>
-              </div>
-            );
-          })
-        )}
-
-        {isTyping && (
-          <div className="flex gap-3 mr-auto max-w-md">
-            <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-              <BoardyMascot size="sm" />
-            </div>
-            <div className="p-4 rounded-3xl bg-slate-50 border border-slate-200/80 rounded-tl-none flex items-center gap-2 text-xs text-slate-500">
-              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-              <span>Boardy is writing out the step-by-step logic…</span>
-            </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Bottom Input Area */}
-      <div className="p-3 sm:p-4 border-t border-slate-100 bg-white/90">
-        {isBoardyExhausted ? (
-          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-            <span>You've used all {boardyLimit} Boardy AI questions for today (resets at midnight PKT).</span>
-            <button
-              type="button"
-              onClick={onUpgrade}
-              className="px-3 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer"
-            >
-              Upgrade to Pro &rarr;
-            </button>
-          </div>
-        ) : (
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSendMessage(inputValue);
-            }}
-            className="flex items-center gap-2"
-          >
-            <input
-              type="text"
+          {/* Wide Rounded Input Box */}
+          <div className="w-full max-w-xl mt-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-shadow p-3.5 flex flex-col gap-2 relative text-left">
+            <textarea
+              ref={textareaRef}
+              rows={2}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
               onFocus={onInputFocus}
               onBlur={onInputBlur}
-              placeholder="Ask Boardy anything (e.g. 'How do I solve Integration by parts?')"
-              className="flex-1 px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/70 focus:bg-white text-slate-800 placeholder-slate-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  executeSendMessage(inputValue);
+                }
+              }}
+              placeholder={
+                targetTest
+                  ? `Ask Boardy anything about your ${targetTest} prep…`
+                  : 'Ask Boardy anything about your test prep…'
+              }
+              className="w-full bg-transparent border-0 outline-none resize-none text-sm text-[#0d1b3e] placeholder:text-slate-400 min-h-[52px]"
             />
-            <button
-              type="submit"
-              disabled={!inputValue.trim() || isTyping}
-              className="p-3 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all cursor-pointer"
-              aria-label="Send message"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
-        )}
-      </div>
 
-      {/* History Drawer */}
-      {showDrawer && (
-        <div className="fixed inset-0 z-50 flex">
-          <div
-            className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs"
-            onClick={() => setShowDrawer(false)}
-          />
-          <div className="relative w-72 sm:w-80 bg-white h-full shadow-2xl p-5 flex flex-col justify-between z-10 animate-slideRight">
-            <div className="space-y-4 flex-1 flex flex-col min-h-0">
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <span className="font-extrabold text-sm text-slate-900">Chat History</span>
+            {/* Bottom row inside input box: Mode chip (left), Send button (right) */}
+            <div className="flex items-center justify-between pt-1 relative">
+              {/* Mode chip */}
+              <div className="relative" ref={modePickerRef}>
                 <button
-                  onClick={() => setShowDrawer(false)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 cursor-pointer"
+                  type="button"
+                  onClick={() => setIsModePickerOpen((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200/80 text-xs font-bold text-slate-700 transition-colors cursor-pointer select-none"
+                >
+                  {getModeIcon(activeMode)}
+                  <span>{activeModeInfo.name}</span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                </button>
+
+                {/* Mode Picker Popup right above chip */}
+                {isModePickerOpen && (
+                  <div className="absolute bottom-full left-0 mb-2 w-72 rounded-2xl bg-white border border-slate-200 shadow-xl p-1.5 z-40 animate-in fade-in slide-in-from-bottom-2">
+                    <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-3 py-1">
+                      Choose Teaching Mode
+                    </p>
+                    <div className="space-y-1">
+                      {BOARDY_MODES.map((m) => {
+                        const isSelected = activeMode === m.id;
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => handleSelectMode(m.id)}
+                            className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-colors cursor-pointer ${
+                              isSelected ? 'bg-indigo-50 text-indigo-900' : 'hover:bg-slate-50 text-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <div className="mt-0.5">{getModeIcon(m.id)}</div>
+                              <div>
+                                <p className="text-xs font-bold">{m.name}</p>
+                                <p className="text-[11px] text-slate-500 leading-tight">{m.tagline}</p>
+                              </div>
+                            </div>
+                            {isSelected && <Check className="w-4 h-4 text-indigo-600 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Round Send Button */}
+              <button
+                type="button"
+                disabled={!inputValue.trim() || isTyping}
+                onClick={() => executeSendMessage(inputValue)}
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                  inputValue.trim() && !isTyping
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-sm'
+                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                }`}
+                aria-label="Send message"
+              >
+                <Send className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Small grey line with remaining AI chats (from shared usage store) */}
+          <p className="text-[11px] text-slate-400 font-medium mt-2.5">
+            {aiChatsLineText}
+          </p>
+
+          {/* Four Suggestion Rows with colored subject labels, thin dividers, no cards, no arrows */}
+          <div className="w-full max-w-xl mt-5 divide-y divide-slate-200/80 text-left border-t border-b border-slate-200/80">
+            {suggestions.map((s, idx) => (
+              <button
+                key={idx}
+                type="button"
+                onClick={() => executeSendMessage(s.prompt)}
+                className="w-full py-3 px-2 flex items-center gap-3 hover:bg-slate-100/60 transition-colors text-left cursor-pointer group"
+              >
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md border shrink-0 ${s.color}`}>
+                  {s.subject}
+                </span>
+                <span className="text-xs sm:text-sm text-slate-700 group-hover:text-slate-900 font-medium line-clamp-1 flex-1">
+                  {s.prompt}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : (
+        /* ------------------ ACTIVE CHAT INTERFACE ------------------ */
+        <div
+          ref={chatScrollContainerRef}
+          onScroll={handleScroll}
+          className="flex-1 overflow-y-auto px-4 sm:px-6 pt-16 pb-36 max-w-3xl mx-auto w-full space-y-6"
+        >
+          {messages.map((msg, index) => {
+            const isUser = msg.role === 'user';
+            return (
+              <div
+                key={msg.id}
+                className={`w-full flex ${isUser ? 'justify-end' : 'justify-start'}`}
+              >
+                {isUser ? (
+                  /* User message: blue bubble on right */
+                  <div className="max-w-[85%] sm:max-w-[75%] rounded-2xl rounded-br-sm px-4 py-3 bg-blue-600 text-white shadow-xs text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words">
+                    {msg.content}
+                  </div>
+                ) : (
+                  /* AI reply: plain text with small mascot, full width */
+                  <div className="w-full max-w-full space-y-2">
+                    <div className="flex items-center gap-2">
+                      <BoardyMascot size="sm" />
+                      <span className="text-xs font-bold text-slate-800">Boardy</span>
+                      {msg.mode && (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200/60">
+                          {getModeIcon(msg.mode)}
+                          <span>{BOARDY_MODES.find((m) => m.id === msg.mode)?.name || 'Deep Dive'}</span>
+                        </span>
+                      )}
+                    </div>
+
+                    {msg.failed ? (
+                      /* Failed request state with retry button: does NOT consume chat */
+                      <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-between gap-3 text-rose-800 text-xs">
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                          <span>Something went wrong. Tap to retry.</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRegenerate(index)}
+                          className="px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs cursor-pointer shadow-xs shrink-0"
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    ) : (
+                      /* Successful AI formatted message with KaTeX */
+                      <div className="text-slate-800 text-xs sm:text-sm leading-relaxed pl-1">
+                        <StudyBuddyFormattedMessage content={msg.content} />
+                      </div>
+                    )}
+
+                    {/* Actions under each AI reply: Copy, Regenerate, Thumbs up/down */}
+                    {!msg.failed && (
+                      <div className="flex items-center gap-1 pt-1 pl-1 text-slate-400">
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(msg.id, msg.content)}
+                          className="p-1.5 rounded-lg hover:bg-slate-200/60 text-slate-500 hover:text-slate-800 cursor-pointer transition-colors"
+                          title="Copy reply"
+                        >
+                          {copiedMsgId === msg.id ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRegenerate(index)}
+                          className="p-1.5 rounded-lg hover:bg-slate-200/60 text-slate-500 hover:text-slate-800 cursor-pointer transition-colors"
+                          title="Regenerate answer"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleFeedback(msg.id, 'up')}
+                          className={`p-1.5 rounded-lg hover:bg-slate-200/60 cursor-pointer transition-colors ${
+                            msg.feedback === 'up' ? 'text-indigo-600 font-bold' : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                          title="Helpful"
+                        >
+                          <ThumbsUp className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleFeedback(msg.id, 'down')}
+                          className={`p-1.5 rounded-lg hover:bg-slate-200/60 cursor-pointer transition-colors ${
+                            msg.feedback === 'down' ? 'text-rose-600 font-bold' : 'text-slate-500 hover:text-slate-800'
+                          }`}
+                          title="Not helpful"
+                        >
+                          <ThumbsDown className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Typing Indicator */}
+          {isTyping && (
+            <div className="flex items-center gap-2 pl-1 text-slate-500">
+              <BoardyMascot size="sm" />
+              <div className="flex items-center gap-1 px-3 py-2 rounded-2xl bg-white border border-slate-200 shadow-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" />
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce [animation-delay:0.2s]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce [animation-delay:0.4s]" />
+              </div>
+            </div>
+          )}
+
+          <div ref={messagesEndRef} />
+        </div>
+      )}
+
+      {/* Floating Scroll to Bottom Button */}
+      {showScrollBottom && hasMessages && (
+        <button
+          type="button"
+          onClick={() => scrollToBottom(true)}
+          className="fixed bottom-24 right-5 p-2 rounded-full bg-white shadow-lg border border-slate-200 text-slate-700 hover:text-slate-900 cursor-pointer z-30 transition-transform active:scale-95"
+          aria-label="Scroll to bottom"
+        >
+          <ArrowDown className="w-4 h-4" />
+        </button>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. PINNED BOTTOM INPUT BAR (WHEN IN ACTIVE CHAT)                          */}
+      {/* ========================================================================= */}
+      {hasMessages && (
+        <div className="fixed bottom-0 left-0 right-0 p-3 sm:p-4 bg-[#F8F9FB]/95 backdrop-blur-md border-t border-slate-200/70 safe-area-bottom z-20 overflow-x-hidden">
+          <div className="max-w-3xl mx-auto w-full">
+            <div className="rounded-2xl bg-white border border-slate-200 shadow-sm p-2 flex flex-col gap-1.5 relative">
+              <textarea
+                ref={textareaRef}
+                rows={1}
+                value={inputValue}
+                onChange={(e) => {
+                  setInputValue(e.target.value);
+                  e.target.style.height = 'auto';
+                  e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
+                }}
+                onFocus={onInputFocus}
+                onBlur={onInputBlur}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    executeSendMessage(inputValue);
+                  }
+                }}
+                placeholder="Message Boardy…"
+                className="w-full bg-transparent border-0 outline-none resize-none text-xs sm:text-sm text-[#0d1b3e] placeholder:text-slate-400 px-2 py-1 max-h-32"
+              />
+
+              <div className="flex items-center justify-between px-1 relative">
+                {/* Mode Selector chip */}
+                <div className="relative" ref={modePickerRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsModePickerOpen((prev) => !prev)}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 cursor-pointer transition-colors"
+                  >
+                    {getModeIcon(activeMode)}
+                    <span>{activeModeInfo.name}</span>
+                    <ChevronDown className="w-3 h-3 text-slate-400" />
+                  </button>
+
+                  {/* Mode Picker Popup */}
+                  {isModePickerOpen && (
+                    <div className="absolute bottom-full left-0 mb-2 w-72 rounded-2xl bg-white border border-slate-200 shadow-xl p-1.5 z-40 animate-in fade-in slide-in-from-bottom-2">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-3 py-1">
+                        Choose Teaching Mode
+                      </p>
+                      <div className="space-y-1">
+                        {BOARDY_MODES.map((m) => {
+                          const isSelected = activeMode === m.id;
+                          return (
+                            <button
+                              key={m.id}
+                              type="button"
+                              onClick={() => handleSelectMode(m.id)}
+                              className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-colors cursor-pointer ${
+                                isSelected ? 'bg-indigo-50 text-indigo-900' : 'hover:bg-slate-50 text-slate-800'
+                              }`}
+                            >
+                              <div className="flex items-start gap-2.5">
+                                <div className="mt-0.5">{getModeIcon(m.id)}</div>
+                                <div>
+                                  <p className="text-xs font-bold">{m.name}</p>
+                                  <p className="text-[11px] text-slate-500 leading-tight">{m.tagline}</p>
+                                </div>
+                              </div>
+                              {isSelected && <Check className="w-4 h-4 text-indigo-600 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Round Send Button */}
+                <button
+                  type="button"
+                  disabled={!inputValue.trim() || isTyping}
+                  onClick={() => executeSendMessage(inputValue)}
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                    inputValue.trim() && !isTyping
+                      ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-xs'
+                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  }`}
+                  aria-label="Send message"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Small usage line under pinned input */}
+            <p className="text-[10px] text-slate-400 font-medium text-center mt-1.5">
+              {aiChatsLineText}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 4. SLIDE-IN SIDEBAR OVER DIMMED BACKGROUND                                 */}
+      {/* ========================================================================= */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex justify-end transition-opacity"
+          onClick={() => setIsSidebarOpen(false)}
+        >
+          <div
+            className="w-80 max-w-[85vw] bg-white h-full shadow-2xl flex flex-col justify-between p-4 animate-in slide-in-from-right duration-200 text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Top section: Logo, Boardy AI, Close, New Chat, Search */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <BoardyMascot size="sm" />
+                  <span className="font-extrabold text-base text-[#0d1b3e] tracking-tight">Boardy AI</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSidebarOpen(false)}
+                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-500 hover:text-slate-800 cursor-pointer"
+                  aria-label="Close sidebar"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
+              {/* New chat button */}
               <button
                 type="button"
-                onClick={handleStartNewSession}
-                className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-xs"
+                onClick={handleStartNewChat}
+                className="w-full py-2.5 px-3.5 rounded-2xl bg-indigo-50 hover:bg-indigo-100/80 text-indigo-700 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-xs"
               >
                 <Plus className="w-4 h-4" />
-                <span>Start New Topic</span>
+                <span>New chat</span>
               </button>
 
-              <div className="flex-1 overflow-y-auto space-y-1.5 pt-2 pr-1">
-                <span className="font-bold text-[10px] uppercase tracking-wider text-slate-400 block pb-1">
-                  Saved Sessions
-                </span>
-                {sessions.length === 0 ? (
-                  <p className="text-xs text-slate-400 italic">No past sessions yet.</p>
-                ) : (
-                  sessions.map((sess) => {
-                    const isCurrent = sess.id === activeSessionId;
-                    return (
-                      <div
-                        key={sess.id}
-                        onClick={() => {
-                          setActiveSessionId(sess.id);
-                          setShowDrawer(false);
-                        }}
-                        className={`p-3 rounded-2xl flex items-center justify-between gap-2 cursor-pointer transition-all ${
-                          isCurrent
-                            ? 'bg-blue-50 border border-blue-200 text-blue-900 font-bold'
-                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-100'
-                        }`}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="text-xs truncate">{sess.title || 'Untitled Session'}</p>
-                          <span className="text-[10px] text-slate-400 block mt-0.5 capitalize">
-                            {sess.mode.replace('-', ' ')} · {sess.messages.length} msgs
-                          </span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteSession(sess.id, e)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                          title="Delete session"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    );
-                  })
-                )}
+              {/* Search chats input */}
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search chats…"
+                  className="w-full bg-slate-50 border border-slate-200/90 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 outline-none focus:border-indigo-500"
+                />
               </div>
             </div>
 
-            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-[11px] text-slate-500 mt-4">
-              Boardy AI is tuned for FSC & Pakistan entry exams (NUST, FAST, MDCAT, GIKI, ECAT).
+            {/* Middle section: Past chats grouped Today, Yesterday, Previous 7 days, Older */}
+            <div className="flex-1 overflow-y-auto py-3 space-y-4 my-2 pr-1">
+              {filteredSessions.length === 0 ? (
+                <div className="py-12 text-center text-xs text-slate-400">
+                  Your chats will show up here.
+                </div>
+              ) : (
+                <>
+                  {/* Today */}
+                  {groupedSessions.today.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2">
+                        Today
+                      </p>
+                      {groupedSessions.today.map((s) => renderSessionItem(s))}
+                    </div>
+                  )}
+
+                  {/* Yesterday */}
+                  {groupedSessions.yesterday.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2">
+                        Yesterday
+                      </p>
+                      {groupedSessions.yesterday.map((s) => renderSessionItem(s))}
+                    </div>
+                  )}
+
+                  {/* Previous 7 Days */}
+                  {groupedSessions.prev7Days.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2">
+                        Previous 7 days
+                      </p>
+                      {groupedSessions.prev7Days.map((s) => renderSessionItem(s))}
+                    </div>
+                  )}
+
+                  {/* Older */}
+                  {groupedSessions.older.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2">
+                        Older
+                      </p>
+                      {groupedSessions.older.map((s) => renderSessionItem(s))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+
+            {/* Bottom section: Back to dashboard, avatar, name, and usage progress line */}
+            <div className="pt-3 border-t border-slate-100 space-y-3">
+              {/* Back to dashboard button (Main way back to the rest of the app) */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSidebarOpen(false);
+                  if (onBackToDashboard) {
+                    onBackToDashboard();
+                  } else if (typeof window !== 'undefined') {
+                    window.history.back();
+                  }
+                }}
+                className="w-full py-2.5 px-3.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors"
+              >
+                <ArrowLeft className="w-4 h-4 text-slate-600" />
+                <span>Back to dashboard</span>
+              </button>
+
+              {/* User Avatar + Name */}
+              <div className="flex items-center gap-2.5 px-1">
+                <div className="w-8 h-8 rounded-full bg-indigo-600 text-white font-extrabold text-xs flex items-center justify-center shadow-xs shrink-0">
+                  {firstName.charAt(0).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-slate-900 truncate">{profile?.name || firstName}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{user?.email || 'Student Account'}</p>
+                </div>
+              </div>
+
+              {/* Usage line with thin progress bar from shared usage store */}
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-700">
+                  <span>AI Daily Chats</span>
+                  <span>{isUnlimited ? 'Unlimited' : `${aiChatsLeft} left`}</span>
+                </div>
+                {!isUnlimited && (
+                  <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-indigo-600 rounded-full"
+                      style={{
+                        width: `${Math.min(100, Math.round((aiChatsUsed / aiChatsLimit) * 100))}%`,
+                      }}
+                    />
+                  </div>
+                )}
+                <p className="text-[10px] text-slate-400">
+                  {isUnlimited ? 'Premium plan' : `Refills at midnight (PKT)`}
+                </p>
+              </div>
             </div>
           </div>
         </div>
       )}
     </div>
   );
+
+  // Helper to render an individual session item in the sidebar
+  function renderSessionItem(s: ChatSession) {
+    const isActive = s.id === activeSessionId;
+    const isMenuOpen = sessionMenuId === s.id;
+    const isRenaming = renamingSessionId === s.id;
+    const isConfirmingDelete = deleteConfirmId === s.id;
+
+    if (isRenaming) {
+      return (
+        <div key={s.id} className="p-1.5 rounded-xl bg-slate-100 flex items-center gap-1.5">
+          <input
+            type="text"
+            value={renameTitleInput}
+            onChange={(e) => setRenameTitleInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleSaveRename(s.id);
+              if (e.key === 'Escape') setRenamingSessionId(null);
+            }}
+            autoFocus
+            className="w-full bg-white px-2 py-1 rounded-lg text-xs border border-indigo-300 outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => handleSaveRename(s.id)}
+            className="p-1 text-emerald-600 hover:text-emerald-700 cursor-pointer"
+          >
+            <Check className="w-3.5 h-3.5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setRenamingSessionId(null)}
+            className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      );
+    }
+
+    if (isConfirmingDelete) {
+      return (
+        <div key={s.id} className="p-2 rounded-xl bg-rose-50 border border-rose-200 text-xs space-y-1.5">
+          <p className="text-rose-800 font-semibold text-[11px]">Delete this chat?</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleDeleteSession(s.id)}
+              className="px-2.5 py-1 rounded-lg bg-rose-600 text-white text-[10px] font-bold cursor-pointer"
+            >
+              Delete
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeleteConfirmId(null)}
+              className="px-2.5 py-1 rounded-lg bg-slate-200 text-slate-700 text-[10px] font-bold cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div
+        key={s.id}
+        className={`group relative flex items-center justify-between px-2.5 py-2 rounded-xl transition-colors cursor-pointer ${
+          isActive ? 'bg-indigo-50 text-indigo-900 font-bold' : 'hover:bg-slate-100 text-slate-700'
+        }`}
+        onClick={() => {
+          setActiveSessionId(s.id);
+          setIsSidebarOpen(false);
+        }}
+      >
+        <span className="text-xs truncate flex-1 pr-2">{s.title}</span>
+
+        {/* Action Menu (Rename / Delete) */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setSessionMenuId(isMenuOpen ? null : s.id);
+            }}
+            className="p-1 rounded-md text-slate-400 hover:text-slate-700 opacity-80 group-hover:opacity-100 cursor-pointer"
+          >
+            <MoreVertical className="w-3.5 h-3.5" />
+          </button>
+
+          {isMenuOpen && (
+            <div
+              className="absolute right-0 top-full mt-1 w-32 bg-white border border-slate-200 rounded-xl shadow-lg p-1 z-50 text-xs"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setRenamingSessionId(s.id);
+                  setRenameTitleInput(s.title);
+                  setSessionMenuId(null);
+                }}
+                className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-slate-100 text-slate-700 cursor-pointer"
+              >
+                <Edit2 className="w-3 h-3 text-slate-500" />
+                <span>Rename</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteConfirmId(s.id);
+                  setSessionMenuId(null);
+                }}
+                className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded-lg hover:bg-rose-50 text-rose-600 cursor-pointer"
+              >
+                <Trash2 className="w-3 h-3 text-rose-500" />
+                <span>Delete</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 };
-
-// Helpful local generator for Boardy responses across all 4 modes
-function generateLocalBoardyReply(query: string, studentName: string, mode: BoardyMode): string {
-  const q = query.toLowerCase();
-
-  if (mode === 'quick-take') {
-    if (q.includes('fast') && q.includes('negative')) {
-      return `FAST applies a -0.25 negative marking penalty per wrong MCQ. Only make an educated guess if you have safely eliminated at least 2 incorrect options. Prioritize Basic Math speed above all.`;
-    }
-    if (q.includes('integration') || q.includes('calculus')) {
-      return `For $\\int [f(x)]^n f'(x) dx$, simply integrate the outer power directly to get $\\frac{[f(x)]^{n+1}}{n+1} + C$. For products, apply ILATE to select $u$ and integrate by parts. The solution is straightforward once standard forms are recognized.`;
-    }
-    return `Identify the governing formula first, test extreme values like $x=0$ to eliminate wrong options, and compute directly. The correct choice will match the simplified expression.`;
-  }
-
-  if (mode === 'study-pal') {
-    if (q.includes('fast') || q.includes('nust') || q.includes('net')) {
-      return `You've got this, ${studentName}! 🌟 Entrance test questions look intimidating at first, but remember that over 60% are direct formula applications. Keep your pacing steady and don't spend more than a minute on any single question!`;
-    }
-    return `Great question, ${studentName}! Let's tackle it together. Don't worry if it seems tricky—break it into small steps and check the options. You're doing awesome work today! 💪`;
-  }
-
-  if (mode === 'game-plan') {
-    if (q.includes('fast')) {
-      return `### FAST-NU Exam Tactics & Game Plan
-1. **Marking Rule**: $+1$ for correct, $-0.25$ penalty for wrong.
-2. **Elimination Threshold**: Guess **only** if you eliminate $\\ge 2$ options (expected value $= +0.375$).
-3. **Pacing**: Spend $\\le 60$ seconds per question. Skip long analytical word puzzles and return to them at the end.`;
-    }
-    return `### Universal Entry Test Game Plan
-1. **First Pass (First 40 mins)**: Answer all high-confidence recall and single-step formulas.
-2. **Elimination Tricks**:
-   - Check units and dimensional consistency.
-   - Plug in boundary conditions ($x=0$, $x=1$).
-   - Reject choices with calculation trap signs ($+$ instead of $-$).
-3. **Endgame**: For tests with no negative marking (like NUST NET), mark every single remaining question!`;
-  }
-
-  // Deep Dive default
-  if (q.includes('fast') && q.includes('negative')) {
-    return `Hey ${studentName}! Here is the exact negative marking strategy for **FAST-NU**:\n\n1. **Marking Rule**: Each correct MCQ is awarded **+1 mark**, while an incorrect answer loses **-0.25 marks** (25% penalty).\n2. **Threshold Rule**: Only guess if you can eliminate at least **2 out of 4 options**. If you can eliminate two choices, your statistical expected value is positive ($+0.375$).\n3. **Basic Math & Analytical**: Speed is crucial—do NOT get stuck on tricky analytical puzzles for more than 75 seconds. Skip and return at the end!`;
-  }
-
-  if (q.includes('integration') || q.includes('calculus') || q.includes('math')) {
-    return `Let's break down this concept step-by-step, ${studentName}! 🚀\n\n### Step 1: Identify the standard form\nLook for the derivative of the inner function. Remember:\n$$\\int [f(x)]^n f'(x) dx = \\frac{[f(x)]^{n+1}}{n+1} + C$$\n\n### Step 2: Integration by parts rule (ILATE)\nIf you have a product of two functions:\n$$\\int u \\cdot v dx = u \\int v dx - \\int \\left( u' \\int v dx \\right) dx$$\nChoose $u$ in order of: **I**nverse, **L**ogarithmic, **A**lgebraic, **T**rigonometric, **E**xponential.\n\nWould you like me to work through a specific question with you? Send the question options!`;
-  }
-
-  return `Great question, ${studentName}! Here is the concept broken down step-by-step:\n\n1. **Core Concept**: First isolate the given variables and identify which formula connects them.\n2. **Shortcut Technique**: For entry tests, look at the units in the options and test extreme values ($x=0$ or $x=1$) to eliminate distractors instantly.\n3. **Exam Tip**: Double check the sign ($+$ vs $-$) since examiners often place common calculation mistakes in Option B.\n\nTell me which specific problem or question statement you'd like to solve next!`;
-}

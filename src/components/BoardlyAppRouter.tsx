@@ -106,7 +106,7 @@ export const BoardlyAppRouter: React.FC = () => {
 
       // Check if onboarding is incomplete for protected student routes
       if (!isRegistered) {
-        const studentProtected = ['/app', '/dashboard', '/practice', '/test', '/results', '/profile'];
+        const studentProtected = ['/app', '/dashboard', '/practice', '/test', '/results', '/profile', '/boardy'];
         const isStudentRoute = studentProtected.some(
           (prefix) => currentPath === prefix || currentPath.startsWith(`${prefix}/`)
         );
@@ -131,6 +131,7 @@ export const BoardlyAppRouter: React.FC = () => {
         '/practice',
         '/test',
         '/results',
+        '/boardy',
       ];
       const isProtected = protectedPrefixes.some(
         (prefix) => currentPath === prefix || currentPath.startsWith(`${prefix}/`)
@@ -243,8 +244,14 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
-        // 7. Student App (/app or /app/* or /dashboard)
-        if (currentPath === '/app' || currentPath.startsWith('/app/') || currentPath === '/dashboard') {
+        // 7. Student App (/app or /app/* or /dashboard or /boardy)
+        if (
+          currentPath === '/app' ||
+          currentPath.startsWith('/app/') ||
+          currentPath === '/dashboard' ||
+          currentPath === '/boardy' ||
+          currentPath.startsWith('/boardy/')
+        ) {
           if (!user) {
             navigate('/login', true);
             return null;

@@ -381,6 +381,7 @@ export interface StudentUserProfile {
   testsLimit?: number;
   boardyLimit?: number;
   points?: number;
+  lastBoardyMode?: string;
   status?: 'active' | 'suspended' | 'disabled';
 }
 

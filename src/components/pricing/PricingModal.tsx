@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   PRICING_DURATIONS,
   PRICING_PLANS,
@@ -22,11 +22,14 @@ import {
   Loader2,
   Clock,
   ExternalLink,
+  AlertCircle,
+  Calendar,
 } from 'lucide-react';
 
 interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
+  fromBlocked?: boolean;
   currentPlan?: string | null;
   initialTargetPlan?: 'pro' | 'premium';
   onSubmitUpgradeRequest?: (data: {
@@ -41,12 +44,22 @@ interface PricingModalProps {
 export const PricingModal: React.FC<PricingModalProps> = ({
   isOpen,
   onClose,
+  fromBlocked = false,
   currentPlan = 'free',
   initialTargetPlan = 'pro',
   onSubmitUpgradeRequest,
 }) => {
   const [selectedDurationIndex, setSelectedDurationIndex] = useState<number>(2); // Default to 6 Months (index 2, Best Value)
   const [checkoutTarget, setCheckoutTarget] = useState<'pro' | 'premium' | null>(null);
+  const paidPlansRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isOpen && fromBlocked && paidPlansRef.current) {
+      setTimeout(() => {
+        paidPlansRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 250);
+    }
+  }, [isOpen, fromBlocked]);
 
   // Checkout Form State
   const [paymentMethod, setPaymentMethod] = useState<'jazzcash' | 'easypaisa' | 'bank_transfer'>('jazzcash');
@@ -142,9 +155,74 @@ export const PricingModal: React.FC<PricingModalProps> = ({
           /* ========================================================= */
           /* 1. PRICING SCREEN                                         */
           /* ========================================================= */
-          <div className="p-4 sm:p-8 max-w-5xl mx-auto space-y-8">
+          <div className="p-4 sm:p-8 max-w-5xl mx-auto space-y-6">
+            {/* Friendly banner when opened from a blocked state */}
+            {fromBlocked && (
+              <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/90 text-amber-900 flex items-center gap-3 text-xs sm:text-sm font-semibold shadow-xs">
+                <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                <div className="flex-1">
+                  <p className="font-bold text-amber-950">You've reached your daily limit for today.</p>
+                  <p className="text-amber-800 text-xs mt-0.5">Upgrade to get more tests and chats.</p>
+                </div>
+              </div>
+            )}
+
+            {/* 1. CURRENT PLAN SUMMARY STRIP AT TOP */}
+            <div className="p-4 sm:p-5 rounded-3xl bg-white border border-slate-200/90 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div
+                  className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold ${
+                    userPlanKey === 'premium'
+                      ? 'bg-amber-100 text-amber-800'
+                      : userPlanKey === 'pro'
+                      ? 'bg-blue-100 text-blue-800'
+                      : 'bg-slate-100 text-slate-700'
+                  }`}
+                >
+                  {userPlanKey === 'premium' ? (
+                    <Crown className="w-5 h-5 text-amber-600" />
+                  ) : userPlanKey === 'pro' ? (
+                    <Zap className="w-5 h-5 text-blue-600" />
+                  ) : (
+                    <ShieldCheck className="w-5 h-5 text-slate-600" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                      Your Current Plan
+                    </span>
+                    <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      Active
+                    </span>
+                  </div>
+                  <p className="text-base font-extrabold text-[#0d1b3e]">
+                    {userPlanKey === 'premium'
+                      ? 'Maximum Edge (Premium)'
+                      : userPlanKey === 'pro'
+                      ? 'Pro Plan'
+                      : 'Free Starter'}
+                  </p>
+                </div>
+              </div>
+              <div className="text-xs text-slate-600 sm:text-right border-t sm:border-t-0 pt-2 sm:pt-0 border-slate-100">
+                <p className="font-semibold text-slate-800">
+                  {userPlanKey === 'premium'
+                    ? 'Unlimited practice tests & unlimited Boardy AI chats'
+                    : userPlanKey === 'pro'
+                    ? '10 daily chapter tests · 50 Boardy AI questions'
+                    : '2 daily chapter tests · 10 Boardy AI questions'}
+                </p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {userPlanKey === 'free'
+                    ? 'Free tier · Refills daily at midnight PKT'
+                    : 'Active Subscription · Refills daily at midnight PKT'}
+                </p>
+              </div>
+            </div>
+
             {/* Header */}
-            <div className="text-center max-w-2xl mx-auto space-y-2.5 pt-2">
+            <div className="text-center max-w-2xl mx-auto space-y-2 pt-2">
               <h2 className="text-2xl sm:text-4xl font-extrabold text-[#0d1b3e] tracking-tight font-sans">
                 Choose Your Path to <span className="text-[#1a6dff]">Success</span>
               </h2>
@@ -187,7 +265,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({
             </div>
 
             {/* 3 Pricing Cards: Stacked on mobile (~380px wide) with Pro displayed first on mobile, 3 across on desktop */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
+            <div ref={paidPlansRef} className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch scroll-mt-6">
               {/* ---------------- CARD 1: FREE ---------------- */}
               {(() => {
                 const isCurrentPlan = userPlanKey === 'free';
@@ -321,13 +399,19 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                     </div>
 
                     <div className="pt-6 mt-6 border-t border-slate-100">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenCheckout('pro')}
-                        className="w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-md bg-[#1a6dff] hover:bg-[#1558d6] text-white cursor-pointer active:scale-[0.98]"
-                      >
-                        {isCurrentPlan ? 'Renew Pro Plan' : 'Get Pro'}
-                      </button>
+                      {isCurrentPlan ? (
+                        <div className="w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold text-center bg-emerald-50 text-emerald-700 border border-emerald-200 select-none">
+                          Current Plan
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCheckout('pro')}
+                          className="w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-md bg-[#1a6dff] hover:bg-[#1558d6] text-white cursor-pointer active:scale-[0.98]"
+                        >
+                          Get Pro
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -394,13 +478,19 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                     </div>
 
                     <div className="pt-6 mt-6 border-t border-slate-100">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenCheckout('premium')}
-                        className="w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-md bg-[#0d1b3e] hover:bg-[#152a5c] text-white cursor-pointer active:scale-[0.98]"
-                      >
-                        {isCurrentPlan ? 'Renew Premium Plan' : 'Get Premium'}
-                      </button>
+                      {isCurrentPlan ? (
+                        <div className="w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold text-center bg-emerald-50 text-emerald-700 border border-emerald-200 select-none">
+                          Current Plan
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenCheckout('premium')}
+                          className="w-full py-3.5 px-4 rounded-2xl text-xs sm:text-sm font-bold transition-all shadow-md bg-[#0d1b3e] hover:bg-[#152a5c] text-white cursor-pointer active:scale-[0.98]"
+                        >
+                          Get Premium
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

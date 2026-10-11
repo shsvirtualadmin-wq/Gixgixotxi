@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Home,
   BookOpen,
@@ -56,6 +56,7 @@ import { University, UNIVERSITIES } from '../../data/universities';
 import { Question } from '../../types';
 import { getPlanConfig } from '../../data/planLimits';
 import { EventSession } from '../../data/eventsStore';
+import { useUsage } from '../../context/UsageContext';
 
 interface StudentAppShellProps {
   onNavigateMarketing: (path: string) => void;
@@ -71,10 +72,13 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
   onOpenArena,
 }) => {
   const { user, profile, isAdmin, logOut, updateProfileData, activeRole, switchRole } = useAuth();
+  const { canStartTest, consumeTestStart, loading: usageLoading } = useUsage();
 
+  const prevTabRef = useRef<string>('overview');
   const [activeTab, setActiveTab] = useState<string>(() => {
     if (typeof window !== 'undefined') {
       const p = window.location.pathname.toLowerCase();
+      if (p === '/boardy' || p === '/app/boardy' || p.startsWith('/boardy') || p.startsWith('/app/boardy')) return 'boardy';
       if (p.includes('/profile') || p === '/app/profile') return 'profile';
       if (p.includes('/universities') || p === '/app/universities') return 'universities';
       if (p.includes('/merit-meter') || p === '/app/merit-meter') return 'merit-meter';
@@ -91,19 +95,56 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
   const [showMeritMeterModal, setShowMeritMeterModal] = useState<boolean>(false);
   const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
+  const [upgradeFromBlocked, setUpgradeFromBlocked] = useState<boolean>(false);
   const [showUniModal, setShowUniModal] = useState<boolean>(false);
   const [boardyPrompt, setBoardyPrompt] = useState<string>('');
+
+  const handleSelectTab = useCallback((tabId: string) => {
+    if (tabId === 'boardy') {
+      prevTabRef.current = activeTab !== 'boardy' ? activeTab : 'overview';
+      if (typeof window !== 'undefined') {
+        window.history.pushState({ tab: 'boardy', from: prevTabRef.current }, '', '/app/boardy');
+      }
+      setActiveTab('boardy');
+    } else {
+      if (activeTab === 'boardy') {
+        if (typeof window !== 'undefined') {
+          window.history.replaceState({ tab: tabId }, '', '/app');
+        }
+      }
+      prevTabRef.current = tabId;
+      setActiveTab(tabId);
+    }
+  }, [activeTab]);
+
+  const handleBackFromBoardy = useCallback(() => {
+    const returnTab = prevTabRef.current || 'overview';
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({ tab: returnTab }, '', '/app');
+    }
+    setActiveTab(returnTab);
+  }, []);
 
   // Close sheet on route / popstate change
   useEffect(() => {
     const handlePop = () => {
       setShowMoreSheet(false);
       const p = window.location.pathname.toLowerCase();
-      if (p.includes('/profile')) setActiveTab('profile');
-      else if (p.includes('/universities')) setActiveTab('universities');
-      else if (p.includes('/merit-meter')) setActiveTab('merit-meter');
-      else if (p.includes('/predictor')) setActiveTab('predictor');
-      else if (p.includes('/limits')) setActiveTab('limits');
+      if (p === '/boardy' || p === '/app/boardy' || p.startsWith('/boardy') || p.startsWith('/app/boardy')) {
+        setActiveTab('boardy');
+      } else if (p.includes('/profile')) {
+        setActiveTab('profile');
+      } else if (p.includes('/universities')) {
+        setActiveTab('universities');
+      } else if (p.includes('/merit-meter')) {
+        setActiveTab('merit-meter');
+      } else if (p.includes('/predictor')) {
+        setActiveTab('predictor');
+      } else if (p.includes('/limits')) {
+        setActiveTab('limits');
+      } else {
+        setActiveTab(prevTabRef.current || 'overview');
+      }
     };
     window.addEventListener('popstate', handlePop);
     return () => window.removeEventListener('popstate', handlePop);
@@ -266,7 +307,20 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     } catch {}
   };
 
-  const handleStartSprint = (subject: string) => {
+  const handleStartSprint = async (subject: string) => {
+    if (!canStartTest()) {
+      setUpgradeFromBlocked(true);
+      setShowUpgradeModal(true);
+      return;
+    }
+    const sessionId = `sprint-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const allowed = await consumeTestStart(sessionId);
+    if (!allowed) {
+      setUpgradeFromBlocked(true);
+      setShowUpgradeModal(true);
+      return;
+    }
+
     const uniKey = profile?.targetUniversityId || profile?.targetUniversity || profile?.university || 'nust';
     const rawQuestions = getEntranceExamQuestions(uniKey, subject, 30);
     const finalQuestions = rawQuestions.slice(0, 30);
@@ -282,7 +336,20 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     setCompletedResult(null);
   };
 
-  const handleStartUniversityPaper = (uni: University) => {
+  const handleStartUniversityPaper = async (uni: University) => {
+    if (!canStartTest()) {
+      setUpgradeFromBlocked(true);
+      setShowUpgradeModal(true);
+      return;
+    }
+    const sessionId = `paper-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const allowed = await consumeTestStart(sessionId);
+    if (!allowed) {
+      setUpgradeFromBlocked(true);
+      setShowUpgradeModal(true);
+      return;
+    }
+
     const studentSeenStems = getSeenStemsForStudent(user?.uid || profile?.uid);
     const { config: paperConfig, questions } = generateUniversityPaperExam(uni.id, studentSeenStems);
 
@@ -396,10 +463,8 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       const currentStreak = typeof profile?.streak === 'number'
         ? profile.streak
         : (typeof profile?.streakDays === 'number' ? profile.streakDays : 0);
-      const newStreak = currentUsed === 0 ? currentStreak + 1 : Math.max(1, currentStreak);
-
+      const newStreak = Math.max(1, currentStreak + 1);
       updateProfileData({
-        testsUsedToday: currentUsed + 1,
         testHistory: updatedHistory,
         streak: newStreak,
         streakDays: newStreak,
@@ -521,6 +586,45 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
 
   // If a test is actively running, render the dedicated runner
   if (activeTest) {
+    // If not unlimited and user reached daily quota without an existing saved session, block test
+    const storedSession = typeof window !== 'undefined' ? localStorage.getItem('boardly_university_test_session') : null;
+    if (!storedSession && !canStartTest() && !usageLoading) {
+      return (
+        <div className="min-h-screen bg-[#F8F9FB] flex flex-col items-center justify-center p-6 text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto shadow-xs">
+            <Lock className="w-8 h-8" />
+          </div>
+          <h2 className="text-xl font-extrabold text-[#0d1b3e]">
+            You have used today's free limit. Resets at midnight (PKT)
+          </h2>
+          <p className="text-sm text-slate-500 max-w-md">
+            Upgrade to keep practicing with full-length university mocks and unlimited timed drills.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button
+              onClick={() => {
+                setActiveTest(null);
+                setUpgradeFromBlocked(true);
+                setShowUpgradeModal(true);
+              }}
+              className="px-6 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm shadow-md hover:bg-indigo-700 transition-all cursor-pointer"
+            >
+              Upgrade Plan
+            </button>
+            <button
+              onClick={() => {
+                setActiveTest(null);
+                setActiveTab('overview');
+              }}
+              className="px-6 py-3 rounded-2xl bg-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-300 transition-all cursor-pointer"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <StudentTestRunner
         title={activeTest.title}
@@ -540,12 +644,6 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           try {
             localStorage.removeItem('boardly_university_test_session');
           } catch {}
-          if (user?.uid) {
-            const currentUsed = profile?.testsUsedToday || 0;
-            updateProfileData({
-              testsUsedToday: currentUsed + 1,
-            }).catch(console.warn);
-          }
           setActiveTest(null);
         }}
       />
@@ -617,6 +715,35 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     );
   }
 
+  // Full-Screen Boardy AI tab: renders with 0 chrome (no bottom nav, no top bar, no footer, no sidebar)
+  if (activeTab === 'boardy' && !activeTest && !completedResult) {
+    return (
+      <>
+        <StudentBoardyChatTab
+          initialPrompt={boardyPrompt}
+          onOpenUsage={() => setShowUsageModal(true)}
+          onUpgrade={() => {
+            setUpgradeFromBlocked(true);
+            setShowUpgradeModal(true);
+          }}
+          onBackToDashboard={handleBackFromBoardy}
+          isFullScreen={true}
+        />
+        <PricingModal
+          isOpen={showUpgradeModal}
+          onClose={() => {
+            setShowUpgradeModal(false);
+            setUpgradeFromBlocked(false);
+          }}
+          fromBlocked={upgradeFromBlocked}
+          currentPlan={profile?.plan}
+          initialTargetPlan={upgradeTargetPlan}
+          onSubmitUpgradeRequest={handlePricingUpgradeRequest}
+        />
+      </>
+    );
+  }
+
   return (
     <AppShell
       role="student"
@@ -627,8 +754,6 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           ? 'Practice Question Bank'
           : activeTab === 'events'
           ? 'Events & Blitz'
-          : activeTab === 'boardy'
-          ? 'Boardy AI Tutor'
           : activeTab === 'history'
           ? 'Test History'
           : activeTab === 'limits'
@@ -645,13 +770,14 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       }
       subtitle="FSC & University Test Prep Portal"
       activeNav={activeTab}
-      onSelectNav={(id) => {
-        setActiveTab(id);
+      onSelectNav={handleSelectTab}
+      onNavigateUpgrade={() => {
+        setUpgradeFromBlocked(false);
+        setShowUpgradeModal(true);
       }}
-      onNavigateUpgrade={() => setShowUpgradeModal(true)}
-      onNavigateProfile={() => setActiveTab('profile')}
+      onNavigateProfile={() => handleSelectTab('profile')}
       onNavigateBilling={() => {
-        setActiveTab('profile');
+        handleSelectTab('profile');
         setTimeout(() => {
           const el = document.getElementById('current-plan-card');
           if (el) el.scrollIntoView({ behavior: 'smooth' });
@@ -667,10 +793,14 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         <StudentOverviewTab
           attempts={attempts}
           onStartSprint={handleStartSprint}
-          onGoToPractice={() => setActiveTab('practice')}
-          onGoToEvents={() => setActiveTab('events')}
+          onGoToPractice={() => handleSelectTab('practice')}
+          onGoToEvents={() => handleSelectTab('events')}
           onWriteReview={() => setShowReviewModal(true)}
           onSelectUniversity={() => setShowUniModal(true)}
+          onUpgrade={() => {
+            setUpgradeFromBlocked(true);
+            setShowUpgradeModal(true);
+          }}
         />
       )}
 
@@ -946,7 +1076,11 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       {/* Redesigned Pricing & Checkout Experience */}
       <PricingModal
         isOpen={showUpgradeModal}
-        onClose={() => setShowUpgradeModal(false)}
+        onClose={() => {
+          setShowUpgradeModal(false);
+          setUpgradeFromBlocked(false);
+        }}
+        fromBlocked={upgradeFromBlocked}
         currentPlan={profile?.plan}
         initialTargetPlan={upgradeTargetPlan}
         onSubmitUpgradeRequest={handlePricingUpgradeRequest}

@@ -15,12 +15,14 @@ import {
   Lock,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useUsage } from '../../context/UsageContext';
 import { StoredTestAttempt } from '../../lib/firebase';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
 import { UNIVERSITIES, findUniversity, University } from '../../data/universities';
 import { getTimeUntilKarachiMidnight, getPlanConfig, PlanType } from '../../data/planLimits';
 import { SparkLineTrendChart } from '../ui/Charts';
 import { Badge } from '../ui/Badge';
+import { UsageMeter } from '../ui/UsageMeter';
 
 interface StudentOverviewTabProps {
   onStartSprint: (subject: string) => void;
@@ -29,6 +31,7 @@ interface StudentOverviewTabProps {
   onWriteReview?: () => void;
   onReviewAttempt?: (attempt: StoredTestAttempt) => void;
   onSelectUniversity?: () => void;
+  onUpgrade?: () => void;
   attempts: StoredTestAttempt[];
 }
 
@@ -39,6 +42,7 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
   onWriteReview,
   onReviewAttempt,
   onSelectUniversity,
+  onUpgrade,
   attempts,
 }) => {
   const { profile, isAdmin } = useAuth();
@@ -76,32 +80,14 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
     }
   }, [examDateStr, profile?.targetExamDaysLeft]);
 
-  // Plan allowances & daily usage calculated directly from active Firestore user doc
-  const userPlan: PlanType = (profile?.plan as PlanType) || 'free';
-  const planConfig = getPlanConfig(userPlan);
-  const countdown = getTimeUntilKarachiMidnight();
-
-  const testsLimit = typeof (profile as any)?.testsLimit === 'number'
-    ? (profile as any).testsLimit
-    : planConfig.testsPerDay;
-  const boardyLimit = typeof (profile as any)?.boardyLimit === 'number'
-    ? (profile as any).boardyLimit
-    : planConfig.boardyPerDay;
-
-  const testsUsed = typeof profile?.testsUsedToday === 'number' ? profile.testsUsedToday : 0;
-  const boardyUsed = typeof profile?.boardyQuestionsUsedToday === 'number' ? profile.boardyQuestionsUsedToday : 0;
-  const isUnlimited = isAdmin || testsLimit >= 999;
-  const isBoardyUnlimited = isAdmin || boardyLimit >= 999;
-  const testsLeft = isUnlimited ? 'Unlimited' : Math.min(testsLimit, Math.max(0, testsLimit - testsUsed));
-  const boardyLeft = isBoardyUnlimited ? 'Unlimited' : Math.min(boardyLimit, Math.max(0, boardyLimit - boardyUsed));
-  const testUsagePercent = isUnlimited ? 0 : Math.min(100, Math.round((testsUsed / testsLimit) * 100));
-
-  // Progress bar color: green < 50%, amber 50-80%, red > 80%
-  const testProgressBarColor = testUsagePercent < 50
-    ? 'bg-emerald-500'
-    : testUsagePercent <= 80
-    ? 'bg-amber-500'
-    : 'bg-rose-500';
+  const {
+    loading: usageLoading,
+    isUnlimited,
+    testsLimit,
+    testsUsed,
+    testsLeft,
+    canStartTest,
+  } = useUsage();
 
   // Real streak directly from Firestore user doc
   const streak = typeof profile?.streak === 'number'
@@ -281,16 +267,33 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
             </p>
 
             <div className="flex flex-wrap items-center gap-4 pt-2">
-              {!isUnlimited && typeof testsLeft === 'number' && testsLeft <= 0 ? (
+              {usageLoading ? (
                 <button
                   type="button"
-                  onClick={onGoToPractice}
-                  title="Daily test limit reached. Resets at midnight PKT. Upgrade to Pro for unlimited tests."
+                  disabled={true}
                   className="py-3 px-6 rounded-2xl bg-white/40 text-indigo-950 font-black text-xs transition-all cursor-not-allowed flex items-center gap-2"
                 >
-                  <Lock className="w-4 h-4 text-indigo-900" />
-                  <span>Daily limit reached (Take Test disabled)</span>
+                  <span>Checking today's limit…</span>
                 </button>
+              ) : !canStartTest() ? (
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={true}
+                    className="py-3 px-4 rounded-2xl bg-white/20 text-white font-bold text-xs cursor-not-allowed flex items-center gap-2"
+                  >
+                    <Lock className="w-4 h-4 text-white shrink-0" />
+                    <span>You have used today's free limit. Resets at midnight (PKT)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onUpgrade || onGoToPractice}
+                    className="py-3 px-5 rounded-2xl bg-white text-indigo-900 hover:bg-indigo-50 font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>Upgrade</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                </div>
               ) : (
                 <button
                   type="button"
@@ -346,71 +349,20 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
         </div>
       </div>
 
-      {/* Today's Allowance Rings & Midnight Countdown - Real Database Values */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Tests Limit Card */}
-        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Daily Practice Tests
-            </p>
-            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">
-              <Zap className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="mt-2">
-            <p className="text-sm sm:text-base font-black text-slate-900">
-              {isUnlimited
-                ? 'Unlimited'
-                : `${testsUsed} of ${testsLimit} tests used today (resets at midnight PKT)`}
-            </p>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              {planConfig.name} Plan {!isUnlimited && `· ${testsLeft} left`}
-            </p>
-          </div>
-          {!isUnlimited && (
-            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-3">
-              <div
-                className={`h-full ${testProgressBarColor} rounded-full transition-all duration-300`}
-                style={{ width: `${testUsagePercent}%` }}
-              />
-            </div>
-          )}
-        </div>
-
-        {/* Boardy Chats Left */}
-        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Boardy AI Left
-            </p>
-            <p className="text-2xl font-black text-slate-900 mt-1">
-              {boardyLeft}
-            </p>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              {boardyLimit} daily ({boardyUsed} used today)
-            </p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-violet-50 text-violet-600 flex items-center justify-center font-black">
-            <Sparkles className="w-6 h-6" />
-          </div>
-        </div>
-
-        {/* Countdown */}
-        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Refill Countdown
-            </p>
-            <p className="text-2xl font-black text-slate-900 mt-1 font-mono">
-              {countdown.formattedCountdown}
-            </p>
-            <p className="text-[11px] text-slate-500 mt-0.5">Resets midnight PKT</p>
-          </div>
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-black">
-            <Clock className="w-6 h-6" />
-          </div>
-        </div>
+      {/* Today's Allowance Rings & Midnight Countdown - Unified Usage Meter */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <UsageMeter
+          type="tests"
+          showRefillCountdown={true}
+          showUpgradeButton={true}
+          onUpgrade={onUpgrade || onGoToPractice}
+        />
+        <UsageMeter
+          type="aiChats"
+          showRefillCountdown={true}
+          showUpgradeButton={true}
+          onUpgrade={onUpgrade || onGoToPractice}
+        />
       </div>
 
       {/* Analytics Trend & Weak Topics - Driven by Real Firestore testHistory or Clean Empty State */}
