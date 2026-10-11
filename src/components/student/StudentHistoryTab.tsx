@@ -48,7 +48,7 @@ export const StudentHistoryTab: React.FC<StudentHistoryTabProps> = ({
         </div>
       ) : (
         <div className="space-y-3">
-          {attempts.map((att) => {
+          {attempts.map((att, idx) => {
             const formattedDate = new Date(att.createdAt).toLocaleDateString('en-PK', {
               day: 'numeric',
               month: 'short',
@@ -62,7 +62,8 @@ export const StudentHistoryTab: React.FC<StudentHistoryTabProps> = ({
               <div
                 key={att.id || att.createdAt}
                 onClick={() => onReviewAttempt && onReviewAttempt(att)}
-                className="p-5 rounded-2xl bg-white/90 backdrop-blur-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                style={{ animationDelay: `${Math.min(idx * 50, 400)}ms` }}
+                className="p-5 rounded-2xl bg-white/90 backdrop-blur-xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-1 active:scale-[0.98] transition-all duration-200 cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4 animate-fade-in-up"
               >
                 <div className="flex items-start gap-4">
                   {att.universityId ? (

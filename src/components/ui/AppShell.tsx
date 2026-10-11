@@ -71,7 +71,10 @@ export const AppShell: React.FC<AppShellProps> = ({
         )}
 
         {/* Avoid bar covering page content (add bottom padding 110px + safe-area) */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto pb-[110px] lg:pb-12 safe-area-bottom">
+        <main
+          key={activeNav || title}
+          className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto pb-[110px] lg:pb-12 safe-area-bottom animate-fade-in"
+        >
           {children}
         </main>
       </div>

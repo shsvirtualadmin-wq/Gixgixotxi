@@ -246,7 +246,7 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
       </div>
 
       {/* Hero Card: Start Here Sprint */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 text-white p-6 sm:p-8 shadow-xl shadow-indigo-500/15">
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 text-white p-6 sm:p-8 shadow-xl shadow-indigo-500/15 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/20 active:scale-[0.99] transition-all duration-200 animate-fade-in-up">
         <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-2xl pointer-events-none" />
 
         <div className="relative z-10 grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
@@ -288,7 +288,7 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
                   <button
                     type="button"
                     onClick={onUpgrade || onGoToPractice}
-                    className="py-3 px-5 rounded-2xl bg-white text-indigo-900 hover:bg-indigo-50 font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-1.5"
+                    className="py-3 px-5 rounded-2xl bg-white text-indigo-900 hover:bg-indigo-50 active:scale-95 font-black text-xs shadow-md transition-all duration-200 cursor-pointer flex items-center gap-1.5"
                   >
                     <span>Upgrade</span>
                     <ArrowRight className="w-4 h-4" />
@@ -298,7 +298,7 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
                 <button
                   type="button"
                   onClick={() => onStartSprint(sprintSubject)}
-                  className="py-3 px-6 rounded-2xl bg-white text-indigo-900 hover:bg-indigo-50 font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-2 group"
+                  className="py-3 px-6 rounded-2xl bg-white text-indigo-900 hover:bg-indigo-50 active:scale-95 font-black text-xs shadow-md transition-all duration-200 cursor-pointer flex items-center gap-2 group"
                 >
                   <span>Start Sprint Now</span>
                   <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
@@ -350,7 +350,7 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
       </div>
 
       {/* Today's Allowance Rings & Midnight Countdown - Unified Usage Meter */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-fade-in-up delay-80">
         <UsageMeter
           type="tests"
           showRefillCountdown={true}
@@ -367,7 +367,7 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
 
       {/* Analytics Trend & Weak Topics - Driven by Real Firestore testHistory or Clean Empty State */}
       {!hasTestHistory ? (
-        <div className="p-8 sm:p-12 rounded-3xl bg-white border border-slate-200/90 shadow-sm text-center space-y-4">
+        <div className="p-8 sm:p-12 rounded-3xl bg-white border border-slate-200/90 shadow-sm hover:shadow-md transition-all duration-200 text-center space-y-4 animate-fade-in-up delay-120">
           <div className="w-16 h-16 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto shadow-xs">
             <TrendingUp className="w-8 h-8" />
           </div>
@@ -383,7 +383,7 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
             <button
               type="button"
               onClick={onGoToPractice}
-              className="inline-flex items-center gap-2 py-3 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-500/20 transition-all cursor-pointer hover:scale-105 active:scale-95"
+              className="inline-flex items-center gap-2 py-3 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-indigo-500/20 transition-all duration-200 cursor-pointer"
             >
               <span>Start Practice Test</span>
               <ArrowRight className="w-4 h-4" />
@@ -391,9 +391,9 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in-up delay-120">
           {/* Score Trend Chart */}
-          <div className="lg:col-span-7 p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
+          <div className="lg:col-span-7 p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-1 active:scale-[0.98] transition-all duration-200 space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
@@ -409,7 +409,7 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
           </div>
 
           {/* Weak Topics to Drill */}
-          <div className="lg:col-span-5 p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4 flex flex-col justify-between">
+          <div className="lg:col-span-5 p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-1 active:scale-[0.98] transition-all duration-200 space-y-4 flex flex-col justify-between">
             <div>
               <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
                 Target Weak Areas

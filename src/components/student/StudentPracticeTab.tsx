@@ -83,8 +83,8 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
       </div>
 
       {/* SECTION 1: Timed Sprint */}
-      <section className="space-y-4">
-        <div className="p-6 rounded-3xl bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-white border border-blue-100 shadow-sm">
+      <section className="space-y-4 animate-fade-in-up">
+        <div className="p-6 rounded-3xl bg-gradient-to-r from-blue-50/70 via-indigo-50/50 to-white border border-blue-100 shadow-sm transition-all duration-200 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/10">
           <div className="flex items-center gap-2 text-xs font-bold text-blue-700 uppercase tracking-wider mb-1">
             <Zap className="w-4 h-4 text-blue-600" />
             <span>Timed sprint · 30 questions · 10 min</span>
@@ -110,7 +110,7 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
                       onStartSprint(sub);
                     }
                   }}
-                  className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 hover:text-blue-700 text-xs font-semibold text-slate-700 shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                  className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 hover:border-blue-500 hover:bg-blue-50/50 hover:text-blue-700 active:scale-95 text-xs font-semibold text-slate-700 shadow-sm transition-all duration-200 cursor-pointer flex items-center gap-1.5"
                 >
                   <span>{sub}</span>
                   <ArrowRight className="w-3 h-3 text-slate-400" />
@@ -120,7 +120,7 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
               <button
                 type="button"
                 onClick={() => setShowAllSubjects(!showAllSubjects)}
-                className="px-3 py-2 rounded-xl text-xs font-semibold text-blue-600 hover:underline cursor-pointer"
+                className="px-3 py-2 rounded-xl text-xs font-semibold text-blue-600 hover:underline cursor-pointer active:scale-95 transition-transform"
               >
                 {showAllSubjects ? 'Fewer subjects' : 'More subjects…'}
               </button>
@@ -162,13 +162,14 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
 
         {/* 2-Column Grid of University Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {filteredUniversities.map((uni) => {
+          {filteredUniversities.map((uni, index) => {
             const paperConfig = getUniversityPaperConfig(uni.id);
 
             return (
               <div
                 key={uni.id}
-                className="p-5 rounded-3xl bg-white/90 backdrop-blur-xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all flex flex-col justify-between"
+                style={{ animationDelay: `${Math.min(index * 45, 360)}ms` }}
+                className="p-5 rounded-3xl bg-white/90 backdrop-blur-xl border border-slate-200/80 shadow-sm hover:shadow-lg hover:shadow-indigo-500/10 hover:-translate-y-1 active:scale-[0.98] transition-all duration-200 flex flex-col justify-between animate-fade-in-up"
               >
                 <div>
                   <div className="flex items-start gap-3.5 mb-3">
@@ -248,7 +249,7 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
                     <button
                       type="button"
                       onClick={() => onStartUniversityPaper(uni)}
-                      className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                      className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-95 text-white shadow-sm transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5"
                     >
                       <span>Take Test</span>
                       <ArrowRight className="w-3.5 h-3.5" />

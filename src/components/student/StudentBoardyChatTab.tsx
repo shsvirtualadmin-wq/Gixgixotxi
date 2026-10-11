@@ -700,7 +700,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsModePickerOpen((prev) => !prev)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200/80 text-xs font-semibold text-slate-700 transition-colors cursor-pointer select-none"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200/80 active:scale-95 text-xs font-semibold text-slate-700 transition-all duration-200 cursor-pointer select-none"
                 >
                   {getModeIcon(activeMode)}
                   <span>{activeModeInfo.name}</span>
@@ -709,7 +709,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
 
                 {/* Mode Selector Dropdown: icon left, bold title, smaller lighter grey description strictly on line below, checkmark on right */}
                 {isModePickerOpen && (
-                  <div className="absolute bottom-full left-0 mb-2.5 w-72 rounded-2xl bg-white border border-slate-200 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-bottom-2">
+                  <div className="absolute bottom-full left-0 mb-2.5 w-72 rounded-2xl bg-white border border-slate-200 shadow-2xl p-2 z-50 origin-bottom-left animate-scale-in">
                     <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 py-1">
                       Choose Teaching Mode
                     </p>
@@ -721,7 +721,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                             key={m.id}
                             type="button"
                             onClick={() => handleSelectMode(m.id)}
-                            className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-colors cursor-pointer ${
+                            className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all duration-200 active:scale-[0.98] cursor-pointer ${
                               isSelected ? 'bg-indigo-50/80 text-indigo-950 font-medium' : 'hover:bg-slate-50 text-slate-800'
                             }`}
                           >
@@ -746,10 +746,10 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                 type="button"
                 disabled={!inputValue.trim() || isTyping}
                 onClick={() => executeSendMessage(inputValue)}
-                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                className={`w-9 h-9 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer ${
                   inputValue.trim() && !isTyping
-                    ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm active:scale-95'
-                    : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                    ? 'bg-indigo-600 hover:bg-indigo-700 hover:brightness-105 active:scale-95 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed pointer-events-none'
                 }`}
                 aria-label="Send message"
               >
@@ -794,7 +794,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
             return (
               <div
                 key={msg.id}
-                className={`w-full flex ${isUser ? 'justify-end' : 'justify-start'}`}
+                className={`w-full flex ${isUser ? 'justify-end' : 'justify-start'} animate-fade-in-up`}
               >
                 {isUser ? (
                   /* User message: soft light purple/grey background with dark text, rounded corners with bottom-right corner sharper */
@@ -902,12 +902,12 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
 
           {/* Typing Indicator */}
           {isTyping && (
-            <div className="flex items-center gap-2 pl-1 text-slate-500">
+            <div className="flex items-center gap-2 pl-1 text-slate-500 animate-fade-in">
               <BoardyMascot size="sm" />
-              <div className="flex items-center gap-1 px-3 py-2 rounded-2xl bg-white border border-slate-200 shadow-xs">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce" />
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce [animation-delay:0.2s]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-bounce [animation-delay:0.4s]" />
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-2xl bg-white border border-slate-200 shadow-xs">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-dot-pulse-1" />
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-dot-pulse-2" />
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-dot-pulse-3" />
               </div>
             </div>
           )}
@@ -962,7 +962,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsModePickerOpen((prev) => !prev)}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-[11px] font-bold text-slate-700 cursor-pointer transition-colors"
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 hover:bg-slate-200 active:scale-95 text-[11px] font-bold text-slate-700 cursor-pointer transition-all duration-200"
                   >
                     {getModeIcon(activeMode)}
                     <span>{activeModeInfo.name}</span>
@@ -971,7 +971,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
 
                   {/* Mode Picker Popup - floats completely above input box with 10px offset & high z-index */}
                   {isModePickerOpen && (
-                    <div className="absolute bottom-full left-0 mb-2.5 w-72 rounded-2xl bg-white border border-slate-200 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-bottom-2">
+                    <div className="absolute bottom-full left-0 mb-2.5 w-72 rounded-2xl bg-white border border-slate-200 shadow-2xl p-2 z-50 origin-bottom-left animate-scale-in">
                       <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 py-1">
                         Choose Teaching Mode
                       </p>
@@ -983,7 +983,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                               key={m.id}
                               type="button"
                               onClick={() => handleSelectMode(m.id)}
-                              className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-colors cursor-pointer ${
+                              className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all duration-200 active:scale-[0.98] cursor-pointer ${
                                 isSelected ? 'bg-indigo-50/80 text-indigo-950 font-medium' : 'hover:bg-slate-50 text-slate-800'
                               }`}
                             >
@@ -1008,10 +1008,10 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                   type="button"
                   disabled={!inputValue.trim() || isTyping}
                   onClick={() => executeSendMessage(inputValue)}
-                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                  className={`w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 cursor-pointer ${
                     inputValue.trim() && !isTyping
-                      ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs active:scale-95'
-                      : 'bg-slate-100 text-slate-400 cursor-not-allowed'
+                      ? 'bg-indigo-600 hover:bg-indigo-700 hover:brightness-105 text-white shadow-xs active:scale-95'
+                      : 'bg-slate-100 text-slate-400 cursor-not-allowed pointer-events-none'
                   }`}
                   aria-label="Send message"
                 >
@@ -1033,11 +1033,11 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
       {/* ========================================================================= */}
       {isSidebarOpen && (
         <div
-          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex justify-end transition-opacity"
+          className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex justify-start animate-fade-in"
           onClick={() => setIsSidebarOpen(false)}
         >
           <div
-            className="w-80 max-w-[85vw] bg-white h-full shadow-2xl flex flex-col justify-between p-4 animate-in slide-in-from-right duration-200 text-left"
+            className="w-80 max-w-[85vw] bg-white h-full shadow-2xl flex flex-col justify-between p-4 animate-slide-in-left duration-250 text-left"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Top section: Logo, Boardy AI, Close, New Chat, Search */}
@@ -1177,7 +1177,11 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                     <div
                       className="h-full bg-indigo-600 rounded-full transition-all duration-300"
                       style={{
-                        width: `${Math.min(100, Math.round(((aiChatsLimit - (aiChatsLeft ?? 0)) / aiChatsLimit) * 100))}%`,
+                        width: `${
+                          typeof aiChatsLimit === 'number' && aiChatsLimit > 0
+                            ? Math.min(100, Math.round(((aiChatsLimit - (Number(aiChatsLeft) || 0)) / aiChatsLimit) * 100))
+                            : 0
+                        }%`,
                       }}
                     />
                   </div>

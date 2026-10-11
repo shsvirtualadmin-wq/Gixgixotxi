@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { GraduationCap } from 'lucide-react';
 import { University, findUniversity } from '../data/universities';
 
 interface UniversityLogoBadgeProps {
-  university?: University | string;
+  university?: (University & { abbreviation?: string }) | string | any;
   size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   className?: string;
   showName?: boolean;
@@ -14,34 +13,108 @@ const SIZE_CONFIGS = {
   xs: {
     container: 'w-6 h-6',
     img: 'w-4 h-4',
-    icon: 'w-3.5 h-3.5',
     dimension: 16,
+    text1to2: 'text-[10px]',
+    text3: 'text-[8.5px]',
+    text4plus: 'text-[7px]',
   },
   sm: {
     container: 'w-8 h-8',
     img: 'w-5 h-5',
-    icon: 'w-4 h-4',
     dimension: 20,
+    text1to2: 'text-xs',
+    text3: 'text-[10px]',
+    text4plus: 'text-[8px]',
   },
   md: {
     container: 'w-12 h-12',
     img: 'w-8 h-8',
-    icon: 'w-6 h-6',
     dimension: 32,
+    text1to2: 'text-sm',
+    text3: 'text-xs',
+    text4plus: 'text-[10px]',
   },
   lg: {
     container: 'w-14 h-14 sm:w-16 sm:h-16',
     img: 'w-9 h-9 sm:w-11 sm:h-11',
-    icon: 'w-7 h-7 sm:w-8 sm:h-8',
     dimension: 44,
+    text1to2: 'text-base sm:text-lg',
+    text3: 'text-xs sm:text-sm',
+    text4plus: 'text-[10px] sm:text-xs',
   },
   xl: {
     container: 'w-20 h-20',
     img: 'w-14 h-14',
-    icon: 'w-10 h-10',
     dimension: 56,
+    text1to2: 'text-xl',
+    text3: 'text-base',
+    text4plus: 'text-xs',
   },
 };
+
+/**
+ * Extracts abbreviation / initials according to rules:
+ * 1. If university has abbreviation or shortName, use that.
+ * 2. If no short name is provided, take the first letter of each major word in full name (e.g. "Air University" -> "AU").
+ */
+export function getUniversityInitials(uniData?: any, fallbackStr?: string): string {
+  // Check explicit abbreviation or shortName on the object
+  const abbreviation = uniData?.abbreviation || uniData?.shortName;
+  if (abbreviation && typeof abbreviation === 'string' && abbreviation.trim()) {
+    const clean = abbreviation.trim();
+    // If it's already an abbreviation (e.g. DUHS, KMU, SZABMU, NUST), return it
+    return clean;
+  }
+
+  const rawName = uniData?.fullName || uniData?.name || fallbackStr || '';
+  if (!rawName.trim()) {
+    return 'U';
+  }
+
+  // Major stop words to ignore when extracting initials from full name
+  const stopWords = new Set(['of', 'and', '&', 'for', 'the', 'in', 'at', 'on', 'to']);
+  const words = rawName
+    .replace(/[()[\]{}:;,.-]/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((w: string) => w.length > 0 && !stopWords.has(w.toLowerCase()));
+
+  if (words.length === 0) {
+    return rawName.slice(0, 3).toUpperCase();
+  }
+
+  if (words.length === 1) {
+    return words[0].slice(0, 4).toUpperCase();
+  }
+
+  // First letter of each major word (e.g., "Air University" -> "AU")
+  const initials = words.map((w: string) => w[0].toUpperCase()).join('');
+  return initials.slice(0, 5);
+}
+
+/**
+ * Generates a deterministic, vibrant background gradient for each university
+ */
+const BG_PALETTES = [
+  'bg-gradient-to-br from-indigo-600 to-indigo-800 text-white',
+  'bg-gradient-to-br from-blue-600 to-blue-800 text-white',
+  'bg-gradient-to-br from-violet-600 to-purple-800 text-white',
+  'bg-gradient-to-br from-teal-600 to-teal-800 text-white',
+  'bg-gradient-to-br from-emerald-600 to-emerald-800 text-white',
+  'bg-gradient-to-br from-cyan-600 to-blue-700 text-white',
+  'bg-gradient-to-br from-sky-600 to-indigo-700 text-white',
+  'bg-gradient-to-br from-slate-700 to-slate-900 text-white',
+];
+
+function getPaletteForString(str: string): string {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  const index = Math.abs(hash) % BG_PALETTES.length;
+  return BG_PALETTES[index];
+}
 
 export const UniversityLogoBadge: React.FC<UniversityLogoBadgeProps> = ({
   university,
@@ -55,8 +128,8 @@ export const UniversityLogoBadge: React.FC<UniversityLogoBadgeProps> = ({
 
   const resolvedUni = typeof university === 'string' ? findUniversity(university) : university;
   const shortName = resolvedUni?.shortName || (typeof university === 'string' ? university : 'University');
-  const logoUrl = resolvedUni?.logo || '';
-  const fullName = resolvedUni?.fullName || shortName;
+  const logoUrl = resolvedUni?.logo || (resolvedUni as any)?.logoUrl || '';
+  const fullName = resolvedUni?.fullName || (resolvedUni as any)?.name || shortName;
   const uniId = resolvedUni?.id || (typeof university === 'string' ? university.toLowerCase() : 'uni');
 
   const sizeCfg = SIZE_CONFIGS[size];
@@ -80,13 +153,27 @@ export const UniversityLogoBadge: React.FC<UniversityLogoBadgeProps> = ({
     ? `${logoUrl}${logoUrl.includes('?') ? '&' : '?'}retry=${retryCount}`
     : logoUrl;
 
+  // Compute initials and styling
+  const initials = getUniversityInitials(resolvedUni, typeof university === 'string' ? university : undefined);
+  const colorClass = getPaletteForString(uniId || shortName || 'uni');
+
+  // Choose font size based on length of initials
+  const fontSizeClass =
+    initials.length <= 2
+      ? sizeCfg.text1to2
+      : initials.length === 3
+      ? sizeCfg.text3
+      : sizeCfg.text4plus;
+
+  const showImage = !hasFailed && Boolean(logoUrl && logoUrl.trim());
+
   return (
     <div className={`inline-flex items-center gap-2.5 ${className}`}>
       <div
         className={`${sizeCfg.container} rounded-full bg-white border border-slate-200/90 shadow-xs flex items-center justify-center p-1 overflow-hidden shrink-0 transition-transform duration-200`}
         title={fullName}
       >
-        {!hasFailed && logoUrl ? (
+        {showImage ? (
           <img
             key={`${uniId}-${retryCount}`}
             src={imageSrc}
@@ -100,10 +187,14 @@ export const UniversityLogoBadge: React.FC<UniversityLogoBadgeProps> = ({
             onError={handleImageError}
           />
         ) : (
-          <GraduationCap
-            className={`${sizeCfg.icon} text-indigo-600 shrink-0`}
-            aria-label={`${shortName} insignia`}
-          />
+          <div
+            className={`w-full h-full rounded-full ${colorClass} flex items-center justify-center font-black tracking-tight select-none shadow-inner`}
+            aria-label={`${shortName} abbreviation`}
+          >
+            <span className={`${fontSizeClass} font-black uppercase text-center leading-none px-0.5`}>
+              {initials}
+            </span>
+          </div>
         )}
       </div>
 

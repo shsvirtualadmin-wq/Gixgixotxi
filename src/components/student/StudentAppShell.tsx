@@ -720,7 +720,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
   return (
     <>
       {/* Full-Screen Boardy AI tab: renders with 0 chrome (no bottom nav, no top bar, no footer, no sidebar) */}
-      <div className={isBoardyActive ? 'block' : 'hidden'}>
+      <div className={isBoardyActive ? 'block animate-fade-in' : 'hidden'}>
         <StudentBoardyChatTab
           initialPrompt={boardyPrompt}
           onOpenUsage={() => setShowUsageModal(true)}

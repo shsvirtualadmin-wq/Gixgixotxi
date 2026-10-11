@@ -779,4 +779,141 @@
   animation: tickerRight 35s linear infinite;
 }
 
+/* ========================================================================= */
+/* Global Snappy Animations & Transitions System                            */
+/* ========================================================================= */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
 
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scaleFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes dotPulse {
+  0%, 100% {
+    transform: scale(0.7);
+    opacity: 0.4;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-scale-in {
+  animation: scaleFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-in-left {
+  animation: slideInLeft 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-slide-in-right {
+  animation: slideInRight 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-dot-pulse-1 {
+  animation: dotPulse 1.2s ease-in-out infinite;
+}
+
+.animate-dot-pulse-2 {
+  animation: dotPulse 1.2s ease-in-out 0.2s infinite;
+}
+
+.animate-dot-pulse-3 {
+  animation: dotPulse 1.2s ease-in-out 0.4s infinite;
+}
+
+/* Stagger delay classes */
+.delay-0 { animation-delay: 0ms; }
+.delay-40 { animation-delay: 40ms; }
+.delay-80 { animation-delay: 80ms; }
+.delay-120 { animation-delay: 120ms; }
+.delay-160 { animation-delay: 160ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-240 { animation-delay: 240ms; }
+.delay-280 { animation-delay: 280ms; }
+.delay-320 { animation-delay: 320ms; }
+.delay-360 { animation-delay: 360ms; }
+.delay-400 { animation-delay: 400ms; }
+
+/* Interactive card and button classes */
+.card-interactive {
+  transition-property: transform, box-shadow, border-color, background-color;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.card-interactive:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.12), 0 8px 10px -6px rgba(99, 102, 241, 0.08);
+}
+
+.card-interactive:active {
+  transform: scale(0.98);
+}
+
+.btn-interactive {
+  transition-property: transform, background-color, border-color, color, box-shadow;
+  transition-duration: 200ms;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-interactive:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.btn-interactive:disabled {
+  pointer-events: none;
+  opacity: 0.6;
+}

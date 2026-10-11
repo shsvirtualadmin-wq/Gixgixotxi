@@ -34,9 +34,6 @@ export const CRITICAL_LOGO_URLS: string[] = [
   '/logos/academic/stem.png',
   '/logos/academic/kips.png',
   '/logos/academic/uhs.png',
-  '/logos/duhs.svg',
-  '/logos/kmu.svg',
-  '/logos/szabmu.svg',
 ];
 
 const loadedCache = new Set<string>();
