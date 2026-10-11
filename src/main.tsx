@@ -2,6 +2,8 @@ import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import 'katex/dist/katex.min.css';
+import './lib/boardyMath.ts';
 import './index.css';
 
 // Listen for Vite chunk preload failures and trigger reload

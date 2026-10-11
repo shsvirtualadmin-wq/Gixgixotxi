@@ -34,6 +34,13 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { generateAcademicExplanation } from "./src/lib/curriculumEngine.js";
 import { normalizeQuestionStem, deduplicateQuestions } from "./src/lib/shuffle.js";
 import { normalizePackageTrack, findDuplicatePaymentGroups } from "./src/lib/paymentDeduplication.js";
+import {
+  BOARDY_DEFAULT_MODEL,
+  BOARDY_FALLBACK_MODEL,
+  getBoardyModel,
+  buildBoardySystemPrompt,
+  BoardyMode,
+} from "./src/config/boardyConfig.js";
 
 dotenv.config();
 
@@ -2539,71 +2546,204 @@ async function startServer() {
   });
 
   // Boardy AI Study Partner chat endpoint
-  app.post(["/api/study-buddy/chat", "/api/boardy/chat"], async (req, res) => {
+  app.post(["/api/study-buddy/chat", "/api/boardy/chat", "/api/boardy/stream"], async (req, res) => {
     try {
-      const { message, userQuestion, history = [] } = req.body || {};
+      const {
+        message,
+        userQuestion,
+        history = [],
+        mode = "deep-dive",
+        targetExam = "",
+        studentName = "Student",
+        stream = false,
+      } = req.body || {};
       const promptText = String(message || userQuestion || "").trim();
 
       if (!promptText) {
         return res.status(400).json({ success: false, error: "Message is required" });
       }
 
-      const ai = getGeminiClient();
-      if (ai) {
-        try {
-          const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+      const isStreamRequested = stream === true || req.path === "/api/boardy/stream" || req.headers.accept?.includes("text/event-stream");
 
-          if (Array.isArray(history)) {
-            for (const item of history.slice(-6)) {
-              const role = item.role === 'user' ? 'user' : 'model';
-              const text = String(item.content || item.text || item.message || '').trim();
-              if (text) {
-                contents.push({ role, parts: [{ text }] });
+      const dynamicSystemInstruction = buildBoardySystemPrompt(
+        (mode as BoardyMode) || "deep-dive",
+        targetExam,
+        studentName
+      );
+
+      const ai = getGeminiClient();
+      const apiKey = getGeminiApiKey();
+
+      if (ai) {
+        const contents: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> = [];
+
+        if (Array.isArray(history)) {
+          for (const item of history.slice(-6)) {
+            const role = item.role === "user" ? "user" : "model";
+            const text = String(item.content || item.text || item.message || "").trim();
+            if (text) {
+              contents.push({ role, parts: [{ text }] });
+            }
+          }
+        }
+
+        contents.push({ role: "user", parts: [{ text: promptText }] });
+
+        while (contents.length > 0 && contents[0].role !== "user") {
+          contents.shift();
+        }
+
+        const primaryModel = getBoardyModel();
+        const fallbackModel = BOARDY_FALLBACK_MODEL;
+
+        if (isStreamRequested) {
+          res.setHeader("Content-Type", "text/event-stream");
+          res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("Connection", "keep-alive");
+          res.setHeader("X-Accel-Buffering", "no");
+
+          let streamSuccess = false;
+          let fullReply = "";
+
+          // Try primary model first, fallback to previous model on failure
+          const modelsToTry = [primaryModel, fallbackModel];
+          for (let i = 0; i < modelsToTry.length; i++) {
+            const modelToUse = modelsToTry[i];
+            try {
+              const runStream = async () => {
+                const responseStream = await ai.models.generateContentStream({
+                  model: modelToUse,
+                  contents,
+                  config: {
+                    systemInstruction: dynamicSystemInstruction,
+                    temperature: 0.25,
+                  },
+                });
+
+                for await (const chunk of responseStream) {
+                  const chunkText = chunk.text;
+                  if (chunkText) {
+                    fullReply += chunkText;
+                    res.write(`data: ${JSON.stringify({ text: chunkText })}\n\n`);
+                  }
+                }
+              };
+
+              if (apiKey) {
+                await withGeminiNativeAuth(apiKey, runStream);
+              } else {
+                await runStream();
+              }
+
+              res.write(`data: [DONE]\n\n`);
+              streamSuccess = true;
+              break;
+            } catch (streamErr: any) {
+              if (i === 0) {
+                console.warn(
+                  `[Boardy Model Fallback Warning]: Primary model ${primaryModel} failed. Automatically retrying with fallback model ${fallbackModel}:`,
+                  streamErr?.message || streamErr
+                );
+              } else {
+                console.error(`[Boardy Stream Error]: Fallback model ${fallbackModel} also failed:`, streamErr);
               }
             }
           }
 
-          contents.push({ role: 'user', parts: [{ text: promptText }] });
-
-          while (contents.length > 0 && contents[0].role !== 'user') {
-            contents.shift();
-          }
-
-          const response = await ai.models.generateContent({
-            model: "gemini-3.8-flash",
-            contents,
-            config: {
-              systemInstruction: `You are Boardy, an encouraging, step-by-step 24/7 AI study partner for Pakistani high school (FSC/Matric) and university entrance exam students (FAST, NUST NET, GIKI, PIEAS, ECAT, IBA, LUMS, MDCAT).
-Format mathematical formulas cleanly using standard LaTeX notation ($...$ or $$...$$).
-Break explanations into numbered steps with concise exam tips and trick shortcuts.
-Keep tone warm, confident, and encouraging without robotic fluff.`,
-              temperature: 0.3,
-            },
-          });
-
-          const replyText = response.text || "";
-          if (replyText) {
+          if (streamSuccess) {
             inMemoryStudyBuddyLogs.unshift({
               id: `sb-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
               student_id: req.body?.userId || "chat-user",
-              student_name: req.body?.studentName || "Student",
+              student_name: studentName,
               student_email: req.body?.userEmail || "",
-              role: 'model',
-              message_text: replyText,
+              role: "model",
+              message_text: fullReply,
               created_at: new Date().toISOString(),
             });
             if (inMemoryStudyBuddyLogs.length > 500) inMemoryStudyBuddyLogs.pop();
             savePersistentStudyBuddyLogs();
-
-            return res.json({
-              success: true,
-              reply: replyText,
-              explanation: replyText,
-              answer: replyText,
-            });
+            return res.end();
           }
-        } catch (aiErr) {
-          console.warn("[Boardy Gemini error fallback]:", aiErr);
+
+          // If stream failed completely, send fallback
+          const fallbackText = `### Step-by-Step Explanation by Boardy 🎓\n\n1. **Core Concept**: Break the given problem into initial knowns and unknowns.\n2. **Standard Formula**: Apply standard FSC/Entrance Test definitions carefully.\n3. **Quick Test Tip**: Avoid long multi-page expansions when practicing entry tests—test options for edge values ($x=0$ or $x=1$).\n\nLet me know if you would like me to work through a specific problem or verify your answer!`;
+          res.write(`data: ${JSON.stringify({ text: fallbackText })}\n\n`);
+          res.write(`data: [DONE]\n\n`);
+          return res.end();
+        }
+
+        // Non-streaming JSON response
+        let replyText = "";
+        let modelUsed = primaryModel;
+
+        try {
+          const runGenerate = async () => {
+            const response = await ai.models.generateContent({
+              model: primaryModel,
+              contents,
+              config: {
+                systemInstruction: dynamicSystemInstruction,
+                temperature: 0.25,
+              },
+            });
+            return response.text || "";
+          };
+
+          if (apiKey) {
+            replyText = await withGeminiNativeAuth(apiKey, runGenerate);
+          } else {
+            replyText = await runGenerate();
+          }
+        } catch (primaryErr: any) {
+          console.warn(
+            `[Boardy Model Fallback Warning]: Primary model ${primaryModel} failed. Automatically retrying with fallback model ${fallbackModel}:`,
+            primaryErr?.message || primaryErr
+          );
+          modelUsed = fallbackModel;
+          try {
+            const runFallback = async () => {
+              const response = await ai.models.generateContent({
+                model: fallbackModel,
+                contents,
+                config: {
+                  systemInstruction: dynamicSystemInstruction,
+                  temperature: 0.25,
+                },
+              });
+              return response.text || "";
+            };
+
+            if (apiKey) {
+              replyText = await withGeminiNativeAuth(apiKey, runFallback);
+            } else {
+              replyText = await runFallback();
+            }
+          } catch (fallbackErr: any) {
+            console.error(`[Boardy Model Fallback Failed]: Model ${fallbackModel} also failed:`, fallbackErr);
+          }
+        }
+
+        if (replyText) {
+          inMemoryStudyBuddyLogs.unshift({
+            id: `sb-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+            student_id: req.body?.userId || "chat-user",
+            student_name: studentName,
+            student_email: req.body?.userEmail || "",
+            role: "model",
+            message_text: replyText,
+            created_at: new Date().toISOString(),
+          });
+          if (inMemoryStudyBuddyLogs.length > 500) inMemoryStudyBuddyLogs.pop();
+          savePersistentStudyBuddyLogs();
+
+          return res.json({
+            success: true,
+            reply: replyText,
+            explanation: replyText,
+            answer: replyText,
+            model: modelUsed,
+            mode,
+          });
         }
       }
 
@@ -2611,6 +2751,8 @@ Keep tone warm, confident, and encouraging without robotic fluff.`,
       return res.json({
         success: true,
         reply: `### Step-by-Step Explanation by Boardy 🎓\n\n1. **Core Concept**: Break the given problem into initial knowns and unknowns.\n2. **Standard Formula**: Apply standard FSC/Entrance Test definitions carefully.\n3. **Quick Test Tip**: Avoid long multi-page expansions when practicing entry tests—test options for edge values ($x=0$ or $x=1$).\n\nLet me know if you would like me to work through a specific problem or verify your answer!`,
+        model: "fallback",
+        mode,
       });
     } catch (err: any) {
       return res.status(500).json({ success: false, error: err?.message || "Internal server error" });

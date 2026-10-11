@@ -5,6 +5,7 @@ import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import { sanitizeStudyBuddyText } from '../lib/studyBuddySanitizer';
 import { preprocessMathText, renderKaTeX } from '../lib/mathConverter';
+import { normalizeBoardyMath } from '../lib/boardyMath';
 import { Copy, Check, ExternalLink } from 'lucide-react';
 
 interface StudyBuddyFormattedMessageProps {
@@ -65,7 +66,8 @@ export const StudyBuddyFormattedMessage: React.FC<StudyBuddyFormattedMessageProp
   isUser = false,
   theme = 'light',
 }) => {
-  const sanitized = sanitizeStudyBuddyText(content);
+  const normalized = normalizeBoardyMath(content);
+  const sanitized = sanitizeStudyBuddyText(normalized);
   const processed = sanitized ? preprocessMathText(sanitized) : '';
 
   if (!processed) return null;

@@ -13,46 +13,54 @@ export async function onRequestPost(context: any) {
 
     const apiKey = env.GEMINI_API_KEY || env.API_KEY || "";
     if (apiKey) {
-      try {
-        const geminiRes = await fetch(
-          `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [
-                {
-                  role: "user",
-                  parts: [{ text: promptText }],
-                },
-              ],
-              systemInstruction: {
-                parts: [
+      const modelsToTry = ["gemini-3.8-flash", "gemini-3.5-flash"];
+      for (let i = 0; i < modelsToTry.length; i++) {
+        const modelName = modelsToTry[i];
+        try {
+          const geminiRes = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [
                   {
-                    text: `You are Boardy, an encouraging, step-by-step 24/7 AI study partner for Pakistani high school (FSC/Matric) and university entrance exam students (FAST, NUST NET, GIKI, PIEAS, ECAT, IBA, LUMS, MDCAT).
-Format mathematical formulas cleanly using standard LaTeX notation ($...$ or $$...$$).
-Break explanations into numbered steps with concise exam tips and trick shortcuts.
-Keep tone warm, confident, and encouraging without robotic fluff.`,
+                    role: "user",
+                    parts: [{ text: promptText }],
                   },
                 ],
-              },
-            }),
-          }
-        );
+                systemInstruction: {
+                  parts: [
+                    {
+                      text: `You are Boardy, an encouraging, step-by-step 24/7 AI study partner for Pakistani high school (FSC/Matric) and university entrance exam students (FAST, NUST NET, GIKI, PIEAS, ECAT, IBA, LUMS, MDCAT).
+Format mathematical formulas cleanly using standard LaTeX notation ($...$ or $$...$$). Never put math in code fences.
+Break explanations into numbered steps with concise exam tips and trick shortcuts.
+Keep tone warm, confident, and encouraging without robotic fluff.`,
+                    },
+                  ],
+                },
+              }),
+            }
+          );
 
-        if (geminiRes.ok) {
-          const data: any = await geminiRes.json();
-          const replyText =
-            data.candidates?.[0]?.content?.parts?.[0]?.text || "";
-          if (replyText) {
-            return new Response(JSON.stringify({ reply: replyText }), {
-              status: 200,
-              headers: { "Content-Type": "application/json" },
-            });
+          if (geminiRes.ok) {
+            const data: any = await geminiRes.json();
+            const replyText =
+              data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            if (replyText) {
+              return new Response(JSON.stringify({ reply: replyText, model: modelName }), {
+                status: 200,
+                headers: { "Content-Type": "application/json" },
+              });
+            }
+          } else if (i === 0) {
+            console.warn(`[Boardy Cloudflare Worker Fallback]: Primary model ${modelName} returned status ${geminiRes.status}. Retrying with gemini-3.5-flash...`);
+          }
+        } catch (gemErr) {
+          if (i === 0) {
+            console.warn(`[Boardy Cloudflare Worker Fallback]: Primary model ${modelName} failed, retrying with gemini-3.5-flash:`, gemErr);
           }
         }
-      } catch (gemErr) {
-        console.warn("Gemini fetch error:", gemErr);
       }
     }
 
