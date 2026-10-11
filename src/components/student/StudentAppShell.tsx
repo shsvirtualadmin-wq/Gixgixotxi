@@ -540,6 +540,12 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           try {
             localStorage.removeItem('boardly_university_test_session');
           } catch {}
+          if (user?.uid) {
+            const currentUsed = profile?.testsUsedToday || 0;
+            updateProfileData({
+              testsUsedToday: currentUsed + 1,
+            }).catch(console.warn);
+          }
           setActiveTest(null);
         }}
       />

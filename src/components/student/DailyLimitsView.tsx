@@ -104,29 +104,38 @@ export const DailyLimitsView: React.FC<DailyLimitsViewProps> = ({
             </span>
           </div>
 
-          <div className="space-y-1.5 pt-2">
-            <div className="flex justify-between items-baseline">
-              <span className="text-2xl font-black text-[#0d1b3e]">
-                {isUnlimitedAccount ? 'Unlimited' : `${testsUsedToday} of ${planConfig.testsPerDay}`}
-              </span>
-              {!isUnlimitedAccount && (
-                <span className="text-xs font-bold text-slate-500">
-                  {Math.max(0, planConfig.testsPerDay - testsUsedToday)} remaining
-                </span>
-              )}
-            </div>
+          {/* Test Limit calculation and colored progress bar */}
+          {(() => {
+            const testPercent = isUnlimitedAccount ? 0 : Math.min(100, Math.round((testsUsedToday / planConfig.testsPerDay) * 100));
+            const testBarColor = testPercent < 50 ? 'bg-emerald-500' : testPercent <= 80 ? 'bg-amber-500' : 'bg-rose-500';
+            return (
+              <div className="space-y-1.5 pt-2">
+                <div className="flex justify-between items-baseline flex-wrap gap-1">
+                  <span className="text-lg sm:text-xl font-black text-[#0d1b3e]">
+                    {isUnlimitedAccount
+                      ? 'Unlimited'
+                      : `${testsUsedToday} of ${planConfig.testsPerDay} tests used today (resets at midnight PKT)`}
+                  </span>
+                  {!isUnlimitedAccount && (
+                    <span className="text-xs font-bold text-slate-500">
+                      {Math.max(0, planConfig.testsPerDay - testsUsedToday)} remaining
+                    </span>
+                  )}
+                </div>
 
-            {!isUnlimitedAccount && (
-              <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-indigo-600 rounded-full transition-all duration-300"
-                  style={{
-                    width: `${Math.min(100, (testsUsedToday / planConfig.testsPerDay) * 100)}%`,
-                  }}
-                />
+                {!isUnlimitedAccount && (
+                  <div className="w-full h-2.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${testBarColor} rounded-full transition-all duration-300`}
+                      style={{
+                        width: `${Math.min(100, (testsUsedToday / planConfig.testsPerDay) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            );
+          })()}
 
           {onNavigatePractice && (
             <button

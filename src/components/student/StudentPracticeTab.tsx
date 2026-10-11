@@ -31,6 +31,14 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
   const isUnlimited = isAdmin || planConfig.testsPerDay >= 999;
   const testsLeft = isUnlimited ? 999 : Math.max(0, planConfig.testsPerDay - testsUsedToday);
   const isAllowanceExhausted = !isAdmin && !isUnlimited && testsLeft <= 0;
+  const testUsagePercent = isUnlimited ? 0 : Math.min(100, Math.round((testsUsedToday / planConfig.testsPerDay) * 100));
+
+  // Progress bar color: green < 50%, amber 50-80%, red > 80%
+  const testProgressBarColor = testUsagePercent < 50
+    ? 'bg-emerald-500'
+    : testUsagePercent <= 80
+    ? 'bg-amber-500'
+    : 'bg-rose-500';
 
   const [uniCategoryFilter, setUniCategoryFilter] = useState<'All' | 'Engineering & CS' | 'Business & Finance' | 'NTS'>('All');
   const [showAllSubjects, setShowAllSubjects] = useState(false);
@@ -78,31 +86,29 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
           </p>
         </div>
 
-        {/* Usage pill on right */}
-        <button
-          type="button"
-          onClick={onOpenUsage}
-          className="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-white/90 border border-slate-200/90 shadow-sm text-xs font-semibold text-slate-700 hover:border-blue-400 hover:text-blue-600 transition-all cursor-pointer self-start sm:self-auto"
-        >
-          {/* Ring indicators */}
-          <div className="flex items-center gap-1">
-            {isUnlimited ? (
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            ) : (
-              Array.from({ length: Math.min(5, planConfig.testsPerDay) }).map((_, i) => (
-                <span
-                  key={i}
-                  className={`w-2 h-2 rounded-full ${
-                    i < testsLeft ? 'bg-blue-600' : 'bg-slate-200'
-                  }`}
-                />
-              ))
-            )}
-          </div>
-          <span>
-            {isUnlimited ? 'Unlimited tests' : `${testsLeft} of ${planConfig.testsPerDay} tests left today`} · Resets at midnight
-          </span>
-        </button>
+        {/* Usage pill on right with progress bar */}
+        <div className="flex flex-col items-start sm:items-end gap-1.5 self-start sm:self-auto">
+          <button
+            type="button"
+            onClick={onOpenUsage}
+            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/95 border border-slate-200/90 shadow-xs text-xs font-bold text-slate-700 hover:border-blue-400 hover:text-blue-600 transition-all cursor-pointer"
+          >
+            <span className={`w-2 h-2 rounded-full ${isUnlimited ? 'bg-emerald-500 animate-pulse' : testProgressBarColor}`} />
+            <span>
+              {isUnlimited
+                ? 'Unlimited tests today'
+                : `${testsUsedToday} of ${planConfig.testsPerDay} tests used today (resets at midnight PKT)`}
+            </span>
+          </button>
+          {!isUnlimited && (
+            <div className="w-48 sm:w-56 h-1.5 bg-slate-200/90 rounded-full overflow-hidden">
+              <div
+                className={`h-full ${testProgressBarColor} transition-all duration-300`}
+                style={{ width: `${testUsagePercent}%` }}
+              />
+            </div>
+          )}
+        </div>
       </div>
 
       {/* SECTION 1: Timed Sprint */}
@@ -239,24 +245,34 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
                   </div>
                 </div>
 
-                {/* Start test or upgrade button */}
+                {/* Take Test or upgrade button */}
                 <div className="mt-4 pt-3 border-t border-slate-100">
                   {isAllowanceExhausted ? (
-                    <button
-                      type="button"
-                      onClick={onUpgrade}
-                      className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-amber-500 hover:bg-amber-600 text-white shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                    >
-                      <Lock className="w-3.5 h-3.5" />
-                      <span>Upgrade to Pro to practice</span>
-                    </button>
+                    <div className="space-y-1.5">
+                      <button
+                        type="button"
+                        disabled={true}
+                        title="Daily test limit reached. Resets at midnight PKT. Upgrade to Pro for unlimited tests."
+                        className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-slate-100 text-slate-400 border border-slate-200 cursor-not-allowed flex items-center justify-center gap-1.5"
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Take Test (Limit Reached)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={onUpgrade}
+                        className="w-full py-1 text-center text-[11px] font-bold text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                      >
+                        Upgrade to Pro for more tests &rarr;
+                      </button>
+                    </div>
                   ) : (
                     <button
                       type="button"
                       onClick={() => onStartUniversityPaper(uni)}
                       className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-sm transition-all cursor-pointer flex items-center justify-center gap-1.5"
                     >
-                      <span>Start test</span>
+                      <span>Take Test</span>
                       <ArrowRight className="w-3.5 h-3.5" />
                     </button>
                   )}

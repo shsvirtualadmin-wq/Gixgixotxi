@@ -12,6 +12,7 @@ import {
   Sparkles,
   Star,
   CheckCircle,
+  Lock,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { StoredTestAttempt } from '../../lib/firebase';
@@ -93,6 +94,14 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
   const isBoardyUnlimited = isAdmin || boardyLimit >= 999;
   const testsLeft = isUnlimited ? 'Unlimited' : Math.min(testsLimit, Math.max(0, testsLimit - testsUsed));
   const boardyLeft = isBoardyUnlimited ? 'Unlimited' : Math.min(boardyLimit, Math.max(0, boardyLimit - boardyUsed));
+  const testUsagePercent = isUnlimited ? 0 : Math.min(100, Math.round((testsUsed / testsLimit) * 100));
+
+  // Progress bar color: green < 50%, amber 50-80%, red > 80%
+  const testProgressBarColor = testUsagePercent < 50
+    ? 'bg-emerald-500'
+    : testUsagePercent <= 80
+    ? 'bg-amber-500'
+    : 'bg-rose-500';
 
   // Real streak directly from Firestore user doc
   const streak = typeof profile?.streak === 'number'
@@ -272,14 +281,26 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
             </p>
 
             <div className="flex flex-wrap items-center gap-4 pt-2">
-              <button
-                type="button"
-                onClick={() => onStartSprint(sprintSubject)}
-                className="py-3 px-6 rounded-2xl bg-white text-indigo-900 hover:bg-indigo-50 font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-2 group"
-              >
-                <span>Start Sprint Now</span>
-                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-              </button>
+              {!isUnlimited && typeof testsLeft === 'number' && testsLeft <= 0 ? (
+                <button
+                  type="button"
+                  onClick={onGoToPractice}
+                  title="Daily test limit reached. Resets at midnight PKT. Upgrade to Pro for unlimited tests."
+                  className="py-3 px-6 rounded-2xl bg-white/40 text-indigo-950 font-black text-xs transition-all cursor-not-allowed flex items-center gap-2"
+                >
+                  <Lock className="w-4 h-4 text-indigo-900" />
+                  <span>Daily limit reached (Take Test disabled)</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onStartSprint(sprintSubject)}
+                  className="py-3 px-6 rounded-2xl bg-white text-indigo-900 hover:bg-indigo-50 font-black text-xs shadow-md transition-all cursor-pointer flex items-center gap-2 group"
+                >
+                  <span>Start Sprint Now</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              )}
               {targetUni ? (
                 <button
                   type="button"
@@ -327,22 +348,34 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
 
       {/* Today's Allowance Rings & Midnight Countdown - Real Database Values */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {/* Tests Left */}
-        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm flex items-center justify-between">
-          <div>
+        {/* Tests Limit Card */}
+        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between">
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-              Tests Left Today
+              Daily Practice Tests
             </p>
-            <p className="text-2xl font-black text-slate-900 mt-1">
-              {testsLeft}
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">
+              <Zap className="w-4 h-4" />
+            </div>
+          </div>
+          <div className="mt-2">
+            <p className="text-sm sm:text-base font-black text-slate-900">
+              {isUnlimited
+                ? 'Unlimited'
+                : `${testsUsed} of ${testsLimit} tests used today (resets at midnight PKT)`}
             </p>
             <p className="text-[11px] text-slate-500 mt-0.5">
-              {planConfig.name} Plan ({testsUsed} used today)
+              {planConfig.name} Plan {!isUnlimited && `· ${testsLeft} left`}
             </p>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">
-            <Zap className="w-6 h-6" />
-          </div>
+          {!isUnlimited && (
+            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden mt-3">
+              <div
+                className={`h-full ${testProgressBarColor} rounded-full transition-all duration-300`}
+                style={{ width: `${testUsagePercent}%` }}
+              />
+            </div>
+          )}
         </div>
 
         {/* Boardy Chats Left */}

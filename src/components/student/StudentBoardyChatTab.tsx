@@ -1,15 +1,38 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Sparkles, Plus, Menu, X, Bot, User as UserIcon, Loader2, ArrowRight } from 'lucide-react';
+import {
+  Send,
+  Sparkles,
+  Plus,
+  Menu,
+  X,
+  Loader2,
+  ArrowRight,
+  Trash2,
+  Compass,
+  Zap,
+  BookOpen,
+  HeartHandshake
+} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BoardyMascot } from '../BoardyMascot';
 import { StudyBuddyFormattedMessage } from '../StudyBuddyFormattedMessage';
 import { PLAN_LIMITS, PlanType, normalizePlanId } from '../../data/planLimits';
+import { BOARDY_MODES, BoardyMode } from '../../config/boardyConfig';
 
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   createdAt: string;
+}
+
+export interface ChatSession {
+  id: string;
+  title: string;
+  mode: BoardyMode;
+  messages: ChatMessage[];
+  createdAt: string;
+  updatedAt: string;
 }
 
 interface StudentBoardyChatTabProps {
@@ -47,23 +70,58 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
   const boardyRemaining = isUnlimited ? 'Unlimited' : Math.min(boardyLimit, Math.max(0, boardyLimit - boardyUsedToday));
   const isBoardyExhausted = !isUnlimited && (typeof boardyRemaining === 'number' && boardyRemaining <= 0);
 
-  const [messages, setMessages] = useState<ChatMessage[]>(() => {
+  // Active Pedagogical Mode
+  const [activeMode, setActiveMode] = useState<BoardyMode>('deep-dive');
+
+  // Multi-session chat history
+  const [sessions, setSessions] = useState<ChatSession[]>(() => {
     try {
-      const saved = localStorage.getItem('boardly_boardy_chat_messages');
-      if (saved) return JSON.parse(saved);
+      const saved = localStorage.getItem('boardly_boardy_sessions');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      // Migrate legacy single messages if found
+      const legacyMsgs = localStorage.getItem('boardly_boardy_chat_messages');
+      if (legacyMsgs) {
+        const parsedLegacy = JSON.parse(legacyMsgs);
+        if (Array.isArray(parsedLegacy) && parsedLegacy.length > 0) {
+          return [{
+            id: `session-${Date.now()}`,
+            title: parsedLegacy[0]?.content?.slice(0, 30) || 'Study Session',
+            mode: 'deep-dive',
+            messages: parsedLegacy,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          }];
+        }
+      }
     } catch {}
     return [];
   });
+
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    return sessions[0]?.id || `session-${Date.now()}`;
+  });
+
+  // Current session messages
+  const activeSession = sessions.find((s) => s.id === activeSessionId);
+  const messages = activeSession?.messages || [];
 
   const [inputValue, setInputValue] = useState<string>('');
   const [isTyping, setIsTyping] = useState<boolean>(false);
   const [showDrawer, setShowDrawer] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Save sessions to localStorage whenever they change
   useEffect(() => {
     try {
-      localStorage.setItem('boardly_boardy_chat_messages', JSON.stringify(messages));
+      localStorage.setItem('boardly_boardy_sessions', JSON.stringify(sessions));
     } catch {}
+  }, [sessions]);
+
+  // Scroll to bottom on new message
+  useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
@@ -97,7 +155,30 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    // Update session state with user message
+    let currentSessionObj = sessions.find((s) => s.id === activeSessionId);
+    if (!currentSessionObj) {
+      currentSessionObj = {
+        id: activeSessionId,
+        title: text.length > 36 ? `${text.slice(0, 36)}…` : text,
+        mode: activeMode,
+        messages: [userMsg],
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setSessions((prev) => [currentSessionObj!, ...prev]);
+    } else {
+      const updatedMessages = [...currentSessionObj.messages, userMsg];
+      const updatedSession = {
+        ...currentSessionObj,
+        messages: updatedMessages,
+        updatedAt: new Date().toISOString(),
+      };
+      setSessions((prev) =>
+        prev.map((s) => (s.id === activeSessionId ? updatedSession : s))
+      );
+    }
+
     setInputValue('');
     setIsTyping(true);
 
@@ -106,14 +187,18 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
     updateProfileData({ boardyQuestionsUsedToday: newUsed }).catch(console.warn);
 
     try {
-      // Call backend study-buddy or Boardy endpoint
-      const res = await fetch('/api/study-buddy/chat', {
+      // Call Boardy AI backend with full context and pedagogical mode
+      const targetExam = profile?.targetUniversity || profile?.targetUniversityId || profile?.testTrack || 'Entry Exams';
+      const res = await fetch('/api/boardy/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: text,
           userQuestion: text,
-          history: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
+          history: (currentSessionObj?.messages || []).slice(-6).map((m) => ({ role: m.role, content: m.content })),
+          mode: activeMode,
+          targetExam,
+          studentName: firstName,
         }),
       });
 
@@ -125,7 +210,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
 
       if (!replyText) {
         // Fallback intelligent step-by-step response if backend is offline
-        replyText = generateLocalBoardyReply(text, firstName);
+        replyText = generateLocalBoardyReply(text, firstName, activeMode);
       }
 
       const botMsg: ChatMessage = {
@@ -135,23 +220,59 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
         createdAt: new Date().toISOString(),
       };
 
-      setMessages((prev) => [...prev, botMsg]);
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSessionId
+            ? { ...s, messages: [...s.messages, botMsg], updatedAt: new Date().toISOString() }
+            : s
+        )
+      );
     } catch (err) {
       const fallbackMsg: ChatMessage = {
         id: `b-${Date.now()}`,
         role: 'assistant',
-        content: generateLocalBoardyReply(text, firstName),
+        content: generateLocalBoardyReply(text, firstName, activeMode),
         createdAt: new Date().toISOString(),
       };
-      setMessages((prev) => [...prev, fallbackMsg]);
+      setSessions((prev) =>
+        prev.map((s) =>
+          s.id === activeSessionId
+            ? { ...s, messages: [...s.messages, fallbackMsg], updatedAt: new Date().toISOString() }
+            : s
+        )
+      );
     } finally {
       setIsTyping(false);
     }
   };
 
-  const handleNewChat = () => {
-    setMessages([]);
-    localStorage.removeItem('boardly_boardy_chat_messages');
+  const handleStartNewSession = () => {
+    const newId = `session-${Date.now()}`;
+    const newSession: ChatSession = {
+      id: newId,
+      title: 'New Discussion',
+      mode: activeMode,
+      messages: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setSessions((prev) => [newSession, ...prev]);
+    setActiveSessionId(newId);
+    setShowDrawer(false);
+  };
+
+  const handleDeleteSession = (sessionId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const updated = sessions.filter((s) => s.id !== sessionId);
+    setSessions(updated);
+    if (activeSessionId === sessionId) {
+      if (updated.length > 0) {
+        setActiveSessionId(updated[0].id);
+      } else {
+        const newId = `session-${Date.now()}`;
+        setActiveSessionId(newId);
+      }
+    }
   };
 
   // Greeting
@@ -162,10 +283,17 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
     return 'Good evening';
   })();
 
+  const modeIcons: Record<BoardyMode, React.ReactNode> = {
+    'deep-dive': <BookOpen className="w-3.5 h-3.5" />,
+    'quick-take': <Zap className="w-3.5 h-3.5" />,
+    'study-pal': <HeartHandshake className="w-3.5 h-3.5" />,
+    'game-plan': <Compass className="w-3.5 h-3.5" />,
+  };
+
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] max-w-4xl mx-auto bg-white/90 backdrop-blur-2xl border border-slate-200/90 shadow-xl rounded-3xl overflow-hidden font-sans">
+    <div className="flex flex-col h-[calc(100vh-140px)] max-w-4xl mx-auto bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-xl rounded-3xl overflow-hidden font-sans">
       {/* Top Bar */}
-      <header className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-white/80">
+      <header className="px-4 sm:px-5 py-3 border-b border-slate-100 flex items-center justify-between bg-white/90">
         <div className="flex items-center gap-3">
           <button
             type="button"
@@ -177,36 +305,69 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
           </button>
           <div className="flex items-center gap-2">
             <BoardyMascot size="sm" />
-            <h1 className="font-extrabold text-base text-slate-900 tracking-tight">
-              Boardy AI
-            </h1>
+            <div>
+              <h1 className="font-extrabold text-sm sm:text-base text-slate-900 tracking-tight leading-none">
+                Boardy AI
+              </h1>
+              <span className="text-[10px] font-semibold text-slate-400">
+                24/7 Academic Study Partner
+              </span>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
           {/* Daily questions allowance indicator */}
           <button
             type="button"
             onClick={onOpenUsage}
-            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-[11px] font-semibold text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-100 text-[11px] font-bold text-blue-700 hover:bg-blue-100 transition-colors cursor-pointer"
           >
             <Sparkles className="w-3 h-3 text-amber-500" />
             <span>
-              {isUnlimited ? 'Unlimited' : `${boardyRemaining} of ${boardyLimit} questions left today`}
+              {isUnlimited
+                ? 'Unlimited questions'
+                : `${boardyUsedToday} of ${boardyLimit} questions used today (resets at midnight PKT)`}
             </span>
           </button>
 
           <button
             type="button"
-            onClick={handleNewChat}
+            onClick={handleStartNewSession}
             className="p-2 rounded-xl text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
-            title="New chat"
+            title="Start new conversation"
             aria-label="New chat"
           >
             <Plus className="w-5 h-5" />
           </button>
         </div>
       </header>
+
+      {/* Mode Switcher Bar */}
+      <div className="px-3 sm:px-5 py-2 bg-slate-50/80 border-b border-slate-100/90 flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar">
+        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-1">
+          Mode:
+        </span>
+        {BOARDY_MODES.map((mode) => {
+          const isActive = activeMode === mode.id;
+          return (
+            <button
+              key={mode.id}
+              type="button"
+              onClick={() => setActiveMode(mode.id)}
+              className={`px-2.5 py-1 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+                isActive
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'bg-white text-slate-600 border border-slate-200/80 hover:bg-slate-100 hover:text-slate-900'
+              }`}
+              title={mode.description}
+            >
+              {modeIcons[mode.id]}
+              <span>{mode.name}</span>
+            </button>
+          );
+        })}
+      </div>
 
       {/* Messages Scroll Area */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
@@ -215,12 +376,12 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
           <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-6">
             <BoardyMascot size="lg" withSparkle={true} />
 
-            <div className="space-y-1">
+            <div className="space-y-1.5">
               <h2 className="text-xl sm:text-2xl font-black text-slate-900">
                 {greeting}, {firstName}
               </h2>
-              <p className="text-xs sm:text-sm text-slate-500">
-                What are we studying today? Ask any MCQ, formula proof, or test-taking strategy.
+              <p className="text-xs sm:text-sm text-slate-500 max-w-sm mx-auto">
+                What are we studying today? Ask any MCQ, formula proof, or exam strategy.
               </p>
             </div>
 
@@ -231,7 +392,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                   key={chip}
                   type="button"
                   onClick={() => handleSendMessage(chip)}
-                  className="p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-300 text-left text-xs font-semibold text-slate-700 hover:text-blue-900 shadow-sm transition-all cursor-pointer flex items-center justify-between group"
+                  className="p-3 rounded-2xl bg-slate-50 hover:bg-blue-50/70 border border-slate-200/80 hover:border-blue-300 text-left text-xs font-semibold text-slate-700 hover:text-blue-900 shadow-xs transition-all cursor-pointer flex items-center justify-between group"
                 >
                   <span className="line-clamp-2">{chip}</span>
                   <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 shrink-0 ml-1" />
@@ -258,10 +419,10 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                 )}
 
                 <div
-                  className={`p-4 rounded-3xl text-xs sm:text-sm leading-relaxed ${
+                  className={`p-4 rounded-3xl text-xs sm:text-sm leading-relaxed overflow-x-auto ${
                     isUser
                       ? 'bg-blue-600 text-white rounded-tr-none'
-                      : 'bg-slate-50 border border-slate-200/80 text-slate-800 rounded-tl-none shadow-sm'
+                      : 'bg-slate-50 border border-slate-200/80 text-slate-800 rounded-tl-none shadow-xs'
                   }`}
                 >
                   <StudyBuddyFormattedMessage content={m.content} isUser={isUser} theme="light" />
@@ -289,12 +450,12 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
       {/* Bottom Input Area */}
       <div className="p-3 sm:p-4 border-t border-slate-100 bg-white/90">
         {isBoardyExhausted ? (
-          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between">
-            <span>You've used all {planConfig.boardyPerDay} Boardy questions for today.</span>
+          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <span>You've used all {boardyLimit} Boardy AI questions for today (resets at midnight PKT).</span>
             <button
               type="button"
               onClick={onUpgrade}
-              className="font-bold underline text-blue-700 hover:text-blue-900 cursor-pointer"
+              className="px-3 py-1 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-xs cursor-pointer"
             >
               Upgrade to Pro &rarr;
             </button>
@@ -332,11 +493,11 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
       {showDrawer && (
         <div className="fixed inset-0 z-50 flex">
           <div
-            className="fixed inset-0 bg-slate-900/30 backdrop-blur-sm"
+            className="fixed inset-0 bg-slate-900/30 backdrop-blur-xs"
             onClick={() => setShowDrawer(false)}
           />
-          <div className="relative w-72 bg-white h-full shadow-2xl p-5 flex flex-col justify-between z-10 animate-slideRight">
-            <div className="space-y-4">
+          <div className="relative w-72 sm:w-80 bg-white h-full shadow-2xl p-5 flex flex-col justify-between z-10 animate-slideRight">
+            <div className="space-y-4 flex-1 flex flex-col min-h-0">
               <div className="flex items-center justify-between pb-3 border-b border-slate-100">
                 <span className="font-extrabold text-sm text-slate-900">Chat History</span>
                 <button
@@ -349,28 +510,58 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
 
               <button
                 type="button"
-                onClick={() => {
-                  handleNewChat();
-                  setShowDrawer(false);
-                }}
-                className="w-full py-2.5 px-3 rounded-xl bg-blue-50 text-blue-700 font-bold text-xs flex items-center justify-center gap-2 cursor-pointer hover:bg-blue-100"
+                onClick={handleStartNewSession}
+                className="w-full py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-xs"
               >
                 <Plus className="w-4 h-4" />
                 <span>Start New Topic</span>
               </button>
 
-              <div className="space-y-1 text-xs text-slate-500 pt-2">
-                <span className="font-bold text-[11px] uppercase tracking-wider text-slate-400 block pb-1">
-                  Recent Topics
+              <div className="flex-1 overflow-y-auto space-y-1.5 pt-2 pr-1">
+                <span className="font-bold text-[10px] uppercase tracking-wider text-slate-400 block pb-1">
+                  Saved Sessions
                 </span>
-                <div className="p-2 rounded-xl bg-slate-50 text-slate-700 font-medium">
-                  Current Session ({messages.length} messages)
-                </div>
+                {sessions.length === 0 ? (
+                  <p className="text-xs text-slate-400 italic">No past sessions yet.</p>
+                ) : (
+                  sessions.map((sess) => {
+                    const isCurrent = sess.id === activeSessionId;
+                    return (
+                      <div
+                        key={sess.id}
+                        onClick={() => {
+                          setActiveSessionId(sess.id);
+                          setShowDrawer(false);
+                        }}
+                        className={`p-3 rounded-2xl flex items-center justify-between gap-2 cursor-pointer transition-all ${
+                          isCurrent
+                            ? 'bg-blue-50 border border-blue-200 text-blue-900 font-bold'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-100'
+                        }`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs truncate">{sess.title || 'Untitled Session'}</p>
+                          <span className="text-[10px] text-slate-400 block mt-0.5 capitalize">
+                            {sess.mode.replace('-', ' ')} · {sess.messages.length} msgs
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteSession(sess.id, e)}
+                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          title="Delete session"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
-            <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 text-[11px] text-slate-500">
-              Boardy AI is tuned for FSC & Pakistan entry exams. Step-by-step logic guaranteed.
+            <div className="p-3 rounded-2xl bg-slate-50 border border-slate-100 text-[11px] text-slate-500 mt-4">
+              Boardy AI is tuned for FSC & Pakistan entry exams (NUST, FAST, MDCAT, GIKI, ECAT).
             </div>
           </div>
         </div>
@@ -379,20 +570,50 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
   );
 };
 
-// Helpful local generator for Boardy responses
-function generateLocalBoardyReply(query: string, studentName: string): string {
+// Helpful local generator for Boardy responses across all 4 modes
+function generateLocalBoardyReply(query: string, studentName: string, mode: BoardyMode): string {
   const q = query.toLowerCase();
 
+  if (mode === 'quick-take') {
+    if (q.includes('fast') && q.includes('negative')) {
+      return `FAST applies a -0.25 negative marking penalty per wrong MCQ. Only make an educated guess if you have safely eliminated at least 2 incorrect options. Prioritize Basic Math speed above all.`;
+    }
+    if (q.includes('integration') || q.includes('calculus')) {
+      return `For $\\int [f(x)]^n f'(x) dx$, simply integrate the outer power directly to get $\\frac{[f(x)]^{n+1}}{n+1} + C$. For products, apply ILATE to select $u$ and integrate by parts. The solution is straightforward once standard forms are recognized.`;
+    }
+    return `Identify the governing formula first, test extreme values like $x=0$ to eliminate wrong options, and compute directly. The correct choice will match the simplified expression.`;
+  }
+
+  if (mode === 'study-pal') {
+    if (q.includes('fast') || q.includes('nust') || q.includes('net')) {
+      return `You've got this, ${studentName}! 🌟 Entrance test questions look intimidating at first, but remember that over 60% are direct formula applications. Keep your pacing steady and don't spend more than a minute on any single question!`;
+    }
+    return `Great question, ${studentName}! Let's tackle it together. Don't worry if it seems tricky—break it into small steps and check the options. You're doing awesome work today! 💪`;
+  }
+
+  if (mode === 'game-plan') {
+    if (q.includes('fast')) {
+      return `### FAST-NU Exam Tactics & Game Plan
+1. **Marking Rule**: $+1$ for correct, $-0.25$ penalty for wrong.
+2. **Elimination Threshold**: Guess **only** if you eliminate $\\ge 2$ options (expected value $= +0.375$).
+3. **Pacing**: Spend $\\le 60$ seconds per question. Skip long analytical word puzzles and return to them at the end.`;
+    }
+    return `### Universal Entry Test Game Plan
+1. **First Pass (First 40 mins)**: Answer all high-confidence recall and single-step formulas.
+2. **Elimination Tricks**:
+   - Check units and dimensional consistency.
+   - Plug in boundary conditions ($x=0$, $x=1$).
+   - Reject choices with calculation trap signs ($+$ instead of $-$).
+3. **Endgame**: For tests with no negative marking (like NUST NET), mark every single remaining question!`;
+  }
+
+  // Deep Dive default
   if (q.includes('fast') && q.includes('negative')) {
     return `Hey ${studentName}! Here is the exact negative marking strategy for **FAST-NU**:\n\n1. **Marking Rule**: Each correct MCQ is awarded **+1 mark**, while an incorrect answer loses **-0.25 marks** (25% penalty).\n2. **Threshold Rule**: Only guess if you can eliminate at least **2 out of 4 options**. If you can eliminate two choices, your statistical expected value is positive ($+0.375$).\n3. **Basic Math & Analytical**: Speed is crucial—do NOT get stuck on tricky analytical puzzles for more than 75 seconds. Skip and return at the end!`;
   }
 
   if (q.includes('integration') || q.includes('calculus') || q.includes('math')) {
     return `Let's break down this concept step-by-step, ${studentName}! 🚀\n\n### Step 1: Identify the standard form\nLook for the derivative of the inner function. Remember:\n$$\\int [f(x)]^n f'(x) dx = \\frac{[f(x)]^{n+1}}{n+1} + C$$\n\n### Step 2: Integration by parts rule (ILATE)\nIf you have a product of two functions:\n$$\\int u \\cdot v dx = u \\int v dx - \\int \\left( u' \\int v dx \\right) dx$$\nChoose $u$ in order of: **I**nverse, **L**ogarithmic, **A**lgebraic, **T**rigonometric, **E**xponential.\n\nWould you like me to work through a specific question with you? Send the question options!`;
-  }
-
-  if (q.includes('nust') || q.includes('net')) {
-    return `For **NUST NET**, speed is king! 👑\n\n- **NET Structure**: 200 MCQs in 180 minutes (80 Advance Maths, 60 Physics, 30 Chemistry/CS, 20 English, 10 Intelligence).\n- **Key Advantage**: **NO negative marking!** You must mark an answer for every single question before time runs out.\n- Focus heavily on Conic Sections, Vectors, Trigonometry, and Differentiation in Advance Maths—they make up over 55% of the math section.`;
   }
 
   return `Great question, ${studentName}! Here is the concept broken down step-by-step:\n\n1. **Core Concept**: First isolate the given variables and identify which formula connects them.\n2. **Shortcut Technique**: For entry tests, look at the units in the options and test extreme values ($x=0$ or $x=1$) to eliminate distractors instantly.\n3. **Exam Tip**: Double check the sign ($+$ vs $-$) since examiners often place common calculation mistakes in Option B.\n\nTell me which specific problem or question statement you'd like to solve next!`;

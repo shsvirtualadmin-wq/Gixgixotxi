@@ -383,6 +383,49 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [syncProfile]);
 
+  // Real-time Pakistan Standard Time (PKT) Midnight Reset Monitor
+  // Checks every 15 seconds and on window focus/visibility change.
+  // Resets test and Boardy daily usage instantly at midnight PKT across timezones without page refresh.
+  useEffect(() => {
+    const checkMidnightReset = () => {
+      const todayPkt = getKarachiTodayString();
+      if (profile && profile.lastUsageDate && profile.lastUsageDate !== todayPkt) {
+        setProfile((prev) => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            testsUsedToday: 0,
+            boardyQuestionsUsedToday: 0,
+            lastUsageDate: todayPkt,
+          };
+        });
+        if (user?.uid) {
+          saveUserProfile(user.uid, {
+            testsUsedToday: 0,
+            boardyQuestionsUsedToday: 0,
+            lastUsageDate: todayPkt,
+          }).catch(console.warn);
+        }
+      }
+    };
+
+    const intervalId = setInterval(checkMidnightReset, 15000);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        checkMidnightReset();
+      }
+    };
+
+    window.addEventListener('focus', checkMidnightReset);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', checkMidnightReset);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [profile, user]);
+
   const signInEmail = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     try {
       const cred = await signInWithEmailAndPassword(auth, email.trim(), pass);
