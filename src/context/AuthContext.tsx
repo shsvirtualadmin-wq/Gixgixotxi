@@ -53,6 +53,7 @@ export interface AuthContextType {
   resendVerification: () => Promise<{ success: boolean; error?: string }>;
   reloadUserStatus: () => Promise<boolean>;
   updateProfileData: (fields: Partial<StudentUserProfile>) => Promise<void>;
+  completeOnboarding: (onboardingData: Partial<StudentUserProfile>) => Promise<{ success: boolean; error?: string }>;
   refreshProfile: () => Promise<void>;
   friendlyErrorMessage: (error: any) => string;
 }
@@ -365,9 +366,79 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const updateProfileData = async (fields: Partial<StudentUserProfile>): Promise<void> => {
-    if (!user) return;
-    await saveUserProfile(user.uid, fields);
-    setProfile((prev) => (prev ? { ...prev, ...fields } : null));
+    const currentUid = user?.uid || auth.currentUser?.uid;
+    if (!currentUid) return;
+    await saveUserProfile(currentUid, fields);
+    setProfile((prev) => {
+      const next = prev ? { ...prev, ...fields } : null;
+      if (next) {
+        try {
+          localStorage.setItem(`boardly_cached_profile_${currentUid}`, JSON.stringify(next));
+        } catch {}
+      }
+      return next;
+    });
+  };
+
+  const completeOnboarding = async (
+    onboardingData: Partial<StudentUserProfile>
+  ): Promise<{ success: boolean; error?: string }> => {
+    const currentUid = user?.uid || auth.currentUser?.uid;
+    if (!currentUid) {
+      return { success: false, error: 'User session not found. Please log in again.' };
+    }
+
+    try {
+      const mergedFields: Partial<StudentUserProfile> = {
+        ...onboardingData,
+        onboardingCompleted: true,
+        uid: currentUid,
+      };
+      (mergedFields as any).onboardingComplete = true;
+
+      // 1. Direct targeted write to users/{uid} document
+      await saveUserProfile(currentUid, mergedFields);
+
+      // 2. Synchronously update profile in state and cache
+      setProfile((prev) => {
+        const nextProfile: StudentUserProfile = prev
+          ? { ...prev, ...mergedFields }
+          : ({
+              uid: currentUid,
+              name: auth.currentUser?.displayName || (auth.currentUser?.email ? auth.currentUser.email.split('@')[0] : 'Student'),
+              email: auth.currentUser?.email || '',
+              plan: 'free',
+              role: 'student',
+              roles: ['student'],
+              createdAt: new Date().toISOString(),
+              status: 'active',
+              ...mergedFields,
+            } as StudentUserProfile);
+
+        try {
+          localStorage.setItem(`boardly_cached_profile_${currentUid}`, JSON.stringify(nextProfile));
+        } catch {}
+
+        return nextProfile;
+      });
+
+      setDocumentExists(true);
+      return { success: true };
+    } catch (err: any) {
+      console.error('[Boardly Onboarding] Complete onboarding failed:', err);
+      let errMsg = 'Failed to save onboarding details. Please check your connection and try again.';
+      if (err?.code === 'permission-denied' || err?.message?.includes('permission-denied')) {
+        errMsg = 'Permission denied while saving to Firestore. Please re-authenticate and retry.';
+      } else if (err?.message) {
+        try {
+          const parsed = JSON.parse(err.message);
+          if (parsed?.error) errMsg = `Firestore error: ${parsed.error}`;
+        } catch {
+          errMsg = err.message;
+        }
+      }
+      return { success: false, error: errMsg };
+    }
   };
 
   const refreshProfile = async (): Promise<void> => {
@@ -398,6 +469,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         resendVerification,
         reloadUserStatus,
         updateProfileData,
+        completeOnboarding,
         refreshProfile,
         friendlyErrorMessage: friendlyAuthError,
       }}

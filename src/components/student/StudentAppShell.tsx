@@ -112,6 +112,14 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         }
       });
     }
+
+    try {
+      const startDiag = localStorage.getItem('boardly_start_diagnostic_on_load');
+      if (startDiag === 'true') {
+        localStorage.removeItem('boardly_start_diagnostic_on_load');
+        handleStartSprint('Advance Maths');
+      }
+    } catch {}
   }, [user]);
 
   const handleStartSprint = (subject: string) => {

@@ -35,7 +35,7 @@ import { normalizePlanId, PlanType } from '../data/planLimits';
 // Firebase configuration from applet config and environment variables
 export const firebaseConfig = {
   apiKey: "AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "gen-lang-client-0365509316.firebaseapp.com",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "auth.boardly.cfd",
   projectId: "gen-lang-client-0365509316",
   storageBucket: "gen-lang-client-0365509316.firebasestorage.app",
   messagingSenderId: "556734245207",
@@ -160,6 +160,7 @@ export interface StudentUserProfile {
   referralSource?: string;
   referredBy?: string;
   onboardingCompleted: boolean;
+  onboardingComplete?: boolean;
   testTrack?: string;
   targetUniversityId?: string;
   targetExamDate?: string;
@@ -275,7 +276,8 @@ export async function fetchUserProfile(uid: string): Promise<StudentUserProfile 
       roles,
       name: rawData.name || 'Student',
       email: rawData.email || '',
-      onboardingCompleted: Boolean(rawData.onboardingCompleted),
+      onboardingCompleted: Boolean(rawData.onboardingCompleted || rawData.onboardingComplete),
+      onboardingComplete: Boolean(rawData.onboardingCompleted || rawData.onboardingComplete),
       createdAt: rawData.createdAt || new Date().toISOString(),
     };
 
@@ -364,8 +366,48 @@ export async function saveUserProfile(uid: string, fields: Partial<StudentUserPr
   const userRef = doc(db, 'users', uid);
   const userPath = `users/${uid}`;
   try {
-    const cleanFields = { ...fields, updatedAt: new Date().toISOString() };
-    await setDoc(userRef, cleanFields, { merge: true });
+    const cleanFields: Record<string, any> = {
+      ...fields,
+      uid,
+      updatedAt: new Date().toISOString(),
+    };
+    if (fields.onboardingCompleted !== undefined) {
+      cleanFields.onboardingCompleted = fields.onboardingCompleted;
+      cleanFields.onboardingComplete = fields.onboardingCompleted;
+    }
+    // Remove any undefined properties
+    Object.keys(cleanFields).forEach((key) => {
+      if (cleanFields[key] === undefined) {
+        delete cleanFields[key];
+      }
+    });
+
+    try {
+      await updateDoc(userRef, cleanFields);
+    } catch (updateErr: any) {
+      // If doc is not found, fallback to setDoc with merge
+      if (
+        updateErr?.code === 'not-found' ||
+        updateErr?.message?.includes('No document to update') ||
+        updateErr?.message?.includes('NOT_FOUND')
+      ) {
+        const fallbackDoc: Record<string, any> = {
+          uid,
+          name: auth.currentUser?.displayName || (auth.currentUser?.email ? auth.currentUser.email.split('@')[0] : 'Student'),
+          email: auth.currentUser?.email || '',
+          plan: 'free',
+          role: 'student',
+          roles: ['student'],
+          status: 'active',
+          createdAt: new Date().toISOString(),
+          ...cleanFields,
+        };
+        await setDoc(userRef, fallbackDoc, { merge: true });
+      } else {
+        throw updateErr;
+      }
+    }
+
     try {
       const existingStr = localStorage.getItem(`boardly_cached_profile_${uid}`);
       const existing = existingStr ? JSON.parse(existingStr) : {};

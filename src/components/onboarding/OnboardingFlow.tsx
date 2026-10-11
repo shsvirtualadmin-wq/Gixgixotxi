@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { ArrowLeft, Check, Calendar, Sparkles, BookOpen, Clock, ArrowRight, Loader2, Target, HelpCircle } from 'lucide-react';
+import { ArrowLeft, Check, Calendar, Sparkles, BookOpen, Clock, ArrowRight, Loader2, Target, HelpCircle, AlertCircle } from 'lucide-react';
 import { BrandLogo } from '../marketing/BrandLogo';
 import { UNIVERSITIES, University } from '../../data/universities';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
 import { useAuth } from '../../context/AuthContext';
+import { auth } from '../../lib/firebase';
 
 interface OnboardingFlowProps {
   onComplete: (startFirstTest: boolean, firstTestConfig?: any) => void;
@@ -11,7 +12,7 @@ interface OnboardingFlowProps {
 }
 
 export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSkip }) => {
-  const { user, profile, updateProfileData } = useAuth();
+  const { user, profile, completeOnboarding } = useAuth();
 
   const [step, setStep] = useState<number>(1);
   const [selectedTrack, setSelectedTrack] = useState<'Engineering & CS' | 'Business & Finance' | ''>(
@@ -29,6 +30,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
   const [isNotSureDate, setIsNotSureDate] = useState<boolean>(false);
   const [selectedWorries, setSelectedWorries] = useState<string[]>(['Advance Maths', 'IQ']);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Filter universities based on selected track
   const universitiesList = useMemo(() => {
@@ -69,27 +71,67 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
   };
 
   const handleFinish = async (startTest: boolean) => {
+    setErrorMessage(null);
     setIsSaving(true);
+
+    const targetUid = user?.uid || auth.currentUser?.uid;
+    if (!targetUid) {
+      setIsSaving(false);
+      setErrorMessage('User session not found. Please log in again.');
+      return;
+    }
+
     const onboardingData = {
-      onboardingCompleted: true,
+      uid: targetUid,
       testTrack: selectedTrack || 'Engineering & CS',
       targetUniversityId: targetUniId,
       targetExamDate: isNotSureDate ? '' : examDate,
       targetExamDaysLeft: daysUntilTest,
       weakSubjects: selectedWorries,
+      onboardingCompleted: true,
+      onboardingComplete: true,
     };
 
     try {
-      await updateProfileData(onboardingData);
-    } catch (e) {
-      console.warn('Failed saving onboarding to Firestore:', e);
-    } finally {
+      const res = await completeOnboarding(onboardingData);
+      if (!res.success) {
+        setIsSaving(false);
+        setErrorMessage(res.error || 'Failed to save onboarding settings. Please try again.');
+        return;
+      }
+
+      // Secondary client-side cache guarantee
+      try {
+        const cachedStr = localStorage.getItem(`boardly_cached_profile_${targetUid}`);
+        const parsed = cachedStr ? JSON.parse(cachedStr) : {};
+        localStorage.setItem(
+          `boardly_cached_profile_${targetUid}`,
+          JSON.stringify({
+            ...parsed,
+            ...onboardingData,
+            onboardingCompleted: true,
+            onboardingComplete: true,
+          })
+        );
+      } catch {}
+
       setIsSaving(false);
+
+      if (startTest) {
+        try {
+          localStorage.setItem('boardly_start_diagnostic_on_load', 'true');
+        } catch {}
+      }
+
       onComplete(startTest, {
         universityId: targetUniId,
         track: selectedTrack,
         weakSubjects: selectedWorries,
       });
+    } catch (err: any) {
+      console.error('[OnboardingFlow] handleFinish error:', err);
+      setIsSaving(false);
+      setErrorMessage(err?.message || 'Could not save onboarding profile to Firestore. Please try again.');
     }
   };
 
@@ -536,6 +578,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
                   </button>
                 </div>
               </div>
+
+              {/* Error Alert Box */}
+              {errorMessage && (
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-3 animate-in fade-in">
+                  <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-rose-900">Setup Could Not Be Saved</p>
+                    <p className="text-rose-700 leading-relaxed">{errorMessage}</p>
+                    <p className="text-rose-600 text-[11px] pt-1">
+                      You are still on Step 4. Please click "Start my first test" or "Go to dashboard" to retry.
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {/* Action Buttons */}
               <div className="space-y-3 pt-2">

@@ -80,27 +80,42 @@ export const BoardlyAppRouter: React.FC = () => {
         return;
       }
 
+      // Check if onboarding is completed in profile state or local cache
+      let hasCompletedOnboarding =
+        profile?.onboardingCompleted === true ||
+        (profile as any)?.onboardingComplete === true;
+
+      if (!hasCompletedOnboarding && user?.uid && typeof window !== 'undefined') {
+        try {
+          const cached = localStorage.getItem(`boardly_cached_profile_${user.uid}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed?.onboardingCompleted === true || parsed?.onboardingComplete === true) {
+              hasCompletedOnboarding = true;
+            }
+          }
+        } catch {}
+      }
+
       // If documentExists or profile loaded from Firestore:
       if (documentExists || profile) {
-        // If user already exists and finished onboarding, or if they have existing activity, route silently to /app
-        const hasCompletedOnboarding = profile?.onboardingCompleted === true;
         if (!hasCompletedOnboarding) {
           // Only newly created users without completed onboarding see onboarding
-          if (currentPath !== '/onboarding') {
+          if (currentPath !== '/onboarding' && currentPath !== '/signup') {
             navigate('/onboarding', true);
           }
           return;
         }
 
-        // Existing user: prevent access to marketing, auth screens, or onboarding
+        // Existing user who completed onboarding: prevent access to marketing, auth screens, or onboarding
         const authRoutes = ['/', '', '/login', '/signup', '/forgot-password', '/reset-password', '/onboarding'];
         if (authRoutes.includes(currentPath)) {
           const targetDashboard = getHighestRolePath();
           navigate(targetDashboard, true);
         }
       } else {
-        // Only if Firestore confirmed no doc exists
-        if (currentPath !== '/onboarding' && currentPath !== '/signup') {
+        // Only if Firestore confirmed no doc exists and not marked onboarded
+        if (!hasCompletedOnboarding && currentPath !== '/onboarding' && currentPath !== '/signup') {
           navigate('/onboarding', true);
         }
       }
@@ -208,10 +223,10 @@ export const BoardlyAppRouter: React.FC = () => {
           return (
             <OnboardingFlow
               onComplete={(_startTest, _config) => {
-                navigate(getHighestRolePath(), true);
+                navigate('/app', true);
               }}
               onSkip={() => {
-                navigate(getHighestRolePath(), true);
+                navigate('/app', true);
               }}
             />
           );
