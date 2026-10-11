@@ -27,6 +27,9 @@
         "testsUsedToday": { "type": "number" },
         "boardyQuestionsUsedToday": { "type": "number" },
         "lastUsageDate": { "type": "string" },
+        "streak": { "type": "number" },
+        "streakDays": { "type": "number" },
+        "testHistory": { "type": "array" },
         "status": { "type": "string", "enum": ["active", "suspended", "disabled"] }
       },
       "required": ["uid", "email", "name", "plan", "role"]

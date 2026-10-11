@@ -170,6 +170,10 @@ export interface StudentUserProfile {
   boardyQuestionsUsedToday?: number;
   lastUsageDate?: string;
   streakDays?: number;
+  streak?: number;
+  testHistory?: StoredTestAttempt[];
+  testsLimit?: number;
+  boardyLimit?: number;
   points?: number;
   status?: 'active' | 'suspended' | 'disabled';
 }
@@ -274,6 +278,11 @@ export async function fetchUserProfile(uid: string): Promise<StudentUserProfile 
       plan: normalizedPlan,
       role: normalizedRole,
       roles,
+      streak: typeof rawData.streak === 'number' ? rawData.streak : (typeof rawData.streakDays === 'number' ? rawData.streakDays : 0),
+      streakDays: typeof rawData.streak === 'number' ? rawData.streak : (typeof rawData.streakDays === 'number' ? rawData.streakDays : 0),
+      testHistory: Array.isArray(rawData.testHistory) ? rawData.testHistory : [],
+      testsUsedToday: typeof rawData.testsUsedToday === 'number' ? rawData.testsUsedToday : 0,
+      boardyQuestionsUsedToday: typeof rawData.boardyQuestionsUsedToday === 'number' ? rawData.boardyQuestionsUsedToday : 0,
       name: rawData.name || 'Student',
       email: rawData.email || '',
       onboardingCompleted: Boolean(rawData.onboardingCompleted || rawData.onboardingComplete),
@@ -319,6 +328,9 @@ export async function createInitialUserDoc(
     testsUsedToday: 0,
     boardyQuestionsUsedToday: 0,
     lastUsageDate: nowStr.slice(0, 10),
+    streak: 0,
+    streakDays: 0,
+    testHistory: [],
     status: 'active',
     ...initialData,
   };
@@ -522,6 +534,19 @@ export async function logTestAttempt(attempt: Omit<StoredTestAttempt, 'createdAt
     id = res.id;
   } catch (err: any) {
     console.warn('[Boardly Firebase] logTestAttempt warning:', err);
+  }
+
+  // Also append to users/{userId}.testHistory array so both subcollection and array stay in sync
+  try {
+    const userRef = doc(db, 'users', attempt.userId);
+    const newAttemptItem: StoredTestAttempt = { id, ...attempt, createdAt: nowStr };
+    const { arrayUnion } = await import('firebase/firestore');
+    await updateDoc(userRef, {
+      testHistory: arrayUnion(newAttemptItem),
+      updatedAt: nowStr,
+    });
+  } catch (docErr) {
+    // Non-fatal if user doc doesn't exist yet or subcollection is primary
   }
 
   if (typeof window !== 'undefined') {

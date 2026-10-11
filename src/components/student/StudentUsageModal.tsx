@@ -18,39 +18,64 @@ export const StudentUsageModal: React.FC<StudentUsageModalProps> = ({
   onAskBoardy,
   onViewPlans,
 }) => {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
 
   if (!isOpen) return null;
 
   const userPlan: PlanType = (profile?.plan as PlanType) || 'free';
   const planConfig = PLAN_LIMITS[userPlan] || PLAN_LIMITS.free;
 
-  const testsUsedToday = profile?.testsUsedToday || 0;
-  const boardyUsedToday = profile?.boardyQuestionsUsedToday || 0;
+  const testsLimit = typeof (profile as any)?.testsLimit === 'number'
+    ? (profile as any).testsLimit
+    : planConfig.testsPerDay;
+  const boardyLimit = typeof (profile as any)?.boardyLimit === 'number'
+    ? (profile as any).boardyLimit
+    : planConfig.boardyPerDay;
 
-  const isUnlimitedTests = planConfig.testsPerDay >= 999;
-  const testsRemaining = isUnlimitedTests ? 'Unlimited' : Math.max(0, planConfig.testsPerDay - testsUsedToday);
-  const boardyRemaining = Math.max(0, planConfig.boardyPerDay - boardyUsedToday);
+  const testsUsedToday = typeof profile?.testsUsedToday === 'number' ? profile.testsUsedToday : 0;
+  const boardyUsedToday = typeof profile?.boardyQuestionsUsedToday === 'number' ? profile.boardyQuestionsUsedToday : 0;
+
+  const isUnlimitedTests = isAdmin || testsLimit >= 999;
+  const testsRemaining = isUnlimitedTests ? 'Unlimited' : Math.max(0, testsLimit - testsUsedToday);
+  const boardyRemaining = Math.max(0, boardyLimit - boardyUsedToday);
 
   const countdown = getTimeUntilKarachiMidnight();
 
-  // Last 14 days dummy or real breakdown
+  // Last 14 days activity derived from real testHistory array in Firestore
   const last14Days = useMemo(() => {
+    const historyList = Array.isArray((profile as any)?.testHistory)
+      ? (profile as any).testHistory
+      : [];
+
     const days: { label: string; count: number; isToday: boolean }[] = [];
     const weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
     const now = new Date();
+
     for (let i = 13; i >= 0; i--) {
-      const d = new Date(now);
-      d.setDate(d.getDate() - i);
+      const targetDate = new Date(now);
+      targetDate.setDate(targetDate.getDate() - i);
+      const dateStr = targetDate.toISOString().slice(0, 10);
       const isToday = i === 0;
+
+      let dayCount = 0;
+      if (historyList.length > 0) {
+        dayCount = historyList.filter((att: any) => {
+          if (!att.createdAt) return false;
+          return String(att.createdAt).slice(0, 10) === dateStr;
+        }).length;
+      }
+      if (isToday && dayCount === 0 && testsUsedToday > 0) {
+        dayCount = testsUsedToday;
+      }
+
       days.push({
-        label: weekdays[d.getDay()],
-        count: isToday ? testsUsedToday : 0,
+        label: weekdays[targetDate.getDay()],
+        count: dayCount,
         isToday,
       });
     }
     return days;
-  }, [testsUsedToday]);
+  }, [profile, testsUsedToday]);
 
   const totalFinished14Days = last14Days.reduce((acc, d) => acc + d.count, 0);
 

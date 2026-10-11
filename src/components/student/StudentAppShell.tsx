@@ -101,8 +101,13 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     negativeMarkingPercent: number;
   } | null>(null);
 
-  // Test Attempts History
-  const [attempts, setAttempts] = useState<StoredTestAttempt[]>([]);
+  // Test Attempts History directly mapped from active Firestore profile testHistory
+  const [attempts, setAttempts] = useState<StoredTestAttempt[]>(() => {
+    if (Array.isArray(profile?.testHistory) && profile.testHistory.length > 0) {
+      return profile.testHistory;
+    }
+    return [];
+  });
 
   // Copy feedback state for manual payment details
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -114,6 +119,12 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       setTimeout(() => setCopiedKey(null), 2000);
     }
   };
+
+  useEffect(() => {
+    if (Array.isArray(profile?.testHistory) && profile.testHistory.length > 0) {
+      setAttempts(profile.testHistory);
+    }
+  }, [profile?.testHistory]);
 
   useEffect(() => {
     // Ensure no drill or test auto-starts on dashboard mount
@@ -131,7 +142,18 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     if (user?.uid) {
       getTestAttempts(user.uid).then((data) => {
         if (data && data.length > 0) {
-          setAttempts(data);
+          setAttempts((prev) => {
+            const map = new Map<string, StoredTestAttempt>();
+            data.forEach((item) => {
+              if (item.id) map.set(item.id, item);
+            });
+            prev.forEach((item) => {
+              if (item.id && !map.has(item.id)) map.set(item.id, item);
+            });
+            return Array.from(map.values()).sort(
+              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+            );
+          });
         }
       });
     }
@@ -220,7 +242,19 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     if (user?.uid) {
       logTestAttempt(newAttempt).catch(console.warn);
       const currentUsed = profile?.testsUsedToday || 0;
-      updateProfileData({ testsUsedToday: currentUsed + 1 }).catch(console.warn);
+      const existingHistory = Array.isArray(profile?.testHistory) ? profile.testHistory : [];
+      const updatedHistory = [newAttempt, ...existingHistory];
+      const currentStreak = typeof profile?.streak === 'number'
+        ? profile.streak
+        : (typeof profile?.streakDays === 'number' ? profile.streakDays : 0);
+      const newStreak = currentUsed === 0 ? currentStreak + 1 : Math.max(1, currentStreak);
+
+      updateProfileData({
+        testsUsedToday: currentUsed + 1,
+        testHistory: updatedHistory,
+        streak: newStreak,
+        streakDays: newStreak,
+      }).catch(console.warn);
     }
 
     setCompletedResult({
