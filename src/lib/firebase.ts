@@ -34,7 +34,7 @@ import { normalizePlanId, PlanType } from '../data/planLimits';
 // Default production project credentials (fail-safe)
 const DEFAULTS = {
   apiKey: "AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs",
-  authDomain: "gen-lang-client-0365509316.firebaseapp.com",
+  authDomain: "auth.boardly.cfd",
   projectId: "gen-lang-client-0365509316",
   storageBucket: "gen-lang-client-0365509316.firebasestorage.app",
   messagingSenderId: "556734245207",
@@ -57,54 +57,84 @@ const isValidApiKey = (k: string) => k.startsWith('AIza') && k.length === 39 && 
 const isValidSenderId = (s: string) => /^\d+$/.test(s);
 const isValidAppId = (a: string) => /^1:\d+:web:[0-9a-fA-F]+$/.test(a);
 
+// Track which fields use fallbacks
+const fallbacksUsed: string[] = [];
+
 // 1. API Key: Use VITE variable if valid, otherwise fallback to firebase-applet-config.json, then DEFAULT
 const envApiKey = cleanEnvVar(import.meta.env.VITE_FIREBASE_API_KEY);
 const jsonApiKey = cleanEnvVar(firebaseAppletConfig?.apiKey);
-const rawApiKey = isValidApiKey(envApiKey)
-  ? envApiKey
-  : (isValidApiKey(jsonApiKey) ? jsonApiKey : DEFAULTS.apiKey);
+let rawApiKey: string;
+if (isValidApiKey(envApiKey)) {
+  rawApiKey = envApiKey;
+} else {
+  fallbacksUsed.push('apiKey');
+  rawApiKey = isValidApiKey(jsonApiKey) ? jsonApiKey : DEFAULTS.apiKey;
+}
 
 // 2. Auth Domain
 const envAuthDomain = cleanEnvVar(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
-const jsonAuthDomain = cleanEnvVar(firebaseAppletConfig?.authDomain);
-const rawAuthDomain = (envAuthDomain && !/\s/.test(envAuthDomain))
-  ? envAuthDomain
-  : ((jsonAuthDomain && !/\s/.test(jsonAuthDomain)) ? jsonAuthDomain : DEFAULTS.authDomain);
+let rawAuthDomain: string;
+if (envAuthDomain && !/\s/.test(envAuthDomain)) {
+  rawAuthDomain = envAuthDomain;
+} else {
+  fallbacksUsed.push('authDomain');
+  rawAuthDomain = DEFAULTS.authDomain;
+}
 
 // 3. Project ID
 const envProjectId = cleanEnvVar(import.meta.env.VITE_FIREBASE_PROJECT_ID);
 const jsonProjectId = cleanEnvVar(firebaseAppletConfig?.projectId);
-const rawProjectId = (envProjectId && !/\s/.test(envProjectId))
-  ? envProjectId
-  : ((jsonProjectId && !/\s/.test(jsonProjectId)) ? jsonProjectId : DEFAULTS.projectId);
+let rawProjectId: string;
+if (envProjectId && !/\s/.test(envProjectId)) {
+  rawProjectId = envProjectId;
+} else {
+  fallbacksUsed.push('projectId');
+  rawProjectId = (jsonProjectId && !/\s/.test(jsonProjectId)) ? jsonProjectId : DEFAULTS.projectId;
+}
 
 // 4. Storage Bucket
 const envStorageBucket = cleanEnvVar(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET);
 const jsonStorageBucket = cleanEnvVar(firebaseAppletConfig?.storageBucket);
-const rawStorageBucket = (envStorageBucket && !/\s/.test(envStorageBucket))
-  ? envStorageBucket
-  : ((jsonStorageBucket && !/\s/.test(jsonStorageBucket)) ? jsonStorageBucket : DEFAULTS.storageBucket);
+let rawStorageBucket: string;
+if (envStorageBucket && !/\s/.test(envStorageBucket)) {
+  rawStorageBucket = envStorageBucket;
+} else {
+  fallbacksUsed.push('storageBucket');
+  rawStorageBucket = (jsonStorageBucket && !/\s/.test(jsonStorageBucket)) ? jsonStorageBucket : DEFAULTS.storageBucket;
+}
 
 // 5. Messaging Sender ID
 const envSenderId = cleanEnvVar(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID);
 const jsonSenderId = cleanEnvVar(firebaseAppletConfig?.messagingSenderId);
-const rawMessagingSenderId = isValidSenderId(envSenderId)
-  ? envSenderId
-  : (isValidSenderId(jsonSenderId) ? jsonSenderId : DEFAULTS.messagingSenderId);
+let rawMessagingSenderId: string;
+if (isValidSenderId(envSenderId)) {
+  rawMessagingSenderId = envSenderId;
+} else {
+  fallbacksUsed.push('messagingSenderId');
+  rawMessagingSenderId = isValidSenderId(jsonSenderId) ? jsonSenderId : DEFAULTS.messagingSenderId;
+}
 
 // 6. App ID
 const envAppId = cleanEnvVar(import.meta.env.VITE_FIREBASE_APP_ID);
 const jsonAppId = cleanEnvVar(firebaseAppletConfig?.appId);
-const rawAppId = isValidAppId(envAppId)
-  ? envAppId
-  : (isValidAppId(jsonAppId) ? jsonAppId : DEFAULTS.appId);
+let rawAppId: string;
+if (isValidAppId(envAppId)) {
+  rawAppId = envAppId;
+} else {
+  fallbacksUsed.push('appId');
+  rawAppId = isValidAppId(jsonAppId) ? jsonAppId : DEFAULTS.appId;
+}
 
 // 7. Firestore Database ID
 const envDbId = cleanEnvVar(import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID);
 const jsonDbId = cleanEnvVar(firebaseAppletConfig?.firestoreDatabaseId);
-const rawFirestoreDbId = (envDbId && !/\s/.test(envDbId))
-  ? envDbId
-  : ((jsonDbId && !/\s/.test(jsonDbId)) ? jsonDbId : DEFAULTS.firestoreDatabaseId);
+let rawFirestoreDbId: string;
+if (envDbId && !/\s/.test(envDbId)) {
+  rawFirestoreDbId = envDbId;
+} else {
+  fallbacksUsed.push('firestoreDatabaseId');
+  rawFirestoreDbId = (jsonDbId && !/\s/.test(jsonDbId)) ? jsonDbId : DEFAULTS.firestoreDatabaseId;
+}
 
 export const firebaseConfig = {
   apiKey: rawApiKey,
@@ -120,7 +150,15 @@ export const configValidation = {
   badVars: [] as string[],
 };
 
-// Log Firebase environment without exposing sensitive values
+// Log Firebase environment and fallback status in development
+if (import.meta.env.DEV) {
+  if (fallbacksUsed.length > 0) {
+    console.info('[Boardly Firebase] Development: fields using fallback from firebase-applet-config.json:', fallbacksUsed.join(', '));
+  } else {
+    console.info('[Boardly Firebase] Development: all config fields loaded from environment variables.');
+  }
+}
+
 if (import.meta.env.DEV || typeof window !== 'undefined') {
   console.log('[Boardly Firebase] Initializing Firebase:');
   console.log(' - Project ID:', firebaseConfig.projectId);
