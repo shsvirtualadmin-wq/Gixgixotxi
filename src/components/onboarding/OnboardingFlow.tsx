@@ -9,11 +9,10 @@ import { auth, db } from '../../lib/firebase';
 
 interface OnboardingFlowProps {
   onComplete: (startFirstTest: boolean, firstTestConfig?: any) => void;
-  onSkip?: () => void;
 }
 
-export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSkip }) => {
-  const { user, profile } = useAuth();
+export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) => {
+  const { user, profile, completeOnboarding } = useAuth();
 
   const [step, setStepState] = useState<number>(() => {
     if (typeof window !== 'undefined') {
@@ -95,57 +94,62 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
     if (step > 1) setStep(step - 1);
   };
 
-  const handleFinish = async (startTest: boolean) => {
+  const handleSaveAndGoToDashboard = async () => {
     setErrorMessage(null);
     setIsSaving(true);
 
     const targetUid = user?.uid || auth.currentUser?.uid;
     if (!targetUid) {
       setIsSaving(false);
-      const msg = 'User session not found. Please log in again.';
-      setErrorMessage(msg);
-      alert(msg);
+      setErrorMessage('User session not found. Please log in again.');
       return;
     }
 
     const onboardingPayload: Record<string, any> = {
       uid: targetUid,
       testTrack: selectedTrack || 'Engineering & CS',
+      targetExam: selectedTrack || 'Engineering & CS',
       targetUniversityId: targetUniId,
+      targetUniversity: targetUni.shortName,
+      university: targetUni.shortName,
+      dream_university: targetUni.shortName,
+      target_university: targetUni.shortName,
       targetExamDate: isNotSureDate ? '' : examDate,
+      examDate: isNotSureDate ? '' : examDate,
       targetExamDaysLeft: daysUntilTest,
       weakSubjects: selectedWorries,
+      firstTest: '30-question diagnostic test',
       onboardingComplete: true,
       onboardingCompleted: true,
       updatedAt: new Date().toISOString(),
     };
 
     try {
-      // 1. Run updateDoc to save the data and set onboardingComplete: true
-      const userDocRef = doc(db, 'users', targetUid);
-      try {
-        await updateDoc(userDocRef, onboardingPayload);
-      } catch (updateErr: any) {
-        console.warn('[Onboarding] updateDoc failed, falling back to setDoc merge:', updateErr);
-        await setDoc(userDocRef, onboardingPayload, { merge: true });
+      // 1. Save onboarding data to user profile via completeOnboarding
+      const res = await completeOnboarding(onboardingPayload);
+      if (!res.success) {
+        setIsSaving(false);
+        setErrorMessage(res.error || 'Failed to save onboarding details. Please try again.');
+        return;
       }
 
-      // 2. Mark complete in local storage and session
+      // Also ensure direct write fallback to users/{uid} document has succeeded
+      try {
+        const userDocRef = doc(db, 'users', targetUid);
+        await updateDoc(userDocRef, onboardingPayload);
+      } catch (updateErr: any) {
+        try {
+          const userDocRef = doc(db, 'users', targetUid);
+          await setDoc(userDocRef, onboardingPayload, { merge: true });
+        } catch (setErr) {
+          console.warn('[Onboarding] Direct write fallback note:', setErr);
+        }
+      }
+
+      // 2. Clear onboarding session/storage flags
       if (typeof window !== 'undefined') {
         try {
           sessionStorage.removeItem('boardly_onboarding_step');
-          const cached = localStorage.getItem(`boardly_cached_profile_${targetUid}`);
-          const parsed = cached ? JSON.parse(cached) : {};
-          localStorage.setItem(
-            `boardly_cached_profile_${targetUid}`,
-            JSON.stringify({ ...parsed, ...onboardingPayload })
-          );
-        } catch {}
-      }
-
-      // Ensure no auto-start flags linger
-      if (typeof window !== 'undefined') {
-        try {
           localStorage.removeItem('boardly_start_diagnostic_on_load');
           localStorage.removeItem('boardly_active_test_session');
           sessionStorage.removeItem('boardly_auto_start_drill');
@@ -155,7 +159,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
 
       setIsSaving(false);
 
-      // 3. OPTIMISTIC ROUTING: Immediately force route user to /app dashboard (no auto-start)
+      // 3. Save succeeded! Go to the dashboard once with replace: true
       onComplete(false, {
         universityId: targetUniId,
         track: selectedTrack,
@@ -164,23 +168,8 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
     } catch (err: any) {
       console.error('[Onboarding] Direct save failed:', err);
       setIsSaving(false);
-      const errorText = err?.message || String(err);
-
-      // Cache locally as immediate fallback so user can still access dashboard
-      if (typeof window !== 'undefined') {
-        try {
-          sessionStorage.removeItem('boardly_onboarding_step');
-          const cached = localStorage.getItem(`boardly_cached_profile_${targetUid}`);
-          const parsed = cached ? JSON.parse(cached) : {};
-          localStorage.setItem(
-            `boardly_cached_profile_${targetUid}`,
-            JSON.stringify({ ...parsed, ...onboardingPayload })
-          );
-        } catch {}
-      }
-
+      const errorText = err?.message || 'Failed to save your preferences. Please try again.';
       setErrorMessage(errorText);
-      alert(`Onboarding Save Error: ${errorText}\n\nYour preferences have been saved to local session. You can retry or click "Proceed to Dashboard (Local Mode)" below to enter.`);
     }
   };
 
@@ -215,14 +204,16 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
 
       {/* Top Header */}
       <header className="relative z-10 max-w-4xl mx-auto w-full px-4 sm:px-6 py-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-3">
           {step > 1 ? (
             <button
+              type="button"
               onClick={handleBack}
-              className="p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-slate-100 transition-colors cursor-pointer"
+              className="p-2 -ml-2 rounded-xl text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer flex items-center gap-1.5 text-xs sm:text-sm font-semibold"
               aria-label="Previous step"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+              <span>Back</span>
             </button>
           ) : (
             <div className="w-9" />
@@ -230,12 +221,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
           <BrandLogo size="md" />
         </div>
 
-        <button
-          onClick={() => handleFinish(false)}
-          className="text-xs sm:text-sm font-semibold text-slate-400 hover:text-slate-700 transition-colors cursor-pointer"
-        >
-          Skip
-        </button>
+        <div className="w-9" />
       </header>
 
       {/* Progress Segment Bar */}
@@ -630,42 +616,22 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
 
               {/* Error Alert Box */}
               {errorMessage && (
-                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex flex-col gap-3 animate-in fade-in">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                    <div className="space-y-1">
-                      <p className="font-bold text-rose-900">Firestore Rules Permission Issue</p>
-                      <p className="text-rose-700 leading-relaxed font-mono text-[11px] bg-white/80 p-2 rounded-lg border border-rose-200 break-all">{errorMessage}</p>
-                      <p className="text-rose-600 text-[11px] pt-1">
-                        Your setup is preserved in your local session. You can retry the database write or proceed directly to your student dashboard.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex justify-end gap-2 pt-1 border-t border-rose-200/60">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onComplete(false, {
-                          universityId: targetUniId,
-                          track: selectedTrack,
-                          weakSubjects: selectedWorries,
-                        });
-                      }}
-                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm cursor-pointer"
-                    >
-                      Proceed to Dashboard (Local Mode)
-                    </button>
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-3 animate-in fade-in">
+                  <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="space-y-1">
+                    <p className="font-bold text-rose-900">Failed to save</p>
+                    <p className="text-rose-700 leading-relaxed">{errorMessage}</p>
                   </div>
                 </div>
               )}
 
-              {/* Action Buttons */}
-              <div className="space-y-3 pt-2">
+              {/* Action Button */}
+              <div className="pt-2">
                 <button
                   type="button"
                   disabled={isSaving}
-                  onClick={() => handleFinish(false)}
-                  className="w-full py-3.5 px-6 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/25 transition-all cursor-pointer flex items-center justify-center gap-2"
+                  onClick={handleSaveAndGoToDashboard}
+                  className="w-full py-3.5 px-6 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/25 transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {isSaving ? (
                     <>
@@ -674,19 +640,10 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
                     </>
                   ) : (
                     <>
-                      <span>Go to Dashboard</span>
+                      <span>Save &amp; Go to Dashboard</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
-                </button>
-
-                <button
-                  type="button"
-                  disabled={isSaving}
-                  onClick={() => handleFinish(false)}
-                  className="w-full py-2.5 px-4 rounded-xl font-semibold text-xs text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer"
-                >
-                  Go to dashboard
                 </button>
               </div>
             </div>

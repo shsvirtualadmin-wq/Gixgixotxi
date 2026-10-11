@@ -239,9 +239,6 @@ export const BoardlyAppRouter: React.FC = () => {
               onComplete={(_startTest, _config) => {
                 navigate('/app', true);
               }}
-              onSkip={() => {
-                navigate('/app', true);
-              }}
             />
           );
         }
