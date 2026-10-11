@@ -28,6 +28,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useUsage } from '../../context/UsageContext';
 import { BoardyMascot } from '../BoardyMascot';
 import { StudyBuddyFormattedMessage } from '../StudyBuddyFormattedMessage';
+import { MathText } from '../MathText';
 import {
   BOARDY_MODES,
   BoardyMode,
@@ -775,7 +776,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                   {s.subject}
                 </span>
                 <span className="text-xs sm:text-sm text-slate-700 group-hover:text-slate-900 font-normal line-clamp-1 flex-1">
-                  {s.prompt}
+                  <MathText text={s.prompt} />
                 </span>
               </button>
             ))}
