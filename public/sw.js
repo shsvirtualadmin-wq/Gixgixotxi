@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shs-boardly-mcq-v4';
+const CACHE_NAME = 'shs-boardly-mcq-v5';
 
 const ASSETS_TO_CACHE = [
   '/logo.png',
@@ -78,12 +78,18 @@ self.addEventListener('fetch', (event) => {
       fetch(event.request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
-            const responseToCache = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', responseToCache));
+            if (url.pathname === '/' || url.pathname === '/index.html') {
+              const responseToCache = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', responseToCache));
+            }
           }
           return networkResponse;
         })
         .catch(async () => {
+          // Navigation requests for other paths must never return the cached page
+          if (url.pathname !== '/' && url.pathname !== '/index.html') {
+            return new Response('Network offline', { status: 503, statusText: 'Offline' });
+          }
           console.log('[ServiceWorker] Offline detected during navigation, serving cached index.html');
           return caches.match('/index.html');
         })

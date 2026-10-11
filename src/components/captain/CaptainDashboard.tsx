@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 
 export const CaptainDashboard: React.FC = () => {
-  const { user, profile, logOut } = useAuth();
+  const { user, profile, logOut, switchRole } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -92,7 +92,15 @@ export const CaptainDashboard: React.FC = () => {
       title="Campus Captains Portal"
       subtitle="Represent Boardly at your college or academy and earn leadership rewards"
       activeNav={activeTab}
-      onSelectNav={(id) => setActiveTab(id)}
+      onSelectNav={(id) => {
+        if (id === 'student_profile') {
+          switchRole('student');
+          window.history.pushState({}, '', '/app/profile');
+          window.dispatchEvent(new PopStateEvent('popstate'));
+          return;
+        }
+        setActiveTab(id);
+      }}
       onLogout={logOut}
     >
       {/* 1. OVERVIEW */}

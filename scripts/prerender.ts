@@ -842,7 +842,8 @@ function prerenderAllRoutes() {
     const schemaTag = `<script type="application/ld+json" id="page-schema">\n${JSON.stringify(route.schema, null, 2)}\n</script>`;
     renderedHtml = renderedHtml.replace('</head>', `  ${schemaTag}\n</head>`);
 
-    // 7. Inject Semantic Pre-rendered Content into <div id="root">
+    // 7. Inject Semantic Pre-rendered Content into <noscript> for SEO crawlers (NOT inside <div id="root">)
+    // <div id="root"> must keep only the initial lightweight preloader with #F8F9FB background to prevent flashing on app refresh
     const fullPageContent = `
       <div class="prerendered-content">
         ${generateNavigationHeader()}
@@ -853,10 +854,10 @@ function prerenderAllRoutes() {
       </div>
     `;
 
-    // Replace <div id="root">...</div> with the prerendered HTML content
+    // Move SEO content into <noscript> so crawlers see it while <div id="root"> holds only the loading screen
     renderedHtml = renderedHtml.replace(
-      /<div id="root">[\s\S]*?<\/div>/i,
-      `<div id="root">${fullPageContent}</div>`
+      '</noscript>',
+      `  <div class="prerendered-seo-content" style="display:none;" aria-hidden="true">\n${fullPageContent}\n  </div>\n</noscript>`
     );
 
     // Write file

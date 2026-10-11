@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { UserRole } from '../../lib/firebase';
 import { Sidebar } from './Sidebar';
-import { TopBar } from './TopBar';
 import { BottomTabBar, StudentTabId } from './BottomTabBar';
+import { Menu } from 'lucide-react';
 
 export interface AppShellProps {
   role: UserRole;
@@ -55,14 +55,20 @@ export const AppShell: React.FC<AppShellProps> = ({
 
       {/* Main Column */}
       <div className="lg:pl-64 flex flex-col min-h-screen">
-        <TopBar
-          title={title}
-          subtitle={subtitle}
-          onOpenMobileMenu={showMobileHamburger ? () => setMobileMenuOpen(true) : undefined}
-          onNavigateUpgrade={onNavigateUpgrade}
-          onNavigateProfile={onNavigateProfile}
-          onNavigateBilling={onNavigateBilling}
-        />
+        {/* Mobile drawer toggle for organizer/captain portals on small screens */}
+        {showMobileHamburger && (
+          <div className="lg:hidden px-4 pt-3 pb-0 flex items-center">
+            <button
+              type="button"
+              onClick={() => setMobileMenuOpen(true)}
+              className="p-2 rounded-xl text-slate-600 hover:text-slate-900 bg-white border border-slate-200/90 shadow-xs cursor-pointer flex items-center gap-2 text-xs font-bold"
+              aria-label="Open menu"
+            >
+              <Menu className="w-4 h-4 text-slate-600" />
+              <span>Menu</span>
+            </button>
+          </div>
+        )}
 
         {/* Avoid bar covering page content (add bottom padding 110px + safe-area) */}
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto pb-[110px] lg:pb-12 safe-area-bottom">

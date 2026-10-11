@@ -65,6 +65,7 @@ import {
   Check,
   Bot,
   Activity,
+  LogOut,
 } from 'lucide-react';
 
 interface AdminDashboardScreenProps {
@@ -78,7 +79,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   onBack,
   initialTab,
 }) => {
-  const { user } = useAuth();
+  const { user, logOut } = useAuth();
   const [activeSection, setActiveSection] = useState<string>(initialTab || 'overview');
 
   // Students state with live Firestore connection
@@ -465,8 +466,8 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
           </nav>
         </div>
 
-        {/* Bottom Back Button */}
-        <div className="p-4 border-t border-slate-800/80">
+        {/* Bottom Actions: Return to Student & Log out */}
+        <div className="p-4 border-t border-slate-800/80 space-y-2">
           <button
             type="button"
             onClick={onBack}
@@ -475,37 +476,32 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
             <ArrowLeft className="w-4 h-4 text-violet-400" />
             <span>← Return to Student View</span>
           </button>
+          <button
+            type="button"
+            onClick={async () => {
+              await logOut();
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-rose-400 hover:bg-rose-950/40 hover:text-rose-300 font-bold text-xs transition-colors cursor-pointer"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Log out</span>
+          </button>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
-        {/* Top Header */}
-        <header className="h-16 px-4 sm:px-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between sticky top-0 z-20">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onBack}
-              className="md:hidden p-2 rounded-xl text-slate-600 hover:text-slate-900 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
-              title="Return to Student View"
-            >
-              <ArrowLeft className="w-5 h-5 text-violet-600" />
-            </button>
-            <h2 className="font-black text-base sm:text-lg text-slate-900 dark:text-white capitalize">
-              {activeSection.replace('_', ' ')}
-            </h2>
-            <Badge variant="violet">Administrator</Badge>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onBack}
-              className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-            >
-              <ArrowLeft className="w-3.5 h-3.5 text-violet-600" />
-              <span>← Return to Student View</span>
-            </button>
+        {/* Mobile top controls */}
+        <div className="md:hidden p-3 flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md">
+          <button
+            type="button"
+            onClick={onBack}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-violet-600" />
+            <span>← Return to Student View</span>
+          </button>
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => {
@@ -514,13 +510,23 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                 loadReviews();
                 loadAiChatLogs();
               }}
-              className="p-2 rounded-xl border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer"
+              className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 cursor-pointer"
               title="Refresh data"
             >
               <RefreshCw className="w-4 h-4" />
             </button>
+            <button
+              type="button"
+              onClick={async () => {
+                await logOut();
+              }}
+              className="p-1.5 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/40 cursor-pointer"
+              title="Log out"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
           </div>
-        </header>
+        </div>
 
         {/* Content Body */}
         <main className="p-4 sm:p-6 max-w-7xl w-full mx-auto space-y-6">

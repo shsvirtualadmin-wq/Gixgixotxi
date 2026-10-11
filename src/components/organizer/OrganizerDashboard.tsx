@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 
 export const OrganizerDashboard: React.FC = () => {
-  const { user, profile, logOut } = useAuth();
+  const { user, profile, logOut, switchRole } = useAuth();
   const [activeTab, setActiveTab] = useState<string>('overview');
   const [copiedLink, setCopiedLink] = useState(false);
 
@@ -106,7 +106,15 @@ export const OrganizerDashboard: React.FC = () => {
       title="Study Circles Organizer Portal"
       subtitle="Schedule private test sessions, track your cohorts, and view student progress"
       activeNav={activeTab}
-      onSelectNav={(id) => setActiveTab(id)}
+      onSelectNav={(id) => {
+        if (id === 'student_profile') {
+          switchRole('student');
+          window.history.pushState({}, '', '/app/profile');
+          window.dispatchEvent(new PopStateEvent('popstate'));
+          return;
+        }
+        setActiveTab(id);
+      }}
       onLogout={logOut}
     >
       {/* 1. OVERVIEW */}

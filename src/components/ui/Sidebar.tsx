@@ -17,6 +17,7 @@ import {
   LogOut,
   ChevronRight,
   TrendingUp,
+  User,
 } from 'lucide-react';
 
 export interface NavItem {
@@ -77,6 +78,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             { id: 'results', label: 'Results & Ranks', icon: <TrendingUp className="w-4 h-4" /> },
             { id: 'announcements', label: 'Announcements', icon: <MessageSquare className="w-4 h-4" /> },
             { id: 'resources', label: 'Resources', icon: <FileText className="w-4 h-4" /> },
+            { id: 'student_profile', label: 'Student View / Profile', icon: <User className="w-4 h-4" /> },
           ],
         },
       ];
@@ -92,6 +94,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             { id: 'rewards', label: 'Rewards Tier', icon: <Award className="w-4 h-4" /> },
             { id: 'leaderboard', label: 'Captains Board', icon: <TrendingUp className="w-4 h-4" /> },
             { id: 'resources', label: 'Promotional Kit', icon: <FileText className="w-4 h-4" /> },
+            { id: 'student_profile', label: 'Student View / Profile', icon: <User className="w-4 h-4" /> },
           ],
         },
       ];
@@ -110,6 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           { id: 'study_circles', label: 'Study Circles', icon: <BookOpen className="w-4 h-4" /> },
           { id: 'reviews', label: 'Reviews', icon: <Star className="w-4 h-4" /> },
           { id: 'billing', label: 'Plans & Usage', icon: <DollarSign className="w-4 h-4" /> },
+          { id: 'profile', label: 'Profile & Settings', icon: <User className="w-4 h-4" /> },
         ],
       },
     ];
