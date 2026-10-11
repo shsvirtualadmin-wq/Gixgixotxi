@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { SignUpPage } from './auth/SignUpPage';
 import { LoginPage } from './auth/LoginPage';
@@ -73,59 +73,37 @@ export const BoardlyAppRouter: React.FC = () => {
     return '/app';
   }, [isAdmin, activeRole, profile]);
 
+  const lastRedirectRef = useRef<string | null>(null);
+
   // SESSIONS & AUTH GUARDS
   useEffect(() => {
-    // While auth is still loading or initial check has not finished, NEVER redirect to /login or auth screens
+    // While auth is still loading or initial check has not finished, NEVER redirect
     if (loading || !initialAuthChecked) return;
 
     // 1. Authenticated users guard
     if (user) {
-      // Admin always routes to admin or requested route
-      if (isAdmin) {
-        const adminAuthRoutes = ['/', '', '/login', '/signup', '/forgot-password', '/reset-password', '/onboarding'];
-        if (adminAuthRoutes.includes(currentPath)) {
-          navigate('/admin', true);
-        }
-        return;
-      }
-
-      // Wait for profile to load before making onboarding routing decision
-      if (!profile) {
-        return;
-      }
-
-      // Check if onboarding is completed in profile state or local cache
-      const hasCompletedOnboarding =
-        profile?.onboardingCompleted === true ||
-        (profile as any)?.onboardingComplete === true ||
-        (() => {
-          if (typeof window === 'undefined') return false;
-          try {
-            const cached = localStorage.getItem(`boardly_cached_profile_${user.uid}`);
-            if (cached) {
-              const parsed = JSON.parse(cached);
-              return parsed?.onboardingCompleted === true || parsed?.onboardingComplete === true;
-            }
-          } catch {}
-          return false;
-        })();
-
-      // ONLY force a user to /onboarding if we have positively confirmed their profile has onboardingComplete: false
-      if (!hasCompletedOnboarding && profile.onboardingCompleted === false) {
-        if (currentPath !== '/onboarding' && currentPath !== '/signup') {
-          navigate('/onboarding', true);
-        }
-        return;
-      }
-
-      // Existing user who completed onboarding: prevent access to marketing, auth screens, or onboarding
-      const authRoutes = ['/', '', '/login', '/signup', '/forgot-password', '/reset-password', '/onboarding'];
-      if (authRoutes.includes(currentPath)) {
+      // If user is on /login or /signup, redirect once to their highest dashboard
+      if (currentPath === '/login' || currentPath === '/signup') {
         const targetDashboard = getHighestRolePath();
-        navigate(targetDashboard, true);
+        if (lastRedirectRef.current !== targetDashboard) {
+          lastRedirectRef.current = targetDashboard;
+          navigate(targetDashboard, true);
+        }
+        return;
+      }
+
+      // Check if onboarding is incomplete for non-admins
+      if (!isAdmin && profile && profile.onboardingCompleted === false) {
+        if (currentPath !== '/onboarding' && currentPath !== '/signup') {
+          if (lastRedirectRef.current !== '/onboarding') {
+            lastRedirectRef.current = '/onboarding';
+            navigate('/onboarding', true);
+          }
+        }
+        return;
       }
     } else {
-      // 2. Unauthenticated users guard
+      // 2. Unauthenticated users guard on protected routes
       const protectedPrefixes = [
         '/app',
         '/onboarding',
@@ -146,10 +124,13 @@ export const BoardlyAppRouter: React.FC = () => {
         if (typeof window !== 'undefined') {
           sessionStorage.setItem('postLoginPath', currentPath);
         }
-        navigate('/login', true);
+        if (lastRedirectRef.current !== '/login') {
+          lastRedirectRef.current = '/login';
+          navigate('/login', true);
+        }
       }
     }
-  }, [loading, initialAuthChecked, user, profile, documentExists, isAdmin, currentPath, getHighestRolePath, navigate]);
+  }, [loading, initialAuthChecked, user, profile, isAdmin, currentPath, getHighestRolePath, navigate]);
 
   // Loading skeleton state
   if (loading || !initialAuthChecked) {

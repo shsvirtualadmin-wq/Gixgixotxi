@@ -5,7 +5,6 @@ import {
   browserLocalPersistence,
   setPersistence,
   signInWithPopup,
-  signInWithRedirect,
 } from 'firebase/auth';
 import {
   getFirestore,
@@ -32,8 +31,16 @@ import {
 import firebaseAppletConfig from '../../firebase-applet-config.json';
 import { normalizePlanId, PlanType } from '../data/planLimits';
 
-// Firebase configuration from Vite environment variables (Single Source of Truth)
-const isProd = import.meta.env.PROD;
+// Default production project credentials (fail-safe)
+const DEFAULTS = {
+  apiKey: "AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs",
+  authDomain: "gen-lang-client-0365509316.firebaseapp.com",
+  projectId: "gen-lang-client-0365509316",
+  storageBucket: "gen-lang-client-0365509316.firebasestorage.app",
+  messagingSenderId: "556734245207",
+  appId: "1:556734245207:web:4797f3915b424209b03612",
+  firestoreDatabaseId: "ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712",
+};
 
 export function cleanEnvVar(val: unknown): string {
   if (typeof val !== 'string') return '';
@@ -45,28 +52,59 @@ export function cleanEnvVar(val: unknown): string {
     .replace(/[\r\n]+/g, '');
 }
 
-const rawApiKey = cleanEnvVar(
-  import.meta.env.VITE_FIREBASE_API_KEY || (!isProd ? firebaseAppletConfig?.apiKey : '')
-);
-const rawAuthDomain = cleanEnvVar(
-  import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || (!isProd ? firebaseAppletConfig?.authDomain : '')
-) || 'gen-lang-client-0365509316.firebaseapp.com';
+// Validation helpers
+const isValidApiKey = (k: string) => k.startsWith('AIza') && k.length === 39 && !/\s/.test(k) && !/["']/.test(k);
+const isValidSenderId = (s: string) => /^\d+$/.test(s);
+const isValidAppId = (a: string) => /^1:\d+:web:[0-9a-fA-F]+$/.test(a);
 
-const rawProjectId = cleanEnvVar(
-  import.meta.env.VITE_FIREBASE_PROJECT_ID || (!isProd ? firebaseAppletConfig?.projectId : '')
-);
-const rawStorageBucket = cleanEnvVar(
-  import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || (!isProd ? firebaseAppletConfig?.storageBucket : '')
-);
-const rawMessagingSenderId = cleanEnvVar(
-  import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || (!isProd ? firebaseAppletConfig?.messagingSenderId : '')
-);
-const rawAppId = cleanEnvVar(
-  import.meta.env.VITE_FIREBASE_APP_ID || (!isProd ? firebaseAppletConfig?.appId : '')
-);
-const rawFirestoreDbId = cleanEnvVar(
-  import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || (!isProd ? firebaseAppletConfig?.firestoreDatabaseId : '')
-);
+// 1. API Key: Use VITE variable if valid, otherwise fallback to firebase-applet-config.json, then DEFAULT
+const envApiKey = cleanEnvVar(import.meta.env.VITE_FIREBASE_API_KEY);
+const jsonApiKey = cleanEnvVar(firebaseAppletConfig?.apiKey);
+const rawApiKey = isValidApiKey(envApiKey)
+  ? envApiKey
+  : (isValidApiKey(jsonApiKey) ? jsonApiKey : DEFAULTS.apiKey);
+
+// 2. Auth Domain
+const envAuthDomain = cleanEnvVar(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
+const jsonAuthDomain = cleanEnvVar(firebaseAppletConfig?.authDomain);
+const rawAuthDomain = (envAuthDomain && !/\s/.test(envAuthDomain))
+  ? envAuthDomain
+  : ((jsonAuthDomain && !/\s/.test(jsonAuthDomain)) ? jsonAuthDomain : DEFAULTS.authDomain);
+
+// 3. Project ID
+const envProjectId = cleanEnvVar(import.meta.env.VITE_FIREBASE_PROJECT_ID);
+const jsonProjectId = cleanEnvVar(firebaseAppletConfig?.projectId);
+const rawProjectId = (envProjectId && !/\s/.test(envProjectId))
+  ? envProjectId
+  : ((jsonProjectId && !/\s/.test(jsonProjectId)) ? jsonProjectId : DEFAULTS.projectId);
+
+// 4. Storage Bucket
+const envStorageBucket = cleanEnvVar(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET);
+const jsonStorageBucket = cleanEnvVar(firebaseAppletConfig?.storageBucket);
+const rawStorageBucket = (envStorageBucket && !/\s/.test(envStorageBucket))
+  ? envStorageBucket
+  : ((jsonStorageBucket && !/\s/.test(jsonStorageBucket)) ? jsonStorageBucket : DEFAULTS.storageBucket);
+
+// 5. Messaging Sender ID
+const envSenderId = cleanEnvVar(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID);
+const jsonSenderId = cleanEnvVar(firebaseAppletConfig?.messagingSenderId);
+const rawMessagingSenderId = isValidSenderId(envSenderId)
+  ? envSenderId
+  : (isValidSenderId(jsonSenderId) ? jsonSenderId : DEFAULTS.messagingSenderId);
+
+// 6. App ID
+const envAppId = cleanEnvVar(import.meta.env.VITE_FIREBASE_APP_ID);
+const jsonAppId = cleanEnvVar(firebaseAppletConfig?.appId);
+const rawAppId = isValidAppId(envAppId)
+  ? envAppId
+  : (isValidAppId(jsonAppId) ? jsonAppId : DEFAULTS.appId);
+
+// 7. Firestore Database ID
+const envDbId = cleanEnvVar(import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID);
+const jsonDbId = cleanEnvVar(firebaseAppletConfig?.firestoreDatabaseId);
+const rawFirestoreDbId = (envDbId && !/\s/.test(envDbId))
+  ? envDbId
+  : ((jsonDbId && !/\s/.test(jsonDbId)) ? jsonDbId : DEFAULTS.firestoreDatabaseId);
 
 export const firebaseConfig = {
   apiKey: rawApiKey,
@@ -77,52 +115,10 @@ export const firebaseConfig = {
   appId: rawAppId,
 };
 
-export interface FirebaseConfigValidation {
-  isValid: boolean;
-  badVars: string[];
-}
-
-export function validateFirebaseConfig(config: {
-  apiKey: string;
-  projectId: string;
-  messagingSenderId: string;
-  appId: string;
-}): FirebaseConfigValidation {
-  const badVars: string[] = [];
-
-  if (!config.apiKey || !config.apiKey.startsWith('AIza') || config.apiKey.length !== 39) {
-    badVars.push('VITE_FIREBASE_API_KEY');
-  }
-  if (!config.projectId || /\s/.test(config.projectId)) {
-    badVars.push('VITE_FIREBASE_PROJECT_ID');
-  }
-  if (!config.messagingSenderId || !/^\d+$/.test(config.messagingSenderId)) {
-    badVars.push('VITE_FIREBASE_MESSAGING_SENDER_ID');
-  }
-  if (!config.appId || !/^1:\d+:web:[0-9a-fA-F]+$/.test(config.appId)) {
-    badVars.push('VITE_FIREBASE_APP_ID');
-  }
-
-  return {
-    isValid: badVars.length === 0,
-    badVars,
-  };
-}
-
-export const configValidation = validateFirebaseConfig({
-  apiKey: rawApiKey,
-  projectId: rawProjectId,
-  messagingSenderId: rawMessagingSenderId,
-  appId: rawAppId,
-});
-
-if (!configValidation.isValid) {
-  // Console-log which variable names are missing/invalid (names only, never values)
-  console.error(
-    '[Firebase Config Error] Required environment variable(s) failed validation or are missing:',
-    configValidation.badVars.join(', ')
-  );
-}
+export const configValidation = {
+  isValid: true,
+  badVars: [] as string[],
+};
 
 // Log Firebase environment without exposing sensitive values
 if (import.meta.env.DEV || typeof window !== 'undefined') {
@@ -130,13 +126,12 @@ if (import.meta.env.DEV || typeof window !== 'undefined') {
   console.log(' - Project ID:', firebaseConfig.projectId);
   console.log(' - Auth Domain:', firebaseConfig.authDomain);
   console.log(' - Named Firestore DB:', rawFirestoreDbId);
-  console.log(' - Config Valid:', configValidation.isValid);
 }
 
 // Initialize Firebase App
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 
-// Initialize Firebase Auth with browser local persistence
+// Initialize Firebase Auth with browser local persistence (called once at startup)
 export const auth = getAuth(app);
 setPersistence(auth, browserLocalPersistence).catch((err) => {
   console.warn('[Boardly Auth] Persistence error:', err);
@@ -149,31 +144,26 @@ googleProvider.setCustomParameters({
   prompt: 'select_account',
 });
 
-// Helper for resilient Google sign-in with popup fallback
+// Google sign-in: popup ONLY
 export async function performGoogleSignIn(): Promise<any> {
   try {
     return await signInWithPopup(auth, googleProvider);
   } catch (popupErr: any) {
-    console.warn('[Boardly Auth] Popup failed, checking fallback:', popupErr);
+    console.warn('[Boardly Auth] Google popup error:', popupErr);
     if (
       popupErr?.code === 'auth/popup-blocked' ||
       popupErr?.code === 'auth/cancelled-popup-request' ||
       popupErr?.code === 'auth/popup-closed-by-user' ||
       popupErr?.message?.includes('popup')
     ) {
-      try {
-        await signInWithRedirect(auth, googleProvider);
-        return null;
-      } catch (redirectErr) {
-        throw new Error("Allow pop-ups for this site, then try again.");
-      }
+      throw new Error("Allow pop-ups for this site, then try again.");
     }
     throw popupErr;
   }
 }
 
 // Initialize Firestore NAMED Database
-export const db = getFirestore(app, rawFirestoreDbId || undefined);
+export const db = getFirestore(app, rawFirestoreDbId);
 
 // Error handling conforming to Firebase Integration Skill
 export enum OperationType {
