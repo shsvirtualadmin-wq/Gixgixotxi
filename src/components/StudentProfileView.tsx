@@ -1,9 +1,15 @@
 import React, { useState, useRef } from 'react';
-import { StudentProfile, User, updateStudentPersonalInfo, uploadUserAvatar, supabase, evaluateStudentAccess, isAdminEmail, clearAllClientAuthAndSessionData } from '../lib/supabase';
-import { renderTargetUniversityBadge } from './InstitutionBadge';
+import { useAuth } from '../context/AuthContext';
+import {
+  StudentProfile,
+  User,
+  updateStudentPersonalInfo,
+  uploadUserAvatar,
+  supabase,
+  clearAllClientAuthAndSessionData,
+} from '../lib/supabase';
+import { PRICING_PLANS, normalizePlan, PlanKey } from '../config/pricing';
 import { TargetUniversityModal } from './TargetUniversityModal';
-import { UserAvatar } from './UserAvatar';
-import { resolveStudentTrackDetails } from '../data/portalMasterTracks';
 import {
   User as UserIcon,
   Mail,
@@ -17,58 +23,142 @@ import {
   CheckCircle2,
   X,
   Check,
-  ShieldCheck,
   Calendar,
   Sparkles,
-  CreditCard,
-  Layers,
   LogOut,
   Camera,
   Loader2,
+  Home,
+  Crown,
+  ChevronRight,
+  ShieldCheck,
 } from 'lucide-react';
 
-interface StudentProfileViewProps {
-  user: User;
-  profile: StudentProfile;
-  onRefreshProfile: () => void;
+export interface StudentProfileViewProps {
+  user?: User | any;
+  profile?: StudentProfile | any;
+  onRefreshProfile?: () => void;
   onStartPractice?: () => void;
   onSignOut?: () => void;
+  onNavigateHome?: () => void;
+  onOpenUpgrade?: () => void;
 }
 
 export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
-  user,
-  profile,
+  user: propUser,
+  profile: propProfile,
   onRefreshProfile,
   onStartPractice,
   onSignOut,
+  onNavigateHome,
+  onOpenUpgrade,
 }) => {
+  const authContext = useAuth();
+  const effectiveUser = propUser || authContext.user;
+  const effectiveProfile = propProfile || authContext.profile;
+
   const [isEditing, setIsEditing] = useState<boolean>(false);
-  const [editName, setEditName] = useState<string>(profile.name || '');
-  const [editPhone, setEditPhone] = useState<string>(profile.phone || '');
+  const [editName, setEditName] = useState<string>(effectiveProfile?.name || effectiveUser?.displayName || '');
+  const [editPhone, setEditPhone] = useState<string>(effectiveProfile?.phone || '');
+  const [editExam, setEditExam] = useState<string>(effectiveProfile?.testTrack || effectiveProfile?.exam || 'MDCAT');
+  const [editGrade, setEditGrade] = useState<string>(effectiveProfile?.grade || 'Class 12');
+  const [editUniversity, setEditUniversity] = useState<string>(
+    effectiveProfile?.targetUniversityId || effectiveProfile?.dream_university || effectiveProfile?.target_university || 'NUST'
+  );
+  const [editExamDate, setEditExamDate] = useState<string>(
+    effectiveProfile?.targetExamDate || 'August 2026'
+  );
+  const [editSubjects, setEditSubjects] = useState<string>(() => {
+    if (Array.isArray(effectiveProfile?.subjects)) return effectiveProfile.subjects.join(', ');
+    if (typeof effectiveProfile?.subjects === 'string') return effectiveProfile.subjects;
+    if (Array.isArray(effectiveProfile?.weakSubjects)) return effectiveProfile.weakSubjects.join(', ');
+    return 'Biology, Chemistry, Physics, English';
+  });
+
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [toast, setToast] = useState<{ text: string; isError?: boolean } | null>(null);
   const [showUniModal, setShowUniModal] = useState<boolean>(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const resolvedTrack = resolveStudentTrackDetails(profile);
+  const planKey: PlanKey = normalizePlan(effectiveProfile?.plan);
+  const planConfig = PRICING_PLANS[planKey];
 
-  const initialLetter = (profile.name || user.email || 'S').charAt(0).toUpperCase();
+  // Calculate joined date
+  const joinedDateString = (() => {
+    try {
+      const rawDate = effectiveProfile?.createdAt || effectiveUser?.metadata?.creationTime;
+      if (!rawDate) return 'October 2026';
+      const d = new Date(rawDate);
+      return isNaN(d.getTime())
+        ? 'October 2026'
+        : d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    } catch {
+      return 'October 2026';
+    }
+  })();
+
+  // Calculate expiry date for paid users
+  const expiryDateString = (() => {
+    try {
+      const rawDate =
+        effectiveProfile?.accessExpiresDate ||
+        effectiveProfile?.pro_expires_at ||
+        effectiveProfile?.expiresAt;
+      if (rawDate) {
+        const d = new Date(rawDate);
+        if (!isNaN(d.getTime())) return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
+      // If active paid but no explicit date, show 30 days from creation
+      const created = new Date(effectiveProfile?.createdAt || Date.now());
+      created.setDate(created.getDate() + 30);
+      return created.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    } catch {
+      return 'Next Month';
+    }
+  })();
+
+  const initialLetter = (effectiveProfile?.name || effectiveUser?.displayName || effectiveUser?.email || 'S')
+    .charAt(0)
+    .toUpperCase();
+
+  const avatarUrl =
+    effectiveProfile?.avatarUrl ||
+    effectiveProfile?.photoURL ||
+    effectiveUser?.photoURL ||
+    effectiveUser?.user_metadata?.avatar_url;
+
+  // Subjects parsed into array of pills
+  const subjectsList = (() => {
+    if (Array.isArray(effectiveProfile?.subjects) && effectiveProfile.subjects.length > 0) {
+      return effectiveProfile.subjects;
+    }
+    if (typeof effectiveProfile?.subjects === 'string' && effectiveProfile.subjects.trim()) {
+      return effectiveProfile.subjects.split(',').map((s: string) => s.trim()).filter(Boolean);
+    }
+    if (Array.isArray(effectiveProfile?.weakSubjects) && effectiveProfile.weakSubjects.length > 0) {
+      return effectiveProfile.weakSubjects;
+    }
+    // Default by track
+    const track = (effectiveProfile?.testTrack || '').toUpperCase();
+    if (track.includes('MDCAT')) return ['Biology', 'Chemistry', 'Physics', 'English', 'Logical Reasoning'];
+    if (track.includes('ECAT') || track.includes('TCAT')) return ['Mathematics', 'Physics', 'Chemistry', 'English'];
+    return ['Biology', 'Chemistry', 'Physics', 'Mathematics', 'English'];
+  })();
 
   const handleAvatarFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 1. Validation
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/svg+xml'];
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'image/gif', 'image/avif'];
     if (!validTypes.includes(file.type) && !file.type.startsWith('image/')) {
-      setToast({ text: 'Please select a valid image file (JPEG, PNG, WebP, GIF, AVIF).', isError: true });
+      setToast({ text: 'Please select a valid image file (JPEG, PNG, WebP).', isError: true });
       setTimeout(() => setToast(null), 4000);
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
-    const maxBytes = 5 * 1024 * 1024; // 5 MB
+    const maxBytes = 5 * 1024 * 1024;
     if (file.size > maxBytes) {
       setToast({ text: 'Image exceeds 5MB limit. Please choose a smaller photo.', isError: true });
       setTimeout(() => setToast(null), 4000);
@@ -78,13 +168,18 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
 
     setIsUploadingAvatar(true);
     try {
-      const res = await uploadUserAvatar(user.id, file, user.email || profile.email);
+      const res = await uploadUserAvatar(
+        effectiveUser?.uid || effectiveUser?.id || 'current_user',
+        file,
+        effectiveUser?.email || effectiveProfile?.email
+      );
       if (res.success) {
         setToast({ text: 'Profile picture updated successfully!' });
         setTimeout(() => setToast(null), 3500);
-        onRefreshProfile();
+        onRefreshProfile?.();
+        authContext?.refreshProfile?.();
       } else {
-        setToast({ text: res.message || 'Failed to upload profile picture.', isError: true });
+        setToast({ text: res.message || 'Failed to upload photo.', isError: true });
         setTimeout(() => setToast(null), 4000);
       }
     } catch (err: any) {
@@ -98,88 +193,110 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
 
   const handleSaveDetails = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editName.trim() || !editPhone.trim()) return;
+    if (!editName.trim()) return;
 
     setIsSaving(true);
-    const res = await updateStudentPersonalInfo(
-      user.id,
-      {
-        name: editName,
-        phone: editPhone,
-      },
-      user.email
-    );
+    const parsedSubjects = editSubjects
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
 
-    setIsSaving(false);
-    if (res.success) {
+    try {
+      // 1. Update Firebase doc if authContext is available
+      if (authContext?.updateProfileData) {
+        await authContext.updateProfileData({
+          name: editName.trim(),
+          phone: editPhone.trim(),
+          testTrack: editExam,
+          targetUniversityId: editUniversity,
+          targetExamDate: editExamDate,
+          weakSubjects: parsedSubjects,
+          ...({ grade: editGrade } as any),
+        });
+      }
+
+      // 2. Also sync to legacy personal info helper
+      if (effectiveUser?.id || effectiveUser?.uid) {
+        await updateStudentPersonalInfo(
+          effectiveUser.id || effectiveUser.uid,
+          {
+            name: editName.trim(),
+            phone: editPhone.trim(),
+          },
+          effectiveUser.email || effectiveProfile?.email
+        );
+      }
+
       setIsEditing(false);
-      setToast({ text: 'Personal details updated successfully!' });
+      setToast({ text: 'Personal details saved successfully!' });
       setTimeout(() => setToast(null), 3000);
-      onRefreshProfile();
-    } else {
-      setToast({ text: res.message || 'Failed to update personal details.', isError: true });
+      onRefreshProfile?.();
+      authContext?.refreshProfile?.();
+    } catch (err: any) {
+      setToast({ text: err?.message || 'Failed to update personal details.', isError: true });
       setTimeout(() => setToast(null), 4000);
+    } finally {
+      setIsSaving(false);
     }
   };
-
-  // Convert subject array or string into comma-separated list
-  const getSubjectListString = (): string => {
-    if (Array.isArray(profile.subjects)) {
-      return profile.subjects.join(', ');
-    }
-    if (typeof profile.subjects === 'string' && profile.subjects.trim()) {
-      return profile.subjects;
-    }
-    return 'Biology, Chemistry, Physics, Mathematics, English, Urdu, Islamiat';
-  };
-
-  const subjectListStr = getSubjectListString();
-  const truncatedSubjects =
-    subjectListStr.length > 55 ? subjectListStr.substring(0, 55) + '…' : subjectListStr;
 
   return (
-    <div className="w-full max-w-2xl mx-auto space-y-6 py-2 px-3 sm:px-4 text-left animate-ios-spring">
+    <div className="w-full max-w-2xl mx-auto space-y-6 py-2 px-3 sm:px-4 text-left animate-in fade-in pb-16">
       {/* Toast Notification */}
       {toast && (
         <div
           className={`fixed top-20 right-4 z-50 px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 text-xs font-bold animate-bounce ${
             toast.isError
               ? 'bg-rose-950 text-white border border-rose-500'
-              : 'bg-[#0A0A0A] text-white border border-[#F2B90C]'
+              : 'bg-[#0d1b3e] text-white border border-[#1a6dff]'
           }`}
         >
           {toast.isError ? (
             <Info className="w-4 h-4 text-rose-400" />
           ) : (
-            <CheckCircle2 className="w-4 h-4 text-[#F2B90C]" />
+            <CheckCircle2 className="w-4 h-4 text-[#1a6dff]" />
           )}
           <span>{toast.text}</span>
         </div>
       )}
 
-      {/* Page Header */}
-      <div className="space-y-1">
-        <div className="flex items-center justify-between">
-          <h2 className="font-['Space_Grotesk'] text-2xl sm:text-3xl font-extrabold text-[#0A0A0A]  leading-tight">
-            My Profile
-          </h2>
-          <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#0A0A0A]  bg-[#F2B90C]/20 border border-[#F2B90C]/40 px-3 py-1 rounded-full">
-            Boardly LMS
-          </span>
+      {/* ========================================================= */}
+      {/* 1. HERO CARD: Gradient Banner + Circular Avatar + Identity */}
+      {/* ========================================================= */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden">
+        {/* Gradient Banner with Home & Upgrade Buttons */}
+        <div className="h-28 sm:h-36 bg-gradient-to-r from-[#0d1b3e] via-[#102a6b] to-[#1a6dff] p-4 flex items-start justify-between relative">
+          {/* Subtle geometric background watermark */}
+          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none" />
+
+          {/* Home Button */}
+          <button
+            type="button"
+            onClick={onNavigateHome}
+            className="relative z-10 p-2 sm:px-3 sm:py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-all flex items-center gap-1.5 text-xs font-bold cursor-pointer active:scale-95 border border-white/15"
+            title="Return to Dashboard Home"
+          >
+            <Home className="w-4 h-4" />
+            <span className="hidden sm:inline">Home</span>
+          </button>
+
+          {/* Crown / Upgrade Button */}
+          <button
+            type="button"
+            onClick={onOpenUpgrade}
+            className="relative z-10 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-amber-950 font-black text-xs flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer border border-amber-300"
+            title="Upgrade Subscription"
+          >
+            <Crown className="w-3.5 h-3.5 fill-amber-950 text-amber-950" />
+            <span>{planKey === 'premium' ? 'Manage Plan' : 'Upgrade'}</span>
+          </button>
         </div>
-        <p className="text-xs sm:text-sm text-slate-500  font-medium">
-          View and update your personal info, course enrollments, and class package details.
-        </p>
-      </div>
 
-      {/* 1. Main Profile Card */}
-      <div className="bg-white  text-slate-900  border border-black/10  rounded-3xl p-6 sm:p-7 shadow-xl space-y-4 relative overflow-hidden transition-colors">
-        <div className="absolute top-0 right-0 w-48 h-48 bg-[#F2B90C]/15  rounded-full blur-3xl pointer-events-none" />
-
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 relative z-10">
-          <div className="flex items-center gap-4">
-            {/* Avatar with Camera upload button overlay */}
-            <div className="relative group shrink-0">
+        {/* Avatar overlapping banner + Identity Block */}
+        <div className="px-5 sm:px-7 pb-6 relative">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-12 sm:-mt-14 mb-4">
+            {/* Avatar with Accent Ring */}
+            <div className="relative group shrink-0 inline-block">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -188,186 +305,336 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
                 onChange={handleAvatarFileChange}
                 disabled={isUploadingAvatar}
               />
-              <UserAvatar
-                user={user}
-                profile={profile}
-                size="lg"
-                shape="square"
-                className="shadow-lg border-2 border-slate-200/80 rounded-2xl"
-              />
+              <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-4 border-white shadow-xl ring-2 ring-[#1a6dff] bg-[#0d1b3e] text-white flex items-center justify-center overflow-hidden">
+                {avatarUrl ? (
+                  <img
+                    src={avatarUrl}
+                    alt={effectiveProfile?.name || 'Profile'}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-2xl sm:text-3xl font-black">{initialLetter}</span>
+                )}
+              </div>
+
+              {/* Camera Upload Button */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploadingAvatar}
-                className="absolute -bottom-1 -right-1 p-1.5 bg-[#1E5AFF] hover:bg-[#1546CC] text-white rounded-xl shadow-md border-2 border-white transition-all active:scale-95 cursor-pointer disabled:opacity-50"
-                title="Change Profile Picture"
-                aria-label="Change Profile Picture"
+                className="absolute bottom-0 right-0 p-1.5 bg-[#1a6dff] hover:bg-[#1558d6] text-white rounded-full shadow-md border-2 border-white transition-all active:scale-95 cursor-pointer disabled:opacity-50"
+                title="Change Profile Photo"
+                aria-label="Change Profile Photo"
               >
                 {isUploadingAvatar ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="w-3 h-3 animate-spin" />
                 ) : (
-                  <Camera className="w-3.5 h-3.5" />
+                  <Camera className="w-3 h-3" />
                 )}
               </button>
             </div>
 
-            <div className="space-y-1">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h3 className="font-['Space_Grotesk'] text-xl font-bold text-slate-900 leading-tight">
-                  {profile.name || 'Student Account'}
-                </h3>
-                <span className="bg-[#F2B90C] text-[#0A0A0A] text-[9px] font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full shadow-xs">
-                  STUDENT ACCOUNT
+            {/* Target Track & Plan Pill Badges */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Target Track Badge (FBISE / MDCAT / TCAT) */}
+              <span className="text-[11px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-blue-50 text-[#1a6dff] border border-blue-200">
+                {effectiveProfile?.testTrack || effectiveProfile?.exam || 'MDCAT'}
+              </span>
+
+              {/* Plan Badge (FREE / PRO / PREMIUM, color-coded) */}
+              {planKey === 'free' && (
+                <span className="text-[11px] font-extrabold uppercase tracking-wider px-3 py-1 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                  FREE
                 </span>
+              )}
+              {planKey === 'pro' && (
+                <span className="text-[11px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-[#1a6dff] text-white shadow-xs">
+                  PRO
+                </span>
+              )}
+              {planKey === 'premium' && (
+                <span className="text-[11px] font-black uppercase tracking-wider px-3 py-1 rounded-full bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-xs">
+                  PREMIUM
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Identity Info: Name, Email, Joined Date, Target University */}
+          <div className="space-y-2">
+            <h2 className="text-xl sm:text-2xl font-black text-[#0d1b3e] tracking-tight">
+              {effectiveProfile?.name || effectiveUser?.displayName || 'Student Aspirant'}
+            </h2>
+
+            <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs text-slate-600 font-medium">
+              {/* Email with Ellipsis Truncation - Never overflows card */}
+              <div className="flex items-center gap-1.5 min-w-0 max-w-[280px] sm:max-w-md">
+                <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span className="truncate">{effectiveUser?.email || effectiveProfile?.email}</span>
               </div>
 
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2 text-xs text-slate-600 font-medium pt-0.5">
-                <span className="flex items-center gap-1.5 text-slate-600">
-                  <Mail className="w-3.5 h-3.5 text-[#F2B90C]" />
-                  <span>{profile.email}</span>
-                </span>
-                {profile.phone && (
-                  <>
-                    <span className="hidden sm:inline text-slate-400">&bull;</span>
-                    <span className="flex items-center gap-1.5 text-slate-600">
-                      <Phone className="w-3.5 h-3.5 text-[#F2B90C]" />
-                      <span>{profile.phone}</span>
-                    </span>
-                  </>
-                )}
+              {/* Joined Month Year */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                <span>Joined {joinedDateString}</span>
               </div>
 
-              {/* Upload photo helper button */}
-              <div className="pt-1">
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={isUploadingAvatar}
-                  className="inline-flex items-center gap-1.5 text-[11px] font-bold text-[#1E5AFF] hover:text-[#1546CC] hover:underline cursor-pointer transition-colors"
-                >
-                  <Camera className="w-3 h-3" />
-                  <span>{isUploadingAvatar ? 'Uploading picture...' : 'Change profile picture'}</span>
-                </button>
+              {/* Target University */}
+              <div className="flex items-center gap-1.5 shrink-0">
+                <GraduationCap className="w-3.5 h-3.5 text-[#1a6dff] shrink-0" />
+                <span className="font-semibold text-slate-700">
+                  Target: {effectiveProfile?.targetUniversityId?.toUpperCase() || effectiveProfile?.dream_university || 'NUST'}
+                </span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 2. Personal Details Card (With Edit Details button for Name & Phone) */}
-      <div className="bg-white  border border-black/10  rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-black/5 ">
-          <div className="flex items-center gap-2">
-            <UserIcon className="w-4 h-4 text-[#F2B90C]" />
-            <h3 className="font-['Space_Grotesk'] text-sm sm:text-base font-bold text-[#0A0A0A]  uppercase tracking-wider">
-              Personal Details
+      {/* ========================================================= */}
+      {/* 2. PERSONAL INFORMATION CARD (Title left, Member since right) */}
+      {/* ========================================================= */}
+      <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-5 sm:p-6 space-y-4">
+        {/* Card Header */}
+        <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+          <div>
+            <h3 className="font-bold text-sm sm:text-base text-[#0d1b3e] uppercase tracking-wider">
+              Personal Information
             </h3>
           </div>
 
-          {!isEditing ? (
-            <button
-              onClick={() => {
-                setEditName(profile.name || '');
-                setEditPhone(profile.phone || '');
-                setIsEditing(true);
-              }}
-              className="px-3 py-1.5 rounded-full bg-black/5  hover:bg-[#F2B90C] hover:text-[#0A0A0A] text-[#0A0A0A]  font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer border border-black/5 "
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-              <span>Edit details</span>
-            </button>
-          ) : (
-            <button
-              onClick={() => setIsEditing(false)}
-              className="p-1.5 rounded-full hover:bg-black/5  text-slate-500 cursor-pointer"
-              title="Cancel editing"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            <span className="text-[11px] font-semibold text-slate-400">
+              Member since {joinedDateString}
+            </span>
+            {!isEditing ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setEditName(effectiveProfile?.name || effectiveUser?.displayName || '');
+                  setEditPhone(effectiveProfile?.phone || '');
+                  setEditExam(effectiveProfile?.testTrack || 'MDCAT');
+                  setEditGrade(effectiveProfile?.grade || 'Class 12');
+                  setEditUniversity(
+                    effectiveProfile?.targetUniversityId || effectiveProfile?.dream_university || 'NUST'
+                  );
+                  setEditExamDate(effectiveProfile?.targetExamDate || 'August 2026');
+                  setEditSubjects(subjectsList.join(', '));
+                  setIsEditing(true);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-blue-50 hover:text-[#1a6dff] text-slate-700 font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer border border-slate-200"
+              >
+                <Edit2 className="w-3 h-3" />
+                <span>Edit</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsEditing(false)}
+                className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-700 cursor-pointer"
+                title="Cancel"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {!isEditing ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-            <div className="bg-slate-50  p-3.5 rounded-2xl border border-black/5  space-y-1">
-              <span className="text-slate-500 font-bold block text-[10px] uppercase tracking-wider">
-                Full Name
-              </span>
-              <span className="font-extrabold text-sm text-[#0A0A0A]  block">
-                {profile.name || 'Not provided'}
-              </span>
-            </div>
-
-            <div className="bg-slate-50  p-3.5 rounded-2xl border border-black/5  space-y-1">
-              <span className="text-slate-500 font-bold block text-[10px] uppercase tracking-wider">
-                WhatsApp / Phone Number
-              </span>
-              <span className="font-extrabold text-sm text-[#0A0A0A]  block">
-                {profile.phone || 'Not provided'}
+          /* READ-ONLY ROWS with thin dividers */
+          <div className="divide-y divide-slate-100 text-xs">
+            {/* Full Name */}
+            <div className="py-2.5 flex items-center justify-between">
+              <span className="font-semibold text-slate-500">Full Name</span>
+              <span className="font-bold text-[#0d1b3e]">
+                {effectiveProfile?.name || effectiveUser?.displayName || 'Not provided'}
               </span>
             </div>
 
-            {/* Email locked badge */}
-            <div className="bg-slate-50  p-3.5 rounded-2xl border border-black/5  space-y-1 sm:col-span-2">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500 font-bold text-[10px] uppercase tracking-wider">
-                  Google Account Email (Locked)
-                </span>
-                <span className="text-[10px] font-extrabold text-[#F2B90C] flex items-center gap-1">
-                  <Lock className="w-3 h-3" /> Permanent Read-Only
+            {/* Email (with Lock indicator) */}
+            <div className="py-2.5 flex items-center justify-between">
+              <span className="font-semibold text-slate-500">Email</span>
+              <div className="flex items-center gap-1.5 text-right font-medium text-slate-700">
+                <span className="truncate max-w-[200px] sm:max-w-xs">{effectiveUser?.email || effectiveProfile?.email}</span>
+                <span className="text-[10px] text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                  <Lock className="w-2.5 h-2.5" /> Locked
                 </span>
               </div>
-              <span className="font-semibold text-xs text-slate-600  block">
-                {profile.email}
+            </div>
+
+            {/* WhatsApp / Phone */}
+            <div className="py-2.5 flex items-center justify-between">
+              <span className="font-semibold text-slate-500">WhatsApp / Phone</span>
+              <span className="font-bold text-[#0d1b3e]">
+                {effectiveProfile?.phone || 'Not added'}
               </span>
+            </div>
+
+            {/* Target Exam */}
+            <div className="py-2.5 flex items-center justify-between">
+              <span className="font-semibold text-slate-500">Target Exam</span>
+              <span className="font-bold text-[#0d1b3e]">
+                {effectiveProfile?.testTrack || effectiveProfile?.exam || 'MDCAT / FSC'}
+              </span>
+            </div>
+
+            {/* Grade */}
+            <div className="py-2.5 flex items-center justify-between">
+              <span className="font-semibold text-slate-500">Grade / Year</span>
+              <span className="font-bold text-[#0d1b3e]">
+                {effectiveProfile?.grade || 'Class 12'}
+              </span>
+            </div>
+
+            {/* Target University */}
+            <div className="py-2.5 flex items-center justify-between">
+              <span className="font-semibold text-slate-500">Target University</span>
+              <span className="font-bold text-[#1a6dff]">
+                {effectiveProfile?.targetUniversityId?.toUpperCase() || effectiveProfile?.dream_university || 'NUST'}
+              </span>
+            </div>
+
+            {/* Exam Date */}
+            <div className="py-2.5 flex items-center justify-between">
+              <span className="font-semibold text-slate-500">Exam Date</span>
+              <span className="font-bold text-[#0d1b3e]">
+                {effectiveProfile?.targetExamDate || 'August 2026'}
+              </span>
+            </div>
+
+            {/* Focus Subjects as Pills */}
+            <div className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="font-semibold text-slate-500">Focus Subjects</span>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {subjectsList.map((subj: string, i: number) => (
+                  <span
+                    key={i}
+                    className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200"
+                  >
+                    {subj}
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
         ) : (
-          /* Inline Edit Form for Full Name & Phone */
-          <form onSubmit={handleSaveDetails} className="space-y-4 text-xs animate-ios-spring">
-            <div className="space-y-3">
+          /* EDITABLE FORM */
+          <form onSubmit={handleSaveDetails} className="space-y-3.5 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              {/* Full Name */}
               <div>
-                <label className="block text-xs font-bold text-[#0A0A0A]  mb-1">
-                  Full Name <span className="text-rose-500">*</span>
-                </label>
+                <label className="block font-bold text-slate-700 mb-1">Full Name</label>
                 <input
                   type="text"
                   required
                   value={editName}
                   onChange={(e) => setEditName(e.target.value)}
-                  className="w-full bg-slate-50  border border-black/10  rounded-2xl px-4 py-2.5 text-xs font-extrabold text-[#0A0A0A]  focus:outline-none focus:border-[#F2B90C]"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1a6dff]"
                 />
               </div>
 
+              {/* Phone */}
               <div>
-                <label className="block text-xs font-bold text-[#0A0A0A]  mb-1">
-                  WhatsApp / Phone Number <span className="text-rose-500">*</span>
-                </label>
+                <label className="block font-bold text-slate-700 mb-1">WhatsApp / Phone</label>
                 <input
                   type="tel"
-                  required
                   value={editPhone}
                   onChange={(e) => setEditPhone(e.target.value)}
-                  className="w-full bg-slate-50  border border-black/10  rounded-2xl px-4 py-2.5 text-xs font-extrabold text-[#0A0A0A]  focus:outline-none focus:border-[#F2B90C]"
+                  placeholder="e.g. 03001234567"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1a6dff]"
+                />
+              </div>
+
+              {/* Target Exam */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Target Exam</label>
+                <select
+                  value={editExam}
+                  onChange={(e) => setEditExam(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1a6dff]"
+                >
+                  <option value="FBISE">FBISE (Federal Board)</option>
+                  <option value="MDCAT">MDCAT (Medical)</option>
+                  <option value="TCAT">TCAT (Engineering / Tech)</option>
+                  <option value="ECAT">ECAT / UET</option>
+                  <option value="NET">NET (NUST)</option>
+                  <option value="NUMS">NUMS (Army Medical)</option>
+                </select>
+              </div>
+
+              {/* Grade */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Grade</label>
+                <select
+                  value={editGrade}
+                  onChange={(e) => setEditGrade(e.target.value)}
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1a6dff]"
+                >
+                  <option value="Class 9">Class 9 (Matric Part 1)</option>
+                  <option value="Class 10">Class 10 (Matric Part 2)</option>
+                  <option value="Class 11">Class 11 (FSC Part 1)</option>
+                  <option value="Class 12">Class 12 (FSC Part 2)</option>
+                  <option value="Repeater / Gap Year">Repeater / Gap Year</option>
+                </select>
+              </div>
+
+              {/* Target University */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Target University</label>
+                <input
+                  type="text"
+                  value={editUniversity}
+                  onChange={(e) => setEditUniversity(e.target.value)}
+                  placeholder="e.g. NUST, FAST, King Edward"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1a6dff]"
+                />
+              </div>
+
+              {/* Exam Date */}
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Exam Date</label>
+                <input
+                  type="text"
+                  value={editExamDate}
+                  onChange={(e) => setEditExamDate(e.target.value)}
+                  placeholder="e.g. August 2026"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1a6dff]"
+                />
+              </div>
+
+              {/* Focus Subjects */}
+              <div className="sm:col-span-2">
+                <label className="block font-bold text-slate-700 mb-1">
+                  Focus Subjects (comma-separated)
+                </label>
+                <input
+                  type="text"
+                  value={editSubjects}
+                  onChange={(e) => setEditSubjects(e.target.value)}
+                  placeholder="Biology, Chemistry, Physics, English"
+                  className="w-full px-3.5 py-2 rounded-xl border border-slate-300 font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#1a6dff]"
                 />
               </div>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
               <button
                 type="button"
                 onClick={() => setIsEditing(false)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600  hover:bg-black/5 "
+                className="px-4 py-2 rounded-xl font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 disabled={isSaving}
-                className="px-5 py-2 rounded-xl bg-[#0A0A0A] text-white   font-extrabold text-xs flex items-center gap-1.5 cursor-pointer hover:opacity-90 active:scale-95 transition-all"
+                className="px-5 py-2 rounded-xl bg-[#0d1b3e] hover:bg-[#152a5c] text-white font-bold text-xs flex items-center gap-1.5 shadow-sm cursor-pointer disabled:opacity-50"
               >
                 {isSaving ? (
-                  <span>Saving...</span>
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Saving...</span>
+                  </>
                 ) : (
                   <>
                     <Check className="w-3.5 h-3.5" />
@@ -380,188 +647,106 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
         )}
       </div>
 
-      {/* 3. Course Registration Card (Read-only for Student, No Edit Button) */}
-      <div className="bg-white  border border-black/10  rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-black/5 ">
-          <div className="flex items-center gap-2">
-            <BookOpen className="w-4 h-4 text-[#F2B90C]" />
-            <h3 className="font-['Space_Grotesk'] text-sm sm:text-base font-bold text-[#0A0A0A]  uppercase tracking-wider">
-              Course Registration
+      {/* ========================================================= */}
+      {/* 3. CURRENT PLAN CARD: Dark Gradient Card + Checklist + Upgrade/Renew */}
+      {/* ========================================================= */}
+      <div className="bg-gradient-to-br from-[#0d1b3e] via-[#102554] to-[#0a142e] text-white rounded-3xl p-6 sm:p-7 shadow-xl space-y-5 relative overflow-hidden border border-white/10">
+        {/* Subtle accent glow */}
+        <div className="absolute top-0 right-0 w-56 h-56 bg-[#1a6dff]/15 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10 flex items-start justify-between">
+          <div className="space-y-1">
+            <span className="text-[10px] font-black uppercase tracking-widest text-[#1a6dff]">
+              {planKey === 'free'
+                ? 'STARTER ACCESS'
+                : planKey === 'pro'
+                ? 'PRO'
+                : 'PREMIUM'}
+            </span>
+            <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              {planConfig.name}
             </h3>
+            <p className="text-xs text-slate-300 font-normal">
+              {planConfig.tagline}
+            </p>
           </div>
-          <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 bg-black/5  px-2.5 py-1 rounded-full">
-            Read-Only Record
-          </span>
+
+          <div className="w-10 h-10 rounded-2xl bg-white/10 flex items-center justify-center text-amber-400 border border-white/10 shadow-inner">
+            <Crown className="w-5 h-5 fill-amber-400 text-amber-400" />
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          {/* Exam Board */}
-          <div className="p-3.5 bg-slate-50  border border-black/5  rounded-2xl space-y-1">
-            <div className="flex items-center gap-1.5 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-              <Award className="w-3.5 h-3.5 text-[#F2B90C]" />
-              <span>Exam Board</span>
-            </div>
-            <span className="font-extrabold text-sm text-[#0A0A0A]  block">
-              FBISE
-            </span>
-          </div>
+        {/* 2-Column Checklist of Included Features */}
+        <div className="relative z-10 grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-2 border-t border-white/10 text-xs">
+          {planConfig.features
+            .filter((f) => f.included)
+            .map((feat, idx) => (
+              <div key={idx} className="flex items-start gap-2">
+                <Check className="w-4 h-4 text-[#1a6dff] shrink-0 mt-0.5" />
+                <span className="text-slate-200 font-medium leading-relaxed">{feat.text}</span>
+              </div>
+            ))}
+        </div>
 
-          {/* Grade / Class */}
-          <div className="p-3.5 bg-slate-50  border border-black/5  rounded-2xl space-y-1">
-            <div className="flex items-center gap-1.5 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-              <BookOpen className="w-3.5 h-3.5 text-[#F2B90C]" />
-              <span>Grade / Class</span>
+        {/* Action Button: Upgrade (for Free/Pro) OR Renew (for Paid) */}
+        <div className="relative z-10 pt-3 border-t border-white/10">
+          {planKey === 'free' ? (
+            <button
+              type="button"
+              onClick={onOpenUpgrade}
+              className="w-full py-3.5 px-4 rounded-2xl bg-[#1a6dff] hover:bg-[#1558d6] text-white font-extrabold text-xs shadow-lg shadow-[#1a6dff]/30 cursor-pointer active:scale-95 transition-all flex items-center justify-center gap-2"
+            >
+              <Sparkles className="w-4 h-4" />
+              <span>Upgrade to Pro or Premium</span>
+            </button>
+          ) : planKey === 'pro' ? (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-slate-300">
+                <span>Access Status: <strong className="text-emerald-400">Pro Active</strong></span>
+                <span>Expires: <strong>{expiryDateString}</strong></span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={onOpenUpgrade}
+                  className="w-full py-3 px-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 cursor-pointer transition-all"
+                >
+                  Renew Pro Plan
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenUpgrade}
+                  className="w-full py-3 px-4 rounded-2xl bg-[#1a6dff] hover:bg-[#1558d6] text-white font-extrabold text-xs shadow-md cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                >
+                  <Crown className="w-3.5 h-3.5 fill-white" />
+                  <span>Upgrade to Premium</span>
+                </button>
+              </div>
             </div>
-            <span className="font-extrabold text-sm text-[#0A0A0A]  block">
-              {resolvedTrack.gradeDisplay || profile.grade || 'Class 11'}
-            </span>
-          </div>
-
-          {/* Academic Stream */}
-          <div className="p-3.5 bg-slate-50  border border-black/5  rounded-2xl space-y-1">
-            <div className="flex items-center gap-1.5 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-              <GraduationCap className="w-3.5 h-3.5 text-[#F2B90C]" />
-              <span>Academic Stream</span>
-            </div>
-            <span className="font-extrabold text-sm text-[#0A0A0A]  block truncate">
-              {resolvedTrack.stream || profile.stream || 'Pre-Medical Stream'}
-            </span>
-          </div>
-
-          {/* Target University */}
-          <div className="p-3.5 bg-slate-50  border border-black/5  rounded-2xl space-y-1.5 sm:col-span-3">
+          ) : (
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-slate-500 text-[10px] font-bold uppercase tracking-wider">
-                <GraduationCap className="w-3.5 h-3.5 text-[#1E5AFF]" />
-                <span>Target University</span>
+              <div>
+                <span className="text-xs text-slate-400">Subscription Status</span>
+                <p className="text-xs font-bold text-white">Active · Expires {expiryDateString}</p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowUniModal(true)}
-                className="text-[10px] text-[#1E5AFF]  font-extrabold hover:underline cursor-pointer"
+                onClick={onOpenUpgrade}
+                className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 cursor-pointer transition-all"
               >
-                Change
+                Renew Plan
               </button>
             </div>
-            <div>
-              {renderTargetUniversityBadge(
-                resolvedTrack.targetUniversity || profile.dream_university || profile.target_university,
-                'md',
-                () => setShowUniModal(true)
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Gray Info Box */}
-        <div className="p-3.5 bg-slate-100/80  border border-slate-200  rounded-2xl flex items-start gap-2.5 text-xs text-slate-600  font-medium">
-          <Info className="w-4 h-4 text-[#F2B90C] shrink-0 mt-0.5" />
-          <p className="leading-relaxed">
-            Please contact the SHS Academy Administrator if you need to update your registered course or subject combos.
-          </p>
+          )}
         </div>
       </div>
 
-      {/* 4. Course Enrollment Details Card */}
-      <div className="bg-white  border border-black/10  rounded-3xl p-5 sm:p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-black/5 ">
-          <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-[#F2B90C]" />
-            <h3 className="font-['Space_Grotesk'] text-sm sm:text-base font-bold text-[#0A0A0A]  uppercase tracking-wider">
-              Course Enrollment Details
-            </h3>
-          </div>
-
-          {/* Active Subscription Pill */}
-          {(() => {
-            const isUserAdmin = Boolean(
-              (profile?.email && isAdminEmail(profile.email)) ||
-              (user?.email && isAdminEmail(user.email)) ||
-              profile?.role === 'admin'
-            );
-            if (isUserAdmin) {
-              return (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-purple-50 text-purple-900 border border-purple-200">
-                  <ShieldCheck className="w-3 h-3 text-purple-600" />
-                  <span>Admin — Unlimited (999+)</span>
-                </span>
-              );
-            }
-            const access = evaluateStudentAccess(profile);
-            return (
-              <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                access.isPro
-                  ? 'bg-emerald-500/15 text-emerald-700  border border-emerald-500/30'
-                  : 'bg-slate-500/15 text-slate-700  border border-slate-500/30'
-              }`}>
-                <CheckCircle2 className="w-3 h-3 text-emerald-500" />
-                <span>{access.isPro ? 'Pro Active' : (access.isProExpired ? 'Pro Expired' : 'Free Plan')}</span>
-              </span>
-            );
-          })()}
-        </div>
-
-        {/* Read-Only Summary Table */}
-        {(() => {
-          const isUserAdmin = Boolean(
-            (profile?.email && isAdminEmail(profile.email)) ||
-            (user?.email && isAdminEmail(user.email)) ||
-            profile?.role === 'admin'
-          );
-          const access = evaluateStudentAccess(profile, 0, isUserAdmin);
-          return (
-            <div className="divide-y divide-black/5  border border-black/10  rounded-2xl overflow-hidden text-xs">
-              <div className="p-3.5 bg-slate-50  flex justify-between items-center">
-                <span className="font-bold text-slate-500">Subscription Package</span>
-                <span className="font-extrabold text-[#0A0A0A] ">
-                  {isUserAdmin ? '⭐ Admin Master Access (999+)' : access.effectivePlanName}
-                </span>
-              </div>
-
-              <div className="p-3.5 bg-white  flex justify-between items-start gap-4">
-                <span className="font-bold text-slate-500 shrink-0">Enrolled Track</span>
-                <span className="font-bold text-[#0A0A0A]  text-right truncate max-w-xs">
-                  {isUserAdmin
-                    ? 'All Academic & Entry Portals'
-                    : resolvedTrack.enrolledTrackLabel}
-                </span>
-              </div>
-
-              <div className="p-3.5 bg-slate-50  flex justify-between items-center">
-                <span className="font-bold text-slate-500">Monthly Test Limit</span>
-                <span className="font-extrabold text-[#0A0A0A] ">
-                  {isUserAdmin ? 'Unlimited (999+)' : access.isPro ? 'Unlimited Tests' : '2 Tests / Calendar Month'}
-                </span>
-              </div>
-
-              <div className="p-3.5 bg-white  flex justify-between items-center">
-                <span className="font-bold text-slate-500">Payment Status</span>
-                <span className={`font-extrabold flex items-center gap-1 ${
-                  isUserAdmin || access.isPro ? 'text-emerald-600 ' : 'text-slate-600 '
-                }`}>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>{isUserAdmin ? 'Verified & Paid (Admin Access)' : access.paymentStatus}</span>
-                </span>
-              </div>
-
-              <div className="p-3.5 bg-slate-50  flex justify-between items-center">
-                <span className="font-bold text-slate-500">Access Expiration</span>
-                <span className="font-extrabold text-[#0A0A0A] ">
-                  {isUserAdmin
-                    ? 'Permanent / Non-Expiring (999+)'
-                    : access.isPro
-                    ? (access.accessExpiresDate ? `${access.daysRemaining} days remaining (${new Date(access.accessExpiresDate).toLocaleDateString()})` : 'Active / Non-Expiring')
-                    : 'Free Tier (Renews Monthly)'}
-                </span>
-              </div>
-            </div>
-          );
-        })()}
-      </div>
-
-      {/* Bottom Action Row: Log Out of Account */}
+      {/* ========================================================= */}
+      {/* 4. LOG OUT BUTTON                                         */}
+      {/* ========================================================= */}
       <div className="pt-2">
         <button
+          type="button"
           onClick={async () => {
             try {
               clearAllClientAuthAndSessionData();
@@ -569,24 +754,29 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
             } catch (err) {
               console.error('Logout error:', err);
             }
+            if (authContext?.logOut) {
+              await authContext.logOut();
+            }
             if (onSignOut) {
               onSignOut();
             }
           }}
-          className="w-full bg-rose-100  hover:bg-rose-200  text-rose-900  border border-rose-300  font-extrabold py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 text-xs shadow-sm"
+          className="w-full bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold py-3.5 px-6 rounded-2xl flex items-center justify-center gap-2 transition-all cursor-pointer active:scale-95 text-xs shadow-xs"
         >
-          <LogOut className="w-4 h-4 text-rose-700 " />
+          <LogOut className="w-4 h-4 text-rose-600" />
           <span>Log Out of Account</span>
         </button>
       </div>
 
+      {/* Target University Modal (Optional quick selector) */}
       <TargetUniversityModal
         isOpen={showUniModal}
         onClose={() => setShowUniModal(false)}
-        currentUser={user}
-        userProfile={profile}
+        currentUser={effectiveUser}
+        userProfile={effectiveProfile}
         onUniversityUpdated={() => {
-          onRefreshProfile();
+          onRefreshProfile?.();
+          authContext?.refreshProfile?.();
         }}
       />
     </div>

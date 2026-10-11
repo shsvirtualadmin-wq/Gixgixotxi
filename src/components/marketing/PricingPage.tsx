@@ -18,7 +18,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
   onSelectPlan,
   onNavigateContact,
 }) => {
-  const [selectedDuration, setSelectedDuration] = useState<BillingDuration>('eight_months');
+  const [selectedDuration, setSelectedDuration] = useState<BillingDuration>('six_months');
   const [openFaqId, setOpenFaqId] = useState<string | null>('plan-fit');
 
   const toggleFaq = (id: string) => {

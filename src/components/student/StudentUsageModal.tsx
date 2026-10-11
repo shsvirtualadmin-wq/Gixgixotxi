@@ -287,7 +287,7 @@ export const StudentUsageModal: React.FC<StudentUsageModalProps> = ({
 
           <div className="flex items-center justify-between pt-2">
             <p className="text-xs text-slate-500 max-w-sm">
-              Pro opens every chapter and gives you 25 tests/day and full Boardy AI assistance.
+              Pro opens every chapter and gives you {PLAN_LIMITS.pro.testsPerDay} tests/day and full Boardy AI assistance.
             </p>
             <button
               type="button"

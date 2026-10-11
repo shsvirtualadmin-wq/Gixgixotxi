@@ -1,3 +1,5 @@
+import { PRICING_PLANS, normalizePlan, PlanKey } from '../config/pricing';
+
 export type PlanType = 'free' | 'pro' | 'premium' | 'starter' | 'steady_climb' | 'all_access';
 
 export interface PlanLimitConfig {
@@ -15,28 +17,28 @@ export const PLAN_LIMITS: Record<string, PlanLimitConfig> = {
     id: 'free',
     name: 'Free',
     badge: 'Standard',
-    testsPerDay: 2,
-    boardyPerDay: 3,
+    testsPerDay: PRICING_PLANS.free.limits.testsPerDay,
+    boardyPerDay: PRICING_PLANS.free.limits.boardyPerDay,
     description: '2 practice tests and 3 Boardy AI questions daily. Foundation drills for FSC and Entry Tests.',
-    priceMonthlyPkr: 0,
+    priceMonthlyPkr: PRICING_PLANS.free.basePrice,
   },
   pro: {
     id: 'pro',
     name: 'Pro',
     badge: 'Popular',
-    testsPerDay: 10,
-    boardyPerDay: 7,
+    testsPerDay: PRICING_PLANS.pro.limits.testsPerDay,
+    boardyPerDay: PRICING_PLANS.pro.limits.boardyPerDay,
     description: '10 tests and 7 Boardy AI questions daily. Full chapter question banks and university past paper formats.',
-    priceMonthlyPkr: 2499,
+    priceMonthlyPkr: PRICING_PLANS.pro.basePrice,
   },
   premium: {
     id: 'premium',
     name: 'Premium',
     badge: 'Unlimited Tests',
-    testsPerDay: 999999,
-    boardyPerDay: 15,
+    testsPerDay: PRICING_PLANS.premium.limits.testsPerDay,
+    boardyPerDay: PRICING_PLANS.premium.limits.boardyPerDay,
     description: 'Unlimited practice tests and 15 Boardy AI questions daily. Merit Meter simulations and national mock sessions.',
-    priceMonthlyPkr: 3999,
+    priceMonthlyPkr: PRICING_PLANS.premium.basePrice,
   },
 };
 
@@ -49,11 +51,7 @@ PLAN_LIMITS['all_access'] = PLAN_LIMITS.premium;
  * Normalizes legacy plan names ('starter', 'steady_climb', 'all_access') to the strict 'free' | 'pro' | 'premium' paradigm.
  */
 export function normalizePlanId(plan?: string | null): PlanType {
-  if (!plan) return 'free';
-  const clean = plan.toLowerCase().trim();
-  if (clean === 'premium' || clean === 'all_access') return 'premium';
-  if (clean === 'pro' || clean === 'steady_climb') return 'pro';
-  return 'free';
+  return normalizePlan(plan);
 }
 
 export function getPlanConfig(plan?: string | null): PlanLimitConfig {
