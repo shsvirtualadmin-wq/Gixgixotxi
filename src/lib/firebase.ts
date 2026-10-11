@@ -283,9 +283,6 @@ export async function fetchUserProfile(uid: string): Promise<StudentUserProfile 
 
     return profile;
   } catch (err: any) {
-    if (err?.code === 'permission-denied') {
-      handleFirestoreError(err, OperationType.GET, userPath);
-    }
     console.warn('[Boardly Firebase] fetchUserProfile error, falling back to cache:', err);
     try {
       const cached = localStorage.getItem(`boardly_cached_profile_${uid}`);
@@ -303,7 +300,28 @@ export async function createInitialUserDoc(
   initialData: Partial<StudentUserProfile>
 ): Promise<StudentUserProfile> {
   const userRef = doc(db, 'users', uid);
-  const userPath = `users/${uid}`;
+  const nowStr = new Date().toISOString();
+  const role = initialData.role || 'student';
+  const plan = normalizePlanId(initialData.plan);
+  const fallbackProfile: StudentUserProfile = {
+    uid,
+    name: initialData.name || 'Student',
+    email: initialData.email || '',
+    phone: initialData.phone || '',
+    plan,
+    role,
+    roles: [role],
+    createdAt: nowStr,
+    termsAcceptedAt: nowStr,
+    termsVersion: '2026.1',
+    onboardingCompleted: false,
+    onboardingComplete: false,
+    testsUsedToday: 0,
+    boardyQuestionsUsedToday: 0,
+    lastUsageDate: nowStr.slice(0, 10),
+    status: 'active',
+    ...initialData,
+  };
 
   try {
     let resultProfile: StudentUserProfile | null = null;
@@ -320,29 +338,8 @@ export async function createInitialUserDoc(
           roles: existingData.roles || [(existingData.role || 'student') as UserRole],
         } as StudentUserProfile;
       } else {
-        const nowStr = new Date().toISOString();
-        const role = initialData.role || 'student';
-        const plan = normalizePlanId(initialData.plan);
-        const newProfile: StudentUserProfile = {
-          uid,
-          name: initialData.name || 'Student',
-          email: initialData.email || '',
-          phone: initialData.phone || '',
-          plan,
-          role,
-          roles: [role],
-          createdAt: nowStr,
-          termsAcceptedAt: nowStr,
-          termsVersion: '2026.1',
-          onboardingCompleted: false,
-          testsUsedToday: 0,
-          boardyQuestionsUsedToday: 0,
-          lastUsageDate: nowStr.slice(0, 10),
-          status: 'active',
-          ...initialData,
-        };
-        transaction.set(userRef, newProfile, { merge: true });
-        resultProfile = newProfile;
+        transaction.set(userRef, fallbackProfile, { merge: true });
+        resultProfile = fallbackProfile;
       }
     });
 
@@ -353,10 +350,21 @@ export async function createInitialUserDoc(
       return resultProfile;
     }
   } catch (err: any) {
-    handleFirestoreError(err, OperationType.WRITE, userPath);
+    console.warn('[Boardly Firebase] Transaction in createInitialUserDoc failed, attempting setDoc fallback:', err);
+    try {
+      await setDoc(userRef, fallbackProfile, { merge: true });
+      localStorage.setItem(`boardly_cached_profile_${uid}`, JSON.stringify(fallbackProfile));
+      return fallbackProfile;
+    } catch (setErr) {
+      console.warn('[Boardly Firebase] Fallback setDoc also failed, returning local session profile:', setErr);
+      try {
+        localStorage.setItem(`boardly_cached_profile_${uid}`, JSON.stringify(fallbackProfile));
+      } catch {}
+      return fallbackProfile;
+    }
   }
 
-  throw new Error('Failed to create or load initial user document');
+  return fallbackProfile;
 }
 
 /**

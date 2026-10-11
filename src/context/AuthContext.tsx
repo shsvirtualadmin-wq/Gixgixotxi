@@ -241,21 +241,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setStatus('loading');
 
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        try {
-          await syncProfile(currentUser);
-          setStatus('signedIn');
-        } catch (err) {
-          console.error('[AuthContext] syncProfile failed:', err);
-          setStatus('signedIn'); // keep logged in, let UI handle retry
-        } finally {
-          setLoading(false);
+      try {
+        setUser(currentUser);
+        if (currentUser) {
+          try {
+            await syncProfile(currentUser);
+            setStatus('signedIn');
+          } catch (syncErr) {
+            console.error('[AuthContext] syncProfile failed:', syncErr);
+            // Construct safe fallback profile so user is never locked out
+            let fallbackProfile: StudentUserProfile | null = null;
+            try {
+              const cached = localStorage.getItem(`boardly_cached_profile_${currentUser.uid}`);
+              if (cached) fallbackProfile = JSON.parse(cached);
+            } catch {}
+
+            if (!fallbackProfile) {
+              const userEmail = currentUser.email || '';
+              fallbackProfile = {
+                uid: currentUser.uid,
+                name: currentUser.displayName || (userEmail ? userEmail.split('@')[0] : 'Student'),
+                email: userEmail,
+                plan: 'free',
+                role: 'student',
+                roles: ['student'],
+                createdAt: new Date().toISOString(),
+                onboardingCompleted: false,
+                onboardingComplete: false,
+                status: 'active',
+              };
+            }
+            setProfile(fallbackProfile);
+            setDocumentExists(true);
+            setStatus('signedIn');
+          }
+        } else {
+          setProfile(null);
+          setDocumentExists(false);
+          setStatus('signedOut');
         }
-      } else {
+      } catch (authErr) {
+        console.error('[AuthContext] onAuthStateChanged top-level error:', authErr);
+        setUser(null);
         setProfile(null);
         setDocumentExists(false);
         setStatus('signedOut');
+      } finally {
+        // CRITICAL: Always release loading state
         setLoading(false);
       }
     });

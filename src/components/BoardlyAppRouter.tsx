@@ -67,9 +67,7 @@ export const BoardlyAppRouter: React.FC = () => {
 
   // SESSIONS & AUTH GUARDS
   useEffect(() => {
-    // If auth is loading, or user is authenticated but their Firestore profile is still loading, DO NOT bounce!
     if (loading) return;
-    if (user && !profile) return;
 
     // 1. Authenticated users guard
     if (user) {
@@ -139,8 +137,8 @@ export const BoardlyAppRouter: React.FC = () => {
     }
   }, [loading, user, profile, documentExists, isAdmin, currentPath, getHighestRolePath, navigate]);
 
-  // Loading skeleton state - show spinner while auth or profile document is loading
-  if (loading || (user && !profile)) {
+  // Loading skeleton state
+  if (loading) {
     return (
       <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4">
         <div className="w-14 h-14 rounded-3xl bg-indigo-100 dark:bg-violet-950/60 animate-pulse flex items-center justify-center">
