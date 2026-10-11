@@ -58,7 +58,7 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
 
   if (!isOpen) return null;
 
-  const displayName = profile?.fullName || user?.displayName || 'Boardly Aspirant';
+  const displayName = profile?.name || profile?.fullName || user?.displayName || 'Boardly Aspirant';
   const initial = displayName.charAt(0).toUpperCase();
   const userEmail = user?.email || profile?.email || 'student@boardly.cfd';
 

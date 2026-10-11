@@ -787,12 +787,6 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
         <button
           type="button"
           onClick={async () => {
-            try {
-              clearAllClientAuthAndSessionData();
-              await supabase.auth.signOut();
-            } catch (err) {
-              console.error('Logout error:', err);
-            }
             if (authContext?.logOut) {
               await authContext.logOut();
             }

@@ -150,11 +150,19 @@ export type UserRole = 'student' | 'organizer' | 'captain' | 'admin';
 export interface StudentUserProfile {
   uid: string;
   name: string;
+  fullName?: string;
   email: string;
   phone?: string;
+  avatarUrl?: string;
+  photoURL?: string;
   plan: PlanType;
   role: UserRole;
   roles?: UserRole[];
+  dailyUsage?: {
+    testsTakenToday?: number;
+    questionsAskedToday?: number;
+    date?: string;
+  };
   createdAt: string;
   updatedAt?: string;
   termsAcceptedAt?: string;

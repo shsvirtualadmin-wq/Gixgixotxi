@@ -39,8 +39,8 @@ export const DailyLimitsView: React.FC<DailyLimitsViewProps> = ({
   }, []);
 
   // Today's usage from profile or defaults
-  const testsUsedToday = profile?.dailyUsage?.testsTakenToday || 0;
-  const boardyUsedToday = profile?.dailyUsage?.questionsAskedToday || 0;
+  const testsUsedToday = profile?.testsUsedToday ?? profile?.dailyUsage?.testsTakenToday ?? 0;
+  const boardyUsedToday = profile?.boardyQuestionsUsedToday ?? profile?.dailyUsage?.questionsAskedToday ?? 0;
 
   const isUnlimitedAccount = isAdmin || profile?.plan === 'premium';
 
