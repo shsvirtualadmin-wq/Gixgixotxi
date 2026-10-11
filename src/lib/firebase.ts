@@ -34,7 +34,7 @@ import { normalizePlanId, PlanType } from '../data/planLimits';
 // Default production project credentials (fail-safe)
 const DEFAULTS = {
   apiKey: "AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs",
-  authDomain: "auth.boardly.cfd",
+  authDomain: "gen-lang-client-0365509316.firebaseapp.com",
   projectId: "gen-lang-client-0365509316",
   storageBucket: "gen-lang-client-0365509316.firebasestorage.app",
   messagingSenderId: "556734245207",
@@ -73,12 +73,13 @@ if (isValidApiKey(envApiKey)) {
 
 // 2. Auth Domain
 const envAuthDomain = cleanEnvVar(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
+const jsonAuthDomain = cleanEnvVar(firebaseAppletConfig?.authDomain);
 let rawAuthDomain: string;
 if (envAuthDomain && !/\s/.test(envAuthDomain)) {
   rawAuthDomain = envAuthDomain;
 } else {
   fallbacksUsed.push('authDomain');
-  rawAuthDomain = DEFAULTS.authDomain;
+  rawAuthDomain = (jsonAuthDomain && !/\s/.test(jsonAuthDomain)) ? jsonAuthDomain : DEFAULTS.authDomain;
 }
 
 // 3. Project ID
