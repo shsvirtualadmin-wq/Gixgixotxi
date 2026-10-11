@@ -16,12 +16,16 @@ interface StudentBoardyChatTabProps {
   initialPrompt?: string;
   onOpenUsage?: () => void;
   onUpgrade?: () => void;
+  onInputFocus?: () => void;
+  onInputBlur?: () => void;
 }
 
 export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
   initialPrompt,
   onOpenUsage,
   onUpgrade,
+  onInputFocus,
+  onInputBlur,
 }) => {
   const { profile, user, updateProfileData } = useAuth();
   const isAdmin = Boolean(
@@ -307,6 +311,8 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
               type="text"
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
+              onFocus={onInputFocus}
+              onBlur={onInputBlur}
               placeholder="Ask Boardy anything (e.g. 'How do I solve Integration by parts?')"
               className="flex-1 px-4 py-3 rounded-2xl border border-slate-200 bg-slate-50/70 focus:bg-white text-slate-800 placeholder-slate-400 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />

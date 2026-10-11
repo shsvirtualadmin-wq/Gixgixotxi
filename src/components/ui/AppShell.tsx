@@ -15,6 +15,9 @@ export interface AppShellProps {
   onNavigateProfile?: () => void;
   onNavigateBilling?: () => void;
   onLogout?: () => void;
+  onOpenMore?: () => void;
+  isInputFocused?: boolean;
+  isInTestSession?: boolean;
 }
 
 export const AppShell: React.FC<AppShellProps> = ({
@@ -28,6 +31,9 @@ export const AppShell: React.FC<AppShellProps> = ({
   onNavigateProfile,
   onNavigateBilling,
   onLogout,
+  onOpenMore,
+  isInputFocused = false,
+  isInTestSession = false,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -36,13 +42,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const showMobileHamburger = role !== 'student';
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] flex flex-col relative overflow-x-hidden font-sans">
-      {/* Background ambient frosted glow elements */}
-      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
-        <div className="absolute top-0 right-1/4 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl" />
-        <div className="absolute top-1/3 left-10 w-80 h-80 bg-violet-500/5 rounded-full blur-3xl" />
-      </div>
-
+    <div className="min-h-[100dvh] text-[#0d1b3e] flex flex-col relative overflow-x-hidden font-sans">
       {/* Sidebar for Desktop (and non-student mobile drawer) */}
       <Sidebar
         role={role}
@@ -64,7 +64,8 @@ export const AppShell: React.FC<AppShellProps> = ({
           onNavigateBilling={onNavigateBilling}
         />
 
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto pb-24 lg:pb-12">
+        {/* Avoid bar covering page content (add bottom padding 110px + safe-area) */}
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto pb-[110px] lg:pb-12 safe-area-bottom">
           {children}
         </main>
       </div>
@@ -72,9 +73,11 @@ export const AppShell: React.FC<AppShellProps> = ({
       {/* Mobile Bottom Tab Bar (Student Role Only) */}
       {role === 'student' && (
         <BottomTabBar
-          activeTab={activeNav as StudentTabId}
+          activeTab={activeNav}
           onSelectTab={(tabId) => onSelectNav(tabId)}
-          onOpenProfile={onNavigateProfile}
+          onOpenMore={() => onOpenMore?.()}
+          isInputFocused={isInputFocused}
+          isInTestSession={isInTestSession}
         />
       )}
     </div>

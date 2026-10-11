@@ -32,6 +32,12 @@
     --ios-system-red: #FF3B30;
     --ios-system-gray: #8E8E93;
     
+    /* Boardly Background System (Requirement 1) */
+    --bg-page-gradient: linear-gradient(180deg, #f5f3ff, #eef2ff 50%, #f0f7ff);
+    --blob-indigo: rgba(79, 70, 229, 0.10);
+    --blob-blue: rgba(26, 109, 255, 0.10);
+    --grid-line: rgba(79, 70, 229, 0.05);
+
     --ios-bg: #F8FAFC;
     --ios-card: #FFFFFF;
     --ios-card-secondary: #EEF2FF;
@@ -43,11 +49,11 @@
 
   /* True Frosted Glass System (Strict anti-smear discipline) */
   .glass-navbar-pill {
-    background-color: rgba(255, 255, 255, 0.65);
+    background-color: rgba(255, 255, 255, 0.75);
     -webkit-backdrop-filter: blur(16px) saturate(160%);
     backdrop-filter: blur(16px) saturate(160%);
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    box-shadow: 0 4px 20px -2px rgba(10, 19, 48, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 4px 20px -2px rgba(13, 27, 62, 0.06);
   }
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -57,11 +63,11 @@
   }
 
   .glass-menu-card {
-    background-color: rgba(255, 255, 255, 0.55);
+    background-color: rgba(255, 255, 255, 0.85);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
     backdrop-filter: blur(20px) saturate(160%);
-    border: 1px solid rgba(255, 255, 255, 0.65);
-    box-shadow: 0 20px 40px -15px rgba(10, 19, 48, 0.12);
+    border: 1px solid rgba(255, 255, 255, 0.9);
+    box-shadow: 0 20px 40px -15px rgba(13, 27, 62, 0.12);
   }
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -71,11 +77,11 @@
   }
 
   .glass-floating-card {
-    background-color: rgba(255, 255, 255, 0.65);
+    background-color: rgba(255, 255, 255, 0.75);
     -webkit-backdrop-filter: blur(16px) saturate(160%);
     backdrop-filter: blur(16px) saturate(160%);
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    box-shadow: 0 10px 30px -10px rgba(10, 19, 48, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.8);
+    box-shadow: 0 10px 30px -10px rgba(13, 27, 62, 0.08);
   }
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
@@ -85,14 +91,56 @@
   }
 
   html, body {
-    background-color: #F8FAFC !important;
-    color: #0F172A !important;
+    background: var(--bg-page-gradient) !important;
+    background-attachment: fixed !important;
+    color: #0d1b3e !important;
     color-scheme: light !important;
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    min-height: 100vh;
+    min-height: 100dvh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* Fixed pointer-events: none ambient background layer (Requirement 1) */
+  .boardly-ambient-bg {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+    overflow: hidden;
+    background-image: 
+      linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+      linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+    background-size: 40px 40px;
+  }
+
+  .boardly-ambient-bg::before {
+    content: "";
+    position: absolute;
+    top: -10%;
+    left: -10%;
+    width: 60vw;
+    height: 60vw;
+    max-width: 600px;
+    max-height: 600px;
+    background: radial-gradient(circle, var(--blob-indigo) 0%, transparent 70%);
+    filter: blur(40px);
+    border-radius: 9999px;
+  }
+
+  .boardly-ambient-bg::after {
+    content: "";
+    position: absolute;
+    bottom: -10%;
+    right: -10%;
+    width: 65vw;
+    height: 65vw;
+    max-width: 650px;
+    max-height: 650px;
+    background: radial-gradient(circle, var(--blob-blue) 0%, transparent 70%);
+    filter: blur(40px);
+    border-radius: 9999px;
   }
 
   h1, h2, h3, h4, h5, h6, .font-serif {

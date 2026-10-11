@@ -307,6 +307,60 @@ export const PUBLIC_PAGES_SEO: Record<string, PageSeoConfig> = {
     ogImage: DEFAULT_OG_IMAGE,
     robots: 'index,follow',
   },
+
+  '/events/blitz': {
+    path: '/events/blitz',
+    title: 'Boardly Blitz | High-Stakes Speed MCQ Competition',
+    description: 'Compete in Boardly Blitz, Pakistan’s premier timed speed quiz event for Matric, FSC and MDCAT aspirants. Solve fast-paced numericals and top national leaderboards.',
+    canonical: 'https://boardly.cfd/events/blitz',
+    ogImage: DEFAULT_OG_IMAGE,
+    robots: 'index,follow',
+  },
+
+  '/events/arena': {
+    path: '/events/arena',
+    title: 'Boardly Arena | Head-to-Head Entrance Test Showdowns',
+    description: 'Enter Boardly Arena for real-time multiplayer MCQ battles. Test your conceptual speed in physics, math, and chemistry against peers across Pakistan.',
+    canonical: 'https://boardly.cfd/events/arena',
+    ogImage: DEFAULT_OG_IMAGE,
+    robots: 'index,follow',
+  },
+
+  '/programs/crew': {
+    path: '/programs/crew',
+    title: 'Boardly Crew | Student Study Groups & Peer Circles',
+    description: 'Join the Boardly Crew to form collaborative study circles, share high-yield exam notes, and practice group mock papers with top student aspirants.',
+    canonical: 'https://boardly.cfd/programs/crew',
+    ogImage: DEFAULT_OG_IMAGE,
+    robots: 'index,follow',
+  },
+
+  '/programs/captains': {
+    path: '/programs/captains',
+    title: 'Campus Captains Program | Lead Boardly at Your College',
+    description: 'Become a Boardly Campus Captain at your high school or college. Organize local mock tests, represent Boardly, and unlock leadership perks and certificates.',
+    canonical: 'https://boardly.cfd/programs/captains',
+    ogImage: DEFAULT_OG_IMAGE,
+    robots: 'index,follow',
+  },
+
+  '/universities': {
+    path: '/universities',
+    title: 'University Explorer & Aggregate Calculator | Boardly',
+    description: 'Explore top Pakistani universities including NUST, FAST, GIKI, UET, NED, and IBA. Compare admission test weights, eligibility criteria, and calculate your aggregate.',
+    canonical: 'https://boardly.cfd/universities',
+    ogImage: DEFAULT_OG_IMAGE,
+    robots: 'index,follow',
+  },
+
+  '/merit-meter': {
+    path: '/merit-meter',
+    title: 'Merit Meter | University Aggregate & Closing Merit Calculator',
+    description: 'Calculate your exact admission aggregate for Pakistani engineering and medical universities. Compare your score with past closing merits and official prospectuses.',
+    canonical: 'https://boardly.cfd/merit-meter',
+    ogImage: DEFAULT_OG_IMAGE,
+    robots: 'index,follow',
+  },
 };
 
 export function getPageSeo(pathname: string): PageSeoConfig {

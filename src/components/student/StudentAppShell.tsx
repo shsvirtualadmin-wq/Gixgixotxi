@@ -43,6 +43,12 @@ import { BottomSheet } from '../ui/Drawer';
 import { Modal } from '../ui/Modal';
 import { AppShell } from '../ui/AppShell';
 import { TrustFooter } from '../ui/TrustFooter';
+import { MoreBottomSheet } from './MoreBottomSheet';
+import { DailyLimitsView } from './DailyLimitsView';
+import { MeritMeter } from '../merit/MeritMeter';
+import { UniversityExplorer } from '../universities/UniversityExplorer';
+import { AdmissionPredictor } from '../predictor/AdmissionPredictor';
+import { ComingSoon } from '../common/ComingSoon';
 import { getEntranceExamQuestions } from '../../data/entranceExamQuestions';
 import { University, UNIVERSITIES } from '../../data/universities';
 import { Question } from '../../types';
@@ -68,18 +74,38 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     if (typeof window !== 'undefined') {
       const p = window.location.pathname.toLowerCase();
       if (p.includes('/profile') || p === '/app/profile') return 'profile';
+      if (p.includes('/universities') || p === '/app/universities') return 'universities';
+      if (p.includes('/merit-meter') || p === '/app/merit-meter') return 'merit-meter';
+      if (p.includes('/predictor') || p === '/app/predictor') return 'predictor';
+      if (p.includes('/limits') || p === '/app/limits') return 'limits';
       const sp = new URLSearchParams(window.location.search);
-      if (sp.get('tab') === 'profile') return 'profile';
+      if (sp.get('tab')) return sp.get('tab')!;
     }
     return 'overview';
   });
   const [showMoreSheet, setShowMoreSheet] = useState<boolean>(false);
+  const [isBoardyFocused, setIsBoardyFocused] = useState<boolean>(false);
   const [showUsageModal, setShowUsageModal] = useState<boolean>(false);
   const [showMeritMeterModal, setShowMeritMeterModal] = useState<boolean>(false);
   const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
   const [showUniModal, setShowUniModal] = useState<boolean>(false);
   const [boardyPrompt, setBoardyPrompt] = useState<string>('');
+
+  // Close sheet on route / popstate change
+  useEffect(() => {
+    const handlePop = () => {
+      setShowMoreSheet(false);
+      const p = window.location.pathname.toLowerCase();
+      if (p.includes('/profile')) setActiveTab('profile');
+      else if (p.includes('/universities')) setActiveTab('universities');
+      else if (p.includes('/merit-meter')) setActiveTab('merit-meter');
+      else if (p.includes('/predictor')) setActiveTab('predictor');
+      else if (p.includes('/limits')) setActiveTab('limits');
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
 
   // Review Form State
   const [reviewRating, setReviewRating] = useState<number>(5);
@@ -439,6 +465,16 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           ? 'Boardy AI Tutor'
           : activeTab === 'history'
           ? 'Test History'
+          : activeTab === 'limits'
+          ? 'Daily Limits'
+          : activeTab === 'universities'
+          ? 'University Explorer'
+          : activeTab === 'merit-meter'
+          ? 'Merit Meter'
+          : activeTab === 'predictor'
+          ? 'Admission Predictor'
+          : activeTab === 'profile'
+          ? 'Student Profile'
           : 'Student Portal'
       }
       subtitle="FSC & University Test Prep Portal"
@@ -456,6 +492,9 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         }, 100);
       }}
       onLogout={logOut}
+      onOpenMore={() => setShowMoreSheet(true)}
+      isInputFocused={isBoardyFocused}
+      isInTestSession={Boolean(activeTest)}
     >
       {/* Tab Switcher */}
       {activeTab === 'overview' && (
@@ -487,6 +526,8 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           initialPrompt={boardyPrompt}
           onOpenUsage={() => setShowUsageModal(true)}
           onUpgrade={() => setShowUpgradeModal(true)}
+          onInputFocus={() => setIsBoardyFocused(true)}
+          onInputBlur={() => setIsBoardyFocused(false)}
         />
       )}
 
@@ -516,7 +557,118 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         </div>
       )}
 
+      {/* Requirement 3: More sheet destination tabs & unbuilt tiles */}
+      {activeTab === 'limits' && (
+        <DailyLimitsView
+          onOpenUpgradeModal={() => setShowUpgradeModal(true)}
+          onNavigatePractice={() => setActiveTab('practice')}
+          onNavigateBoardy={() => setActiveTab('boardy')}
+        />
+      )}
+
+      {activeTab === 'universities' && (
+        <UniversityExplorer
+          onNavigateMeritMeter={(uniId) => {
+            setActiveTab('merit-meter');
+            if (typeof window !== 'undefined') {
+              window.history.pushState({}, '', `/app/merit-meter?uni=${encodeURIComponent(uniId)}`);
+            }
+          }}
+          onNavigatePredictor={() => setActiveTab('predictor')}
+        />
+      )}
+
+      {activeTab === 'merit-meter' && (
+        <MeritMeter
+          onStartPractice={() => setActiveTab('practice')}
+          onExploreMore={() => setActiveTab('universities')}
+        />
+      )}
+
+      {activeTab === 'predictor' && (
+        <AdmissionPredictor
+          onNavigateMeritMeter={() => setActiveTab('merit-meter')}
+          onNavigateUniversities={() => setActiveTab('universities')}
+        />
+      )}
+
+      {activeTab === 'arena' && (
+        <ComingSoon
+          title="Boardly Arena"
+          icon={<Swords className="w-8 h-8 text-indigo-600" />}
+          text="Real-time head-to-head multiplayer MCQ showdowns with synchronized timing and negative marking calibration."
+          onBack={() => setActiveTab('overview')}
+        />
+      )}
+
+      {activeTab === 'chapter-map' && (
+        <ComingSoon
+          title="Chapter Map"
+          icon={<Layers className="w-8 h-8 text-indigo-600" />}
+          text="Interactive conceptual dependency graph mapping prerequisite concepts across Physics, Math, Chemistry, and Biology."
+          onBack={() => setActiveTab('overview')}
+        />
+      )}
+
+      {activeTab === 'formula-vault' && (
+        <ComingSoon
+          title="Formula Vault"
+          icon={<Sparkles className="w-8 h-8 text-amber-500" />}
+          text="Searchable high-yield formula sheets, constants, and derivations for quick reference before timed exams."
+          onBack={() => setActiveTab('overview')}
+        />
+      )}
+
+      {activeTab === 'paper-vault' && (
+        <ComingSoon
+          title="Paper Vault (Beta)"
+          icon={<FileText className="w-8 h-8 text-blue-600" />}
+          text="Official board past papers from FBISE, BISE Lahore, and university entrance exams with full solution keys."
+          onBack={() => setActiveTab('overview')}
+        />
+      )}
+
+      {activeTab === 'growth' && (
+        <ComingSoon
+          title="Growth & Analytics"
+          icon={<BarChart2 className="w-8 h-8 text-emerald-600" />}
+          text="Deep diagnostic breakdown of accuracy trends, subject percentiles, and speed bottlenecks across test attempts."
+          onBack={() => setActiveTab('overview')}
+        />
+      )}
+
+      {activeTab === 'smart-planner' && (
+        <ComingSoon
+          title="Smart Planner (Beta)"
+          icon={<Calendar className="w-8 h-8 text-purple-600" />}
+          text="Algorithmic daily revision schedule calibrated to your target university test date and weakest topic areas."
+          onBack={() => setActiveTab('overview')}
+        />
+      )}
+
       {activeTab !== 'profile' && <TrustFooter className="mt-12" />}
+
+      {/* Requirement 3: "More" Bottom Sheet */}
+      <MoreBottomSheet
+        isOpen={showMoreSheet}
+        onClose={() => setShowMoreSheet(false)}
+        onNavigateTab={(tab) => {
+          setActiveTab(tab);
+          if (typeof window !== 'undefined') {
+            if (tab === 'profile') window.history.pushState({}, '', '/app/profile');
+            else if (tab === 'universities') window.history.pushState({}, '', '/app/universities');
+            else if (tab === 'merit-meter') window.history.pushState({}, '', '/app/merit-meter');
+            else if (tab === 'predictor') window.history.pushState({}, '', '/app/predictor');
+            else if (tab === 'limits') window.history.pushState({}, '', '/app/limits');
+          }
+        }}
+        onNavigateUrl={(url) => {
+          if (typeof window !== 'undefined') {
+            window.history.pushState({}, '', url);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        }}
+      />
 
       {/* Merit Meter Modal */}
       {showMeritMeterModal && (

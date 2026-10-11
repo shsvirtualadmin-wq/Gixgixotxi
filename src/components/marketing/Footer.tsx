@@ -119,12 +119,28 @@ export const Footer: React.FC<FooterProps> = ({
           {/* Nav Columns: 2 cols on mobile, 4 on desktop */}
           {/* Nav Columns: 2 cols on mobile, 4 on desktop */}
           <div className="md:col-span-8 grid grid-cols-2 sm:grid-cols-4 gap-8">
-            {/* Product */}
+            {/* Explore */}
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
-                Product
+                Explore
               </h4>
               <ul className="space-y-2.5 text-sm">
+                <li>
+                  <a
+                    href="/"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        onNavigate('home');
+                        window.history.pushState({}, '', '/');
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
+                  >
+                    Home
+                  </a>
+                </li>
                 <li>
                   <a
                     href="/features"
@@ -176,29 +192,13 @@ export const Footer: React.FC<FooterProps> = ({
                     </span>
                   </a>
                 </li>
-                <li>
-                  <a
-                    href="/reviews"
-                    onClick={(e) => {
-                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
-                        e.preventDefault();
-                        onNavigate('reviews');
-                        window.history.pushState({}, '', '/reviews');
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }
-                    }}
-                    className="hover:text-indigo-400 transition-colors text-left block"
-                  >
-                    Reviews
-                  </a>
-                </li>
               </ul>
             </div>
 
-            {/* Exam Prep Landing Pages */}
+            {/* Prep */}
             <div>
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
-                Exam Prep
+                Prep &amp; Universities
               </h4>
               <ul className="space-y-2.5 text-sm">
                 <li>
@@ -246,17 +246,42 @@ export const Footer: React.FC<FooterProps> = ({
                     }}
                     className="hover:text-indigo-400 transition-colors text-left block"
                   >
-                    FAST-NU &amp; UET
+                    FAST-NU Prep
                   </a>
                 </li>
                 <li>
                   <a
-                    href="/blitz"
+                    href="/universities"
                     onClick={(e) => {
                       if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
                         e.preventDefault();
-                        onNavigate('blitz');
-                        window.history.pushState({}, '', '/blitz');
+                        window.history.pushState({}, '', '/universities');
+                        window.dispatchEvent(new PopStateEvent('popstate'));
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
+                  >
+                    University Explorer
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            {/* Events & Programs */}
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
+                Events &amp; Programs
+              </h4>
+              <ul className="space-y-2.5 text-sm">
+                <li>
+                  <a
+                    href="/events/blitz"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        window.history.pushState({}, '', '/events/blitz');
+                        window.dispatchEvent(new PopStateEvent('popstate'));
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }
                     }}
@@ -265,31 +290,63 @@ export const Footer: React.FC<FooterProps> = ({
                     Boardly Blitz
                   </a>
                 </li>
-              </ul>
-            </div>
-
-            {/* Company & Support */}
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
-                Company
-              </h4>
-              <ul className="space-y-2.5 text-sm">
                 <li>
                   <a
-                    href="/"
+                    href="/events/arena"
                     onClick={(e) => {
                       if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
                         e.preventDefault();
-                        onNavigate('home');
-                        window.history.pushState({}, '', '/');
+                        window.history.pushState({}, '', '/events/arena');
+                        window.dispatchEvent(new PopStateEvent('popstate'));
                         window.scrollTo({ top: 0, behavior: 'smooth' });
                       }
                     }}
                     className="hover:text-indigo-400 transition-colors text-left block"
                   >
-                    Home
+                    Boardly Arena
                   </a>
                 </li>
+                <li>
+                  <a
+                    href="/programs/crew"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        window.history.pushState({}, '', '/programs/crew');
+                        window.dispatchEvent(new PopStateEvent('popstate'));
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
+                  >
+                    Boardly Crew
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/programs/captains"
+                    onClick={(e) => {
+                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
+                        e.preventDefault();
+                        window.history.pushState({}, '', '/programs/captains');
+                        window.dispatchEvent(new PopStateEvent('popstate'));
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+                      }
+                    }}
+                    className="hover:text-indigo-400 transition-colors text-left block"
+                  >
+                    Campus Captains
+                  </a>
+                </li>
+              </ul>
+            </div>
+
+            {/* Company & Legal */}
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
+                Company &amp; Legal
+              </h4>
+              <ul className="space-y-2.5 text-sm">
                 <li>
                   <a
                     href="/about"
@@ -322,31 +379,6 @@ export const Footer: React.FC<FooterProps> = ({
                     Contact
                   </a>
                 </li>
-                <li>
-                  <a
-                    href="/faqs"
-                    onClick={(e) => {
-                      if (e.button === 0 && !e.ctrlKey && !e.metaKey) {
-                        e.preventDefault();
-                        onNavigate('faqs');
-                        window.history.pushState({}, '', '/faqs');
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }
-                    }}
-                    className="hover:text-indigo-400 transition-colors text-left block"
-                  >
-                    FAQs
-                  </a>
-                </li>
-              </ul>
-            </div>
-
-            {/* Legal */}
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">
-                Legal
-              </h4>
-              <ul className="space-y-2.5 text-sm">
                 <li>
                   <a
                     href="/privacy"
