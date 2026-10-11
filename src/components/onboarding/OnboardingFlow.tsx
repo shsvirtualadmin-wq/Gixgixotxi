@@ -3,6 +3,7 @@ import { ArrowLeft, Check, Calendar, Sparkles, BookOpen, Clock, ArrowRight, Load
 import { doc, updateDoc, setDoc } from 'firebase/firestore';
 import { BrandLogo } from '../marketing/BrandLogo';
 import { UNIVERSITIES, University } from '../../data/universities';
+import { getUniversityPaperConfig } from '../../config/universityPapers';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
 import { useAuth } from '../../context/AuthContext';
 import { auth, db } from '../../lib/firebase';
@@ -380,7 +381,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
                           {uni.shortName}
                         </span>
                         <span className="text-[11px] text-slate-500 block truncate">
-                          120 MCQs · 120 min
+                          {getUniversityPaperConfig(uni.id).totalQuestions} MCQs · {getUniversityPaperConfig(uni.id).durationMinutes} min
                         </span>
                       </div>
                     </button>
@@ -559,7 +560,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
                         Target University
                       </span>
                       <h4 className="font-bold text-sm text-slate-900">{targetUni.fullName}</h4>
-                      <p className="text-xs text-slate-500">120 questions · 120 minutes</p>
+                      <p className="text-xs text-slate-500">
+                        {getUniversityPaperConfig(targetUni.id).totalQuestions} questions · {getUniversityPaperConfig(targetUni.id).durationMinutes} minutes
+                      </p>
                     </div>
                   </div>
                   <button

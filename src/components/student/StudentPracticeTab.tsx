@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Zap, Clock, ArrowRight, Lock, Sparkles, Filter } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { UNIVERSITIES, University } from '../../data/universities';
+import { getUniversityPaperConfig } from '../../config/universityPapers';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
 import { PLAN_LIMITS, PlanType, normalizePlanId } from '../../data/planLimits';
 
@@ -63,23 +64,6 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
       return true;
     });
   }, [uniCategoryFilter]);
-
-  // Negative marking metadata by uni
-  const getNegativeMarkingInfo = (uniId: string) => {
-    if (uniId === 'fast') return '25% negative marking (-0.25)';
-    if (uniId === 'giki') return '25% negative marking (-1 on wrong)';
-    if (uniId === 'iba') return '25% negative marking';
-    return 'No negative marking';
-  };
-
-  const getStats = (uniId: string) => {
-    if (uniId === 'nust') return { q: 200, m: 200, min: 180 };
-    if (uniId === 'fast') return { q: 120, m: 100, min: 120 };
-    if (uniId === 'giki') return { q: 80, m: 80, min: 120 };
-    if (uniId === 'iba') return { q: 100, m: 100, min: 100 };
-    if (uniId === 'lums') return { q: 90, m: 90, min: 120 };
-    return { q: 100, m: 100, min: 100 };
-  };
 
   return (
     <div className="space-y-8 pb-20">
@@ -202,8 +186,7 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
         {/* 2-Column Grid of University Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredUniversities.map((uni) => {
-            const stats = getStats(uni.id);
-            const negMarking = getNegativeMarkingInfo(uni.id);
+            const paperConfig = getUniversityPaperConfig(uni.id);
 
             return (
               <div
@@ -222,7 +205,7 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
                           {uni.shortName}
                         </h3>
                         <span className="text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
-                          {uni.testName || 'Entrance Test'}
+                          {uni.testName || paperConfig.testName || 'Entrance Test'}
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">
@@ -234,23 +217,23 @@ export const StudentPracticeTab: React.FC<StudentPracticeTabProps> = ({
                   {/* 3 Stats: Questions, Marks, Minutes */}
                   <div className="grid grid-cols-3 gap-2 py-2.5 px-3 rounded-xl bg-slate-50 border border-slate-100 text-center text-xs">
                     <div>
-                      <span className="font-black text-slate-900 block">{stats.q}</span>
+                      <span className="font-black text-slate-900 block">{paperConfig.totalQuestions}</span>
                       <span className="text-[10px] text-slate-400">Questions</span>
                     </div>
                     <div>
-                      <span className="font-black text-slate-900 block">{stats.m}</span>
+                      <span className="font-black text-slate-900 block">{paperConfig.totalMarks}</span>
                       <span className="text-[10px] text-slate-400">Marks</span>
                     </div>
                     <div>
-                      <span className="font-black text-slate-900 block">{stats.min}</span>
+                      <span className="font-black text-slate-900 block">{paperConfig.durationMinutes}</span>
                       <span className="text-[10px] text-slate-400">Minutes</span>
                     </div>
                   </div>
 
                   {/* Negative marking line */}
                   <div className="mt-2.5 text-[11px] text-slate-500 flex items-center justify-between">
-                    <span className={negMarking.includes('negative') ? 'text-amber-700 font-medium' : 'text-slate-500'}>
-                      {negMarking}
+                    <span className={paperConfig.negativeMarkingPercent > 0 ? 'text-amber-700 font-medium' : 'text-slate-500'}>
+                      {paperConfig.negativeMarkingText}
                     </span>
                     <span className="text-slate-400">{uni.location || 'Pakistan'}</span>
                   </div>

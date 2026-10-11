@@ -50,6 +50,8 @@ import { UniversityExplorer } from '../universities/UniversityExplorer';
 import { AdmissionPredictor } from '../predictor/AdmissionPredictor';
 import { ComingSoon } from '../common/ComingSoon';
 import { getEntranceExamQuestions } from '../../data/entranceExamQuestions';
+import { generateUniversityPaperExam, getUniversityPaperConfig } from '../../config/universityPapers';
+import { getSeenStemsForStudent, recordQuestionsAsSeen } from '../../lib/seenQuestionsTracker';
 import { University, UNIVERSITIES } from '../../data/universities';
 import { Question } from '../../types';
 import { getPlanConfig } from '../../data/planLimits';
@@ -125,9 +127,49 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     questions: Question[];
     durationMinutes: number;
     negativeMarkingPercent: number;
+    marksPerQuestion?: number;
+    totalMarks?: number;
     universityId?: string;
     subject?: string;
-  } | null>(null);
+    startTime?: number;
+    endTime?: number;
+    initialAnswers?: (number | null)[];
+    initialFlagged?: boolean[];
+    initialIndex?: number;
+  } | null>(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      try {
+        const saved = localStorage.getItem('boardly_university_test_session');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && Array.isArray(parsed.questions) && parsed.questions.length > 0) {
+            if (!parsed.endTime || parsed.endTime > Date.now()) {
+              return {
+                title: parsed.title,
+                questions: parsed.questions,
+                durationMinutes: parsed.durationMinutes,
+                negativeMarkingPercent: parsed.negativeMarkingPercent ?? 0,
+                marksPerQuestion: parsed.marksPerQuestion ?? 1,
+                totalMarks: parsed.totalMarks,
+                universityId: parsed.universityId,
+                subject: parsed.subject,
+                startTime: parsed.startTime,
+                endTime: parsed.endTime,
+                initialAnswers: parsed.userAnswers,
+                initialFlagged: parsed.flagged,
+                initialIndex: parsed.currentIndex || 0,
+              };
+            } else {
+              localStorage.removeItem('boardly_university_test_session');
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Error reading stored test session:', e);
+      }
+    }
+    return null;
+  });
 
   // Test Result State
   const [completedResult, setCompletedResult] = useState<{
@@ -136,6 +178,8 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     userAnswers: (number | null)[];
     timeSpentSeconds: number;
     negativeMarkingPercent: number;
+    marksPerQuestion?: number;
+    totalMarks?: number;
     universityId?: string;
   } | null>(null);
 
@@ -165,17 +209,15 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
   }, [profile?.testHistory]);
 
   useEffect(() => {
-    // Ensure no drill or test auto-starts on dashboard mount
-    setActiveTest(null);
-    setCompletedResult(null);
-
-    // Clean up any lingering auto-start flags so tests only start on explicit click
-    try {
-      localStorage.removeItem('boardly_start_diagnostic_on_load');
-      localStorage.removeItem('boardly_active_test_session');
-      sessionStorage.removeItem('boardly_auto_start_drill');
-      sessionStorage.removeItem('boardly_start_test');
-    } catch {}
+    // If no active test is running, clean up leftover auto-start flags
+    if (!activeTest) {
+      try {
+        localStorage.removeItem('boardly_start_diagnostic_on_load');
+        localStorage.removeItem('boardly_active_test_session');
+        sessionStorage.removeItem('boardly_auto_start_drill');
+        sessionStorage.removeItem('boardly_start_test');
+      } catch {}
+    }
 
     if (user?.uid) {
       getTestAttempts(user.uid).then((data) => {
@@ -197,6 +239,33 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     }
   }, [user]);
 
+  const handleProgressUpdate = (progress: {
+    answers: (number | null)[];
+    flagged: boolean[];
+    currentIndex: number;
+  }) => {
+    if (!activeTest) return;
+    try {
+      const sessionObj = {
+        title: activeTest.title,
+        questions: activeTest.questions,
+        durationMinutes: activeTest.durationMinutes,
+        negativeMarkingPercent: activeTest.negativeMarkingPercent,
+        marksPerQuestion: activeTest.marksPerQuestion,
+        totalMarks: activeTest.totalMarks,
+        universityId: activeTest.universityId,
+        subject: activeTest.subject,
+        startTime: activeTest.startTime,
+        endTime: activeTest.endTime,
+        userAnswers: progress.answers,
+        flagged: progress.flagged,
+        currentIndex: progress.currentIndex,
+        updatedAt: Date.now(),
+      };
+      localStorage.setItem('boardly_university_test_session', JSON.stringify(sessionObj));
+    } catch {}
+  };
+
   const handleStartSprint = (subject: string) => {
     const uniKey = profile?.targetUniversityId || profile?.targetUniversity || profile?.university || 'nust';
     const rawQuestions = getEntranceExamQuestions(uniKey, subject, 30);
@@ -214,16 +283,43 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
   };
 
   const handleStartUniversityPaper = (uni: University) => {
-    const rawQuestions = getEntranceExamQuestions(uni.id, 'Advance Maths', 40);
-    const negPercent = uni.id === 'fast' || uni.id === 'giki' || uni.id === 'iba' ? 0.25 : 0;
+    const studentSeenStems = getSeenStemsForStudent(user?.uid || profile?.uid);
+    const { config: paperConfig, questions } = generateUniversityPaperExam(uni.id, studentSeenStems);
 
-    setActiveTest({
-      title: `${uni.shortName} Full Entrance Mock Paper`,
-      questions: rawQuestions,
-      durationMinutes: 45,
-      negativeMarkingPercent: negPercent,
+    const startTime = Date.now();
+    const durationMinutes = paperConfig.durationMinutes;
+    const endTime = startTime + durationMinutes * 60 * 1000;
+
+    const sessionState = {
+      title: `${paperConfig.shortName} Full Entrance Mock Paper`,
+      questions,
+      durationMinutes,
+      negativeMarkingPercent: paperConfig.negativeMarkingPercent,
+      marksPerQuestion: paperConfig.marksPerQuestion,
+      totalMarks: paperConfig.totalMarks,
       universityId: uni.id,
-    });
+      startTime,
+      endTime,
+      initialAnswers: Array(questions.length).fill(null),
+      initialFlagged: Array(questions.length).fill(false),
+      initialIndex: 0,
+    };
+
+    try {
+      localStorage.setItem(
+        'boardly_university_test_session',
+        JSON.stringify({
+          ...sessionState,
+          userAnswers: sessionState.initialAnswers,
+          flagged: sessionState.initialFlagged,
+          currentIndex: 0,
+        })
+      );
+    } catch (e) {
+      console.warn('[LocalStorage] Could not save university test session:', e);
+    }
+
+    setActiveTest(sessionState);
     setCompletedResult(null);
   };
 
@@ -245,7 +341,13 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     flagged: boolean[];
     timeSpentSeconds: number;
     negativeMarkingPercent: number;
+    marksPerQuestion?: number;
+    totalMarks?: number;
   }) => {
+    try {
+      localStorage.removeItem('boardly_university_test_session');
+    } catch {}
+
     let correct = 0;
     let wrong = 0;
     let unattempted = 0;
@@ -257,9 +359,11 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       else wrong++;
     });
 
-    const rawScore = correct - wrong * results.negativeMarkingPercent;
+    const perQuestionMark = results.marksPerQuestion ?? (activeTest?.marksPerQuestion || 1);
+    const effectiveTotalMarks = results.totalMarks ?? (activeTest?.totalMarks || (results.questions.length * perQuestionMark));
+    const rawScore = (correct * perQuestionMark) - (wrong * results.negativeMarkingPercent * perQuestionMark);
     const finalScore = Math.max(0, Math.round(rawScore * 10) / 10);
-    const percentage = Math.round((finalScore / results.questions.length) * 100);
+    const percentage = Math.round((finalScore / effectiveTotalMarks) * 100);
 
     const newAttempt: StoredTestAttempt = {
       userId: user?.uid || 'guest',
@@ -278,6 +382,11 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     };
 
     setAttempts((prev) => [newAttempt, ...prev]);
+
+    // Record questions as seen for this student
+    if (results.questions.length > 0) {
+      recordQuestionsAsSeen(user?.uid || profile?.uid, results.questions, activeTest?.subject || 'University Paper', results.title);
+    }
 
     if (user?.uid) {
       logTestAttempt(newAttempt).catch(console.warn);
@@ -303,6 +412,9 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       userAnswers: results.userAnswers,
       timeSpentSeconds: results.timeSpentSeconds,
       negativeMarkingPercent: results.negativeMarkingPercent,
+      marksPerQuestion: perQuestionMark,
+      totalMarks: effectiveTotalMarks,
+      universityId: activeTest?.universityId,
     });
     setActiveTest(null);
   };
@@ -415,8 +527,21 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         questions={activeTest.questions}
         durationMinutes={activeTest.durationMinutes}
         negativeMarkingPercent={activeTest.negativeMarkingPercent}
+        marksPerQuestion={activeTest.marksPerQuestion}
+        totalMarks={activeTest.totalMarks}
+        startTime={activeTest.startTime}
+        endTime={activeTest.endTime}
+        initialAnswers={activeTest.initialAnswers}
+        initialFlagged={activeTest.initialFlagged}
+        initialIndex={activeTest.initialIndex}
+        onProgressUpdate={handleProgressUpdate}
         onComplete={handleCompleteTest}
-        onExit={() => setActiveTest(null)}
+        onExit={() => {
+          try {
+            localStorage.removeItem('boardly_university_test_session');
+          } catch {}
+          setActiveTest(null);
+        }}
       />
     );
   }
@@ -430,16 +555,51 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         userAnswers={completedResult.userAnswers}
         timeSpentSeconds={completedResult.timeSpentSeconds}
         negativeMarkingPercent={completedResult.negativeMarkingPercent}
+        marksPerQuestion={completedResult.marksPerQuestion}
+        totalMarks={completedResult.totalMarks}
         onRetake={() => {
           const uniKey = completedResult.universityId || profile?.targetUniversityId || profile?.targetUniversity || profile?.university || 'nust';
-          const rawQuestions = getEntranceExamQuestions(uniKey, 'Advance Maths', 30);
-          setActiveTest({
-            title: completedResult.title,
-            questions: rawQuestions,
-            durationMinutes: 10,
-            negativeMarkingPercent: completedResult.negativeMarkingPercent,
+          if (completedResult.title.includes('Sprint')) {
+            handleStartSprint(completedResult.universityId || 'Advance Maths');
+            return;
+          }
+
+          const { config: paperConfig, questions } = generateUniversityPaperExam(
+            uniKey,
+            getSeenStemsForStudent(user?.uid || profile?.uid)
+          );
+          const startTime = Date.now();
+          const durationMinutes = paperConfig.durationMinutes;
+          const endTime = startTime + durationMinutes * 60 * 1000;
+
+          const sessionState = {
+            title: `${paperConfig.shortName} Full Entrance Mock Paper`,
+            questions,
+            durationMinutes,
+            negativeMarkingPercent: paperConfig.negativeMarkingPercent,
+            marksPerQuestion: paperConfig.marksPerQuestion,
+            totalMarks: paperConfig.totalMarks,
             universityId: uniKey,
-          });
+            startTime,
+            endTime,
+            initialAnswers: Array(questions.length).fill(null),
+            initialFlagged: Array(questions.length).fill(false),
+            initialIndex: 0,
+          };
+
+          try {
+            localStorage.setItem(
+              'boardly_university_test_session',
+              JSON.stringify({
+                ...sessionState,
+                userAnswers: sessionState.initialAnswers,
+                flagged: sessionState.initialFlagged,
+                currentIndex: 0,
+              })
+            );
+          } catch {}
+
+          setActiveTest(sessionState);
           setCompletedResult(null);
         }}
         onGoHome={() => {

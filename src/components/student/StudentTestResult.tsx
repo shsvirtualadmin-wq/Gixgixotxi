@@ -11,6 +11,8 @@ interface StudentTestResultProps {
   userAnswers: (number | null)[];
   timeSpentSeconds: number;
   negativeMarkingPercent: number;
+  marksPerQuestion?: number;
+  totalMarks?: number;
   onRetake: () => void;
   onGoHome: () => void;
   onAskBoardyAboutQuestion: (question: Question, studentAnswerIndex: number | null) => void;
@@ -22,6 +24,8 @@ export const StudentTestResult: React.FC<StudentTestResultProps> = ({
   userAnswers,
   timeSpentSeconds,
   negativeMarkingPercent,
+  marksPerQuestion = 1,
+  totalMarks,
   onRetake,
   onGoHome,
   onAskBoardyAboutQuestion,
@@ -45,9 +49,11 @@ export const StudentTestResult: React.FC<StudentTestResultProps> = ({
     }
   });
 
-  const rawScore = correctCount - wrongCount * negativeMarkingPercent;
+  const perQuestionMark = marksPerQuestion || 1;
+  const effectiveTotalMarks = totalMarks || (questions.length * perQuestionMark);
+  const rawScore = (correctCount * perQuestionMark) - (wrongCount * negativeMarkingPercent * perQuestionMark);
   const finalScore = Math.max(0, Math.round(rawScore * 10) / 10);
-  const percentage = Math.round((finalScore / questions.length) * 100);
+  const percentage = Math.round((finalScore / effectiveTotalMarks) * 100);
 
   const minutesSpent = Math.max(1, Math.round(timeSpentSeconds / 60));
 
@@ -87,7 +93,7 @@ export const StudentTestResult: React.FC<StudentTestResultProps> = ({
             </div>
             <div className="text-center p-4 rounded-2xl bg-slate-50 border border-slate-200 min-w-[110px]">
               <span className="text-3xl font-black text-slate-900 block">{finalScore}</span>
-              <span className="text-[11px] font-semibold text-slate-500">Out of {questions.length}</span>
+              <span className="text-[11px] font-semibold text-slate-500">Out of {effectiveTotalMarks}</span>
             </div>
           </div>
         </div>
