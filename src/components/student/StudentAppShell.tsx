@@ -104,7 +104,30 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
   // Test Attempts History
   const [attempts, setAttempts] = useState<StoredTestAttempt[]>([]);
 
+  // Copy feedback state for manual payment details
+  const [copiedKey, setCopiedKey] = useState<string | null>(null);
+
+  const handleCopyText = (text: string, key: string) => {
+    if (typeof navigator !== 'undefined' && navigator.clipboard) {
+      navigator.clipboard.writeText(text);
+      setCopiedKey(key);
+      setTimeout(() => setCopiedKey(null), 2000);
+    }
+  };
+
   useEffect(() => {
+    // Ensure no drill or test auto-starts on dashboard mount
+    setActiveTest(null);
+    setCompletedResult(null);
+
+    // Clean up any lingering auto-start flags so tests only start on explicit click
+    try {
+      localStorage.removeItem('boardly_start_diagnostic_on_load');
+      localStorage.removeItem('boardly_active_test_session');
+      sessionStorage.removeItem('boardly_auto_start_drill');
+      sessionStorage.removeItem('boardly_start_test');
+    } catch {}
+
     if (user?.uid) {
       getTestAttempts(user.uid).then((data) => {
         if (data && data.length > 0) {
@@ -112,14 +135,6 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         }
       });
     }
-
-    try {
-      const startDiag = localStorage.getItem('boardly_start_diagnostic_on_load');
-      if (startDiag === 'true') {
-        localStorage.removeItem('boardly_start_diagnostic_on_load');
-        handleStartSprint('Advance Maths');
-      }
-    } catch {}
   }, [user]);
 
   const handleStartSprint = (subject: string) => {
@@ -399,17 +414,17 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       {activeTab === 'profile' && (
         <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in pb-12">
           {/* Student Profile Card */}
-          <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+          <div className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-6">
             <div className="flex items-center gap-4">
               <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-blue-600 flex items-center justify-center text-white text-2xl font-black shadow-md">
                 {(profile?.name || user?.displayName || 'S').charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-lg text-slate-900 dark:text-white truncate">
+                  <h3 className="font-bold text-lg text-slate-900 truncate">
                     {profile?.name || user?.displayName || 'Student Aspirant'}
                   </h3>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200">
                     {profile?.plan || 'Free'}
                   </span>
                 </div>
@@ -424,26 +439,26 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
               <button
                 type="button"
                 onClick={() => setShowUsageModal(true)}
-                className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-left hover:border-indigo-400 transition-all cursor-pointer"
+                className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-left hover:border-indigo-400 transition-all cursor-pointer"
               >
-                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Daily Quota</div>
-                <div className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+                <div className="text-[11px] font-semibold text-slate-500">Daily Quota</div>
+                <div className="text-sm font-bold text-slate-900 mt-0.5">
                   Usage & Limits
                 </div>
               </button>
               <button
                 type="button"
                 onClick={() => setShowUpgradeModal(true)}
-                className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-blue-950/40 border border-indigo-200 dark:border-indigo-800 text-left hover:border-indigo-400 transition-all cursor-pointer"
+                className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-200 text-left hover:border-indigo-400 transition-all cursor-pointer"
               >
-                <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">Subscription</div>
-                <div className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+                <div className="text-[11px] font-semibold text-indigo-600">Subscription</div>
+                <div className="text-sm font-bold text-slate-900 mt-0.5">
                   Upgrade Plan
                 </div>
               </button>
             </div>
 
-            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs text-slate-500">
+            <div className="pt-4 border-t border-slate-100 flex justify-between items-center text-xs text-slate-500">
               <span>Account Status: <strong className="text-emerald-600 capitalize">{profile?.status || 'Active'}</strong></span>
               <button
                 type="button"
@@ -502,7 +517,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
               <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
                 <Star className="w-6 h-6 fill-emerald-600" />
               </div>
-              <h4 className="font-extrabold text-base text-slate-900 dark:text-white">
+              <h4 className="font-extrabold text-base text-slate-900">
                 Thank you for your review!
               </h4>
               <p className="text-xs text-slate-500">
@@ -512,7 +527,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           ) : (
             <form onSubmit={handleSubmitReview} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
                   Rating
                 </label>
                 <div className="flex items-center gap-2">
@@ -534,7 +549,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-xs font-bold text-slate-700 mb-1">
                   Your Review
                 </label>
                 <textarea
@@ -542,7 +557,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
                   value={reviewText}
                   onChange={(e) => setReviewText(e.target.value)}
                   placeholder="Tell other students how Boardly helped your test preparation..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   required
                 />
               </div>
@@ -581,7 +596,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
               <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
                 <Sparkles className="w-6 h-6" />
               </div>
-              <h4 className="font-extrabold text-base text-slate-900 dark:text-white">
+              <h4 className="font-extrabold text-base text-slate-900">
                 Payment Request Submitted!
               </h4>
               <p className="text-xs text-slate-500">
@@ -589,10 +604,11 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
               </p>
             </div>
           ) : (
-            <form onSubmit={handleSubmitUpgradeRequest} className="space-y-4 text-xs">
+            <div className="space-y-5 text-xs">
+              {/* Plan Picker */}
               <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Select Plan
+                <label className="block font-bold text-slate-700 mb-1">
+                  Select Target Plan
                 </label>
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -600,13 +616,13 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
                     onClick={() => setUpgradeTargetPlan('pro')}
                     className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${
                       upgradeTargetPlan === 'pro'
-                        ? 'border-indigo-600 bg-indigo-50/60 text-indigo-900 dark:bg-indigo-950/40 dark:text-white'
-                        : 'border-slate-200 dark:border-slate-800'
+                        ? 'border-indigo-600 bg-indigo-50/60 text-indigo-900 ring-2 ring-indigo-500/20'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                     }`}
                   >
                     <p className="font-extrabold text-sm">Pro Plan</p>
-                    <p className="text-[11px] text-slate-500">PKR 2,499 / mo</p>
-                    <p className="text-[10px] text-slate-400 mt-1">10 tests + 7 Boardy chats/day</p>
+                    <p className="text-[11px] text-indigo-600 font-bold">PKR 2,499 / mo</p>
+                    <p className="text-[10px] text-slate-500 mt-1">10 tests + 7 Boardy chats/day</p>
                   </button>
 
                   <button
@@ -614,63 +630,154 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
                     onClick={() => setUpgradeTargetPlan('premium')}
                     className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all ${
                       upgradeTargetPlan === 'premium'
-                        ? 'border-violet-600 bg-violet-50/60 text-violet-900 dark:bg-violet-950/40 dark:text-white'
-                        : 'border-slate-200 dark:border-slate-800'
+                        ? 'border-violet-600 bg-violet-50/60 text-violet-900 ring-2 ring-violet-500/20'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
                     }`}
                   >
-                    <p className="font-extrabold text-sm">Premium</p>
-                    <p className="text-[11px] text-slate-500">PKR 3,999 / mo</p>
-                    <p className="text-[10px] text-slate-400 mt-1">Unlimited tests + 15 Boardy chats/day</p>
+                    <p className="font-extrabold text-sm">Premium Plan</p>
+                    <p className="text-[11px] text-violet-600 font-bold">PKR 3,999 / mo</p>
+                    <p className="text-[10px] text-slate-500 mt-1">Unlimited tests + 15 Boardy chats/day</p>
                   </button>
                 </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Payment Method
-                </label>
-                <select
-                  value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value as any)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-bold"
-                >
-                  <option value="jazzcash">JazzCash (Till ID: 0300-1234567)</option>
-                  <option value="easypaisa">Easypaisa (Account: 0345-7654321)</option>
-                  <option value="bank_transfer">Meezan Bank (IBAN: PK64MEZN000123456789)</option>
-                </select>
+              {/* MANUAL LOCAL PAYMENTS SECTION */}
+              <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
+                    <h5 className="font-black text-xs text-amber-950 uppercase tracking-wider">
+                      Manual Local Payments
+                    </h5>
+                  </div>
+                  <span className="text-[10px] font-bold text-amber-800 bg-amber-100/80 px-2 py-0.5 rounded-full">
+                    Pakistan Instant Transfer
+                  </span>
+                </div>
+
+                <p className="text-[11px] text-amber-900/90 leading-relaxed">
+                  Send your subscription payment directly to either mobile wallet below:
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* JazzCash Card */}
+                  <div className="p-3 rounded-xl bg-white border border-amber-200/90 shadow-2xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-[11px] text-rose-600 uppercase tracking-wide">
+                        JazzCash
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyText('+923058969050', 'jazzcash')}
+                        className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 cursor-pointer bg-slate-50 px-2 py-0.5 rounded border border-slate-200"
+                      >
+                        {copiedKey === 'jazzcash' ? '✓ Copied' : 'Copy'}
+                      </button>
+                    </div>
+                    <p className="font-mono font-bold text-xs text-slate-900">+923058969050</p>
+                    <p className="text-[10px] text-slate-500">
+                      Account Title: <strong className="text-slate-800">haseena bibi</strong>
+                    </p>
+                  </div>
+
+                  {/* Easypaisa Card */}
+                  <div className="p-3 rounded-xl bg-white border border-amber-200/90 shadow-2xs space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-[11px] text-emerald-600 uppercase tracking-wide">
+                        Easypaisa
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyText('+923335292094', 'easypaisa')}
+                        className="text-[10px] font-bold text-slate-500 hover:text-indigo-600 cursor-pointer bg-slate-50 px-2 py-0.5 rounded border border-slate-200"
+                      >
+                        {copiedKey === 'easypaisa' ? '✓ Copied' : 'Copy'}
+                      </button>
+                    </div>
+                    <p className="font-mono font-bold text-xs text-slate-900">+923335292094</p>
+                    <p className="text-[10px] text-slate-500">
+                      Account Title: <strong className="text-slate-800">Sadia Fatima</strong>
+                    </p>
+                  </div>
+                </div>
+
+                {/* Important instruction note */}
+                <div className="p-2.5 rounded-xl bg-white/80 border border-amber-200 text-[11px] text-amber-900 leading-relaxed space-y-1.5">
+                  <p className="font-medium">
+                    <em>Important Note:</em> After sending your payment, please WhatsApp or email a screenshot of your transaction receipt to support to manually activate your Pro/Premium plan:
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3 font-bold text-[11px] pt-0.5">
+                    <a
+                      href="https://wa.me/923058969050?text=Hello%20Boardly%20Support,%20I%20have%20transferred%20the%20subscription%20fee%20for%20my%20plan."
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-emerald-700 hover:underline flex items-center gap-1"
+                    >
+                      <span>💬 WhatsApp: +923058969050</span>
+                    </a>
+                    <span className="text-slate-300">|</span>
+                    <a
+                      href="mailto:support@boardly.cfd?subject=Subscription%20Payment%20Receipt"
+                      className="text-indigo-700 hover:underline flex items-center gap-1"
+                    >
+                      <span>✉️ Email: support@boardly.cfd</span>
+                    </a>
+                  </div>
+                </div>
               </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Transaction ID / Reference Number
-                </label>
-                <input
-                  type="text"
-                  value={transactionId}
-                  onChange={(e) => setTransactionId(e.target.value)}
-                  placeholder="e.g. TID-9876543210"
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 font-bold"
-                  required
-                />
-              </div>
+              {/* Submission Form */}
+              <form onSubmit={handleSubmitUpgradeRequest} className="space-y-4">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Select Transfer Account Used
+                  </label>
+                  <select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value as any)}
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="jazzcash">JazzCash: +923058969050 (Title: haseena bibi)</option>
+                    <option value="easypaisa">Easypaisa: +923335292094 (Title: Sadia Fatima)</option>
+                    <option value="bank_transfer">Direct Bank Transfer</option>
+                  </select>
+                </div>
 
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowUpgradeModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={!transactionId.trim()}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md disabled:opacity-50 cursor-pointer"
-                >
-                  Submit Upgrade Request
-                </button>
-              </div>
-            </form>
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Transaction ID / Reference Number (TID)
+                  </label>
+                  <input
+                    type="text"
+                    value={transactionId}
+                    onChange={(e) => setTransactionId(e.target.value)}
+                    placeholder="e.g. TID 1234567890 or JazzCash Ref"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white font-mono font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    required
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Enter the SMS transaction ID received from JazzCash or Easypaisa.
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowUpgradeModal(false)}
+                    className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!transactionId.trim()}
+                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md disabled:opacity-50 cursor-pointer transition-colors"
+                  >
+                    Submit Upgrade Request
+                  </button>
+                </div>
+              </form>
+            </div>
           )}
         </Modal>
       )}

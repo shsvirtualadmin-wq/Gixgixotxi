@@ -100,10 +100,10 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
     <div className="space-y-6 pb-20">
       {/* Header */}
       <div>
-        <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+        <h2 className="text-2xl font-black text-slate-900 tracking-tight">
           Boardly Events & Circles
         </h2>
-        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1">
+        <p className="text-xs sm:text-sm text-slate-500 mt-1">
           Compete in live Boardly Blitz speed drills, Boardly Arena grand national mocks, and Study Circle sessions.
         </p>
       </div>
@@ -130,7 +130,7 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
             return (
               <div
                 key={session.id}
-                className="p-5 sm:p-6 rounded-3xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-xl border border-slate-200/90 dark:border-slate-800 shadow-sm flex flex-col justify-between space-y-4 hover:border-indigo-300 transition-all"
+                className="p-5 sm:p-6 rounded-3xl bg-white/95 backdrop-blur-xl border border-slate-200/90 shadow-sm flex flex-col justify-between space-y-4 hover:border-indigo-300 transition-all"
               >
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
@@ -140,15 +140,15 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
                     <StatusPill status={session.status} />
                   </div>
 
-                  <h3 className="font-extrabold text-base text-slate-900 dark:text-white leading-snug">
+                  <h3 className="font-extrabold text-base text-slate-900 leading-snug">
                     {session.title}
                   </h3>
 
-                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+                  <p className="text-xs text-slate-500 line-clamp-2">
                     {session.description || 'Timed national simulation with real-time accuracy scoring.'}
                   </p>
 
-                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300 pt-1">
+                  <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 pt-1">
                     <span className="flex items-center gap-1 font-semibold">
                       <Clock className="w-3.5 h-3.5 text-slate-400" />
                       {session.durationMinutes} mins
@@ -169,7 +169,7 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
                   </div>
                 </div>
 
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                   {isRegistered ? (
                     <>
                       <span className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-600">
@@ -213,7 +213,7 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
       {activeSubTab === 'my_registrations' && (
         <div className="space-y-4">
           {myRegisteredSessions.length === 0 ? (
-            <div className="p-12 text-center rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-400 text-xs">
+            <div className="p-12 text-center rounded-3xl bg-white border border-slate-200 text-slate-400 text-xs">
               You have not registered for any events yet. Check out upcoming sessions to register!
             </div>
           ) : (
@@ -221,16 +221,16 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
               {myRegisteredSessions.map((session) => (
                 <div
                   key={session.id}
-                  className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-3"
+                  className="p-5 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-3"
                 >
                   <div className="flex items-center justify-between">
                     <Badge variant="indigo">{session.subject}</Badge>
                     <StatusPill status={session.status} />
                   </div>
-                  <h4 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                  <h4 className="font-extrabold text-sm text-slate-900">
                     {session.title}
                   </h4>
-                  <div className="text-xs text-slate-500 flex items-center justify-between pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <div className="text-xs text-slate-500 flex items-center justify-between pt-2 border-t border-slate-100">
                     <span>
                       {new Date(session.startTime).toLocaleString('en-PK', {
                         dateStyle: 'medium',
@@ -254,10 +254,10 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
 
       {/* 3. National Leaderboards */}
       {activeSubTab === 'leaderboards' && (
-        <div className="rounded-3xl bg-white/90 dark:bg-slate-900/90 border border-slate-200/90 dark:border-slate-800 p-5 space-y-4 shadow-sm">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div className="rounded-3xl bg-white/95 border border-slate-200/90 p-5 space-y-4 shadow-sm">
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
             <div>
-              <h3 className="font-black text-base text-slate-900 dark:text-white">
+              <h3 className="font-black text-base text-slate-900">
                 Arena Grand Mock #08 Leaderboard
               </h3>
               <p className="text-xs text-slate-400">
@@ -267,7 +267,7 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
             <Badge variant="violet">Verified Results</Badge>
           </div>
 
-          <div className="divide-y divide-slate-100 dark:divide-slate-800/80 text-xs">
+          <div className="divide-y divide-slate-100 text-xs">
             {[
               { rank: 1, name: 'Hamza A.', score: 98, time: '32m 14s', uni: 'NUST', isYou: false },
               { rank: 2, name: 'Ayesha M.', score: 96, time: '34m 50s', uni: 'FAST', isYou: false },
@@ -278,7 +278,7 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
               <div
                 key={entry.rank}
                 className={`py-3 px-3 flex items-center justify-between rounded-xl ${
-                  entry.isYou ? 'bg-indigo-50 dark:bg-violet-950/40 font-bold' : ''
+                  entry.isYou ? 'bg-indigo-50 font-bold' : ''
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -295,14 +295,14 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
                   >
                     {entry.rank}
                   </span>
-                  <span className="font-extrabold text-slate-900 dark:text-white">
+                  <span className="font-extrabold text-slate-900">
                     {entry.name} {entry.isYou && <span className="text-[10px] text-indigo-600">(You)</span>}
                   </span>
                 </div>
-                <div className="flex items-center gap-4 text-slate-600 dark:text-slate-300">
+                <div className="flex items-center gap-4 text-slate-600">
                   <span>Target: {entry.uni}</span>
                   <span className="font-mono text-slate-400">{entry.time}</span>
-                  <span className="font-black text-indigo-600 dark:text-violet-400">{entry.score}%</span>
+                  <span className="font-black text-indigo-600">{entry.score}%</span>
                 </div>
               </div>
             ))}
@@ -313,11 +313,11 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
       {/* 4. Study Circles */}
       {activeSubTab === 'circles' && (
         <div className="space-y-5">
-          <div className="p-6 rounded-3xl bg-gradient-to-br from-teal-500/10 via-emerald-500/5 to-transparent border border-teal-200/80 dark:border-teal-900/40 space-y-4">
-            <h3 className="font-black text-lg text-slate-900 dark:text-white">
+          <div className="p-6 rounded-3xl bg-gradient-to-br from-teal-500/10 via-emerald-500/5 to-transparent border border-teal-200/80 space-y-4">
+            <h3 className="font-black text-lg text-slate-900">
               Join a Study Circle
             </h3>
-            <p className="text-xs text-slate-600 dark:text-slate-300 max-w-lg leading-relaxed">
+            <p className="text-xs text-slate-600 max-w-lg leading-relaxed">
               Study Circles are organized by students and academy captains to study chapters together and hold private mock exams.
             </p>
             <form onSubmit={handleJoinCircle} className="flex gap-2 max-w-md">
@@ -326,7 +326,7 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
                 value={circleCodeInput}
                 onChange={(e) => setCircleCodeInput(e.target.value)}
                 placeholder="Enter invite code (e.g. FSC2026)"
-                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
               <button
                 type="submit"
@@ -341,21 +341,21 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
           </div>
 
           <div className="space-y-3">
-            <h4 className="font-extrabold text-sm text-slate-900 dark:text-white">
+            <h4 className="font-extrabold text-sm text-slate-900">
               My Circles ({joinedCircles.length})
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {joinedCircles.map((circleName) => (
                 <div
                   key={circleName}
-                  className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xs flex items-center justify-between"
+                  className="p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-600 flex items-center justify-center font-black">
+                    <div className="w-9 h-9 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center font-black">
                       <Users className="w-4 h-4" />
                     </div>
                     <div>
-                      <p className="font-extrabold text-xs text-slate-900 dark:text-white">
+                      <p className="font-extrabold text-xs text-slate-900">
                         {circleName}
                       </p>
                       <p className="text-[10px] text-slate-400">Weekly competitive drills</p>
@@ -379,8 +379,8 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
           title={lobbySession.title}
           subtitle="Pre-Test Lobby & Device Check"
         >
-          <div className="space-y-4 text-xs text-slate-600 dark:text-slate-300">
-            <div className="p-4 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 text-indigo-900 dark:text-indigo-200 space-y-1">
+          <div className="space-y-4 text-xs text-slate-600">
+            <div className="p-4 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-900 space-y-1">
               <p className="font-black">Session Rules & Instructions:</p>
               <ul className="list-disc ml-4 space-y-1 text-[11px]">
                 <li>Duration: {lobbySession.durationMinutes} minutes.</li>
@@ -390,7 +390,7 @@ export const StudentEventsTab: React.FC<StudentEventsTabProps> = ({ onStartEvent
               </ul>
             </div>
 
-            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
               <span className="font-semibold">Device & Connection Status</span>
               <span className="text-emerald-600 font-bold flex items-center gap-1">
                 <CheckCircle className="w-3.5 h-3.5" /> Ready

@@ -23,9 +23,11 @@ const applyThemeToDOM = () => {
   root.classList.remove('dark');
   document.body.classList.add('light');
   document.body.classList.remove('dark');
-  root.style.backgroundColor = '#F8F9FB';
-  document.body.style.backgroundColor = '#F8F9FB';
-  if (metaTheme) metaTheme.setAttribute('content', '#F8F9FB');
+  root.style.colorScheme = 'light';
+  document.body.style.colorScheme = 'light';
+  root.style.backgroundColor = '#F8FAFC';
+  document.body.style.backgroundColor = '#F8FAFC';
+  if (metaTheme) metaTheme.setAttribute('content', '#F8FAFC');
 
   try {
     localStorage.removeItem('boardly_theme');

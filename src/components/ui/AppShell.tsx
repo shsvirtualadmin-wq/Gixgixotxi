@@ -34,7 +34,7 @@ export const AppShell: React.FC<AppShellProps> = ({
   const showMobileHamburger = role !== 'student';
 
   return (
-    <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col relative overflow-x-hidden font-sans">
+    <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] flex flex-col relative overflow-x-hidden font-sans">
       {/* Background ambient frosted glow elements */}
       <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
         <div className="absolute top-0 right-1/4 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl" />

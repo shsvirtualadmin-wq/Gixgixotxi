@@ -143,16 +143,20 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
         } catch {}
       }
 
-      if (startTest) {
+      // Ensure no auto-start flags linger
+      if (typeof window !== 'undefined') {
         try {
-          localStorage.setItem('boardly_start_diagnostic_on_load', 'true');
+          localStorage.removeItem('boardly_start_diagnostic_on_load');
+          localStorage.removeItem('boardly_active_test_session');
+          sessionStorage.removeItem('boardly_auto_start_drill');
+          sessionStorage.removeItem('boardly_start_test');
         } catch {}
       }
 
       setIsSaving(false);
 
-      // 3. OPTIMISTIC ROUTING: Immediately force route user to /app!
-      onComplete(startTest, {
+      // 3. OPTIMISTIC ROUTING: Immediately force route user to /app dashboard (no auto-start)
+      onComplete(false, {
         universityId: targetUniId,
         track: selectedTrack,
         weakSubjects: selectedWorries,
@@ -660,7 +664,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
                 <button
                   type="button"
                   disabled={isSaving}
-                  onClick={() => handleFinish(true)}
+                  onClick={() => handleFinish(false)}
                   className="w-full py-3.5 px-6 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/25 transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
                   {isSaving ? (
@@ -670,7 +674,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
                     </>
                   ) : (
                     <>
-                      <span>Start my first test</span>
+                      <span>Go to Dashboard</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}

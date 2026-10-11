@@ -92,6 +92,7 @@
   ]
 }
     </script>
+    <meta name="color-scheme" content="light" />
     <script>
       (function() {
         try {
@@ -100,9 +101,10 @@
           document.documentElement.setAttribute('data-theme', 'light');
           document.documentElement.classList.add('light');
           document.documentElement.classList.remove('dark');
-          document.documentElement.style.backgroundColor = '#F8F9FB';
+          document.documentElement.style.colorScheme = 'light';
+          document.documentElement.style.backgroundColor = '#F8FAFC';
           var meta = document.getElementById('theme-color-meta');
-          if (meta) meta.setAttribute('content', '#F8F9FB');
+          if (meta) meta.setAttribute('content', '#F8FAFC');
         } catch (e) {}
       })();
     </script>
@@ -117,10 +119,10 @@
     </noscript>
 
   </head>
-  <body class="bg-[#F8F9FB] text-slate-900 antialiased selection:bg-[#1E5AFF] selection:text-white">
+  <body class="bg-[#F8FAFC] text-[#0F172A] antialiased selection:bg-[#1E5AFF] selection:text-white">
     <div id="root">
       <!-- Minimal lightweight loader until React tree mounts -->
-      <div id="initial-preloader" style="min-height: 100vh; background-color: #F8F9FB; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px;">
+      <div id="initial-preloader" style="min-height: 100vh; background-color: #F8FAFC; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px;">
         <div style="width: 28px; height: 28px; border: 3px solid #E2E8F0; border-top-color: #1E5AFF; border-radius: 50%; animation: initial-spin 0.6s linear infinite;"></div>
         <style>
           @keyframes initial-spin {

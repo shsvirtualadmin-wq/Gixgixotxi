@@ -208,6 +208,94 @@ export const PricingPage: React.FC<PricingPageProps> = ({
         })}
       </div>
 
+      {/* Manual Local Payments Section (JazzCash & Easypaisa) */}
+      <section className="mb-16 p-6 sm:p-8 rounded-[28px] bg-gradient-to-br from-amber-50/80 via-white to-amber-50/40 border-2 border-amber-200/80 shadow-xl shadow-amber-500/5">
+        <div className="max-w-3xl mx-auto space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-200/60 pb-4">
+            <div>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-100/80 text-amber-900 text-xs font-bold uppercase tracking-wider mb-1">
+                <span>🇵🇰 Manual Local Payments</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-slate-900">
+                JazzCash & Easypaisa Instant Transfers
+              </h3>
+            </div>
+            <span className="text-xs font-bold text-amber-800 bg-amber-100 px-3 py-1.5 rounded-xl self-start sm:self-auto">
+              Active Pakistani Gateway
+            </span>
+          </div>
+
+          <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+            Students and parents in Pakistan can transfer subscription fees directly to our official mobile wallets without requiring international credit cards:
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* JazzCash Card */}
+            <div className="p-5 rounded-2xl bg-white border border-amber-200 shadow-sm space-y-2 relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-1 rounded-lg text-xs font-black bg-rose-50 text-rose-700 border border-rose-200 uppercase tracking-wider">
+                  JazzCash
+                </span>
+                <span className="text-[11px] font-bold text-slate-400">Mobile Wallet</span>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 font-medium">Account / Mobile Number:</p>
+                <p className="text-lg sm:text-xl font-mono font-extrabold text-slate-900">+923058969050</p>
+              </div>
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span className="text-slate-500">Account Title:</span>
+                <span className="font-extrabold text-slate-900">haseena bibi</span>
+              </div>
+            </div>
+
+            {/* Easypaisa Card */}
+            <div className="p-5 rounded-2xl bg-white border border-amber-200 shadow-sm space-y-2 relative overflow-hidden">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-1 rounded-lg text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase tracking-wider">
+                  Easypaisa
+                </span>
+                <span className="text-[11px] font-bold text-slate-400">Mobile Wallet</span>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 font-medium">Account / Mobile Number:</p>
+                <p className="text-lg sm:text-xl font-mono font-extrabold text-slate-900">+923335292094</p>
+              </div>
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                <span className="text-slate-500">Account Title:</span>
+                <span className="font-extrabold text-slate-900">Sadia Fatima</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Verification note & support contact */}
+          <div className="p-4 rounded-2xl bg-white/90 border border-amber-200 text-xs sm:text-sm text-slate-800 space-y-2">
+            <p className="font-semibold text-amber-950">
+              📌 <strong>How to activate your plan manually:</strong>
+            </p>
+            <p className="text-slate-600 leading-relaxed text-xs sm:text-sm">
+              Please WhatsApp or email a screenshot of your transaction receipt to support to manually activate your Pro/Premium plan within 2 to 4 hours. Include your registered account email address in the message.
+            </p>
+            <div className="flex flex-wrap items-center gap-4 pt-1 font-bold text-xs sm:text-sm">
+              <a
+                href="https://wa.me/923058969050?text=Hello%20Boardly%20Support,%20I%20have%20transferred%20the%20fee%20for%20my%20plan."
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-emerald-700 hover:text-emerald-800 underline underline-offset-2 flex items-center gap-1.5"
+              >
+                <span>💬 WhatsApp Support: +923058969050</span>
+              </a>
+              <span className="text-slate-300">|</span>
+              <a
+                href="mailto:support@boardly.cfd?subject=Manual%20Payment%20Screenshot"
+                className="text-indigo-700 hover:text-indigo-800 underline underline-offset-2 flex items-center gap-1.5"
+              >
+                <span>✉️ Email Support: support@boardly.cfd</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Link to Comparison Section */}
       <div className="text-center mb-16">
         <a

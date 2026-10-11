@@ -104,16 +104,16 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
             {todayFormatted}
           </span>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight mt-1">
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
             {greeting}, {firstName}
           </h1>
-          <p className="mt-1 text-xs sm:text-sm text-slate-600 dark:text-slate-400">
+          <p className="mt-1 text-xs sm:text-sm text-slate-600">
             {daysLeft} days until your {targetUni.shortName} entrance test. Stay consistent!
           </p>
         </div>
 
         <div className="flex items-center gap-3 self-start sm:self-auto">
-          <div className="px-3.5 py-1.5 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300">
+          <div className="px-3.5 py-1.5 rounded-2xl bg-amber-50 border border-amber-200 flex items-center gap-2 text-xs font-bold text-amber-800">
             <Flame className="w-4 h-4 text-amber-500 fill-amber-500" />
             <span>3 Day Streak</span>
           </div>
@@ -170,51 +170,51 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
       {/* Today's Allowance Rings & Midnight Countdown */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {/* Tests Left */}
-        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex items-center justify-between">
+        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Tests Left Today
             </p>
-            <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+            <p className="text-2xl font-black text-slate-900 mt-1">
               {testsLeft}
             </p>
             <p className="text-[11px] text-slate-500 mt-0.5">
               {planConfig.name} Plan Allowance
             </p>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 flex items-center justify-center font-black">
+          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black">
             <Zap className="w-6 h-6" />
           </div>
         </div>
 
         {/* Boardy Chats Left */}
-        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex items-center justify-between">
+        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Boardy AI Left
             </p>
-            <p className="text-2xl font-black text-slate-900 dark:text-white mt-1">
+            <p className="text-2xl font-black text-slate-900 mt-1">
               {boardyLeft}
             </p>
             <p className="text-[11px] text-slate-500 mt-0.5">Questions remaining</p>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-violet-50 dark:bg-violet-950/60 text-violet-600 flex items-center justify-center font-black">
+          <div className="w-12 h-12 rounded-2xl bg-violet-50 text-violet-600 flex items-center justify-center font-black">
             <Sparkles className="w-6 h-6" />
           </div>
         </div>
 
         {/* Countdown */}
-        <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex items-center justify-between">
+        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm flex items-center justify-between">
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
               Refill Countdown
             </p>
-            <p className="text-2xl font-black text-slate-900 dark:text-white mt-1 font-mono">
+            <p className="text-2xl font-black text-slate-900 mt-1 font-mono">
               {countdown.formattedCountdown}
             </p>
             <p className="text-[11px] text-slate-500 mt-0.5">Resets midnight PKT</p>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 flex items-center justify-center font-black">
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center font-black">
             <Clock className="w-6 h-6" />
           </div>
         </div>
@@ -223,10 +223,10 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
       {/* Analytics Trend & Weak Topics Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Score Trend Chart */}
-        <div className="lg:col-span-7 p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4">
+        <div className="lg:col-span-7 p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white">
+              <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
                 Score Accuracy Trend
               </h3>
               <p className="text-xs text-slate-400">Progression across recent test attempts</p>
@@ -237,9 +237,9 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
         </div>
 
         {/* Weak Topics to Drill */}
-        <div className="lg:col-span-5 p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4 flex flex-col justify-between">
+        <div className="lg:col-span-5 p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4 flex flex-col justify-between">
           <div>
-            <h3 className="font-extrabold text-sm sm:text-base text-slate-900 dark:text-white">
+            <h3 className="font-extrabold text-sm sm:text-base text-slate-900">
               Target Weak Areas
             </h3>
             <p className="text-xs text-slate-400 mt-0.5">Chapters where extra practice yields maximum aggregate gain</p>
@@ -252,10 +252,10 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
               ].map((topic, i) => (
                 <div
                   key={i}
-                  className="p-3 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800 flex items-center justify-between"
+                  className="p-3 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between"
                 >
                   <div>
-                    <p className="font-bold text-xs text-slate-800 dark:text-slate-200">
+                    <p className="font-bold text-xs text-slate-800">
                       {topic.subject}
                     </p>
                     <p className="text-[11px] text-slate-400">Accuracy: {topic.accuracy}</p>
@@ -276,16 +276,16 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
 
       {/* Review CTA Card (for students with at least 1 attempt) */}
       {hasTests && onWriteReview && (
-        <div className="p-6 rounded-3xl bg-gradient-to-r from-violet-500/10 via-indigo-500/10 to-transparent border border-violet-200/80 dark:border-violet-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="p-6 rounded-3xl bg-gradient-to-r from-violet-500/10 via-indigo-500/10 to-transparent border border-violet-200/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-2xl bg-violet-600 text-white flex items-center justify-center font-bold">
               <Star className="w-5 h-5 fill-white" />
             </div>
             <div>
-              <h4 className="font-black text-sm text-slate-900 dark:text-white">
+              <h4 className="font-black text-sm text-slate-900">
                 Share your Boardly study experience
               </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-500">
                 You've completed {attempts.length} test{attempts.length > 1 ? 's' : ''}! Write a review to help fellow aspirants.
               </p>
             </div>
