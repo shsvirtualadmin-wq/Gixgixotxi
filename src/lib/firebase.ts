@@ -34,12 +34,12 @@ import { normalizePlanId, PlanType } from '../data/planLimits';
 
 // Firebase configuration from Vite environment variables
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyDNnUtJ0s0ZlNuvs-5VCOl5HaQLY8F3Uqs",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "gen-lang-client-0365509316.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "gen-lang-client-0365509316",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "gen-lang-client-0365509316.appspot.com",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "556734245207",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:556734245207:web:4797f3915b424209b03612"
+  apiKey: "AIzaSyDNnUtJ0s0ZlNuvs-5VCOl5HaQLY8F3Uqs",
+  authDomain: "gen-lang-client-0365509316.firebaseapp.com",
+  projectId: "gen-lang-client-0365509316",
+  storageBucket: "gen-lang-client-0365509316.appspot.com",
+  messagingSenderId: "556734245207",
+  appId: "1:556734245207:web:4797f3915b424209b03612"
 };
 
 export { firebaseConfig };
