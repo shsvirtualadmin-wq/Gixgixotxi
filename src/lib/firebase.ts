@@ -32,31 +32,26 @@ import {
 import firebaseAppletConfig from '../../firebase-applet-config.json';
 import { normalizePlanId, PlanType } from '../data/planLimits';
 
-// Firebase configuration from applet config and environment variables
-const rawApiKey = (import.meta.env.VITE_FIREBASE_API_KEY || firebaseAppletConfig?.apiKey || '').trim();
-const rawAuthDomain = (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseAppletConfig?.authDomain || '').trim();
-const rawProjectId = (import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseAppletConfig?.projectId || '').trim();
-const rawStorageBucket = (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseAppletConfig?.storageBucket || '').trim();
-const rawMessagingSenderId = (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseAppletConfig?.messagingSenderId || '').trim();
-const rawAppId = (import.meta.env.VITE_FIREBASE_APP_ID || firebaseAppletConfig?.appId || '').trim();
-const rawFirestoreDbId = (import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseAppletConfig?.firestoreDatabaseId || '').trim();
-
-export const firebaseConfig = {
-  apiKey: rawApiKey || 'AIzaSyDNnUtJ0s0ZlNuvs-5VCOl5HaQLY8F3Uqs',
-  authDomain: rawAuthDomain || 'gen-lang-client-0365509316.firebaseapp.com',
-  projectId: rawProjectId || 'gen-lang-client-0365509316',
-  storageBucket: rawStorageBucket || 'gen-lang-client-0365509316.appspot.com',
-  messagingSenderId: rawMessagingSenderId || '556734245207',
-  appId: rawAppId || '1:556734245207:web:4797f3915b424209b03612',
-  firestoreDatabaseId: rawFirestoreDbId || 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712',
+// Firebase configuration from Vite environment variables
+const firebaseConfig = {
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
+
+export { firebaseConfig };
+
+const firestoreDbId = (import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseAppletConfig?.firestoreDatabaseId || 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712').trim();
 
 // Log Firebase environment and connection parameters in development
 if (import.meta.env.DEV || typeof window !== 'undefined') {
   console.log('[Boardly Firebase] Initializing Firebase with:');
   console.log(' - Project ID:', firebaseConfig.projectId);
   console.log(' - Auth Domain:', firebaseConfig.authDomain);
-  console.log(' - Named Firestore DB:', firebaseConfig.firestoreDatabaseId);
+  console.log(' - Named Firestore DB:', firestoreDbId);
 }
 
 // Initialize Firebase App
@@ -99,7 +94,7 @@ export async function performGoogleSignIn(): Promise<any> {
 }
 
 // Initialize Firestore NAMED Database
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app, firestoreDbId);
 
 // Error handling conforming to Firebase Integration Skill
 export enum OperationType {
@@ -147,7 +142,7 @@ async function testFirestoreConnection() {
     if (error?.message?.includes('the client is offline')) {
       console.warn('[Boardly Firestore] Client offline notice: running in local cached mode.');
     } else if (error?.code === 'permission-denied') {
-      console.info('[Boardly Firestore] Connection active to named database', firebaseConfig.firestoreDatabaseId);
+      console.info('[Boardly Firestore] Connection active to named database', firestoreDbId);
     }
   }
 }
