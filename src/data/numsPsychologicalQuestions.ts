@@ -1,4 +1,4 @@
-import { Question } from "../types";
+import { Question } from '../types';
 
 export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
   {
@@ -14,8 +14,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Clinical Ethics & Autonomy",
     "chapter": "NUMS Psychological Assessment",
     "explain": "Patient safety is paramount. The ethical approach is addressing potential harm immediately and discreetly.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-2",
@@ -30,8 +33,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Patient Confidentiality",
     "chapter": "NUMS Psychological Assessment",
     "explain": "Demonstrating empathy while adhering to professional boundaries protects patient communication.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-3",
@@ -46,8 +52,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Stress Management & Resilience",
     "chapter": "NUMS Psychological Assessment",
     "explain": "Constructive direct communication identifies root causes and promotes accountability.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-4",
@@ -62,8 +71,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Inter-professional Teamwork",
     "chapter": "NUMS Psychological Assessment",
     "explain": "Clear, culturally sensitive communication ensures valid informed consent.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-5",
@@ -78,8 +90,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Emergency Triage Decisions",
     "chapter": "NUMS Psychological Assessment",
     "explain": "Recognizing a near-miss, correcting it immediately, and evaluating systemic causes prevents future medication errors.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-6",
@@ -94,8 +109,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Informed Consent & Minors",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with informed consent & minors, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-7",
@@ -110,8 +128,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Cultural Competence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with cultural competence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-8",
@@ -126,8 +147,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Conflict Resolution",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with conflict resolution, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-9",
@@ -142,8 +166,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Substance Abuse Reporting",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with substance abuse reporting, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-10",
@@ -158,8 +185,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "End-of-Life Palliative Care",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with end-of-life palliative care, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-11",
@@ -174,8 +204,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Medical Error Disclosure",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with medical error disclosure, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-12",
@@ -190,8 +223,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Empathy in Chronic Disease",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with empathy in chronic disease, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-13",
@@ -206,8 +242,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Pediatric Patient Communication",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with pediatric patient communication, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-14",
@@ -222,8 +261,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Geriatric Care Dignity",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with geriatric care dignity, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-15",
@@ -238,8 +280,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Infection Control Adherence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with infection control adherence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-16",
@@ -254,8 +299,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Clinical Ethics & Autonomy",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with clinical ethics & autonomy, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-17",
@@ -270,8 +318,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Patient Confidentiality",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with patient confidentiality, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-18",
@@ -286,8 +337,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Stress Management & Resilience",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with stress management & resilience, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-19",
@@ -302,8 +356,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Inter-professional Teamwork",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with inter-professional teamwork, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-20",
@@ -318,8 +375,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Emergency Triage Decisions",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with emergency triage decisions, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-21",
@@ -334,8 +394,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Informed Consent & Minors",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with informed consent & minors, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-22",
@@ -350,8 +413,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Cultural Competence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with cultural competence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-23",
@@ -366,8 +432,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Conflict Resolution",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with conflict resolution, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-24",
@@ -382,8 +451,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Substance Abuse Reporting",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with substance abuse reporting, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-25",
@@ -398,8 +470,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "End-of-Life Palliative Care",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with end-of-life palliative care, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-26",
@@ -414,8 +489,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Medical Error Disclosure",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with medical error disclosure, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-27",
@@ -430,8 +508,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Empathy in Chronic Disease",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with empathy in chronic disease, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-28",
@@ -446,8 +527,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Pediatric Patient Communication",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with pediatric patient communication, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-29",
@@ -462,8 +546,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Geriatric Care Dignity",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with geriatric care dignity, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-30",
@@ -478,8 +565,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Infection Control Adherence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with infection control adherence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-31",
@@ -494,8 +584,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Clinical Ethics & Autonomy",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with clinical ethics & autonomy, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-32",
@@ -510,8 +603,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Patient Confidentiality",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with patient confidentiality, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-33",
@@ -526,8 +622,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Stress Management & Resilience",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with stress management & resilience, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-34",
@@ -542,8 +641,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Inter-professional Teamwork",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with inter-professional teamwork, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-35",
@@ -558,8 +660,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Emergency Triage Decisions",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with emergency triage decisions, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-36",
@@ -574,8 +679,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Informed Consent & Minors",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with informed consent & minors, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-37",
@@ -590,8 +698,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Cultural Competence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with cultural competence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-38",
@@ -606,8 +717,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Conflict Resolution",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with conflict resolution, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-39",
@@ -622,8 +736,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Substance Abuse Reporting",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with substance abuse reporting, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-40",
@@ -638,8 +755,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "End-of-Life Palliative Care",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with end-of-life palliative care, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-41",
@@ -654,8 +774,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Medical Error Disclosure",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with medical error disclosure, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-42",
@@ -670,8 +793,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Empathy in Chronic Disease",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with empathy in chronic disease, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-43",
@@ -686,8 +812,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Pediatric Patient Communication",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with pediatric patient communication, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-44",
@@ -702,8 +831,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Geriatric Care Dignity",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with geriatric care dignity, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-45",
@@ -718,8 +850,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Infection Control Adherence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with infection control adherence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-46",
@@ -734,8 +869,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Clinical Ethics & Autonomy",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with clinical ethics & autonomy, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-47",
@@ -750,8 +888,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Patient Confidentiality",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with patient confidentiality, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-48",
@@ -766,8 +907,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Stress Management & Resilience",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with stress management & resilience, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-49",
@@ -782,8 +926,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Inter-professional Teamwork",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with inter-professional teamwork, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-50",
@@ -798,8 +945,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Emergency Triage Decisions",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with emergency triage decisions, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-51",
@@ -814,8 +964,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Informed Consent & Minors",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with informed consent & minors, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-52",
@@ -830,8 +983,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Cultural Competence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with cultural competence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-53",
@@ -846,8 +1002,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Conflict Resolution",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with conflict resolution, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-54",
@@ -862,8 +1021,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Substance Abuse Reporting",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with substance abuse reporting, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-55",
@@ -878,8 +1040,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "End-of-Life Palliative Care",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with end-of-life palliative care, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-56",
@@ -894,8 +1059,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Medical Error Disclosure",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with medical error disclosure, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-57",
@@ -910,8 +1078,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Empathy in Chronic Disease",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with empathy in chronic disease, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-58",
@@ -926,8 +1097,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Pediatric Patient Communication",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with pediatric patient communication, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-59",
@@ -942,8 +1116,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Geriatric Care Dignity",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with geriatric care dignity, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-60",
@@ -958,8 +1135,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Infection Control Adherence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with infection control adherence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-61",
@@ -974,8 +1154,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Clinical Ethics & Autonomy",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with clinical ethics & autonomy, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-62",
@@ -990,8 +1173,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Patient Confidentiality",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with patient confidentiality, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-63",
@@ -1006,8 +1192,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Stress Management & Resilience",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with stress management & resilience, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-64",
@@ -1022,8 +1211,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Inter-professional Teamwork",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with inter-professional teamwork, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-65",
@@ -1038,8 +1230,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Emergency Triage Decisions",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with emergency triage decisions, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-66",
@@ -1054,8 +1249,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Informed Consent & Minors",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with informed consent & minors, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-67",
@@ -1070,8 +1268,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Cultural Competence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with cultural competence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-68",
@@ -1086,8 +1287,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Conflict Resolution",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with conflict resolution, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-69",
@@ -1102,8 +1306,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Substance Abuse Reporting",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with substance abuse reporting, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-70",
@@ -1118,8 +1325,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "End-of-Life Palliative Care",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with end-of-life palliative care, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-71",
@@ -1134,8 +1344,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Medical Error Disclosure",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with medical error disclosure, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-72",
@@ -1150,8 +1363,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Empathy in Chronic Disease",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with empathy in chronic disease, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-73",
@@ -1166,8 +1382,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Pediatric Patient Communication",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with pediatric patient communication, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-74",
@@ -1182,8 +1401,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Geriatric Care Dignity",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with geriatric care dignity, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-75",
@@ -1198,8 +1420,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Infection Control Adherence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with infection control adherence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-76",
@@ -1214,8 +1439,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Clinical Ethics & Autonomy",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with clinical ethics & autonomy, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-77",
@@ -1230,8 +1458,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Patient Confidentiality",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with patient confidentiality, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-78",
@@ -1246,8 +1477,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Stress Management & Resilience",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with stress management & resilience, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-79",
@@ -1262,8 +1496,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Inter-professional Teamwork",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with inter-professional teamwork, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-80",
@@ -1278,8 +1515,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Emergency Triage Decisions",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with emergency triage decisions, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-81",
@@ -1294,8 +1534,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Informed Consent & Minors",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with informed consent & minors, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-82",
@@ -1310,8 +1553,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Cultural Competence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with cultural competence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-83",
@@ -1326,8 +1572,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Conflict Resolution",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with conflict resolution, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-84",
@@ -1342,8 +1591,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Substance Abuse Reporting",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with substance abuse reporting, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-85",
@@ -1358,8 +1610,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "End-of-Life Palliative Care",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with end-of-life palliative care, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-86",
@@ -1374,8 +1629,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Medical Error Disclosure",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with medical error disclosure, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-87",
@@ -1390,8 +1648,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Empathy in Chronic Disease",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with empathy in chronic disease, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-88",
@@ -1406,8 +1667,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Pediatric Patient Communication",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with pediatric patient communication, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-89",
@@ -1422,8 +1686,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Geriatric Care Dignity",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with geriatric care dignity, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-90",
@@ -1438,8 +1705,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Infection Control Adherence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with infection control adherence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-91",
@@ -1454,8 +1724,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Clinical Ethics & Autonomy",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with clinical ethics & autonomy, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-92",
@@ -1470,8 +1743,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Patient Confidentiality",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with patient confidentiality, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-93",
@@ -1486,8 +1762,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Stress Management & Resilience",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with stress management & resilience, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-94",
@@ -1502,8 +1781,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Inter-professional Teamwork",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with inter-professional teamwork, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-95",
@@ -1518,8 +1800,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Emergency Triage Decisions",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with emergency triage decisions, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-96",
@@ -1534,8 +1819,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Informed Consent & Minors",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with informed consent & minors, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-97",
@@ -1550,8 +1838,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Cultural Competence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with cultural competence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-98",
@@ -1566,8 +1857,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Conflict Resolution",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with conflict resolution, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-99",
@@ -1582,8 +1876,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Substance Abuse Reporting",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with substance abuse reporting, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-100",
@@ -1598,8 +1895,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "End-of-Life Palliative Care",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with end-of-life palliative care, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-101",
@@ -1614,8 +1914,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Medical Error Disclosure",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with medical error disclosure, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-102",
@@ -1630,8 +1933,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Empathy in Chronic Disease",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with empathy in chronic disease, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-103",
@@ -1646,8 +1952,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Pediatric Patient Communication",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with pediatric patient communication, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-104",
@@ -1662,8 +1971,11 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Geriatric Care Dignity",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with geriatric care dignity, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   },
   {
     "id": "nums-psych-105",
@@ -1678,7 +1990,10 @@ export const NUMS_PSYCHOLOGICAL_QUESTIONS: Question[] = [
     "topic": "Infection Control Adherence",
     "chapter": "NUMS Psychological Assessment",
     "explain": "In healthcare settings dealing with infection control adherence, maintaining professional ethics, transparent communication, and patient-centered guidelines is essential.",
-    "difficulty": "Exam Standard",
-    "subject": "Psychological Assessment"
+    "difficulty": "Medium",
+    "subject": "Psychological Assessment",
+    "universities": [
+      "NUMS"
+    ]
   }
 ];
