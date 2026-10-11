@@ -28,6 +28,9 @@ export const BoardlyAppRouter: React.FC = () => {
     documentExists,
     isAdmin,
     loading,
+    authLoading,
+    profileLoading,
+    isRegistered,
     initialAuthChecked,
     status,
     activeRole,
@@ -75,15 +78,24 @@ export const BoardlyAppRouter: React.FC = () => {
 
   const lastRedirectRef = useRef<string | null>(null);
 
-  // SESSIONS & AUTH GUARDS
+  // SESSIONS & AUTH GUARDS: Never redirect before both auth and profile are resolved
   useEffect(() => {
-    // While auth is still loading or initial check has not finished, NEVER redirect
-    if (loading || !initialAuthChecked) return;
+    if (loading || authLoading || profileLoading || !initialAuthChecked) return;
 
     // 1. Authenticated users guard
     if (user) {
-      // If user is on /login or /signup, redirect once to their highest dashboard
+      // If user is on /login or /signup, redirect once to highest dashboard or onboarding
       if (currentPath === '/login' || currentPath === '/signup') {
+        const targetDashboard = isRegistered ? getHighestRolePath() : '/onboarding';
+        if (lastRedirectRef.current !== targetDashboard) {
+          lastRedirectRef.current = targetDashboard;
+          navigate(targetDashboard, true);
+        }
+        return;
+      }
+
+      // If user is on /onboarding and is already registered, redirect to dashboard
+      if (currentPath === '/onboarding' && isRegistered) {
         const targetDashboard = getHighestRolePath();
         if (lastRedirectRef.current !== targetDashboard) {
           lastRedirectRef.current = targetDashboard;
@@ -92,9 +104,13 @@ export const BoardlyAppRouter: React.FC = () => {
         return;
       }
 
-      // Check if onboarding is incomplete for non-admins
-      if (!isAdmin && profile && profile.onboardingCompleted === false) {
-        if (currentPath !== '/onboarding' && currentPath !== '/signup') {
+      // Check if onboarding is incomplete for protected student routes
+      if (!isRegistered) {
+        const studentProtected = ['/app', '/dashboard', '/practice', '/test', '/results', '/profile'];
+        const isStudentRoute = studentProtected.some(
+          (prefix) => currentPath === prefix || currentPath.startsWith(`${prefix}/`)
+        );
+        if (isStudentRoute && currentPath !== '/onboarding') {
           if (lastRedirectRef.current !== '/onboarding') {
             lastRedirectRef.current = '/onboarding';
             navigate('/onboarding', true);
@@ -130,10 +146,10 @@ export const BoardlyAppRouter: React.FC = () => {
         }
       }
     }
-  }, [loading, initialAuthChecked, user, profile, isAdmin, currentPath, getHighestRolePath, navigate]);
+  }, [loading, authLoading, profileLoading, initialAuthChecked, user, isRegistered, currentPath, getHighestRolePath, navigate]);
 
-  // Loading skeleton state
-  if (loading || !initialAuthChecked) {
+  // Loading skeleton state: Show loading until BOTH authLoading and profileLoading are resolved
+  if (loading || authLoading || profileLoading || !initialAuthChecked) {
     return (
       <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4">
         <div className="w-14 h-14 rounded-3xl bg-indigo-100 dark:bg-violet-950/60 animate-pulse flex items-center justify-center">
@@ -181,11 +197,19 @@ export const BoardlyAppRouter: React.FC = () => {
 
         // 1. Sign Up
         if (currentPath === '/signup') {
+          if (user) {
+            navigate(isRegistered ? getHighestRolePath() : '/onboarding', true);
+            return null;
+          }
           return <SignUpPage onNavigate={(p) => navigate(p, true)} />;
         }
 
         // 2. Login
         if (currentPath === '/login') {
+          if (user) {
+            navigate(isRegistered ? getHighestRolePath() : '/onboarding', true);
+            return null;
+          }
           return <LoginPage onNavigate={(p) => navigate(p, true)} />;
         }
 
@@ -206,6 +230,10 @@ export const BoardlyAppRouter: React.FC = () => {
 
         // 6. Onboarding Flow (4 Steps)
         if (currentPath === '/onboarding') {
+          if (user && isRegistered) {
+            navigate(getHighestRolePath(), true);
+            return null;
+          }
           return (
             <OnboardingFlow
               onComplete={(_startTest, _config) => {
@@ -220,6 +248,14 @@ export const BoardlyAppRouter: React.FC = () => {
 
         // 7. Student App (/app or /app/*)
         if (currentPath === '/app' || currentPath.startsWith('/app/')) {
+          if (!user) {
+            navigate('/login', true);
+            return null;
+          }
+          if (!isRegistered) {
+            navigate('/onboarding', true);
+            return null;
+          }
           return (
             <>
               <SeoHead pathname="/app" noIndex={true} />

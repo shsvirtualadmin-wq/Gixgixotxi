@@ -26,6 +26,7 @@ import {
   serverTimestamp,
   QueryDocumentSnapshot,
   DocumentData,
+  DocumentSnapshot,
 } from 'firebase/firestore';
 
 import firebaseAppletConfig from '../../firebase-applet-config.json';
@@ -57,6 +58,36 @@ const isValidApiKey = (k: string) => k.startsWith('AIza') && k.length === 39 && 
 const isValidSenderId = (s: string) => /^\d+$/.test(s);
 const isValidAppId = (a: string) => /^1:\d+:web:[0-9a-fA-F]+$/.test(a);
 
+export function isValidHostname(host: string): boolean {
+  if (!host || typeof host !== 'string') return false;
+  const clean = host.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
+  if (!clean || /\s/.test(clean)) return false;
+  return /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(clean);
+}
+
+/**
+ * Probes https://<host>/__/auth/handler to check whether custom domain auth handler responds.
+ * Returns true only if the server answers (HTTP 200 or opaque response without network failure).
+ */
+export async function testAuthHandlerEndpoint(host: string): Promise<boolean> {
+  if (!isValidHostname(host)) return false;
+  const cleanHost = host.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    const res = await fetch(`https://${cleanHost}/__/auth/handler`, {
+      method: 'GET',
+      mode: 'no-cors',
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    return res.type === 'opaque' || (res.status >= 200 && res.status < 400);
+  } catch (err) {
+    console.warn(`[Boardly Auth] Auth handler probe to ${cleanHost} failed:`, err);
+    return false;
+  }
+}
+
 // Track which fields use fallbacks
 const fallbacksUsed: string[] = [];
 
@@ -71,15 +102,33 @@ if (isValidApiKey(envApiKey)) {
   rawApiKey = isValidApiKey(jsonApiKey) ? jsonApiKey : DEFAULTS.apiKey;
 }
 
-// 2. Auth Domain
-const envAuthDomain = cleanEnvVar(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
-const jsonAuthDomain = cleanEnvVar(firebaseAppletConfig?.authDomain);
-let rawAuthDomain: string;
-if (envAuthDomain && !/\s/.test(envAuthDomain)) {
-  rawAuthDomain = envAuthDomain;
+// 2. Auth Domain: Keep gen-lang-client-0365509316.firebaseapp.com by default.
+// Optional VITE_FIREBASE_AUTH_DOMAIN override is used ONLY if it is a valid hostname
+// AND https://<that host>/__/auth/handler responds. Never break login because of it.
+const envAuthDomainRaw = cleanEnvVar(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
+let rawAuthDomain = DEFAULTS.authDomain;
+
+if (envAuthDomainRaw && isValidHostname(envAuthDomainRaw)) {
+  const cleanHost = envAuthDomainRaw.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
+  // Check if verified in this browser session
+  if (typeof window !== 'undefined' && sessionStorage.getItem('boardly_verified_auth_domain') === cleanHost) {
+    rawAuthDomain = cleanHost;
+  } else if (typeof window !== 'undefined' && cleanHost !== DEFAULTS.authDomain) {
+    // Probe in background so subsequent sign-ins or reloads can use it once verified
+    testAuthHandlerEndpoint(cleanHost).then((responds) => {
+      if (responds) {
+        sessionStorage.setItem('boardly_verified_auth_domain', cleanHost);
+        try {
+          if ((auth as any)?.config) (auth as any).config.authDomain = cleanHost;
+          if ((app?.options as any)) (app.options as any).authDomain = cleanHost;
+        } catch {}
+      } else {
+        sessionStorage.removeItem('boardly_verified_auth_domain');
+      }
+    });
+  }
 } else {
   fallbacksUsed.push('authDomain');
-  rawAuthDomain = (jsonAuthDomain && !/\s/.test(jsonAuthDomain)) ? jsonAuthDomain : DEFAULTS.authDomain;
 }
 
 // 3. Project ID
@@ -186,6 +235,36 @@ googleProvider.setCustomParameters({
 // Google sign-in: popup ONLY
 export async function performGoogleSignIn(): Promise<any> {
   try {
+    // If optional custom auth domain is specified, probe https://<host>/__/auth/handler before using
+    const customHost = cleanEnvVar(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
+    if (customHost && isValidHostname(customHost) && customHost !== DEFAULTS.authDomain) {
+      const cleanHost = customHost.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
+      const isVerified = typeof window !== 'undefined' && sessionStorage.getItem('boardly_verified_auth_domain') === cleanHost;
+      if (isVerified) {
+        try {
+          if ((auth as any)?.config) (auth as any).config.authDomain = cleanHost;
+          if ((app?.options as any)) (app.options as any).authDomain = cleanHost;
+        } catch {}
+      } else {
+        const works = await testAuthHandlerEndpoint(cleanHost);
+        if (works) {
+          if (typeof window !== 'undefined') {
+            sessionStorage.setItem('boardly_verified_auth_domain', cleanHost);
+          }
+          try {
+            if ((auth as any)?.config) (auth as any).config.authDomain = cleanHost;
+            if ((app?.options as any)) (app.options as any).authDomain = cleanHost;
+          } catch {}
+        } else {
+          // Fall back strictly to default so login never breaks
+          try {
+            if ((auth as any)?.config) (auth as any).config.authDomain = DEFAULTS.authDomain;
+            if ((app?.options as any)) (app.options as any).authDomain = DEFAULTS.authDomain;
+          } catch {}
+        }
+      }
+    }
+
     return await signInWithPopup(auth, googleProvider);
   } catch (popupErr: any) {
     console.warn('[Boardly Auth] Google popup error:', popupErr);
@@ -382,17 +461,45 @@ export interface StoredAppConfig {
 
 /**
  * Reads users/{uid} safely from Named Firestore.
- * Normalizes legacy plans ('starter' -> 'free', 'all_access' -> 'premium')
+ * Normalizes legacy plans ('starter' -> 'free', 'all_access' -> 'premium').
+ * Never decides "user needs registration" from null/undefined or from a cached result.
+ * Checks snapshot.metadata.fromCache: if doc doesn't exist and fromCache is true,
+ * fetches the server result (getDocFromServer) before deciding.
  */
 export async function fetchUserProfile(uid: string): Promise<StudentUserProfile | null> {
   const userPath = `users/${uid}`;
   try {
     const userRef = doc(db, 'users', uid);
-    const snap = await getDoc(userRef);
+    let snap: DocumentSnapshot<DocumentData> = await getDoc(userRef);
+
+    // If doc doesn't exist according to local cache, do NOT assume it doesn't exist on server!
+    // Fetch directly from server before deciding whether the user needs registration.
+    const isFromCache = Boolean((snap as any)?.metadata?.fromCache);
+    if (!snap.exists() && isFromCache) {
+      try {
+        snap = await getDocFromServer(userRef);
+      } catch (serverErr) {
+        console.warn('[Boardly Firebase] getDocFromServer failed or network offline:', serverErr);
+      }
+    }
+
     if (!snap.exists()) {
+      // If snapshot is still from cache (e.g. offline), check local storage backup before declaring non-existent
+      const stillFromCache = Boolean((snap as any)?.metadata?.fromCache);
+      if (stillFromCache) {
+        try {
+          const cached = localStorage.getItem(`boardly_cached_profile_${uid}`);
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            if (parsed && parsed.uid === uid) return parsed;
+          }
+        } catch {}
+      }
       return null;
     }
+
     const rawData = snap.data();
+    const isRegistered = Boolean(rawData.onboardingComplete || rawData.onboardingCompleted);
     const normalizedPlan = normalizePlanId(rawData.plan);
     const plan = (rawData.plan || 'starter') as PlanType;
     const normalizedRole = (rawData.role || 'student') as UserRole;
@@ -413,10 +520,14 @@ export async function fetchUserProfile(uid: string): Promise<StudentUserProfile 
       boardyQuestionsUsedToday: typeof rawData.boardyQuestionsUsedToday === 'number' ? rawData.boardyQuestionsUsedToday : 0,
       name: rawData.name || 'Student',
       email: rawData.email || '',
-      onboardingCompleted: Boolean(rawData.onboardingCompleted || rawData.onboardingComplete),
-      onboardingComplete: Boolean(rawData.onboardingCompleted || rawData.onboardingComplete),
+      onboardingCompleted: isRegistered,
+      onboardingComplete: isRegistered,
       createdAt: rawData.createdAt || new Date().toISOString(),
     };
+
+    try {
+      localStorage.setItem(`boardly_cached_profile_${uid}`, JSON.stringify(profile));
+    } catch {}
 
     return profile;
   } catch (err: any) {
@@ -440,6 +551,8 @@ export async function createInitialUserDoc(
   const nowStr = new Date().toISOString();
   const role = initialData.role || 'student';
   const plan = (initialData.plan || 'starter') as PlanType;
+  const isRegisteredInit = Boolean(initialData.onboardingComplete || initialData.onboardingCompleted);
+
   const fallbackProfile: StudentUserProfile = {
     uid,
     name: initialData.name || 'Student',
@@ -451,8 +564,8 @@ export async function createInitialUserDoc(
     createdAt: nowStr,
     termsAcceptedAt: nowStr,
     termsVersion: '2026.1',
-    onboardingCompleted: false,
-    onboardingComplete: false,
+    onboardingCompleted: isRegisteredInit,
+    onboardingComplete: isRegisteredInit,
     testsUsedToday: 0,
     boardyQuestionsUsedToday: 0,
     lastUsageDate: nowStr.slice(0, 10),
@@ -470,12 +583,15 @@ export async function createInitialUserDoc(
       const docSnap = await transaction.get(userRef);
       if (docSnap.exists()) {
         const existingData = docSnap.data();
+        const isRegisteredExisting = Boolean(existingData.onboardingComplete || existingData.onboardingCompleted);
         resultProfile = {
           ...existingData,
           uid,
           plan: normalizePlanId(existingData.plan),
           role: (existingData.role || 'student') as UserRole,
           roles: existingData.roles || [(existingData.role || 'student') as UserRole],
+          onboardingComplete: isRegisteredExisting,
+          onboardingCompleted: isRegisteredExisting,
         } as StudentUserProfile;
       } else {
         transaction.set(userRef, fallbackProfile, { merge: true });
@@ -519,9 +635,10 @@ export async function saveUserProfile(uid: string, fields: Partial<StudentUserPr
       uid,
       updatedAt: new Date().toISOString(),
     };
-    if (fields.onboardingCompleted !== undefined) {
-      cleanFields.onboardingCompleted = fields.onboardingCompleted;
-      cleanFields.onboardingComplete = fields.onboardingCompleted;
+    if (fields.onboardingCompleted !== undefined || fields.onboardingComplete !== undefined) {
+      const isDone = Boolean(fields.onboardingCompleted || fields.onboardingComplete);
+      cleanFields.onboardingCompleted = isDone;
+      cleanFields.onboardingComplete = isDone;
     }
     // Remove any undefined properties
     Object.keys(cleanFields).forEach((key) => {

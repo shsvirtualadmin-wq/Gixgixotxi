@@ -44,6 +44,9 @@ export interface AuthContextType {
   documentExists: boolean;
   isAdmin: boolean;
   loading: boolean;
+  authLoading: boolean;
+  profileLoading: boolean;
+  isRegistered: boolean;
   initialAuthChecked: boolean;
   status: AuthStatus;
   activeRole: UserRole;
@@ -123,7 +126,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<StudentUserProfile | null>(null);
   const [documentExists, setDocumentExists] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [profileLoading, setProfileLoading] = useState<boolean>(true);
   const [initialAuthChecked, setInitialAuthChecked] = useState<boolean>(false);
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [activeRole, setActiveRole] = useState<UserRole>('student');
@@ -131,6 +135,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const lastKnownUserRef = useRef<User | null>(null);
   const isExplicitLoggingOutRef = useRef<boolean>(false);
+
+  // Combined loading state: true until BOTH auth identity and profile document are resolved
+  const loading = authLoading || profileLoading || !initialAuthChecked;
 
   const dismissSessionExpired = useCallback(() => {
     setSessionExpired(false);
@@ -143,6 +150,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     profile?.role === 'admin' ||
     profile?.roles?.includes('admin')
   );
+
+  // Single source of truth for "is registered": true if admin or onboarding is complete
+  const isRegistered = useMemo(() => {
+    if (!user) return false;
+    if (isAdmin) return true;
+    return Boolean(profile?.onboardingComplete === true || profile?.onboardingCompleted === true);
+  }, [user, isAdmin, profile]);
 
   const availableRoles = useMemo<UserRole[]>(() => {
     const list: UserRole[] = [];
@@ -176,15 +190,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isMasterAdmin = email === 'shsvirtualadmin@gmail.com' || email === 'support@boardly.cfd';
     const todayStr = getKarachiTodayString();
 
-    // 1. Attempt to fetch existing document
+    // 1. Fetch user profile from Firestore (handles cache & getDocFromServer fail-safes)
     let existingProfile = await fetchUserProfile(firebaseUser.uid);
 
     if (existingProfile) {
-      // Returning user found! Load saved data without resetting progress
+      // Returning user found: preserve all saved data and onboarding status
       if (isMasterAdmin) {
         existingProfile.role = 'admin';
         existingProfile.plan = 'premium';
         existingProfile.onboardingCompleted = true;
+        existingProfile.onboardingComplete = true;
         if (!existingProfile.roles?.includes('admin')) {
           existingProfile.roles = [...(existingProfile.roles || ['student']), 'admin'];
         }
@@ -193,6 +208,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           plan: 'premium',
           roles: existingProfile.roles,
           onboardingCompleted: true,
+          onboardingComplete: true,
         }).catch(console.warn);
       } else {
         // Daily allowance reset at Pakistan midnight
@@ -222,7 +238,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return existingProfile;
     }
 
-    // 2. First login only: Create document ONCE with merge transaction
+    // 2. Only if the user genuinely does not exist on server: create initial document once
     const initialPlan: PlanType = isMasterAdmin ? 'premium' : 'starter';
     const initialRole: UserRole = isMasterAdmin ? 'admin' : 'student';
 
@@ -233,6 +249,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       role: initialRole,
       roles: [initialRole],
       onboardingCompleted: isMasterAdmin,
+      onboardingComplete: isMasterAdmin,
       testsUsedToday: 0,
       boardyQuestionsUsedToday: 0,
       lastUsageDate: todayStr,
@@ -247,7 +264,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     let isMounted = true;
-    setLoading(true);
+    setAuthLoading(true);
+    setProfileLoading(true);
     setStatus('loading');
 
     // Ensure Firebase auth persistence is set to browserLocalPersistence
@@ -259,41 +277,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       auth,
       async (currentUser) => {
         if (!isMounted) return;
+        setAuthLoading(false);
+
         try {
           if (currentUser) {
             lastKnownUserRef.current = currentUser;
             setUser(currentUser);
-            try {
-              await syncProfile(currentUser);
-              if (isMounted) setStatus('signedIn');
-            } catch (syncErr) {
-              console.warn('[AuthContext] syncProfile background issue:', syncErr);
-              // Construct safe fallback profile so user is never locked out
-              let fallbackProfile: StudentUserProfile | null = null;
-              try {
-                const cached = localStorage.getItem(`boardly_cached_profile_${currentUser.uid}`);
-                if (cached) fallbackProfile = JSON.parse(cached);
-              } catch {}
+            setProfileLoading(true);
 
-              if (!fallbackProfile) {
-                const userEmail = currentUser.email || '';
-                fallbackProfile = {
-                  uid: currentUser.uid,
-                  name: currentUser.displayName || (userEmail ? userEmail.split('@')[0] : 'Student'),
-                  email: userEmail,
-                  plan: 'free',
-                  role: 'student',
-                  roles: ['student'],
-                  createdAt: new Date().toISOString(),
-                  onboardingCompleted: false,
-                  onboardingComplete: false,
-                  status: 'active',
-                };
-              }
+            try {
+              const loadedProfile = await syncProfile(currentUser);
               if (isMounted) {
-                setProfile(fallbackProfile);
+                setProfile(loadedProfile);
                 setDocumentExists(true);
                 setStatus('signedIn');
+              }
+            } catch (syncErr) {
+              console.warn('[AuthContext] syncProfile background issue:', syncErr);
+              // Read local storage before any fallback to protect onboarding status
+              let cachedProfile: StudentUserProfile | null = null;
+              try {
+                const cached = localStorage.getItem(`boardly_cached_profile_${currentUser.uid}`);
+                if (cached) cachedProfile = JSON.parse(cached);
+              } catch {}
+
+              if (cachedProfile && isMounted) {
+                setProfile(cachedProfile);
+                setDocumentExists(true);
+                setStatus('signedIn');
+              }
+            } finally {
+              if (isMounted) {
+                setProfileLoading(false);
+                setInitialAuthChecked(true);
               }
             }
           } else {
@@ -305,6 +321,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setDocumentExists(false);
                 setStatus('signedOut');
                 lastKnownUserRef.current = null;
+                setProfileLoading(false);
+                setInitialAuthChecked(true);
               }
               return;
             }
@@ -320,7 +338,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
               } catch (refreshErr) {
                 console.warn('[AuthContext] Silent token refresh retry notice:', refreshErr);
-                // Keep the last known user on temporary network error
                 return;
               }
             }
@@ -331,22 +348,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               setDocumentExists(false);
               setStatus('signedOut');
               lastKnownUserRef.current = null;
+              setProfileLoading(false);
+              setInitialAuthChecked(true);
             }
           }
         } catch (authErr) {
           console.warn('[AuthContext] onAuthStateChanged non-fatal warning:', authErr);
         } finally {
           if (isMounted) {
-            setLoading(false);
-            setInitialAuthChecked(true);
+            setAuthLoading(false);
+            if (!currentUser) {
+              setProfileLoading(false);
+              setInitialAuthChecked(true);
+            }
           }
         }
       },
       (error) => {
         console.warn('[AuthContext] onAuthStateChanged stream error:', error);
-        // Do NOT log out on stream or network error! Keep current user
         if (isMounted) {
-          setLoading(false);
+          setAuthLoading(false);
+          setProfileLoading(false);
           setInitialAuthChecked(true);
         }
       }
@@ -652,6 +674,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         documentExists,
         isAdmin,
         loading,
+        authLoading,
+        profileLoading,
+        isRegistered,
         initialAuthChecked,
         status,
         activeRole,
