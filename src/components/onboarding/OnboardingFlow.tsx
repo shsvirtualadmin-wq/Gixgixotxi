@@ -161,8 +161,22 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
       console.error('[Onboarding] Direct save failed:', err);
       setIsSaving(false);
       const errorText = err?.message || String(err);
+
+      // Cache locally as immediate fallback so user can still access dashboard
+      if (typeof window !== 'undefined') {
+        try {
+          sessionStorage.removeItem('boardly_onboarding_step');
+          const cached = localStorage.getItem(`boardly_cached_profile_${targetUid}`);
+          const parsed = cached ? JSON.parse(cached) : {};
+          localStorage.setItem(
+            `boardly_cached_profile_${targetUid}`,
+            JSON.stringify({ ...parsed, ...onboardingPayload })
+          );
+        } catch {}
+      }
+
       setErrorMessage(errorText);
-      alert(`Onboarding Save Error: ${errorText}`);
+      alert(`Onboarding Save Error: ${errorText}\n\nYour preferences have been saved to local session. You can retry or click "Proceed to Dashboard (Local Mode)" below to enter.`);
     }
   };
 
@@ -612,14 +626,31 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete, onSk
 
               {/* Error Alert Box */}
               {errorMessage && (
-                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-3 animate-in fade-in">
-                  <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <p className="font-bold text-rose-900">Setup Could Not Be Saved</p>
-                    <p className="text-rose-700 leading-relaxed">{errorMessage}</p>
-                    <p className="text-rose-600 text-[11px] pt-1">
-                      You are still on Step 4. Please click "Start my first test" or "Go to dashboard" to retry.
-                    </p>
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex flex-col gap-3 animate-in fade-in">
+                  <div className="flex items-start gap-3">
+                    <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-bold text-rose-900">Firestore Rules Permission Issue</p>
+                      <p className="text-rose-700 leading-relaxed font-mono text-[11px] bg-white/80 p-2 rounded-lg border border-rose-200 break-all">{errorMessage}</p>
+                      <p className="text-rose-600 text-[11px] pt-1">
+                        Your setup is preserved in your local session. You can retry the database write or proceed directly to your student dashboard.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1 border-t border-rose-200/60">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onComplete(false, {
+                          universityId: targetUniId,
+                          track: selectedTrack,
+                          weakSubjects: selectedWorries,
+                        });
+                      }}
+                      className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-sm cursor-pointer"
+                    >
+                      Proceed to Dashboard (Local Mode)
+                    </button>
                   </div>
                 </div>
               )}
