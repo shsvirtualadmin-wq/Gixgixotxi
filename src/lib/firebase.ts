@@ -35,7 +35,7 @@ import { normalizePlanId, PlanType } from '../data/planLimits';
 // Firebase configuration from applet config and environment variables
 export const firebaseConfig = {
   apiKey: "AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs",
-  authDomain: "gen-lang-client-0365509316.firebaseapp.com",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "gen-lang-client-0365509316.firebaseapp.com",
   projectId: "gen-lang-client-0365509316",
   storageBucket: "gen-lang-client-0365509316.firebasestorage.app",
   messagingSenderId: "556734245207",
@@ -71,12 +71,17 @@ export async function performGoogleSignIn(): Promise<any> {
     return await signInWithPopup(auth, googleProvider);
   } catch (popupErr: any) {
     console.warn('[Boardly Auth] Popup failed, checking fallback:', popupErr);
-    if (popupErr?.code === 'auth/popup-blocked' || popupErr?.code === 'auth/cancelled-popup-request') {
+    if (
+      popupErr?.code === 'auth/popup-blocked' ||
+      popupErr?.code === 'auth/cancelled-popup-request' ||
+      popupErr?.code === 'auth/popup-closed-by-user' ||
+      popupErr?.message?.includes('popup')
+    ) {
       try {
         await signInWithRedirect(auth, googleProvider);
         return null;
       } catch (redirectErr) {
-        throw new Error('Sign-in popup was blocked. Please allow popups for Boardly in your browser settings.');
+        throw new Error('Allow pop-ups for this site to sign in with Google.');
       }
     }
     throw popupErr;

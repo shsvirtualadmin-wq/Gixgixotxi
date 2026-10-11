@@ -1,0 +1,5 @@
+Contact: mailto:support@boardly.cfd
+Expires: 2027-12-31T23:59:59.000Z
+Preferred-Languages: en, ur
+Canonical: https://boardly.cfd/.well-known/security.txt
+Policy: https://boardly.cfd/privacy

@@ -26,7 +26,7 @@ export const CaptainDashboard: React.FC = () => {
   const [copiedLink, setCopiedLink] = useState(false);
 
   const referralCode = profile?.uid ? `BOARDLY-${profile.uid.substring(0, 6).toUpperCase()}` : 'BOARDLY-CAPTAIN';
-  const referralUrl = `https://boardly.cfd/signup?ref=${referralCode}`;
+  const referralUrl = `https://boardly.cfd/r/${referralCode}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(referralUrl);

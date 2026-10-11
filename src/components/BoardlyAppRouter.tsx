@@ -123,7 +123,10 @@ export const BoardlyAppRouter: React.FC = () => {
       );
 
       if (isProtected) {
-        navigate(`/login?returnUrl=${encodeURIComponent(currentPath)}`, true);
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('postLoginPath', currentPath);
+        }
+        navigate('/login', true);
       }
     }
   }, [loading, user, profile, documentExists, isAdmin, currentPath, getHighestRolePath, navigate]);
@@ -140,11 +143,6 @@ export const BoardlyAppRouter: React.FC = () => {
       </div>
     );
   }
-
-  // Extract returnUrl from query if present
-  const returnUrl = typeof window !== 'undefined'
-    ? new URLSearchParams(window.location.search).get('returnUrl') || getHighestRolePath()
-    : getHighestRolePath();
 
   return (
     <div className="min-h-screen flex flex-col relative font-sans">
@@ -168,6 +166,18 @@ export const BoardlyAppRouter: React.FC = () => {
 
       {/* Route Switcher */}
       {(() => {
+        // Referral Route: /r/CODE -> store code in sessionStorage and replace route to /signup
+        if (currentPath.startsWith('/r/')) {
+          const code = currentPath.substring(3).trim();
+          if (code && typeof window !== 'undefined') {
+            try {
+              sessionStorage.setItem('referralCode', code);
+            } catch {}
+          }
+          navigate('/signup', true);
+          return null;
+        }
+
         // 1. Sign Up
         if (currentPath === '/signup') {
           return <SignUpPage onNavigate={(p) => navigate(p, true)} />;
@@ -175,7 +185,7 @@ export const BoardlyAppRouter: React.FC = () => {
 
         // 2. Login
         if (currentPath === '/login') {
-          return <LoginPage onNavigate={(p) => navigate(p, true)} returnUrl={returnUrl} />;
+          return <LoginPage onNavigate={(p) => navigate(p, true)} />;
         }
 
         // 3. Email Verification
@@ -222,7 +232,10 @@ export const BoardlyAppRouter: React.FC = () => {
         // 8. Study Circles Organizer Dashboard (/organizer or /organizer/*)
         if (currentPath === '/organizer' || currentPath.startsWith('/organizer/')) {
           if (!user) {
-            navigate(`/login?returnUrl=/organizer`, true);
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('postLoginPath', '/organizer');
+            }
+            navigate('/login', true);
             return null;
           }
           const isOrganizerAllowed =
@@ -259,7 +272,10 @@ export const BoardlyAppRouter: React.FC = () => {
         // 9. Campus Captain Dashboard (/captain or /captain/*)
         if (currentPath === '/captain' || currentPath.startsWith('/captain/')) {
           if (!user) {
-            navigate(`/login?returnUrl=/captain`, true);
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('postLoginPath', '/captain');
+            }
+            navigate('/login', true);
             return null;
           }
           const isCaptainAllowed =
@@ -296,7 +312,10 @@ export const BoardlyAppRouter: React.FC = () => {
         // 10. Admin Dashboard (/admin or /admin/*)
         if (currentPath === '/admin' || currentPath.startsWith('/admin/')) {
           if (!user) {
-            navigate(`/login?returnUrl=/admin`, true);
+            if (typeof window !== 'undefined') {
+              sessionStorage.setItem('postLoginPath', '/admin');
+            }
+            navigate('/login', true);
             return null;
           }
           if (!isAdmin) {

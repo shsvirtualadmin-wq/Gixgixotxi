@@ -2620,7 +2620,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
                 </li>
                 <li>
                   <a
-                    href="mailto:support@boardly.pk"
+                    href="mailto:support@boardly.cfd"
                     className="hover:text-[#1E5AFF] transition-colors"
                   >
                     Contact Support
@@ -2730,7 +2730,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
 
                   <h4 className="font-bold text-slate-900  text-sm">4. Data Erasure & Support</h4>
                   <p>
-                    Students have the right to request full account deletion or test history resets at any time by contacting support@boardly.pk.
+                    Students have the right to request full account deletion or test history resets at any time by contacting support@boardly.cfd.
                   </p>
                 </div>
               </div>
@@ -2796,7 +2796,7 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
 
                   <h4 className="font-bold text-slate-900  text-sm">3. Support & Access Help</h4>
                   <p>
-                    If you experience any technical issues with payment verification, receipt screenshots, or accessing your activated course features, please contact our support team at <a href="mailto:support@boardly.pk" className="text-[#1E5AFF] underline font-medium">support@boardly.pk</a>. We are happy to assist you in resolving any account access issues.
+                    If you experience any technical issues with payment verification, receipt screenshots, or accessing your activated course features, please contact our support team at <a href="mailto:support@boardly.cfd" className="text-[#1E5AFF] underline font-medium">support@boardly.cfd</a>. We are happy to assist you in resolving any account access issues.
                   </p>
                 </div>
               </div>

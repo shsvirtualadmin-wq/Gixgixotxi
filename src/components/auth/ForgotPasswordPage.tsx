@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, Mail, Loader2, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BrandLogo } from '../marketing/BrandLogo';
+import { TrustFooter } from '../ui/TrustFooter';
 
 interface ForgotPasswordPageProps {
   onNavigate: (route: string) => void;
@@ -122,9 +123,8 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onNaviga
         </div>
       </main>
 
-      <footer className="relative z-10 py-6 text-center text-xs text-slate-400">
-        <span>© 2026 Boardly</span>
-      </footer>
+      {/* Footer with Trust Signals */}
+      <TrustFooter onNavigate={onNavigate} />
     </div>
   );
 };

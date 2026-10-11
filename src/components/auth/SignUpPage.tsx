@@ -1,7 +1,8 @@
 import React, { useState, useId } from 'react';
-import { Eye, EyeOff, Check, X, ShieldCheck, ArrowRight, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Check, X, ShieldCheck, ArrowRight, Loader2, Gift } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BrandLogo } from '../marketing/BrandLogo';
+import { TrustFooter } from '../ui/TrustFooter';
 
 interface SignUpPageProps {
   onNavigate: (route: string) => void;
@@ -9,6 +10,15 @@ interface SignUpPageProps {
 
 export const SignUpPage: React.FC<SignUpPageProps> = ({ onNavigate }) => {
   const { signUpEmail, signInGoogle } = useAuth();
+
+  const [referralCode] = useState<string>(() => {
+    if (typeof window === 'undefined') return '';
+    try {
+      return sessionStorage.getItem('referralCode') || '';
+    } catch {
+      return '';
+    }
+  });
 
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
@@ -65,6 +75,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onNavigate }) => {
     }
 
     setIsLoading(true);
+    const effectiveReferralSource = referralCode ? `Campus Captain: ${referralCode}` : referralSource;
     const res = await signUpEmail({
       fullName,
       email,
@@ -72,7 +83,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onNavigate }) => {
       password,
       confirmPassword,
       preparingFor,
-      referralSource,
+      referralSource: effectiveReferralSource,
       termsAccepted: agreedToTerms,
     });
     setIsLoading(false);
@@ -447,10 +458,8 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onNavigate }) => {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="relative z-10 py-6 text-center text-xs text-slate-400">
-        <span>© 2026 Boardly · All rights reserved.</span>
-      </footer>
+      {/* Footer with Trust Signals */}
+      <TrustFooter onNavigate={onNavigate} />
     </div>
   );
 };

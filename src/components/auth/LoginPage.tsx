@@ -2,13 +2,43 @@ import React, { useState } from 'react';
 import { Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BrandLogo } from '../marketing/BrandLogo';
+import { TrustFooter } from '../ui/TrustFooter';
 
 interface LoginPageProps {
   onNavigate: (route: string) => void;
-  returnUrl?: string;
 }
 
-export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, returnUrl }) => {
+// Strictly validate post-login redirection path to prevent open-redirect exploits
+function getValidatedPostLoginPath(): string {
+  if (typeof window === 'undefined') return '/app';
+  try {
+    const saved = sessionStorage.getItem('postLoginPath');
+    sessionStorage.removeItem('postLoginPath');
+    if (!saved || typeof saved !== 'string') return '/app';
+
+    const trimmed = saved.trim();
+    // Path must start with single '/', must not start with '//', must not contain '://' or '\'
+    if (
+      !trimmed.startsWith('/') ||
+      trimmed.startsWith('//') ||
+      trimmed.includes('://') ||
+      trimmed.includes('\\')
+    ) {
+      return '/app';
+    }
+
+    // Must be one of our own protected routes
+    const validPrefixes = ['/app', '/organizer', '/captain', '/admin'];
+    const isAllowed = validPrefixes.some(
+      (prefix) => trimmed === prefix || trimmed.startsWith(`${prefix}/`)
+    );
+    return isAllowed ? trimmed : '/app';
+  } catch {
+    return '/app';
+  }
+}
+
+export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
   const { signInEmail, signInGoogle } = useAuth();
 
   const [email, setEmail] = useState('');
@@ -32,11 +62,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, returnUrl }) =
     setIsLoading(false);
 
     if (res.success) {
-      if (returnUrl) {
-        onNavigate(returnUrl);
-      } else {
-        onNavigate('/app');
-      }
+      const destination = getValidatedPostLoginPath();
+      onNavigate(destination);
     } else {
       setErrorMsg(res.error || 'Failed to sign in. Please verify your credentials.');
     }
@@ -49,13 +76,14 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, returnUrl }) =
     setGoogleLoading(false);
 
     if (res.success) {
-      if (returnUrl) {
-        onNavigate(returnUrl);
-      } else {
-        onNavigate('/app');
-      }
+      const destination = getValidatedPostLoginPath();
+      onNavigate(destination);
     } else if (res.error) {
-      setErrorMsg(res.error);
+      if (res.error.toLowerCase().includes('popup')) {
+        setErrorMsg('Sign-in popup was blocked. Please allow pop-ups for this site in your browser to sign in with Google.');
+      } else {
+        setErrorMsg(res.error);
+      }
     }
   };
 
@@ -237,21 +265,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate, returnUrl }) =
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="relative z-10 py-6 text-center text-xs text-slate-400 space-y-2">
-        <div className="flex items-center justify-center gap-4">
-          <a href="/terms" target="_blank" rel="noopener noreferrer" className="hover:text-slate-600 transition-colors">
-            Terms of Service
-          </a>
-          <span>·</span>
-          <a href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-slate-600 transition-colors">
-            Privacy Policy
-          </a>
-        </div>
-        <div>
-          <span>© 2026 Boardly</span>
-        </div>
-      </footer>
+      {/* Footer with Trust Signals */}
+      <TrustFooter onNavigate={onNavigate} />
     </div>
   );
 };

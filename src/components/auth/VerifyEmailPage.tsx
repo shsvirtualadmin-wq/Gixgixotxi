@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Mail, CheckCircle2, RotateCw, ArrowLeft, Loader2, ExternalLink } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BrandLogo } from '../marketing/BrandLogo';
+import { TrustFooter } from '../ui/TrustFooter';
 
 interface VerifyEmailPageProps {
   onNavigate: (route: string) => void;
@@ -189,9 +190,8 @@ export const VerifyEmailPage: React.FC<VerifyEmailPageProps> = ({ onNavigate }) 
         </div>
       </main>
 
-      <footer className="relative z-10 py-6 text-center text-xs text-slate-400">
-        <span>© 2026 Boardly · Dedicated to your test preparation</span>
-      </footer>
+      {/* Footer with Trust Signals */}
+      <TrustFooter onNavigate={onNavigate} />
     </div>
   );
 };

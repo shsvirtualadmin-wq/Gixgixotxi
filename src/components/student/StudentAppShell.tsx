@@ -40,6 +40,7 @@ import { MeritMeterModal } from './MeritMeterModal';
 import { BottomSheet } from '../ui/Drawer';
 import { Modal } from '../ui/Modal';
 import { AppShell } from '../ui/AppShell';
+import { TrustFooter } from '../ui/TrustFooter';
 import { getEntranceExamQuestions } from '../../data/entranceExamQuestions';
 import { University, UNIVERSITIES } from '../../data/universities';
 import { Question } from '../../types';
@@ -386,6 +387,71 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           onStartTest={() => setActiveTab('practice')}
         />
       )}
+
+      {activeTab === 'profile' && (
+        <div className="max-w-2xl mx-auto space-y-6 animate-in fade-in pb-12">
+          {/* Student Profile Card */}
+          <div className="p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm space-y-6">
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-indigo-500 to-blue-600 flex items-center justify-center text-white text-2xl font-black shadow-md">
+                {(profile?.name || user?.displayName || 'S').charAt(0).toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-lg text-slate-900 dark:text-white truncate">
+                    {profile?.name || user?.displayName || 'Student Aspirant'}
+                  </h3>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                    {profile?.plan || 'Free'}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 truncate">{user?.email}</p>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Track: {profile?.testTrack || 'FSC & Entry Tests'}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowUsageModal(true)}
+                className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-left hover:border-indigo-400 transition-all cursor-pointer"
+              >
+                <div className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Daily Quota</div>
+                <div className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+                  Usage & Limits
+                </div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowUpgradeModal(true)}
+                className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50 to-blue-50 dark:from-indigo-950/40 dark:to-blue-950/40 border border-indigo-200 dark:border-indigo-800 text-left hover:border-indigo-400 transition-all cursor-pointer"
+              >
+                <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">Subscription</div>
+                <div className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+                  Upgrade Plan
+                </div>
+              </button>
+            </div>
+
+            <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center text-xs text-slate-500">
+              <span>Account Status: <strong className="text-emerald-600 capitalize">{profile?.status || 'Active'}</strong></span>
+              <button
+                type="button"
+                onClick={logOut}
+                className="text-rose-600 hover:text-rose-700 font-bold cursor-pointer"
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+
+          <TrustFooter />
+        </div>
+      )}
+
+      {activeTab !== 'profile' && <TrustFooter className="mt-12" />}
 
       {/* Merit Meter Modal */}
       {showMeritMeterModal && (

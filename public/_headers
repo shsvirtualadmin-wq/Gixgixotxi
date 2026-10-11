@@ -1,18 +1,19 @@
 # Cloudflare Pages Headers Configuration
 # Documentation: https://developers.cloudflare.com/pages/platform/headers/
 
-# 1. Entry files: Never cache index.html or root so new deployments are served instantly to all users
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=()
+  X-Frame-Options: DENY
+  Cross-Origin-Opener-Policy: same-origin-allow-popups
+  Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://www.gstatic.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://*.googleusercontent.com https://firebasestorage.googleapis.com; connect-src 'self' https://*.googleapis.com https://*.firebaseapp.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com; frame-src https://*.firebaseapp.com https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+
 /index.html
   Cache-Control: no-cache, no-store, must-revalidate
   Pragma: no-cache
   Expires: 0
-  X-Content-Type-Options: nosniff
-
-/
-  Cache-Control: no-cache, no-store, must-revalidate
-  Pragma: no-cache
-  Expires: 0
-  X-Content-Type-Options: nosniff
 
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate
@@ -22,12 +23,11 @@
 /manifest.json
   Cache-Control: public, max-age=0, must-revalidate
 
-# 2. Immutable hashed static assets: Cache forever (1 year) because the filename changes on every build
+# Immutable hashed static assets
 /assets/*
   Cache-Control: public, max-age=31536000, immutable
-  X-Content-Type-Options: nosniff
 
-# 3. API endpoints & server functions: Never cache API responses at the edge
+# API endpoints & server functions
 /api/*
   Cache-Control: no-store, no-cache, must-revalidate
   Pragma: no-cache

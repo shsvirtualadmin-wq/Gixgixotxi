@@ -25,9 +25,9 @@ In the **Firebase Console** under **Authentication → Settings → Authorized d
 - The AI Studio development & preview domains
 
 ### 2. Custom Domain SSL Provisioning Steps (Manual)
-To safely issue an SSL certificate for an auth subdomain (such as `auth.boardly.cfd`):
+To safely issue an SSL certificate for an auth domain:
 1. In the **Firebase Console**, navigate to **Hosting** and click **Add custom domain**.
-2. Enter your desired subdomain (e.g., `auth.boardly.cfd`).
+2. Enter your desired custom domain if configured.
 3. Firebase will provide `A` or `CNAME` verification records.
 4. In your DNS provider (e.g., Cloudflare), create the records and **temporarily set proxy status to DNS only (Grey Cloud)** so Firebase / Google Trust Services can complete the ACME certificate validation.
 5. Wait until Firebase Hosting displays the status as **Connected** with an active SSL certificate.
