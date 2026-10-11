@@ -343,11 +343,9 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       activeNav={activeTab}
       onSelectNav={(id) => {
         setActiveTab(id);
-        setShowMoreSheet(false);
       }}
       onNavigateUpgrade={() => setShowUpgradeModal(true)}
       onNavigateProfile={() => setShowUsageModal(true)}
-      onOpenMoreSheet={() => setShowMoreSheet(true)}
       onLogout={logOut}
     >
       {/* Tab Switcher */}
@@ -388,82 +386,6 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           onStartTest={() => setActiveTab('practice')}
         />
       )}
-
-      {/* More Drawer Sheet (Mobile Navigation) */}
-      <BottomSheet
-        isOpen={showMoreSheet}
-        onClose={() => setShowMoreSheet(false)}
-        title="More Resources & Tools"
-      >
-        <div className="grid grid-cols-2 gap-3 text-xs">
-          {[
-            {
-              id: 'history',
-              label: 'Test History',
-              icon: <Clock className="w-5 h-5 text-indigo-600" />,
-              action: () => {
-                setActiveTab('history');
-                setShowMoreSheet(false);
-              },
-            },
-            {
-              id: 'merit',
-              label: 'Merit Meter',
-              icon: <Calculator className="w-5 h-5 text-violet-600" />,
-              action: () => {
-                setShowMoreSheet(false);
-                setShowMeritMeterModal(true);
-              },
-            },
-            {
-              id: 'usage',
-              label: 'Daily Usage',
-              icon: <Zap className="w-5 h-5 text-amber-600" />,
-              action: () => {
-                setShowMoreSheet(false);
-                setShowUsageModal(true);
-              },
-            },
-            {
-              id: 'reviews',
-              label: 'Write Review',
-              icon: <Star className="w-5 h-5 text-teal-600" />,
-              action: () => {
-                setShowMoreSheet(false);
-                setShowReviewModal(true);
-              },
-            },
-            {
-              id: 'upgrade',
-              label: 'Upgrade Plan',
-              icon: <Sparkles className="w-5 h-5 text-pink-600" />,
-              action: () => {
-                setShowMoreSheet(false);
-                setShowUpgradeModal(true);
-              },
-            },
-            {
-              id: 'logout',
-              label: 'Log out',
-              icon: <LogOut className="w-5 h-5 text-rose-600" />,
-              action: () => {
-                setShowMoreSheet(false);
-                logOut();
-              },
-            },
-          ].map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={item.action}
-              className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 hover:bg-indigo-50/50 flex flex-col items-center justify-center space-y-2 text-center font-bold text-slate-800 dark:text-slate-200 cursor-pointer"
-            >
-              {item.icon}
-              <span>{item.label}</span>
-            </button>
-          ))}
-        </div>
-      </BottomSheet>
 
       {/* Merit Meter Modal */}
       {showMeritMeterModal && (

@@ -372,6 +372,23 @@ export async function saveUserProfile(uid: string, fields: Partial<StudentUserPr
 }
 
 /**
+ * Deletes user profile document from Firestore
+ */
+export async function deleteUserProfile(uid: string): Promise<void> {
+  const userRef = doc(db, 'users', uid);
+  const userPath = `users/${uid}`;
+  try {
+    const { deleteDoc } = await import('firebase/firestore');
+    await deleteDoc(userRef);
+    try {
+      localStorage.removeItem(`boardly_cached_profile_${uid}`);
+    } catch {}
+  } catch (err: any) {
+    handleFirestoreError(err, OperationType.DELETE, userPath);
+  }
+}
+
+/**
  * Fetches all students with pagination and createdAt desc ordering
  */
 export async function fetchAllUsersPaginated(

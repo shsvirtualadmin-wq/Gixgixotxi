@@ -71,24 +71,35 @@ export const BoardlyAppRouter: React.FC = () => {
 
     // 1. Authenticated users guard
     if (user) {
-      const targetDashboard = getHighestRolePath();
+      // Admin always routes to admin or requested route
+      if (isAdmin) {
+        const adminAuthRoutes = ['/', '', '/login', '/signup', '/forgot-password', '/reset-password', '/onboarding'];
+        if (adminAuthRoutes.includes(currentPath)) {
+          navigate('/admin', true);
+        }
+        return;
+      }
 
+      // If documentExists or profile loaded from Firestore:
       if (documentExists || profile) {
-        // If onboarding is incomplete, send to onboarding
-        if (profile && !profile.onboardingCompleted && !isAdmin) {
+        // If user already exists and finished onboarding, or if they have existing activity, route silently to /app
+        const hasCompletedOnboarding = profile?.onboardingCompleted === true;
+        if (!hasCompletedOnboarding) {
+          // Only newly created users without completed onboarding see onboarding
           if (currentPath !== '/onboarding') {
             navigate('/onboarding', true);
           }
           return;
         }
 
-        // Auth screens prevention for logged-in users
+        // Existing user: prevent access to marketing, auth screens, or onboarding
         const authRoutes = ['/', '', '/login', '/signup', '/forgot-password', '/reset-password', '/onboarding'];
         if (authRoutes.includes(currentPath)) {
+          const targetDashboard = getHighestRolePath();
           navigate(targetDashboard, true);
         }
       } else {
-        // First login: send to onboarding
+        // Only if Firestore confirmed no doc exists
         if (currentPath !== '/onboarding' && currentPath !== '/signup') {
           navigate('/onboarding', true);
         }

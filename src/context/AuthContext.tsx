@@ -236,6 +236,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
+    setLoading(true);
+    setStatus('loading');
+
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -245,13 +248,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (err) {
           console.error('[AuthContext] syncProfile failed:', err);
           setStatus('signedIn'); // keep logged in, let UI handle retry
+        } finally {
+          setLoading(false);
         }
       } else {
         setProfile(null);
         setDocumentExists(false);
         setStatus('signedOut');
+        setLoading(false);
       }
-      setLoading(false);
     });
 
     return () => unsubscribe();

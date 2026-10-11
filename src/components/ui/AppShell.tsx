@@ -13,7 +13,6 @@ export interface AppShellProps {
   children: React.ReactNode;
   onNavigateUpgrade?: () => void;
   onNavigateProfile?: () => void;
-  onOpenMoreSheet?: () => void;
   onLogout?: () => void;
 }
 
@@ -26,10 +25,13 @@ export const AppShell: React.FC<AppShellProps> = ({
   children,
   onNavigateUpgrade,
   onNavigateProfile,
-  onOpenMoreSheet,
   onLogout,
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // For students, mobile navigation is 100% standardized on the bottom tab bar.
+  // Hamburger drawer is only needed for admin/organizer/captain portals on small screens.
+  const showMobileHamburger = role !== 'student';
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 text-slate-900 dark:text-slate-100 flex flex-col relative overflow-x-hidden font-sans">
@@ -39,12 +41,12 @@ export const AppShell: React.FC<AppShellProps> = ({
         <div className="absolute top-1/3 left-10 w-80 h-80 bg-violet-500/5 rounded-full blur-3xl" />
       </div>
 
-      {/* Sidebar for Desktop & Mobile Drawer */}
+      {/* Sidebar for Desktop (and non-student mobile drawer) */}
       <Sidebar
         role={role}
         activeNav={activeNav}
         onSelectNav={onSelectNav}
-        isOpenMobile={mobileMenuOpen}
+        isOpenMobile={showMobileHamburger && mobileMenuOpen}
         onCloseMobile={() => setMobileMenuOpen(false)}
         onLogout={onLogout}
       />
@@ -54,7 +56,7 @@ export const AppShell: React.FC<AppShellProps> = ({
         <TopBar
           title={title}
           subtitle={subtitle}
-          onOpenMobileMenu={() => setMobileMenuOpen(true)}
+          onOpenMobileMenu={showMobileHamburger ? () => setMobileMenuOpen(true) : undefined}
           onNavigateUpgrade={onNavigateUpgrade}
           onNavigateProfile={onNavigateProfile}
         />
@@ -65,11 +67,11 @@ export const AppShell: React.FC<AppShellProps> = ({
       </div>
 
       {/* Mobile Bottom Tab Bar (Student Role Only) */}
-      {role === 'student' && onOpenMoreSheet && (
+      {role === 'student' && (
         <BottomTabBar
           activeTab={activeNav as StudentTabId}
           onSelectTab={(tabId) => onSelectNav(tabId)}
-          onOpenMoreSheet={onOpenMoreSheet}
+          onOpenProfile={onNavigateProfile}
         />
       )}
     </div>

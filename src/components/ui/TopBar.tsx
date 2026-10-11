@@ -158,19 +158,38 @@ export const TopBar: React.FC<TopBarProps> = ({
                 <p className="text-[11px] text-slate-400 truncate">{user?.email}</p>
                 <div className="mt-2 flex items-center gap-1.5">
                   <span
-                    className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase ${
+                    className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider ${
                       isAdmin
-                        ? 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300'
+                        ? 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300 border border-violet-200 dark:border-violet-800'
                         : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300'
                     }`}
                   >
-                    {isAdmin ? 'Administrator' : `${planConfig.name} Plan`}
+                    {isAdmin ? 'ADMINISTRATOR' : `${planConfig.name} Plan`}
                   </span>
                 </div>
               </div>
 
-              {/* Role Switcher Menu */}
-              {availableRoles.length > 1 && (
+              {/* Direct Admin Portal Switcher */}
+              {isAdmin && (
+                <div className="py-1 border-b border-slate-100 dark:border-slate-800">
+                  <a
+                    href="/admin"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setProfileMenuOpen(false);
+                      window.history.pushState({}, '', '/admin');
+                      window.dispatchEvent(new PopStateEvent('popstate'));
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-violet-700 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-950/40 cursor-pointer"
+                  >
+                    <Shield className="w-4 h-4 text-violet-600" />
+                    <span>Switch to Admin Portal</span>
+                  </a>
+                </div>
+              )}
+
+              {/* Role Switcher Menu (when multiple other roles exist) */}
+              {availableRoles.length > 1 && !isAdmin && (
                 <div className="py-1 border-b border-slate-100 dark:border-slate-800">
                   <span className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
                     Switch Portal View
@@ -205,7 +224,7 @@ export const TopBar: React.FC<TopBarProps> = ({
                   className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                 >
                   <UserIcon className="w-4 h-4 text-slate-400" />
-                  <span>Profile & Billing</span>
+                  <span>Settings / Billing</span>
                 </button>
               )}
 
