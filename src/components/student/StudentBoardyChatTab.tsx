@@ -708,7 +708,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
 
                 {/* Mode Selector Dropdown: icon left, bold title, smaller lighter grey description strictly on line below, checkmark on right */}
                 {isModePickerOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 w-72 rounded-2xl bg-white border border-slate-200 shadow-xl p-2 z-40 animate-in fade-in slide-in-from-bottom-2">
+                  <div className="absolute bottom-full left-0 mb-2.5 w-72 rounded-2xl bg-white border border-slate-200 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-bottom-2">
                     <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 py-1">
                       Choose Teaching Mode
                     </p>
@@ -721,7 +721,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                             type="button"
                             onClick={() => handleSelectMode(m.id)}
                             className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-colors cursor-pointer ${
-                              isSelected ? 'bg-indigo-50/80 text-indigo-950' : 'hover:bg-slate-50 text-slate-800'
+                              isSelected ? 'bg-indigo-50/80 text-indigo-950 font-medium' : 'hover:bg-slate-50 text-slate-800'
                             }`}
                           >
                             <div className="flex items-start gap-2.5 min-w-0 pr-2">
@@ -931,7 +931,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
       {/* 3. PINNED BOTTOM INPUT BAR (WHEN IN ACTIVE CHAT)                          */}
       {/* ========================================================================= */}
       {hasMessages && (
-        <div className="fixed bottom-0 left-0 right-0 p-3 sm:p-4 bg-[#FAFAFC]/95 backdrop-blur-md border-t border-slate-200/60 safe-area-bottom z-20 overflow-x-hidden">
+        <div className="fixed bottom-0 left-0 right-0 px-3 sm:px-4 pt-3 pb-safe bg-[#FAFAFC]/95 backdrop-blur-md border-t border-slate-200/60 z-30" style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom, 16px))' }}>
           <div className="max-w-3xl mx-auto w-full">
             <div className="rounded-[24px] bg-white border border-slate-200 shadow-sm focus-within:border-indigo-500 focus-within:ring-2 focus-within:ring-indigo-500/20 p-2.5 flex flex-col gap-1.5 relative transition-all">
               <textarea
@@ -968,9 +968,9 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                     <ChevronDown className="w-3 h-3 text-slate-400" />
                   </button>
 
-                  {/* Mode Picker Popup */}
+                  {/* Mode Picker Popup - floats completely above input box with 10px offset & high z-index */}
                   {isModePickerOpen && (
-                    <div className="absolute bottom-full left-0 mb-2 w-72 rounded-2xl bg-white border border-slate-200 shadow-xl p-2 z-40 animate-in fade-in slide-in-from-bottom-2">
+                    <div className="absolute bottom-full left-0 mb-2.5 w-72 rounded-2xl bg-white border border-slate-200 shadow-2xl p-2 z-50 animate-in fade-in slide-in-from-bottom-2">
                       <p className="text-[10px] font-black uppercase tracking-wider text-slate-400 px-2 py-1">
                         Choose Teaching Mode
                       </p>
@@ -983,7 +983,7 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
                               type="button"
                               onClick={() => handleSelectMode(m.id)}
                               className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-colors cursor-pointer ${
-                                isSelected ? 'bg-indigo-50/80 text-indigo-950' : 'hover:bg-slate-50 text-slate-800'
+                                isSelected ? 'bg-indigo-50/80 text-indigo-950 font-medium' : 'hover:bg-slate-50 text-slate-800'
                               }`}
                             >
                               <div className="flex items-start gap-2.5 min-w-0 pr-2">
@@ -1019,8 +1019,8 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
               </div>
             </div>
 
-            {/* Small usage line under pinned input */}
-            <p className="text-[10px] text-slate-400 font-medium text-center mt-1.5">
+            {/* Small usage line under pinned input with proper spacing */}
+            <p className="text-[10px] text-slate-400 font-medium text-center mt-2 mb-0.5 select-none">
               {aiChatsLineText}
             </p>
           </div>
