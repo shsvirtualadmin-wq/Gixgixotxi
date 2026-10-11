@@ -3,7 +3,6 @@ import { useAuth } from '../../context/AuthContext';
 import { UserRole } from '../../lib/firebase';
 import { getUpgradePrompt, getPlanConfig } from '../../data/planLimits';
 import {
-  Bell,
   Search,
   Menu,
   ChevronDown,
@@ -38,14 +37,12 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   const { user, profile, isAdmin, activeRole, switchRole, availableRoles, logOut } = useAuth();
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
-  const [notifMenuOpen, setNotifMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
         setProfileMenuOpen(false);
-        setNotifMenuOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -102,33 +99,6 @@ export const TopBar: React.FC<TopBarProps> = ({
             <span className="sm:hidden">Upgrade</span>
           </button>
         )}
-
-        {/* Notifications Bell */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setNotifMenuOpen(!notifMenuOpen)}
-            className="p-2 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors cursor-pointer relative"
-            aria-label="Notifications"
-          >
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-indigo-600 ring-2 ring-white" />
-          </button>
-
-          {notifMenuOpen && (
-            <div className="absolute right-0 mt-2 w-80 rounded-2xl bg-white border border-slate-200 shadow-xl p-3 z-50 animate-in fade-in zoom-in-95">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <span className="font-extrabold text-xs text-slate-900">
-                  Notifications
-                </span>
-                <span className="text-[10px] text-indigo-600 font-bold">All caught up</span>
-              </div>
-              <div className="py-6 text-center text-xs text-slate-400">
-                No new unread reminders.
-              </div>
-            </div>
-          )}
-        </div>
 
         {/* User Profile Dropdown & Role Switcher */}
         <div className="relative">

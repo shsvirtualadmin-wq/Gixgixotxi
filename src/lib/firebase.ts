@@ -60,6 +60,8 @@ setPersistence(auth, browserLocalPersistence).catch((err) => {
   console.warn('[Boardly Auth] Persistence error:', err);
 });
 
+export { browserLocalPersistence, setPersistence };
+
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
   prompt: 'select_account',
@@ -162,7 +164,13 @@ export interface StudentUserProfile {
   onboardingCompleted: boolean;
   onboardingComplete?: boolean;
   testTrack?: string;
+  targetExam?: string;
+  targetUniversity?: string;
   targetUniversityId?: string;
+  university?: string;
+  dream_university?: string;
+  target_university?: string;
+  examDate?: string;
   targetExamDate?: string;
   targetExamDaysLeft?: number;
   weakSubjects?: string[];

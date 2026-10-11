@@ -613,9 +613,10 @@ export function clearAllClientAuthAndSessionData(): void {
       try { localStorage.removeItem(k); } catch {}
     });
 
-    // 3. Wipe sessionStorage completely
+    // 3. Clear auth-related keys from sessionStorage
     try {
-      sessionStorage.clear();
+      sessionStorage.removeItem('postLoginPath');
+      sessionStorage.removeItem('boardly_onboarding_step');
     } catch {}
 
     // 4. Wipe cookies

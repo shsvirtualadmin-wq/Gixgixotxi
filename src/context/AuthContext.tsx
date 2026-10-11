@@ -18,9 +18,12 @@ import {
   performGoogleSignIn,
   StudentUserProfile,
   UserRole,
+  browserLocalPersistence,
+  setPersistence,
 } from '../lib/firebase';
 import { doc, setDoc } from 'firebase/firestore';
 import { getKarachiTodayString, normalizePlanId, PlanType } from '../data/planLimits';
+import { findUniversity } from '../data/universities';
 
 export interface SignUpFormData {
   fullName: string;
@@ -41,6 +44,7 @@ export interface AuthContextType {
   documentExists: boolean;
   isAdmin: boolean;
   loading: boolean;
+  initialAuthChecked: boolean;
   status: AuthStatus;
   activeRole: UserRole;
   switchRole: (role: UserRole) => void;
@@ -121,9 +125,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<StudentUserProfile | null>(null);
   const [documentExists, setDocumentExists] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(true);
+  const [initialAuthChecked, setInitialAuthChecked] = useState<boolean>(false);
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [activeRole, setActiveRole] = useState<UserRole>('student');
   const [sessionExpired, setSessionExpired] = useState<boolean>(false);
+
+  const lastKnownUserRef = useRef<User | null>(null);
+  const isExplicitLoggingOutRef = useRef<boolean>(false);
 
   const dismissSessionExpired = useCallback(() => {
     setSessionExpired(false);
@@ -239,62 +247,116 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
+    let isMounted = true;
     setLoading(true);
     setStatus('loading');
 
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      try {
-        setUser(currentUser);
-        if (currentUser) {
-          try {
-            await syncProfile(currentUser);
-            setStatus('signedIn');
-          } catch (syncErr) {
-            console.error('[AuthContext] syncProfile failed:', syncErr);
-            // Construct safe fallback profile so user is never locked out
-            let fallbackProfile: StudentUserProfile | null = null;
-            try {
-              const cached = localStorage.getItem(`boardly_cached_profile_${currentUser.uid}`);
-              if (cached) fallbackProfile = JSON.parse(cached);
-            } catch {}
-
-            if (!fallbackProfile) {
-              const userEmail = currentUser.email || '';
-              fallbackProfile = {
-                uid: currentUser.uid,
-                name: currentUser.displayName || (userEmail ? userEmail.split('@')[0] : 'Student'),
-                email: userEmail,
-                plan: 'free',
-                role: 'student',
-                roles: ['student'],
-                createdAt: new Date().toISOString(),
-                onboardingCompleted: false,
-                onboardingComplete: false,
-                status: 'active',
-              };
-            }
-            setProfile(fallbackProfile);
-            setDocumentExists(true);
-            setStatus('signedIn');
-          }
-        } else {
-          setProfile(null);
-          setDocumentExists(false);
-          setStatus('signedOut');
-        }
-      } catch (authErr) {
-        console.error('[AuthContext] onAuthStateChanged top-level error:', authErr);
-        setUser(null);
-        setProfile(null);
-        setDocumentExists(false);
-        setStatus('signedOut');
-      } finally {
-        // CRITICAL: Always release loading state
-        setLoading(false);
-      }
+    // Ensure Firebase auth persistence is set to browserLocalPersistence
+    setPersistence(auth, browserLocalPersistence).catch((persistErr) => {
+      console.warn('[Boardly Auth] Persistence error:', persistErr);
     });
 
-    return () => unsubscribe();
+    const unsubscribe = onAuthStateChanged(
+      auth,
+      async (currentUser) => {
+        if (!isMounted) return;
+        try {
+          if (currentUser) {
+            lastKnownUserRef.current = currentUser;
+            setUser(currentUser);
+            try {
+              await syncProfile(currentUser);
+              if (isMounted) setStatus('signedIn');
+            } catch (syncErr) {
+              console.warn('[AuthContext] syncProfile background issue:', syncErr);
+              // Construct safe fallback profile so user is never locked out
+              let fallbackProfile: StudentUserProfile | null = null;
+              try {
+                const cached = localStorage.getItem(`boardly_cached_profile_${currentUser.uid}`);
+                if (cached) fallbackProfile = JSON.parse(cached);
+              } catch {}
+
+              if (!fallbackProfile) {
+                const userEmail = currentUser.email || '';
+                fallbackProfile = {
+                  uid: currentUser.uid,
+                  name: currentUser.displayName || (userEmail ? userEmail.split('@')[0] : 'Student'),
+                  email: userEmail,
+                  plan: 'free',
+                  role: 'student',
+                  roles: ['student'],
+                  createdAt: new Date().toISOString(),
+                  onboardingCompleted: false,
+                  onboardingComplete: false,
+                  status: 'active',
+                };
+              }
+              if (isMounted) {
+                setProfile(fallbackProfile);
+                setDocumentExists(true);
+                setStatus('signedIn');
+              }
+            }
+          } else {
+            // Guard 1: If user explicitly signed out, clear immediately
+            if (isExplicitLoggingOutRef.current) {
+              if (isMounted) {
+                setUser(null);
+                setProfile(null);
+                setDocumentExists(false);
+                setStatus('signedOut');
+                lastKnownUserRef.current = null;
+              }
+              return;
+            }
+
+            // Guard 2: If we had a known active user in this session, do NOT drop user
+            // on transient token refresh glitches, tab switches, or temporary network drops
+            if (lastKnownUserRef.current || auth.currentUser) {
+              console.warn('[AuthContext] Retaining active user during temporary auth/token refresh.');
+              try {
+                if (auth.currentUser) {
+                  await auth.currentUser.getIdToken(true);
+                  return;
+                }
+              } catch (refreshErr) {
+                console.warn('[AuthContext] Silent token refresh retry notice:', refreshErr);
+                // Keep the last known user on temporary network error
+                return;
+              }
+            }
+
+            if (isMounted) {
+              setUser(null);
+              setProfile(null);
+              setDocumentExists(false);
+              setStatus('signedOut');
+              lastKnownUserRef.current = null;
+            }
+          }
+        } catch (authErr) {
+          console.warn('[AuthContext] onAuthStateChanged non-fatal warning:', authErr);
+        } finally {
+          if (isMounted) {
+            setLoading(false);
+            setInitialAuthChecked(true);
+          }
+        }
+      },
+      (error) => {
+        console.warn('[AuthContext] onAuthStateChanged stream error:', error);
+        // Do NOT log out on stream or network error! Keep current user
+        if (isMounted) {
+          setLoading(false);
+          setInitialAuthChecked(true);
+        }
+      }
+    );
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, [syncProfile]);
 
   const signInEmail = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
@@ -389,6 +451,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logOut = async () => {
     try {
+      isExplicitLoggingOutRef.current = true;
       if (user?.uid) {
         localStorage.removeItem(`boardly_cached_profile_${user.uid}`);
         localStorage.removeItem('boardly_active_role');
@@ -398,8 +461,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProfile(null);
       setDocumentExists(false);
       setStatus('signedOut');
+      lastKnownUserRef.current = null;
     } catch (err) {
       console.error('[Boardly Auth] Log out error:', err);
+    } finally {
+      isExplicitLoggingOutRef.current = false;
     }
   };
 
@@ -436,9 +502,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateProfileData = async (fields: Partial<StudentUserProfile>): Promise<void> => {
     const currentUid = user?.uid || auth.currentUser?.uid;
     if (!currentUid) return;
-    await saveUserProfile(currentUid, fields);
+
+    const resolvedFields: Partial<StudentUserProfile> = { ...fields };
+    const rawUni = fields.targetUniversity || (fields as any).university || (fields as any).dream_university || (fields as any).target_university;
+    if (rawUni && !fields.targetUniversityId) {
+      const u = findUniversity(rawUni);
+      if (u) {
+        resolvedFields.targetUniversityId = u.id;
+        resolvedFields.targetUniversity = u.shortName;
+      } else {
+        resolvedFields.targetUniversity = rawUni;
+      }
+    } else if (fields.targetUniversityId && !resolvedFields.targetUniversity) {
+      const u = findUniversity(fields.targetUniversityId);
+      if (u) resolvedFields.targetUniversity = u.shortName;
+    }
+
+    if (resolvedFields.targetUniversity) {
+      resolvedFields.university = resolvedFields.targetUniversity;
+      resolvedFields.dream_university = resolvedFields.targetUniversity;
+      resolvedFields.target_university = resolvedFields.targetUniversity;
+    }
+
+    const rawExam = fields.testTrack || (fields as any).targetExam || (fields as any).exam;
+    if (rawExam) {
+      resolvedFields.targetExam = rawExam;
+      resolvedFields.testTrack = rawExam;
+    }
+
+    const rawDate = fields.targetExamDate || (fields as any).examDate;
+    if (rawDate) {
+      resolvedFields.examDate = rawDate;
+      resolvedFields.targetExamDate = rawDate;
+    }
+
+    await saveUserProfile(currentUid, resolvedFields);
     setProfile((prev) => {
-      const next = prev ? { ...prev, ...fields } : null;
+      const next = prev ? { ...prev, ...resolvedFields } : null;
       if (next) {
         try {
           localStorage.setItem(`boardly_cached_profile_${currentUid}`, JSON.stringify(next));
@@ -457,8 +557,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     try {
+      const normalizedOnboarding: Partial<StudentUserProfile> = { ...onboardingData };
+      const rawUni = onboardingData.targetUniversity || (onboardingData as any).university || (onboardingData as any).dream_university || (onboardingData as any).target_university;
+      if (rawUni && !onboardingData.targetUniversityId) {
+        const u = findUniversity(rawUni);
+        if (u) {
+          normalizedOnboarding.targetUniversityId = u.id;
+          normalizedOnboarding.targetUniversity = u.shortName;
+        } else {
+          normalizedOnboarding.targetUniversity = rawUni;
+        }
+      } else if (onboardingData.targetUniversityId && !normalizedOnboarding.targetUniversity) {
+        const u = findUniversity(onboardingData.targetUniversityId);
+        if (u) normalizedOnboarding.targetUniversity = u.shortName;
+      }
+      if (normalizedOnboarding.targetUniversity) {
+        normalizedOnboarding.university = normalizedOnboarding.targetUniversity;
+        normalizedOnboarding.dream_university = normalizedOnboarding.targetUniversity;
+        normalizedOnboarding.target_university = normalizedOnboarding.targetUniversity;
+      }
+      const rawExam = onboardingData.testTrack || (onboardingData as any).targetExam;
+      if (rawExam) {
+        normalizedOnboarding.targetExam = rawExam;
+        normalizedOnboarding.testTrack = rawExam;
+      }
+      const rawDate = onboardingData.targetExamDate || (onboardingData as any).examDate;
+      if (rawDate) {
+        normalizedOnboarding.examDate = rawDate;
+        normalizedOnboarding.targetExamDate = rawDate;
+      }
+
       const mergedFields: Partial<StudentUserProfile> = {
-        ...onboardingData,
+        ...normalizedOnboarding,
         onboardingCompleted: true,
         uid: currentUid,
       };
@@ -523,6 +653,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         documentExists,
         isAdmin,
         loading,
+        initialAuthChecked,
         status,
         activeRole,
         switchRole,

@@ -16,7 +16,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { StoredTestAttempt } from '../../lib/firebase';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
-import { UNIVERSITIES } from '../../data/universities';
+import { UNIVERSITIES, findUniversity, University } from '../../data/universities';
 import { getTimeUntilKarachiMidnight, getPlanConfig, PlanType } from '../../data/planLimits';
 import { SparkLineTrendChart } from '../ui/Charts';
 import { Badge } from '../ui/Badge';
@@ -27,6 +27,7 @@ interface StudentOverviewTabProps {
   onGoToEvents?: () => void;
   onWriteReview?: () => void;
   onReviewAttempt?: (attempt: StoredTestAttempt) => void;
+  onSelectUniversity?: () => void;
   attempts: StoredTestAttempt[];
 }
 
@@ -36,14 +37,43 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
   onGoToEvents,
   onWriteReview,
   onReviewAttempt,
+  onSelectUniversity,
   attempts,
 }) => {
   const { profile, isAdmin } = useAuth();
 
   const firstName = profile?.name?.trim().split(' ')[0] || 'Student';
-  const targetUniId = profile?.targetUniversityId || 'nust';
-  const targetUni = UNIVERSITIES.find((u) => u.id === targetUniId) || UNIVERSITIES[0];
-  const daysLeft = profile?.targetExamDaysLeft || 21;
+
+  // Read saved profile fields: targetExam, targetUniversity, examDate
+  const chosenUniKey =
+    profile?.targetUniversity ||
+    profile?.targetUniversityId ||
+    profile?.university ||
+    profile?.dream_university ||
+    profile?.target_university;
+
+  const targetUni: University | undefined = chosenUniKey ? findUniversity(chosenUniKey) : undefined;
+  const targetExamName = profile?.targetExam || profile?.testTrack || targetUni?.testName || 'Entrance Test';
+
+  const examDateStr = profile?.examDate || profile?.targetExamDate;
+  const daysLeft = useMemo(() => {
+    if (!examDateStr) {
+      return typeof profile?.targetExamDaysLeft === 'number' ? profile.targetExamDaysLeft : null;
+    }
+    try {
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const target = new Date(examDateStr);
+      if (isNaN(target.getTime())) {
+        return typeof profile?.targetExamDaysLeft === 'number' ? profile.targetExamDaysLeft : null;
+      }
+      const diffTime = target.getTime() - now.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays > 0 ? diffDays : 0;
+    } catch {
+      return typeof profile?.targetExamDaysLeft === 'number' ? profile.targetExamDaysLeft : null;
+    }
+  }, [examDateStr, profile?.targetExamDaysLeft]);
 
   // Plan allowances & daily usage calculated directly from active Firestore user doc
   const userPlan: PlanType = (profile?.plan as PlanType) || 'free';
@@ -173,9 +203,23 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
             {greeting}, {firstName}
           </h1>
-          <p className="mt-1 text-xs sm:text-sm text-slate-600">
-            {daysLeft} days until your {targetUni.shortName} entrance test. Stay consistent!
-          </p>
+          {targetUni ? (
+            <p className="mt-1 text-xs sm:text-sm text-slate-600">
+              {daysLeft !== null ? `${daysLeft} days until your ` : 'Preparing for your '}
+              <span className="font-extrabold text-slate-900">{targetUni.shortName}</span> entrance test. Stay consistent!
+            </p>
+          ) : (
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              <span className="text-xs sm:text-sm text-slate-600">No target university chosen.</span>
+              <button
+                type="button"
+                onClick={onSelectUniversity || onGoToPractice}
+                className="px-3 py-1 rounded-full bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-black transition-all border border-indigo-200/80 cursor-pointer shadow-xs active:scale-95"
+              >
+                Choose your target university
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-3 self-start sm:self-auto">
@@ -184,7 +228,25 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
             <Flame className={`w-4 h-4 ${streak > 0 ? 'text-amber-500 fill-amber-500' : 'text-slate-400'}`} />
             <span>{streak} Day Streak</span>
           </div>
-          <UniversityLogoBadge university={targetUni} size="sm" />
+          {targetUni ? (
+            <button
+              type="button"
+              onClick={onSelectUniversity}
+              className="cursor-pointer transition-transform hover:scale-105"
+              title={`Target: ${targetUni.fullName}. Click to change.`}
+            >
+              <UniversityLogoBadge university={targetUni} size="sm" loading="eager" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={onSelectUniversity || onGoToPractice}
+              className="p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs flex items-center gap-1 cursor-pointer transition-all border border-slate-200"
+              title="Choose your target university"
+            >
+              <GraduationCap className="w-4 h-4 text-indigo-600" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -204,7 +266,9 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
             </h2>
 
             <p className="text-xs sm:text-sm text-indigo-100/90 leading-relaxed max-w-lg">
-              30 rapid questions in 10 minutes to benchmark speed and formula accuracy for {targetUni.shortName}.
+              {targetUni
+                ? `30 rapid questions in 10 minutes to benchmark speed and formula accuracy for ${targetUni.shortName}.`
+                : '30 rapid questions in 10 minutes to benchmark your speed, formula recall, and accuracy.'}
             </p>
 
             <div className="flex flex-wrap items-center gap-4 pt-2">
@@ -216,20 +280,47 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
                 <span>Start Sprint Now</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
               </button>
-              <button
-                type="button"
-                onClick={onGoToPractice}
-                className="py-3 px-4 rounded-2xl bg-white/15 hover:bg-white/20 text-white font-bold text-xs transition-colors cursor-pointer"
-              >
-                All Subjects
-              </button>
+              {targetUni ? (
+                <button
+                  type="button"
+                  onClick={onGoToPractice}
+                  className="py-3 px-4 rounded-2xl bg-white/15 hover:bg-white/20 text-white font-bold text-xs transition-colors cursor-pointer"
+                >
+                  All Subjects
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onSelectUniversity || onGoToPractice}
+                  className="py-3 px-4 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-black text-xs transition-colors cursor-pointer flex items-center gap-1.5"
+                >
+                  <GraduationCap className="w-4 h-4" />
+                  <span>Choose your target university</span>
+                </button>
+              )}
             </div>
           </div>
 
           <div className="md:col-span-4 hidden md:flex flex-col items-center justify-center p-4 rounded-2xl bg-white/10 backdrop-blur-md border border-white/10 text-center">
-            <UniversityLogoBadge university={targetUni} size="lg" />
-            <span className="font-extrabold text-sm text-white mt-2">{targetUni.shortName}</span>
-            <span className="text-[11px] text-indigo-200">{targetUni.testName || 'Entrance Exam'}</span>
+            {targetUni ? (
+              <>
+                <UniversityLogoBadge university={targetUni} size="lg" loading="eager" />
+                <span className="font-extrabold text-sm text-white mt-2">{targetUni.shortName}</span>
+                <span className="text-[11px] text-indigo-200">{targetUni.testName || targetExamName}</span>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={onSelectUniversity || onGoToPractice}
+                className="flex flex-col items-center justify-center cursor-pointer group p-2 rounded-2xl hover:bg-white/5 transition-colors"
+              >
+                <div className="w-14 h-14 rounded-full bg-white/20 flex items-center justify-center text-white mb-2 group-hover:scale-105 transition-transform">
+                  <GraduationCap className="w-7 h-7" />
+                </div>
+                <span className="font-black text-xs text-white">Choose your target university</span>
+                <span className="text-[10px] text-indigo-200 mt-0.5">Click to select university</span>
+              </button>
+            )}
           </div>
         </div>
       </div>

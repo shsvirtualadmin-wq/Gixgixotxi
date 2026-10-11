@@ -458,48 +458,6 @@ interface InstitutionBadgeProps {
   selected?: boolean;
 }
 
-export const R2_FALLBACK_URLS: Record<string, string> = {
-  nust: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nust-logo-png_seeklogo-234117.png',
-  fast: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Fast-University-Logo.png',
-  giki: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/cropped-giki-logo-updated.png',
-  nums: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/nums-logo.png',
-  fbise: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000aa9c8208899ee0e0e9a1a513.png',
-  pmdc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/PMDC%20Logo-Green.png',
-  uet: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png',
-  ecat: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png',
-  etea: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/uet-02.png',
-  aps: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_000000000c0c82088a7c46700ba17bd5.png',
-  apsacs: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_000000000c0c82088a7c46700ba17bd5.png',
-  fgc: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000016248208870342fb6e403b94.png',
-  kips: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000ca3482089810078834ca4bd2.png',
-  qau: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_000000007cec8208ba576fe1db5a4e93.png',
-  fazaia: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/images%20(1).jpeg',
-  pieas: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000748c8211bb5e3cfb31849396.png',
-  usat: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000175082118793959c6c498063.png',
-  'hec-usat': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000175082118793959c6c498063.png',
-  'hec usat': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000175082118793959c6c498063.png',
-  lums: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f29c8211bbac0ae9800006de.png',
-  comsats: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000008a848208ad6e5ff38e3d1998.png',
-  cui: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000008a848208ad6e5ff38e3d1998.png',
-  nat: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000008a848208ad6e5ff38e3d1998.png',
-  hitec: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_0000000011a08208bd16b443318357b1.png',
-  nutech: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_0000000098c08211934c88fe8706c744.png',
-  muet: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
-  mehran: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
-  'mehran-uet': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
-  'mehran uet': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
-  ned: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000f8bc82118852ce302ba72b72.png',
-  aku: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000722c8207814e3b5131030edc.png',
-  agakhan: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000722c8207814e3b5131030edc.png',
-  'aga-khan': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000722c8207814e3b5131030edc.png',
-  'aga khan': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000722c8207814e3b5131030edc.png',
-  iba: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000736c82118bb66504edef22ad.png',
-  'iba-karachi': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000736c82118bb66504edef22ad.png',
-  'iba karachi': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_00000000736c82118bb66504edef22ad.png',
-  numl: 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/Logos/file_000000001f108208b064cbd5b8dc77f5.png',
-  'uet-taxila': 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo-2.png',
-};
-
 export const InstitutionBadge: React.FC<InstitutionBadgeProps> = ({
   id,
   size = 'md',
@@ -521,28 +479,25 @@ export const InstitutionBadge: React.FC<InstitutionBadgeProps> = ({
   };
 
   const canonicalId = inst.id ? inst.id.toLowerCase() : normKey;
-  const primaryLogo = inst.logoUrl || `/logos/academic/${canonicalId}.png`;
+  const primaryLogo = inst.logoUrl || `/logos/${canonicalId}.png`;
   const [currentSrc, setCurrentSrc] = React.useState<string | undefined>(primaryLogo);
   const [imgError, setImgError] = React.useState(false);
-  const [fallbackAttempt, setFallbackAttempt] = React.useState(0);
+  const [retryAttempt, setRetryAttempt] = React.useState(0);
 
   React.useEffect(() => {
-    const nextLogo = inst.logoUrl || `/logos/academic/${canonicalId}.png`;
+    const nextLogo = inst.logoUrl || `/logos/${canonicalId}.png`;
     setCurrentSrc(nextLogo);
     setImgError(false);
-    setFallbackAttempt(0);
+    setRetryAttempt(0);
   }, [id, canonicalId, inst.logoUrl]);
 
   const handleImageError = () => {
-    const remoteUrl = R2_FALLBACK_URLS[normKey] || R2_FALLBACK_URLS[canonicalId];
-    if (fallbackAttempt === 0) {
-      // Try alternate local path
-      setFallbackAttempt(1);
-      setCurrentSrc(`/logos/${canonicalId}.png`);
-    } else if (fallbackAttempt === 1 && remoteUrl) {
-      // Try remote R2 URL
-      setFallbackAttempt(2);
-      setCurrentSrc(remoteUrl);
+    if (retryAttempt === 0) {
+      setRetryAttempt(1);
+      setCurrentSrc(`/logos/academic/${canonicalId}.png`);
+    } else if (retryAttempt === 1) {
+      setRetryAttempt(2);
+      setCurrentSrc(`/logos/${canonicalId}.svg`);
     } else {
       setImgError(true);
     }
@@ -552,14 +507,17 @@ export const InstitutionBadge: React.FC<InstitutionBadgeProps> = ({
     sm: {
       badge: 'w-6 h-6 text-[10px]',
       container: 'px-2.5 py-1 text-xs',
+      dim: 24,
     },
     md: {
       badge: 'w-7.5 h-7.5 text-xs',
       container: 'px-3 py-1.5 text-xs sm:text-sm',
+      dim: 30,
     },
     lg: {
       badge: 'w-9 h-9 text-sm',
       container: 'px-4 py-2 text-sm sm:text-base',
+      dim: 36,
     },
   }[size];
 
@@ -577,16 +535,18 @@ export const InstitutionBadge: React.FC<InstitutionBadgeProps> = ({
       >
         {currentSrc && !imgError ? (
           <img
+            key={`${canonicalId}-${retryAttempt}`}
             src={currentSrc}
             alt={`${inst.name} Logo`}
+            width={sizeClasses.dim}
+            height={sizeClasses.dim}
+            loading="eager"
+            style={{ objectFit: 'contain' }}
             className="w-full h-full object-contain"
-            referrerPolicy="no-referrer"
             onError={handleImageError}
           />
         ) : (
-          <span className={`font-black tracking-tighter ${inst.textColor}`}>
-            {inst.badgeInitials}
-          </span>
+          <GraduationCap className="w-3.5 h-3.5 text-white/80 shrink-0" />
         )}
       </div>
       <span className={`font-bold tracking-tight text-white min-w-0 break-words leading-tight ${size === 'sm' ? 'text-xs' : ''}`}>
@@ -709,29 +669,25 @@ export const ExamTrackLogo: React.FC<ExamTrackLogoProps> = ({
     return inst.id ? inst.id.toLowerCase() : normKey;
   })();
 
-  const primaryLogo = inst.logoUrl || `/logos/academic/${canonicalId}.png`;
+  const primaryLogo = inst.logoUrl || `/logos/${canonicalId}.png`;
   const [currentSrc, setCurrentSrc] = React.useState<string | undefined>(primaryLogo);
   const [imgError, setImgError] = React.useState(false);
-  const [fallbackAttempt, setFallbackAttempt] = React.useState(0);
+  const [retryAttempt, setRetryAttempt] = React.useState(0);
 
   React.useEffect(() => {
-    const nextLogo = inst.logoUrl || `/logos/academic/${canonicalId}.png`;
+    const nextLogo = inst.logoUrl || `/logos/${canonicalId}.png`;
     setCurrentSrc(nextLogo);
     setImgError(false);
-    setFallbackAttempt(0);
+    setRetryAttempt(0);
   }, [id, canonicalId, inst.logoUrl]);
 
   const handleImageError = () => {
-    const remoteUrl = R2_FALLBACK_URLS[normKey] || R2_FALLBACK_URLS[canonicalId];
-    if (fallbackAttempt === 0) {
-      setFallbackAttempt(1);
-      setCurrentSrc(`/logos/${canonicalId}.png`);
-    } else if (fallbackAttempt === 1) {
-      setFallbackAttempt(2);
+    if (retryAttempt === 0) {
+      setRetryAttempt(1);
+      setCurrentSrc(`/logos/academic/${canonicalId}.png`);
+    } else if (retryAttempt === 1) {
+      setRetryAttempt(2);
       setCurrentSrc(`/logos/${canonicalId}.svg`);
-    } else if (fallbackAttempt === 2 && remoteUrl) {
-      setFallbackAttempt(3);
-      setCurrentSrc(remoteUrl);
     } else {
       setImgError(true);
     }
@@ -754,15 +710,17 @@ export const ExamTrackLogo: React.FC<ExamTrackLogoProps> = ({
     >
       {currentSrc && !imgError ? (
         <img
+          key={`${canonicalId}-${retryAttempt}`}
           src={currentSrc}
           alt={displayName}
+          loading="eager"
+          style={{ objectFit: 'contain' }}
           className="w-full h-full object-contain filter drop-shadow-xs transition-transform duration-200"
-          referrerPolicy="no-referrer"
           onError={handleImageError}
         />
       ) : (
-        <div className="w-full h-full flex items-center justify-center font-black text-slate-700 tracking-tighter text-sm sm:text-base border border-slate-300 rounded-2xl bg-transparent">
-          {inst.badgeInitials || id.slice(0, 4).toUpperCase()}
+        <div className="w-full h-full flex items-center justify-center rounded-2xl bg-slate-100 border border-slate-200">
+          <GraduationCap className="w-6 h-6 text-indigo-500" />
         </div>
       )}
     </div>

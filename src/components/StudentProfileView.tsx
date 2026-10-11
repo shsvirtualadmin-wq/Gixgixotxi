@@ -5,11 +5,10 @@ import {
   User,
   updateStudentPersonalInfo,
   uploadUserAvatar,
-  supabase,
-  clearAllClientAuthAndSessionData,
 } from '../lib/supabase';
 import { PRICING_PLANS, normalizePlan, PlanKey } from '../config/pricing';
 import { TargetUniversityModal } from './TargetUniversityModal';
+import { findUniversity } from '../data/universities';
 import {
   User as UserIcon,
   Mail,
@@ -57,16 +56,24 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   const effectiveUser = propUser || authContext.user;
   const effectiveProfile = propProfile || authContext.profile;
 
+  const chosenUniName =
+    effectiveProfile?.targetUniversity ||
+    effectiveProfile?.targetUniversityId ||
+    effectiveProfile?.university ||
+    effectiveProfile?.dream_university ||
+    effectiveProfile?.target_university ||
+    '';
+  const resolvedTargetUni = chosenUniName ? findUniversity(chosenUniName) : undefined;
+  const displayTargetUni = resolvedTargetUni ? resolvedTargetUni.shortName : (chosenUniName || '');
+
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editName, setEditName] = useState<string>(effectiveProfile?.name || effectiveUser?.displayName || '');
   const [editPhone, setEditPhone] = useState<string>(effectiveProfile?.phone || '');
-  const [editExam, setEditExam] = useState<string>(effectiveProfile?.testTrack || effectiveProfile?.exam || 'MDCAT');
+  const [editExam, setEditExam] = useState<string>(effectiveProfile?.targetExam || effectiveProfile?.testTrack || effectiveProfile?.exam || 'MDCAT');
   const [editGrade, setEditGrade] = useState<string>(effectiveProfile?.grade || 'Class 12');
-  const [editUniversity, setEditUniversity] = useState<string>(
-    effectiveProfile?.targetUniversityId || effectiveProfile?.dream_university || effectiveProfile?.target_university || 'NUST'
-  );
+  const [editUniversity, setEditUniversity] = useState<string>(displayTargetUni);
   const [editExamDate, setEditExamDate] = useState<string>(
-    effectiveProfile?.targetExamDate || 'August 2026'
+    effectiveProfile?.examDate || effectiveProfile?.targetExamDate || ''
   );
   const [editSubjects, setEditSubjects] = useState<string>(() => {
     if (Array.isArray(effectiveProfile?.subjects)) return effectiveProfile.subjects.join(', ');

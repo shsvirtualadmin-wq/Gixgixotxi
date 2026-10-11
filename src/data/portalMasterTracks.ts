@@ -794,7 +794,7 @@ export function resolveStudentTrackDetails(profile?: {
     const composite = `${profile.grade || ''} ${profile.stream || ''}`.trim();
     const derived = deriveTrackDetailsFromAssignableClass(composite);
     const customUni = (profile.target_university || profile.dream_university || '').trim();
-    if (customUni && !derived.targetUniversity.includes('FAST') && !derived.targetUniversity.includes('NUST')) {
+    if (customUni) {
       derived.targetUniversity = customUni;
     }
     return derived;

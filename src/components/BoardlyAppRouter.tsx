@@ -22,6 +22,7 @@ export const BoardlyAppRouter: React.FC = () => {
     documentExists,
     isAdmin,
     loading,
+    initialAuthChecked,
     status,
     activeRole,
     switchRole,
@@ -68,7 +69,8 @@ export const BoardlyAppRouter: React.FC = () => {
 
   // SESSIONS & AUTH GUARDS
   useEffect(() => {
-    if (loading) return;
+    // While auth is still loading or initial check has not finished, NEVER redirect to /login or auth screens
+    if (loading || !initialAuthChecked) return;
 
     // 1. Authenticated users guard
     if (user) {
@@ -78,6 +80,11 @@ export const BoardlyAppRouter: React.FC = () => {
         if (adminAuthRoutes.includes(currentPath)) {
           navigate('/admin', true);
         }
+        return;
+      }
+
+      // Wait for profile to load before making onboarding routing decision
+      if (!profile) {
         return;
       }
 
@@ -98,7 +105,7 @@ export const BoardlyAppRouter: React.FC = () => {
         })();
 
       // ONLY force a user to /onboarding if we have positively confirmed their profile has onboardingComplete: false
-      if (!hasCompletedOnboarding) {
+      if (!hasCompletedOnboarding && profile.onboardingCompleted === false) {
         if (currentPath !== '/onboarding' && currentPath !== '/signup') {
           navigate('/onboarding', true);
         }
@@ -136,10 +143,10 @@ export const BoardlyAppRouter: React.FC = () => {
         navigate('/login', true);
       }
     }
-  }, [loading, user, profile, documentExists, isAdmin, currentPath, getHighestRolePath, navigate]);
+  }, [loading, initialAuthChecked, user, profile, documentExists, isAdmin, currentPath, getHighestRolePath, navigate]);
 
   // Loading skeleton state
-  if (loading) {
+  if (loading || !initialAuthChecked) {
     return (
       <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4">
         <div className="w-14 h-14 rounded-3xl bg-indigo-100 dark:bg-violet-950/60 animate-pulse flex items-center justify-center">

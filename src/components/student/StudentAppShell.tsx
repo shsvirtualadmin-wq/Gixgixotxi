@@ -19,7 +19,6 @@ import {
   ExternalLink,
   Flame,
   Coins,
-  Bell,
   Shield,
   Star,
   Award,
@@ -38,6 +37,7 @@ import { StudentTestResult } from './StudentTestResult';
 import { StudentUsageModal } from './StudentUsageModal';
 import { MeritMeterModal } from './MeritMeterModal';
 import { StudentProfileView } from '../StudentProfileView';
+import { TargetUniversityModal } from '../TargetUniversityModal';
 import { PricingModal } from '../pricing/PricingModal';
 import { BottomSheet } from '../ui/Drawer';
 import { Modal } from '../ui/Modal';
@@ -78,6 +78,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
   const [showMeritMeterModal, setShowMeritMeterModal] = useState<boolean>(false);
   const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
   const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
+  const [showUniModal, setShowUniModal] = useState<boolean>(false);
   const [boardyPrompt, setBoardyPrompt] = useState<string>('');
 
   // Review Form State
@@ -109,6 +110,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     userAnswers: (number | null)[];
     timeSpentSeconds: number;
     negativeMarkingPercent: number;
+    universityId?: string;
   } | null>(null);
 
   // Test Attempts History directly mapped from active Firestore profile testHistory
@@ -170,7 +172,8 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
   }, [user]);
 
   const handleStartSprint = (subject: string) => {
-    const rawQuestions = getEntranceExamQuestions('fast', subject, 30);
+    const uniKey = profile?.targetUniversityId || profile?.targetUniversity || profile?.university || 'nust';
+    const rawQuestions = getEntranceExamQuestions(uniKey, subject, 30);
     const finalQuestions = rawQuestions.slice(0, 30);
 
     setActiveTest({
@@ -179,6 +182,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       durationMinutes: 10,
       negativeMarkingPercent: 0,
       subject,
+      universityId: uniKey,
     });
     setCompletedResult(null);
   };
@@ -401,12 +405,14 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         timeSpentSeconds={completedResult.timeSpentSeconds}
         negativeMarkingPercent={completedResult.negativeMarkingPercent}
         onRetake={() => {
-          const rawQuestions = getEntranceExamQuestions('fast', 'Advance Maths', 30);
+          const uniKey = completedResult.universityId || profile?.targetUniversityId || profile?.targetUniversity || profile?.university || 'nust';
+          const rawQuestions = getEntranceExamQuestions(uniKey, 'Advance Maths', 30);
           setActiveTest({
             title: completedResult.title,
             questions: rawQuestions,
             durationMinutes: 10,
             negativeMarkingPercent: completedResult.negativeMarkingPercent,
+            universityId: uniKey,
           });
           setCompletedResult(null);
         }}
@@ -459,6 +465,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           onGoToPractice={() => setActiveTab('practice')}
           onGoToEvents={() => setActiveTab('events')}
           onWriteReview={() => setShowReviewModal(true)}
+          onSelectUniversity={() => setShowUniModal(true)}
         />
       )}
 
@@ -625,6 +632,22 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         currentPlan={profile?.plan}
         initialTargetPlan={upgradeTargetPlan}
         onSubmitUpgradeRequest={handlePricingUpgradeRequest}
+      />
+
+      {/* Target University Selector Modal */}
+      <TargetUniversityModal
+        isOpen={showUniModal}
+        onClose={() => setShowUniModal(false)}
+        currentUser={user as any}
+        userProfile={profile as any}
+        onUniversityUpdated={(updated) => {
+          const chosen = updated.dream_university || updated.target_university || '';
+          updateProfileData({
+            targetUniversity: chosen,
+            targetUniversityId: chosen,
+            university: chosen,
+          });
+        }}
       />
     </AppShell>
   );

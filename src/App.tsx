@@ -1822,31 +1822,8 @@ export function App() {
     };
   }, []);
 
-  // Verify active student session exists in database on protected page load / screen transition (throttled to avoid DB churn)
+  // Protected page session retention (do not force sign-out on temporary network errors)
   const lastUserVerificationRef = useRef<number>(Date.now());
-  useEffect(() => {
-    if (!currentUser) return;
-    const isUserAdmin = Boolean(currentUser.email && isAdminEmail(currentUser.email));
-    if (isUserAdmin) return;
-
-    const protectedScreens = ['dashboard', 'subject', 'duration', 'test', 'result', 'admin', 'grades_flow', 'group'];
-    const now = Date.now();
-    // Only check at most once every 60 seconds unless on initial mount
-    if (protectedScreens.includes(screen) && (now - lastUserVerificationRef.current > 60000)) {
-      lastUserVerificationRef.current = now;
-      checkUserExistsInDatabase(currentUser.id, currentUser.email).then((exists) => {
-        if (!exists) {
-          console.warn('[Protected Page Verification] Student record wiped/deleted in database. Forcing sign-out...');
-          supabase.auth.signOut().then(() => {
-            clearAllClientAuthAndSessionData();
-            setCurrentUser(null);
-            setUserProfile(null);
-            setScreen('auth');
-          });
-        }
-      });
-    }
-  }, [screen, currentUser?.id, currentUser?.email]);
 
   // Listen for permanent user deletion events across tabs/windows
   useEffect(() => {
