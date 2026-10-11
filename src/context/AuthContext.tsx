@@ -78,7 +78,7 @@ export function friendlyAuthError(err: any): string {
   if (code === 'auth/operation-not-allowed') {
     return 'Sign-in method is not enabled. In Firebase Console, go to Authentication > Sign-in method and enable Email/Password or Google.';
   }
-  if (code === 'auth/invalid-api-key') {
+  if (code === 'auth/invalid-api-key' || code === 'auth/api-key-not-valid' || rawMsg.toLowerCase().includes('api-key-not-valid') || rawMsg.toLowerCase().includes('api key not valid')) {
     return 'Invalid Firebase API Key. Please verify your Firebase project credentials.';
   }
   if (code === 'auth/email-already-in-use') {

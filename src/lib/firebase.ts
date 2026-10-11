@@ -33,14 +33,22 @@ import firebaseAppletConfig from '../../firebase-applet-config.json';
 import { normalizePlanId, PlanType } from '../data/planLimits';
 
 // Firebase configuration from applet config and environment variables
+const rawApiKey = (import.meta.env.VITE_FIREBASE_API_KEY || firebaseAppletConfig?.apiKey || '').trim();
+const rawAuthDomain = (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseAppletConfig?.authDomain || '').trim();
+const rawProjectId = (import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseAppletConfig?.projectId || '').trim();
+const rawStorageBucket = (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseAppletConfig?.storageBucket || '').trim();
+const rawMessagingSenderId = (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseAppletConfig?.messagingSenderId || '').trim();
+const rawAppId = (import.meta.env.VITE_FIREBASE_APP_ID || firebaseAppletConfig?.appId || '').trim();
+const rawFirestoreDbId = (import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseAppletConfig?.firestoreDatabaseId || '').trim();
+
 export const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || firebaseAppletConfig.apiKey,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || firebaseAppletConfig.authDomain,
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || firebaseAppletConfig.projectId,
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || firebaseAppletConfig.storageBucket,
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || firebaseAppletConfig.messagingSenderId,
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || firebaseAppletConfig.appId,
-  firestoreDatabaseId: import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || firebaseAppletConfig.firestoreDatabaseId,
+  apiKey: rawApiKey || 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs',
+  authDomain: rawAuthDomain || 'auth.boardly.cfd',
+  projectId: rawProjectId || 'gen-lang-client-0365509316',
+  storageBucket: rawStorageBucket || 'gen-lang-client-0365509316.firebasestorage.app',
+  messagingSenderId: rawMessagingSenderId || '556734245207',
+  appId: rawAppId || '1:556734245207:web:4797f3915b424209b03612',
+  firestoreDatabaseId: rawFirestoreDbId || 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712',
 };
 
 // Log Firebase environment and connection parameters in development
