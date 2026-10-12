@@ -50,6 +50,7 @@ import { MeritMeter } from '../merit/MeritMeter';
 import { UniversityExplorer } from '../universities/UniversityExplorer';
 import { AdmissionPredictor } from '../predictor/AdmissionPredictor';
 import { ComingSoon } from '../common/ComingSoon';
+import { FormulaVaultScreen } from './FormulaVaultScreen';
 import { getEntranceExamQuestions } from '../../data/entranceExamQuestions';
 import { generateUniversityPaperExam, getUniversityPaperConfig } from '../../config/universityPapers';
 import { getSeenStemsForStudent, recordQuestionsAsSeen } from '../../lib/seenQuestionsTracker';
@@ -909,12 +910,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       )}
 
       {activeTab === 'formula-vault' && (
-        <ComingSoon
-          title="Formula Vault"
-          icon={<Sparkles className="w-8 h-8 text-amber-500" />}
-          text="Searchable high-yield formula sheets, constants, and derivations for quick reference before timed exams."
-          onBack={() => setActiveTab('overview')}
-        />
+        <FormulaVaultScreen onBack={() => setActiveTab('overview')} />
       )}
 
       {activeTab === 'paper-vault' && (

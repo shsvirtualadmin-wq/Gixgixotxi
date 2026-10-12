@@ -972,6 +972,11 @@ export async function recordAuditLog(log: Omit<StoredAuditLog, 'createdAt'>): Pr
  * Submit a new Boardly Crew Ambassador Application
  */
 export async function submitCrewApplication(appData: Omit<CrewApplication, 'id' | 'status' | 'createdAt'>): Promise<string> {
+  const normalizedEmail = (appData.email || '').trim().toLowerCase();
+  if (normalizedEmail === 'shsvirtualadmin@gmail.com' || normalizedEmail === 'support@boardly.cfd') {
+    throw new Error('Admin account is the system administrator and cannot apply as a Crew Ambassador.');
+  }
+
   const coll = collection(db, 'crewApplications');
   const now = new Date().toISOString();
   const docRef = await addDoc(coll, {

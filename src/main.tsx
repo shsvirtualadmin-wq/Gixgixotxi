@@ -5,6 +5,10 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import 'katex/dist/katex.min.css';
 import './lib/boardyMath.ts';
 import './index.css';
+import { initReferralTracker } from './lib/referralTracker';
+
+// Initialize referral capture from URL query params (?ref=... with 7-day retention)
+initReferralTracker();
 
 // Listen for Vite chunk preload failures and trigger reload
 window.addEventListener('vite:preloadError', (event: any) => {

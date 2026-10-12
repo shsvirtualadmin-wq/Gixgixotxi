@@ -695,6 +695,9 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
               Goal: 50 Signups
             </span>
           </div>
+        </div>
+      </div>
+
       {/* ACCOUNT & SECURITY SECTION */}
       <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4 text-left animate-fade-in-up">
         <div className="flex items-center gap-2.5">
