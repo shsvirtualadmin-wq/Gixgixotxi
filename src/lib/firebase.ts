@@ -1,4 +1,3 @@
-// PROTECTED: do not modify unless the task is explicitly about authentication. See PROJECT_RULES.md
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,

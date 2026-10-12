@@ -53,7 +53,6 @@ function scanDirectory(dir) {
         if (content.includes('gen-lang-client')) {
           errors.push(`Forbidden string "gen-lang-client" found in: ${fullPath}`);
         }
-        // Check for hardcoded firebaseapp.com inside src/
         if (fullPath.includes('/src/') && content.includes('firebaseapp.com') && !fullPath.includes('firebaseConfig.ts')) {
           errors.push(`Forbidden string "firebaseapp.com" found in: ${fullPath}`);
         }
