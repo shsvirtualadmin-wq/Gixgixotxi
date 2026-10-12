@@ -234,15 +234,15 @@ export const onRequestPost = async (context: PagesContext): Promise<Response> =>
     const nowIso = new Date().toISOString();
     let emailStatus = 'pending';
 
-    // 5. Save to Firestore "supportTickets" collection first (named database)
+    // 5. Save to Firestore "supportTickets" collection first
     const projectId =
       env.FIREBASE_PROJECT_ID ||
       env.VITE_FIREBASE_PROJECT_ID ||
-      'gen-lang-client-0365509316';
+      'boardly-8c0cd';
     const databaseId =
       env.FIREBASE_DATABASE_ID ||
       env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
-      'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
+      '(default)';
     const apiKey =
       env.FIREBASE_API_KEY ||
       env.VITE_FIREBASE_API_KEY ||

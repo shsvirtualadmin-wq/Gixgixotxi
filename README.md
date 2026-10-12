@@ -46,7 +46,7 @@ VITE_FIREBASE_FIRESTORE_DATABASE_ID
 In the **Firebase Console** under **Authentication → Settings → Authorized domains**, ensure the following domains are added:
 - `boardly.cfd`
 - `www.boardly.cfd`
-- `gen-lang-client-0365509316.firebaseapp.com`
+- `auth.boardly.cfd`
 - Your Cloudflare Pages deployment domain (`*.pages.dev`)
 - `localhost`
 - The AI Studio development & preview domains

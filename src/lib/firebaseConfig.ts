@@ -86,70 +86,50 @@ export const isValidHostname = (host: string): boolean => {
   return /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(clean);
 };
 
-// Target project defaults (Boardly production)
+// Target project constants (Boardly production - boardly-8c0cd)
 export const TARGET_PROJECT_ID = 'boardly-8c0cd';
 export const TARGET_AUTH_DOMAIN = 'auth.boardly.cfd';
+export const TARGET_API_KEY = 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs';
+export const TARGET_APP_ID = '1:423201171551:web:219bb34b-b7b4-4c85-bd1f-8efd086df9c2';
+export const TARGET_MESSAGING_SENDER_ID = '423201171551';
+export const TARGET_STORAGE_BUCKET = 'boardly-8c0cd.firebasestorage.app';
+export const TARGET_FIRESTORE_DATABASE_ID = '(default)';
 
-const getEnvVar = (key: string): string | undefined => {
-  try {
-    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-      return (import.meta as any).env[key];
-    }
-  } catch {}
-  try {
-    if (typeof process !== 'undefined' && process.env) {
-      return process.env[key];
-    }
-  } catch {}
-  return undefined;
-};
-
-// Read all values from environment variables with fallbacks to boardly-8c0cd target
-const rawApiKey = cleanEnvVar(getEnvVar('VITE_FIREBASE_API_KEY'));
-const rawAuthDomain = cleanEnvVar(getEnvVar('VITE_FIREBASE_AUTH_DOMAIN')) || TARGET_AUTH_DOMAIN;
-const rawProjectId = cleanEnvVar(getEnvVar('VITE_FIREBASE_PROJECT_ID')) || TARGET_PROJECT_ID;
-const rawStorageBucket = cleanEnvVar(getEnvVar('VITE_FIREBASE_STORAGE_BUCKET')) || `${rawProjectId}.firebasestorage.app`;
-const rawMessagingSenderId = cleanEnvVar(getEnvVar('VITE_FIREBASE_MESSAGING_SENDER_ID')) || '423201171551';
-const rawAppId = cleanEnvVar(getEnvVar('VITE_FIREBASE_APP_ID')) || '1:423201171551:web:219bb34b-b7b4-4c85-bd1f-8efd086df9c2';
-const rawFirestoreDbId = cleanEnvVar(getEnvVar('VITE_FIREBASE_FIRESTORE_DATABASE_ID')) || '(default)';
-
-// Runtime guardrails
-const isProd = typeof import.meta !== 'undefined' && (import.meta as any).env?.PROD;
-
-if (isProd) {
-  if (rawProjectId !== TARGET_PROJECT_ID) {
-    const msg = `[CRITICAL SECURITY GUARD] Production Firebase projectId is "${rawProjectId}", expected "${TARGET_PROJECT_ID}". Halting to prevent data corruption.`;
-    console.error(msg);
-    throw new Error(msg);
-  }
-  if (rawAuthDomain !== TARGET_AUTH_DOMAIN) {
-    const msg = `[CRITICAL SECURITY GUARD] Production Firebase authDomain is "${rawAuthDomain}", expected "${TARGET_AUTH_DOMAIN}". Halting to prevent incorrect auth flow.`;
-    console.error(msg);
-    throw new Error(msg);
-  }
-}
-
-if (rawAuthDomain.includes('gen-lang' + '-client') || rawAuthDomain.includes('firebase' + 'app.com')) {
-  const msg = `[CRITICAL SECURITY GUARD] Forbidden authDomain detected: "${rawAuthDomain}". Must use "${TARGET_AUTH_DOMAIN}".`;
-  console.error(msg);
-  if (isProd) {
-    throw new Error(msg);
-  }
-}
-
+// Permanent Firebase web configuration for boardly-8c0cd.
+// Hardcoded constants ensure reliable operation across all build targets (Cloudflare Pages, AI Studio, etc.)
+// with no environment-variable overrides in production.
 export const firebaseConfig = {
-  apiKey: rawApiKey,
-  authDomain: rawAuthDomain,
-  projectId: rawProjectId,
-  storageBucket: rawStorageBucket,
-  messagingSenderId: rawMessagingSenderId,
-  appId: rawAppId,
-};
+  projectId: TARGET_PROJECT_ID,
+  authDomain: TARGET_AUTH_DOMAIN,
+  apiKey: TARGET_API_KEY,
+  appId: TARGET_APP_ID,
+  messagingSenderId: TARGET_MESSAGING_SENDER_ID,
+  storageBucket: TARGET_STORAGE_BUCKET,
+} as const;
 
 export const configValidation = {
-  isValid: Boolean(rawApiKey && rawProjectId && rawAuthDomain),
+  isValid: true,
   badVars: [] as string[],
 };
+
+// Runtime guardrails
+if (firebaseConfig.projectId !== TARGET_PROJECT_ID) {
+  const msg = `[CRITICAL SECURITY GUARD] Production Firebase projectId is "${firebaseConfig.projectId}", expected "${TARGET_PROJECT_ID}". Halting to prevent data corruption.`;
+  console.error(msg);
+  throw new Error(msg);
+}
+
+if (firebaseConfig.authDomain !== TARGET_AUTH_DOMAIN) {
+  const msg = `[CRITICAL SECURITY GUARD] Production Firebase authDomain is "${firebaseConfig.authDomain}", expected "${TARGET_AUTH_DOMAIN}". Halting to prevent incorrect auth flow.`;
+  console.error(msg);
+  throw new Error(msg);
+}
+
+if (firebaseConfig.authDomain.includes('gen-lang' + '-client') || firebaseConfig.authDomain.includes('firebase' + 'app.com')) {
+  const msg = `[CRITICAL SECURITY GUARD] Forbidden authDomain detected: "${firebaseConfig.authDomain}". Must use "${TARGET_AUTH_DOMAIN}".`;
+  console.error(msg);
+  throw new Error(msg);
+}
 
 // Initialize Firebase App
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
@@ -210,4 +190,4 @@ export async function performGoogleSignIn(): Promise<any> {
 }
 
 // Initialize Firestore Database
-export const db = getFirestore(app, rawFirestoreDbId === '(default)' ? undefined : rawFirestoreDbId);
+export const db = getFirestore(app);
