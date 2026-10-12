@@ -944,10 +944,12 @@ export async function fetchUserCrewApplication(userId: string): Promise<CrewAppl
   if (!userId) return null;
   try {
     const coll = collection(db, 'crewApplications');
-    const q = query(coll, where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(1));
+    const q = query(coll, where('userId', '==', userId), limit(5));
     const snap = await getDocs(q);
     if (!snap.empty) {
-      return { id: snap.docs[0].id, ...(snap.docs[0].data() as any) };
+      const apps = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      apps.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+      return apps[0];
     }
     return null;
   } catch (err) {
@@ -1191,9 +1193,11 @@ export async function fetchUserNotifications(userId: string): Promise<UserNotifi
   if (!userId) return [];
   try {
     const coll = collection(db, 'notifications');
-    const q = query(coll, where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(30));
+    const q = query(coll, where('userId', '==', userId), limit(30));
     const snap = await getDocs(q);
-    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    const list = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    list.sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    return list;
   } catch (err) {
     console.warn('[fetchUserNotifications] notice:', err);
     return [];

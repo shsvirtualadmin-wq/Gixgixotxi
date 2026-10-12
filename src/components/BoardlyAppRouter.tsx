@@ -15,10 +15,12 @@ import { OrganizerApply } from './events/OrganizerApply';
 import { SeoHead } from './common/SeoHead';
 import { PublicEventPage } from './public/PublicEventPage';
 import { PublicProgramPage } from './public/PublicProgramPage';
+import { CrewDashboardPage } from './crew/CrewDashboardPage';
 import { UniversityExplorer } from './universities/UniversityExplorer';
 import { MeritMeter } from './merit/MeritMeter';
 import { Navbar } from './marketing/Navbar';
 import { Footer } from './marketing/Footer';
+import { ErrorBoundary } from './ErrorBoundary';
 import { AlertCircle, X } from 'lucide-react';
 
 export const BoardlyAppRouter: React.FC = () => {
@@ -425,12 +427,30 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
-        // Public Programs Pages (/programs/crew, /programs/captains)
-        if (currentPath === '/programs/crew') {
+        // Public Programs Pages (/programs/crew, /crew, /programs/captains)
+        if (currentPath === '/programs/crew' || currentPath === '/crew') {
           return (
             <div className="min-h-screen flex flex-col justify-between">
               <Navbar currentPage="home" onNavigate={(p) => navigate(`/${p}`)} onGetStarted={() => navigate(user ? '/app' : '/signup')} />
-              <PublicProgramPage type="crew" onNavigateHome={() => navigate('/')} onApplyOrStart={() => navigate(user ? '/app' : '/signup')} />
+              <ErrorBoundary onReset={() => navigate('/')}>
+                <PublicProgramPage type="crew" onNavigateHome={() => navigate('/')} onApplyOrStart={() => navigate(user ? '/app' : '/signup')} />
+              </ErrorBoundary>
+              <Footer onNavigate={(p) => navigate(`/${p}`)} />
+            </div>
+          );
+        }
+
+        // Dedicated Crew Ambassador Dashboard (/crew-dashboard)
+        if (currentPath === '/crew-dashboard') {
+          return (
+            <div className="min-h-screen flex flex-col justify-between">
+              <Navbar currentPage="home" onNavigate={(p) => navigate(`/${p}`)} onGetStarted={() => navigate(user ? '/app' : '/signup')} />
+              <ErrorBoundary onReset={() => navigate('/app')}>
+                <CrewDashboardPage
+                  onBackToApp={() => navigate('/app')}
+                  onApply={() => navigate('/programs/crew')}
+                />
+              </ErrorBoundary>
               <Footer onNavigate={(p) => navigate(`/${p}`)} />
             </div>
           );

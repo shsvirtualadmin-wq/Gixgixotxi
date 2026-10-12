@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Sparkles,
   Users,
@@ -16,6 +16,8 @@ import {
 import { SeoHead } from '../common/SeoHead';
 import { useAuth } from '../../context/AuthContext';
 import { CrewApplicationModal } from '../crew/CrewApplicationModal';
+import { fetchUserCrewApplication } from '../../lib/firebase';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 interface ProgramPageProps {
   type: 'crew' | 'captains';
@@ -42,13 +44,23 @@ export const PublicProgramPage: React.FC<ProgramPageProps> = ({
   const [userCrewApp, setUserCrewApp] = useState<any>(null);
 
   useEffect(() => {
+    let isMounted = true;
     if (isCrew && user?.uid) {
-      import('../../lib/firebase').then(({ fetchUserCrewApplication }) => {
+      try {
         fetchUserCrewApplication(user.uid)
-          .then((app) => setUserCrewApp(app))
-          .catch(console.warn);
-      });
+          .then((app) => {
+            if (isMounted) setUserCrewApp(app);
+          })
+          .catch((err) => {
+            console.warn('[PublicProgramPage] fetchUserCrewApplication caught notice:', err);
+          });
+      } catch (err) {
+        console.warn('[PublicProgramPage] fetchUserCrewApplication exception:', err);
+      }
     }
+    return () => {
+      isMounted = false;
+    };
   }, [isCrew, user?.uid]);
 
   const handleApplyClick = () => {
@@ -243,10 +255,14 @@ export const PublicProgramPage: React.FC<ProgramPageProps> = ({
       </div>
 
       {/* Embedded Application Modal */}
-      <CrewApplicationModal
-        isOpen={isApplyModalOpen}
-        onClose={() => setIsApplyModalOpen(false)}
-      />
+      <ErrorBoundary fallback={null}>
+        <CrewApplicationModal
+          isOpen={isApplyModalOpen}
+          onClose={() => setIsApplyModalOpen(false)}
+        />
+      </ErrorBoundary>
     </div>
   );
 };
+
+export default PublicProgramPage;

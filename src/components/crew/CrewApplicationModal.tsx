@@ -389,3 +389,5 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
     </div>
   );
 };
+
+export default CrewApplicationModal;

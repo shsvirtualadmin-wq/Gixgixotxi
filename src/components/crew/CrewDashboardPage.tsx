@@ -655,3 +655,5 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
     </div>
   );
 };
+
+export default CrewDashboardPage;
