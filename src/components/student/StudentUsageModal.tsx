@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { X, Clock, Sparkles, Check, ArrowRight, ShieldCheck, Zap } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuthRole } from '../../hooks/useAuthRole';
 import { useUsage } from '../../context/UsageContext';
 import { PLAN_LIMITS, getTimeUntilKarachiMidnight, PlanType } from '../../data/planLimits';
 
@@ -19,9 +19,7 @@ export const StudentUsageModal: React.FC<StudentUsageModalProps> = ({
   onAskBoardy,
   onViewPlans,
 }) => {
-  const auth = useAuth();
-  const profile = auth?.profile;
-  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
+  const { profile, isAdmin } = useAuthRole();
   const {
     loading: usageLoading,
     isUnlimited,

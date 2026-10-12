@@ -40,6 +40,7 @@ import { MeritMeterModal } from './MeritMeterModal';
 import { StudentProfileView } from '../StudentProfileView';
 import { TargetUniversityModal } from '../TargetUniversityModal';
 import { PricingModal } from '../pricing/PricingModal';
+import { ErrorBoundary } from '../ErrorBoundary';
 import { BottomSheet } from '../ui/Drawer';
 import { Modal } from '../ui/Modal';
 import { AppShell } from '../ui/AppShell';
@@ -880,107 +881,135 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           )}
 
       {activeTab === 'profile' && (
-        <div className="max-w-2xl mx-auto animate-in fade-in pb-12">
-          <StudentProfileView
-            user={user}
-            profile={profile}
-            isAdmin={Boolean(isAdmin)}
-            onRefreshProfile={() => {
-              // Handled via AuthContext
-            }}
-            onNavigateHome={() => setActiveTab('overview')}
-            onOpenUpgrade={(target) => {
-              if (target) setUpgradeTargetPlan(target);
-              setShowUpgradeModal(true);
-            }}
-            onStartPractice={() => setActiveTab('practice')}
-            onSignOut={logOut}
-          />
-        </div>
+        <ErrorBoundary onReset={() => setActiveTab('overview')}>
+          <div className="max-w-2xl mx-auto animate-in fade-in pb-12">
+            <StudentProfileView
+              user={user}
+              profile={profile}
+              isAdmin={Boolean(isAdmin)}
+              onRefreshProfile={() => {
+                // Handled via AuthContext
+              }}
+              onNavigateHome={() => setActiveTab('overview')}
+              onOpenUpgrade={(target) => {
+                if (target) setUpgradeTargetPlan(target);
+                setShowUpgradeModal(true);
+              }}
+              onStartPractice={() => setActiveTab('practice')}
+              onSignOut={logOut}
+            />
+          </div>
+        </ErrorBoundary>
       )}
 
       {/* Requirement 3: More sheet destination tabs & unbuilt tiles */}
       {activeTab === 'limits' && (
-        <DailyLimitsView
-          onOpenUpgradeModal={() => setShowUpgradeModal(true)}
-          onNavigatePractice={() => setActiveTab('practice')}
-          onNavigateBoardy={() => setActiveTab('boardy')}
-        />
+        <ErrorBoundary onReset={() => setActiveTab('overview')}>
+          <DailyLimitsView
+            onOpenUpgradeModal={() => setShowUpgradeModal(true)}
+            onNavigatePractice={() => setActiveTab('practice')}
+            onNavigateBoardy={() => setActiveTab('boardy')}
+          />
+        </ErrorBoundary>
       )}
 
       {activeTab === 'universities' && (
-        <UniversityExplorer
-          onNavigateMeritMeter={(uniId) => {
-            setActiveTab('merit-meter');
-            if (typeof window !== 'undefined') {
-              window.history.pushState({}, '', `/app/merit-meter?uni=${encodeURIComponent(uniId)}`);
-            }
-          }}
-          onNavigatePredictor={() => setActiveTab('predictor')}
-        />
+        <ErrorBoundary onReset={() => setActiveTab('overview')}>
+          <UniversityExplorer
+            onNavigateMeritMeter={(uniId) => {
+              setActiveTab('merit-meter');
+              if (typeof window !== 'undefined') {
+                window.history.pushState({}, '', `/app/merit-meter?uni=${encodeURIComponent(uniId)}`);
+              }
+            }}
+            onNavigatePredictor={() => setActiveTab('predictor')}
+          />
+        </ErrorBoundary>
       )}
 
       {activeTab === 'merit-meter' && (
-        <MeritMeter
-          onStartPractice={() => setActiveTab('practice')}
-          onExploreMore={() => setActiveTab('universities')}
-        />
+        <ErrorBoundary onReset={() => setActiveTab('overview')}>
+          <MeritMeter
+            onStartPractice={() => setActiveTab('practice')}
+            onExploreMore={() => setActiveTab('universities')}
+          />
+        </ErrorBoundary>
       )}
 
       {activeTab === 'predictor' && (
-        <AdmissionPredictor
-          onNavigateMeritMeter={() => setActiveTab('merit-meter')}
-          onNavigateUniversities={() => setActiveTab('universities')}
-        />
+        <ErrorBoundary onReset={() => setActiveTab('overview')}>
+          <AdmissionPredictor
+            onNavigateMeritMeter={() => setActiveTab('merit-meter')}
+            onNavigateUniversities={() => setActiveTab('universities')}
+          />
+        </ErrorBoundary>
       )}
 
       {activeTab === 'arena' && (
-        <ComingSoon
-          title="Boardly Arena"
-          icon={<Swords className="w-8 h-8 text-indigo-600" />}
-          text="Real-time head-to-head multiplayer MCQ showdowns with synchronized timing and negative marking calibration."
-          onBack={() => setActiveTab('overview')}
-        />
+        <ErrorBoundary onReset={() => setActiveTab('overview')}>
+          <ComingSoon
+            title="Boardly Arena"
+            icon={<Swords className="w-8 h-8 text-indigo-600" />}
+            text="Real-time head-to-head multiplayer MCQ showdowns with synchronized timing and negative marking calibration."
+            onBack={() => setActiveTab('overview')}
+          />
+        </ErrorBoundary>
       )}
 
       {activeTab === 'chapter-map' && (
-        <ComingSoon
-          title="Chapter Map"
-          icon={<Layers className="w-8 h-8 text-indigo-600" />}
-          text="Interactive conceptual dependency graph mapping prerequisite concepts across Physics, Math, Chemistry, and Biology."
-          onBack={() => setActiveTab('overview')}
-        />
+        <ErrorBoundary onReset={() => setActiveTab('overview')}>
+          <ComingSoon
+            title="Chapter Map"
+            icon={<Layers className="w-8 h-8 text-indigo-600" />}
+            text="Interactive conceptual dependency graph mapping prerequisite concepts across Physics, Math, Chemistry, and Biology."
+            onBack={() => setActiveTab('overview')}
+          />
+        </ErrorBoundary>
       )}
 
       {activeTab === 'formula-vault' && (
-        <FormulaVaultScreen onBack={() => setActiveTab('overview')} />
+        <ErrorBoundary onReset={() => setActiveTab('overview')}>
+          <FormulaVaultScreen
+            onBack={() => setActiveTab('overview')}
+            onOpenUpgrade={(target) => {
+              if (target) setUpgradeTargetPlan(target);
+              setShowUpgradeModal(true);
+            }}
+          />
+        </ErrorBoundary>
       )}
 
       {activeTab === 'paper-vault' && (
-        <ComingSoon
-          title="Paper Vault (Beta)"
-          icon={<FileText className="w-8 h-8 text-blue-600" />}
-          text="Official board past papers from FBISE, BISE Lahore, and university entrance exams with full solution keys."
-          onBack={() => setActiveTab('overview')}
-        />
+        <ErrorBoundary onReset={() => setActiveTab('overview')}>
+          <ComingSoon
+            title="Paper Vault (Beta)"
+            icon={<FileText className="w-8 h-8 text-blue-600" />}
+            text="Official board past papers from FBISE, BISE Lahore, and university entrance exams with full solution keys."
+            onBack={() => setActiveTab('overview')}
+          />
+        </ErrorBoundary>
       )}
 
       {activeTab === 'growth' && (
-        <ComingSoon
-          title="Growth & Analytics"
-          icon={<BarChart2 className="w-8 h-8 text-emerald-600" />}
-          text="Deep diagnostic breakdown of accuracy trends, subject percentiles, and speed bottlenecks across test attempts."
-          onBack={() => setActiveTab('overview')}
-        />
+        <ErrorBoundary onReset={() => setActiveTab('overview')}>
+          <ComingSoon
+            title="Growth & Analytics"
+            icon={<BarChart2 className="w-8 h-8 text-emerald-600" />}
+            text="Deep diagnostic breakdown of accuracy trends, subject percentiles, and speed bottlenecks across test attempts."
+            onBack={() => setActiveTab('overview')}
+          />
+        </ErrorBoundary>
       )}
 
       {activeTab === 'smart-planner' && (
-        <ComingSoon
-          title="Smart Planner (Beta)"
-          icon={<Calendar className="w-8 h-8 text-purple-600" />}
-          text="Algorithmic daily revision schedule calibrated to your target university test date and weakest topic areas."
-          onBack={() => setActiveTab('overview')}
-        />
+        <ErrorBoundary onReset={() => setActiveTab('overview')}>
+          <ComingSoon
+            title="Smart Planner (Beta)"
+            icon={<Calendar className="w-8 h-8 text-purple-600" />}
+            text="Algorithmic daily revision schedule calibrated to your target university test date and weakest topic areas."
+            onBack={() => setActiveTab('overview')}
+          />
+        </ErrorBoundary>
       )}
             </motion.div>
           </AnimatePresence>

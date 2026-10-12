@@ -25,6 +25,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useAuthRole } from '../../hooks/useAuthRole';
 import { useUsage } from '../../context/UsageContext';
 import { BoardyMascot } from '../BoardyMascot';
 import { StudyBuddyFormattedMessage } from '../StudyBuddyFormattedMessage';
@@ -86,10 +87,8 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
   isFullScreen = true,
 }) => {
   const auth = useAuth();
-  const user = auth?.user;
-  const profile = auth?.profile;
+  const { user, profile, isAdmin } = useAuthRole();
   const updateProfileData = auth?.updateProfileData;
-  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
   const {
     loading: usageLoading,
     isUnlimited,

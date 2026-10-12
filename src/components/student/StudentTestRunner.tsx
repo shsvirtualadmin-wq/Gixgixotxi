@@ -16,6 +16,7 @@ import {
 import { Question } from '../../types';
 import { MathText } from '../MathText';
 import { useAuth } from '../../context/AuthContext';
+import { useAuthRole } from '../../hooks/useAuthRole';
 import { generateQuizPdfChunked } from '../../lib/pdfGenerator';
 import { isUserProOrPaid } from '../../lib/supabase';
 
@@ -67,10 +68,7 @@ export const StudentTestRunner: React.FC<StudentTestRunnerProps> = ({
   onExit,
   onUpgrade,
 }) => {
-  const auth = useAuth();
-  const profile = auth?.profile;
-  const user = auth?.user;
-  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
+  const { user, profile, isAdmin } = useAuthRole();
   const isPremiumUser = isAdmin || profile?.plan === 'premium';
 
   const [currentIndex, setCurrentIndex] = useState<number>(() => {

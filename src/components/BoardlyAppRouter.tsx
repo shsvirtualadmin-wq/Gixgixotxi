@@ -151,8 +151,62 @@ export const BoardlyAppRouter: React.FC = () => {
     }
   }, [loading, authLoading, profileLoading, initialAuthChecked, user, isRegistered, currentPath, getHighestRolePath, navigate]);
 
+  const [loadingTimedOut, setLoadingTimedOut] = useState<boolean>(false);
+
+  useEffect(() => {
+    const isCurrentlyLoading = loading || authLoading || profileLoading || !initialAuthChecked;
+    if (!isCurrentlyLoading) {
+      setLoadingTimedOut(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setLoadingTimedOut(true);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [loading, authLoading, profileLoading, initialAuthChecked]);
+
   // Loading skeleton state: Show loading until BOTH authLoading and profileLoading are resolved
   if (loading || authLoading || profileLoading || !initialAuthChecked) {
+    if (loadingTimedOut) {
+      return (
+        <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4 text-center">
+          <div className="w-14 h-14 rounded-3xl bg-amber-50 dark:bg-amber-950/60 flex items-center justify-center text-amber-600 border border-amber-200 dark:border-amber-800">
+            <AlertCircle className="w-7 h-7" />
+          </div>
+          <div className="space-y-1 max-w-sm">
+            <h3 className="text-base font-black text-slate-900 dark:text-white">
+              Connection took longer than expected
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              We had trouble loading your account profile. You can retry or head directly to the student dashboard.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                setLoadingTimedOut(false);
+                if (typeof window !== 'undefined') window.location.reload();
+              }}
+              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 cursor-pointer"
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setLoadingTimedOut(false);
+                navigate('/app', true);
+              }}
+              className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
+            >
+              Continue to App
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4">
         <div className="w-14 h-14 rounded-3xl bg-indigo-100 dark:bg-violet-950/60 animate-pulse flex items-center justify-center">
@@ -374,19 +428,8 @@ export const BoardlyAppRouter: React.FC = () => {
             return null;
           }
           if (!isAdmin) {
-            return (
-              <div className="min-h-screen bg-[#F8F9FB] flex flex-col items-center justify-center p-6 text-center space-y-4">
-                <div className="p-5 rounded-3xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold max-w-sm">
-                  Access Restricted: Administrator credentials required.
-                </div>
-                <button
-                  onClick={() => navigate('/app', true)}
-                  className="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 cursor-pointer"
-                >
-                  Return to Student Dashboard
-                </button>
-              </div>
-            );
+            navigate('/app', true);
+            return null;
           }
           return (
             <AdminDashboardScreen

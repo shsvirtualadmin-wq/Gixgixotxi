@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useAuthRole } from '../../hooks/useAuthRole';
 import { UserRole } from '../../lib/firebase';
 import { getUpgradePrompt, getPlanConfig } from '../../data/planLimits';
 import {
@@ -36,13 +37,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   onSearchChange,
 }) => {
   const auth = useAuth();
-  const user = auth?.user;
-  const profile = auth?.profile;
+  const { user, profile, isAdmin } = useAuthRole();
   const activeRole = auth?.activeRole || 'student';
   const switchRole = auth?.switchRole || (() => {});
   const availableRoles = auth?.availableRoles || ['student'];
   const logOut = auth?.logOut || (async () => {});
-  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 

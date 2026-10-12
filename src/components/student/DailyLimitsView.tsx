@@ -11,7 +11,7 @@ import {
   Award,
   Crown,
 } from 'lucide-react';
-import { useAuth } from '../../context/AuthContext';
+import { useAuthRole } from '../../hooks/useAuthRole';
 import { useUsage } from '../../context/UsageContext';
 import { getPlanConfig, getTimeUntilKarachiMidnight, PLAN_LIMITS } from '../../data/planLimits';
 import { SeoHead } from '../common/SeoHead';
@@ -27,10 +27,7 @@ export const DailyLimitsView: React.FC<DailyLimitsViewProps> = ({
   onNavigatePractice,
   onNavigateBoardy,
 }) => {
-  const auth = useAuth();
-  const user = auth?.user;
-  const profile = auth?.profile;
-  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
+  const { user, profile, isAdmin } = useAuthRole();
   const {
     loading: usageLoading,
     isUnlimited,

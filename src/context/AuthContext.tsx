@@ -177,11 +177,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     user?.providerData?.some((p) => p.providerId === 'google.com')
   );
 
-  // Hardcode shsvirtualadmin@gmail.com as the ONLY admin Gmail.
-  // The admin check MUST NEVER depend on a field that other flows can change (not users.role, not plan, not ambassador status).
+  // Hardcode shsvirtualadmin@gmail.com as the ONLY admin email (strictly case-insensitive).
+  // It must be hidden and false for every other user, including support@boardly.cfd and ordinary users.
   const isAdmin = Boolean(
-    (normalizedEmail === 'shsvirtualadmin@gmail.com' && isEmailVerified) ||
-    isAdminFromCollection
+    normalizedEmail === 'shsvirtualadmin@gmail.com'
   );
 
   // Single source of truth for "is registered": true if admin or onboarding is complete
@@ -448,8 +447,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
+    // 8-Second Safety Timeout Fallback:
+    // Ensures loading is NEVER stuck indefinitely on network drops or slow Firestore reads.
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted) {
+        setAuthLoading(false);
+        setProfileLoading(false);
+        setInitialAuthChecked(true);
+      }
+    }, 8000);
+
     return () => {
       isMounted = false;
+      clearTimeout(safetyTimeout);
       unsubscribe();
     };
   }, [syncProfile]);

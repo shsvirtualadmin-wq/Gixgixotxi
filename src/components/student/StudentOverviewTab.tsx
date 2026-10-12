@@ -19,6 +19,7 @@ import {
   Award,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useAuthRole } from '../../hooks/useAuthRole';
 import { useUsage } from '../../context/UsageContext';
 import { StoredTestAttempt, fetchCaptainRecord, fetchReferralCount, CaptainRecord, onSnapshot, doc, db } from '../../lib/firebase';
 import { getCrewStatusInfo } from '../../lib/crewLogic';
@@ -51,9 +52,7 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
   onUpgrade,
   attempts,
 }) => {
-  const auth = useAuth();
-  const profile = auth?.profile;
-  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
+  const { profile, isAdmin } = useAuthRole();
 
   const firstName = profile?.name?.trim().split(' ')[0] || 'Student';
 

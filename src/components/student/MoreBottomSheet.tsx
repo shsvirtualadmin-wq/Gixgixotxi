@@ -21,6 +21,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useAuthRole } from '../../hooks/useAuthRole';
 import { getPlanConfig } from '../../data/planLimits';
 import { fetchCaptainRecord, fetchUserCrewApplication, CaptainRecord, CrewApplication, onSnapshot, doc, db } from '../../lib/firebase';
 import { CrewApplicationModal } from '../crew/CrewApplicationModal';
@@ -40,10 +41,8 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
   onNavigateUrl,
 }) => {
   const auth = useAuth();
-  const user = auth?.user;
-  const profile = auth?.profile;
+  const { user, profile, isAdmin } = useAuthRole();
   const logOut = auth?.logOut;
-  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
   const shouldReduceMotion = useReducedMotion();
   const planConfig = getPlanConfig(profile?.plan);
   const sheetRef = useRef<HTMLDivElement | null>(null);
@@ -557,7 +556,7 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
             <ChevronRight className="w-4 h-4 text-slate-400" />
           </button>
 
-          {/* Switch to Admin Portal (admins only) */}
+          {/* Admin Dashboard (shsvirtualadmin@gmail.com only) */}
           {isAdmin && (
             <button
               type="button"
@@ -577,7 +576,7 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
                   <Shield className="w-4 h-4" />
                 </div>
                 <span className="text-xs font-bold text-[#0d1b3e]">
-                  Switch to Admin Portal
+                  Admin Dashboard
                 </span>
               </div>
               <ChevronRight className="w-4 h-4 text-slate-400" />

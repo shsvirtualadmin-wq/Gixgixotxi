@@ -22,8 +22,12 @@ import {
   Layers,
   ArrowLeft,
   Share2,
+  Crown,
+  Lock,
 } from 'lucide-react';
 import katex from 'katex';
+import { useAuthRole } from '../../hooks/useAuthRole';
+import { normalizePlan } from '../../config/pricing';
 import {
   allFormulaSheets,
   FormulaSheet,
@@ -37,6 +41,7 @@ import {
 interface FormulaVaultScreenProps {
   onBack?: () => void;
   defaultSubject?: FormulaSubject;
+  onOpenUpgrade?: (initialPlan?: 'pro' | 'premium') => void;
 }
 
 const STORAGE_SAVED_KEY = 'boardly_saved_formulas_v1';
@@ -44,7 +49,11 @@ const STORAGE_SAVED_KEY = 'boardly_saved_formulas_v1';
 export const FormulaVaultScreen: React.FC<FormulaVaultScreenProps> = ({
   onBack,
   defaultSubject,
+  onOpenUpgrade,
 }) => {
+  const { profile, isAdmin } = useAuthRole();
+  const normalizedPlan = normalizePlan(profile?.plan);
+  const isPaidOrAdmin = isAdmin || normalizedPlan === 'pro' || normalizedPlan === 'premium';
   const [selectedSubject, setSelectedSubject] = useState<FormulaSubject | 'ALL'>(
     defaultSubject || 'ALL'
   );
@@ -314,6 +323,37 @@ export const FormulaVaultScreen: React.FC<FormulaVaultScreenProps> = ({
 
       {/* Main Content Area */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        {/* Free Plan Upgrade Prompt */}
+        {!isPaidOrAdmin && (
+          <div className="mb-6 p-5 sm:p-6 rounded-3xl bg-gradient-to-r from-amber-500/10 via-indigo-500/10 to-purple-500/10 border border-amber-300 dark:border-amber-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-amber-500/20">
+                <Crown className="w-5 h-5 fill-white" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>Pro & Premium Feature: Unlimited Formula Vault</span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                    Preview Mode
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                  You are previewing the Formula Vault. Upgrade to Boardly Pro or Premium for full uninterrupted exam formulas, printable sheets, and step-by-step derivations.
+                </p>
+              </div>
+            </div>
+            {onOpenUpgrade && (
+              <button
+                type="button"
+                onClick={() => onOpenUpgrade('pro')}
+                className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white font-black text-xs shadow-md shadow-amber-500/20 transition-all cursor-pointer shrink-0 flex items-center justify-center gap-1.5"
+              >
+                <Crown className="w-4 h-4 fill-white" />
+                <span>Upgrade to Pro</span>
+              </button>
+            )}
+          </div>
+        )}
         {/* Results Banner */}
         <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400 mb-4 px-1">
           <div>

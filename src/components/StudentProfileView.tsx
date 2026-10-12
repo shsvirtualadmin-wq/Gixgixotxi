@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { useAuthRole, isMasterAdminEmail, MASTER_ADMIN_EMAIL } from '../hooks/useAuthRole';
 import { useAuth } from '../context/AuthContext';
 import {
   StudentProfile,
@@ -73,16 +74,12 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   const effectiveProfile = propProfile || authContext?.profile || null;
 
   // Safe admin derivation matching app-wide admin rules
+  // Single source of truth: true ONLY when user's email is shsvirtualadmin@gmail.com
   // Defaults to false while user data is still loading to prevent ReferenceError / TypeError
   const userEmail = (effectiveUser?.email || effectiveProfile?.email || '').trim().toLowerCase();
   const isAdmin: boolean = typeof propIsAdmin === 'boolean'
     ? propIsAdmin
-    : Boolean(
-        authContext?.isAdmin ||
-        effectiveProfile?.role === 'admin' ||
-        (Array.isArray(effectiveProfile?.roles) && effectiveProfile.roles.includes('admin')) ||
-        (userEmail && isAdminEmail(userEmail))
-      );
+    : Boolean(isMasterAdminEmail(userEmail) || (authContext?.isAdmin && userEmail === MASTER_ADMIN_EMAIL));
 
   const chosenUniName =
     effectiveProfile?.targetUniversity ||
