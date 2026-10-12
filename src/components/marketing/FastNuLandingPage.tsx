@@ -297,7 +297,7 @@ export const FastNuLandingPage: React.FC<FastNuLandingPageProps> = ({
           Engineering Mock Tests with Percentile Benchmarking
         </h2>
         <p className="text-sm text-slate-600 leading-relaxed">
-          Over 45,000 students across Pakistan have practiced on Boardly. When you submit a full engineering mock, our algorithm immediately computes your nationwide percentile, estimated composite score, and predicted merit chances for top Computer Science and Software Engineering departments.
+          Over 1,000+ students across Pakistan have practiced on Boardly. When you submit a full engineering mock, our algorithm immediately computes your nationwide percentile, estimated composite score, and predicted merit chances for top Computer Science and Software Engineering departments.
         </p>
       </section>
 

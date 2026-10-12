@@ -95,62 +95,33 @@ export const ReviewsWall: React.FC<ReviewsWallProps> = ({
   const tickerRowOne = useMemo(() => [...rowOne, ...rowOne, ...rowOne], [rowOne]);
   const tickerRowTwo = useMemo(() => [...rowTwo, ...rowTwo, ...rowTwo], [rowTwo]);
 
-  const renderReviewCard = (rev: StudentReviewItem, key: string, isTicker = true) => (
-    <div
-      key={key}
-      className={`glass-floating-card rounded-2xl p-5 border border-white/60 shadow-md flex flex-col justify-between transition-transform duration-200 hover:-translate-y-1 ${
-        isTicker ? 'w-[320px] sm:w-[360px] shrink-0' : 'w-full'
-      }`}
-    >
-      <div>
-        {/* Top Header: University Logo, Test Type, and Star Rating */}
-        <div className="flex items-center justify-between gap-2 mb-3">
-          <div className="flex items-center gap-2.5">
-            <UniversityLogoBadge university={rev.universityId} size="sm" />
-            <div>
-              <div className="text-xs font-bold text-slate-900 leading-tight">
-                {rev.universityName}
-              </div>
-              <div className="text-[11px] font-semibold text-indigo-600">
-                {rev.testType}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-0.5 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200/60">
-            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            <span className="text-[11px] font-black text-amber-800">{rev.rating}.0</span>
-          </div>
-        </div>
-
+  const renderReviewCard = (rev: StudentReviewItem, key: string, isTicker = true) => {
+    const trackLabel = rev.track || rev.testType || 'Exam Prep';
+    return (
+      <div
+        key={key}
+        className={`glass-floating-card rounded-2xl p-5 border border-white/70 shadow-md flex flex-col justify-between transition-transform duration-200 hover:-translate-y-1 bg-white/80 ${
+          isTicker ? 'w-[300px] sm:w-[340px] shrink-0' : 'w-full'
+        }`}
+      >
         {/* Testimonial Quote */}
-        <div className="relative mb-3">
-          <Quote className="w-4 h-4 text-indigo-400/40 inline-block mr-1 align-top" />
-          <p className="text-xs text-slate-700 leading-relaxed font-normal inline">
+        <div className="relative mb-4">
+          <Quote className="w-5 h-5 text-indigo-500/30 inline-block mr-1.5 align-top shrink-0" />
+          <p className="text-xs sm:text-[13px] text-slate-700 leading-relaxed font-medium inline">
             "{rev.quote}"
           </p>
         </div>
-      </div>
 
-      {/* Footer: Student Name, Verified Badge, Score or Aggregate */}
-      <div className="pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
-        <div className="flex items-center gap-1.5">
-          <span className="font-bold text-slate-900">{rev.name}</span>
-          {rev.verified && (
-            <span
-              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-emerald-50 text-[10px] font-bold text-emerald-700 border border-emerald-200/80"
-              title="Verified Student Prep"
-            >
-              <ShieldCheck className="w-3 h-3 text-emerald-600" />
-              Verified
-            </span>
-          )}
-        </div>
-        <div className="font-extrabold text-indigo-700 bg-indigo-50/80 px-2 py-0.5 rounded-md text-[11px]">
-          {rev.scoreOrAggregate}
+        {/* Footer: Student Name + Exam Track pill */}
+        <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+          <span className="font-bold text-slate-900 font-poppins">{rev.name}</span>
+          <span className="font-semibold text-indigo-600 bg-indigo-50/80 px-2.5 py-0.5 rounded-full text-[11px] border border-indigo-100">
+            {trackLabel}
+          </span>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   return (
     <section className="relative py-12 sm:py-20 overflow-hidden">
@@ -160,13 +131,13 @@ export const ReviewsWall: React.FC<ReviewsWallProps> = ({
           <div className="space-y-2 max-w-xl">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200/60">
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Real Verified Student Reviews</span>
+              <span>Student Experiences</span>
             </div>
             <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0A1330] font-poppins">
-              Loved by students entering top universities
+              What students say about Boardly
             </h2>
             <p className="text-sm text-slate-600 leading-relaxed">
-              Read authentic feedback from aspirants who practiced with Boardly and secured admissions in NUST, FAST, MDCAT, GIKI, IBA, and more.
+              Read how candidates across Matric, FSc, and entrance exam tracks build confidence and eliminate weak topics through self-paced diagnostic practice.
             </p>
           </div>
 

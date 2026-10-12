@@ -25,6 +25,7 @@ import { UNIVERSITIES } from '../../data/universities';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
 import { BoardyMascot } from '../BoardyMascot';
 import { ReviewsWall } from './ReviewsWall';
+import { SITE_STATS } from '../../config/stats';
 
 interface HomePageProps {
   onNavigate: (page: MarketingPage) => void;
@@ -66,7 +67,7 @@ const COMPARISON_ROWS: ComparisonRow[] = [
   },
   {
     title: 'Large question bank in one place',
-    desc: '25,000+ categorized, board-aligned MCQs',
+    desc: '17k+ categorized, board-aligned MCQs',
     boardly: true,
     coaching: false,
     freeLinks: false,
@@ -166,10 +167,10 @@ export const HomePage: React.FC<HomePageProps> = ({
   // Marquee pause state
   const [isMarqueePaused, setIsMarqueePaused] = useState(false);
 
-  // Animate stats counting up
-  const animatedQuestions = useCountUp(25000, 2000);
-  const animatedStudents = useCountUp(45000, 2200);
-  const animatedUniversities = useCountUp(20, 1800);
+  // Animate stats counting up using centralized placeholder constants
+  const animatedQuestions = useCountUp(SITE_STATS.questionBankCount, 2000);
+  const animatedStudents = useCountUp(SITE_STATS.studentsCount, 2000);
+  const animatedUniversities = useCountUp(SITE_STATS.universitiesCount, 1800);
 
   // Typewriter loop
   useEffect(() => {
@@ -269,20 +270,20 @@ export const HomePage: React.FC<HomePageProps> = ({
               {/* Stat 1: Question Library */}
               <div className="text-center px-2 sm:px-4">
                 <span className="block text-2xl sm:text-4xl font-black text-[#0A1330] font-poppins">
-                  {animatedQuestions.toLocaleString()}+
+                  {animatedQuestions >= 1000 ? `${Math.floor(animatedQuestions / 1000)}k+` : `${animatedQuestions}+`}
                 </span>
                 <span className="text-xs sm:text-sm text-slate-500 font-medium block mt-1">
-                  Question Library
+                  Question Bank
                 </span>
               </div>
 
-              {/* Stat 2: Students Registered */}
+              {/* Stat 2: Students */}
               <div className="text-center px-2 sm:px-4">
                 <span className="block text-2xl sm:text-4xl font-black text-indigo-600 font-poppins">
                   {animatedStudents.toLocaleString()}+
                 </span>
                 <span className="text-xs sm:text-sm text-slate-500 font-medium block mt-1">
-                  Students Registered
+                  Students
                 </span>
               </div>
 
@@ -366,7 +367,7 @@ export const HomePage: React.FC<HomePageProps> = ({
               {/* Col 1 */}
               <div className="space-y-1">
                 <span className="block text-2xl sm:text-3xl font-black text-[#0A1330] font-poppins">
-                  25,000+
+                  17k+
                 </span>
                 <span className="text-xs font-bold text-indigo-600 block">
                   Practice Questions

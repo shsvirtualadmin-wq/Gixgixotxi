@@ -1,172 +1,85 @@
+// PLACEHOLDER: Temporary student reviews until authentic live reviews are collected and approved.
+// Kept as plain student statements only.
+// Rules:
+// - No university names
+// - No marks, scores, percentages, ranks, or star ratings
+// - Format: short quote + first name and initial + exam track (e.g. MDCAT, FSc, FBISE)
+
 export interface StudentReviewItem {
   id: string;
   name: string; // "Hamza K.", "Ayesha M."
-  universityId: string; // "nust", "fast", "giki", "iba", "uet", "nums", "lums"
-  universityName: string;
-  testType: string; // "NET Engineering", "MDCAT", "FAST CS", "IBA BBA", etc.
-  scoreOrAggregate: string; // "158/200 NET", "88.4% Aggregate"
-  rating: number; // 5
-  quote: string;
-  verified: boolean;
-  date: string;
+  track: string; // "MDCAT", "FSc Pre-Engineering", "FBISE Class 12", "Entry Tests"
+  quote: string; // Plain statement about study experience
+  // Legacy fields kept optional for backwards compatibility
+  universityId?: string;
+  universityName?: string;
+  testType?: string;
+  scoreOrAggregate?: string;
+  rating?: number;
+  verified?: boolean;
+  date?: string;
   approved?: boolean;
 }
 
 export const REAL_STUDENT_REVIEWS: StudentReviewItem[] = [
   {
-    id: 'rev-nust-1',
+    id: 'ph-rev-1',
     name: 'Hamza K.',
-    universityId: 'nust',
-    universityName: 'NUST Islamabad',
-    testType: 'NET Engineering',
-    scoreOrAggregate: '158/200 NET',
-    rating: 5,
-    quote: 'Boardy broke down conic sections and integration substitutions step by step whenever I got stuck at midnight. Practicing the timed NET sets built my speed so I finished with 15 minutes to spare.',
-    verified: true,
-    date: 'February 2026',
-    approved: true,
+    track: 'FSc Pre-Engineering',
+    quote: 'Boardy broke down difficult math derivations step by step whenever I got stuck late at night.',
   },
   {
-    id: 'rev-mdcat-1',
+    id: 'ph-rev-2',
     name: 'Ayesha M.',
-    universityId: 'nums',
-    universityName: 'NUMS & MDCAT',
-    testType: 'MDCAT Medical',
-    scoreOrAggregate: '178/200 MDCAT',
-    rating: 5,
-    quote: 'The Biology and Chemistry chapter breakdowns are laser-focused on textbook lines. Eliminating weak topics through the diagnostic sprints made a massive difference to my final aggregate.',
-    verified: true,
-    date: 'January 2026',
-    approved: true,
+    track: 'MDCAT',
+    quote: 'The Biology and Chemistry chapter breakdowns follow textbook lines closely, making revision straightforward.',
   },
   {
-    id: 'rev-fast-1',
+    id: 'ph-rev-3',
     name: 'Bilal S.',
-    universityId: 'fast',
-    universityName: 'FAST-NUCES',
-    testType: 'FAST CS',
-    scoreOrAggregate: '86.4% Aggregate',
-    rating: 5,
-    quote: 'FAST entrance tests punish slow calculation because of negative marking. Boardly Blitz weekend drills trained my pacing so I never panicked during the Advance Maths section.',
-    verified: true,
-    date: 'February 2026',
-    approved: true,
+    track: 'Entry Tests',
+    quote: 'Timed practice sessions helped me improve my pacing and manage negative marking without second-guessing.',
   },
   {
-    id: 'rev-giki-1',
+    id: 'ph-rev-4',
+    name: 'Fatima Z.',
+    track: 'FBISE Class 12',
+    quote: 'Finding chapter-wise MCQs aligned with the SLO syllabus saved me hours of searching through random files.',
+  },
+  {
+    id: 'ph-rev-5',
     name: 'Daniyal T.',
-    universityId: 'giki',
-    universityName: 'GIKI Topi',
-    testType: 'GIKI Engineering',
-    scoreOrAggregate: '89.2% Aggregate',
-    rating: 5,
-    quote: 'The physics numericals for GIKI require actual conceptual derivations rather than rote memory. Boardly gave me instant hints without spoiling the entire answer right away.',
-    verified: true,
-    date: 'January 2026',
-    approved: true,
+    track: 'FSc Pre-Medical',
+    quote: 'Being able to see immediate solution explanations right after an incorrect attempt cleared my doubts quickly.',
   },
   {
-    id: 'rev-iba-1',
+    id: 'ph-rev-6',
     name: 'Zainab R.',
-    universityId: 'iba',
-    universityName: 'IBA Karachi',
-    testType: 'IBA BBA / BS CS',
-    scoreOrAggregate: 'Direct Admission',
-    rating: 5,
-    quote: 'IBA English vocab and analytical reasoning can catch anyone off guard. The targeted drills and formula sheets let me revise on my phone on the daily commute.',
-    verified: true,
-    date: 'December 2025',
-    approved: true,
+    track: 'MDCAT',
+    quote: 'The diagnostic tests pointed out the exact subtopics where I was losing marks so I could focus my study hours.',
   },
   {
-    id: 'rev-pieas-1',
-    name: 'Usman B.',
-    universityId: 'pieas',
-    universityName: 'PIEAS Islamabad',
-    testType: 'PIEAS Written Test',
-    scoreOrAggregate: 'Top 50 Rank',
-    rating: 5,
-    quote: 'PIEAS tests deep conceptual physics and advanced calculus. The Merit Meter allowed me to benchmark my past paper scores accurately against last year closing lists.',
-    verified: true,
-    date: 'January 2026',
-    approved: true,
+    id: 'ph-rev-7',
+    name: 'Usman A.',
+    track: 'FSc Pre-Engineering',
+    quote: 'The physics formulas and mechanics numericals are explained clearly with each intermediate step.',
   },
   {
-    id: 'rev-uet-1',
-    name: 'Fatima N.',
-    universityId: 'uet',
-    universityName: 'UET Lahore',
-    testType: 'ECAT Engineering',
-    scoreOrAggregate: '342/400 ECAT',
-    rating: 5,
-    quote: 'ECAT speed drills helped me conquer the 100-minute time constraint. Seeing my accuracy breakdown by chapter showed me exactly where I was dropping easy marks in chemistry.',
-    verified: true,
-    date: 'February 2026',
-    approved: true,
+    id: 'ph-rev-8',
+    name: 'Maryam B.',
+    track: 'FBISE Class 11',
+    quote: 'Practicing on my phone during the commute helped me stay consistent with daily question targets.',
   },
   {
-    id: 'rev-lums-1',
-    name: 'Maryam H.',
-    universityId: 'lums',
-    universityName: 'LUMS SSE',
-    testType: 'LCAT / SBASSE Test',
-    scoreOrAggregate: 'SSE Merit Offer',
-    rating: 5,
-    quote: 'Clean glass interface, zero spammy ads, and questions that genuinely mimic the actual difficulty. It replaced three heavy academy guides for me.',
-    verified: true,
-    date: 'January 2026',
-    approved: true,
+    id: 'ph-rev-9',
+    name: 'Saad N.',
+    track: 'Entry Tests',
+    quote: 'The analytical reasoning and quantitative shortcut explanations made tough questions manageable.',
   },
   {
-    id: 'rev-nust-2',
-    name: 'Saad W.',
-    universityId: 'nust',
-    universityName: 'NUST Islamabad',
-    testType: 'NET Computer Science',
-    scoreOrAggregate: '161/200 NET-2',
-    rating: 5,
-    quote: 'Taking full-length computer science and mathematics mocks on Boardly made test day feel like just another Tuesday practice run. Recommended to all FSC students.',
-    verified: true,
-    date: 'February 2026',
-    approved: true,
-  },
-  {
-    id: 'rev-fast-2',
-    name: 'Hira J.',
-    universityId: 'fast',
-    universityName: 'FAST-NUCES',
-    testType: 'FAST Software Eng',
-    scoreOrAggregate: '84.8% Aggregate',
-    rating: 5,
-    quote: 'The explanations give shortcut tips for series, matrices, and probability that saving precious seconds. I made it into my first choice campus without academy fees.',
-    verified: true,
-    date: 'December 2025',
-    approved: true,
-  },
-  {
-    id: 'rev-kemu-1',
-    name: 'Zeeshan A.',
-    universityId: 'nums',
-    universityName: 'King Edward / KEMU',
-    testType: 'MDCAT Punjab',
-    scoreOrAggregate: '93.1% Total Aggregate',
-    rating: 5,
-    quote: 'Practicing 25-question sprints between college lectures kept my mind sharp. Boardy feels like having a private tutor sitting right beside you explaining every mistake.',
-    verified: true,
-    date: 'January 2026',
-    approved: true,
-  },
-  {
-    id: 'rev-giki-2',
-    name: 'Omer F.',
-    universityId: 'giki',
-    universityName: 'GIKI Topi',
-    testType: 'GIKI Computer Eng',
-    scoreOrAggregate: 'Scholarship Bracket',
-    rating: 5,
-    quote: 'The study circles and leaderboard features gave me the community push I needed when motivation dipped in January. Truly built for Pakistani entrance tests.',
-    verified: true,
-    date: 'February 2026',
-    approved: true,
+    id: 'ph-rev-10',
+    name: 'Hira K.',
+    track: 'MDCAT',
+    quote: 'Clear textbook references for every question made it easy to cross-check concepts directly in my books.',
   },
 ];

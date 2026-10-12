@@ -43,6 +43,7 @@ import {
 import { SeoHead } from '../common/SeoHead';
 import { CREW_OG_IMAGE } from '../../config/seo';
 import { UnifiedProgramApplicationModal } from '../common/UnifiedProgramApplicationModal';
+import { SharedBubbleMenu } from '../common/SharedBubbleMenu';
 
 interface CrewLandingPageProps {
   currentPath?: string;
@@ -537,89 +538,56 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
             </button>
           </div>
 
-          {/* Mobile Right Bar (< 768px): Shows Apply Now + Hamburger */}
+          {/* Mobile Right Bar (< 768px): Shows Apply Now + Animated Morph Hamburger */}
           <div className="flex md:hidden items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={() => navigateToSection('apply')}
-              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full text-xs font-bold bg-gradient-to-r from-[#6d4aff] to-[#4f35f5] text-white shadow-md shadow-violet-600/30 min-h-[38px] flex items-center gap-1 cursor-pointer shrink-0"
+              className="px-3.5 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-violet-500 to-indigo-600 text-white shadow-md shadow-violet-600/30 min-h-[38px] flex items-center gap-1 cursor-pointer shrink-0 hover:brightness-110 transition-all"
             >
               <span>Apply Now</span>
             </button>
             <button
+              type="button"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="p-1.5 sm:p-2 rounded-full text-slate-300 hover:text-white hover:bg-white/10 active:bg-white/15 transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center cursor-pointer shrink-0"
-              aria-label="Toggle menu"
+              className="w-9 h-9 flex items-center justify-center rounded-full bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-white cursor-pointer shrink-0"
+              aria-label={mobileMenuOpen ? 'Close navigation menu' : 'Open navigation menu'}
               aria-expanded={mobileMenuOpen}
             >
-              {mobileMenuOpen ? <X className="w-5 h-5 text-white" /> : <Menu className="w-5 h-5" />}
+              {/* CSS morphing hamburger bars to X over ~300ms */}
+              <div className="w-4 h-3.5 relative flex flex-col justify-between pointer-events-none">
+                <span
+                  style={{
+                    transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    transform: mobileMenuOpen ? 'translateY(6px) rotate(45deg)' : 'none',
+                  }}
+                  className="block h-0.5 w-full bg-white rounded-full origin-center"
+                />
+                <span
+                  style={{
+                    transition: 'opacity 300ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    opacity: mobileMenuOpen ? 0 : 1,
+                  }}
+                  className="block h-0.5 w-full bg-white rounded-full"
+                />
+                <span
+                  style={{
+                    transition: 'transform 300ms cubic-bezier(0.22, 1, 0.36, 1)',
+                    transform: mobileMenuOpen ? 'translateY(-6px) rotate(-45deg)' : 'none',
+                  }}
+                  className="block h-0.5 w-full bg-white rounded-full origin-center"
+                />
+              </div>
             </button>
           </div>
         </nav>
       </header>
 
-      {/* Mobile Drawer Menu (< 768px) */}
-      <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: -16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -16 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-x-4 top-20 z-40 bg-[#0b0a2a]/95 backdrop-blur-2xl border border-violet-500/30 shadow-2xl rounded-3xl p-6 md:hidden flex flex-col gap-4 text-center"
-          >
-            <div className="flex flex-col gap-2 font-semibold text-slate-200">
-              <button
-                onClick={() => navigateToSection('how-it-works')}
-                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between text-base"
-              >
-                <span>How It Works</span>
-                <ArrowRight className="w-4 h-4 text-violet-400" />
-              </button>
-              <button
-                onClick={() => navigateToSection('perks')}
-                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between text-base"
-              >
-                <span>Ambassador Perks</span>
-                <ArrowRight className="w-4 h-4 text-violet-400" />
-              </button>
-              <button
-                onClick={() => navigateToSection('dashboard')}
-                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between text-base"
-              >
-                <span>Live Dashboard Preview</span>
-                <ArrowRight className="w-4 h-4 text-violet-400" />
-              </button>
-              <button
-                onClick={() => navigateToSection('faq')}
-                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between text-base"
-              >
-                <span>Questions &amp; FAQ</span>
-                <ArrowRight className="w-4 h-4 text-violet-400" />
-              </button>
-              <button
-                onClick={() => {
-                  setMobileMenuOpen(false);
-                  onNavigate('/');
-                }}
-                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between text-base text-slate-300"
-              >
-                <span>Main Boardly Site</span>
-                <ExternalLink className="w-4 h-4 text-slate-400" />
-              </button>
-            </div>
-
-            <div className="pt-3 border-t border-violet-500/20 flex flex-col gap-2.5">
-              <button
-                onClick={() => navigateToSection('apply')}
-                className="w-full py-3.5 rounded-full font-bold text-base bg-gradient-to-r from-[#6d4aff] to-[#4f35f5] text-white shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2 min-h-[48px]"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Apply to Join Crew</span>
-              </button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Animated Bubble Hamburger Card Menu */}
+      <SharedBubbleMenu
+        isOpen={mobileMenuOpen}
+        onClose={() => setMobileMenuOpen(false)}
+        onGetStarted={() => navigateToSection('apply')}
+      />
 
       {/* Main Page Sections */}
       <main className="relative z-10 pt-28 sm:pt-36 flex flex-col gap-24 sm:gap-32">
@@ -1027,7 +995,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 title: '30 Days Free Premium',
                 badge: 'Immediate Unlock',
                 color: 'from-amber-500/20 to-violet-500/20 text-amber-400 border-amber-500/30',
-                desc: 'Full unrestricted access to Boardly Pro upon approval: 25,000+ questions, past paper vaults, and 24/7 Boardy AI tutoring.',
+                desc: 'Full unrestricted access to Boardly Pro upon approval: 17k+ questions, past paper vaults, and 24/7 Boardy AI tutoring.',
               },
               {
                 icon: Trophy,
@@ -1125,53 +1093,53 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
               </div>
 
               {/* Phone Screen Glass Interior */}
-              <div className="bg-[#080721] rounded-[28px] sm:rounded-[32px] pt-8 pb-6 px-3.5 sm:px-5 border border-violet-500/30 overflow-hidden relative">
+              <div className="bg-[#0b0a26] rounded-[28px] sm:rounded-[32px] pt-8 pb-6 px-4 sm:px-6 border border-violet-400/40 overflow-hidden relative shadow-inner">
                 {/* Sample Tag watermark */}
                 <div className="text-center mb-3">
-                  <span className="text-[11px] font-mono font-bold tracking-[0.08em] text-teal-300 uppercase bg-teal-950/80 px-3 py-0.5 rounded-full border border-teal-500/40">
+                  <span className="text-xs font-mono font-bold tracking-wider text-teal-300 uppercase bg-teal-950/90 px-3.5 py-1 rounded-full border border-teal-400/50 shadow-sm inline-block">
                     Sample Organizer Portal
                   </span>
                 </div>
 
                 {/* Organizer Profile Header */}
-                <div className="flex items-center justify-between pb-4 border-b border-violet-500/20">
+                <div className="flex items-center justify-between pb-4 border-b border-violet-400/25">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-violet-600 to-teal-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                    <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-violet-500 via-indigo-500 to-teal-400 flex items-center justify-center text-white font-black text-sm shadow-md ring-2 ring-violet-400/40">
                       HR
                     </div>
                     <div>
-                      <div className="text-sm font-bold text-white leading-tight font-display">Hassan Raza</div>
-                      <div className="text-xs text-slate-400">GCU Lahore • Crew Organizer</div>
+                      <div className="text-base font-bold text-white leading-tight font-display">Hassan Raza</div>
+                      <div className="text-xs text-slate-300 font-medium">GCU Lahore • Crew Organizer</div>
                     </div>
                   </div>
-                  <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/40">
+                  <span className="text-[11px] font-mono font-bold text-emerald-300 bg-emerald-950/80 px-2.5 py-1 rounded-full border border-emerald-400/50 shadow-xs">
                     Active Organizer
                   </span>
                 </div>
 
                 {/* Sample Live Event Card */}
-                <div className="mt-4 p-4 rounded-2xl bg-gradient-to-br from-violet-900/40 via-indigo-900/30 to-violet-950/50 border border-violet-500/30 shadow-inner space-y-2">
+                <div className="mt-4 p-4 rounded-2xl bg-gradient-to-br from-violet-900/50 via-indigo-900/40 to-violet-950/60 border border-violet-400/40 shadow-md space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/40 animate-pulse">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                    <span className="flex items-center gap-1.5 text-xs font-mono font-bold text-emerald-300 bg-emerald-950/90 px-2.5 py-1 rounded-full border border-emerald-400/50 animate-pulse">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400" />
                       LIVE NOW (Sample)
                     </span>
-                    <span className="text-[10px] font-mono text-slate-400">48 Registered</span>
+                    <span className="text-xs font-mono text-slate-200 font-semibold">48 Registered</span>
                   </div>
-                  <div className="text-sm font-bold text-white font-display">
+                  <div className="text-sm font-bold text-white font-display leading-snug">
                     Boardly Blitz #18: Physics Mechanics Sprint
                   </div>
-                  <div className="flex items-center justify-between text-xs text-slate-300 pt-1 border-t border-violet-500/20 font-mono">
+                  <div className="flex items-center justify-between text-xs text-slate-200 pt-2 border-t border-violet-500/30 font-mono font-medium">
                     <span>30 MCQs • 30 Mins</span>
-                    <span className="text-teal-300 font-bold">Avg: 78%</span>
+                    <span className="text-teal-300 font-extrabold text-sm">Avg: 78%</span>
                   </div>
                 </div>
 
                 {/* Create Event Button inside Mockup */}
-                <div className="mt-3">
+                <div className="mt-3.5">
                   <button
                     onClick={() => navigateToSection('apply')}
-                    className="w-full py-2.5 rounded-xl bg-violet-600/30 hover:bg-violet-600/40 border border-violet-500/40 text-violet-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    className="w-full py-3 rounded-xl bg-violet-600/30 hover:bg-violet-600/50 border border-violet-400/50 text-violet-100 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-sm"
                   >
                     <span>+ Create New Event (Sample)</span>
                   </button>
@@ -1179,40 +1147,40 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
 
                 {/* Mini Leaderboard Snapshot with Fake Names */}
                 <div className="mt-4">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-300 mb-2">
-                    <span>Live Leaderboard (Sample)</span>
-                    <span className="text-[11px] font-mono text-teal-400">37 Submitted</span>
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-200 mb-2">
+                    <span className="text-white font-extrabold">Live Leaderboard (Sample)</span>
+                    <span className="text-xs font-mono text-teal-300 font-bold">37 Submitted</span>
                   </div>
-                  <div className="space-y-1.5 text-xs">
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-white/5 text-slate-200">
+                  <div className="space-y-2 text-xs">
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/10 text-slate-100 font-medium border border-white/5">
                       <div className="flex items-center gap-2">
-                        <span className="text-amber-400 font-mono font-bold">🥇 1</span>
-                        <span>Hamza R.</span>
+                        <span className="text-amber-400 font-mono font-black text-sm">🥇 1</span>
+                        <span className="font-semibold">Hamza R.</span>
                       </div>
                       <span className="font-mono font-bold text-teal-300">28/30 (14m 10s)</span>
                     </div>
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-violet-600/20 border border-violet-500/40 text-white font-medium">
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-violet-600/30 border-2 border-violet-400/60 text-white font-bold shadow-sm">
                       <div className="flex items-center gap-2">
-                        <span className="text-slate-300 font-mono font-bold">🥈 2</span>
-                        <span>Ayesha K.</span>
+                        <span className="text-slate-200 font-mono font-black text-sm">🥈 2</span>
+                        <span className="text-violet-100">Ayesha K.</span>
                       </div>
-                      <span className="font-mono font-bold text-teal-300">28/30 (16m 40s)</span>
+                      <span className="font-mono font-black text-teal-300">28/30 (16m 40s)</span>
                     </div>
-                    <div className="flex items-center justify-between p-2 rounded-xl bg-white/5 text-slate-200">
+                    <div className="flex items-center justify-between p-2.5 rounded-xl bg-white/10 text-slate-100 font-medium border border-white/5">
                       <div className="flex items-center gap-2">
-                        <span className="text-amber-600 font-mono font-bold">🥉 3</span>
-                        <span>Bilal S.</span>
+                        <span className="text-amber-600 font-mono font-black text-sm">🥉 3</span>
+                        <span className="font-semibold">Bilal S.</span>
                       </div>
-                      <span className="font-mono font-bold text-slate-300">27/30 (15m 12s)</span>
+                      <span className="font-mono font-bold text-slate-200">27/30 (15m 12s)</span>
                     </div>
                   </div>
                 </div>
 
                 {/* Bottom CTA in Mockup */}
-                <div className="mt-5 pt-3 border-t border-violet-500/20 text-center">
+                <div className="mt-5 pt-3.5 border-t border-violet-400/30 text-center">
                   <button
                     onClick={() => navigateToSection('apply')}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 text-white font-bold text-xs shadow-md shadow-violet-700/40 cursor-pointer min-h-[44px]"
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-500 via-indigo-600 to-teal-400 hover:brightness-110 text-white font-black text-xs uppercase tracking-wider shadow-lg shadow-violet-600/40 cursor-pointer min-h-[44px] transition-all"
                   >
                     Unlock Your Organizer Dashboard
                   </button>
@@ -1794,29 +1762,29 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 CREW
               </span>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed">
-              An educational initiative by{' '}
+            <p className="text-sm text-slate-300 leading-relaxed max-w-lg">
+              Official Campus Tournament &amp; Study Circle Organizer Initiative by{' '}
               <a
                 href="https://shsvirtualacademy.pro"
                 target="_blank"
                 rel="noreferrer"
-                className="text-violet-400 hover:underline"
+                className="text-teal-300 hover:text-teal-200 underline font-medium"
               >
                 SHS Virtual Academy
               </a>
-              . National MCQ practice and student leadership portal across Pakistan.
+              . National student tournament and leaderboard platform across Pakistan.
             </p>
           </div>
 
           {/* Legal and Navigation Links */}
-          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-slate-400">
-            <button onClick={() => onNavigate('/privacy')} className="hover:text-white transition-colors cursor-pointer min-h-[44px] flex items-center">
+          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-slate-300">
+            <button onClick={() => onNavigate('/privacy')} className="hover:text-teal-300 transition-colors cursor-pointer min-h-[44px] flex items-center">
               Privacy Policy
             </button>
-            <button onClick={() => onNavigate('/terms')} className="hover:text-white transition-colors cursor-pointer min-h-[44px] flex items-center">
+            <button onClick={() => onNavigate('/terms')} className="hover:text-teal-300 transition-colors cursor-pointer min-h-[44px] flex items-center">
               Terms of Service
             </button>
-            <button onClick={() => onNavigate('/contact')} className="hover:text-white transition-colors cursor-pointer min-h-[44px] flex items-center">
+            <button onClick={() => onNavigate('/contact')} className="hover:text-teal-300 transition-colors cursor-pointer min-h-[44px] flex items-center">
               Contact Support
             </button>
             <button onClick={() => onNavigate('/')} className="hover:text-white transition-colors cursor-pointer min-h-[44px] flex items-center">
@@ -1826,7 +1794,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         </div>
 
         <div className="max-w-7xl mx-auto mt-8 pt-6 border-t border-white/5 text-center text-xs text-slate-400 font-mono tracking-[0.08em]">
-          &copy; 2026 Boardly by SHS Virtual Academy. All rights reserved.
+          &copy; 2026 Boardly Crew by SHS Virtual Academy. All rights reserved.
         </div>
       </footer>
 

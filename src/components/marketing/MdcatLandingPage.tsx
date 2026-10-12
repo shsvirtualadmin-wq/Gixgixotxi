@@ -296,14 +296,14 @@ export const MdcatLandingPage: React.FC<MdcatLandingPageProps> = ({
         </div>
       </section>
 
-      {/* 5. Section: Why 45,000+ Medical Aspirants Train with Boardly */}
+      {/* 5. Section: Why 1,000+ Medical Aspirants Train with Boardly */}
       <section className="text-center max-w-4xl mx-auto space-y-8">
         <div className="space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-emerald-700">
             Student Success Stories
           </span>
           <h2 className="text-2xl sm:text-3xl font-bold font-poppins text-[#0A1330]">
-            Why 45,000+ Medical Aspirants Train with Boardly
+            Why 1,000+ Medical Aspirants Train with Boardly
           </h2>
           <p className="text-sm text-slate-600 max-w-2xl mx-auto leading-relaxed">
             From King Edward and Dow to Rawalpindi Medical University, students who drill consistently with Boardly gain the conceptual clarity required to clear high provincial merit cutoffs.

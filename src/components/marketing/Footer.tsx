@@ -48,7 +48,7 @@ export const Footer: React.FC<FooterProps> = ({
               Join the Student Corner Community
             </h3>
             <p className="text-slate-300 text-sm leading-relaxed">
-              Connect with over 45,000+ ambitious students across Pakistan. Share solved numericals, compare mock percentiles, and participate in weekend quiz bouts.
+              Connect with over 1,000+ ambitious students across Pakistan. Share solved numericals, compare mock percentiles, and participate in weekend quiz bouts.
             </p>
           </div>
 

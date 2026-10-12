@@ -17,7 +17,7 @@ export const PUBLIC_PAGES_SEO: Record<string, PageSeoConfig> = {
   '/': {
     path: '/',
     title: 'Boardly | Online MCQ Practice for MDCAT, FSC & Matric',
-    description: 'Master MDCAT, FSC & Matric exams with Boardly. Practice 25,000+ board-aligned MCQs, timed mock tests, step-by-step derivations & 24/7 Boardy AI tutor.',
+    description: 'Master MDCAT, FSC & Matric exams with Boardly. Practice 17k+ board-aligned MCQs, timed mock tests, step-by-step derivations & 24/7 Boardy AI tutor.',
     canonical: 'https://boardly.cfd/',
     ogImage: DEFAULT_OG_IMAGE,
     robots: 'index,follow',
@@ -421,7 +421,7 @@ export function getPageSeo(pathname: string): PageSeoConfig {
   return {
     path: clean,
     title: 'Boardly | Online MCQ Practice for MDCAT, FSC & Matric',
-    description: 'Master MDCAT, FSC & Matric exams with Boardly. Practice 25,000+ board-aligned MCQs, timed mock tests, step-by-step derivations & 24/7 Boardy AI tutor.',
+    description: 'Master MDCAT, FSC & Matric exams with Boardly. Practice 17k+ board-aligned MCQs, timed mock tests, step-by-step derivations & 24/7 Boardy AI tutor.',
     canonical: `https://boardly.cfd${clean}`,
     ogImage: DEFAULT_OG_IMAGE,
     robots: 'index,follow',

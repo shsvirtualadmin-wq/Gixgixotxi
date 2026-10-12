@@ -226,7 +226,7 @@ export const COMPARISON_FEATURES: ComparisonFeatureRow[] = [
     name: 'Question bank breadth',
     freeValue: 'Core starter bank (~800 questions)',
     proValue: 'Complete bank (12,000+ questions)',
-    premiumValue: 'Full vault + entrance tests (25,000+ questions)',
+    premiumValue: 'Full vault + entrance tests (17k+ questions)',
     highlight: true,
   },
   {
