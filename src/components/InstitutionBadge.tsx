@@ -252,7 +252,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-sky-300',
     borderColor: 'border-sky-400/30',
     badgeInitials: 'DUHS',
-    logoUrl: '/logos/duhs.svg',
+    logoUrl: '/logos/duhs.png',
     description: 'Sindh medical & dental entry test standards.',
   },
   nums: {
@@ -276,7 +276,7 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-teal-300',
     borderColor: 'border-teal-400/30',
     badgeInitials: 'KMU',
-    logoUrl: '/logos/kmu.svg',
+    logoUrl: '/logos/kmu.png',
     description: 'KPK MDCAT entrance test curriculum.',
   },
   szabmu: {
@@ -288,8 +288,32 @@ export const INSTITUTIONS: Record<string, Institution> = {
     textColor: 'text-blue-300',
     borderColor: 'border-blue-400/30',
     badgeInitials: 'SZABMU',
-    logoUrl: '/logos/szabmu.svg',
+    logoUrl: '/logos/szabmu.png',
     description: 'Federal Territory Medical entrance test standard.',
+  },
+  habib: {
+    id: 'habib',
+    name: 'Habib University',
+    shortName: 'Habib',
+    category: 'university',
+    bgGradient: 'from-[#4A0E4E] to-[#7B1FA2]',
+    textColor: 'text-purple-300',
+    borderColor: 'border-purple-400/30',
+    badgeInitials: 'HU',
+    logoUrl: '/logos/habib.png',
+    description: 'Liberal arts, computing & engineering entrance standard.',
+  },
+  air: {
+    id: 'air',
+    name: 'Air University',
+    shortName: 'Air',
+    category: 'university',
+    bgGradient: 'from-[#0F172A] to-[#1E3A8A]',
+    textColor: 'text-sky-300',
+    borderColor: 'border-sky-400/30',
+    badgeInitials: 'AU',
+    logoUrl: '/logos/air.png',
+    description: 'Computing, engineering & management sciences entrance test.',
   },
   fbise: {
     id: 'fbise',
@@ -601,6 +625,8 @@ export function renderTargetUniversityBadge(targetUniStr?: string, size: 'sm' | 
   else if (lower.includes('numl')) instId = 'numl';
   else if (lower.includes('duhs') || lower.includes('dow')) instId = 'duhs';
   else if (lower.includes('kmu') || lower.includes('khyber')) instId = 'kmu';
+  else if (lower.includes('habib')) instId = 'habib';
+  else if (lower.includes('air') || lower === 'au') instId = 'air';
 
   if (instId && INSTITUTIONS[instId]) {
     return <InstitutionBadge id={instId} size={size} showFullName onClick={onClick} />;

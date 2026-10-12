@@ -1185,14 +1185,29 @@ export async function approveCrewApplication(
   if (userFound && targetUserId) {
     // 3. User document was found: use setDoc with merge:true instead of updateDoc
     const userRef = doc(db, 'users', targetUserId);
+    let existingUserPlan = 'free';
+    try {
+      const snap = await getDoc(userRef);
+      if (snap.exists()) {
+        const udata = snap.data();
+        if (udata.plan && udata.plan !== 'premium') {
+          existingUserPlan = udata.plan;
+        } else if (udata.previousPlan) {
+          existingUserPlan = udata.previousPlan;
+        }
+      }
+    } catch (err) {}
+
     await setDoc(
       userRef,
       {
         plan: 'premium',
         isPremium: true,
+        premiumSource: 'crew',
+        previousPlan: existingUserPlan,
         premiumExpiresAt: expiryDate,
         isCrewMember: true,
-        crewStatus: 'active',
+        crewStatus: 'approved',
         crewStartDate: now,
         crewInstitution: app.institution,
         crewReferralCode: referralCode,
@@ -1205,7 +1220,7 @@ export async function approveCrewApplication(
       { merge: true }
     );
 
-    // Create / update captains/{userId} doc
+    // Create / update captains/{userId} doc with status 'approved'
     try {
       await setDoc(
         doc(db, 'captains', targetUserId),
@@ -1219,7 +1234,8 @@ export async function approveCrewApplication(
           referralCount: 0,
           activeUsersCount: 0,
           points: 0,
-          status: 'active',
+          status: 'approved',
+          isReferralCodeActive: true,
           type: 'crew_ambassador',
           createdAt: now,
           expiresAt: expiryDate,
@@ -1351,9 +1367,11 @@ export async function approveCrewApplication(
         name: app.fullName,
         plan: 'premium',
         isPremium: true,
+        premiumSource: 'crew',
+        previousPlan: 'free',
         premiumExpiresAt: expiryDate,
         isCrewMember: true,
-        crewStatus: 'active',
+        crewStatus: 'approved',
         crewStartDate: now,
         crewInstitution: app.institution,
         crewReferralCode: referralCode,
@@ -1384,7 +1402,8 @@ export async function approveCrewApplication(
         referralCount: 0,
         activeUsersCount: 0,
         points: 0,
-        status: 'active',
+        status: 'approved',
+        isReferralCodeActive: true,
         type: 'crew_ambassador',
         pendingPremium: true,
         createdAt: now,
@@ -1508,33 +1527,245 @@ export async function rejectCrewApplication(appId: string, userId: string, admin
 }
 
 /**
- * Revoke Crew status (removes ambassador privileges, sets plan to free)
+ * Revoke Crew status (removes ambassador privileges, sets captains/{uid}.status = "revoked",
+ * returns user to their previous plan only if premium came from Crew, deactivates referral code,
+ * sends in-app notification, dispatches email from noreply@boardly.cfd, and updates audit logs).
  */
-export async function revokeCrewMemberStatus(userId: string, adminEmail: string, reason?: string): Promise<void> {
+export async function revokeCrewMemberStatus(
+  userId: string,
+  adminEmail: string,
+  reason?: string
+): Promise<void> {
   const now = new Date().toISOString();
+  const cleanReason = reason?.trim() || 'Access revoked by administrator';
+
   const userRef = doc(db, 'users', userId);
   const snap = await getDoc(userRef);
+  let userEmail = '';
+  let userName = 'Ambassador';
+  let premiumSource: string | null = null;
+  let previousPlan = 'free';
+
   if (snap.exists()) {
     const data = snap.data();
     if (data.email?.toLowerCase() === 'shsvirtualadmin@gmail.com' || data.role === 'admin') {
       throw new Error('Cannot revoke or modify administrator account.');
     }
+    userEmail = data.email || '';
+    userName = data.name || 'Ambassador';
+    premiumSource = data.premiumSource || null;
+    previousPlan = data.previousPlan || 'free';
   }
-  await updateDoc(userRef, {
+
+  // 1. Set captains/{userId}.status = "revoked" with revokedAt, revokedBy, and revokeReason
+  try {
+    await setDoc(
+      doc(db, 'captains', userId),
+      {
+        status: 'revoked',
+        revokedAt: now,
+        revokedBy: adminEmail,
+        revokeReason: cleanReason,
+        isReferralCodeActive: false,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+  } catch (capErr) {
+    console.warn('[revokeCrewMemberStatus] captains update notice:', capErr);
+  }
+
+  // 2. Set application status to "revoked" in crewApplications
+  try {
+    const q1 = query(collection(db, 'crewApplications'), where('userId', '==', userId));
+    const appsSnap = await getDocs(q1);
+    for (const appDoc of appsSnap.docs) {
+      await updateDoc(doc(db, 'crewApplications', appDoc.id), {
+        status: 'revoked',
+        revokedAt: now,
+        revokedBy: adminEmail,
+        revokeReason: cleanReason,
+      });
+    }
+    const q2 = query(collection(db, 'captainApplications'), where('userId', '==', userId));
+    const capAppsSnap = await getDocs(q2);
+    for (const appDoc of capAppsSnap.docs) {
+      await updateDoc(doc(db, 'captainApplications', appDoc.id), {
+        status: 'revoked',
+        revokedAt: now,
+        revokedBy: adminEmail,
+        revokeReason: cleanReason,
+      });
+    }
+  } catch (appErr) {
+    console.warn('[revokeCrewMemberStatus] applications update notice:', appErr);
+  }
+
+  // 3. User document update:
+  // Remove Crew-granted Premium ONLY if premiumSource === 'crew'.
+  // Return user to their previous plan. Never downgrade a plan the user paid for!
+  const shouldRevertPlan = premiumSource === 'crew';
+  const updatedUserFields: any = {
     isCrewMember: false,
     crewStatus: 'revoked',
-    plan: 'free',
-    isPremium: false,
+    crewRevokedAt: now,
+    crewRevokeReason: cleanReason,
     updatedAt: now,
-  });
+  };
 
+  if (shouldRevertPlan) {
+    updatedUserFields.plan = previousPlan;
+    updatedUserFields.isPremium = previousPlan !== 'free';
+    updatedUserFields.premiumSource = null;
+  }
+
+  await updateDoc(userRef, updatedUserFields);
+
+  // 4. In-app notification
+  try {
+    await addDoc(collection(db, 'notifications'), {
+      userId,
+      title: 'Your Boardly Crew access has been revoked',
+      message: cleanReason
+        ? `Your Boardly Crew access has been revoked: ${cleanReason}`
+        : 'Your Boardly Crew access has been revoked.',
+      type: 'crew_revoked',
+      read: false,
+      createdAt: now,
+      metadata: {
+        reason: cleanReason,
+        revokedAt: now,
+      },
+    });
+  } catch (notifErr) {
+    console.warn('[revokeCrewMemberStatus] notification notice:', notifErr);
+  }
+
+  // 5. Send email from noreply@boardly.cfd with reason
+  if (userEmail) {
+    try {
+      fetch('/api/crew/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'revoke',
+          to: userEmail,
+          name: userName,
+          reason: cleanReason,
+        }),
+      }).catch((e) => console.warn('[Crew Revoke] Email dispatch notice:', e));
+    } catch (emailErr) {
+      console.warn('[Crew Revoke] Email trigger notice:', emailErr);
+    }
+  }
+
+  // 6. Audit log
   await recordAuditLog({
     adminId: 'admin',
     adminEmail,
     action: 'REVOKE_CREW_STATUS',
     targetType: 'users',
     targetId: userId,
-    details: `Revoked Crew status for ${userId}. Reason: ${reason || 'Admin action'}`,
+    details: `Revoked Crew status for ${userId} (${userEmail}). Reason: ${cleanReason}`,
+  });
+}
+
+/**
+ * Re-approve a previously revoked Crew ambassador
+ */
+export async function reapproveCrewMember(
+  userId: string,
+  adminEmail: string
+): Promise<void> {
+  const now = new Date().toISOString();
+  const expiryDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const userRef = doc(db, 'users', userId);
+  const userSnap = await getDoc(userRef);
+  let referralCode = '';
+  let institution = '';
+  let userName = '';
+  let email = '';
+  let prevPlan = 'free';
+
+  if (userSnap.exists()) {
+    const data = userSnap.data();
+    referralCode = data.crewReferralCode || '';
+    institution = data.crewInstitution || '';
+    userName = data.name || '';
+    email = data.email || '';
+    prevPlan = data.previousPlan || (data.plan !== 'premium' ? data.plan : 'free');
+  }
+
+  if (!referralCode) {
+    const capSnap = await getDoc(doc(db, 'captains', userId));
+    if (capSnap.exists()) {
+      referralCode = capSnap.data().referralCode || '';
+      institution = institution || capSnap.data().institution || '';
+    }
+  }
+  if (!referralCode) {
+    referralCode = `CREW-${userName.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6) || 'AMB'}-${Math.floor(1000 + Math.random() * 9000)}`;
+  }
+
+  // 1. Update captains doc
+  await setDoc(
+    doc(db, 'captains', userId),
+    {
+      status: 'approved',
+      reapprovedAt: now,
+      reapprovedBy: adminEmail,
+      isReferralCodeActive: true,
+      expiresAt: expiryDate,
+      updatedAt: now,
+    },
+    { merge: true }
+  );
+
+  // 2. Update user doc
+  await updateDoc(userRef, {
+    isCrewMember: true,
+    crewStatus: 'approved',
+    plan: 'premium',
+    isPremium: true,
+    premiumSource: 'crew',
+    previousPlan: prevPlan,
+    premiumExpiresAt: expiryDate,
+    crewStartDate: now,
+    crewReferralCode: referralCode,
+    updatedAt: now,
+  });
+
+  // 3. Update application doc
+  const q = query(collection(db, 'crewApplications'), where('userId', '==', userId));
+  const snap = await getDocs(q);
+  for (const d of snap.docs) {
+    await updateDoc(doc(db, 'crewApplications', d.id), {
+      status: 'approved',
+      reviewedAt: now,
+      reviewedBy: adminEmail,
+    });
+  }
+
+  // 4. In-app notification
+  try {
+    await addDoc(collection(db, 'notifications'), {
+      userId,
+      title: '🎉 Boardly Crew Access Restored!',
+      message: 'Your Boardly Crew ambassador access has been re-approved by the administrator. 30 days of Premium and your referral code are now active.',
+      type: 'crew_approval',
+      read: false,
+      createdAt: now,
+    });
+  } catch (e) {}
+
+  await recordAuditLog({
+    adminId: 'admin',
+    adminEmail,
+    action: 'REAPPROVE_CREW_MEMBER',
+    targetType: 'users',
+    targetId: userId,
+    details: `Re-approved Crew Ambassador ${userId}`,
   });
 }
 

@@ -10,29 +10,39 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Admin authorization rule:
+    // Only the email shsvirtualadmin@gmail.com with email_verified == true,
+    // or a document in the admins collection.
+    // No other email addresses and no role-based or token-claim conditions.
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == 'shsvirtualadmin@gmail.com' ||
-        request.auth.token.email == 'support@boardly.cfd' ||
-        request.auth.token.role == 'admin' ||
-        request.auth.token.admin == true ||
+        (request.auth.token.email == 'shsvirtualadmin@gmail.com' && request.auth.token.email_verified == true) ||
         exists(/databases/$(database)/documents/admins/$(request.auth.uid))
       );
     }
 
-    // Protect critical fields (plan, role, premium, crew status) so students cannot escalate their privileges
+    // Protect critical fields (plan, role, premium, premiumSource, ambassador/crew, admin)
+    // Owners cannot change these fields on their own document; only admins can edit them.
     function userDoesNotChangeProtectedFields() {
       let protectedKeys = [
         'plan',
         'role',
         'roles',
         'isPremium',
+        'premium',
         'premiumExpiresAt',
+        'premiumSource',
+        'previousPlan',
         'isCrewMember',
         'crewStatus',
         'crewStartDate',
         'crewReferralCode',
-        'isPaidInternshipEligible'
+        'crewRevokedAt',
+        'crewRevokeReason',
+        'isPaidInternshipEligible',
+        'ambassador',
+        'admin',
+        'isAdmin'
       ];
       return !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedKeys);
     }
@@ -42,10 +52,14 @@ service cloud.firestore {
       return (!('role' in data) || data.role == 'student')
         && (!('plan' in data) || data.plan in ['free', 'starter'])
         && (!('isPremium' in data) || data.isPremium == false)
-        && (!('isCrewMember' in data) || data.isCrewMember == false);
+        && (!('premiumSource' in data) || data.premiumSource == null)
+        && (!('isCrewMember' in data) || data.isCrewMember == false)
+        && (!('admin' in data) || data.admin == false);
     }
 
-    // Users collection: Students can read and update non-protected fields on their own document; only admins can edit plan/role/premium
+    // Users collection:
+    // Owners can read and update their own document but cannot change plan, role, premium, premiumSource, ambassador or admin fields.
+    // Only admins can change those.
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow create: if (isOwner(userId) && (isAdmin() || userInitialDocHasSafeFields())) || isAdmin();
@@ -148,22 +162,24 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Campus Captains
+    // Campus Captains & Boardly Crew Ambassador Applications:
+    // Create denied for admins, one application per user (document id = their uid), only admins can update or delete.
     match /captainApplications/{appId} {
-      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow read: if (isAuthenticated() && (resource.data.userId == request.auth.uid || appId == request.auth.uid)) || isAdmin();
+      allow create: if isAuthenticated() && !isAdmin() && appId == request.auth.uid && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
-    // Boardly Crew Ambassador Applications
     match /crewApplications/{appId} {
-      allow create: if (!isAuthenticated() || request.auth.token.email != 'shsvirtualadmin@gmail.com');
-      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow read: if (isAuthenticated() && (resource.data.userId == request.auth.uid || appId == request.auth.uid)) || isAdmin();
+      allow create: if isAuthenticated() && !isAdmin() && (appId == request.auth.uid || request.resource.data.userId == request.auth.uid);
       allow update, delete: if isAdmin();
     }
 
+    // Captains / Ambassadors collection:
+    // Only admins can write. Users can read their own document so the live revoke redirect works, and admins can read everything.
     match /captains/{captainId} {
-      allow read: if isAuthenticated() || isAdmin();
+      allow read: if (isAuthenticated() && captainId == request.auth.uid) || isAdmin();
       allow write: if isAdmin();
     }
 

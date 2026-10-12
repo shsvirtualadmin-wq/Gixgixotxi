@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { University, findUniversity } from '../data/universities';
+import { getUniversityLogo, isTargetUniversity } from '../lib/universityLogos';
 
 interface UniversityLogoBadgeProps {
   university?: (University & { abbreviation?: string }) | string | any;
@@ -128,9 +129,17 @@ export const UniversityLogoBadge: React.FC<UniversityLogoBadgeProps> = ({
 
   const resolvedUni = typeof university === 'string' ? findUniversity(university) : university;
   const shortName = resolvedUni?.shortName || (typeof university === 'string' ? university : 'University');
-  const logoUrl = resolvedUni?.logo || (resolvedUni as any)?.logoUrl || '';
   const fullName = resolvedUni?.fullName || (resolvedUni as any)?.name || shortName;
   const uniId = resolvedUni?.id || (typeof university === 'string' ? university.toLowerCase() : 'uni');
+
+  // Check central university logo mapping for the 5 target universities
+  const candidateIdentifier = typeof university === 'string' ? university : (resolvedUni?.fullName || resolvedUni?.name || resolvedUni?.shortName || resolvedUni?.id || '');
+  const mappedTargetLogo = getUniversityLogo(candidateIdentifier);
+  const isTarget = isTargetUniversity(candidateIdentifier);
+
+  const logoUrl = isTarget && mappedTargetLogo
+    ? mappedTargetLogo
+    : (resolvedUni?.logo || (resolvedUni as any)?.logoUrl || mappedTargetLogo || '');
 
   const sizeCfg = SIZE_CONFIGS[size];
 
@@ -167,10 +176,14 @@ export const UniversityLogoBadge: React.FC<UniversityLogoBadgeProps> = ({
 
   const showImage = !hasFailed && Boolean(logoUrl && logoUrl.trim());
 
+  // Target universities display on a rounded square (rounded-xl) with lazy loading
+  const containerShapeClass = isTarget ? 'rounded-xl' : 'rounded-full';
+  const imgLoading = isTarget ? 'lazy' : loading;
+
   return (
     <div className={`inline-flex items-center gap-2.5 ${className}`}>
       <div
-        className={`${sizeCfg.container} rounded-full bg-white border border-slate-200/90 shadow-xs flex items-center justify-center p-1 overflow-hidden shrink-0 transition-transform duration-200`}
+        className={`${sizeCfg.container} ${containerShapeClass} bg-white border border-slate-200/90 shadow-xs flex items-center justify-center p-1 overflow-hidden shrink-0 transition-transform duration-200`}
         title={fullName}
       >
         {showImage ? (
@@ -180,7 +193,7 @@ export const UniversityLogoBadge: React.FC<UniversityLogoBadgeProps> = ({
             alt={`${shortName} logo`}
             width={sizeCfg.dimension}
             height={sizeCfg.dimension}
-            loading={loading}
+            loading={imgLoading}
             decoding="async"
             style={{ objectFit: 'contain' }}
             className={`${sizeCfg.img} object-contain`}
@@ -188,7 +201,7 @@ export const UniversityLogoBadge: React.FC<UniversityLogoBadgeProps> = ({
           />
         ) : (
           <div
-            className={`w-full h-full rounded-full ${colorClass} flex items-center justify-center font-black tracking-tight select-none shadow-inner`}
+            className={`w-full h-full ${containerShapeClass} ${colorClass} flex items-center justify-center font-black tracking-tight select-none shadow-inner`}
             aria-label={`${shortName} abbreviation`}
           >
             <span className={`${fontSizeClass} font-black uppercase text-center leading-none px-0.5`}>

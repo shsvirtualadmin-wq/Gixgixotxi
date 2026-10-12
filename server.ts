@@ -8679,6 +8679,52 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         }
       }
 
+      if (type === 'revoke') {
+        const applicantEmail = String(body.to || body.email || '').trim().toLowerCase();
+        const applicantName = String(body.name || body.fullName || 'Ambassador').trim();
+        const reason = String(body.reason || 'Administrative action').trim();
+
+        if (resendApiKey && applicantEmail) {
+          const emailHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset="utf-8"></head>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
+              <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #0A1330 0%, #dc2626 100%); padding: 26px 32px; color: #ffffff;">
+                  <h2 style="margin: 0; font-size: 22px;">Boardly Crew Access Revoked</h2>
+                  <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.95;">Important update regarding your campus ambassador status</p>
+                </div>
+                <div style="padding: 28px 32px; font-size: 14px; line-height: 1.6;">
+                  <p>Hi <strong>${applicantName}</strong>,</p>
+                  <p>Your Boardly Crew ambassador access has been revoked.</p>
+                  <div style="margin: 20px 0; padding: 16px; background: #fef2f2; border-radius: 12px; border: 1px solid #fecaca; color: #991b1b;">
+                    <p style="margin: 0; font-weight: 700;">Reason:</p>
+                    <p style="margin: 6px 0 0; font-size: 13px;">${reason}</p>
+                  </div>
+                  <p>Your account has been returned to standard student access. If you believe this was an error, please reach out to admin.</p>
+                </div>
+              </div>
+            </body>
+            </html>
+          `;
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${resendApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              from: 'Boardly <noreply@boardly.cfd>',
+              to: [applicantEmail],
+              subject: `[Boardly Crew] Ambassador Access Revoked`,
+              html: emailHtml,
+              text: `Your Boardly Crew access has been revoked. Reason: ${reason}`,
+            }),
+          }).catch((e) => console.warn('[server crew/notify revoke error]:', e));
+        }
+      }
+
       return res.status(200).json({ ok: true });
     } catch (err: any) {
       console.warn('[server crew/notify error]:', err);

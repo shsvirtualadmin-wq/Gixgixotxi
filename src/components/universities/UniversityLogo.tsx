@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { getUniversityInitials } from '../UniversityLogoBadge';
+import { getUniversityLogo, isTargetUniversity } from '../../lib/universityLogos';
 
 interface UniversityLogoProps {
   src?: string;
@@ -32,19 +33,27 @@ export const UniversityLogo: React.FC<UniversityLogoProps> = ({
   src,
   alt,
   shortName,
-  className = 'w-12 h-12 rounded-full',
+  className = 'w-12 h-12 rounded-2xl',
 }) => {
   const [hasError, setHasError] = useState(false);
 
+  const identifier = shortName || alt || '';
+  const mappedLogo = getUniversityLogo(identifier);
+  const isTarget = isTargetUniversity(identifier);
+
+  const resolvedSrc = isTarget && mappedLogo ? mappedLogo : (src || mappedLogo || '');
   const initials = getUniversityInitials({ shortName, fullName: alt }, alt);
   const colorClass = getPalette(shortName || alt || 'uni');
-  const showImg = !hasError && Boolean(src && src.trim());
+  const showImg = !hasError && Boolean(resolvedSrc && resolvedSrc.trim());
+
+  // Target universities: object-fit contain on a white or transparent rounded square, lazy loaded
+  const shapeClass = isTarget ? 'rounded-2xl' : (className.includes('rounded-') ? '' : 'rounded-2xl');
 
   if (!showImg) {
     const textSize = initials.length <= 2 ? 'text-sm' : initials.length === 3 ? 'text-xs' : 'text-[10px]';
     return (
       <div
-        className={`${className} ${colorClass} flex items-center justify-center font-black tracking-tight select-none shadow-xs border border-white/20`}
+        className={`${className} ${shapeClass} ${colorClass} flex items-center justify-center font-black tracking-tight select-none shadow-xs border border-white/20`}
         title={alt}
         aria-label={`${alt} initials`}
       >
@@ -57,12 +66,12 @@ export const UniversityLogo: React.FC<UniversityLogoProps> = ({
 
   return (
     <img
-      src={src}
-      alt={alt}
-      loading="eager"
+      src={resolvedSrc}
+      alt={alt || `${shortName || 'University'} logo`}
+      loading={isTarget ? 'lazy' : 'eager'}
+      decoding="async"
       onError={() => setHasError(true)}
-      className={`${className} object-contain bg-white p-1 border border-slate-200/80 shadow-xs`}
+      className={`${className} ${shapeClass} object-contain bg-white p-1.5 border border-slate-200/80 shadow-xs`}
     />
   );
 };
-

@@ -1,3 +1,5 @@
+import { getUniversityLogo } from '../lib/universityLogos';
+
 export interface University {
   id: string;
   name?: string;
@@ -185,7 +187,7 @@ export const UNIVERSITIES: University[] = [
     name: 'Dow University of Health Sciences',
     shortName: 'DUHS',
     fullName: 'Dow University of Health Sciences',
-    logo: '',
+    logo: '/logos/duhs.png',
     category: 'Medical',
     location: 'Karachi',
     testName: 'MDCAT Sindh',
@@ -195,7 +197,7 @@ export const UNIVERSITIES: University[] = [
     name: 'Khyber Medical University',
     shortName: 'KMU',
     fullName: 'Khyber Medical University',
-    logo: '',
+    logo: '/logos/kmu.png',
     category: 'Medical',
     location: 'Peshawar',
     testName: 'MDCAT KPK',
@@ -205,7 +207,7 @@ export const UNIVERSITIES: University[] = [
     name: 'Shaheed Zulfiqar Ali Bhutto Medical University',
     shortName: 'SZABMU',
     fullName: 'Shaheed Zulfiqar Ali Bhutto Medical University',
-    logo: '',
+    logo: '/logos/szabmu.png',
     category: 'Medical',
     location: 'Islamabad',
     testName: 'MDCAT Federal',
@@ -259,6 +261,18 @@ const UNIVERSITY_ALIASES: Record<string, string> = {
   'aimc': 'uhs',
   'army medical college': 'nums',
   'amc': 'nums',
+  'dow': 'duhs',
+  'dow university': 'duhs',
+  'dow university of health sciences': 'duhs',
+  'kmu': 'kmu',
+  'khyber medical university': 'kmu',
+  'szabmu': 'szabmu',
+  'shaheed zulfiqar ali bhutto': 'szabmu',
+  'shaheed zulfiqar ali bhutto medical university': 'szabmu',
+  'habib': 'habib',
+  'habib university': 'habib',
+  'air university': 'air',
+  'au': 'air',
 };
 
 export function findUniversity(nameOrId?: string): University | undefined {
@@ -301,7 +315,7 @@ export function findUniversity(nameOrId?: string): University | undefined {
     id: key.replace(/[^a-z0-9]/g, '-').slice(0, 20) || 'custom-uni',
     shortName: nameOrId.trim(),
     fullName: nameOrId.trim(),
-    logo: '/logos/nust.png',
+    logo: getUniversityLogo(nameOrId) || '/logos/nust.png',
     category: 'Engineering',
     testName: `${nameOrId.trim()} Entrance Test`,
   };
