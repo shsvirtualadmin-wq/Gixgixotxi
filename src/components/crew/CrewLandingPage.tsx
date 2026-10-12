@@ -42,6 +42,7 @@ import {
 } from '../../lib/firebase';
 import { SeoHead } from '../common/SeoHead';
 import { CREW_OG_IMAGE } from '../../config/seo';
+import { UnifiedProgramApplicationModal } from '../common/UnifiedProgramApplicationModal';
 
 interface CrewLandingPageProps {
   currentPath?: string;
@@ -54,6 +55,15 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
 }) => {
   const { user, profile, isAdmin, signInGoogle } = useAuth();
   const shouldReduceMotion = useReducedMotion();
+
+  const isCrewApproved =
+    isAdmin ||
+    profile?.role === 'crew' ||
+    profile?.roles?.includes('crew') ||
+    profile?.role === 'organizer' ||
+    profile?.roles?.includes('organizer');
+
+  const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
 
   // Scroll Progress Tracking
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -361,52 +371,52 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
   // Determine current page SEO metadata
   const seoTitle = useMemo(() => {
     const cleanPath = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/crew';
-    if (cleanPath === '/crew/apply') return 'Apply to Boardly Crew | Student Campus Ambassador Program';
-    if (cleanPath === '/crew/how-it-works') return 'How Boardly Crew Works | Campus Ambassador Program';
-    if (cleanPath === '/crew/perks') return 'Boardly Crew Perks & Benefits | Lead Your Campus';
-    if (cleanPath === '/crew/faq') return 'Boardly Crew FAQ | Ambassador Program Questions Answered';
-    return 'Boardly Crew: Lead your campus';
+    if (cleanPath === '/crew/apply') return 'Apply to Boardly Crew | Student Event Organizer Program';
+    if (cleanPath === '/crew/how-it-works') return 'How Boardly Crew Works | Tournament Organizer Program';
+    if (cleanPath === '/crew/perks') return 'Boardly Crew Perks & Organizer Command Center';
+    if (cleanPath === '/crew/faq') return 'Boardly Crew FAQ | Organizer Questions Answered';
+    return 'Boardly Crew: Host Campus Blitz & Arena Tournaments';
   }, [currentPath]);
 
   const timelineSteps = [
     {
       number: '01',
       title: 'Apply in 2 Minutes',
-      desc: 'Submit your 3-step profile below with your current institution, contact details, and a quick sentence on your campus network.',
+      desc: 'Submit your profile with your college, campus, and target test formats. Guest submissions welcome with zero login required.',
       checklist: [
-        'Open to all Matric, FSC, ICS & University students',
-        'Zero prior ambassador experience needed',
+        'Open to all Matric, FSC, ICS & University student organizers',
+        'Zero prior tournament hosting experience needed',
         '100% free to apply with zero hidden commitments',
       ],
     },
     {
       number: '02',
-      title: 'Get Verified by Our Team',
-      desc: 'Our student community team verifies your campus details within 24–48 hours and confirms your admission into the active cohort.',
+      title: 'Get Verified by Boardly',
+      desc: 'Our academic leadership team verifies your organizer credentials within 24–48 hours and confirms your access.',
       checklist: [
-        'Official welcome email and onboarding guide',
+        'Official welcome email and organizer playbook',
         'Verification of campus and enrollment standing',
-        'Direct invite to our private Ambassador community',
+        'Direct access to our private Organizer community',
       ],
     },
     {
       number: '03',
-      title: 'Unlock 30 Days Free Pro & Live Dashboard',
-      desc: 'Upon approval, your Boardly account instantly receives 30 days of free Pro access and unlocks your private Crew ambassador analytics portal.',
+      title: 'Unlock Organizer Command Center',
+      desc: 'Upon approval, your account unlocks the Crew Dashboard to auto-pick from 17k+ authentic MCQs and set event timers.',
       checklist: [
-        'Immediate 30-day Pro testing pass for your account',
-        'Personalized referral code & custom share link',
-        'Live referral counter and batch analytics',
+        'Instant test creation across Physics, Chemistry, Biology, Math & English',
+        'Custom timers, difficulty filters, and question swapping',
+        'Live participant counter and score analytics',
       ],
     },
     {
       number: '04',
-      title: 'Grow, Lead & Earn Career Rewards',
-      desc: 'Share your link, host study sessions, and watch your impact rise. Consistent performers unlock paid internships and signed CV letters.',
+      title: 'Run Tournaments & Publish Results',
+      desc: 'Share public event links with your classmates, monitor live scoreboards, and export results as CSV.',
       checklist: [
-        '1-year active tenure as official Campus Ambassador',
-        'Official signed Certificate of Leadership',
-        'Paid marketing and operations internships at SHS Academy',
+        'Host Boardly Blitz, Boardly Arena, MDCAT & Engineering sprints',
+        'Real-time leaderboards with automated tie-breaking by time',
+        'Verified Event Director certificates from SHS Academy',
       ],
     },
   ];
@@ -419,7 +429,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         override={{
           title: seoTitle,
           description:
-            'Represent Boardly at your college or university as an official student ambassador. Unlock 30 days of free Premium, peer referral rewards, and paid internship opportunities.',
+            'Organize live Boardly Blitz, Arena, MDCAT, and university entry-test tournaments for your college or academy. Filter 17,000+ authentic questions, host real-time leaderboards, and export results.',
           canonical: `https://boardly.cfd${window.location.pathname}`,
           ogImage: CREW_OG_IMAGE,
         }}
@@ -473,10 +483,10 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                   target.src = '/assets/boardly-logo-solid.png';
                 }}
               />
-              <span className="font-bold text-white text-base sm:text-lg tracking-normal font-display select-none">
-                Boardly
+              <span className="font-bold text-base sm:text-lg tracking-normal font-display select-none">
+                <span className="text-white">Board</span><span className="text-indigo-400">ly</span>
               </span>
-              <span className="px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-mono font-bold uppercase tracking-[0.08em] bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm border border-violet-400/30 shrink-0">
+              <span className="px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-mono font-bold uppercase tracking-[0.08em] bg-violet-600/70 backdrop-blur-md text-white shadow-sm border border-violet-400/30 shrink-0">
                 CREW
               </span>
             </button>
@@ -653,8 +663,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
             transition={{ duration: 0.8, delay: 0.2 }}
             className="mt-6 text-base sm:text-lg md:text-xl text-slate-300 max-w-2xl leading-relaxed"
           >
-            Join Pakistan&apos;s premier student ambassador network. Empower your batch with national-standard test prep,
-            build verifiable leadership credentials, and unlock 30 days free Premium, live dashboards, and paid internship tracks.
+            Run live academic tournaments for your college or academy. Create custom Boardly Blitz, Arena, MDCAT, and entry-test drills from Pakistan&apos;s authentic 17,000+ question bank with real-time leaderboards and CSV exports.
           </motion.p>
 
           {/* Hero CTAs */}
@@ -665,12 +674,20 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
             className="mt-10 flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto"
           >
             <button
-              onClick={() => navigateToSection('apply')}
+              onClick={() => setIsApplyModalOpen(true)}
               className="w-full sm:w-auto px-8 py-4 rounded-full font-bold text-base bg-gradient-to-r from-[#6d4aff] to-[#4f35f5] text-white shadow-xl shadow-violet-600/30 hover:shadow-violet-600/50 hover:brightness-110 active:scale-95 transition-all cursor-pointer border border-violet-400/40 flex items-center justify-center gap-2 min-h-[48px]"
             >
-              <span>Apply to Join Crew</span>
+              <span>Apply for Boardly Crew</span>
               <ArrowRight className="w-5 h-5" />
             </button>
+            {isCrewApproved && (
+              <button
+                onClick={() => onNavigate('/crew/dashboard')}
+                className="w-full sm:w-auto px-8 py-4 rounded-full font-bold text-base bg-white/10 hover:bg-white/15 active:bg-white/20 text-slate-100 border border-violet-400/30 transition-all cursor-pointer flex items-center justify-center gap-2 min-h-[48px]"
+              >
+                <span>Go to Crew Dashboard</span>
+              </button>
+            )}
             <button
               onClick={() => navigateToSection('how-it-works')}
               className="w-full sm:w-auto px-8 py-4 rounded-full font-bold text-base bg-white/5 hover:bg-white/10 active:bg-white/15 text-slate-200 border border-violet-400/25 transition-all cursor-pointer flex items-center justify-center gap-2 min-h-[48px]"
@@ -1092,11 +1109,10 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
               Interactive Preview
             </span>
             <h2 className="text-3xl sm:text-5xl font-bold text-white mt-4 font-display leading-[1.15]">
-              Your Command Center
+              Your Tournament Command Center
             </h2>
             <p className="mt-3 text-slate-300 text-base leading-[1.65]">
-              Every approved ambassador gets a dedicated mobile-optimized dashboard. Real-time referral counts, live
-              rankings, and one-tap link sharing.
+              Every approved Crew organizer gets a mobile-optimized dashboard. Create custom events from the authentic 17k MCQ bank, watch live scoreboards, and export results.
             </p>
           </div>
 
@@ -1112,81 +1128,82 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
               <div className="bg-[#080721] rounded-[28px] sm:rounded-[32px] pt-8 pb-6 px-3.5 sm:px-5 border border-violet-500/30 overflow-hidden relative">
                 {/* Sample Tag watermark */}
                 <div className="text-center mb-3">
-                  <span className="text-[11px] font-mono font-bold tracking-[0.08em] text-violet-300 uppercase bg-violet-950/80 px-3 py-0.5 rounded-full border border-violet-500/40">
-                    Sample Ambassador Portal
+                  <span className="text-[11px] font-mono font-bold tracking-[0.08em] text-teal-300 uppercase bg-teal-950/80 px-3 py-0.5 rounded-full border border-teal-500/40">
+                    Sample Organizer Portal
                   </span>
                 </div>
 
-                {/* Ambassador Profile Header */}
+                {/* Organizer Profile Header */}
                 <div className="flex items-center justify-between pb-4 border-b border-violet-500/20">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-violet-600 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-md">
-                      AK
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-violet-600 to-teal-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
+                      HR
                     </div>
                     <div>
-                      <div className="text-sm font-bold text-white leading-tight font-display">Ali Khan</div>
-                      <div className="text-sm text-slate-400">FAST-NU Islamabad</div>
+                      <div className="text-sm font-bold text-white leading-tight font-display">Hassan Raza</div>
+                      <div className="text-xs text-slate-400">GCU Lahore • Crew Organizer</div>
                     </div>
                   </div>
                   <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/40">
-                    Active Member
+                    Active Organizer
                   </span>
                 </div>
 
-                {/* Main Stat Card */}
-                <div className="mt-4 p-4 rounded-2xl bg-gradient-to-br from-violet-900/40 via-indigo-900/30 to-violet-950/50 border border-violet-500/30 shadow-inner">
-                  <div className="text-sm text-slate-300 font-medium">Batch Referrals</div>
-                  <div className="text-3xl font-bold text-white font-mono mt-1 flex items-baseline gap-2">
-                    42 <span className="text-sm font-sans text-emerald-400 font-semibold">+6 this week</span>
+                {/* Sample Live Event Card */}
+                <div className="mt-4 p-4 rounded-2xl bg-gradient-to-br from-violet-900/40 via-indigo-900/30 to-violet-950/50 border border-violet-500/30 shadow-inner space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-500/40 animate-pulse">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      LIVE NOW (Sample)
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">48 Registered</span>
                   </div>
-                  <div className="mt-3 flex items-center justify-between text-sm text-slate-300 pt-2 border-t border-violet-500/20">
-                    <span>National Rank: <strong className="text-white">#4</strong></span>
-                    <span>Status: <strong className="text-sky-300">Level 2 Leader</strong></span>
+                  <div className="text-sm font-bold text-white font-display">
+                    Boardly Blitz #18: Physics Mechanics Sprint
                   </div>
-                </div>
-
-                {/* Share Link Box */}
-                <div className="mt-4 p-3 rounded-2xl bg-white/5 border border-white/10">
-                  <div className="text-sm text-slate-400 mb-1 font-medium">Your Unique Ambassador Link</div>
-                  <div className="flex items-center justify-between gap-2 bg-[#06061a] p-2 rounded-xl border border-violet-500/20 text-xs font-mono text-slate-300">
-                    <span className="truncate">boardly.cfd/r/FAST-AK42</span>
-                    <button
-                      onClick={() => handleCopySampleCode('https://boardly.cfd/r/FAST-AK42')}
-                      className="px-2.5 py-1 rounded-lg bg-violet-600 text-white font-sans text-xs font-bold hover:bg-violet-500 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
-                    >
-                      {copyCodeSuccess ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
-                      <span>{copyCodeSuccess ? 'Copied' : 'Copy'}</span>
-                    </button>
+                  <div className="flex items-center justify-between text-xs text-slate-300 pt-1 border-t border-violet-500/20 font-mono">
+                    <span>30 MCQs • 30 Mins</span>
+                    <span className="text-teal-300 font-bold">Avg: 78%</span>
                   </div>
                 </div>
 
-                {/* Mini Leaderboard Snapshot */}
+                {/* Create Event Button inside Mockup */}
+                <div className="mt-3">
+                  <button
+                    onClick={() => navigateToSection('apply')}
+                    className="w-full py-2.5 rounded-xl bg-violet-600/30 hover:bg-violet-600/40 border border-violet-500/40 text-violet-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <span>+ Create New Event (Sample)</span>
+                  </button>
+                </div>
+
+                {/* Mini Leaderboard Snapshot with Fake Names */}
                 <div className="mt-4">
-                  <div className="flex items-center justify-between text-sm font-bold text-slate-300 mb-2">
-                    <span>Campus Leaderboard</span>
-                    <span className="text-[11px] font-mono text-violet-400">May Cohort</span>
+                  <div className="flex items-center justify-between text-xs font-bold text-slate-300 mb-2">
+                    <span>Live Leaderboard (Sample)</span>
+                    <span className="text-[11px] font-mono text-teal-400">37 Submitted</span>
                   </div>
-                  <div className="space-y-1.5 text-sm">
+                  <div className="space-y-1.5 text-xs">
                     <div className="flex items-center justify-between p-2 rounded-xl bg-white/5 text-slate-200">
                       <div className="flex items-center gap-2">
-                        <span className="text-amber-400 font-mono font-bold">1</span>
-                        <span>Sarah M. (NUST)</span>
+                        <span className="text-amber-400 font-mono font-bold">🥇 1</span>
+                        <span>Hamza R.</span>
                       </div>
-                      <span className="font-mono font-bold text-slate-300">86 joins</span>
+                      <span className="font-mono font-bold text-teal-300">28/30 (14m 10s)</span>
                     </div>
                     <div className="flex items-center justify-between p-2 rounded-xl bg-violet-600/20 border border-violet-500/40 text-white font-medium">
                       <div className="flex items-center gap-2">
-                        <span className="text-sky-300 font-mono font-bold">4</span>
-                        <span>Ali Khan (You)</span>
+                        <span className="text-slate-300 font-mono font-bold">🥈 2</span>
+                        <span>Ayesha K.</span>
                       </div>
-                      <span className="font-mono font-bold text-violet-300">42 joins</span>
+                      <span className="font-mono font-bold text-teal-300">28/30 (16m 40s)</span>
                     </div>
                     <div className="flex items-center justify-between p-2 rounded-xl bg-white/5 text-slate-200">
                       <div className="flex items-center gap-2">
-                        <span className="text-slate-400 font-mono font-bold">5</span>
-                        <span>Daniyal Z. (GIKI)</span>
+                        <span className="text-amber-600 font-mono font-bold">🥉 3</span>
+                        <span>Bilal S.</span>
                       </div>
-                      <span className="font-mono font-bold text-slate-300">39 joins</span>
+                      <span className="font-mono font-bold text-slate-300">27/30 (15m 12s)</span>
                     </div>
                   </div>
                 </div>
@@ -1195,9 +1212,9 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 <div className="mt-5 pt-3 border-t border-violet-500/20 text-center">
                   <button
                     onClick={() => navigateToSection('apply')}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-sm shadow-md shadow-violet-700/40 cursor-pointer min-h-[44px]"
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 text-white font-bold text-xs shadow-md shadow-violet-700/40 cursor-pointer min-h-[44px]"
                   >
-                    Unlock Your Own Dashboard
+                    Unlock Your Organizer Dashboard
                   </button>
                 </div>
               </div>
@@ -1370,25 +1387,24 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 Apply for Boardly Crew
               </h2>
               <p className="mt-2 text-slate-300 text-base leading-[1.65]">
-                Complete this 3-step form to claim your campus ambassadorship and activate 30 days of free Premium.
+                Complete your organizer application to host Boardly Blitz, Arena, and entry-test tournaments at your campus. Guest submissions welcome with zero login required.
               </p>
             </div>
 
             {/* Application Status Logic: Check if user already applied or approved */}
-            {profile?.isCrewMember ? (
+            {isCrewApproved ? (
               <div className="p-6 sm:p-8 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-center">
                 <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
-                <h3 className="text-xl font-bold text-white mb-2 font-display">You Are an Active Boardly Crew Member!</h3>
+                <h3 className="text-xl font-bold text-white mb-2 font-display">You Are an Active Boardly Crew Organizer!</h3>
                 <p className="text-slate-200 text-sm sm:text-base max-w-md mx-auto mb-6 leading-relaxed">
-                  Your ambassadorship is verified. You can view your real-time referrals, student clicks, and rank directly
-                  in your private ambassador dashboard.
+                  Your organizer credentials are active. Create custom events from the 17k question bank, monitor live scoreboards, and manage your campus tournaments.
                 </p>
                 <button
-                  onClick={() => onNavigate('/crew-dashboard')}
+                  onClick={() => onNavigate('/crew/dashboard')}
                   className="px-6 py-3.5 rounded-full font-bold text-sm sm:text-base bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-900/40 hover:brightness-110 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-2 min-h-[48px]"
                 >
                   <Trophy className="w-4 h-4" />
-                  <span>Go to Ambassador Dashboard</span>
+                  <span>Go to Organizer Dashboard</span>
                 </button>
               </div>
             ) : existingApp?.status === 'pending' ? (
@@ -1439,15 +1455,14 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 </div>
               </div>
             ) : !user ? (
-              /* Signed-out Prompt with Seamless Google Sign-in & Login Link */
-              <div className="p-6 sm:p-8 rounded-2xl bg-[#080721]/90 border border-violet-500/30 text-center">
-                <div className="w-12 h-12 rounded-full bg-violet-900/60 border border-violet-500/40 text-violet-300 flex items-center justify-center mx-auto mb-4">
-                  <Lock className="w-6 h-6" />
+              /* Guest Application Banner (No sign-in required) */
+              <div className="p-6 sm:p-8 rounded-2xl bg-[#080721]/90 border border-violet-500/30 text-center space-y-4">
+                <div className="w-12 h-12 rounded-full bg-violet-900/60 border border-violet-500/40 text-violet-300 flex items-center justify-center mx-auto">
+                  <Sparkles className="w-6 h-6 text-violet-400" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2 font-display">Please Sign In to Apply</h3>
-                <p className="text-slate-300 text-base max-w-md mx-auto mb-6 leading-relaxed">
-                  You need a student account so we can automatically activate 30 days of free Premium and connect your
-                  ambassador referral code upon approval.
+                <h3 className="text-xl font-bold text-white font-display">Apply as a Student Organizer</h3>
+                <p className="text-slate-300 text-sm sm:text-base max-w-md mx-auto leading-relaxed">
+                  No account required to submit your application. Enter your details as a guest, and we&apos;ll link it automatically whenever you sign in with the same email.
                 </p>
 
                 {formError && (
@@ -1456,45 +1471,21 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                   </div>
                 )}
 
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-sm mx-auto">
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 max-w-md mx-auto pt-2">
                   <button
-                    onClick={handleGoogleSignInForCrew}
-                    disabled={googleAuthLoading}
-                    className="w-full py-3.5 px-6 rounded-full font-bold text-sm sm:text-base bg-white text-slate-900 hover:bg-slate-100 active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer min-h-[48px]"
+                    onClick={() => setIsApplyModalOpen(true)}
+                    className="w-full sm:w-auto px-7 py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-violet-600 via-indigo-600 to-teal-400 text-white shadow-lg shadow-violet-600/30 hover:opacity-95 transition-all cursor-pointer flex items-center justify-center gap-2 min-h-[48px]"
                   >
-                    {googleAuthLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin text-slate-900" />
-                    ) : (
-                      <svg className="w-4 h-4" viewBox="0 0 24 24">
-                        <path
-                          fill="#4285F4"
-                          d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                        />
-                        <path
-                          fill="#34A853"
-                          d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                        />
-                        <path
-                          fill="#FBBC05"
-                          d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                        />
-                        <path
-                          fill="#EA4335"
-                          d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                        />
-                      </svg>
-                    )}
-                    <span>Continue with Google</span>
+                    <span>Open Application Form (Guest or Account)</span>
+                    <ArrowRight className="w-4 h-4" />
                   </button>
 
                   <button
-                    onClick={() => {
-                      sessionStorage.setItem('postLoginPath', '/crew/apply');
-                      onNavigate('/login');
-                    }}
-                    className="w-full py-3.5 px-6 rounded-full font-bold text-sm sm:text-base bg-violet-600/30 hover:bg-violet-600/50 text-white border border-violet-400/30 transition-all cursor-pointer min-h-[48px]"
+                    onClick={handleGoogleSignInForCrew}
+                    disabled={googleAuthLoading}
+                    className="w-full sm:w-auto px-5 py-3.5 rounded-xl font-bold text-xs bg-white text-slate-900 hover:bg-slate-100 transition-all flex items-center justify-center gap-2 cursor-pointer min-h-[48px]"
                   >
-                    Email Sign In
+                    <span>Sign In with Google</span>
                   </button>
                 </div>
               </div>
@@ -1838,6 +1829,17 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
           &copy; 2026 Boardly by SHS Virtual Academy. All rights reserved.
         </div>
       </footer>
+
+      {/* Unified Application Modal for Crew */}
+      <UnifiedProgramApplicationModal
+        isOpen={isApplyModalOpen}
+        onClose={() => setIsApplyModalOpen(false)}
+        defaultProgram="crew"
+        onSuccess={() => {
+          setIsApplyModalOpen(false);
+          alert('Application received! Once approved, your Crew Organizer dashboard will be unlocked.');
+        }}
+      />
     </div>
   );
 };

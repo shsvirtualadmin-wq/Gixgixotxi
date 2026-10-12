@@ -7,6 +7,7 @@ import { useSiteSettings } from '../context/SiteSettingsContext';
 import { downloadQuizPdf } from '../lib/pdfGenerator';
 import { FormattedExplanation } from './FormattedExplanation';
 import { MathText } from './MathText';
+import { loadKatexCss } from '../lib/katexLoader';
 import {
   RotateCcw,
   CheckCircle2,
@@ -68,6 +69,10 @@ export const ResultsScreen: React.FC<ResultsScreenProps> = React.memo(({
     isProHint?: boolean;
     userProfile?: StudentProfile | null;
   } | null>(null);
+
+  React.useEffect(() => {
+    loadKatexCss().catch(console.warn);
+  }, []);
 
   const isProStudent = isUserProOrPaid(currentUser, userProfile);
   const { score, total, percentage, timeTakenSeconds, topicBreakdown, questions, userAnswers, timestamp, config } = result;

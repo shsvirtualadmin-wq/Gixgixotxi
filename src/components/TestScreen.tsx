@@ -23,6 +23,7 @@ import { saveBookmark, removeBookmark } from '../lib/bookmarks';
 import type { MCQContext } from '../types';
 import { FormattedExplanation } from './FormattedExplanation';
 import { MathText } from './MathText';
+import { loadKatexCss } from '../lib/katexLoader';
 
 import { checkAndRecordPdfDownload } from '../lib/pdfLimit';
 import { isUserProOrPaid } from '../lib/supabase';
@@ -92,6 +93,11 @@ export const TestScreen: React.FC<TestScreenProps> = React.memo(({
     Date.now() + (typeof initialTimeLeftSeconds === 'number' && initialTimeLeftSeconds >= 0 ? initialTimeLeftSeconds : targetDurationSeconds) * 1000
   );
   const hasFinishedRef = useRef<boolean>(false);
+
+  // Ensure KaTeX CSS is loaded on-demand for test screen
+  useEffect(() => {
+    loadKatexCss().catch(console.warn);
+  }, []);
 
   // Re-initialize end timestamp if test configuration changes
   useEffect(() => {

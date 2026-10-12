@@ -11,6 +11,9 @@ import { BoardlyMarketingApp } from './marketing/BoardlyMarketingApp';
 import { AdminDashboardScreen } from './AdminDashboardScreen';
 import { OrganizerDashboard } from './organizer/OrganizerDashboard';
 import { CaptainDashboard } from './captain/CaptainDashboard';
+import { CaptainLandingPage } from './captain/CaptainLandingPage';
+import { CrewOrganizerDashboard } from './crew/CrewOrganizerDashboard';
+import { PublicCrewEventView } from './events/PublicCrewEventView';
 import { OrganizerApply } from './events/OrganizerApply';
 import { SeoHead } from './common/SeoHead';
 import { PublicEventPage } from './public/PublicEventPage';
@@ -76,8 +79,9 @@ export const BoardlyAppRouter: React.FC = () => {
   // Determine highest role route
   const getHighestRolePath = useCallback(() => {
     if (isAdmin) return '/admin';
+    if (activeRole === 'crew' || profile?.role === 'crew' || profile?.roles?.includes('crew')) return '/crew/dashboard';
     if (activeRole === 'organizer' || profile?.role === 'organizer' || profile?.roles?.includes('organizer')) return '/organizer';
-    if (activeRole === 'captain' || profile?.role === 'captain' || profile?.roles?.includes('captain')) return '/captain';
+    if (activeRole === 'captain' || profile?.role === 'captain' || profile?.roles?.includes('captain')) return '/captain/dashboard';
     return '/app';
   }, [isAdmin, activeRole, profile]);
 
@@ -137,7 +141,8 @@ export const BoardlyAppRouter: React.FC = () => {
         '/onboarding',
         '/admin',
         '/organizer',
-        '/captain',
+        '/captain/dashboard',
+        '/crew/dashboard',
         '/dashboard',
         '/profile',
         '/practice',
@@ -383,11 +388,11 @@ export const BoardlyAppRouter: React.FC = () => {
           return <OrganizerDashboard />;
         }
 
-        // 9. Campus Captain Dashboard (/captain or /captain/*)
-        if (currentPath === '/captain' || currentPath.startsWith('/captain/')) {
+        // 9. Boardly Captain Dashboard (/captain/dashboard)
+        if (currentPath === '/captain/dashboard' || currentPath.startsWith('/captain/dashboard/')) {
           if (!user) {
             if (typeof window !== 'undefined') {
-              sessionStorage.setItem('postLoginPath', '/captain');
+              sessionStorage.setItem('postLoginPath', '/captain/dashboard');
             }
             navigate('/login', true);
             return null;
@@ -395,7 +400,8 @@ export const BoardlyAppRouter: React.FC = () => {
           const isCaptainAllowed =
             isAdmin ||
             profile?.role === 'captain' ||
-            profile?.roles?.includes('captain');
+            profile?.roles?.includes('captain') ||
+            profile?.isCrewMember;
 
           if (!isCaptainAllowed) {
             return (
@@ -405,7 +411,7 @@ export const BoardlyAppRouter: React.FC = () => {
                 </div>
                 <div className="flex gap-2">
                   <button
-                    onClick={() => navigate('/captains/apply')}
+                    onClick={() => navigate('/captain')}
                     className="px-5 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 cursor-pointer"
                   >
                     Apply as Captain
@@ -421,6 +427,35 @@ export const BoardlyAppRouter: React.FC = () => {
             );
           }
           return <CaptainDashboard />;
+        }
+
+        // 9b. Boardly Captain Landing & Application Page (/captain, /captain/apply)
+        if (currentPath === '/captain' || currentPath.startsWith('/captain/')) {
+          return (
+            <ErrorBoundary onReset={() => navigate('/')}>
+              <CaptainLandingPage currentPath={currentPath} onNavigate={(route) => navigate(route)} />
+            </ErrorBoundary>
+          );
+        }
+
+        // Backward-compatibility Redirects for Captain
+        if (
+          (currentPath === '/crew' && typeof window !== 'undefined' && (window.location.search.includes('ref=') || window.location.search.includes('r='))) ||
+          currentPath === '/crew/portal' ||
+          currentPath === '/crew/leaderboard' ||
+          currentPath === '/crew/ambassador'
+        ) {
+          const search = typeof window !== 'undefined' ? window.location.search : '';
+          navigate(`/captain${search}`, true);
+          return null;
+        }
+        if (currentPath === '/captains' || currentPath === '/captains/apply' || currentPath === '/programs/captains') {
+          navigate('/captain', true);
+          return null;
+        }
+        if (currentPath === '/crew-dashboard') {
+          navigate('/captain/dashboard', true);
+          return null;
         }
 
         // 10. Admin Dashboard (/admin or /admin/*)
@@ -454,17 +489,7 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
-        // 12. Captain Application (/captains/apply or /captains)
-        if (currentPath === '/captains/apply' || currentPath === '/captains') {
-          return (
-            <OrganizerApply
-              onBack={() => navigate('/')}
-              onSuccess={() => navigate('/captain')}
-            />
-          );
-        }
-
-        // Public Events Pages (/events/blitz, /events/arena)
+        // Public Events Pages (/events/blitz, /events/arena, /events/:id)
         if (currentPath === '/events/blitz') {
           return (
             <div className="min-h-screen flex flex-col justify-between">
@@ -483,6 +508,31 @@ export const BoardlyAppRouter: React.FC = () => {
             </div>
           );
         }
+        if (currentPath.startsWith('/events/')) {
+          const evtId = currentPath.replace('/events/', '').split('?')[0];
+          return (
+            <ErrorBoundary onReset={() => navigate('/')}>
+              <PublicCrewEventView
+                eventId={evtId}
+                onNavigateHome={() => navigate('/')}
+                onNavigateSignIn={() => navigate('/login')}
+              />
+            </ErrorBoundary>
+          );
+        }
+
+        // Dedicated Boardly Crew Organizer Dashboard (/crew/dashboard)
+        if (currentPath === '/crew/dashboard' || currentPath.startsWith('/crew/dashboard/')) {
+          return (
+            <ErrorBoundary onReset={() => navigate('/')}>
+              <CrewOrganizerDashboard
+                onBackToApp={() => navigate('/app')}
+                onNavigateApply={() => navigate('/crew')}
+                onOpenPublicEvent={(id) => navigate(`/events/${id}`)}
+              />
+            </ErrorBoundary>
+          );
+        }
 
         // Dedicated Boardly Crew Landing Page (/crew, /crew/how-it-works, /crew/perks, /crew/faq, /crew/apply)
         if (currentPath === '/crew' || currentPath.startsWith('/crew/')) {
@@ -493,38 +543,10 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
-        // Public Programs Pages (/programs/crew, /programs/captains)
+        // Public Programs Pages (/programs/crew)
         if (currentPath === '/programs/crew') {
-          return (
-            <ErrorBoundary onReset={() => navigate('/')}>
-              <CrewLandingPage currentPath="/crew" onNavigate={(route) => navigate(route)} />
-            </ErrorBoundary>
-          );
-        }
-
-        // Dedicated Crew Ambassador Dashboard (/crew-dashboard)
-        if (currentPath === '/crew-dashboard') {
-          return (
-            <div className="min-h-screen flex flex-col justify-between">
-              <Navbar currentPage="home" onNavigate={(p) => navigate(`/${p}`)} onGetStarted={() => navigate(user ? '/app' : '/signup')} />
-              <ErrorBoundary onReset={() => navigate('/app')}>
-                <CrewDashboardPage
-                  onBackToApp={() => navigate('/app')}
-                  onApply={() => navigate('/programs/crew')}
-                />
-              </ErrorBoundary>
-              <Footer onNavigate={(p) => navigate(`/${p}`)} />
-            </div>
-          );
-        }
-        if (currentPath === '/programs/captains') {
-          return (
-            <div className="min-h-screen flex flex-col justify-between">
-              <Navbar currentPage="home" onNavigate={(p) => navigate(`/${p}`)} onGetStarted={() => navigate(user ? '/app' : '/signup')} />
-              <PublicProgramPage type="captains" onNavigateHome={() => navigate('/')} onApplyOrStart={() => navigate('/captains/apply')} />
-              <Footer onNavigate={(p) => navigate(`/${p}`)} />
-            </div>
-          );
+          navigate('/crew', true);
+          return null;
         }
 
         // Public University Explorer & Merit Meter

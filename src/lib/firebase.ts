@@ -368,7 +368,7 @@ async function testFirestoreConnection() {
 }
 testFirestoreConnection();
 
-export type UserRole = 'student' | 'organizer' | 'captain' | 'admin';
+export type UserRole = 'student' | 'organizer' | 'captain' | 'crew' | 'admin';
 
 export interface StudentUserProfile {
   uid: string;

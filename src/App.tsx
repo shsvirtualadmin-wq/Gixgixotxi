@@ -43,6 +43,7 @@ import { ModalProvider, useModals } from './context/ModalContext';
 import { AuthProvider } from './context/AuthContext';
 import { UsageProvider } from './context/UsageContext';
 import { BoardlyAppRouter } from './components/BoardlyAppRouter';
+import { TestPreparationScreen } from './components/TestPreparationScreen';
 import { GlobalModals } from './components/GlobalModals';
 import { LeaveConfirmationModal } from './components/LeaveConfirmationModal';
 import { setPageMeta, DEFAULT_PAGE_META } from './utils/seo';
@@ -466,6 +467,7 @@ export function App() {
     } catch {}
     return [];
   });
+  const [isPreparingMathTest, setIsPreparingMathTest] = useState<boolean>(false);
   const [testSessionProgress, setTestSessionProgress] = useState<{
     currentIndex?: number;
     userAnswers?: Record<number, UserAnswer>;
@@ -2972,7 +2974,8 @@ export function App() {
       localStorage.setItem('boardly_active_test_session', JSON.stringify(sessionObj));
     } catch {}
 
-    // Immediately open test screen for the student!
+    // Open test preparation screen to convert math formulas through KaTeX
+    setIsPreparingMathTest(true);
     setScreen('test');
     setIsGenerating(false);
     setPendingTestParams(null);
@@ -3547,7 +3550,14 @@ export function App() {
                     onUpgradeClick={() => setScreen('plan_selection')}
                   />
                 )}
-                {screen === 'test' && (
+                {screen === 'test' && isPreparingMathTest && (
+                  <TestPreparationScreen
+                    questions={activeQuestions}
+                    testTitle={testConfig?.subject ? `${testConfig.subject} Drill` : 'Practice Test'}
+                    onReady={() => setIsPreparingMathTest(false)}
+                  />
+                )}
+                {screen === 'test' && !isPreparingMathTest && (
                   <TestScreen
                     questions={activeQuestions}
                     config={testConfig || {

@@ -1,0 +1,36 @@
+[
+  {
+    "id": "app_captain_1791828676964_9039",
+    "program": "captain",
+    "userId": null,
+    "isGuest": true,
+    "fullName": "Ahmad Bilal",
+    "email": "ahmad.bilal.test@example.com",
+    "phone": "03001234567",
+    "institution": "Punjab College Lahore",
+    "city": "",
+    "academicLevel": "FSC / Entry Test",
+    "promotionPlan": "I want to help my batch prepare for FSC and entry tests using Boardly.",
+    "answers": "I want to help my batch prepare for FSC and entry tests using Boardly.",
+    "status": "pending",
+    "submittedAt": "2026-10-12T18:11:16.964Z",
+    "ip": "127.0.0.1"
+  },
+  {
+    "id": "app_crew_1791828676981_6819",
+    "program": "crew",
+    "userId": null,
+    "isGuest": true,
+    "fullName": "Zainab Fatima",
+    "email": "zainab.fatima.test@example.com",
+    "phone": "03219876543",
+    "institution": "GCU Lahore",
+    "city": "",
+    "academicLevel": "FSC / Entry Test",
+    "promotionPlan": "I organize academic circles and want to host Boardly Blitz competitions.",
+    "answers": "I organize academic circles and want to host Boardly Blitz competitions.",
+    "status": "pending",
+    "submittedAt": "2026-10-12T18:11:16.981Z",
+    "ip": "127.0.0.1"
+  }
+]

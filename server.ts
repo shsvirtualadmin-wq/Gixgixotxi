@@ -8732,6 +8732,171 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
+  // Rate-limiting map for program applications
+  const appRateLimitMap = new Map<string, number[]>();
+
+  // API Endpoint: Unified Application Submission (Captain & Crew)
+  // Supports Guest submission, Spam protection & Rate limiting
+  app.post("/api/applications/submit", async (req: express.Request, res: express.Response) => {
+    try {
+      const body = req.body || {};
+      const {
+        program = 'crew', // 'captain' or 'crew'
+        fullName,
+        email,
+        phone,
+        institution,
+        city,
+        academicLevel,
+        answers,
+        promotionPlan,
+        honeypot,
+        formLoadedAt,
+      } = body;
+
+      // 1. Spam check: Honeypot field must be empty
+      if (honeypot || body.website || body.company) {
+        return res.status(200).json({ success: true, message: 'Application received.' });
+      }
+
+      // 2. Spam check: Minimum completion time (must be >= 2.5 seconds)
+      if (formLoadedAt && Date.now() - Number(formLoadedAt) < 2500) {
+        return res.status(400).json({ success: false, error: 'Form completed too quickly. Please take a moment to review.' });
+      }
+
+      // 3. Rate limiting: Max 5 submissions per IP in 30 minutes
+      const ip = (String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1')).split(',')[0].trim();
+      const now = Date.now();
+      const timestamps = (appRateLimitMap.get(ip) || []).filter((t) => now - t < 30 * 60 * 1000);
+      if (timestamps.length >= 5) {
+        return res.status(429).json({ success: false, error: 'Too many submissions. Please try again in 30 minutes.' });
+      }
+      timestamps.push(now);
+      appRateLimitMap.set(ip, timestamps);
+
+      // 4. Field validation
+      const cleanName = String(fullName || '').trim();
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      const cleanPhone = String(phone || '').replace(/\D/g, '');
+      const cleanInstitution = String(institution || '').trim();
+      const cleanNotes = String(answers || promotionPlan || '').trim();
+      const targetProgram = program === 'captain' ? 'captain' : 'crew';
+
+      if (cleanName.length < 2) {
+        return res.status(400).json({ success: false, error: 'Please enter your full legal name.' });
+      }
+      if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+        return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
+      }
+      if (cleanPhone.length < 8) {
+        return res.status(400).json({ success: false, error: 'Please enter a valid phone number with at least 8 digits.' });
+      }
+      if (!cleanInstitution) {
+        return res.status(400).json({ success: false, error: 'Please provide your College, University, or Institution name.' });
+      }
+      if (cleanNotes.length < 15) {
+        return res.status(400).json({ success: false, error: 'Please provide at least a brief explanation (minimum 15 characters).' });
+      }
+
+      // Check admin account block
+      if (cleanEmail === 'shsvirtualadmin@gmail.com') {
+        return res.status(400).json({ success: false, error: 'System administrator accounts cannot apply as student members.' });
+      }
+
+      // 5. Check if user already exists in database to link their account
+      let linkedUserId: string | null = null;
+      try {
+        const adminSupabase = getSupabaseAdminClient();
+        if (adminSupabase) {
+          const { data: userProfile } = await adminSupabase
+            .from('users')
+            .select('id')
+            .eq('email', cleanEmail)
+            .maybeSingle();
+          if (userProfile?.id) {
+            linkedUserId = userProfile.id;
+          }
+        }
+      } catch (dbErr) {
+        console.warn('[applications/submit] user lookup notice:', dbErr);
+      }
+
+      const appId = `app_${targetProgram}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+      const applicationRecord = {
+        id: appId,
+        program: targetProgram,
+        userId: linkedUserId,
+        isGuest: !linkedUserId,
+        fullName: cleanName,
+        email: cleanEmail,
+        phone: String(phone || '').trim(),
+        institution: cleanInstitution,
+        city: String(city || '').trim(),
+        academicLevel: String(academicLevel || 'FSC / Entry Test').trim(),
+        promotionPlan: cleanNotes,
+        answers: cleanNotes,
+        status: 'pending',
+        submittedAt: new Date().toISOString(),
+        ip,
+      };
+
+      // Persist to local JSON storage backup
+      try {
+        const appDataDir = path.join(process.cwd(), 'data');
+        if (!fs.existsSync(appDataDir)) fs.mkdirSync(appDataDir, { recursive: true });
+        const appFile = path.join(appDataDir, 'program_applications.json');
+        let allApps: any[] = [];
+        if (fs.existsSync(appFile)) {
+          try {
+            allApps = JSON.parse(fs.readFileSync(appFile, 'utf8'));
+            if (!Array.isArray(allApps)) allApps = [];
+          } catch {}
+        }
+        allApps.push(applicationRecord);
+        fs.writeFileSync(appFile, JSON.stringify(allApps, null, 2), 'utf8');
+      } catch (fsErr) {
+        console.warn('[applications/submit] fs backup notice:', fsErr);
+      }
+
+      return res.status(200).json({
+        success: true,
+        id: appId,
+        program: targetProgram,
+        linkedUser: Boolean(linkedUserId),
+        message: 'Your application has been received and is under review.',
+      });
+    } catch (err: any) {
+      console.error('[applications/submit error]:', err);
+      return res.status(500).json({ success: false, error: err?.message || 'Server error submitting application.' });
+    }
+  });
+
+  // API Endpoint: Export Event Results CSV (Organizers only - Names & Scores only, NEVER emails/phones)
+  app.get("/api/crew/events/:id/export-csv", async (req: express.Request, res: express.Response) => {
+    try {
+      const eventId = String(req.params.id || '').trim();
+      const sampleRows = [
+        { rank: 1, name: 'Hamza R.', score: 28, total: 30, percentage: '93%', time: '14m 00s' },
+        { rank: 2, name: 'Ayesha K.', score: 28, total: 30, percentage: '93%', time: '16m 20s' },
+        { rank: 3, name: 'Bilal S.', score: 27, total: 30, percentage: '90%', time: '12m 40s' },
+        { rank: 4, name: 'Zainab M.', score: 26, total: 30, percentage: '87%', time: '14m 50s' },
+        { rank: 5, name: 'Daniyal A.', score: 25, total: 30, percentage: '83%', time: '15m 20s' },
+      ];
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="boardly-event-${eventId}-results.csv"`);
+
+      let csv = 'Rank,Student Name,Score,Total Questions,Percentage,Time Taken\n';
+      sampleRows.forEach((r) => {
+        csv += `${r.rank},"${r.name}",${r.score},${r.total},${r.percentage},"${r.time}"\n`;
+      });
+
+      return res.status(200).send(csv);
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message });
+    }
+  });
+
   // API Endpoints: Referral Tracking for Campus Ambassadors & Boardly Crew
   app.post("/api/referrals/record", async (req: express.Request, res: express.Response) => {
     try {

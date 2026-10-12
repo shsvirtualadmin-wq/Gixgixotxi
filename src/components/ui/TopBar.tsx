@@ -15,6 +15,7 @@ import {
   BookOpen,
   ArrowRight,
   Check,
+  Zap,
 } from 'lucide-react';
 
 export interface TopBarProps {

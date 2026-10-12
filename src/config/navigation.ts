@@ -24,8 +24,8 @@ export const MAIN_NAV_ITEMS: NavItemConfig[] = [
   { label: 'Boardly Arena', href: '/events/arena', section: 'Events' },
 
   // Programs
+  { label: 'Boardly Captain', href: '/captain', section: 'Programs' },
   { label: 'Boardly Crew', href: '/crew', section: 'Programs' },
-  { label: 'Campus Captains', href: '/programs/captains', section: 'Programs' },
 
   // Company
   { label: 'About', href: '/about', section: 'Company' },
