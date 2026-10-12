@@ -26,6 +26,7 @@ import { UniversityExplorer } from './universities/UniversityExplorer';
 import { MeritMeter } from './merit/MeritMeter';
 import { Navbar } from './marketing/Navbar';
 import { Footer } from './marketing/Footer';
+import { ScrollProgress } from './marketing/design-system/ScrollProgress';
 import { ErrorBoundary } from './ErrorBoundary';
 import { AlertCircle, X } from 'lucide-react';
 
@@ -553,6 +554,7 @@ export const BoardlyAppRouter: React.FC = () => {
         if (currentPath === '/universities') {
           return (
             <div className="min-h-screen flex flex-col justify-between">
+              <ScrollProgress />
               <Navbar currentPage="home" onNavigate={(p) => navigate(`/${p}`)} onGetStarted={() => navigate(user ? '/app' : '/signup')} />
               <UniversityExplorer
                 onNavigateMeritMeter={(uniId) => navigate(`/merit-meter?uni=${encodeURIComponent(uniId)}`)}
@@ -565,6 +567,7 @@ export const BoardlyAppRouter: React.FC = () => {
         if (currentPath === '/merit-meter') {
           return (
             <div className="min-h-screen flex flex-col justify-between">
+              <ScrollProgress />
               <Navbar currentPage="home" onNavigate={(p) => navigate(`/${p}`)} onGetStarted={() => navigate(user ? '/app' : '/signup')} />
               <MeritMeter
                 onStartPractice={() => navigate(user ? '/app' : '/signup')}

@@ -39,6 +39,7 @@ export const ReviewsWall: React.FC<ReviewsWallProps> = ({
             return {
               id: docSnap.id,
               name: data.name || 'Student',
+              track: data.track || data.testType || 'FSc / Entry Test',
               universityId: data.universityId || 'nust',
               universityName: data.universityName || 'University',
               testType: data.testType || 'Entrance Test',

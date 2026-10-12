@@ -14,6 +14,7 @@ import { MdcatLandingPage } from './MdcatLandingPage';
 import { FscMatricLandingPage } from './FscMatricLandingPage';
 import { FastNuLandingPage } from './FastNuLandingPage';
 import { SeoHead } from '../common/SeoHead';
+import { ScrollProgress } from './design-system/ScrollProgress';
 import { ReviewsWall } from './ReviewsWall';
 import { BlitzLanding } from '../events/BlitzLanding';
 import { BlitzRegister } from '../events/BlitzRegister';
@@ -246,6 +247,9 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
     <div className="min-h-screen bg-[#FAF9F6] bg-grid-faint text-[#0A1330] flex flex-col selection:bg-indigo-600 selection:text-white font-poppins relative">
       {/* Dynamic SEO Meta Tags, Canonical Link & Schema for Current Public Route */}
       <SeoHead pathname={getPathForMarketingPage(currentPage)} />
+
+      {/* Vertical Scroll Progress Line */}
+      <ScrollProgress />
 
       {/* Top Floating Pill Navigation */}
       <Navbar

@@ -2,8 +2,6 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
   GoogleAuthProvider,
-  browserLocalPersistence,
-  setPersistence,
   signInWithPopup,
 } from 'firebase/auth';
 import {
@@ -64,6 +62,7 @@ import {
   testAuthHandlerEndpoint,
   isValidHostname,
   cleanEnvVar,
+  TARGET_FIRESTORE_DATABASE_ID,
 } from './firebaseConfig';
 
 export {
@@ -128,7 +127,7 @@ async function testFirestoreConnection() {
     if (error?.message?.includes('the client is offline')) {
       console.warn('[Boardly Firestore] Client offline notice: running in local cached mode.');
     } else if (error?.code === 'permission-denied') {
-      console.info('[Boardly Firestore] Connection active to named database', rawFirestoreDbId);
+      console.info('[Boardly Firestore] Connection active to named database', TARGET_FIRESTORE_DATABASE_ID);
     }
   }
 }

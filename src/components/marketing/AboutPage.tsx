@@ -1,188 +1,217 @@
 import React from 'react';
-import { Sparkles, Target, Compass, Award, Users, BookOpen, ArrowRight, ExternalLink, ShieldCheck } from 'lucide-react';
+import { Target, Compass, Award, ExternalLink } from 'lucide-react';
 import { MarketingPage } from './Navbar';
+import { Hero } from './design-system/Hero';
+import { Section } from './design-system/Section';
+import { SectionHeader } from './design-system/SectionHeader';
+import { ScreenCard } from './ScreenCard';
+import { WordReveal } from './design-system/WordReveal';
+import { StepsList } from './design-system/StepsList';
+import { FaqAccordion, FaqItem } from './design-system/FaqAccordion';
+import { CtaSection } from './design-system/CtaSection';
+import { ScrollReveal } from './design-system/useScrollReveal';
 
 interface AboutPageProps {
   onNavigate: (page: MarketingPage) => void;
   onGetStarted: () => void;
 }
 
+const ABOUT_TYPEWRITER = [
+  'Diagnostic Test Access',
+  'Academic Integrity',
+  'Transparent Derivations',
+  'National Education Mission',
+];
+
+const ABOUT_FAQS: FaqItem[] = [
+  {
+    question: 'What is the relationship between Boardly and SHS Virtual Academy?',
+    answer:
+      'Boardly is an academic testing engine developed under the pedagogical guidance of SHS Virtual Academy. While SHS Virtual Academy conducts live counseling and structured tuition, Boardly provides the national diagnostic testing portal for self-paced practice.',
+  },
+  {
+    question: 'Are question banks authored by qualified subject educators?',
+    answer:
+      'Yes, questions and derivations are curated by experienced educators aligned with FBISE and provincial board examination specifications, with extensive review for factual accuracy.',
+  },
+  {
+    question: 'How does Boardly maintain high server availability during peak exam seasons?',
+    answer:
+      'Our platform is engineered as a lightweight, cloud-native application optimized for low latency across mobile data connections in all regions of Pakistan.',
+  },
+];
+
 export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate, onGetStarted }) => {
   return (
-    <div className="pt-28 pb-20 px-4 sm:px-6 max-w-5xl mx-auto space-y-16">
-      {/* 1. Header */}
-      <header className="text-center max-w-3xl mx-auto space-y-4">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-200/80 text-indigo-700 text-xs font-semibold">
-          <Compass className="w-3.5 h-3.5 text-indigo-600" />
-          <span>Our Academic Mission &amp; Heritage</span>
-        </div>
-        <h1 className="text-3xl sm:text-5xl font-black text-[#0A1330] font-poppins tracking-tight">
-          About Boardly — Built by SHS Virtual Academy
-        </h1>
-        <p className="text-base sm:text-lg text-slate-600 leading-relaxed">
-          Boardly was founded with a straightforward goal: provide every Matric, Intermediate, and competitive entrance test aspirant in Pakistan with world-class diagnostic testing, transparent solution derivations, and 24/7 AI-guided conceptual mastery.
-        </p>
-      </header>
+    <div className="w-full">
+      {/* 1. Hero */}
+      <Hero
+        eyebrow="ACADEMIC HERITAGE & MISSION"
+        staticHeadingPrefix="Democratizing Education for"
+        typewriterPhrases={ABOUT_TYPEWRITER}
+        staticHeadingSuffix="Across Pakistan"
+        description="Boardly provides every Matric, Intermediate, and competitive entrance test aspirant with diagnostic question banks, transparent derivations, and authentic mock exams."
+        primaryCtaText="Start Free Practice"
+        secondaryCtaText="Contact Team"
+        onPrimaryCta={onGetStarted}
+        onSecondaryCta={() => onNavigate('contact')}
+      />
 
-      {/* 2. Institutional Heritage & SHS Virtual Academy Link */}
-      <section className="p-8 sm:p-10 rounded-[28px] bg-gradient-to-br from-indigo-950 via-[#0d1b3e] to-slate-900 text-white shadow-xl space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-white/10 pb-4">
-          <div className="space-y-1">
-            <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">
-              Institutional Partnership
+      {/* 2. Institutional Partnership (Light) */}
+      <Section variant="light">
+        <SectionHeader
+          eyebrow="ACADEMIC ROOTS"
+          title="Proudly Engineered by"
+          highlight="SHS Virtual Academy"
+          description="A specialized testing initiative operating under verified curriculum guidance."
+        />
+
+        <div className="max-w-4xl mx-auto p-6 sm:p-10 rounded-[24px] bg-white/85 backdrop-blur-md border border-slate-200/80 shadow-sm text-left space-y-4 font-sans text-sm sm:text-base text-slate-700 leading-relaxed">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <span className="text-xs font-mono font-bold uppercase text-indigo-600 tracking-wider">
+              Curriculum Leadership
             </span>
-            <h2 className="text-xl sm:text-2xl font-bold font-poppins text-white">
-              Proudly Engineered by SHS Virtual Academy
-            </h2>
+            <a
+              href="https://shsvirtualacademy.pro"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-800"
+            >
+              <span>Visit shsvirtualacademy.pro</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
           </div>
-          <a
-            href="https://shsvirtualacademy.pro"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-colors w-fit"
-          >
-            <span>Visit shsvirtualacademy.pro</span>
-            <ExternalLink className="w-3.5 h-3.5 text-amber-300" />
-          </a>
-        </div>
-        <p className="text-sm sm:text-base text-slate-200 leading-relaxed">
-          Boardly operates under the curriculum leadership and academic direction of{' '}
-          <a
-            href="https://shsvirtualacademy.pro"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-amber-300 underline font-semibold hover:text-white transition-colors"
-          >
-            SHS Virtual Academy (shsvirtualacademy.pro)
-          </a>
-          . While SHS Virtual Academy leads online secondary classes, student counseling, and live pedagogical mentorship, Boardly serves as the high-yield diagnostic testing engine where students test retention, benchmark speed, and analyze performance against thousands of peers nationwide.
-        </p>
-      </section>
-
-      {/* 3. Story & Background */}
-      <section className="p-8 sm:p-12 rounded-[28px] bg-white border border-slate-200/80 shadow-lg space-y-8 text-slate-700 text-sm sm:text-base leading-relaxed">
-        <div className="space-y-4">
-          <h2 className="text-2xl font-bold font-poppins text-[#0A1330]">
-            The Problem with Traditional Exam Revision
-          </h2>
           <p>
-            For decades, exam preparation in Pakistan has relied on repetitive rote memorization from dense paper guidebooks. Students memorized answers without understanding the underlying physical mechanics or mathematical justifications. When modern examinations like PMDC MDCAT, FAST-NU, or FBISE SLO papers introduced application-based numericals, thousands struggled.
-          </p>
-          <p>
-            Traditional private academies charge exorbitant fees upwards of PKR 50,000 to PKR 85,000 per season, pricing out talented students in smaller cities and remote districts. We built Boardly to eliminate these barriers. Every student deserves access to premium diagnostic testing and instant AI derivations on their own schedule.
+            Boardly operates under the curriculum leadership and academic direction of{' '}
+            <strong className="text-slate-900 font-bold">SHS Virtual Academy</strong>. While SHS Virtual Academy leads online secondary classes, student counseling, and live pedagogical mentorship, Boardly serves as the high-yield diagnostic testing portal where learners test retention, benchmark speed, and analyze performance against thousands of classmates nationwide.
           </p>
         </div>
+      </Section>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-4 border-t border-slate-100">
-          <div className="space-y-2">
-            <div className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
-              <Target className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold text-slate-900 text-base">Active Recall Testing</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Drilling short, high-frequency quizzes trains your brain to retrieve knowledge under authentic exam clock pressure.
-            </p>
+      {/* 3. Word Reveal & ScreenCard (Dark) */}
+      <Section variant="dark">
+        <WordReveal statement="Every student in Pakistan deserves top-tier diagnostic test practice without financial barriers." />
+
+        <div className="mt-12 max-w-4xl mx-auto space-y-12">
+          <SectionHeader
+            dark
+            eyebrow="CORE VALUES"
+            title="Three Tenets That Guide"
+            highlight="Every Question We Publish"
+          />
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              {
+                title: 'Active Testing Over Cramming',
+                desc: 'Reading answers creates a false illusion of competence. Only answering under time pressure confirms true readiness.',
+                icon: <Target className="w-5 h-5 text-indigo-400" />,
+              },
+              {
+                title: 'Transparent Mathematical Steps',
+                desc: 'No mysterious answer keys. Every numerical or conceptual MCQ includes full step-by-step derivations.',
+                icon: <Compass className="w-5 h-5 text-teal-400" />,
+              },
+              {
+                title: 'Accessibility for Every City',
+                desc: 'Free core access ensuring students in remote districts receive the exact same quality prep as high-end academies.',
+                icon: <Award className="w-5 h-5 text-amber-400" />,
+              },
+            ].map((v, i) => (
+              <ScrollReveal key={i} delayMs={i * 60}>
+                <div className="p-6 rounded-[24px] bg-slate-900/80 border border-slate-800 text-left space-y-3 h-full">
+                  <div className="p-2.5 rounded-xl bg-slate-800 w-fit">{v.icon}</div>
+                  <h3 className="text-base font-bold text-white font-display">{v.title}</h3>
+                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-sans">{v.desc}</p>
+                </div>
+              </ScrollReveal>
+            ))}
           </div>
 
-          <div className="space-y-2">
-            <div className="w-10 h-10 rounded-xl bg-teal-50 text-teal-600 flex items-center justify-center">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold text-slate-900 text-base">Boardy AI Partner</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Boardy, your 24/7 study buddy, guides you step-by-step through derivations and difficult numericals.
-            </p>
-          </div>
-
-          <div className="space-y-2">
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-              <Award className="w-5 h-5" />
-            </div>
-            <h3 className="font-bold text-slate-900 text-base">Merit Democracy</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Affordable PKR pricing ensures that quality education and top-tier test analytics are accessible to every family.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* 4. Curriculum Leadership */}
-      <section className="space-y-6">
-        <div className="text-center space-y-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-indigo-600">
-            Curriculum Committee
-          </span>
-          <h2 className="text-2xl sm:text-3xl font-bold font-poppins text-[#0A1330]">
-            Created by Experienced Academic Educators
-          </h2>
-          <p className="text-sm text-slate-600 max-w-xl mx-auto">
-            Our content is authored and vetted by veteran teachers with decades of experience guiding students toward top positions.
-          </p>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-          <div className="p-6 rounded-[24px] bg-white border border-slate-200/80 shadow-sm space-y-3 text-center">
-            <div className="w-16 h-16 rounded-full bg-indigo-100 text-indigo-700 font-bold text-xl flex items-center justify-center mx-auto">
-              SA
-            </div>
-            <h3 className="font-bold text-slate-900 text-base">Prof. Salman Ahmed</h3>
-            <span className="text-xs text-indigo-600 font-semibold block">Head of Physics &amp; Numerical Analysis</span>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              18+ years mentoring FBISE and Punjab Board position holders. Author of conceptual MCQ drill series.
-            </p>
-          </div>
-
-          <div className="p-6 rounded-[24px] bg-white border border-slate-200/80 shadow-sm space-y-3 text-center">
-            <div className="w-16 h-16 rounded-full bg-teal-100 text-teal-700 font-bold text-xl flex items-center justify-center mx-auto">
-              MK
-            </div>
-            <h3 className="font-bold text-slate-900 text-base">Dr. Maryam Khalid</h3>
-            <span className="text-xs text-teal-700 font-semibold block">MDCAT Biology &amp; Physiology Lead</span>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              King Edward Medical University alumna; specialist in high-yield medical entrance question structuring.
-            </p>
-          </div>
-
-          <div className="p-6 rounded-[24px] bg-white border border-slate-200/80 shadow-sm space-y-3 text-center">
-            <div className="w-16 h-16 rounded-full bg-violet-100 text-violet-700 font-bold text-xl flex items-center justify-center mx-auto">
-              TR
-            </div>
-            <h3 className="font-bold text-slate-900 text-base">Tariq Rehman, M.Sc.</h3>
-            <span className="text-xs text-violet-700 font-semibold block">Chemistry &amp; SLO Exam Designer</span>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Senior textbook reviewer for National Book Foundation; designer of SLO model assessment papers.
-            </p>
+          <div className="pt-6">
+            <ScreenCard
+              mode="dashboard"
+              title="Boardly Academic Integrity Portal (Sample)"
+              subtitle="Curriculum Alignment Verification · Student A."
+              chips={[
+                {
+                  label: 'Syllabus Match (Sample)',
+                  value: '100% SLO Aligned',
+                  position: 'top-right',
+                },
+                {
+                  label: 'Derivations (Sample)',
+                  value: 'Verified Formulas',
+                  position: 'bottom-left',
+                },
+              ]}
+            />
           </div>
         </div>
-      </section>
+      </Section>
 
-      {/* 5. Bottom CTA */}
-      <div className="text-center p-8 sm:p-10 rounded-[28px] bg-indigo-50 border border-indigo-200/70 space-y-4">
-        <h3 className="text-xl sm:text-2xl font-bold font-poppins text-[#0A1330]">
-          Join Our Growing Community of Achievers
-        </h3>
-        <p className="text-sm text-slate-600 max-w-md mx-auto">
-          Start with our permanent Free tier or accelerate with full Pro access today.
-        </p>
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-          <button
-            onClick={onGetStarted}
-            className="px-8 py-3.5 rounded-full font-bold text-sm text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-md inline-flex items-center gap-2 cursor-pointer"
-          >
-            <span>Get Started Free</span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-          <a
-            href="https://shsvirtualacademy.pro"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-6 py-3.5 rounded-full font-semibold text-sm text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 shadow-xs transition-colors inline-flex items-center gap-2"
-          >
-            <span>Learn About SHS Virtual Academy</span>
-            <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
-          </a>
-        </div>
-      </div>
+      {/* 4. Methodology Steps (Light) */}
+      <Section variant="light">
+        <SectionHeader
+          eyebrow="PEDAGOGICAL DISCIPLINE"
+          title="How Boardly Maintains"
+          highlight="Curriculum Standards"
+          description="A rigorous process behind every single diagnostic question bank and mock exam."
+        />
+
+        <StepsList
+          steps={[
+            {
+              number: '1',
+              title: 'SLO-Mapped Question Drafting',
+              description:
+                'Every question is authored against official federal and provincial board learning objectives.',
+              checklist: ['Cognitive Level Tagging', 'Curriculum Mapping Verification'],
+            },
+            {
+              number: '2',
+              title: 'Multi-Step Derivation Authoring',
+              description:
+                'Educators provide complete mathematical steps, textbook citations, and reasoning for every choice.',
+              checklist: ['Zero Ambiguous Keys', 'Step-by-Step Mathematical Clarity'],
+            },
+            {
+              number: '3',
+              title: 'Diagnostic Test Delivery',
+              description:
+                'Tests are deployed across mobile-friendly interfaces with real-time timers and instant feedback.',
+              checklist: ['360px Mobile First UI', 'Zero Barrier Free Access'],
+              linkText: 'Explore Features →',
+              onLinkClick: () => onNavigate('features'),
+            },
+          ]}
+        />
+      </Section>
+
+      {/* 5. FAQs (Light) */}
+      <Section variant="light">
+        <SectionHeader
+          eyebrow="MISSION & OPERATIONS"
+          title="Frequently Asked Questions"
+          highlight="About Boardly"
+        />
+        <FaqAccordion items={ABOUT_FAQS} />
+      </Section>
+
+      {/* 6. CTA (Dark) */}
+      <Section variant="dark" className="border-b-0">
+        <CtaSection
+          watermarkText="MISSION"
+          eyebrow="JOIN THE COMMUNITY"
+          title="Start Practicing with Boardly"
+          highlight="Today"
+          description="Prepare for Matric, FSC, and competitive entry tests with complete confidence."
+          primaryButtonText="Start Free Practice"
+          secondaryButtonText="View Plans"
+          onPrimaryClick={onGetStarted}
+          onSecondaryClick={() => onNavigate('pricing')}
+        />
+      </Section>
     </div>
   );
 };
