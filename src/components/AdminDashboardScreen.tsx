@@ -67,6 +67,7 @@ import {
   ChevronDown,
   Database,
   Check,
+  Copy,
   Bot,
   Activity,
   LogOut,
@@ -86,6 +87,16 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
 }) => {
   const { user, logOut } = useAuth();
   const [activeSection, setActiveSection] = useState<string>(initialTab || 'overview');
+  const [copiedCrewLink, setCopiedCrewLink] = useState<boolean>(false);
+
+  const handleCopyCrewLink = async () => {
+    try {
+      const link = `${window.location.origin}/crew`;
+      await navigator.clipboard.writeText(link);
+      setCopiedCrewLink(true);
+      setTimeout(() => setCopiedCrewLink(false), 2200);
+    } catch {}
+  };
 
   // Students state with live Firestore connection
   const [students, setStudents] = useState<StudentUserProfile[]>([]);
@@ -656,6 +667,15 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
             <Sparkles className="w-4 h-4 text-amber-400" />
             <span>Crew Dashboard</span>
           </a>
+          <button
+            type="button"
+            onClick={handleCopyCrewLink}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 font-bold text-xs border border-indigo-800/40 transition-colors cursor-pointer"
+            title="Copy shareable Crew registration link (boardly.cfd/crew)"
+          >
+            {copiedCrewLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-indigo-400" />}
+            <span>{copiedCrewLink ? 'Copied Crew Link!' : 'Copy Crew Link'}</span>
+          </button>
           <button
             type="button"
             onClick={handleRepairAdminAccount}

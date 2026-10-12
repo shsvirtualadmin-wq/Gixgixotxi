@@ -23,9 +23,19 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getCrewStatusInfo, checkAndEnforceCrewExpiration, CREW_TENURE_SIGNUP_TARGET, CREW_INTERNSHIP_SIGNUP_TARGET } from '../../lib/crewLogic';
-import { fetchReferralCount, onSnapshot, doc, db } from '../../lib/firebase';
+import { fetchReferralCount, onSnapshot, doc, db, collection, query, where } from '../../lib/firebase';
 import { SeoHead } from '../common/SeoHead';
 import { SetPasswordModal } from '../auth/SetPasswordModal';
+
+export interface ReferredStudentItem {
+  id: string;
+  referredUserName?: string;
+  referredUserFullName?: string;
+  referredUserEmail?: string;
+  referredAt?: any;
+  createdAt?: string;
+  status?: string;
+}
 
 interface CrewDashboardPageProps {
   onBackToApp?: () => void;
@@ -40,6 +50,8 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [liveReferralCount, setLiveReferralCount] = useState<number | null>(null);
+  const [referredStudents, setReferredStudents] = useState<ReferredStudentItem[]>([]);
+  const [referralsLoading, setReferralsLoading] = useState<boolean>(true);
 
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [passwordSuccessFlag, setPasswordSuccessFlag] = useState(false);
@@ -95,18 +107,51 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
   const crewInfo = getCrewStatusInfo(profile);
   const isApprovedCrew = (profile?.isCrewMember === true && profile?.crewStatus === 'approved') || isAdmin;
 
-  // Requirement 4: Live referral count synchronization
+  // Live referral synchronization with Firestore onSnapshot
   useEffect(() => {
-    if (crewInfo.referralCode) {
-      fetchReferralCount(crewInfo.referralCode).then((cnt) => {
-        setLiveReferralCount(cnt);
-      }).catch(console.warn);
-    }
-  }, [crewInfo.referralCode]);
+    if (!user?.uid) return;
+
+    console.log(`[Referral:Counting] Attaching live onSnapshot listener for ambassador ${user.uid}...`);
+    // Query referrals where captainId == user.uid (allowed under rules)
+    const refQuery = query(
+      collection(db, 'referrals'),
+      where('captainId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(
+      refQuery,
+      (snapshot) => {
+        console.log(`[Referral:Counting] Live onSnapshot received: ${snapshot.size} referrals for ambassador ${user.uid}.`);
+        setLiveReferralCount(snapshot.size);
+        const list: ReferredStudentItem[] = snapshot.docs.map((d) => ({
+          id: d.id,
+          ...(d.data() as any),
+        }));
+        list.sort((a, b) => {
+          const timeA = new Date(a.referredAt || a.createdAt || 0).getTime();
+          const timeB = new Date(b.referredAt || b.createdAt || 0).getTime();
+          return timeB - timeA;
+        });
+        setReferredStudents(list);
+        setReferralsLoading(false);
+      },
+      (err) => {
+        console.warn('[Referral:Counting] onSnapshot listener warning (falling back to API count):', err);
+        if (crewInfo.referralCode) {
+          fetchReferralCount(crewInfo.referralCode).then((cnt) => {
+            setLiveReferralCount(cnt);
+            setReferralsLoading(false);
+          }).catch(console.warn);
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user?.uid, crewInfo.referralCode]);
 
   const effectiveReferralsCount = typeof liveReferralCount === 'number'
     ? Math.max(liveReferralCount, crewInfo.referralsCount)
-    : crewInfo.referralsCount;
+    : (referredStudents.length || crewInfo.referralsCount);
 
   const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://boardly.cfd';
   const referralUrl = `${appOrigin}/signup?ref=${encodeURIComponent(crewInfo.referralCode)}`;
@@ -561,6 +606,105 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* REFERRED STUDENTS SECTION (Live onSnapshot) */}
+      <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-5 animate-fade-in-up">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-indigo-600" />
+              <h3 className="font-extrabold text-base text-[#0d1b3e] font-display">
+                Referred Students ({effectiveReferralsCount})
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 font-sans">
+              Real-time feed of students who joined Boardly using your referral code.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 text-xs font-bold border border-emerald-100">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Live Sync
+            </span>
+          </div>
+        </div>
+
+        {referralsLoading ? (
+          <div className="py-8 flex flex-col items-center justify-center space-y-2 text-slate-400">
+            <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs font-medium">Syncing referrals...</p>
+          </div>
+        ) : referredStudents.length === 0 ? (
+          <div className="py-10 px-4 rounded-2xl bg-slate-50/70 border border-dashed border-slate-200 text-center space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto">
+              <Users className="w-6 h-6" />
+            </div>
+            <div className="space-y-1 max-w-sm mx-auto">
+              <p className="text-sm font-bold text-slate-800 font-display">
+                No student referrals recorded yet
+              </p>
+              <p className="text-xs text-slate-500 font-sans">
+                When classmates click your link and register, their names will automatically update here without reloading the page.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleShareWhatsApp}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs cursor-pointer transition-all active:scale-95 shadow-xs"
+            >
+              <Share2 className="w-3.5 h-3.5" />
+              <span>Share Ambassador Link on WhatsApp</span>
+            </button>
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {referredStudents.map((student, idx) => {
+              const dateRaw = student.referredAt || student.createdAt;
+              let dateStr = 'Recently joined';
+              if (dateRaw) {
+                try {
+                  const d = new Date(dateRaw);
+                  if (!isNaN(d.getTime())) {
+                    dateStr = d.toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    });
+                  }
+                } catch {}
+              }
+
+              const displayName = (student.referredUserName || 'Student').trim();
+
+              return (
+                <div
+                  key={student.id || idx}
+                  className="py-3.5 flex items-center justify-between gap-3 first:pt-0 last:pb-0"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-600 text-white font-black text-sm flex items-center justify-center font-display shrink-0 shadow-xs">
+                      {displayName.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold text-slate-900 truncate font-display">
+                        {displayName}
+                      </p>
+                      <p className="text-xs text-slate-400 font-sans">
+                        Joined on {dateStr}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-xs font-bold shrink-0 border border-emerald-100">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    <span>Attributed</span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* AMBASSADOR MISSIONS SECTION (Requirement 4) */}

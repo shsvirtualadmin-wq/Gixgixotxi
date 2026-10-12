@@ -297,13 +297,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDocumentExists(true);
     setActiveRole(initialRole);
 
-    // Record 7-day tracked referral if new user registered via Google
+    // Record tracked referral if brand-new user registered via Google
     if (!isMasterAdmin) {
-      recordSignupReferral({
-        referredUserId: firebaseUser.uid,
-        referredUserName: firebaseUser.displayName || (email ? email.split('@')[0] : 'Student'),
-        referredUserEmail: email,
-      }).catch((e) => console.warn('[AuthContext] syncProfile referral record note:', e));
+      const activeRefCode = getStoredReferralCode();
+      if (activeRefCode) {
+        console.log(`[Referral:Attribution] Brand-new Google user detected: ${firebaseUser.uid}. Attributing referral "${activeRefCode}"...`);
+        try {
+          await recordSignupReferral({
+            referralCode: activeRefCode,
+            referredUserId: firebaseUser.uid,
+            referredUserName: firebaseUser.displayName || (email ? email.split('@')[0] : 'Student'),
+            referredUserEmail: email,
+          });
+        } catch (e) {
+          console.error('[Referral:Attribution] Google sign-in referral attribution error:', e);
+        }
+      }
     }
 
     return created;
@@ -571,28 +580,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setDocumentExists(true);
       setActiveRole('student');
 
-      // Requirement 4: Record referral signup live for Campus Ambassador / Boardly Crew (7-day persistence supported)
+      // Record referral attribution live for Campus Ambassador / Boardly Crew
       const activeReferralCode = (
         formData.referralCode ||
         getStoredReferralCode() ||
         (typeof window !== 'undefined' ? sessionStorage.getItem('referralCode') : '') ||
         (formData.referralSource?.startsWith('Campus Captain: ') ? formData.referralSource.replace('Campus Captain: ', '') : '') ||
         ''
-      ).trim();
+      ).trim().toUpperCase();
 
       if (activeReferralCode) {
-        recordSignupReferral({
-          referralCode: activeReferralCode,
-          referredUserId: uid,
-          referredUserName: name,
-          referredUserEmail: email,
-        }).then((refRes) => {
-          if (refRes.success) {
-            console.log(`[Boardly Referral] Recorded referral for code ${refRes.codeUsed}. Live count: ${refRes.referralCount}`);
-          }
-        }).catch((refErr) => {
-          console.warn('[Boardly Referral] Notice recording signup referral:', refErr);
-        });
+        console.log(`[Referral:Attribution] Brand-new email user created: ${uid}. Attributing referral "${activeReferralCode}"...`);
+        try {
+          await recordSignupReferral({
+            referralCode: activeReferralCode,
+            referredUserId: uid,
+            referredUserName: name,
+            referredUserEmail: email,
+          });
+        } catch (refErr) {
+          console.error('[Referral:Attribution] Error recording email signup referral:', refErr);
+        }
       }
 
       // Check if this newly registered student has pending Crew Ambassador 30-day Premium

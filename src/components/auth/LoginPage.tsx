@@ -29,8 +29,8 @@ function getValidatedPostLoginPath(): string {
       return '/app';
     }
 
-    // Must be one of our own protected routes
-    const validPrefixes = ['/app', '/organizer', '/captain', '/admin'];
+    // Must be one of our own protected or application routes
+    const validPrefixes = ['/app', '/organizer', '/captain', '/admin', '/crew', '/crew/apply', '/crew-dashboard'];
     const isAllowed = validPrefixes.some(
       (prefix) => trimmed === prefix || trimmed.startsWith(`${prefix}/`)
     );

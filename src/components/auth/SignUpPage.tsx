@@ -112,7 +112,15 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onNavigate }) => {
     const res = await signInGoogle();
     setGoogleLoading(false);
     if (res.success) {
-      onNavigate('/onboarding');
+      let dest = '/onboarding';
+      try {
+        const saved = sessionStorage.getItem('postLoginPath');
+        if (saved && (saved === '/crew' || saved === '/crew/apply' || saved.startsWith('/crew'))) {
+          sessionStorage.removeItem('postLoginPath');
+          dest = saved;
+        }
+      } catch {}
+      onNavigate(dest);
     } else if (res.error) {
       setFormError(res.error);
     }

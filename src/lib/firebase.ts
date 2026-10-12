@@ -111,8 +111,23 @@ export async function testAuthHandlerEndpoint(host: string): Promise<boolean> {
 // Track which fields use fallbacks
 const fallbacksUsed: string[] = [];
 
+// Helper for safe environment variable retrieval across Vite and Node
+const getEnvVar = (key: string): string | undefined => {
+  try {
+    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
+      return (import.meta as any).env[key];
+    }
+  } catch {}
+  try {
+    if (typeof process !== 'undefined' && process.env) {
+      return process.env[key];
+    }
+  } catch {}
+  return undefined;
+};
+
 // 1. API Key: Use VITE variable if valid, otherwise fallback to firebase-applet-config.json, then DEFAULT
-const envApiKey = cleanEnvVar(import.meta.env.VITE_FIREBASE_API_KEY);
+const envApiKey = cleanEnvVar(getEnvVar('VITE_FIREBASE_API_KEY'));
 const jsonApiKey = cleanEnvVar(firebaseAppletConfig?.apiKey);
 let rawApiKey: string;
 if (isValidApiKey(envApiKey)) {
@@ -123,9 +138,7 @@ if (isValidApiKey(envApiKey)) {
 }
 
 // 2. Auth Domain: Keep gen-lang-client-0365509316.firebaseapp.com by default.
-// Optional VITE_FIREBASE_AUTH_DOMAIN override is used ONLY if it is a valid hostname
-// AND https://<that host>/__/auth/handler responds. Never break login because of it.
-const envAuthDomainRaw = cleanEnvVar(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
+const envAuthDomainRaw = cleanEnvVar(getEnvVar('VITE_FIREBASE_AUTH_DOMAIN'));
 let rawAuthDomain = DEFAULTS.authDomain;
 
 if (envAuthDomainRaw && isValidHostname(envAuthDomainRaw)) {
@@ -152,7 +165,7 @@ if (envAuthDomainRaw && isValidHostname(envAuthDomainRaw)) {
 }
 
 // 3. Project ID
-const envProjectId = cleanEnvVar(import.meta.env.VITE_FIREBASE_PROJECT_ID);
+const envProjectId = cleanEnvVar(getEnvVar('VITE_FIREBASE_PROJECT_ID'));
 const jsonProjectId = cleanEnvVar(firebaseAppletConfig?.projectId);
 let rawProjectId: string;
 if (envProjectId && !/\s/.test(envProjectId)) {
@@ -163,7 +176,7 @@ if (envProjectId && !/\s/.test(envProjectId)) {
 }
 
 // 4. Storage Bucket
-const envStorageBucket = cleanEnvVar(import.meta.env.VITE_FIREBASE_STORAGE_BUCKET);
+const envStorageBucket = cleanEnvVar(getEnvVar('VITE_FIREBASE_STORAGE_BUCKET'));
 const jsonStorageBucket = cleanEnvVar(firebaseAppletConfig?.storageBucket);
 let rawStorageBucket: string;
 if (envStorageBucket && !/\s/.test(envStorageBucket)) {
@@ -174,7 +187,7 @@ if (envStorageBucket && !/\s/.test(envStorageBucket)) {
 }
 
 // 5. Messaging Sender ID
-const envSenderId = cleanEnvVar(import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID);
+const envSenderId = cleanEnvVar(getEnvVar('VITE_FIREBASE_MESSAGING_SENDER_ID'));
 const jsonSenderId = cleanEnvVar(firebaseAppletConfig?.messagingSenderId);
 let rawMessagingSenderId: string;
 if (isValidSenderId(envSenderId)) {
@@ -185,7 +198,7 @@ if (isValidSenderId(envSenderId)) {
 }
 
 // 6. App ID
-const envAppId = cleanEnvVar(import.meta.env.VITE_FIREBASE_APP_ID);
+const envAppId = cleanEnvVar(getEnvVar('VITE_FIREBASE_APP_ID'));
 const jsonAppId = cleanEnvVar(firebaseAppletConfig?.appId);
 let rawAppId: string;
 if (isValidAppId(envAppId)) {
@@ -196,7 +209,7 @@ if (isValidAppId(envAppId)) {
 }
 
 // 7. Firestore Database ID
-const envDbId = cleanEnvVar(import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID);
+const envDbId = cleanEnvVar(getEnvVar('VITE_FIREBASE_FIRESTORE_DATABASE_ID'));
 const jsonDbId = cleanEnvVar(firebaseAppletConfig?.firestoreDatabaseId);
 let rawFirestoreDbId: string;
 if (envDbId && !/\s/.test(envDbId)) {

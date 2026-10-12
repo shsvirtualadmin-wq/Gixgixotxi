@@ -177,14 +177,19 @@ service cloud.firestore {
     }
 
     // Captains / Ambassadors collection:
-    // Only admins can write. Users can read their own document so the live revoke redirect works, and admins can read everything.
+    // Authenticated users can read captains so registering students can look up the matching ambassador by referral code.
+    // Only admins can write.
     match /captains/{captainId} {
-      allow read: if (isAuthenticated() && captainId == request.auth.uid) || isAdmin();
+      allow read: if isAuthenticated() || isAdmin();
       allow write: if isAdmin();
     }
 
     match /referrals/{refId} {
-      allow read: if (isAuthenticated() && (resource.data.captainId == request.auth.uid || resource.data.referredUserId == request.auth.uid)) || isAdmin();
+      allow read: if (isAuthenticated() && (
+        resource.data.captainId == request.auth.uid ||
+        resource.data.ambassadorUid == request.auth.uid ||
+        resource.data.referredUserId == request.auth.uid
+      )) || isAdmin();
       allow create: if isAuthenticated() && (request.resource.data.referredUserId == request.auth.uid || refId == request.auth.uid || isAdmin());
       allow update, delete: if isAdmin();
     }

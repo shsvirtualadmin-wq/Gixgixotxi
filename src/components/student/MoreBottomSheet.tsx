@@ -459,7 +459,7 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
                       <div>
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs font-bold text-[#0d1b3e]">
-                            Apply for Boardly Crew
+                            Join Boardly Crew
                           </span>
                           <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 text-[9px] font-bold uppercase tracking-wider">
                             30d Premium

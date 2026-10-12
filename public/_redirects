@@ -1,5 +1,9 @@
 /_headers /_headers 200
 /_redirects /_redirects 200
+/crew /index.html 200
+/crew/apply /index.html 200
+/crew-dashboard /index.html 200
+/r/* /index.html 200
 /features /features/index.html 200
 /pricing /pricing/index.html 200
 /boardly-ai /boardly-ai/index.html 200
@@ -11,3 +15,4 @@
 /contact /contact/index.html 200
 /privacy /privacy/index.html 200
 /terms /terms/index.html 200
+/* /index.html 200

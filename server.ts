@@ -8821,6 +8821,43 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
+  app.get("/api/referrals/lookup", (req: express.Request, res: express.Response) => {
+    try {
+      const cleanCode = String(req.query.code || '').trim().toUpperCase();
+      if (!cleanCode) {
+        return res.status(400).json({ found: false, error: "code parameter is required" });
+      }
+
+      // Check captain applications / captains data
+      const capAppsPath = path.join(process.cwd(), 'data', 'captain_applications.json');
+      if (fs.existsSync(capAppsPath)) {
+        try {
+          const apps = JSON.parse(fs.readFileSync(capAppsPath, 'utf8'));
+          if (Array.isArray(apps)) {
+            const found = apps.find(
+              (a: any) =>
+                (a.referralCode && String(a.referralCode).toUpperCase() === cleanCode) ||
+                (a.studentName && cleanCode.includes(a.studentName.split(' ')[0].toUpperCase()))
+            );
+            if (found) {
+              return res.status(200).json({
+                found: true,
+                ambassadorUid: found.userId || found.id,
+                name: found.studentName,
+                email: found.email,
+                institution: found.institution,
+              });
+            }
+          }
+        } catch {}
+      }
+
+      return res.status(200).json({ found: false });
+    } catch (err: any) {
+      return res.status(500).json({ found: false, error: err?.message });
+    }
+  });
+
   // API Endpoint: Supabase to Firebase Student History Migration Routine
   app.post("/api/auth/migrate-student-history", async (req: express.Request, res: express.Response) => {
     try {

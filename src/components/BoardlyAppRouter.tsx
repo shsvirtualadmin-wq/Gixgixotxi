@@ -16,6 +16,8 @@ import { SeoHead } from './common/SeoHead';
 import { PublicEventPage } from './public/PublicEventPage';
 import { PublicProgramPage } from './public/PublicProgramPage';
 import { CrewDashboardPage } from './crew/CrewDashboardPage';
+import { CrewApplicationPage } from './crew/CrewApplicationPage';
+import { initReferralTracker } from '../lib/referralTracker';
 import { UniversityExplorer } from './universities/UniversityExplorer';
 import { MeritMeter } from './merit/MeritMeter';
 import { Navbar } from './marketing/Navbar';
@@ -240,15 +242,10 @@ export const BoardlyAppRouter: React.FC = () => {
 
       {/* Route Switcher */}
       {(() => {
-        // Referral Route: /r/CODE -> store code in sessionStorage and replace route to /signup
+        // Referral Route: /r/CODE -> capture code in localStorage/sessionStorage and navigate
         if (currentPath.startsWith('/r/')) {
-          const code = currentPath.substring(3).trim();
-          if (code && typeof window !== 'undefined') {
-            try {
-              sessionStorage.setItem('referralCode', code);
-            } catch {}
-          }
-          navigate('/signup', true);
+          initReferralTracker();
+          navigate(user ? '/app' : '/signup', true);
           return null;
         }
 
@@ -479,13 +476,22 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
-        // Public Programs Pages (/programs/crew, /crew, /programs/captains)
-        if (currentPath === '/programs/crew' || currentPath === '/crew') {
+        // Dedicated Boardly Crew Application route (/crew, alias /crew/apply)
+        if (currentPath === '/crew' || currentPath === '/crew/apply') {
+          return (
+            <ErrorBoundary onReset={() => navigate('/')}>
+              <CrewApplicationPage onNavigate={(route) => navigate(route)} />
+            </ErrorBoundary>
+          );
+        }
+
+        // Public Programs Pages (/programs/crew, /programs/captains)
+        if (currentPath === '/programs/crew') {
           return (
             <div className="min-h-screen flex flex-col justify-between">
-              <Navbar currentPage="home" onNavigate={(p) => navigate(`/${p}`)} onGetStarted={() => navigate(user ? '/app' : '/signup')} />
+              <Navbar currentPage="home" onNavigate={(p) => navigate(`/${p}`)} onGetStarted={() => navigate('/crew')} />
               <ErrorBoundary onReset={() => navigate('/')}>
-                <PublicProgramPage type="crew" onNavigateHome={() => navigate('/')} onApplyOrStart={() => navigate(user ? '/app' : '/signup')} />
+                <PublicProgramPage type="crew" onNavigateHome={() => navigate('/')} onApplyOrStart={() => navigate('/crew')} />
               </ErrorBoundary>
               <Footer onNavigate={(p) => navigate(`/${p}`)} />
             </div>

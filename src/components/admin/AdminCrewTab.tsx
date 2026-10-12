@@ -23,6 +23,9 @@ import {
   PlusCircle,
   RotateCcw,
   History,
+  Copy,
+  Link,
+  UserPlus,
 } from 'lucide-react';
 import {
   CrewApplication,
@@ -74,6 +77,13 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
   // Revoke confirmation modal
   const [revokeConfirmUser, setRevokeConfirmUser] = useState<StudentUserProfile | null>(null);
   const [revokeReasonInput, setRevokeReasonInput] = useState('');
+
+  // Referral recount and manual attribution states
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [manualStudent, setManualStudent] = useState('');
+  const [manualAmbassador, setManualAmbassador] = useState('');
+  const [manualError, setManualError] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -264,6 +274,260 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
     }
   };
 
+  const handleCopyCrewLink = async () => {
+    try {
+      const link = `${window.location.origin}/crew`;
+      await navigator.clipboard.writeText(link);
+      setCopiedLink(true);
+      setToastMessage(`Copied Crew registration link: ${link}`);
+      setTimeout(() => setCopiedLink(false), 2500);
+    } catch {
+      setToastMessage('Could not copy link to clipboard');
+    }
+  };
+
+  const handleRecountReferrals = async () => {
+    setActionInProgress('recount');
+    try {
+      console.log('[Referral:Counting] Admin started referral recount...');
+      const refSnap = await getDocs(collection(db, 'referrals'));
+      const usersSnap = await getDocs(collection(db, 'users'));
+      
+      const ambassadorCounts: Record<string, number> = {};
+      const ambassadorCodes: Record<string, string> = {};
+
+      activeMembers.forEach((m) => {
+        if (m.uid) {
+          ambassadorCounts[m.uid] = 0;
+          if (m.crewReferralCode) {
+            ambassadorCodes[m.crewReferralCode.toUpperCase()] = m.uid;
+          }
+        }
+      });
+
+      const capSnap = await getDocs(collection(db, 'captains'));
+      capSnap.forEach((c) => {
+        const data = c.data();
+        const uid = data.userId || c.id;
+        ambassadorCounts[uid] = 0;
+        if (data.referralCode) {
+          ambassadorCodes[data.referralCode.toUpperCase()] = uid;
+        }
+      });
+
+      refSnap.forEach((d) => {
+        const rData = d.data();
+        let targetAmbUid = rData.captainId || rData.ambassadorUid;
+        if (!targetAmbUid && rData.referralCode) {
+          targetAmbUid = ambassadorCodes[rData.referralCode.toUpperCase()];
+        }
+        if (targetAmbUid) {
+          ambassadorCounts[targetAmbUid] = (ambassadorCounts[targetAmbUid] || 0) + 1;
+        }
+      });
+
+      let backfilled = 0;
+      for (const uDoc of usersSnap.docs) {
+        const uData = uDoc.data();
+        const studentUid = uDoc.id;
+        const code = (uData.referralCode || '').trim().toUpperCase();
+        const referredBy = uData.referredBy;
+
+        const matchingAmbUid = referredBy || (code ? ambassadorCodes[code] : null);
+
+        if (matchingAmbUid) {
+          const alreadyInRefs = refSnap.docs.some(
+            (r) => r.id === studentUid || r.data().referredUserId === studentUid
+          );
+
+          if (!alreadyInRefs) {
+            console.log(`[Referral:Counting] Backfilling referral for student: ${studentUid} (${uData.name || uData.email}) -> Ambassador ${matchingAmbUid}`);
+            const nowIso = uData.createdAt || new Date().toISOString();
+            await setDoc(doc(db, 'referrals', studentUid), {
+              referralId: studentUid,
+              referredUserId: studentUid,
+              referredUserName: (uData.name || 'Student').split(' ')[0],
+              referredUserFullName: uData.name || 'Student',
+              referredUserEmail: uData.email || '',
+              captainId: matchingAmbUid,
+              ambassadorUid: matchingAmbUid,
+              referralCode: code || 'MANUAL',
+              referredAt: nowIso,
+              createdAt: nowIso,
+              status: 'active',
+            }, { merge: true });
+
+            ambassadorCounts[matchingAmbUid] = (ambassadorCounts[matchingAmbUid] || 0) + 1;
+            backfilled++;
+          }
+        }
+      }
+
+      for (const [ambUid, totalCount] of Object.entries(ambassadorCounts)) {
+        try {
+          const isEligible = totalCount >= CREW_INTERNSHIP_SIGNUP_TARGET;
+          await updateDoc(doc(db, 'users', ambUid), {
+            crewReferralsCount: totalCount,
+            crewActiveUsersCount: Math.round(totalCount * 0.8),
+            isPaidInternshipEligible: isEligible,
+            updatedAt: new Date().toISOString(),
+          });
+        } catch {}
+        try {
+          await updateDoc(doc(db, 'captains', ambUid), {
+            referralCount: totalCount,
+            activeUsersCount: Math.round(totalCount * 0.8),
+          });
+        } catch {}
+      }
+
+      setToastMessage(`Recount complete! ${backfilled} missing student referrals backfilled. Synced ${Object.keys(ambassadorCounts).length} ambassador totals.`);
+      await loadData();
+    } catch (err: any) {
+      console.error('[Referral:Counting] Recount error:', err);
+      setToastMessage(`Recount failed: ${err.message}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleManualAttribute = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setManualError(null);
+    const studentInput = manualStudent.trim().toLowerCase();
+    const ambassadorInput = manualAmbassador.trim().toUpperCase();
+
+    if (!studentInput) {
+      setManualError('Please provide a student email or UID.');
+      return;
+    }
+    if (!ambassadorInput) {
+      setManualError('Please provide an ambassador referral code, email, or UID.');
+      return;
+    }
+
+    setActionInProgress('manual-attribute');
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      let targetStudentDoc: any = null;
+      for (const d of usersSnap.docs) {
+        const uData = d.data();
+        if (
+          d.id.toLowerCase() === studentInput ||
+          (uData.email && uData.email.toLowerCase() === studentInput)
+        ) {
+          targetStudentDoc = { id: d.id, ...uData };
+          break;
+        }
+      }
+
+      if (!targetStudentDoc) {
+        setManualError(`No student found matching "${studentInput}".`);
+        setActionInProgress(null);
+        return;
+      }
+
+      let targetAmbassadorDoc: any = null;
+      let matchedCode = ambassadorInput;
+
+      for (const d of usersSnap.docs) {
+        const uData = d.data();
+        if (
+          d.id.toUpperCase() === ambassadorInput ||
+          (uData.email && uData.email.toUpperCase() === ambassadorInput) ||
+          (uData.crewReferralCode && uData.crewReferralCode.toUpperCase() === ambassadorInput)
+        ) {
+          targetAmbassadorDoc = { id: d.id, ...uData };
+          if (uData.crewReferralCode) matchedCode = uData.crewReferralCode.toUpperCase();
+          break;
+        }
+      }
+
+      if (!targetAmbassadorDoc) {
+        const capSnap = await getDocs(collection(db, 'captains'));
+        for (const c of capSnap.docs) {
+          const cData = c.data();
+          if (
+            c.id.toUpperCase() === ambassadorInput ||
+            (cData.email && cData.email.toUpperCase() === ambassadorInput) ||
+            (cData.referralCode && cData.referralCode.toUpperCase() === ambassadorInput)
+          ) {
+            targetAmbassadorDoc = { id: cData.userId || c.id, ...cData };
+            if (cData.referralCode) matchedCode = cData.referralCode.toUpperCase();
+            break;
+          }
+        }
+      }
+
+      if (!targetAmbassadorDoc) {
+        setManualError(`No ambassador found matching "${ambassadorInput}".`);
+        setActionInProgress(null);
+        return;
+      }
+
+      const ambUid = targetAmbassadorDoc.id || targetAmbassadorDoc.userId;
+      const studentUid = targetStudentDoc.id;
+
+      if (ambUid === studentUid) {
+        setManualError('Self-referrals are blocked. Ambassador cannot be attributed to themselves.');
+        setActionInProgress(null);
+        return;
+      }
+
+      const nowIso = new Date().toISOString();
+
+      await updateDoc(doc(db, 'users', studentUid), {
+        referredBy: ambUid,
+        referralCode: matchedCode,
+        referredAt: nowIso,
+        updatedAt: nowIso,
+      });
+
+      await setDoc(doc(db, 'referrals', studentUid), {
+        referralId: studentUid,
+        referredUserId: studentUid,
+        referredUserName: (targetStudentDoc.name || 'Student').split(' ')[0],
+        referredUserFullName: targetStudentDoc.name || 'Student',
+        referredUserEmail: targetStudentDoc.email || '',
+        captainId: ambUid,
+        ambassadorUid: ambUid,
+        referralCode: matchedCode,
+        referredAt: nowIso,
+        createdAt: nowIso,
+        status: 'active',
+      }, { merge: true });
+
+      const curCount = targetAmbassadorDoc.crewReferralsCount || targetAmbassadorDoc.referralCount || 0;
+      const newCount = curCount + 1;
+      const isEligible = newCount >= CREW_INTERNSHIP_SIGNUP_TARGET;
+
+      await updateDoc(doc(db, 'users', ambUid), {
+        crewReferralsCount: newCount,
+        crewActiveUsersCount: Math.round(newCount * 0.8),
+        isPaidInternshipEligible: isEligible,
+        updatedAt: nowIso,
+      });
+
+      try {
+        await updateDoc(doc(db, 'captains', ambUid), {
+          referralCount: newCount,
+          activeUsersCount: Math.round(newCount * 0.8),
+        });
+      } catch {}
+
+      setToastMessage(`Successfully attributed student ${targetStudentDoc.name || studentUid} to ambassador ${targetAmbassadorDoc.name || targetAmbassadorDoc.studentName || ambUid}!`);
+      setShowManualModal(false);
+      setManualStudent('');
+      setManualAmbassador('');
+      await loadData();
+    } catch (err: any) {
+      console.error('[Referral:Attribution] Manual attribute error:', err);
+      setManualError(`Failed to attribute: ${err.message}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
   // Filtered applications
   const filteredApplications = applications.filter((app) => {
     const matchesSearch =
@@ -356,6 +620,41 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
               )}
             </button>
           </div>
+
+          {/* Action buttons */}
+          <button
+            type="button"
+            onClick={handleCopyCrewLink}
+            className="px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+            title="Copy dedicated Crew registration link (boardly.cfd/crew)"
+          >
+            {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>{copiedLink ? 'Copied!' : 'Copy Crew Link'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleRecountReferrals}
+            disabled={actionInProgress === 'recount'}
+            className="px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-200 border border-amber-200 dark:border-amber-800 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+            title="One-time recount to sync referral counts and backfill uncounted students"
+          >
+            <RotateCcw className={`w-3.5 h-3.5 text-amber-600 ${actionInProgress === 'recount' ? 'animate-spin' : ''}`} />
+            <span>{actionInProgress === 'recount' ? 'Recounting...' : 'Recount Referrals'}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowManualModal(true);
+              setManualError(null);
+            }}
+            className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shadow-2xs"
+            title="Manually attribute a student to an ambassador"
+          >
+            <UserPlus className="w-3.5 h-3.5 text-indigo-600" />
+            <span>Attribute Referral</span>
+          </button>
 
           <button
             type="button"
@@ -888,6 +1187,89 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
                 Confirm Revoke
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual Referral Attribution Modal */}
+      {showManualModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-indigo-600" />
+                <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
+                  Manual Referral Attribution
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowManualModal(false);
+                  setManualError(null);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500">
+              Manually attribute an existing student to an ambassador. This will update the student's referredBy record, create the referral log in the referrals collection, and increment the ambassador's counter.
+            </p>
+
+            {manualError && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-semibold">
+                {manualError}
+              </div>
+            )}
+
+            <form onSubmit={handleManualAttribute} className="space-y-3.5">
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Student Email or UID *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={manualStudent}
+                  onChange={(e) => setManualStudent(e.target.value)}
+                  placeholder="e.g. student@gmail.com or UID"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                  Ambassador Referral Code, Email, or UID *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={manualAmbassador}
+                  onChange={(e) => setManualAmbassador(e.target.value)}
+                  placeholder="e.g. CREW-HAMZA-2026 or ambassador@gmail.com"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowManualModal(false)}
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionInProgress === 'manual-attribute'}
+                  className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white cursor-pointer transition-all shadow-xs disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  {actionInProgress === 'manual-attribute' ? 'Attributing...' : 'Attribute Student'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

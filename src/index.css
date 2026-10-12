@@ -1,6 +1,12 @@
 @import "tailwindcss";
 @import "katex/dist/katex.min.css";
 
+@theme {
+  --font-display: "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 /* Force Light Mode: neutralize Tailwind v4 dark variant so prefers-color-scheme never activates dark mode */
 @variant dark (&:where([data-theme="dark"]));
 
@@ -29,6 +35,11 @@
 
   :root {
     color-scheme: light;
+    /* Typography CSS Tokens */
+    --font-display: "Bricolage Grotesque", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
     /* Boardly Core Light Palette */
     --boardly-gold: #1E5AFF;
     --boardly-gold-hover: #1546CC;
@@ -107,11 +118,12 @@
     background-attachment: fixed !important;
     color: #0d1b3e !important;
     color-scheme: light !important;
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-family: var(--font-sans);
     min-height: 100dvh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     -webkit-overflow-scrolling: touch;
+    line-height: 1.5;
   }
 
   /* Fixed pointer-events: none ambient background layer (Requirement 1) */
@@ -155,10 +167,15 @@
     border-radius: 9999px;
   }
 
-  h1, h2, h3, h4, h5, h6, .font-serif {
-    font-family: "Space Grotesk", "Clash Display", -apple-system, sans-serif;
+  h1, h2, h3, h4, h5, h6, .font-display, .font-heading, .font-serif {
+    font-family: var(--font-display);
     letter-spacing: -0.02em;
     font-weight: 700;
+    line-height: 1.25;
+  }
+
+  code, kbd, samp, pre, .font-mono, .stat-counter, .timer-display {
+    font-family: var(--font-mono);
   }
 }
 
@@ -660,9 +677,21 @@
   }
 }
 
-/* Boardly Marketing Styles */
+/* Boardly Typography Utilities */
+.font-display {
+  font-family: var(--font-display) !important;
+}
+
+.font-sans {
+  font-family: var(--font-sans) !important;
+}
+
+.font-mono {
+  font-family: var(--font-mono) !important;
+}
+
 .font-poppins {
-  font-family: 'Poppins', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-display);
 }
 
 .bg-grid-faint {
