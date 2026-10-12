@@ -167,7 +167,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onNavigate }) => {
             type="button"
             onClick={handleGoogleSignIn}
             disabled={googleLoading || isLoading}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-sm transition-all hover:shadow cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-sm transition-all hover:shadow cursor-pointer active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {googleLoading ? (
               <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
@@ -191,7 +191,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onNavigate }) => {
                 />
               </svg>
             )}
-            <span>Continue with Google</span>
+            <span>{googleLoading ? 'Connecting to Google...' : 'Continue with Google'}</span>
           </button>
 
           {/* Divider */}

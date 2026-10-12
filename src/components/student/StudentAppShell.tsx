@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import {
   Home,
   BookOpen,
@@ -73,6 +74,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
 }) => {
   const { user, profile, isAdmin, logOut, updateProfileData, activeRole, switchRole } = useAuth();
   const { canStartTest, consumeTestStart, loading: usageLoading } = useUsage();
+  const shouldReduceMotion = useReducedMotion();
 
   const prevTabRef = useRef<string>('overview');
   const [activeTab, setActiveTab] = useState<string>(() => {
@@ -719,19 +721,29 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
 
   return (
     <>
-      {/* Full-Screen Boardy AI tab: renders with 0 chrome (no bottom nav, no top bar, no footer, no sidebar) */}
-      <div className={isBoardyActive ? 'block animate-fade-in' : 'hidden'}>
-        <StudentBoardyChatTab
-          initialPrompt={boardyPrompt}
-          onOpenUsage={() => setShowUsageModal(true)}
-          onUpgrade={() => {
-            setUpgradeFromBlocked(true);
-            setShowUpgradeModal(true);
-          }}
-          onBackToDashboard={handleBackFromBoardy}
-          isFullScreen={true}
-        />
-      </div>
+      {/* Full-Screen Boardy AI tab with smooth transition */}
+      <AnimatePresence mode="wait">
+        {isBoardyActive ? (
+          <motion.div
+            key="boardy-full"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: shouldReduceMotion ? 0.05 : 0.25, ease: [0.22, 1, 0.36, 1] }}
+          >
+            <StudentBoardyChatTab
+              initialPrompt={boardyPrompt}
+              onOpenUsage={() => setShowUsageModal(true)}
+              onUpgrade={() => {
+                setUpgradeFromBlocked(true);
+                setShowUpgradeModal(true);
+              }}
+              onBackToDashboard={handleBackFromBoardy}
+              isFullScreen={true}
+            />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {!isBoardyActive && (
         <AppShell
@@ -777,8 +789,19 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           isInputFocused={isBoardyFocused}
           isInTestSession={Boolean(activeTest)}
         >
-          {/* Tab Switcher */}
-          {activeTab === 'overview' && (
+          {/* Tab Switcher with smooth page transitions */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeTab}
+              initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: shouldReduceMotion ? 0 : -8 }}
+              transition={{
+                duration: shouldReduceMotion ? 0.05 : 0.22,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+            >
+              {activeTab === 'overview' && (
             <StudentOverviewTab
               attempts={attempts}
               onStartSprint={handleStartSprint}
@@ -920,6 +943,8 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           onBack={() => setActiveTab('overview')}
         />
       )}
+            </motion.div>
+          </AnimatePresence>
 
       {activeTab !== 'profile' && <TrustFooter className="mt-12" />}
 

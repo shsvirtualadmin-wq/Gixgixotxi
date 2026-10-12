@@ -9,7 +9,14 @@ import {
 import { PRICING_PLANS, normalizePlan, PlanKey } from '../config/pricing';
 import { TargetUniversityModal } from './TargetUniversityModal';
 import { findUniversity } from '../data/universities';
-import { fetchCaptainRecord } from '../lib/firebase';
+import { fetchCaptainRecord, auth } from '../lib/firebase';
+import {
+  linkWithCredential,
+  EmailAuthProvider,
+  reauthenticateWithPopup,
+  GoogleAuthProvider,
+  updatePassword,
+} from 'firebase/auth';
 import {
   User as UserIcon,
   Mail,
@@ -32,6 +39,10 @@ import {
   Crown,
   ChevronRight,
   ShieldCheck,
+  Key,
+  Eye,
+  EyeOff,
+  AlertCircle,
 } from 'lucide-react';
 
 export interface StudentProfileViewProps {

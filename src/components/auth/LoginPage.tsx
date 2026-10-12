@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
 import { Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { BrandLogo } from '../marketing/BrandLogo';
@@ -40,6 +41,7 @@ function getValidatedPostLoginPath(): string {
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
   const { signInEmail, signInGoogle } = useAuth();
+  const shouldReduceMotion = useReducedMotion();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -72,14 +74,19 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
   const handleGoogleSignIn = async () => {
     setErrorMsg(null);
     setGoogleLoading(true);
-    const res = await signInGoogle();
-    setGoogleLoading(false);
 
-    if (res.success) {
-      const destination = getValidatedPostLoginPath();
-      onNavigate(destination);
-    } else if (res.error) {
-      setErrorMsg(res.error);
+    try {
+      const res = await signInGoogle();
+      if (res.success) {
+        const destination = getValidatedPostLoginPath();
+        onNavigate(destination);
+      } else {
+        setGoogleLoading(false);
+        setErrorMsg(res.error || 'Google sign-in was cancelled or failed. Please try again.');
+      }
+    } catch (err: any) {
+      setGoogleLoading(false);
+      setErrorMsg(err?.message || 'Google sign-in encountered an error. Please try again.');
     }
   };
 
@@ -115,9 +122,13 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
         </button>
       </header>
 
-      {/* Main Container */}
+      {/* Main Container: fades out smoothly (300ms) while sign-in starts */}
       <main className="relative z-10 flex-1 flex items-center justify-center px-4 py-8 sm:py-12">
-        <div className="w-full max-w-md bg-white/85 backdrop-blur-xl border border-white/80 shadow-2xl shadow-blue-500/5 rounded-3xl p-6 sm:p-10 transition-all">
+        <motion.div
+          animate={{ opacity: googleLoading && !errorMsg ? 0.25 : 1 }}
+          transition={{ duration: shouldReduceMotion ? 0.05 : 0.3, ease: 'easeInOut' }}
+          className="w-full max-w-md bg-white/85 backdrop-blur-xl border border-white/80 shadow-2xl shadow-blue-500/5 rounded-3xl p-6 sm:p-10 transition-all"
+        >
           {/* Header */}
           <div className="text-center mb-8">
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
@@ -128,12 +139,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
             </p>
           </div>
 
-          {/* Google Sign-in */}
+          {/* Google Sign-in: scales to 0.97 on press, shows spinner and "Connecting to Google..." */}
           <button
             type="button"
             onClick={handleGoogleSignIn}
             disabled={googleLoading || isLoading}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-sm transition-all hover:shadow cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-sm transition-all hover:shadow cursor-pointer active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {googleLoading ? (
               <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
@@ -157,7 +168,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
                 />
               </svg>
             )}
-            <span>Continue with Google</span>
+            <span>{googleLoading ? 'Connecting to Google...' : 'Continue with Google'}</span>
           </button>
 
           {/* Divider */}
@@ -248,18 +259,18 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
             </button>
           </form>
 
-          {/* New to Boardly link */}
-          <div className="mt-8 text-center text-xs text-slate-500">
-            New to Boardly?{' '}
-            <button
-              onClick={() => onNavigate('/signup')}
-              className="font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-2 cursor-pointer"
-            >
-              Create a free account
-            </button>
-          </div>
-        </div>
-      </main>
+            {/* New to Boardly link */}
+            <div className="mt-8 text-center text-xs text-slate-500">
+              New to Boardly?{' '}
+              <button
+                onClick={() => onNavigate('/signup')}
+                className="font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-2 cursor-pointer"
+              >
+                Create a free account
+              </button>
+            </div>
+          </motion.div>
+        </main>
 
       {/* Footer with Trust Signals */}
       <TrustFooter onNavigate={onNavigate} />
