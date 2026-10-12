@@ -1,3 +1,4 @@
+// PROTECTED: do not modify unless the task is explicitly about authentication. See PROJECT_RULES.md
 import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   User,

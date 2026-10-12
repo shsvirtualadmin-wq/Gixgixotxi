@@ -1,3 +1,4 @@
+// PROTECTED: do not modify unless the task is explicitly about authentication. See PROJECT_RULES.md
 import React, { useState, useId } from 'react';
 import { Eye, EyeOff, Check, X, ShieldCheck, ArrowRight, Loader2, Gift } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';

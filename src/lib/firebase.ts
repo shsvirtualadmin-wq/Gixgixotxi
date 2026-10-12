@@ -1,3 +1,4 @@
+// PROTECTED: do not modify unless the task is explicitly about authentication. See PROJECT_RULES.md
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import {
   getAuth,
@@ -49,272 +50,38 @@ export {
   onSnapshot,
 };
 
-import firebaseAppletConfig from '../../firebase-applet-config.json';
+// PROTECTED: do not modify unless the task is explicitly about authentication. See PROJECT_RULES.md
 import { normalizePlanId, PlanType } from '../data/planLimits';
+import {
+  app,
+  auth,
+  db,
+  googleProvider,
+  firebaseConfig,
+  configValidation,
+  browserLocalPersistence,
+  setPersistence,
+  performGoogleSignIn,
+  testAuthHandlerEndpoint,
+  isValidHostname,
+  cleanEnvVar,
+} from './firebaseConfig';
 
-// Default project credentials from firebase-applet-config.json (fail-safe)
-const DEFAULTS = {
-  apiKey: firebaseAppletConfig.apiKey || "",
-  authDomain: firebaseAppletConfig.authDomain || "",
-  projectId: firebaseAppletConfig.projectId || "",
-  storageBucket: firebaseAppletConfig.storageBucket || "",
-  messagingSenderId: firebaseAppletConfig.messagingSenderId || "",
-  appId: firebaseAppletConfig.appId || "",
-  firestoreDatabaseId: firebaseAppletConfig.firestoreDatabaseId || "",
+export {
+  app,
+  auth,
+  db,
+  googleProvider,
+  firebaseConfig,
+  configValidation,
+  browserLocalPersistence,
+  setPersistence,
+  performGoogleSignIn,
+  testAuthHandlerEndpoint,
+  isValidHostname,
+  cleanEnvVar,
 };
 
-export function cleanEnvVar(val: unknown): string {
-  if (typeof val !== 'string') return '';
-  return val
-    .trim()
-    .replace(/^["']|["']$/g, '')
-    .trim()
-    .replace(/\/+$/, '')
-    .replace(/[\r\n]+/g, '');
-}
-
-// Validation helpers
-const isValidApiKey = (k: string) => k.startsWith('AIza') && k.length === 39 && !/\s/.test(k) && !/["']/.test(k);
-const isValidSenderId = (s: string) => /^\d+$/.test(s);
-const isValidAppId = (a: string) => /^1:\d+:web:[0-9a-fA-F]+$/.test(a);
-
-export function isValidHostname(host: string): boolean {
-  if (!host || typeof host !== 'string') return false;
-  const clean = host.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
-  if (!clean || /\s/.test(clean)) return false;
-  return /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/.test(clean);
-}
-
-/**
- * Probes https://<host>/__/auth/handler to check whether custom domain auth handler responds.
- * Returns true only if the server answers (HTTP 200 or opaque response without network failure).
- */
-export async function testAuthHandlerEndpoint(host: string): Promise<boolean> {
-  if (!isValidHostname(host)) return false;
-  const cleanHost = host.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2500);
-    const res = await fetch(`https://${cleanHost}/__/auth/handler`, {
-      method: 'GET',
-      mode: 'no-cors',
-      signal: controller.signal,
-    });
-    clearTimeout(timer);
-    return res.type === 'opaque' || (res.status >= 200 && res.status < 400);
-  } catch (err) {
-    console.warn(`[Boardly Auth] Auth handler probe to ${cleanHost} failed:`, err);
-    return false;
-  }
-}
-
-// Track which fields use fallbacks
-const fallbacksUsed: string[] = [];
-
-// Helper for safe environment variable retrieval across Vite and Node
-const getEnvVar = (key: string): string | undefined => {
-  try {
-    if (typeof import.meta !== 'undefined' && (import.meta as any).env) {
-      return (import.meta as any).env[key];
-    }
-  } catch {}
-  try {
-    if (typeof process !== 'undefined' && process.env) {
-      return process.env[key];
-    }
-  } catch {}
-  return undefined;
-};
-
-// 1. API Key: Use VITE variable if valid, otherwise fallback to firebase-applet-config.json, then DEFAULT
-const envApiKey = cleanEnvVar(getEnvVar('VITE_FIREBASE_API_KEY'));
-const jsonApiKey = cleanEnvVar(firebaseAppletConfig?.apiKey);
-let rawApiKey: string;
-if (isValidApiKey(envApiKey)) {
-  rawApiKey = envApiKey;
-} else {
-  fallbacksUsed.push('apiKey');
-  rawApiKey = isValidApiKey(jsonApiKey) ? jsonApiKey : DEFAULTS.apiKey;
-}
-
-// 2. Auth Domain: Keep gen-lang-client-0365509316.firebaseapp.com by default.
-const envAuthDomainRaw = cleanEnvVar(getEnvVar('VITE_FIREBASE_AUTH_DOMAIN'));
-let rawAuthDomain = DEFAULTS.authDomain;
-
-if (envAuthDomainRaw && isValidHostname(envAuthDomainRaw)) {
-  const cleanHost = envAuthDomainRaw.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
-  // Check if verified in this browser session
-  if (typeof window !== 'undefined' && sessionStorage.getItem('boardly_verified_auth_domain') === cleanHost) {
-    rawAuthDomain = cleanHost;
-  } else if (typeof window !== 'undefined' && cleanHost !== DEFAULTS.authDomain) {
-    // Probe in background so subsequent sign-ins or reloads can use it once verified
-    testAuthHandlerEndpoint(cleanHost).then((responds) => {
-      if (responds) {
-        sessionStorage.setItem('boardly_verified_auth_domain', cleanHost);
-        try {
-          if ((auth as any)?.config) (auth as any).config.authDomain = cleanHost;
-          if ((app?.options as any)) (app.options as any).authDomain = cleanHost;
-        } catch {}
-      } else {
-        sessionStorage.removeItem('boardly_verified_auth_domain');
-      }
-    });
-  }
-} else {
-  fallbacksUsed.push('authDomain');
-}
-
-// 3. Project ID
-const envProjectId = cleanEnvVar(getEnvVar('VITE_FIREBASE_PROJECT_ID'));
-const jsonProjectId = cleanEnvVar(firebaseAppletConfig?.projectId);
-let rawProjectId: string;
-if (envProjectId && !/\s/.test(envProjectId)) {
-  rawProjectId = envProjectId;
-} else {
-  fallbacksUsed.push('projectId');
-  rawProjectId = (jsonProjectId && !/\s/.test(jsonProjectId)) ? jsonProjectId : DEFAULTS.projectId;
-}
-
-// 4. Storage Bucket
-const envStorageBucket = cleanEnvVar(getEnvVar('VITE_FIREBASE_STORAGE_BUCKET'));
-const jsonStorageBucket = cleanEnvVar(firebaseAppletConfig?.storageBucket);
-let rawStorageBucket: string;
-if (envStorageBucket && !/\s/.test(envStorageBucket)) {
-  rawStorageBucket = envStorageBucket;
-} else {
-  fallbacksUsed.push('storageBucket');
-  rawStorageBucket = (jsonStorageBucket && !/\s/.test(jsonStorageBucket)) ? jsonStorageBucket : DEFAULTS.storageBucket;
-}
-
-// 5. Messaging Sender ID
-const envSenderId = cleanEnvVar(getEnvVar('VITE_FIREBASE_MESSAGING_SENDER_ID'));
-const jsonSenderId = cleanEnvVar(firebaseAppletConfig?.messagingSenderId);
-let rawMessagingSenderId: string;
-if (isValidSenderId(envSenderId)) {
-  rawMessagingSenderId = envSenderId;
-} else {
-  fallbacksUsed.push('messagingSenderId');
-  rawMessagingSenderId = isValidSenderId(jsonSenderId) ? jsonSenderId : DEFAULTS.messagingSenderId;
-}
-
-// 6. App ID
-const envAppId = cleanEnvVar(getEnvVar('VITE_FIREBASE_APP_ID'));
-const jsonAppId = cleanEnvVar(firebaseAppletConfig?.appId);
-let rawAppId: string;
-if (isValidAppId(envAppId)) {
-  rawAppId = envAppId;
-} else {
-  fallbacksUsed.push('appId');
-  rawAppId = isValidAppId(jsonAppId) ? jsonAppId : DEFAULTS.appId;
-}
-
-// 7. Firestore Database ID
-const envDbId = cleanEnvVar(getEnvVar('VITE_FIREBASE_FIRESTORE_DATABASE_ID'));
-const jsonDbId = cleanEnvVar(firebaseAppletConfig?.firestoreDatabaseId);
-let rawFirestoreDbId: string;
-if (envDbId && !/\s/.test(envDbId)) {
-  rawFirestoreDbId = envDbId;
-} else {
-  fallbacksUsed.push('firestoreDatabaseId');
-  rawFirestoreDbId = (jsonDbId && !/\s/.test(jsonDbId)) ? jsonDbId : DEFAULTS.firestoreDatabaseId;
-}
-
-export const firebaseConfig = {
-  apiKey: rawApiKey,
-  authDomain: rawAuthDomain,
-  projectId: rawProjectId,
-  storageBucket: rawStorageBucket,
-  messagingSenderId: rawMessagingSenderId,
-  appId: rawAppId,
-};
-
-export const configValidation = {
-  isValid: true,
-  badVars: [] as string[],
-};
-
-// Log Firebase environment and fallback status in development
-if (import.meta.env.DEV) {
-  if (fallbacksUsed.length > 0) {
-    console.info('[Boardly Firebase] Development: fields using fallback from firebase-applet-config.json:', fallbacksUsed.join(', '));
-  } else {
-    console.info('[Boardly Firebase] Development: all config fields loaded from environment variables.');
-  }
-}
-
-if (import.meta.env.DEV || typeof window !== 'undefined') {
-  console.log('[Boardly Firebase] Initializing Firebase:');
-  console.log(' - Project ID:', firebaseConfig.projectId);
-  console.log(' - Auth Domain:', firebaseConfig.authDomain);
-  console.log(' - Named Firestore DB:', rawFirestoreDbId);
-}
-
-// Initialize Firebase App
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-
-// Initialize Firebase Auth with browser local persistence (called once at startup)
-export const auth = getAuth(app);
-setPersistence(auth, browserLocalPersistence).catch((err) => {
-  console.warn('[Boardly Auth] Persistence error:', err);
-});
-
-export { browserLocalPersistence, setPersistence };
-
-export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({
-  prompt: 'select_account',
-});
-
-// Google sign-in: popup ONLY
-export async function performGoogleSignIn(): Promise<any> {
-  try {
-    // If optional custom auth domain is specified, probe https://<host>/__/auth/handler before using
-    const customHost = cleanEnvVar(import.meta.env.VITE_FIREBASE_AUTH_DOMAIN);
-    if (customHost && isValidHostname(customHost) && customHost !== DEFAULTS.authDomain) {
-      const cleanHost = customHost.replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim();
-      const isVerified = typeof window !== 'undefined' && sessionStorage.getItem('boardly_verified_auth_domain') === cleanHost;
-      if (isVerified) {
-        try {
-          if ((auth as any)?.config) (auth as any).config.authDomain = cleanHost;
-          if ((app?.options as any)) (app.options as any).authDomain = cleanHost;
-        } catch {}
-      } else {
-        const works = await testAuthHandlerEndpoint(cleanHost);
-        if (works) {
-          if (typeof window !== 'undefined') {
-            sessionStorage.setItem('boardly_verified_auth_domain', cleanHost);
-          }
-          try {
-            if ((auth as any)?.config) (auth as any).config.authDomain = cleanHost;
-            if ((app?.options as any)) (app.options as any).authDomain = cleanHost;
-          } catch {}
-        } else {
-          // Fall back strictly to default so login never breaks
-          try {
-            if ((auth as any)?.config) (auth as any).config.authDomain = DEFAULTS.authDomain;
-            if ((app?.options as any)) (app.options as any).authDomain = DEFAULTS.authDomain;
-          } catch {}
-        }
-      }
-    }
-
-    return await signInWithPopup(auth, googleProvider);
-  } catch (popupErr: any) {
-    console.warn('[Boardly Auth] Google popup error:', popupErr);
-    if (
-      popupErr?.code === 'auth/popup-blocked' ||
-      popupErr?.code === 'auth/cancelled-popup-request' ||
-      popupErr?.code === 'auth/popup-closed-by-user' ||
-      popupErr?.message?.includes('popup')
-    ) {
-      throw new Error("Allow pop-ups for this site, then try again.");
-    }
-    throw popupErr;
-  }
-}
-
-// Initialize Firestore NAMED Database
-export const db = getFirestore(app, rawFirestoreDbId);
 
 // Error handling conforming to Firebase Integration Skill
 export enum OperationType {

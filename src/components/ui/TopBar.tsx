@@ -63,6 +63,7 @@ export const TopBar: React.FC<TopBarProps> = ({
     student: { label: 'Student View', icon: <UserIcon className="w-3.5 h-3.5 text-indigo-600" /> },
     organizer: { label: 'Study Circles', icon: <BookOpen className="w-3.5 h-3.5 text-teal-600" /> },
     captain: { label: 'Campus Captain', icon: <Award className="w-3.5 h-3.5 text-amber-600" /> },
+    crew: { label: 'Boardly Crew', icon: <Sparkles className="w-3.5 h-3.5 text-cyan-600" /> },
     admin: { label: 'Admin Portal', icon: <Shield className="w-3.5 h-3.5 text-violet-600" /> },
   };
 
