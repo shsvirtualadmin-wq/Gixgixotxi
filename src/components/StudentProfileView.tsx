@@ -124,7 +124,10 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   }, [effectiveUser?.uid, effectiveProfile?.uid]);
 
   const isApprovedAmbassador = Boolean(
-    effectiveProfile?.isCrewMember || (captainRecord && captainRecord.status === 'active')
+    !isAdmin &&
+    effectiveProfile?.crewStatus !== 'revoked' &&
+    captainRecord?.status !== 'revoked' &&
+    ((effectiveProfile?.isCrewMember && effectiveProfile?.crewStatus === 'approved') || (captainRecord && (captainRecord.status === 'approved' || captainRecord.status === 'active')))
   );
 
   const planKey: PlanKey = normalizePlan(effectiveProfile?.plan);

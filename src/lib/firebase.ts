@@ -24,6 +24,9 @@ import {
   getCountFromServer,
   runTransaction,
   serverTimestamp,
+  onSnapshot,
+  deleteDoc,
+  deleteField,
   QueryDocumentSnapshot,
   DocumentData,
   DocumentSnapshot,
@@ -34,6 +37,8 @@ export {
   getDoc,
   setDoc,
   updateDoc,
+  deleteDoc,
+  deleteField,
   collection,
   addDoc,
   query,
@@ -41,6 +46,7 @@ export {
   orderBy,
   limit,
   getDocs,
+  onSnapshot,
 };
 
 import firebaseAppletConfig from '../../firebase-applet-config.json';

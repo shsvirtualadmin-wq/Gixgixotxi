@@ -102,6 +102,29 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
   const [showUniModal, setShowUniModal] = useState<boolean>(false);
   const [boardyPrompt, setBoardyPrompt] = useState<string>('');
 
+  const [revokeNotice, setRevokeNotice] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const msg = sessionStorage.getItem('boardly_revoke_notice');
+      if (msg) {
+        sessionStorage.removeItem('boardly_revoke_notice');
+        return msg;
+      }
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    const handlePop = () => {
+      const msg = sessionStorage.getItem('boardly_revoke_notice');
+      if (msg) {
+        sessionStorage.removeItem('boardly_revoke_notice');
+        setRevokeNotice(msg);
+      }
+    };
+    window.addEventListener('popstate', handlePop);
+    return () => window.removeEventListener('popstate', handlePop);
+  }, []);
+
   const handleSelectTab = useCallback((tabId: string) => {
     if (tabId === 'boardy') {
       prevTabRef.current = activeTab !== 'boardy' ? activeTab : 'overview';
@@ -722,6 +745,25 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
 
   return (
     <>
+      {/* Toast Notice when redirected from revoked Crew access */}
+      {revokeNotice && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] max-w-md w-full px-4 animate-fade-in pointer-events-auto">
+          <div className="p-4 rounded-2xl bg-slate-900 text-white text-xs font-bold shadow-2xl border border-rose-500/50 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
+              <span>{revokeNotice}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setRevokeNotice(null)}
+              className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-black text-xs cursor-pointer transition-colors"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Full-Screen Boardy AI tab with smooth transition */}
       <AnimatePresence mode="wait">
         {isBoardyActive ? (

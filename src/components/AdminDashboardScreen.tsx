@@ -771,6 +771,40 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
 
         {/* Content Body */}
         <main className="p-4 sm:p-6 max-w-7xl w-full mx-auto space-y-6">
+          {/* Quick Access Bar: Student View & Crew Applications */}
+          <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-xs">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                Admin Session Active: <span className="font-mono text-indigo-600 dark:text-indigo-400">{adminEmail}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onBack}
+                className="px-3.5 py-1.5 rounded-xl bg-violet-50 hover:bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300 font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5"
+                title="Open Student Portal without losing admin access"
+              >
+                <BookOpen className="w-3.5 h-3.5" />
+                <span>Student View</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActiveSection('crew')}
+                className="px-3.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 font-bold text-xs transition-all cursor-pointer flex items-center gap-1.5"
+                title="Go to Crew Applications review"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Crew Applications</span>
+                {pendingCrewCount > 0 && (
+                  <span className="px-1.5 py-0.2 rounded-full bg-rose-600 text-white text-[10px] font-black">
+                    {pendingCrewCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
           {/* Action Success Toast */}
           {actionSuccessMsg && (
             <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-2 animate-in fade-in">

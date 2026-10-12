@@ -38,7 +38,6 @@ export const supabase: any = {
 
 export const ADMIN_EMAILS = [
   'shsvirtualadmin@gmail.com',
-  'support@boardly.cfd',
 ];
 
 export function isAdminEmail(email?: string | null): boolean {

@@ -18,10 +18,11 @@ import {
   ExternalLink,
   Award,
   Lock,
+  XCircle,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getPlanConfig } from '../../data/planLimits';
-import { fetchCaptainRecord, fetchUserCrewApplication, CaptainRecord, CrewApplication } from '../../lib/firebase';
+import { fetchCaptainRecord, fetchUserCrewApplication, CaptainRecord, CrewApplication, onSnapshot, doc, db } from '../../lib/firebase';
 import { CrewApplicationModal } from '../crew/CrewApplicationModal';
 import { SetPasswordModal } from '../auth/SetPasswordModal';
 
@@ -55,22 +56,46 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
   );
 
   // Check if user is an approved ambassador (Requirement 1: only for users with approved captains/{uid} doc)
-  const isApprovedAmbassador = Boolean(profile?.isCrewMember || (captainRecord && captainRecord.status === 'active'));
+  const isApprovedAmbassador = Boolean(
+    !isAdmin &&
+    profile?.crewStatus !== 'revoked' &&
+    captainRecord?.status !== 'revoked' &&
+    (profile?.isCrewMember && profile?.crewStatus === 'approved' || (captainRecord && captainRecord.status === 'approved'))
+  );
+
+  const isRevoked = Boolean(
+    !isAdmin && (
+      profile?.crewStatus === 'revoked' ||
+      captainRecord?.status === 'revoked' ||
+      existingApp?.status === 'revoked'
+    )
+  );
 
   useEffect(() => {
     if (!isOpen || !user?.uid) return;
-    fetchCaptainRecord(user.uid).then((rec) => {
-      if (rec && rec.status === 'active') {
-        setCaptainRecord(rec);
+
+    if (isAdmin) {
+      setCaptainRecord(null);
+      setExistingApp(null);
+      return;
+    }
+
+    const unsub = onSnapshot(doc(db, 'captains', user.uid), (snap) => {
+      if (snap.exists()) {
+        setCaptainRecord(snap.data() as CaptainRecord);
+      } else {
+        setCaptainRecord(null);
       }
-    }).catch(console.warn);
+    });
 
     fetchUserCrewApplication(user.uid).then((app) => {
       if (app) {
         setExistingApp(app);
       }
     }).catch(console.warn);
-  }, [isOpen, user?.uid]);
+
+    return () => unsub();
+  }, [isOpen, user?.uid, isAdmin]);
 
   // Close on Esc
   useEffect(() => {
@@ -318,8 +343,8 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
 
               {/* Below the grid actions */}
               <div className="space-y-1.5 pt-2 border-t border-slate-100">
-                {/* Requirement 1 & 2: Placed FIRST in the list */}
-                {isApprovedAmbassador ? (
+                {/* Admin can NEVER apply or be a crew member -> hide crew row completely for admin */}
+                {isAdmin ? null : isApprovedAmbassador ? (
                   /* 1. APPROVED AMBASSADOR: Crew Dashboard item with badge (First in list, Never show Apply) */
                   <button
                     type="button"
@@ -355,8 +380,30 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
                     </div>
                     <ChevronRight className="w-4 h-4 text-indigo-500" />
                   </button>
+                ) : isRevoked ? (
+                  /* 2. REVOKED USER: Button shows "Access revoked", cannot re-apply unless admin re-approves */
+                  <div className="w-full flex items-center justify-between p-3 rounded-2xl bg-rose-50/80 border border-rose-200 text-left transition-colors cursor-not-allowed">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center">
+                        <XCircle className="w-4 h-4 text-rose-600" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-rose-900">
+                            Access revoked
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded-md bg-rose-200 text-rose-900 text-[9px] font-bold uppercase tracking-wider">
+                            Revoked
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-rose-600">
+                          Your Crew access was revoked. Contact administrator for re-approval.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 ) : existingApp?.status === 'pending' ? (
-                  /* 2. NON-AMBASSADOR WITH PENDING APPLICATION: "Application Under Review" */
+                  /* 3. NON-AMBASSADOR WITH PENDING APPLICATION: "Application Under Review" */
                   <button
                     type="button"
                     onClick={() => {
@@ -385,7 +432,7 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
                     <ChevronRight className="w-4 h-4 text-amber-500" />
                   </button>
                 ) : (
-                  /* 3. NON-AMBASSADOR WITH NO APPLICATION: Normal "Apply for Boardly Crew" */
+                  /* 4. NON-AMBASSADOR WITH NO APPLICATION: Normal "Apply for Boardly Crew" */
                   <button
                     type="button"
                     onClick={() => {
@@ -399,21 +446,21 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
                       </div>
                       <div>
                         <div className="flex items-center gap-1.5">
-                    <span className="text-xs font-bold text-[#0d1b3e]">
-                      Apply for Boardly Crew
-                    </span>
-                    <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 text-[9px] font-bold uppercase tracking-wider">
-                      30d Premium
-                    </span>
-                  </div>
-                  <p className="text-[10px] text-slate-500">
-                    Become a campus ambassador &amp; unlock free access
-                  </p>
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-slate-400" />
-            </button>
-          )}
+                          <span className="text-xs font-bold text-[#0d1b3e]">
+                            Apply for Boardly Crew
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 text-[9px] font-bold uppercase tracking-wider">
+                            30d Premium
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500">
+                          Become a campus ambassador &amp; unlock free access
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                  </button>
+                )}
 
           {/* University Explorer row */}
           <button

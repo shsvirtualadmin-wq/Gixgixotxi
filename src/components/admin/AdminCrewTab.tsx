@@ -21,6 +21,8 @@ import {
   TrendingUp,
   DollarSign,
   PlusCircle,
+  RotateCcw,
+  History,
 } from 'lucide-react';
 import {
   CrewApplication,
@@ -28,8 +30,13 @@ import {
   approveCrewApplication,
   rejectCrewApplication,
   revokeCrewMemberStatus,
+  reapproveCrewMember,
   StudentUserProfile,
   updateDoc,
+  deleteDoc,
+  setDoc,
+  getDoc,
+  deleteField,
   doc,
   db,
   collection,
@@ -39,15 +46,17 @@ import {
   limit,
 } from '../../lib/firebase';
 import { CREW_TENURE_SIGNUP_TARGET, CREW_INTERNSHIP_SIGNUP_TARGET } from '../../lib/crewLogic';
+import { UniversityLogoBadge } from '../UniversityLogoBadge';
 
 interface AdminCrewTabProps {
   adminEmail: string;
 }
 
 export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
-  const [subTab, setSubTab] = useState<'applications' | 'active'>('applications');
+  const [subTab, setSubTab] = useState<'applications' | 'active' | 'revoked'>('applications');
   const [applications, setApplications] = useState<CrewApplication[]>([]);
   const [activeMembers, setActiveMembers] = useState<StudentUserProfile[]>([]);
+  const [revokedMembers, setRevokedMembers] = useState<StudentUserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -64,6 +73,7 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
 
   // Revoke confirmation modal
   const [revokeConfirmUser, setRevokeConfirmUser] = useState<StudentUserProfile | null>(null);
+  const [revokeReasonInput, setRevokeReasonInput] = useState('');
 
   const loadData = async () => {
     setLoading(true);
@@ -78,6 +88,12 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
       const snap = await getDocs(q);
       const members = snap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
       setActiveMembers(members);
+
+      // 3. Fetch revoked crew members from users collection
+      const qRevoked = query(usersColl, where('crewStatus', '==', 'revoked'), limit(50));
+      const snapRevoked = await getDocs(qRevoked);
+      const revoked = snapRevoked.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
+      setRevokedMembers(revoked);
     } catch (err) {
       console.error('Failed to load crew data:', err);
     } finally {
@@ -139,13 +155,85 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
     if (!revokeConfirmUser || !revokeConfirmUser.uid) return;
     setActionInProgress(revokeConfirmUser.uid);
     try {
-      await revokeCrewMemberStatus(revokeConfirmUser.uid, adminEmail, 'Revoked by administrator');
-      setToastMessage(`Revoked Crew status for ${revokeConfirmUser.name || 'user'}. Plan reverted to Free.`);
+      const reason = revokeReasonInput.trim() || 'Access revoked by administrator';
+      await revokeCrewMemberStatus(revokeConfirmUser.uid, adminEmail, reason);
+      setToastMessage(`Revoked Crew status for ${revokeConfirmUser.name || 'user'}. Returned to previous plan.`);
       setRevokeConfirmUser(null);
+      setRevokeReasonInput('');
       await loadData();
     } catch (err: any) {
       console.error('Revoke error:', err);
       setToastMessage(`Error revoking status: ${err.message || 'Check connection'}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handleReapprove = async (userDoc: StudentUserProfile) => {
+    if (!userDoc.uid) return;
+    setActionInProgress(userDoc.uid);
+    try {
+      await reapproveCrewMember(userDoc.uid, adminEmail);
+      setToastMessage(`Re-approved Crew Ambassador ${userDoc.name || 'user'}. Restored 30 days of Premium.`);
+      await loadData();
+    } catch (err: any) {
+      console.error('Re-approve error:', err);
+      setToastMessage(`Error re-approving: ${err.message || 'Check connection'}`);
+    } finally {
+      setActionInProgress(null);
+    }
+  };
+
+  const handlePurgeAdminRecords = async () => {
+    setActionInProgress('purge-admin');
+    try {
+      const targetAdminEmail = 'shsvirtualadmin@gmail.com';
+      // 1. Delete captain doc
+      const qCap = query(collection(db, 'captains'), where('email', '==', targetAdminEmail));
+      const capSnap = await getDocs(qCap);
+      for (const d of capSnap.docs) {
+        await deleteDoc(d.ref);
+      }
+
+      // 2. Delete captainApplications & crewApplications
+      const qCapApps = query(collection(db, 'captainApplications'), where('email', '==', targetAdminEmail));
+      const capAppsSnap = await getDocs(qCapApps);
+      for (const d of capAppsSnap.docs) {
+        await deleteDoc(d.ref);
+      }
+
+      const qCrewApps = query(collection(db, 'crewApplications'), where('email', '==', targetAdminEmail));
+      const crewAppsSnap = await getDocs(qCrewApps);
+      for (const d of crewAppsSnap.docs) {
+        await deleteDoc(d.ref);
+      }
+
+      // 3. Reset user document
+      const qUser = query(collection(db, 'users'), where('email', '==', targetAdminEmail));
+      const userSnap = await getDocs(qUser);
+      for (const u of userSnap.docs) {
+        await updateDoc(u.ref, {
+          role: 'admin',
+          roles: ['admin'],
+          plan: 'premium',
+          isPremium: true,
+          isCrewMember: false,
+          crewStatus: deleteField(),
+          crewReferralCode: deleteField(),
+          crewStartDate: deleteField(),
+          crewInstitution: deleteField(),
+          crewRevokedAt: deleteField(),
+          crewRevokeReason: deleteField(),
+          isPaidInternshipEligible: false,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+
+      setToastMessage('Successfully purged any admin captain/application documents and reset admin user role.');
+      await loadData();
+    } catch (err: any) {
+      console.error('Purge admin error:', err);
+      setToastMessage(`Error purging admin: ${err.message || 'Check connection'}`);
     } finally {
       setActionInProgress(null);
     }
@@ -251,7 +339,34 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
                 {activeMembers.length}
               </span>
             </button>
+            <button
+              type="button"
+              onClick={() => setSubTab('revoked')}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                subTab === 'revoked'
+                  ? 'bg-white dark:bg-slate-900 text-rose-600 dark:text-rose-400 shadow-xs'
+                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+              }`}
+            >
+              <span>Revoked</span>
+              {revokedMembers.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 text-[10px]">
+                  {revokedMembers.length}
+                </span>
+              )}
+            </button>
           </div>
+
+          <button
+            type="button"
+            onClick={handlePurgeAdminRecords}
+            disabled={actionInProgress === 'purge-admin'}
+            className="px-3 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5"
+            title="Clean any admin captain/application documents and reset admin role"
+          >
+            <Shield className="w-3.5 h-3.5 text-indigo-600" />
+            <span className="hidden sm:inline">Reset Admin Role</span>
+          </button>
 
           <button
             type="button"
@@ -506,7 +621,10 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
                             <div className="text-[11px] font-normal text-slate-400">{m.email}</div>
                           </td>
                           <td className="py-3.5 px-4 font-medium text-slate-700 dark:text-slate-300">
-                            {m.crewInstitution || m.targetUniversity || 'General Campus'}
+                            <div className="flex items-center gap-2">
+                              <UniversityLogoBadge university={m.crewInstitution || m.targetUniversity || 'General Campus'} size="xs" />
+                              <span className="truncate max-w-[180px]">{m.crewInstitution || m.targetUniversity || 'General Campus'}</span>
+                            </div>
                           </td>
                           <td className="py-3.5 px-4 font-mono font-bold text-indigo-600 dark:text-indigo-400">
                             {m.crewReferralCode || 'CREW-AMB'}
@@ -526,7 +644,7 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
                             </div>
                           </td>
                           <td className="py-3.5 px-4 whitespace-nowrap">
-                            {/* PART 4 REQUIREMENT: Flag account for "Paid Internship Eligible" */}
+                            {/* Flag account for "Paid Internship Eligible" */}
                             {isInternEligible ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-300 shadow-xs animate-scale-in">
                                 <Award className="w-3.5 h-3.5 text-amber-700" />
@@ -555,17 +673,117 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
                                 +1 Referral
                               </button>
 
-                              {/* PART 4 REQUIREMENT: Revoke Crew Status button */}
+                              {/* Requirement: Revoke Access button on each ambassador */}
                               <button
                                 type="button"
-                                onClick={() => setRevokeConfirmUser(m)}
+                                onClick={() => {
+                                  setRevokeConfirmUser(m);
+                                  setRevokeReasonInput('');
+                                }}
                                 disabled={actionInProgress === m.uid}
                                 className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 font-bold text-xs border border-rose-200/80 transition-all cursor-pointer flex items-center gap-1"
                               >
                                 <XCircle className="w-3.5 h-3.5" />
-                                <span>Revoke Crew Status</span>
+                                <span>Revoke Access</span>
                               </button>
                             </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 3. REVOKED AMBASSADORS SUB-TAB                                             */}
+      {/* ========================================================================= */}
+      {subTab === 'revoked' && (
+        <div className="space-y-4">
+          <div className="p-4 rounded-2xl bg-rose-50/70 border border-rose-100 flex items-center justify-between text-xs text-rose-900">
+            <div className="flex items-center gap-2">
+              <History className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>
+                Revoked Crew ambassadors. Access is restricted and referral codes are inactive. Admins can Re-approve ambassadors at any time.
+              </span>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs divide-y divide-slate-100 dark:divide-slate-800">
+                <thead className="bg-slate-50 dark:bg-slate-800/60 font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="py-3 px-4">Ambassador</th>
+                    <th className="py-3 px-4">Campus</th>
+                    <th className="py-3 px-4">Referral Code</th>
+                    <th className="py-3 px-4">Signups (Retained)</th>
+                    <th className="py-3 px-4">Date Revoked</th>
+                    <th className="py-3 px-4">Reason</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-slate-800 dark:text-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-slate-400">
+                        Loading revoked ambassadors…
+                      </td>
+                    </tr>
+                  ) : revokedMembers.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-12 text-center text-slate-400">
+                        No revoked ambassadors.
+                      </td>
+                    </tr>
+                  ) : (
+                    revokedMembers.map((m) => {
+                      const revokedDate = m.crewRevokedAt ? new Date(m.crewRevokedAt).toLocaleDateString() : 'N/A';
+                      const reason = m.crewRevokeReason || 'Revoked by administrator';
+
+                      return (
+                        <tr key={m.uid} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-colors">
+                          <td className="py-3.5 px-4 font-bold">
+                            <div>{m.name}</div>
+                            <div className="text-[11px] font-normal text-slate-400">{m.email}</div>
+                          </td>
+                          <td className="py-3.5 px-4 font-medium text-slate-700 dark:text-slate-300">
+                            <div className="flex items-center gap-2">
+                              <UniversityLogoBadge university={m.crewInstitution || m.targetUniversity || 'General Campus'} size="xs" />
+                              <span className="truncate max-w-[180px]">{m.crewInstitution || m.targetUniversity || 'General Campus'}</span>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4 font-mono font-bold text-slate-400 line-through">
+                            {m.crewReferralCode || 'CREW-AMB'}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="text-base font-black text-slate-900 dark:text-white">
+                              {m.crewReferralsCount || 0}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block">signups record</span>
+                          </td>
+                          <td className="py-3.5 px-4 whitespace-nowrap text-slate-600 dark:text-slate-300">
+                            {revokedDate}
+                          </td>
+                          <td className="py-3.5 px-4 text-slate-600 dark:text-slate-300 max-w-xs">
+                            <span className="inline-block px-2 py-0.5 rounded-md bg-rose-50 text-rose-700 border border-rose-200/80 text-[11px]">
+                              {reason}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => handleReapprove(m)}
+                              disabled={actionInProgress === m.uid}
+                              className="px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs shadow-xs transition-all cursor-pointer flex items-center gap-1.5 ml-auto"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              <span>Re-approve</span>
+                            </button>
                           </td>
                         </tr>
                       );
@@ -626,20 +844,37 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
             <div className="flex items-center gap-3 text-rose-600">
               <AlertTriangle className="w-6 h-6" />
               <h3 className="text-base font-black text-slate-900">
-                Revoke Ambassador Status?
+                Revoke Ambassador Access?
               </h3>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
               Are you sure you want to revoke Crew status for <strong className="text-slate-900">{revokeConfirmUser.name}</strong> ({revokeConfirmUser.crewInstitution || 'Campus'})?
             </p>
             <div className="p-3 rounded-xl bg-rose-50 border border-rose-100 text-[11px] text-rose-800 space-y-1">
-              <p>• Their ambassador dashboard access will be immediately blocked.</p>
-              <p>• Their subscription will be downgraded from Premium to Free plan.</p>
+              <p>• Ambassador dashboard route will live-redirect to student portal (/app) immediately.</p>
+              <p>• Only Crew-granted Premium will be reverted; paid plans are never downgraded.</p>
+              <p>• Referral code will be marked inactive for new signups (referrals history retained).</p>
+              <p>• In-app alert created &amp; official email sent from noreply@boardly.cfd.</p>
+            </div>
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Reason for Revocation (Optional):
+              </label>
+              <textarea
+                rows={2}
+                value={revokeReasonInput}
+                onChange={(e) => setRevokeReasonInput(e.target.value)}
+                placeholder="e.g. Terms non-compliance, inactive semester participation, or requested departure"
+                className="w-full p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 outline-none focus:border-rose-500"
+              />
             </div>
             <div className="flex items-center justify-end gap-2 pt-2">
               <button
                 type="button"
-                onClick={() => setRevokeConfirmUser(null)}
+                onClick={() => {
+                  setRevokeConfirmUser(null);
+                  setRevokeReasonInput('');
+                }}
                 className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
               >
                 Cancel
@@ -650,7 +885,7 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
                 disabled={actionInProgress === revokeConfirmUser.uid}
                 className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold cursor-pointer transition-colors shadow-xs"
               >
-                Revoke Status Now
+                Confirm Revoke
               </button>
             </div>
           </div>

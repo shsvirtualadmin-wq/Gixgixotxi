@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getCrewStatusInfo, checkAndEnforceCrewExpiration, CREW_TENURE_SIGNUP_TARGET, CREW_INTERNSHIP_SIGNUP_TARGET } from '../../lib/crewLogic';
-import { fetchReferralCount } from '../../lib/firebase';
+import { fetchReferralCount, onSnapshot, doc, db } from '../../lib/firebase';
 import { SeoHead } from '../common/SeoHead';
 import { SetPasswordModal } from '../auth/SetPasswordModal';
 
@@ -56,8 +56,44 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
     }
   }, [profile, updateProfileData]);
 
+  // LIVE REVOKE GUARD: Listen live to captains/{uid}. If status changes to revoked,
+  // immediately redirect to /app with message "Your Crew access was revoked" with no refresh needed.
+  useEffect(() => {
+    if (!user?.uid || isAdmin) return;
+
+    if (profile?.crewStatus === 'revoked') {
+      try {
+        sessionStorage.setItem('boardly_revoke_notice', 'Your Crew access was revoked');
+      } catch {}
+      if (onBackToApp) onBackToApp();
+      else if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', '/app');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      return;
+    }
+
+    const unsub = onSnapshot(doc(db, 'captains', user.uid), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data?.status === 'revoked') {
+          try {
+            sessionStorage.setItem('boardly_revoke_notice', 'Your Crew access was revoked');
+          } catch {}
+          if (onBackToApp) onBackToApp();
+          else if (typeof window !== 'undefined') {
+            window.history.pushState({}, '', '/app');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }
+        }
+      }
+    });
+
+    return () => unsub();
+  }, [user?.uid, isAdmin, profile?.crewStatus, onBackToApp]);
+
   const crewInfo = getCrewStatusInfo(profile);
-  const isApprovedCrew = profile?.isCrewMember === true || isAdmin;
+  const isApprovedCrew = (profile?.isCrewMember === true && profile?.crewStatus === 'approved') || isAdmin;
 
   // Requirement 4: Live referral count synchronization
   useEffect(() => {

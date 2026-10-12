@@ -13,6 +13,8 @@ import {
   Gift,
   TrendingUp,
   Clock,
+  XCircle,
+  Shield,
 } from 'lucide-react';
 import { SeoHead } from '../common/SeoHead';
 import { useAuth } from '../../context/AuthContext';
@@ -75,8 +77,9 @@ export const PublicProgramPage: React.FC<ProgramPageProps> = ({
     }
   };
 
-  const isPendingReview = isCrew && userCrewApp?.status === 'pending';
-  const isApprovedMember = isCrew && (profile?.isCrewMember || userCrewApp?.status === 'approved');
+  const isPendingReview = isCrew && !isAdmin && userCrewApp?.status === 'pending';
+  const isRevoked = isCrew && !isAdmin && (profile?.crewStatus === 'revoked' || userCrewApp?.status === 'revoked');
+  const isApprovedMember = isCrew && !isAdmin && !isRevoked && (profile?.isCrewMember || userCrewApp?.status === 'approved');
 
   return (
     <div className="min-h-[100dvh] pt-28 pb-20 px-4 sm:px-6 max-w-4xl mx-auto">
@@ -225,6 +228,20 @@ export const PublicProgramPage: React.FC<ProgramPageProps> = ({
                     <span>Admin Portal</span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </a>
+                </div>
+              ) : isAdmin ? (
+                <a
+                  href="/admin"
+                  className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-slate-900 hover:bg-slate-800 active:scale-95 transition-all flex items-center gap-1.5 shadow-md shadow-slate-950/25 cursor-pointer"
+                >
+                  <Shield className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Admin Portal</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </a>
+              ) : isRevoked ? (
+                <div className="px-6 py-2.5 rounded-xl text-xs font-black text-rose-800 bg-rose-100 border border-rose-300 flex items-center gap-1.5 shadow-xs cursor-not-allowed">
+                  <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Access revoked</span>
                 </div>
               ) : isApprovedMember ? (
                 <button

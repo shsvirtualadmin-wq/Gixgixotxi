@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, CheckCircle2, Sparkles, Building, Mail, Phone, User, Send, Award, Clock, ArrowRight } from 'lucide-react';
+import { X, Loader2, CheckCircle2, Sparkles, Building, Mail, Phone, User, Send, Award, Clock, ArrowRight, XCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { submitCrewApplication, fetchUserCrewApplication, CrewApplication } from '../../lib/firebase';
 
@@ -80,6 +80,12 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
     // Block admin accounts from applying
     if (isAdmin || user?.email?.toLowerCase() === 'shsvirtualadmin@gmail.com') {
       setErrorMessage('Administrator accounts cannot apply for Boardly Crew.');
+      return;
+    }
+
+    // Block revoked accounts from re-applying without admin re-approval
+    if (profile?.crewStatus === 'revoked' || existingApp?.status === 'revoked') {
+      setErrorMessage('Your Crew access was revoked. You cannot re-apply unless the administrator re-approves you.');
       return;
     }
 
@@ -230,6 +236,35 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
                 className="flex-1 py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
                 <span>Sign Up</span>
+              </button>
+            </div>
+          </div>
+        ) : profile?.crewStatus === 'revoked' || existingApp?.status === 'revoked' ? (
+          /* REVOKED ACCESS STATE */
+          <div className="text-center py-6 space-y-4 animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto shadow-sm ring-8 ring-rose-50/50">
+              <XCircle className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-1.5 max-w-sm mx-auto">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 text-[11px] font-bold uppercase tracking-wider mb-1">
+                <span>Access Revoked</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-[#0d1b3e] tracking-tight">
+                Ambassador Access Revoked
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                Your Boardly Crew ambassador access has been revoked. You cannot re-apply unless an administrator re-approves your access from the admin portal.
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-3 px-5 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold text-xs transition-all cursor-pointer"
+              >
+                Close
               </button>
             </div>
           </div>

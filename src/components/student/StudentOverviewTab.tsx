@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useUsage } from '../../context/UsageContext';
-import { StoredTestAttempt, fetchCaptainRecord, fetchReferralCount, CaptainRecord } from '../../lib/firebase';
+import { StoredTestAttempt, fetchCaptainRecord, fetchReferralCount, CaptainRecord, onSnapshot, doc, db } from '../../lib/firebase';
 import { getCrewStatusInfo } from '../../lib/crewLogic';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
 import { UNIVERSITIES, findUniversity, University } from '../../data/universities';
@@ -55,24 +55,33 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
 
   const firstName = profile?.name?.trim().split(' ')[0] || 'Student';
 
-  // Ambassador Verification & Live Referral Stats (Requirement 1 & 3)
+  // Ambassador Verification & Live Referral Stats (Live Firestore sync)
   const [captainRecord, setCaptainRecord] = useState<CaptainRecord | null>(null);
   const [liveReferralCount, setLiveReferralCount] = useState<number | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
 
-  const isAmbassador = Boolean(
-    profile?.isCrewMember || (captainRecord && captainRecord.status === 'active')
-  );
-
+  // Listen live to captains/{uid}
   useEffect(() => {
-    if (profile?.uid) {
-      fetchCaptainRecord(profile.uid).then((rec) => {
-        if (rec && rec.status === 'active') {
-          setCaptainRecord(rec);
-        }
-      }).catch(console.warn);
+    if (!profile?.uid || isAdmin) {
+      setCaptainRecord(null);
+      return;
     }
-  }, [profile?.uid]);
+    const unsub = onSnapshot(doc(db, 'captains', profile.uid), (snap) => {
+      if (snap.exists()) {
+        setCaptainRecord(snap.data() as CaptainRecord);
+      } else {
+        setCaptainRecord(null);
+      }
+    });
+    return () => unsub();
+  }, [profile?.uid, isAdmin]);
+
+  const isAmbassador = Boolean(
+    !isAdmin &&
+    profile?.crewStatus !== 'revoked' &&
+    captainRecord?.status !== 'revoked' &&
+    (captainRecord?.status === 'approved' || (profile?.isCrewMember && profile?.crewStatus === 'approved'))
+  );
 
   const crewInfo = useMemo(() => {
     return getCrewStatusInfo(profile);
