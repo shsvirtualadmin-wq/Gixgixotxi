@@ -1,0 +1,67 @@
+{
+  "hosting": {
+    "public": "dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "/crew",
+        "destination": "/crew/index.html"
+      },
+      {
+        "source": "/crew/how-it-works",
+        "destination": "/crew/how-it-works/index.html"
+      },
+      {
+        "source": "/crew/perks",
+        "destination": "/crew/perks/index.html"
+      },
+      {
+        "source": "/crew/faq",
+        "destination": "/crew/faq/index.html"
+      },
+      {
+        "source": "/crew/apply",
+        "destination": "/crew/apply/index.html"
+      },
+      {
+        "source": "/crew/**",
+        "destination": "/crew/index.html"
+      },
+      {
+        "source": "/programs/crew",
+        "destination": "/crew/index.html"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ],
+    "headers": [
+      {
+        "source": "/assets/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "public, max-age=31536000, immutable"
+          }
+        ]
+      },
+      {
+        "source": "/crew/**",
+        "headers": [
+          {
+            "key": "Cache-Control",
+            "value": "no-cache, no-store, must-revalidate"
+          }
+        ]
+      }
+    ]
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

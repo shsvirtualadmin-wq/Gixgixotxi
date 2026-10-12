@@ -12778,8 +12778,70 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   };
 
   app.get("/api/admin/verify-user-deletion", handleVerifyUserDeletion);
-  app.post("/api/admin/verify-user-deletion", handleVerifyUserDeletion);
+  // Dedicated Social Share & Crawler Metadata Responder for /crew routes
+  app.use((req, res, next) => {
+    const rawPath = req.path.toLowerCase().replace(/\/$/, '') || '/';
+    if (!rawPath.startsWith('/crew')) return next();
 
+    const ua = (req.headers['user-agent'] || '').toLowerCase();
+    const isBot = /facebookexternalhit|whatsapp|twitterbot|telegrambot|discordbot|linkedinbot|slackbot|googlebot|bingbot|crawler|spider/i.test(ua);
+    const forceCrawler = req.query.crawler === '1' || req.query.crawler === 'true';
+
+    if (!isBot && !forceCrawler) {
+      return next();
+    }
+
+    let title = 'Boardly Crew: Lead your campus';
+    let description = 'Represent Boardly at your college or university as an official student ambassador. Unlock 30 days of free Premium, peer referral rewards, and paid internship opportunities.';
+    const canonical = `https://boardly.cfd${rawPath}`;
+
+    if (rawPath === '/crew/apply') {
+      title = 'Apply to Boardly Crew | Student Campus Ambassador Program';
+      description = 'Submit your student ambassador application for Boardly Crew. Lead your batch, share test prep resources, and unlock student leader perks.';
+    } else if (rawPath === '/crew/how-it-works') {
+      title = 'How Boardly Crew Works | Campus Ambassador Program';
+      description = 'Discover the 4 steps to becoming a verified Boardly Crew Ambassador: Apply, get verified, unlock Premium & dashboard, and earn rewards.';
+    } else if (rawPath === '/crew/perks') {
+      title = 'Boardly Crew Perks & Benefits | Lead Your Campus';
+      description = 'Explore ambassador perks: 30 days free Premium, 1-year tenure, live referral dashboard, verifiable CV credentials, and paid internship tracks.';
+    } else if (rawPath === '/crew/faq') {
+      title = 'Boardly Crew FAQ | Ambassador Program Questions Answered';
+      description = 'Got questions about Boardly Crew? Learn who can join, how to apply, eligibility, reward counting, and ambassador responsibilities.';
+    }
+
+    const ogImage = 'https://boardly.cfd/assets/boardly-crew-og.png';
+
+    const crawlerHtml = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${title}</title>
+  <meta name="description" content="${description}" />
+  <link rel="canonical" href="${canonical}" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Boardly" />
+  <meta property="og:title" content="${title}" />
+  <meta property="og:description" content="${description}" />
+  <meta property="og:url" content="${canonical}" />
+  <meta property="og:image" content="${ogImage}" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
+  <meta property="og:image:alt" content="Boardly Crew Campus Ambassador Program" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="${title}" />
+  <meta name="twitter:description" content="${description}" />
+  <meta name="twitter:image" content="${ogImage}" />
+</head>
+<body style="font-family: sans-serif; background-color: #06061a; color: #ffffff; padding: 24px;">
+  <h1>${title}</h1>
+  <p>${description}</p>
+  <p><a href="${canonical}" style="color: #6d4aff;">Visit Boardly Crew</a></p>
+</body>
+</html>`;
+
+    return res.status(200).type('text/html').send(crawlerHtml);
+  });
 
   // Vite middleware for development
 

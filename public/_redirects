@@ -1,8 +1,13 @@
 /_headers /_headers 200
 /_redirects /_redirects 200
-/crew /index.html 200
-/crew/apply /index.html 200
+/crew /crew/index.html 200
+/crew/how-it-works /crew/how-it-works/index.html 200
+/crew/perks /crew/perks/index.html 200
+/crew/faq /crew/faq/index.html 200
+/crew/apply /crew/apply/index.html 200
+/crew/* /crew/index.html 200
 /crew-dashboard /index.html 200
+/programs/crew /crew/index.html 200
 /r/* /index.html 200
 /features /features/index.html 200
 /pricing /pricing/index.html 200

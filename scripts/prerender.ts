@@ -6,6 +6,7 @@ interface RouteMetadata {
   title: string;
   description: string;
   canonical: string;
+  ogImage?: string;
   robots: string;
   schema: Record<string, any>;
   generateContent: () => string;
@@ -680,6 +681,209 @@ const PUBLIC_ROUTES: RouteMetadata[] = [
       </section>
     `,
   },
+  {
+    path: '/crew',
+    title: 'Boardly Crew: Lead your campus',
+    description: 'Represent Boardly at your college or university as an official student ambassador. Unlock 30 days of free Premium, peer referral rewards, and paid internship opportunities.',
+    canonical: 'https://boardly.cfd/crew',
+    ogImage: 'https://boardly.cfd/assets/boardly-crew-og.png',
+    robots: 'index,follow',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Boardly Crew: Lead your campus',
+      url: 'https://boardly.cfd/crew',
+      description: 'Official student campus ambassador program by Boardly and SHS Virtual Academy across Pakistani colleges and universities.',
+    },
+    generateContent: () => `
+      <section class="py-16 px-4 max-w-5xl mx-auto text-center">
+        <span class="inline-block px-4 py-1.5 rounded-full text-xs font-semibold bg-violet-950 text-violet-300 border border-violet-700 mb-6">
+          By students. For their campuses. Backed by Boardly.
+        </span>
+        <h1 class="text-4xl sm:text-6xl font-black text-slate-900 tracking-tight mb-6">
+          Be the face of Boardly at your campus. <span class="text-violet-600">Lead your batch.</span>
+        </h1>
+        <p class="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed mb-8">
+          Join Pakistan's premier student ambassador network. Empower your peers with national-standard test prep, build verifiable leadership experience, and unlock 30 days free Premium, live dashboards, and paid internship tracks.
+        </p>
+        <div class="flex flex-wrap justify-center gap-4 mb-12">
+          <a href="/crew/apply" class="px-8 py-3.5 rounded-full bg-violet-600 text-white font-bold hover:bg-violet-700 shadow-lg">Apply to Join Crew</a>
+          <a href="/crew/how-it-works" class="px-8 py-3.5 rounded-full bg-slate-100 text-slate-800 font-bold hover:bg-slate-200">See How It Works</a>
+        </div>
+      </section>
+      <section class="max-w-5xl mx-auto px-4 py-12">
+        <h2 class="text-2xl sm:text-3xl font-extrabold text-slate-900 mb-8 text-center">Ambassador Perks &amp; Rewards</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <h3 class="text-lg font-bold text-slate-900 mb-2">30 Days Free Premium</h3>
+            <p class="text-sm text-slate-600">Immediate unrestricted access to all 25,000+ MCQs, past papers, and 24/7 Boardy AI tutoring.</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <h3 class="text-lg font-bold text-slate-900 mb-2">Verifiable CV Credentials</h3>
+            <p class="text-sm text-slate-600">Official signed Letter of Recommendation and verified digital badge for LinkedIn and resumes.</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <h3 class="text-lg font-bold text-slate-900 mb-2">Paid Internship Tracks</h3>
+            <p class="text-sm text-slate-600">Top-performing student ambassadors unlock paid marketing and operations internships with SHS Academy.</p>
+          </div>
+        </div>
+      </section>
+    `,
+  },
+  {
+    path: '/crew/how-it-works',
+    title: 'How Boardly Crew Works | Campus Ambassador Program',
+    description: 'Discover the 4 steps to becoming a verified Boardly Crew Ambassador: Apply, get verified, unlock Premium & dashboard, and earn rewards.',
+    canonical: 'https://boardly.cfd/crew/how-it-works',
+    ogImage: 'https://boardly.cfd/assets/boardly-crew-og.png',
+    robots: 'index,follow',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'How Boardly Crew Works',
+      url: 'https://boardly.cfd/crew/how-it-works',
+    },
+    generateContent: () => `
+      <section class="py-16 px-4 max-w-4xl mx-auto">
+        <h1 class="text-3xl sm:text-5xl font-black text-slate-900 mb-6 text-center">How Boardly Crew Works</h1>
+        <p class="text-slate-600 mb-10 text-center max-w-xl mx-auto">Four simple steps from application to national student leadership.</p>
+        <div class="space-y-6">
+          <div class="p-6 rounded-2xl bg-white border border-slate-200">
+            <h3 class="font-bold text-lg text-slate-900 mb-1">1. Apply in 2 Minutes</h3>
+            <p class="text-sm text-slate-600">Fill out our quick 3-step form with your institution name, academic level, and campus network.</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-white border border-slate-200">
+            <h3 class="font-bold text-lg text-slate-900 mb-1">2. Get Verified</h3>
+            <p class="text-sm text-slate-600">Our student community team verifies your details within 24–48 hours and confirms your admission.</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-white border border-slate-200">
+            <h3 class="font-bold text-lg text-slate-900 mb-1">3. Unlock 30 Days Free Pro &amp; Dashboard</h3>
+            <p class="text-sm text-slate-600">Your account receives 30 days of free Pro access along with your custom referral code and tracking portal.</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-white border border-slate-200">
+            <h3 class="font-bold text-lg text-slate-900 mb-1">4. Lead, Grow &amp; Unlock Career Rewards</h3>
+            <p class="text-sm text-slate-600">Onboard batchmates, build your impact, and qualify for paid internships and signed CV letters.</p>
+          </div>
+        </div>
+        <div class="text-center mt-10">
+          <a href="/crew/apply" class="px-8 py-3.5 rounded-full bg-violet-600 text-white font-bold hover:bg-violet-700">Apply to Boardly Crew</a>
+        </div>
+      </section>
+    `,
+  },
+  {
+    path: '/crew/perks',
+    title: 'Boardly Crew Perks & Benefits | Lead Your Campus',
+    description: 'Explore ambassador perks: 30 days free Premium, 1-year tenure, live referral dashboard, verifiable CV credentials, and paid internship tracks.',
+    canonical: 'https://boardly.cfd/crew/perks',
+    ogImage: 'https://boardly.cfd/assets/boardly-crew-og.png',
+    robots: 'index,follow',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Boardly Crew Perks & Benefits',
+      url: 'https://boardly.cfd/crew/perks',
+    },
+    generateContent: () => `
+      <section class="py-16 px-4 max-w-5xl mx-auto">
+        <h1 class="text-3xl sm:text-5xl font-black text-slate-900 mb-6 text-center">Ambassador Perks &amp; Career Benefits</h1>
+        <p class="text-slate-600 mb-12 text-center max-w-xl mx-auto">Tangible value that propels your academic scores and elevates your professional resume.</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <h3 class="font-bold text-lg text-slate-900 mb-2">30 Days Free Pro Access</h3>
+            <p class="text-sm text-slate-600">Full access to 25,000+ MCQs, chapter past paper vaults, and 24/7 AI tutoring.</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <h3 class="font-bold text-lg text-slate-900 mb-2">1-Year Leadership Title</h3>
+            <p class="text-sm text-slate-600">Official designation as Boardly Campus Ambassador representing your college across Pakistan.</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <h3 class="font-bold text-lg text-slate-900 mb-2">Real-Time Referral Dashboard</h3>
+            <p class="text-sm text-slate-600">Private analytics showing peer clicks, registrations, and your national ranking.</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
+            <h3 class="font-bold text-lg text-slate-900 mb-2">Paid Internship Opportunities</h3>
+            <p class="text-sm text-slate-600">Top performers qualify for paid student leadership and marketing internships at SHS Academy.</p>
+          </div>
+        </div>
+      </section>
+    `,
+  },
+  {
+    path: '/crew/faq',
+    title: 'Boardly Crew FAQ | Ambassador Program Questions Answered',
+    description: 'Got questions about Boardly Crew? Learn who can join, how to apply, eligibility, reward counting, and ambassador responsibilities.',
+    canonical: 'https://boardly.cfd/crew/faq',
+    ogImage: 'https://boardly.cfd/assets/boardly-crew-og.png',
+    robots: 'index,follow',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'FAQPage',
+      mainEntity: [
+        {
+          '@type': 'Question',
+          name: 'Who can join Boardly Crew?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Any currently enrolled Matric, Intermediate (FSC/ICS), or university student in Pakistan with a passion for helping peers excel academically.',
+          },
+        },
+        {
+          '@type': 'Question',
+          name: 'Is it completely free to join?',
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: 'Yes, 100% free forever. There are zero fees, application charges, or mandatory purchases.',
+          },
+        },
+      ],
+    },
+    generateContent: () => `
+      <section class="py-16 px-4 max-w-4xl mx-auto">
+        <h1 class="text-3xl sm:text-5xl font-black text-slate-900 mb-6 text-center">Frequently Asked Questions</h1>
+        <p class="text-slate-600 mb-10 text-center">Everything you need to know about Boardly Crew.</p>
+        <div class="space-y-6">
+          <div class="p-6 rounded-2xl bg-white border border-slate-200">
+            <h3 class="font-bold text-slate-900 mb-2">Who can join Boardly Crew?</h3>
+            <p class="text-sm text-slate-600">Any currently enrolled Matric, Intermediate (FSC/ICS), or undergraduate university student in Pakistan.</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-white border border-slate-200">
+            <h3 class="font-bold text-slate-900 mb-2">How do I apply?</h3>
+            <p class="text-sm text-slate-600">Complete the 3-step application form on /crew/apply in under 2 minutes.</p>
+          </div>
+          <div class="p-6 rounded-2xl bg-white border border-slate-200">
+            <h3 class="font-bold text-slate-900 mb-2">Is it completely free?</h3>
+            <p class="text-sm text-slate-600">Yes, 100% free with zero fees or purchases required. Approved members get 30 days of free Pro access.</p>
+          </div>
+        </div>
+      </section>
+    `,
+  },
+  {
+    path: '/crew/apply',
+    title: 'Apply to Boardly Crew | Student Campus Ambassador Program',
+    description: 'Submit your student ambassador application for Boardly Crew. Lead your batch, share test prep resources, and unlock student leader perks.',
+    canonical: 'https://boardly.cfd/crew/apply',
+    ogImage: 'https://boardly.cfd/assets/boardly-crew-og.png',
+    robots: 'index,follow',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Apply to Boardly Crew',
+      url: 'https://boardly.cfd/crew/apply',
+    },
+    generateContent: () => `
+      <section class="py-16 px-4 max-w-3xl mx-auto text-center">
+        <h1 class="text-3xl sm:text-5xl font-black text-slate-900 mb-4">Apply for Boardly Crew</h1>
+        <p class="text-slate-600 mb-8">Represent your campus, lead your batch, and unlock 30 days of free Premium.</p>
+        <div class="p-8 rounded-2xl bg-white border border-slate-200 text-left shadow-sm">
+          <h2 class="text-xl font-bold text-slate-900 mb-4">Application Form</h2>
+          <p class="text-sm text-slate-600 mb-6">Open the full interactive Boardly Crew portal to complete your 3-step application.</p>
+          <a href="/crew/apply" class="px-8 py-3.5 rounded-full bg-violet-600 text-white font-bold inline-block hover:bg-violet-700">Open Application Form</a>
+        </div>
+      </section>
+    `,
+  },
 ];
 
 function generateNavigationHeader(): string {
@@ -816,6 +1020,15 @@ function prerenderAllRoutes() {
       /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
       `<meta property="og:url" content="${route.canonical}" />`
     );
+    const resolvedOgImage = route.ogImage || 'https://boardly.cfd/logo.png';
+    renderedHtml = renderedHtml.replace(
+      /<meta\s+property="og:image"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:image" content="${resolvedOgImage}" />`
+    );
+    renderedHtml = renderedHtml.replace(
+      /<meta\s+name="twitter:card"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:card" content="summary_large_image" />`
+    );
     renderedHtml = renderedHtml.replace(
       /<meta\s+name="twitter:title"\s+content="[^"]*"\s*\/?>/i,
       `<meta name="twitter:title" content="${route.title}" />`
@@ -823,6 +1036,10 @@ function prerenderAllRoutes() {
     renderedHtml = renderedHtml.replace(
       /<meta\s+name="twitter:description"\s+content="[^"]*"\s*\/?>/i,
       `<meta name="twitter:description" content="${route.description}" />`
+    );
+    renderedHtml = renderedHtml.replace(
+      /<meta\s+name="twitter:image"\s+content="[^"]*"\s*\/?>/i,
+      `<meta name="twitter:image" content="${resolvedOgImage}" />`
     );
 
     // 5. Inject / replace robots

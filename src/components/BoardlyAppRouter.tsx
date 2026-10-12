@@ -17,6 +17,7 @@ import { PublicEventPage } from './public/PublicEventPage';
 import { PublicProgramPage } from './public/PublicProgramPage';
 import { CrewDashboardPage } from './crew/CrewDashboardPage';
 import { CrewApplicationPage } from './crew/CrewApplicationPage';
+import { CrewLandingPage } from './crew/CrewLandingPage';
 import { initReferralTracker } from '../lib/referralTracker';
 import { UniversityExplorer } from './universities/UniversityExplorer';
 import { MeritMeter } from './merit/MeritMeter';
@@ -88,8 +89,15 @@ export const BoardlyAppRouter: React.FC = () => {
 
     // 1. Authenticated users guard
     if (user) {
-      // If user is on /login or /signup, redirect once to highest dashboard or onboarding
+      // If user is on /login or /signup, redirect once to postLoginPath or highest dashboard or onboarding
       if (currentPath === '/login' || currentPath === '/signup') {
+        const savedPostLogin = sessionStorage.getItem('postLoginPath');
+        if (savedPostLogin) {
+          sessionStorage.removeItem('postLoginPath');
+          lastRedirectRef.current = savedPostLogin;
+          navigate(savedPostLogin, true);
+          return;
+        }
         const targetDashboard = isRegistered ? getHighestRolePath() : '/onboarding';
         if (lastRedirectRef.current !== targetDashboard) {
           lastRedirectRef.current = targetDashboard;
@@ -476,11 +484,11 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
-        // Dedicated Boardly Crew Application route (/crew, alias /crew/apply)
-        if (currentPath === '/crew' || currentPath === '/crew/apply') {
+        // Dedicated Boardly Crew Landing Page (/crew, /crew/how-it-works, /crew/perks, /crew/faq, /crew/apply)
+        if (currentPath === '/crew' || currentPath.startsWith('/crew/')) {
           return (
             <ErrorBoundary onReset={() => navigate('/')}>
-              <CrewApplicationPage onNavigate={(route) => navigate(route)} />
+              <CrewLandingPage currentPath={currentPath} onNavigate={(route) => navigate(route)} />
             </ErrorBoundary>
           );
         }
@@ -488,13 +496,9 @@ export const BoardlyAppRouter: React.FC = () => {
         // Public Programs Pages (/programs/crew, /programs/captains)
         if (currentPath === '/programs/crew') {
           return (
-            <div className="min-h-screen flex flex-col justify-between">
-              <Navbar currentPage="home" onNavigate={(p) => navigate(`/${p}`)} onGetStarted={() => navigate('/crew')} />
-              <ErrorBoundary onReset={() => navigate('/')}>
-                <PublicProgramPage type="crew" onNavigateHome={() => navigate('/')} onApplyOrStart={() => navigate('/crew')} />
-              </ErrorBoundary>
-              <Footer onNavigate={(p) => navigate(`/${p}`)} />
-            </div>
+            <ErrorBoundary onReset={() => navigate('/')}>
+              <CrewLandingPage currentPath="/crew" onNavigate={(route) => navigate(route)} />
+            </ErrorBoundary>
           );
         }
 

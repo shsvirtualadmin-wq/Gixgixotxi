@@ -177,6 +177,13 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
 
   const handleRouteNavigate = (route: string) => {
     const clean = route.replace(/^\//, '').toLowerCase();
+    if (clean === 'crew' || clean.startsWith('crew')) {
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', route.startsWith('/') ? route : `/${route}`);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }
+      return;
+    }
     if (clean === 'blitz/register') handleNavigate('blitz/register');
     else if (clean === 'blitz/leaderboard') handleNavigate('blitz/leaderboard');
     else if (clean === 'arena/leaderboard') handleNavigate('arena/leaderboard');

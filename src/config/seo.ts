@@ -11,6 +11,7 @@ export interface PageSeoConfig {
 export const SITE_NAME = 'Boardly';
 export const SITE_URL = 'https://boardly.cfd';
 export const DEFAULT_OG_IMAGE = 'https://boardly.cfd/assets/og-image.png';
+export const CREW_OG_IMAGE = 'https://boardly.cfd/assets/boardly-crew-og.png';
 
 export const PUBLIC_PAGES_SEO: Record<string, PageSeoConfig> = {
   '/': {
@@ -326,12 +327,57 @@ export const PUBLIC_PAGES_SEO: Record<string, PageSeoConfig> = {
     robots: 'index,follow',
   },
 
+  '/crew': {
+    path: '/crew',
+    title: 'Boardly Crew: Lead your campus',
+    description: 'Represent Boardly at your college or university as an official student ambassador. Unlock 30 days of free Premium, peer referral rewards, and paid internship opportunities.',
+    canonical: 'https://boardly.cfd/crew',
+    ogImage: CREW_OG_IMAGE,
+    robots: 'index,follow',
+  },
+
+  '/crew/how-it-works': {
+    path: '/crew/how-it-works',
+    title: 'How Boardly Crew Works | Campus Ambassador Program',
+    description: 'Discover the 4 steps to becoming a verified Boardly Crew Ambassador: Apply, get verified, unlock Premium & dashboard, and earn rewards.',
+    canonical: 'https://boardly.cfd/crew/how-it-works',
+    ogImage: CREW_OG_IMAGE,
+    robots: 'index,follow',
+  },
+
+  '/crew/perks': {
+    path: '/crew/perks',
+    title: 'Boardly Crew Perks & Benefits | Lead Your Campus',
+    description: 'Explore ambassador perks: 30 days free Premium, 1-year tenure, live referral dashboard, verifiable CV credentials, and paid internship tracks.',
+    canonical: 'https://boardly.cfd/crew/perks',
+    ogImage: CREW_OG_IMAGE,
+    robots: 'index,follow',
+  },
+
+  '/crew/faq': {
+    path: '/crew/faq',
+    title: 'Boardly Crew FAQ | Ambassador Program Questions Answered',
+    description: 'Got questions about Boardly Crew? Learn who can join, how to apply, eligibility, reward counting, and ambassador responsibilities.',
+    canonical: 'https://boardly.cfd/crew/faq',
+    ogImage: CREW_OG_IMAGE,
+    robots: 'index,follow',
+  },
+
+  '/crew/apply': {
+    path: '/crew/apply',
+    title: 'Apply to Boardly Crew | Student Campus Ambassador Program',
+    description: 'Submit your student ambassador application for Boardly Crew. Lead your batch, share test prep resources, and unlock student leader perks.',
+    canonical: 'https://boardly.cfd/crew/apply',
+    ogImage: CREW_OG_IMAGE,
+    robots: 'index,follow',
+  },
+
   '/programs/crew': {
     path: '/programs/crew',
-    title: 'Boardly Crew: Student Ambassador Program | SHS Virtual Academy',
+    title: 'Boardly Crew: Lead your campus',
     description: 'Become a Boardly Crew member and represent Boardly and SHS Virtual Academy at your institution. Unlock 30 days of Premium access and qualify for paid internships.',
-    canonical: 'https://boardly.cfd/programs/crew',
-    ogImage: DEFAULT_OG_IMAGE,
+    canonical: 'https://boardly.cfd/crew',
+    ogImage: CREW_OG_IMAGE,
     robots: 'index,follow',
   },
 

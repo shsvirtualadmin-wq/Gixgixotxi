@@ -140,6 +140,11 @@ export const Navbar: React.FC<NavbarProps> = ({
         window.dispatchEvent(new PopStateEvent('popstate'));
       }
 
+      if (href === '/crew' || href.startsWith('/crew') || href === '/crew-dashboard') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+        return;
+      }
+
       const clean = href.replace('/', '') as MarketingPage;
       if (clean) onNavigate(clean);
       else onNavigate('home');
