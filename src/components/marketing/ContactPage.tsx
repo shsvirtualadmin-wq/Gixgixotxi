@@ -76,29 +76,40 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         {/* Contact Info Cards (Left Column) */}
         <div className="lg:col-span-5 space-y-6">
-          {/* Quick WhatsApp Support Card */}
+          {/* Direct Support & Community WhatsApp Card */}
           <div className="p-6 sm:p-7 rounded-[26px] bg-gradient-to-br from-emerald-950 via-slate-900 to-emerald-950 text-white shadow-xl space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-emerald-400 bg-emerald-500/20 px-3 py-1 rounded-full border border-emerald-500/30">
-                Fastest Response
+                Official WhatsApp
               </span>
               <MessageCircle className="w-6 h-6 text-[#25D366]" />
             </div>
             <h3 className="text-xl font-bold font-poppins">
-              WhatsApp Student Hotline
+              Direct Support & Community
             </h3>
             <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-              For rapid verification of bank payments, promo codes, or test bugs, chat with our student coordinators on WhatsApp.
+              Message our academic team directly on WhatsApp for test support, or join our community of students preparing together.
             </p>
-            <a
-              href="https://wa.me/923058969050?text=Hello%20Boardly%20Support,%20I%20have%20an%20inquiry%20regarding%20my%20exam%20preparation."
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center justify-center gap-2 w-full py-3 px-5 rounded-2xl bg-[#25D366] hover:bg-[#20ba59] text-slate-950 font-bold text-sm shadow-md transition-colors"
-            >
-              <MessageCircle className="w-4 h-4 fill-slate-950 stroke-none" />
-              <span>Message on WhatsApp (+92 305 8969050)</span>
-            </a>
+            <div className="space-y-2.5 pt-1">
+              <a
+                href="https://wa.me/923058969050"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 w-full py-3 px-5 rounded-2xl bg-[#25D366] hover:bg-[#20ba59] text-slate-950 font-bold text-sm shadow-md transition-colors"
+              >
+                <MessageCircle className="w-4 h-4 fill-slate-950 stroke-none" />
+                <span>Message SHS Virtual Academy on WhatsApp</span>
+              </a>
+              <a
+                href="https://chat.whatsapp.com/FTXFo4P7kct0L047d5zRGy?s=cl&p=a&mlu=4&ilr=4"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center gap-2 w-full py-3 px-5 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-colors"
+              >
+                <MessageCircle className="w-4 h-4 text-emerald-400" />
+                <span>Join the Student Corner Community</span>
+              </a>
+            </div>
           </div>
 
           {/* Email Support Card */}

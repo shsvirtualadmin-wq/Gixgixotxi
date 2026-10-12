@@ -1,5 +1,8 @@
 import React from 'react';
 
+export const BOARDLY_LOGO_TRANSPARENT = 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000028e88211b439a564acc83f64.png';
+export const BOARDLY_LOGO_SOLID = 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000e98c8211a04e8f3473512ef4.png';
+
 interface BrandLogoProps {
   className?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
@@ -11,19 +14,23 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   size = 'md',
   light = false,
 }) => {
-  const sizeClasses = {
-    sm: 'text-lg',
-    md: 'text-2xl',
-    lg: 'text-3xl',
-    xl: 'text-4xl',
+  const heightClasses = {
+    sm: 'h-7',
+    md: 'h-8 sm:h-9',
+    lg: 'h-9 sm:h-10',
+    xl: 'h-11 sm:h-12',
   };
 
-  const navyColor = light ? 'text-white' : 'text-[#0A1330]';
-  const indigoColor = light ? 'text-indigo-400' : 'text-indigo-600';
-
   return (
-    <span
-      className={`font-poppins font-bold tracking-normal inline-block leading-none select-none p-0 m-0 ${sizeClasses[size]} ${className}`}
-    ><span className={`${navyColor} transition-colors p-0 m-0`}>Board</span><span className={`${indigoColor} transition-colors p-0 m-0`}>ly</span></span>
+    <img
+      src={BOARDLY_LOGO_TRANSPARENT}
+      alt="Boardly Logo"
+      className={`${heightClasses[size] || 'h-8 sm:h-9'} w-auto object-contain select-none transition-transform duration-200 ${light ? 'brightness-0 invert' : ''} ${className}`}
+      onError={(e) => {
+        const target = e.target as HTMLImageElement;
+        target.onerror = null;
+        target.src = '/assets/boardly-logo-transparent.png';
+      }}
+    />
   );
 };

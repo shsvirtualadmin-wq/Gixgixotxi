@@ -27,8 +27,7 @@ export const Footer: React.FC<FooterProps> = ({
   onOpenProgramModal,
 }) => {
   const handleWhatsAppJoin = () => {
-    // Open community group or support chat
-    window.open('https://chat.whatsapp.com/invite/boardly-community', '_blank', 'noopener,noreferrer');
+    window.open('https://chat.whatsapp.com/FTXFo4P7kct0L047d5zRGy?s=cl&p=a&mlu=4&ilr=4', '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -46,7 +45,7 @@ export const Footer: React.FC<FooterProps> = ({
               <span>National Student Community</span>
             </div>
             <h3 className="text-xl sm:text-2xl font-bold text-white font-poppins">
-              Join the Boardly Community
+              Join the Student Corner Community
             </h3>
             <p className="text-slate-300 text-sm leading-relaxed">
               Connect with over 45,000+ ambitious students across Pakistan. Share solved numericals, compare mock percentiles, and participate in weekend quiz bouts.
@@ -58,7 +57,7 @@ export const Footer: React.FC<FooterProps> = ({
             className="shrink-0 px-6 py-3.5 rounded-full font-semibold text-sm text-slate-950 bg-[#25D366] hover:bg-[#20ba59] transition-all flex items-center gap-2.5 shadow-lg shadow-emerald-500/20 hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
           >
             <MessageCircle className="w-5 h-5 fill-slate-950 stroke-none" />
-            <span>Join on WhatsApp</span>
+            <span>Join the Student Corner Community</span>
             <ArrowRight className="w-4 h-4" />
           </button>
         </div>
@@ -409,6 +408,28 @@ export const Footer: React.FC<FooterProps> = ({
                     className="hover:text-indigo-400 transition-colors text-left block"
                   >
                     Terms of Service
+                  </a>
+                </li>
+                <li className="pt-2 border-t border-slate-800">
+                  <a
+                    href="https://chat.whatsapp.com/FTXFo4P7kct0L047d5zRGy?s=cl&p=a&mlu=4&ilr=4"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-emerald-400 transition-colors text-left flex items-center gap-1.5 text-xs text-emerald-400/90 font-medium"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Join the Student Corner Community</span>
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="https://wa.me/923058969050"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:text-emerald-400 transition-colors text-left flex items-center gap-1.5 text-xs text-emerald-400/90 font-medium"
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Message SHS Virtual Academy on WhatsApp</span>
                   </a>
                 </li>
               </ul>

@@ -13,6 +13,8 @@ import {
   LogOut,
   ChevronRight,
   User,
+  MessageCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getPlanConfig } from '../../data/planLimits';
@@ -252,6 +254,44 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
             </div>
             <ChevronRight className="w-4 h-4 text-slate-400" />
           </button>
+
+          {/* Student Corner Community */}
+          <a
+            href="https://chat.whatsapp.com/FTXFo4P7kct0L047d5zRGy?s=cl&p=a&mlu=4&ilr=4"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onClose}
+            className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-emerald-50 text-left transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <MessageCircle className="w-4 h-4" />
+              </div>
+              <span className="text-xs font-bold text-[#0d1b3e]">
+                Join the Student Corner Community
+              </span>
+            </div>
+            <ExternalLink className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          </a>
+
+          {/* Direct Support (SHS Virtual Academy) */}
+          <a
+            href="https://wa.me/923058969050"
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={onClose}
+            className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-emerald-50 text-left transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <MessageCircle className="w-4 h-4" />
+              </div>
+              <span className="text-xs font-bold text-[#0d1b3e]">
+                Message SHS Virtual Academy on WhatsApp
+              </span>
+            </div>
+            <ExternalLink className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+          </a>
 
           {/* Switch to Admin Portal (admins only) */}
           {isAdmin && (

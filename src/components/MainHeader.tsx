@@ -288,30 +288,19 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
           {/* Single Brand Logo */}
           <div
             onClick={handleLogoClick}
-            className="flex items-center gap-2.5 relative group cursor-pointer select-none"
+            className="flex items-center gap-2 relative group cursor-pointer select-none"
             title="Go to Home"
           >
-            <div className="relative w-9 h-9 sm:w-10 sm:h-10 rounded-[12px] bg-[#0A1330] flex items-center justify-center shrink-0 border border-[#1E5AFF]/40 shadow-[0_0_12px_rgba(30,90,255,0.2)] group-hover:shadow-[0_0_20px_rgba(30,90,255,0.45)] group-hover:border-[#1E5AFF] group-hover:scale-105 transition-all duration-300 overflow-hidden p-0.5">
-              <img
-                src={logoUrl || "https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo_clean_square.png"}
-                alt="Boardly Logo"
-                className="w-full h-full object-cover rounded-[8px] transition-transform duration-300 group-hover:scale-105"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.onerror = null;
-                  target.src = '/logo.png';
-                }}
-              />
-            </div>
-
-            <div className="flex flex-col">
-              <span className="font-['Space_Grotesk'] text-base sm:text-lg font-bold text-[#0A1330] leading-tight tracking-tight group-hover:text-[#1E5AFF] transition-colors flex items-center gap-1.5">
-                <span>Boardly</span>
-              </span>
-              <span className="text-[9px] font-bold tracking-widest uppercase text-blue-800 hidden sm:block">
-                Academy Platform
-              </span>
-            </div>
+            <img
+              src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000028e88211b439a564acc83f64.png"
+              alt="Boardly Logo"
+              className="h-8 sm:h-9 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.onerror = null;
+                target.src = '/assets/boardly-logo-transparent.png';
+              }}
+            />
           </div>
         </div>
 
@@ -604,23 +593,18 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
           {/* Mobile Menu Logo Header */}
           <div
             onClick={handleLogoClick}
-            className="flex items-center gap-2.5 px-3 py-1.5 mb-1 border-b border-slate-200/60  cursor-pointer group"
+            className="flex items-center gap-2 px-3 py-1.5 mb-1 border-b border-slate-200/60 cursor-pointer group"
           >
-            <div className="w-7 h-7 bg-[#0A1330] border border-[#1E5AFF]/40 rounded-xl p-0.5 flex items-center justify-center overflow-hidden shrink-0">
-              <img
-                src={logoUrl || "https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo_clean_square.png"}
-                alt="Boardly Logo"
-                className="w-full h-full object-cover rounded-md"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.onerror = null;
-                  target.src = '/logo.png';
-                }}
-              />
-            </div>
-            <span className="font-['Space_Grotesk'] font-black text-sm tracking-widest text-[#1E5AFF] uppercase">
-              BOARDLY MENU
-            </span>
+            <img
+              src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000028e88211b439a564acc83f64.png"
+              alt="Boardly Logo"
+              className="h-7 w-auto object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.onerror = null;
+                target.src = '/assets/boardly-logo-transparent.png';
+              }}
+            />
           </div>
           <div className="flex flex-col gap-1.5 text-xs font-bold text-slate-800 ">
             {/* 1. LOGGED-OUT VISITOR LINKS */}

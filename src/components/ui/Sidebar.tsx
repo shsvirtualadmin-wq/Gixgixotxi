@@ -149,21 +149,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const content = (
     <div className="flex flex-col h-full bg-white/95 backdrop-blur-2xl border-r border-slate-200/80 w-64 select-none">
       {/* Brand Header */}
-      <div className="p-5 border-b border-slate-100 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-2xl bg-indigo-600 flex items-center justify-center text-white font-black text-lg tracking-tight shadow-md shadow-indigo-500/20">
-            B
-          </div>
-          <div>
-            <span className="font-black text-lg text-slate-900 tracking-tight">
-              Boardly
+      <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
+        <div className="flex flex-col gap-1.5">
+          <img
+            src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000028e88211b439a564acc83f64.png"
+            alt="Boardly Logo"
+            className="h-8 sm:h-9 w-auto object-contain"
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.onerror = null;
+              target.src = '/assets/boardly-logo-transparent.png';
+            }}
+          />
+          <div className="flex items-center gap-1.5 pl-0.5">
+            <span className={`w-1.5 h-1.5 rounded-full ${roleTheme.dot}`} />
+            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+              {roleTheme.label}
             </span>
-            <div className="flex items-center gap-1.5 mt-0.5">
-              <span className={`w-1.5 h-1.5 rounded-full ${roleTheme.dot}`} />
-              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                {roleTheme.label}
-              </span>
-            </div>
           </div>
         </div>
       </div>

@@ -171,7 +171,9 @@ export const MANUAL_PAYMENT_CONFIG = {
   },
   support: {
     whatsappNumber: '+923058969050',
-    whatsappLink: 'https://wa.me/923058969050?text=Hello%20Boardly%20Support,%20I%20have%20transferred%20the%20subscription%20fee%20for%20my%20plan.',
+    whatsappLink: 'https://wa.me/923058969050',
+    directSupportLink: 'https://wa.me/923058969050',
+    communityLink: 'https://chat.whatsapp.com/FTXFo4P7kct0L047d5zRGy?s=cl&p=a&mlu=4&ilr=4',
     supportEmail: 'support@boardly.cfd',
   },
 };

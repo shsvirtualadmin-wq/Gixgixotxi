@@ -58,15 +58,15 @@ export const HeaderLogo: React.FC<HeaderLogoProps> = ({
       onClick={handleClick}
     >
       {/* Custom or Monogram Logo Image Badge */}
-      <div className={`${badgeSizeClass} mb-2 bg-[#0A1330] border-2 border-[#1E5AFF]/40 shadow-[0_0_16px_rgba(30,90,255,0.25)] group-hover:shadow-[0_0_24px_rgba(30,90,255,0.5)] group-hover:border-[#1E5AFF] group-hover:scale-105 transition-all duration-300 overflow-hidden flex items-center justify-center`}>
+      <div className={`${badgeSizeClass} mb-2 bg-[#0A1330] border-2 border-[#1E5AFF]/40 shadow-[0_0_16px_rgba(30,90,255,0.25)] group-hover:shadow-[0_0_24px_rgba(30,90,255,0.5)] group-hover:border-[#1E5AFF] group-hover:scale-105 transition-all duration-300 overflow-hidden flex items-center justify-center p-1`}>
         <img
-          src={logoUrl || "https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo_clean_square.png"}
+          src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000e98c8211a04e8f3473512ef4.png"
           alt="Boardly Logo"
-          className="w-full h-full object-cover rounded-xl transition-transform duration-300 group-hover:scale-105"
+          className="w-full h-full object-contain rounded-xl transition-transform duration-300 group-hover:scale-105"
           onError={(e) => {
             const target = e.target as HTMLImageElement;
             target.onerror = null;
-            target.src = '/logo.png';
+            target.src = '/assets/boardly-logo-solid.png';
           }}
         />
       </div>

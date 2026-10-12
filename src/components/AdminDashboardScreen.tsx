@@ -423,16 +423,20 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
         <div>
           {/* Top Header */}
           <div className="p-5 border-b border-slate-800/80 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-violet-600 to-indigo-600 text-white font-black text-lg flex items-center justify-center shadow-lg shadow-violet-500/25">
-                B
-              </div>
-              <div>
-                <span className="font-black text-base text-white tracking-tight">Boardly</span>
-                <span className="text-[10px] block font-extrabold text-violet-400 uppercase tracking-widest">
-                  Admin Portal
-                </span>
-              </div>
+            <div className="flex flex-col gap-1.5">
+              <img
+                src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000028e88211b439a564acc83f64.png"
+                alt="Boardly Logo"
+                className="h-8 w-auto object-contain brightness-0 invert"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.onerror = null;
+                  target.src = '/assets/boardly-logo-transparent.png';
+                }}
+              />
+              <span className="text-[10px] block font-extrabold text-violet-400 uppercase tracking-widest pl-0.5">
+                Admin Portal
+              </span>
             </div>
           </div>
 

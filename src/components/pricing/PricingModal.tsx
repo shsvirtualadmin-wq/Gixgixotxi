@@ -534,12 +534,12 @@ export const PricingModal: React.FC<PricingModalProps> = ({
 
                 <div className="pt-4 flex flex-col sm:flex-row items-center justify-center gap-3">
                   <a
-                    href={`${MANUAL_PAYMENT_CONFIG.support.whatsappLink}&text=Hello%20Boardly%20Support,%20I%20have%20submitted%20TID%20${encodeURIComponent(transactionId)}%20for%20my%20${checkoutTarget.toUpperCase()}%20subscription.`}
+                    href="https://wa.me/923058969050"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
                   >
-                    <span>Send Screenshot on WhatsApp</span>
+                    <span>Please submit your proof via WhatsApp to our official number.</span>
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                   <button
@@ -674,16 +674,16 @@ export const PricingModal: React.FC<PricingModalProps> = ({
                   {/* Important instruction note */}
                   <div className="p-3 rounded-xl bg-white/80 border border-amber-200 text-[11px] text-amber-900 leading-relaxed space-y-1.5">
                     <p className="font-medium">
-                      <em>Important Note:</em> After sending your payment, please WhatsApp or email a screenshot of your transaction receipt to support to manually activate your Pro/Premium plan:
+                      <em>Important Note:</em> Please submit your proof via WhatsApp to our official number:
                     </p>
                     <div className="flex flex-wrap items-center gap-3 font-bold text-[11px] pt-0.5">
                       <a
-                        href={MANUAL_PAYMENT_CONFIG.support.whatsappLink}
+                        href="https://wa.me/923058969050"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-emerald-700 hover:underline flex items-center gap-1"
                       >
-                        <span>💬 WhatsApp: {MANUAL_PAYMENT_CONFIG.support.whatsappNumber}</span>
+                        <span>💬 Please submit your proof via WhatsApp to our official number. (+92 305 8969050)</span>
                       </a>
                       <span className="text-slate-300">|</span>
                       <a

@@ -15,7 +15,7 @@ export const BrandedLoadingSpinner: React.FC<BrandedLoadingSpinnerProps> = ({
   sublabel,
   fullScreen = false,
   className = '',
-  logoUrl = '/logo.png',
+  logoUrl = 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000e98c8211a04e8f3473512ef4.png',
 }) => {
   const sizeClasses = {
     xs: 'w-6 h-6 border-2',
@@ -40,8 +40,13 @@ export const BrandedLoadingSpinner: React.FC<BrandedLoadingSpinnerProps> = ({
         {logoUrl && (
           <img
             src={logoUrl}
-            alt="Boardly"
-            className={`${logoSizes} absolute object-contain`}
+            alt="Boardly Logo"
+            className={`${logoSizes} absolute object-contain rounded-full`}
+            onError={(e) => {
+              const target = e.target as HTMLImageElement;
+              target.onerror = null;
+              target.src = '/assets/boardly-logo-solid.png';
+            }}
           />
         )}
       </div>

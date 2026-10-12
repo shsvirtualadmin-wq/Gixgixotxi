@@ -7772,20 +7772,30 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
-  // Gmail SMTP / API Email Setup & Helper Functions
+  // Email Setup & Helper Functions (supports standard SMTP and Gmail OAuth/App Password)
   function getGmailAuthConfig() {
-    const emailUser = getEnvVar("EMAIL_USER");
-    const emailPass = getEnvVar("EMAIL_APP_PASSWORD");
+    const smtpHost = getEnvVar("SMTP_HOST");
+    const smtpPort = parseInt(getEnvVar("SMTP_PORT", "587"), 10);
+    const smtpUser = getEnvVar("SMTP_USER");
+    const smtpPass = getEnvVar("SMTP_PASS");
+
+    const emailUser = getEnvVar("EMAIL_USER", smtpUser);
+    const emailPass = getEnvVar("EMAIL_APP_PASSWORD", smtpPass);
     const clientId = getEnvVar("GMAIL_CLIENT_ID", getEnvVar("GOOGLE_CLIENT_ID", ""));
     const clientSecret = getEnvVar("GMAIL_CLIENT_SECRET", getEnvVar("GOOGLE_CLIENT_SECRET", ""));
     const refreshToken = getEnvVar("GMAIL_REFRESH_TOKEN", getEnvVar("GOOGLE_REFRESH_TOKEN", ""));
     const accessToken = getEnvVar("GMAIL_ACCESS_TOKEN", getEnvVar("GOOGLE_ACCESS_TOKEN", ""));
     const fromName = getEnvVar("EMAIL_FROM_NAME", "Boardly Support");
 
+    const isSmtpDirect = Boolean(smtpHost && smtpUser && smtpPass);
     const isPassAuth = Boolean(emailUser && emailPass);
     const isOAuth = Boolean(emailUser && clientId && refreshToken);
 
     return {
+      smtpHost,
+      smtpPort,
+      smtpUser,
+      smtpPass,
       emailUser,
       emailPass,
       clientId,
@@ -7793,9 +7803,10 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       refreshToken,
       accessToken,
       fromName,
+      isSmtpDirect,
       isPassAuth,
       isOAuth,
-      isConfigured: isPassAuth || isOAuth,
+      isConfigured: isSmtpDirect || isPassAuth || isOAuth,
     };
   }
 
@@ -7804,24 +7815,31 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     const config = getGmailAuthConfig();
 
     console.log("====================================");
-    console.log("[GMAIL SMTP / API CONFIGURATION DIAGNOSTICS]");
-    console.log(`- EMAIL_USER: ${config.emailUser ? `Set ("${config.emailUser}")` : "MISSING ❌"}`);
-    console.log(`- EMAIL_APP_PASSWORD: ${config.emailPass ? `Set (${config.emailPass.length} chars, masked: "${config.emailPass.slice(0, 3)}...${config.emailPass.slice(-3)}")` : "MISSING ❌"}`);
+    console.log("[EMAIL SMTP / API CONFIGURATION DIAGNOSTICS]");
+    console.log(`- SMTP_HOST: ${config.smtpHost ? `Set ("${config.smtpHost}")` : "Not Set"}`);
+    console.log(`- EMAIL_USER / SMTP_USER: ${config.emailUser ? `Set ("${config.emailUser}")` : "MISSING ❌"}`);
     console.log(`- GMAIL_CLIENT_ID: ${config.clientId ? "Set" : "Not Set"}`);
-    console.log(`- GMAIL_CLIENT_SECRET: ${config.clientSecret ? "Set" : "Not Set"}`);
-    console.log(`- GMAIL_REFRESH_TOKEN: ${config.refreshToken ? "Set" : "Not Set"}`);
-    console.log(`- GMAIL_ACCESS_TOKEN: ${config.accessToken ? "Set" : "Not Set"}`);
-    console.log(`- EMAIL_FROM_NAME: "${config.fromName}"`);
-    console.log(`- Authentication Type Selected: ${config.isOAuth ? "OAuth2" : config.isPassAuth ? "Gmail App Password (SMTP)" : "NONE (No valid credentials provided)"}`);
+    console.log(`- Authentication Type Selected: ${config.isSmtpDirect ? "Direct SMTP Server" : config.isOAuth ? "OAuth2" : config.isPassAuth ? "Gmail App Password (SMTP)" : "NONE (No valid credentials provided)"}`);
     console.log("====================================");
 
     if (!config.isConfigured) {
-      console.warn("[getMailTransporter Warning]: Neither App Password nor OAuth2 credentials are completely configured.");
+      console.warn("[getMailTransporter Warning]: Neither SMTP nor Gmail credentials are fully configured.");
       return null;
     }
 
     if (!mailTransporter) {
-      if (config.isOAuth) {
+      if (config.isSmtpDirect) {
+        console.log(`[getMailTransporter] Initializing Nodemailer with SMTP server ${config.smtpHost}:${config.smtpPort}...`);
+        mailTransporter = nodemailer.createTransport({
+          host: config.smtpHost,
+          port: config.smtpPort,
+          secure: config.smtpPort === 465,
+          auth: {
+            user: config.smtpUser,
+            pass: config.smtpPass,
+          },
+        });
+      } else if (config.isOAuth) {
         console.log("[getMailTransporter] Initializing Nodemailer with Gmail OAuth2 transport...");
         mailTransporter = nodemailer.createTransport({
           service: "gmail",
@@ -7861,45 +7879,39 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     return mailTransporter;
   }
 
-
-
   async function sendEmail({
     to,
     subject,
     html,
+    replyTo,
   }: {
     to: string;
     subject: string;
     html: string;
+    replyTo?: string;
   }): Promise<{ success: boolean; id?: string; durationMs?: number; error?: string; details?: any }> {
     console.log("====================================");
     console.log("[SEND EMAIL INVOKED]");
     console.log(`Recipient (To): ${to}`);
     console.log(`Subject: ${subject}`);
+    if (replyTo) console.log(`Reply-To: ${replyTo}`);
     console.log(`Timestamp: ${new Date().toISOString()}`);
 
     const config = getGmailAuthConfig();
     const transporter = getMailTransporter();
 
     if (!transporter || !config.emailUser) {
-      const errorMsg = `Gmail SMTP credentials are missing or unconfigured. EMAIL_USER: ${config.emailUser ? "Set" : "Missing"}, EMAIL_APP_PASSWORD: ${config.emailPass ? "Set" : "Missing"}`;
+      const errorMsg = `SMTP credentials are missing or unconfigured. EMAIL_USER: ${config.emailUser ? "Set" : "Missing"}, EMAIL_APP_PASSWORD: ${config.emailPass ? "Set" : "Missing"}`;
       console.error(`[sendEmail ERROR] ${errorMsg}`);
       console.log("====================================");
       return { success: false, error: errorMsg };
     }
 
-    // Confirm "From" address matches authenticated Gmail user
     const fromName = config.fromName || "Boardly Support";
     const fromAddress = `"${fromName}" <${config.emailUser}>`;
 
     console.log(`From Address Header: ${fromAddress}`);
-    console.log(`Authenticated Gmail Account: ${config.emailUser}`);
-
-    if (!fromAddress.includes(config.emailUser)) {
-      console.warn(`[Gmail From Address Warning] The From address ("${fromAddress}") does not contain the authenticated user ("${config.emailUser}"). Gmail SMTP strictly requires the From address to match the authenticated Gmail account or an authorized alias.`);
-    } else {
-      console.log(`✅ [From Address Verification] Passed — From address matches authenticated user (${config.emailUser}).`);
-    }
+    console.log(`Authenticated Account: ${config.emailUser}`);
 
     const startTime = Date.now();
     console.log(`⏱️ [SMTP Timings Start] Dispatching email via Nodemailer to ${to} at ${new Date(startTime).toISOString()}`);
@@ -7910,12 +7922,13 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         to,
         subject,
         html,
+        ...(replyTo ? { replyTo } : {}),
       });
 
       const endTime = Date.now();
       const durationMs = endTime - startTime;
 
-      console.log("✅ [Gmail SMTP Email Sent Successfully]");
+      console.log("✅ [SMTP Email Sent Successfully]");
       console.log(`⏱️ [SMTP Timings End] Completed email dispatch to ${to} in ${durationMs}ms (${(durationMs / 1000).toFixed(2)}s)`);
       console.log(`Message ID: ${info.messageId}`);
       console.log(`Accepted: ${JSON.stringify(info.accepted)}`);
@@ -8064,11 +8077,11 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
             </div>
             <hr class="divider" />
             <div class="btn-container">
-              <a href="https://wa.me/923222314436" class="btn-whatsapp" target="_blank">Questions? Message us on WhatsApp →</a>
+              <a href="https://wa.me/923058969050" class="btn-whatsapp" target="_blank">Questions? Message us on WhatsApp →</a>
             </div>
           </div>
           <div class="footer">
-            Boardly — Official Portal | WhatsApp Support: +923222314436
+            Boardly — Official Portal | WhatsApp Support: +92 305 8969050
           </div>
         </div>
       </body>
@@ -8241,7 +8254,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
             </div>
           </div>
           <div class="footer">
-            Boardly — Official Portal | WhatsApp Support: +923222314436
+            Boardly — Official Portal | WhatsApp Support: +92 305 8969050
           </div>
         </div>
       </body>
@@ -8559,6 +8572,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       // Dispatch directly to support@boardly.cfd via Nodemailer
       await sendEmail({
         to: "support@boardly.cfd",
+        replyTo: studentEmail,
         subject: `[Boardly Inquiry] [${inquiryCategory}] New message from ${studentName}`,
         html,
       }).catch((mailErr) => {
@@ -8805,7 +8819,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         }
 
         let driveFileId = `wa-${Date.now()}`;
-        let driveFileUrl = "WhatsApp Submission (+923222314436)";
+        let driveFileUrl = "WhatsApp Submission (+923058969050)";
         let proofUrl: string | undefined = undefined;
 
         if (req.file && req.file.buffer) {

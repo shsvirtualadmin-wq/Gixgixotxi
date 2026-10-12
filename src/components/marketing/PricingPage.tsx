@@ -411,16 +411,16 @@ export const PricingPage: React.FC<PricingPageProps> = ({
               📌 <strong>How to activate your plan manually:</strong>
             </p>
             <p className="text-slate-600 leading-relaxed text-xs sm:text-sm">
-              Please WhatsApp or email a screenshot of your transaction receipt to support to manually activate your Pro/Premium plan within 2 to 4 hours. Include your registered account email address in the message.
+              Please submit your proof via WhatsApp to our official number to activate your Pro/Premium plan within 2 to 4 hours. Include your registered account email address in the message.
             </p>
             <div className="flex flex-wrap items-center gap-4 pt-1 font-bold text-xs sm:text-sm">
               <a
-                href="https://wa.me/923058969050?text=Hello%20Boardly%20Support,%20I%20have%20transferred%20the%20fee%20for%20my%20plan."
+                href="https://wa.me/923058969050"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-emerald-700 hover:text-emerald-800 underline underline-offset-2 flex items-center gap-1.5"
               >
-                <span>💬 WhatsApp Support: +923058969050</span>
+                <span>💬 Please submit your proof via WhatsApp to our official number. (+92 305 8969050)</span>
               </a>
               <span className="text-slate-300">|</span>
               <a

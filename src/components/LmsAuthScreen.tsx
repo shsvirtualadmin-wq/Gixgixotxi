@@ -301,13 +301,13 @@ export const LmsAuthScreen: React.FC<LmsAuthScreenProps> = React.memo(({
       <div className="flex flex-col items-center text-center space-y-2 mb-6">
         <div className="w-14 h-14 bg-[#0A0A0A] border-2 border-[#1E5AFF] rounded-2xl flex items-center justify-center shadow-lg mb-1 overflow-hidden p-1">
           <img
-            src={logoUrl || "https://i.ibb.co/ymPFp2Wb/Chat-Box-1256234838.jpg"}
+            src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000e98c8211a04e8f3473512ef4.png"
             alt="Boardly Logo"
-            className="w-full h-full object-cover rounded-xl"
+            className="w-full h-full object-contain rounded-xl"
             onError={(e) => {
               const target = e.target as HTMLImageElement;
               target.onerror = null;
-              target.src = '/logo.png';
+              target.src = '/assets/boardly-logo-solid.png';
             }}
           />
         </div>

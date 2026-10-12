@@ -5,7 +5,7 @@ interface SiteSettingsContextType {
   refreshSiteSettings: () => Promise<void>;
 }
 
-const NEW_BOARDLY_LOGO_URL = 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/logo_clean_square.png';
+const NEW_BOARDLY_LOGO_URL = 'https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000e98c8211a04e8f3473512ef4.png';
 
 const SiteSettingsContext = createContext<SiteSettingsContextType>({
   logoUrl: NEW_BOARDLY_LOGO_URL,

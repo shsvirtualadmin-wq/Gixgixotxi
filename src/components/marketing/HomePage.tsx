@@ -203,7 +203,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   }, [currentText, isDeleting, phraseIndex, typingSpeed]);
 
   const handleJoinCommunity = () => {
-    window.open('https://chat.whatsapp.com/invite/boardly-community', '_blank', 'noopener,noreferrer');
+    window.open('https://chat.whatsapp.com/FTXFo4P7kct0L047d5zRGy?s=cl&p=a&mlu=4&ilr=4', '_blank', 'noopener,noreferrer');
   };
 
   return (
