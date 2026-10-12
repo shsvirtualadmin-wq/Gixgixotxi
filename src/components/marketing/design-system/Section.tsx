@@ -28,9 +28,20 @@ export const Section: React.FC<SectionProps> = ({
     return (
       <section
         id={id}
-        className={`relative w-full py-16 sm:py-24 overflow-hidden bg-[#0a0d24] text-slate-100 border-y border-indigo-950/40 ${className}`}
+        data-variant="dark"
+        className={`relative w-full py-16 sm:py-20 scroll-mt-24 sm:scroll-mt-28 overflow-hidden bg-gradient-to-b from-[#090d24] via-[#0d1330] to-[#090d24] text-slate-100 ${className}`}
       >
-        {/* Deep indigo background with subtle grid and accent glow */}
+        {/* Smooth gradient blend overlays between sections */}
+        <div
+          className="absolute top-0 left-0 right-0 h-14 bg-gradient-to-b from-indigo-950/40 via-indigo-950/15 to-transparent pointer-events-none -z-10"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute bottom-0 left-0 right-0 h-14 bg-gradient-to-t from-indigo-950/40 via-indigo-950/15 to-transparent pointer-events-none -z-10"
+          aria-hidden="true"
+        />
+
+        {/* Deep indigo background with subtle accent glow */}
         <div
           className="absolute inset-0 pointer-events-none -z-10"
           style={{
@@ -54,11 +65,12 @@ export const Section: React.FC<SectionProps> = ({
     );
   }
 
-  // Light variant: soft lavender/blue tinted gradient with faint grid
+  // Light variant: soft lavender/blue tinted gradient with faint grid, consistent 64px mobile padding
   return (
     <section
       id={id}
-      className={`relative w-full py-16 sm:py-24 overflow-hidden bg-gradient-to-b from-[#f6f5ff] via-[#eef2ff] to-[#f0f6ff] text-slate-900 ${className}`}
+      data-variant="light"
+      className={`relative w-full py-16 sm:py-20 scroll-mt-24 sm:scroll-mt-28 overflow-hidden bg-gradient-to-b from-[#f6f5ff] via-[#eef2ff] to-[#f0f6ff] text-slate-900 ${className}`}
     >
       {/* Faint 40px grid overlay */}
       <div

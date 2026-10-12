@@ -170,7 +170,7 @@ export const MdcatLandingPage: React.FC<MdcatLandingPageProps> = ({
 
           <ScreenCard
             mode="practice"
-            title="MDCAT Biology: Cell Structure (Sample)"
+            title="MDCAT Biology: Cell Structure"
             subtitle="Smooth Endoplasmic Reticulum vs Rough ER"
           />
         </div>

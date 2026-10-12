@@ -12,9 +12,9 @@ import { ScreenCard } from '../marketing/ScreenCard';
 import { WordReveal } from '../marketing/design-system/WordReveal';
 import { StepsList } from '../marketing/design-system/StepsList';
 import { FaqAccordion, FaqItem } from '../marketing/design-system/FaqAccordion';
-import { CtaSection } from '../marketing/design-system/CtaSection';
 import { ScrollReveal } from '../marketing/design-system/useScrollReveal';
-import { Users, Award, ShieldCheck, Zap, Briefcase } from 'lucide-react';
+import { FinalCTA } from '../marketing/FinalCTA';
+import { Users, Award, ShieldCheck, Zap, Briefcase, ArrowLeft } from 'lucide-react';
 
 interface CrewLandingPageProps {
   currentPath?: string;
@@ -90,9 +90,34 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         }}
       />
 
+      {/* Top Back to Home row under navbar */}
+      <div className="pt-20 sm:pt-24 pb-2 px-4 max-w-6xl mx-auto flex items-center justify-between gap-3 text-[13px] font-semibold">
+        <a
+          href="/"
+          onClick={(e) => {
+            e.preventDefault();
+            onNavigate('/');
+          }}
+          className="inline-flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer truncate"
+        >
+          <ArrowLeft className="w-4 h-4 shrink-0" />
+          <span>Back to Home</span>
+        </a>
+        <span
+          className="text-[12px] font-semibold px-2.5 py-0.5 rounded-full border shrink-0 whitespace-nowrap"
+          style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(255, 255, 255, 0.18)',
+            color: '#c7d2fe',
+          }}
+        >
+          Crew program
+        </span>
+      </div>
+
       {/* 3. Hero */}
       <Hero
-        eyebrow="STUDENT EVENT ORGANIZER PROGRAM"
+        eyebrow="Boardly Crew program"
         staticHeadingPrefix="Host Live Study Circles as a"
         typewriterPhrases={CREW_TYPEWRITER}
         staticHeadingSuffix="Across Pakistan"
@@ -114,7 +139,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
       <Section variant="light" id="crew-perks" accent="crew">
         <SectionHeader
           accent="crew"
-          eyebrow="ORGANIZER PRIVILEGES"
+          eyebrow="Organizer privileges"
           title="Empower Your Campus and"
           highlight="Unlock Career Accolades"
           description="Everything you need to run impactful academic tournaments for your batchmates."
@@ -166,7 +191,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
           <SectionHeader
             dark
             accent="crew"
-            eyebrow="EVENT COMMAND CENTER"
+            eyebrow="Event command center"
             title="Your Dedicated Event"
             highlight="Organizer Portal"
             description="Manage live participant entries, launch new quiz bouts, and broadcast real-time rankings."
@@ -175,7 +200,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
           <ScreenCard
             mode="crew"
             accent="crew"
-            title="Organizer Event Control (Sample)"
+            title="Organizer Event Control"
             subtitle="Campus Study Sprint · 142 Candidates"
           />
         </div>
@@ -185,7 +210,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
       <Section variant="light" accent="crew">
         <SectionHeader
           accent="crew"
-          eyebrow="HOW CREW WORKS"
+          eyebrow="How Crew works"
           title="Four Simple Steps to"
           highlight="National Student Leadership"
           description="From fast application to hosting your first campus tournament."
@@ -228,31 +253,24 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
       <Section variant="light" accent="crew">
         <SectionHeader
           accent="crew"
-          eyebrow="FREQUENT QUESTIONS"
+          eyebrow="Frequent questions"
           title="Boardly Crew"
           highlight="Event FAQs"
         />
         <FaqAccordion items={CREW_FAQS} accent="crew" />
       </Section>
 
-      {/* 8. CTA (Dark) */}
-      <Section variant="dark" accent="crew" className="border-b-0">
-        <CtaSection
-          accent="crew"
-          watermarkText="CREW"
-          eyebrow="COMMUNITY LEADERSHIP"
-          title="Ready to Host Your First"
-          highlight="Campus Event?"
-          description="Join students organizing peer study bouts across colleges in Pakistan."
-          primaryButtonText={isCrewApproved ? 'Open Organizer Portal' : 'Apply to Join Crew'}
-          secondaryButtonText="Explore Curriculum"
-          onPrimaryClick={() => {
-            if (isCrewApproved) onNavigate('/crew/dashboard');
-            else setIsApplyModalOpen(true);
-          }}
-          onSecondaryClick={() => onNavigate('/features')}
-        />
-      </Section>
+      {/* 8. Final CTA Section */}
+      <FinalCTA
+        accent="crew"
+        primaryButtonText={isCrewApproved ? 'Open Organizer Portal' : 'Apply to Join Crew'}
+        secondaryButtonText="Explore Curriculum"
+        onPrimaryClick={() => {
+          if (isCrewApproved) onNavigate('/crew/dashboard');
+          else setIsApplyModalOpen(true);
+        }}
+        onSecondaryClick={() => onNavigate('/features')}
+      />
 
       {/* 9. Shared Footer */}
       <Footer

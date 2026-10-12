@@ -11,11 +11,13 @@ interface ReviewsWallProps {
   onOpenSubmitModal?: () => void;
   onOpenFullModal?: () => void;
   isFullPage?: boolean;
+  hideHeader?: boolean;
 }
 
 export const ReviewsWall: React.FC<ReviewsWallProps> = ({
   onOpenSubmitModal,
   isFullPage = false,
+  hideHeader = false,
 }) => {
   const [reviewsList, setReviewsList] = useState<StudentReviewItem[]>(REAL_STUDENT_REVIEWS);
   const [submitModalOpen, setSubmitModalOpen] = useState(false);
@@ -101,22 +103,22 @@ export const ReviewsWall: React.FC<ReviewsWallProps> = ({
     return (
       <div
         key={key}
-        className={`glass-floating-card rounded-2xl p-5 border border-white/70 shadow-md flex flex-col justify-between transition-transform duration-200 hover:-translate-y-1 bg-white/80 ${
-          isTicker ? 'w-[300px] sm:w-[340px] shrink-0' : 'w-full'
+        className={`glass-floating-card rounded-2xl p-5 border border-white/70 shadow-md flex flex-col justify-between transition-transform duration-200 hover:-translate-y-1 bg-white/90 backdrop-blur-sm ${
+          isTicker ? 'w-[280px] sm:w-[340px] shrink-0' : 'w-full'
         }`}
       >
         {/* Testimonial Quote */}
-        <div className="relative mb-4">
-          <Quote className="w-5 h-5 text-indigo-500/30 inline-block mr-1.5 align-top shrink-0" />
-          <p className="text-xs sm:text-[13px] text-slate-700 leading-relaxed font-medium inline">
+        <div className="relative mb-3">
+          <Quote className="w-4 h-4 text-indigo-500/40 inline-block mr-1.5 align-top shrink-0" />
+          <p className="text-xs sm:text-[13px] text-slate-800 leading-relaxed font-medium inline">
             "{rev.quote}"
           </p>
         </div>
 
         {/* Footer: Student Name + Exam Track pill */}
         <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-          <span className="font-bold text-slate-900 font-poppins">{rev.name}</span>
-          <span className="font-semibold text-indigo-600 bg-indigo-50/80 px-2.5 py-0.5 rounded-full text-[11px] border border-indigo-100">
+          <span className="font-bold text-slate-900 font-sans">{rev.name}</span>
+          <span className="font-semibold text-indigo-600 bg-indigo-50/80 px-2.5 py-0.5 rounded-full text-[11px] border border-indigo-100 font-sans">
             {trackLabel}
           </span>
         </div>
@@ -125,41 +127,43 @@ export const ReviewsWall: React.FC<ReviewsWallProps> = ({
   };
 
   return (
-    <section className="relative py-12 sm:py-20 overflow-hidden">
-      {/* Section Header */}
-      <div className="px-4 sm:px-6 max-w-6xl mx-auto mb-8 sm:mb-12">
-        <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
-          <div className="space-y-2 max-w-xl">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200/60">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Student Experiences</span>
+    <div className={`relative ${hideHeader ? 'py-2' : 'py-12 sm:py-20'} overflow-hidden`}>
+      {/* Optional Section Header */}
+      {!hideHeader && (
+        <div className="px-4 sm:px-6 max-w-6xl mx-auto mb-8 sm:mb-12">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div className="space-y-2 max-w-xl">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold border border-indigo-200/60">
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Student Experiences</span>
+              </div>
+              <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0A1330] font-sans">
+                What students say about Boardly
+              </h2>
+              <p className="text-sm text-slate-600 leading-relaxed">
+                Read how candidates across Matric, FSc, and entrance exam tracks build confidence and eliminate weak topics through self-paced diagnostic practice.
+              </p>
             </div>
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-[#0A1330] font-poppins">
-              What students say about Boardly
-            </h2>
-            <p className="text-sm text-slate-600 leading-relaxed">
-              Read how candidates across Matric, FSc, and entrance exam tracks build confidence and eliminate weak topics through self-paced diagnostic practice.
-            </p>
-          </div>
 
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={() => (onOpenSubmitModal ? onOpenSubmitModal() : setSubmitModalOpen(true))}
-              className="px-4 py-2.5 rounded-full text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 transition-colors flex items-center gap-1.5 cursor-pointer"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>Share Your Story</span>
-            </button>
-            <button
-              onClick={() => setFullGridModalOpen(true)}
-              className="px-4 py-2.5 rounded-full text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm shadow-indigo-600/20"
-            >
-              <span>View All ({reviewsList.length})</span>
-              <ChevronRight className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2.5">
+              <button
+                onClick={() => (onOpenSubmitModal ? onOpenSubmitModal() : setSubmitModalOpen(true))}
+                className="px-4 py-2.5 rounded-full text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>Share Your Story</span>
+              </button>
+              <button
+                onClick={() => setFullGridModalOpen(true)}
+                className="px-4 py-2.5 rounded-full text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center gap-1.5 cursor-pointer shadow-sm shadow-indigo-600/20"
+              >
+                <span>View All ({reviewsList.length})</span>
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Smooth Infinite Scrolling Ticker (Two rows moving in opposite directions, pauses on hover/tap) */}
       <div className="space-y-4 relative [mask-image:linear-gradient(to_right,transparent_0%,black_8%,black_92%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_8%,black_92%,transparent_100%)]">
@@ -320,6 +324,6 @@ export const ReviewsWall: React.FC<ReviewsWallProps> = ({
           </div>
         </div>
       )}
-    </section>
+    </div>
   );
 };

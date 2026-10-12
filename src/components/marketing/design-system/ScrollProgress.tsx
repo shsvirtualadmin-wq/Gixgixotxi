@@ -8,9 +8,9 @@ export const ScrollProgress: React.FC<ScrollProgressProps> = ({ accent = 'defaul
   const lineRef = useRef<HTMLDivElement>(null);
 
   const gradientClass = {
-    default: 'bg-gradient-to-b from-indigo-500 via-violet-500 to-teal-400',
-    captain: 'bg-gradient-to-b from-amber-500 via-teal-400 to-amber-500',
-    crew: 'bg-gradient-to-b from-violet-500 via-indigo-500 to-teal-400',
+    default: 'bg-gradient-to-r from-indigo-500 via-blue-500 to-teal-400',
+    captain: 'bg-gradient-to-r from-amber-500 via-orange-400 to-teal-400',
+    crew: 'bg-gradient-to-r from-violet-500 via-indigo-500 to-teal-400',
   }[accent];
 
   useEffect(() => {
@@ -24,8 +24,8 @@ export const ScrollProgress: React.FC<ScrollProgressProps> = ({ accent = 'defaul
       const scrollHeight = document.documentElement.scrollHeight - window.innerHeight;
       const progress = scrollHeight > 0 ? Math.min(Math.max(scrollTop / scrollHeight, 0), 1) : 0;
 
-      // Update scaleY with requestAnimationFrame directly, no React state
-      el.style.transform = `scaleY(${progress})`;
+      // Update scaleX with requestAnimationFrame directly
+      el.style.transform = `scaleX(${progress})`;
       ticking = false;
     };
 
@@ -46,13 +46,13 @@ export const ScrollProgress: React.FC<ScrollProgressProps> = ({ accent = 'defaul
 
   return (
     <div
-      className="fixed left-0 top-0 bottom-0 w-[3px] z-50 pointer-events-none bg-slate-200/40 dark:bg-slate-800/40"
+      className="fixed left-0 top-0 right-0 h-[3px] z-[60] pointer-events-none bg-slate-200/20 dark:bg-slate-800/20"
       aria-hidden="true"
     >
       <div
         ref={lineRef}
-        className={`w-full h-full origin-top will-change-transform shadow-[0_0_8px_rgba(99,102,241,0.6)] ${gradientClass}`}
-        style={{ transform: 'scaleY(0)', transformOrigin: 'top' }}
+        className={`w-full h-full origin-left will-change-transform shadow-[0_0_8px_rgba(26,109,255,0.6)] ${gradientClass}`}
+        style={{ transform: 'scaleX(0)', transformOrigin: 'left' }}
       />
     </div>
   );

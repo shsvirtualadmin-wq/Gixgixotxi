@@ -37,24 +37,24 @@ export const Button: React.FC<ButtonProps> = ({
   };
 
   const sizeClasses = {
-    sm: 'min-h-[44px] px-4 py-2 text-xs font-bold rounded-full',
-    md: 'min-h-[46px] px-6 py-2.5 text-sm font-bold rounded-full',
-    lg: 'min-h-[50px] px-8 py-3.5 text-base font-extrabold rounded-full',
+    sm: 'min-h-[48px] px-4 py-2.5 text-xs font-bold rounded-[14px]',
+    md: 'min-h-[48px] px-6 py-3 text-sm font-bold rounded-[14px]',
+    lg: 'min-h-[48px] sm:min-h-[52px] px-8 py-3.5 text-base font-bold rounded-[14px]',
   }[size];
 
   const variantStyles = {
     primary: {
       default:
-        'bg-gradient-to-r from-indigo-600 via-indigo-700 to-violet-700 text-white shadow-lg shadow-indigo-600/25 hover:shadow-indigo-600/40 border border-indigo-400/30',
+        'bg-gradient-to-r from-[#1a6dff] via-[#2563eb] to-[#0d9488] hover:from-[#2563eb] hover:to-[#0f766e] text-white shadow-lg shadow-[#1a6dff]/30 hover:shadow-[#1a6dff]/45 border border-white/20',
       captain:
-        'bg-gradient-to-r from-amber-500 via-amber-600 to-teal-600 text-white shadow-lg shadow-amber-500/25 hover:shadow-amber-500/40 border border-amber-300/30',
+        'bg-gradient-to-r from-[#1a6dff] via-[#2563eb] to-[#0d9488] hover:from-[#2563eb] hover:to-[#0f766e] text-white shadow-lg shadow-[#1a6dff]/30 hover:shadow-[#1a6dff]/45 border border-white/20',
       crew:
-        'bg-gradient-to-r from-violet-600 via-indigo-600 to-teal-600 text-white shadow-lg shadow-violet-600/25 hover:shadow-violet-600/40 border border-violet-400/30',
+        'bg-gradient-to-r from-[#1a6dff] via-[#2563eb] to-[#0d9488] hover:from-[#2563eb] hover:to-[#0f766e] text-white shadow-lg shadow-[#1a6dff]/30 hover:shadow-[#1a6dff]/45 border border-white/20',
     }[accent],
     secondary:
-      'bg-white/80 dark:bg-slate-900/80 backdrop-blur-md text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 shadow-md shadow-slate-900/5 hover:bg-white dark:hover:bg-slate-900 hover:border-slate-300',
+      'bg-white/85 dark:bg-slate-900/85 backdrop-blur-md text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 shadow-md shadow-slate-900/5 hover:bg-white dark:hover:bg-slate-900 hover:border-slate-300 rounded-[14px]',
     ghost:
-      'bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 border border-transparent',
+      'bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 border border-transparent rounded-[14px]',
   }[variant];
 
   return (

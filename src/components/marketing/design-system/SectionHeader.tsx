@@ -11,6 +11,18 @@ export interface SectionHeaderProps {
   dark?: boolean;
 }
 
+// Convert any uppercase or mixed string to sentence case
+function formatSentenceCase(str: string): string {
+  if (!str) return '';
+  const trimmed = str.trim();
+  // If it's already mixed/sentence case without being all-caps, keep it as is
+  if (!/^[A-Z\s\-_0-9&,.]+$/.test(trimmed)) {
+    return trimmed;
+  }
+  const lower = trimmed.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
 export const SectionHeader: React.FC<SectionHeaderProps> = ({
   eyebrow,
   title,
@@ -23,15 +35,18 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
 }) => {
   const accentClasses = {
     default: {
-      eyebrow: dark ? 'text-teal-400' : 'text-indigo-600',
+      eyebrowDark: 'text-[#93c5fd]',
+      eyebrowLight: 'text-indigo-600',
       highlight: 'bg-gradient-to-r from-indigo-500 via-violet-500 to-teal-400 bg-clip-text text-transparent',
     },
     captain: {
-      eyebrow: dark ? 'text-amber-400' : 'text-amber-600',
+      eyebrowDark: 'text-[#fcd34d]',
+      eyebrowLight: 'text-amber-700',
       highlight: 'bg-gradient-to-r from-amber-500 via-orange-400 to-teal-400 bg-clip-text text-transparent',
     },
     crew: {
-      eyebrow: dark ? 'text-violet-400' : 'text-violet-600',
+      eyebrowDark: 'text-[#c7d2fe]',
+      eyebrowLight: 'text-violet-700',
       highlight: 'bg-gradient-to-r from-violet-500 via-indigo-500 to-teal-400 bg-clip-text text-transparent',
     },
   }[accent];
@@ -39,19 +54,31 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
   const alignment = align === 'center' ? 'text-center mx-auto' : 'text-left';
 
   return (
-    <div className={`max-w-3xl mb-12 sm:mb-16 ${alignment} ${className}`}>
-      {/* Eyebrow Label */}
+    <div className={`max-w-3xl mb-10 sm:mb-14 ${alignment} ${className}`}>
+      {/* Eyebrow Label - Sentence case, 12-13px, weight 600, letter-spacing 0 */}
       <div className="mb-3">
         <span
-          className={`font-mono text-xs font-bold uppercase tracking-widest px-2.5 py-1 rounded-md bg-white/60 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 shadow-xs ${accentClasses.eyebrow}`}
+          className={`inline-block text-[12px] sm:text-[13px] font-semibold tracking-normal px-3 py-1 rounded-full shadow-xs ${
+            dark
+              ? `${accentClasses.eyebrowDark}`
+              : `bg-white/80 border border-slate-200/80 ${accentClasses.eyebrowLight}`
+          }`}
+          style={
+            dark
+              ? {
+                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                  border: '1px solid rgba(255, 255, 255, 0.18)',
+                }
+              : undefined
+          }
         >
-          {eyebrow}
+          {formatSentenceCase(eyebrow)}
         </span>
       </div>
 
-      {/* Two-tone Heading */}
+      {/* Two-tone Heading: 1.2 line height */}
       <h2
-        className={`text-2xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-tight font-display ${
+        className={`text-2xl sm:text-4xl lg:text-5xl font-bold tracking-tight leading-[1.2] font-display ${
           dark ? 'text-white' : 'text-slate-950'
         }`}
       >
@@ -66,7 +93,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
       {/* Description */}
       {description && (
         <p
-          className={`mt-4 text-sm sm:text-base lg:text-lg leading-relaxed ${
+          className={`mt-4 text-sm sm:text-base leading-relaxed ${
             dark ? 'text-slate-300' : 'text-slate-600'
           }`}
         >

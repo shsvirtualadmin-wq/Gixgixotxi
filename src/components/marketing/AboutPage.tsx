@@ -131,16 +131,16 @@ export const AboutPage: React.FC<AboutPageProps> = ({ onNavigate, onGetStarted }
           <div className="pt-6">
             <ScreenCard
               mode="dashboard"
-              title="Boardly Academic Integrity Portal (Sample)"
+              title="Boardly Academic Integrity Portal"
               subtitle="Curriculum Alignment Verification · Student A."
               chips={[
                 {
-                  label: 'Syllabus Match (Sample)',
+                  label: 'Syllabus match',
                   value: '100% SLO Aligned',
                   position: 'top-right',
                 },
                 {
-                  label: 'Derivations (Sample)',
+                  label: 'Derivations',
                   value: 'Verified Formulas',
                   position: 'bottom-left',
                 },

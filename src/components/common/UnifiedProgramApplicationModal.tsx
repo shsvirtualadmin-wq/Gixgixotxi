@@ -10,10 +10,7 @@ import {
   User,
   Send,
   Award,
-  Clock,
-  ArrowRight,
   ShieldCheck,
-  Calendar,
   Zap,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
@@ -39,7 +36,7 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
   const [phone, setPhone] = useState(profile?.phone || '');
   const [institution, setInstitution] = useState(profile?.targetUniversity || '');
   const [city, setCity] = useState('');
-  const [academicLevel, setAcademicLevel] = useState('FSC / Pre-Medical / Pre-Engineering');
+  const [academicLevel, setAcademicLevel] = useState('FSC Pre-Medical (MDCAT)');
   const [notes, setNotes] = useState('');
 
   // Honeypot spam trap
@@ -49,6 +46,9 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
   const [submitting, setSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Focus tracking for glow effects
+  const [focusedField, setFocusedField] = useState<string | null>(null);
 
   useEffect(() => {
     setProgram(defaultProgram);
@@ -62,6 +62,16 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
       if (!institution && profile?.targetUniversity) setInstitution(profile.targetUniversity);
     }
   }, [user, profile]);
+
+  // Lock body scroll behind modal only while modal is open, restore on close
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -137,28 +147,86 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
     }
   };
 
+  const getGlassInputStyle = (fieldName: string): React.CSSProperties => {
+    const isFocused = focusedField === fieldName;
+    return {
+      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+      border: isFocused ? '1px solid #1a6dff' : '1px solid rgba(255, 255, 255, 0.12)',
+      borderRadius: '14px',
+      color: '#ffffff',
+      boxShadow: isFocused ? '0 0 14px rgba(26, 109, 255, 0.4)' : 'none',
+      transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
+    };
+  };
+
   return (
+    /* The overlay is the ONE scroll container:
+       position fixed, inset 0, height 100dvh, overflow-y auto, overscroll-behavior contain,
+       -webkit-overflow-scrolling touch, padding 16px, padding-bottom 96px (plus safe-area)
+       Layout: display flex, align-items flex-start, justify-content center */
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain flex items-start justify-center p-4"
+      style={{
+        height: '100dvh',
+        paddingTop: 'max(16px, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'calc(96px + env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'max(16px, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(16px, env(safe-area-inset-right, 0px))',
+        WebkitOverflowScrolling: 'touch',
+        backgroundColor: 'rgba(13, 27, 62, 0.85)',
+      }}
       onClick={(e) => {
         if (e.target === e.currentTarget && !submitting) onClose();
       }}
     >
-      <div className="relative w-full max-w-lg my-8 bg-[#0b0a2a] text-white rounded-3xl border border-violet-500/30 shadow-2xl shadow-violet-950/80 overflow-hidden">
-        {/* Subtle top ambient bar */}
-        <div className="h-1.5 w-full bg-gradient-to-r from-violet-600 via-indigo-500 to-teal-400" />
+      {/* Blurred background gradient orbs (blue #1a6dff, purple, teal) so blur is visible */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10" aria-hidden="true">
+        <div
+          className="absolute -top-16 -left-16 w-80 h-80 rounded-full blur-[100px] opacity-70 pointer-events-none"
+          style={{ background: 'radial-gradient(circle, #1a6dff 0%, rgba(26,109,255,0) 70%)' }}
+        />
+        <div
+          className="absolute top-1/2 -right-20 -translate-y-1/2 w-80 h-80 rounded-full blur-[90px] opacity-60 pointer-events-none"
+          style={{ background: 'radial-gradient(circle, #8b5cf6 0%, rgba(139,92,246,0) 70%)' }}
+        />
+        <div
+          className="absolute -bottom-20 left-1/4 w-80 h-80 rounded-full blur-[90px] opacity-50 pointer-events-none"
+          style={{ background: 'radial-gradient(circle, #14b8a6 0%, rgba(20,184,166,0) 70%)' }}
+        />
+      </div>
+
+      {/* Modal Card:
+          margin: auto 0 (centers only when short, scrolls naturally when tall)
+          NO fixed height, NO max-height, NO overflow-hidden.
+          Height: auto, grows to fit content. */}
+      <div
+        className="relative w-full max-w-lg text-white shadow-2xl"
+        style={{
+          margin: 'auto 0',
+          height: 'auto',
+          backgroundColor: 'rgba(255, 255, 255, 0.06)',
+          backdropFilter: 'blur(20px) saturate(160%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+          border: '1px solid rgba(255, 255, 255, 0.15)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+          borderRadius: '24px',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Subtle top ambient accent bar */}
+        <div className="h-1 w-full bg-gradient-to-r from-[#1a6dff] via-[#8b5cf6] to-[#14b8a6] rounded-t-[24px]" />
 
         {/* Modal Header */}
-        <div className="p-5 sm:p-6 pb-4 border-b border-violet-500/20 flex items-start justify-between">
-          <div className="space-y-1">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-wider bg-violet-950/80 text-violet-300 border border-violet-500/30">
-              <Sparkles className="w-3 h-3 text-teal-400" />
-              <span>Official Student Programs</span>
+        <div className="p-5 sm:p-6 pb-4 border-b border-white/10 flex items-start justify-between">
+          <div className="space-y-1 text-left">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] font-semibold bg-white/10 text-white border border-white/15">
+              <Sparkles className="w-3.5 h-3.5 text-[#14b8a6]" />
+              <span>Official student programs</span>
             </div>
-            <h3 className="text-xl sm:text-2xl font-bold font-display text-white">
+            <h3 className="text-xl sm:text-2xl font-bold text-white">
               {program === 'crew' ? 'Apply for Boardly Crew' : 'Apply for Boardly Captain'}
             </h3>
-            <p className="text-xs text-slate-300">
+            <p className="text-[13px] leading-relaxed" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
               {program === 'crew'
                 ? 'Host official Blitz & Arena events for your campus. Approved organizers get the Crew role.'
                 : 'Represent Boardly, share referral links, and compete on the national leaderboard.'}
@@ -167,8 +235,9 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
           <button
             type="button"
             onClick={onClose}
-            className="p-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            className="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-white/70 hover:text-white transition-colors cursor-pointer shrink-0 ml-3"
             disabled={submitting}
+            aria-label="Close modal"
           >
             <X className="w-5 h-5" />
           </button>
@@ -182,7 +251,7 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
             </div>
             <div className="space-y-1.5">
               <h4 className="text-xl font-bold text-white">Application Received!</h4>
-              <p className="text-xs sm:text-sm text-slate-300 max-w-sm mx-auto leading-relaxed">
+              <p className="text-[13px] sm:text-sm max-w-sm mx-auto leading-relaxed" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
                 Thank you for applying for{' '}
                 <strong className="text-white">
                   {program === 'crew' ? 'Boardly Crew (Event Organizer)' : 'Boardly Captain (Campus Ambassador)'}
@@ -191,16 +260,22 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
               </p>
             </div>
 
-            <div className="p-4 rounded-2xl bg-white/5 border border-white/10 text-left text-xs text-slate-300 space-y-2">
-              <div className="flex items-center gap-2 text-teal-300 font-bold">
+            <div
+              className="p-4 rounded-[16px] text-left text-xs space-y-2"
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.12)',
+              }}
+            >
+              <div className="flex items-center gap-2 text-[#14b8a6] font-bold">
                 <ShieldCheck className="w-4 h-4" />
                 <span>Next Steps:</span>
               </div>
-              <p className="text-slate-400">
+              <p style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
                 1. If you submitted as a guest, when you sign in later with{' '}
                 <strong className="text-white">{email}</strong>, your application will link to your account automatically.
               </p>
-              <p className="text-slate-400">
+              <p style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
                 2. Once approved, your account unlocks the{' '}
                 <strong className="text-white">
                   {program === 'crew' ? 'Crew Organizer Portal' : 'Captain Dashboard'}
@@ -212,48 +287,58 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
             <button
               type="button"
               onClick={onClose}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white text-xs font-bold transition-all shadow-lg shadow-violet-600/30 cursor-pointer"
+              className="w-full min-h-[48px] h-12 py-3 rounded-[14px] bg-gradient-to-r from-[#1a6dff] via-[#2563eb] to-[#0d9488] hover:from-[#2563eb] hover:to-[#0f766e] text-white text-sm font-bold transition-all shadow-[0_0_20px_rgba(26,109,255,0.4)] cursor-pointer"
             >
               Done
             </button>
           </div>
         ) : (
           /* Application Form */
-          <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4">
-            {/* Program Switcher */}
+          <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-4 text-left">
+            {/* Program Switcher - Glass Pills */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-300">Choose Program</label>
-              <div className="grid grid-cols-2 gap-2">
+              <label className="block text-[13px] font-semibold text-white">Choose Program</label>
+              <div className="grid grid-cols-2 gap-2.5">
                 <button
                   type="button"
                   onClick={() => setProgram('crew')}
-                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                    program === 'crew'
-                      ? 'bg-violet-600/20 border-violet-500 text-white shadow-md'
-                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-                  }`}
+                  className="p-3.5 rounded-[16px] text-left transition-all cursor-pointer relative"
+                  style={{
+                    backgroundColor: program === 'crew' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                    border: program === 'crew' ? '1px solid #1a6dff' : '1px solid rgba(255, 255, 255, 0.12)',
+                    boxShadow: program === 'crew' ? '0 0 16px rgba(26, 109, 255, 0.4)' : 'none',
+                    backdropFilter: 'blur(10px)',
+                    WebkitBackdropFilter: 'blur(10px)',
+                  }}
                 >
-                  <div className="flex items-center gap-1.5 font-bold text-xs">
-                    <Zap className="w-3.5 h-3.5 text-teal-400" />
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-white">
+                    <Zap className="w-3.5 h-3.5 text-[#14b8a6]" />
                     <span>Boardly Crew</span>
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Event Organizer</div>
+                  <div className="text-[11px] mt-0.5" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                    Event Organizer
+                  </div>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setProgram('captain')}
-                  className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
-                    program === 'captain'
-                      ? 'bg-amber-600/20 border-amber-500 text-white shadow-md'
-                      : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-                  }`}
+                  className="p-3.5 rounded-[16px] text-left transition-all cursor-pointer relative"
+                  style={{
+                    backgroundColor: program === 'captain' ? 'rgba(255, 255, 255, 0.12)' : 'rgba(255, 255, 255, 0.05)',
+                    border: program === 'captain' ? '1px solid #f5b942' : '1px solid rgba(255, 255, 255, 0.12)',
+                    boxShadow: program === 'captain' ? '0 0 16px rgba(245, 185, 66, 0.4)' : 'none',
+                    backdropFilter: 'blur(10px)',
+                    WebkitBackdropFilter: 'blur(10px)',
+                  }}
                 >
-                  <div className="flex items-center gap-1.5 font-bold text-xs">
-                    <Award className="w-3.5 h-3.5 text-amber-400" />
+                  <div className="flex items-center gap-1.5 font-bold text-xs text-white">
+                    <Award className="w-3.5 h-3.5 text-[#f5b942]" />
                     <span>Boardly Captain</span>
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">Campus Ambassador</div>
+                  <div className="text-[11px] mt-0.5" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                    Campus Ambassador
+                  </div>
                 </button>
               </div>
             </div>
@@ -272,31 +357,37 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
             {/* Full Name & Email */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Full Legal Name *</label>
+                <label className="block text-[13px] font-semibold text-white mb-1">Full Legal Name *</label>
                 <div className="relative">
-                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 pointer-events-none" />
                   <input
                     type="text"
                     required
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
+                    onFocus={() => setFocusedField('fullName')}
+                    onBlur={() => setFocusedField(null)}
                     placeholder="e.g. Daniyal Ahmed"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900/80 border border-violet-500/30 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-violet-400"
+                    className="w-full pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-white/40 outline-none"
+                    style={getGlassInputStyle('fullName')}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Email Address *</label>
+                <label className="block text-[13px] font-semibold text-white mb-1">Email Address *</label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 pointer-events-none" />
                   <input
                     type="email"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    onFocus={() => setFocusedField('email')}
+                    onBlur={() => setFocusedField(null)}
                     placeholder="student@example.com"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900/80 border border-violet-500/30 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-violet-400"
+                    className="w-full pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-white/40 outline-none"
+                    style={getGlassInputStyle('email')}
                   />
                 </div>
               </div>
@@ -305,31 +396,37 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
             {/* Phone & Institution */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">WhatsApp / Phone *</label>
+                <label className="block text-[13px] font-semibold text-white mb-1">WhatsApp / Phone *</label>
                 <div className="relative">
-                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 pointer-events-none" />
                   <input
                     type="tel"
                     required
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
+                    onFocus={() => setFocusedField('phone')}
+                    onBlur={() => setFocusedField(null)}
                     placeholder="03001234567"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900/80 border border-violet-500/30 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-violet-400"
+                    className="w-full pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-white/40 outline-none"
+                    style={getGlassInputStyle('phone')}
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">College / Campus *</label>
+                <label className="block text-[13px] font-semibold text-white mb-1">College / Campus *</label>
                 <div className="relative">
-                  <Building className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Building className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/40 pointer-events-none" />
                   <input
                     type="text"
                     required
                     value={institution}
                     onChange={(e) => setInstitution(e.target.value)}
+                    onFocus={() => setFocusedField('institution')}
+                    onBlur={() => setFocusedField(null)}
                     placeholder="e.g. GCU Lahore / Punjab College"
-                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-900/80 border border-violet-500/30 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-violet-400"
+                    className="w-full pl-9 pr-3.5 py-2.5 text-xs text-white placeholder-white/40 outline-none"
+                    style={getGlassInputStyle('institution')}
                   />
                 </div>
               </div>
@@ -338,35 +435,51 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
             {/* City & Academic Level */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">City</label>
+                <label className="block text-[13px] font-semibold text-white mb-1">City</label>
                 <input
                   type="text"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
+                  onFocus={() => setFocusedField('city')}
+                  onBlur={() => setFocusedField(null)}
                   placeholder="e.g. Islamabad, Lahore, Karachi"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-violet-500/30 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-violet-400"
+                  className="w-full px-3.5 py-2.5 text-xs text-white placeholder-white/40 outline-none"
+                  style={getGlassInputStyle('city')}
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Academic Level</label>
+                <label className="block text-[13px] font-semibold text-white mb-1">Academic Level</label>
                 <select
                   value={academicLevel}
                   onChange={(e) => setAcademicLevel(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-violet-500/30 text-white text-xs focus:outline-none focus:border-violet-400 cursor-pointer"
+                  onFocus={() => setFocusedField('academicLevel')}
+                  onBlur={() => setFocusedField(null)}
+                  className="w-full px-3.5 py-2.5 text-xs text-white outline-none cursor-pointer"
+                  style={getGlassInputStyle('academicLevel')}
                 >
-                  <option value="FSC Pre-Medical">FSC Pre-Medical (MDCAT)</option>
-                  <option value="FSC Pre-Engineering">FSC Pre-Engineering (ECAT/NET)</option>
-                  <option value="ICS Computer Science">ICS Computer Science (FAST/NUST)</option>
-                  <option value="A-Levels">A-Levels / Cambridge</option>
-                  <option value="University Undergraduate">University Undergraduate</option>
+                  <option value="FSC Pre-Medical (MDCAT)" style={{ backgroundColor: '#0d1b3e', color: '#ffffff' }}>
+                    FSC Pre-Medical (MDCAT)
+                  </option>
+                  <option value="FSC Pre-Engineering (ECAT/NET)" style={{ backgroundColor: '#0d1b3e', color: '#ffffff' }}>
+                    FSC Pre-Engineering (ECAT/NET)
+                  </option>
+                  <option value="ICS Computer Science (FAST/NUST)" style={{ backgroundColor: '#0d1b3e', color: '#ffffff' }}>
+                    ICS Computer Science (FAST/NUST)
+                  </option>
+                  <option value="A-Levels / Cambridge" style={{ backgroundColor: '#0d1b3e', color: '#ffffff' }}>
+                    A-Levels / Cambridge
+                  </option>
+                  <option value="University Undergraduate" style={{ backgroundColor: '#0d1b3e', color: '#ffffff' }}>
+                    University Undergraduate
+                  </option>
                 </select>
               </div>
             </div>
 
             {/* Note / Plan */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
+              <label className="block text-[13px] font-semibold text-white mb-1">
                 {program === 'crew'
                   ? 'How do you plan to organize events or mock drills? *'
                   : 'How do you plan to share Boardly with your peers? *'}
@@ -376,19 +489,24 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
                 rows={3}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
+                onFocus={() => setFocusedField('notes')}
+                onBlur={() => setFocusedField(null)}
                 placeholder={
                   program === 'crew'
                     ? 'e.g. I run a study circle of 40 students and want to host weekly timed Blitz mocks before board exams...'
                     : 'e.g. I will share practice drills in our academy WhatsApp groups and host study sessions...'
                 }
-                className="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-violet-500/30 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-violet-400 resize-none"
+                className="w-full px-3.5 py-2.5 text-xs text-white placeholder-white/40 outline-none resize-none"
+                style={getGlassInputStyle('notes')}
               />
-              <span className="text-[10px] text-slate-400">At least 15 characters required.</span>
+              <span className="text-[11px]" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                At least 15 characters required.
+              </span>
             </div>
 
             {/* Error Message */}
             {errorMessage && (
-              <div className="p-3 rounded-xl bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-medium">
+              <div className="p-3 rounded-[14px] bg-rose-950/80 border border-rose-500/40 text-rose-300 text-xs font-medium">
                 {errorMessage}
               </div>
             )}
@@ -398,7 +516,7 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full py-3 rounded-xl bg-gradient-to-r from-violet-600 via-indigo-600 to-teal-500 hover:from-violet-500 hover:to-teal-400 text-white font-bold text-xs transition-all shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                className="w-full min-h-[48px] h-12 py-3 px-4 rounded-[14px] bg-gradient-to-r from-[#1a6dff] via-[#2563eb] to-[#0d9488] hover:from-[#2563eb] hover:to-[#0f766e] text-white font-bold text-xs sm:text-sm transition-all shadow-[0_0_20px_rgba(26,109,255,0.4)] hover:shadow-[0_0_25px_rgba(20,184,166,0.5)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {submitting ? (
                   <>
@@ -407,12 +525,12 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
                   </>
                 ) : (
                   <>
-                    <Send className="w-3.5 h-3.5" />
+                    <Send className="w-4 h-4" />
                     <span>Submit Application (Free)</span>
                   </>
                 )}
               </button>
-              <p className="text-[10px] text-slate-400 text-center mt-2">
+              <p className="text-[12px] text-center mt-3" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
                 No sign-in required. Submissions are screened against spam.
               </p>
             </div>
@@ -422,3 +540,4 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
     </div>
   );
 };
+export default UnifiedProgramApplicationModal;

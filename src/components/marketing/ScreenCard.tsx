@@ -30,86 +30,92 @@ export const ScreenCard: React.FC<ScreenCardProps> = ({
   // Theme styling based on accent
   const accentStyles = {
     default: {
-      border: 'border-indigo-500/20',
-      badge: 'bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/30',
-      glow: 'from-indigo-500/10 via-violet-500/10 to-teal-500/10',
-      highlight: 'text-indigo-600 dark:text-indigo-400',
-      bar: 'from-indigo-600 to-violet-600',
+      border: 'border-white/15',
+      badge: 'bg-indigo-500/15 text-indigo-300 border-indigo-500/25',
+      glow: 'from-blue-500/20 via-indigo-500/15 to-teal-500/15',
+      highlight: 'text-[#38bdf8]',
+      pillText: '#93c5fd',
+      bar: 'from-[#1a6dff] to-[#14b8a6]',
+      softBg: 'bg-white/[0.04]',
     },
     captain: {
-      border: 'border-amber-500/25',
-      badge: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30',
-      glow: 'from-amber-500/15 via-teal-500/10 to-amber-500/10',
-      highlight: 'text-amber-600 dark:text-amber-400',
-      bar: 'from-amber-500 to-teal-500',
+      border: 'border-white/15',
+      badge: 'bg-amber-500/15 text-amber-300 border-amber-500/25',
+      glow: 'from-amber-500/20 via-orange-500/15 to-teal-500/15',
+      highlight: 'text-[#fcd34d]',
+      pillText: '#fcd34d',
+      bar: 'from-[#f5b942] to-orange-400',
+      softBg: 'bg-amber-500/[0.06]',
     },
     crew: {
-      border: 'border-violet-500/25',
-      badge: 'bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-500/30',
-      glow: 'from-violet-500/15 via-indigo-500/10 to-teal-500/10',
-      highlight: 'text-violet-600 dark:text-violet-400',
-      bar: 'from-violet-600 to-teal-500',
+      border: 'border-white/15',
+      badge: 'bg-violet-500/15 text-violet-300 border-violet-500/25',
+      glow: 'from-violet-500/20 via-indigo-500/15 to-teal-500/15',
+      highlight: 'text-[#c7d2fe]',
+      pillText: '#c7d2fe',
+      bar: 'from-violet-500 to-teal-400',
+      softBg: 'bg-violet-500/[0.06]',
     },
   }[accent];
 
-  // Default chips if not provided
+  // Default chips if not provided - no "(Sample)" text, sentence case labels
   const defaultChips: FloatingChip[] = chips || (
     mode === 'captain'
       ? [
           {
-            label: 'Referrals (Sample)',
+            label: 'Referrals',
             value: '28 Students',
-            icon: <TrendingUp className="w-3.5 h-3.5 text-amber-500" />,
+            icon: <TrendingUp className="w-3.5 h-3.5 text-amber-400" />,
             position: 'top-right',
           },
           {
-            label: 'Status (Sample)',
+            label: 'Status',
             value: 'Verified Captain',
-            icon: <Award className="w-3.5 h-3.5 text-teal-500" />,
+            icon: <Award className="w-3.5 h-3.5 text-teal-400" />,
             position: 'bottom-left',
           },
         ]
       : mode === 'crew'
       ? [
           {
-            label: 'Crew Event (Sample)',
+            label: 'Crew event',
             value: '142 Joined',
-            icon: <Zap className="w-3.5 h-3.5 text-violet-500" />,
+            icon: <Zap className="w-3.5 h-3.5 text-violet-400" />,
             position: 'top-right',
           },
           {
-            label: 'Tier (Sample)',
+            label: 'Tier',
             value: 'Campus Leader',
-            icon: <ShieldCheck className="w-3.5 h-3.5 text-teal-500" />,
+            icon: <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />,
             position: 'bottom-left',
           },
         ]
       : mode === 'leaderboard'
       ? [
           {
-            label: 'Top Score (Sample)',
+            label: 'Top score',
             value: '96% Accuracy',
-            icon: <Award className="w-3.5 h-3.5 text-indigo-500" />,
+            icon: <Award className="w-3.5 h-3.5 text-indigo-400" />,
             position: 'top-right',
           },
           {
-            label: 'Avg Speed (Sample)',
+            label: 'Average speed',
             value: '38s / MCQ',
-            icon: <Clock className="w-3.5 h-3.5 text-teal-500" />,
+            icon: <Clock className="w-3.5 h-3.5 text-teal-400" />,
             position: 'bottom-left',
           },
         ]
       : [
           {
-            label: 'Daily Goal (Sample)',
+            label: 'Daily goal',
             value: '45 / 50 MCQs',
-            icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />,
+            icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />,
             position: 'top-right',
           },
           {
-            label: 'Accuracy (Sample)',
+            label: 'Accuracy',
             value: '88% Verified',
-            icon: <TrendingUp className="w-3.5 h-3.5 text-indigo-500" />,
+            icon: <TrendingUp className="w-3.5 h-3.5 text-blue-400" />,
             position: 'bottom-left',
           },
         ]
@@ -119,7 +125,7 @@ export const ScreenCard: React.FC<ScreenCardProps> = ({
     <div className={`relative w-full max-w-xl mx-auto py-6 px-2 sm:px-4 ${className}`}>
       {/* Ambient background soft glow */}
       <div
-        className={`absolute inset-0 bg-gradient-to-tr ${accentStyles.glow} rounded-[32px] blur-2xl -z-10 pointer-events-none opacity-80`}
+        className={`absolute inset-0 bg-gradient-to-tr ${accentStyles.glow} rounded-[32px] blur-3xl -z-10 pointer-events-none opacity-70`}
         aria-hidden="true"
       />
 
@@ -132,102 +138,161 @@ export const ScreenCard: React.FC<ScreenCardProps> = ({
         return (
           <div
             key={idx}
-            className={`absolute z-20 pointer-events-none transition-transform hidden sm:flex items-center gap-2 px-3 py-2 rounded-xl bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-white/60 dark:border-slate-800/80 shadow-lg shadow-slate-900/5 text-xs font-medium text-slate-800 dark:text-slate-100 ${
+            className={`absolute z-20 pointer-events-none transition-transform hidden sm:flex items-center gap-2 px-3 py-2 rounded-2xl shadow-lg text-xs font-medium text-white ${
               isTop ? '-top-2' : '-bottom-2'
             } ${isRight ? '-right-2 sm:-right-4' : '-left-2 sm:-left-4'} ${driftClass}`}
             style={{
+              backgroundColor: 'rgba(15, 23, 42, 0.78)',
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              border: '1px solid rgba(255, 255, 255, 0.14)',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.35)',
               willChange: 'transform',
             }}
           >
             {chip.icon}
             <div>
-              <div className="text-[10px] text-slate-500 dark:text-slate-400 font-mono uppercase tracking-wider">{chip.label}</div>
-              <div className="font-bold text-xs">{chip.value}</div>
+              <div className="text-[11px]" style={{ color: 'rgba(255, 255, 255, 0.65)' }}>{chip.label}</div>
+              <div className="font-bold text-xs text-white">{chip.value}</div>
             </div>
           </div>
         );
       })}
 
-      {/* Main Glass Screen Card: 24px border radius, no phone hardware */}
+      {/* Main Proper Dark Glass Card: rgba(255,255,255,0.06), blur(20px), 1px border, radius 24px */}
       <div
-        className={`relative w-full rounded-[24px] bg-white/85 dark:bg-slate-900/85 backdrop-blur-xl border ${accentStyles.border} shadow-2xl shadow-indigo-950/10 overflow-hidden text-left`}
+        className="relative w-full rounded-[24px] text-white shadow-2xl overflow-hidden text-left transition-all"
+        style={{
+          backgroundColor: 'rgba(255, 255, 255, 0.06)',
+          backdropFilter: 'blur(20px) saturate(160%)',
+          WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+          border: '1px solid rgba(255, 255, 255, 0.14)',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35)',
+        }}
       >
-        {/* Top Header Strip with Sample Notice */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-200/60 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-950/40">
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-              {title}
+        {/* Header row: green dot + title on ONE line (truncate if needed), small "Sample preview" pill on the right */}
+        <div className="flex items-center justify-between px-4 sm:px-5 py-3 border-b border-white/10 bg-white/[0.02]">
+          <div className="flex items-center gap-2.5 min-w-0 pr-3">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 animate-pulse" />
+            <span className="text-[13px] font-semibold text-white truncate">
+              {title.replace(/\s*\(Sample\)/gi, '')}
             </span>
           </div>
-          <span className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-semibold uppercase tracking-wider border ${accentStyles.badge}`}>
-            Sample Preview
+          <span
+            className="shrink-0 px-2.5 py-0.5 rounded-full text-[12px] font-semibold border whitespace-nowrap"
+            style={{
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.18)',
+              color: accentStyles.pillText,
+            }}
+          >
+            Sample preview
           </span>
         </div>
 
-        {/* Card Body with minimum 14px text */}
+        {/* Card Body - Soft tinted backgrounds without box-inside-box or heavy borders */}
         <div className="p-5 sm:p-6 space-y-4">
           {children ? (
             children
           ) : mode === 'captain' ? (
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-amber-500/5 border border-amber-500/20">
-                <div className="text-xs font-mono uppercase text-amber-700 dark:text-amber-400 mb-1">
-                  Active Ambassador (Sample)
+            <div className="space-y-3.5">
+              <div
+                className="p-4 rounded-2xl"
+                style={{
+                  backgroundColor: 'rgba(245, 185, 66, 0.08)',
+                  border: '1px solid rgba(245, 185, 66, 0.15)',
+                }}
+              >
+                <div className="text-[12px] font-semibold text-[#fcd34d] mb-1">
+                  Active ambassador
                 </div>
-                <div className="text-base font-bold text-slate-900 dark:text-white">
+                <div className="text-base font-bold text-white">
                   Student A. · Campus Batch Leader
                 </div>
-                <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
-                  Unique invite code: <span className="font-mono font-bold text-amber-600">SAMPLE-CAPTAIN</span>
+                <div className="text-xs mt-1" style={{ color: 'rgba(255, 255, 255, 0.65)' }}>
+                  Unique invite code: <span className="font-bold text-[#fcd34d]">CAMPUS-LEAD-2026</span>
                 </div>
               </div>
+
               <div className="grid grid-cols-2 gap-3">
-                <div className="p-3.5 rounded-xl bg-slate-100/60 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
-                  <div className="text-xs text-slate-500 dark:text-slate-400">Total Joined (Sample)</div>
-                  <div className="text-xl font-bold text-slate-900 dark:text-white mt-1">28 Peers</div>
+                <div
+                  className="p-3.5 rounded-2xl"
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}
+                >
+                  <div className="text-[12px]" style={{ color: 'rgba(255, 255, 255, 0.65)' }}>Total joined</div>
+                  <div className="text-xl font-bold text-white mt-1">28 Peers</div>
                 </div>
-                <div className="p-3.5 rounded-xl bg-slate-100/60 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60">
-                  <div className="text-xs text-slate-500 dark:text-slate-400">Rewards (Sample)</div>
-                  <div className="text-xl font-bold text-teal-600 dark:text-teal-400 mt-1">Pro Active</div>
+                <div
+                  className="p-3.5 rounded-2xl"
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}
+                >
+                  <div className="text-[12px]" style={{ color: 'rgba(255, 255, 255, 0.65)' }}>Rewards</div>
+                  <div className="text-xl font-bold text-teal-400 mt-1">Pro Active</div>
                 </div>
               </div>
-              <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-slate-200/60 dark:border-slate-800/60 flex items-center justify-between text-xs">
-                <span className="text-slate-600 dark:text-slate-300">Next milestone: CV Recommendation</span>
-                <span className="font-bold text-amber-600">80% reached</span>
+
+              <div
+                className="p-3.5 rounded-2xl flex items-center justify-between text-xs"
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.03)',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                }}
+              >
+                <span style={{ color: 'rgba(255, 255, 255, 0.75)' }}>Next milestone: CV Recommendation</span>
+                <span className="font-bold text-[#fcd34d]">80% reached</span>
               </div>
             </div>
           ) : mode === 'crew' ? (
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-violet-500/5 border border-violet-500/20">
-                <div className="text-xs font-mono uppercase text-violet-700 dark:text-violet-400 mb-1">
-                  Community Event (Sample)
+            <div className="space-y-3.5">
+              <div
+                className="p-4 rounded-2xl"
+                style={{
+                  backgroundColor: 'rgba(139, 92, 246, 0.08)',
+                  border: '1px solid rgba(139, 92, 246, 0.15)',
+                }}
+              >
+                <div className="text-[12px] font-semibold text-[#c7d2fe] mb-1">
+                  Community event
                 </div>
-                <div className="text-base font-bold text-slate-900 dark:text-white">
+                <div className="text-base font-bold text-white">
                   Physics Rapid Drill · 45 Mins Mock
                 </div>
-                <div className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                <div className="text-xs mt-1" style={{ color: 'rgba(255, 255, 255, 0.65)' }}>
                   Organized by Student B. · 142 Registered Candidates
                 </div>
               </div>
+
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
-                  <span>Candidate Check-ins</span>
-                  <span className="font-bold text-violet-600">142 / 150</span>
+                <div className="flex items-center justify-between text-xs">
+                  <span style={{ color: 'rgba(255, 255, 255, 0.75)' }}>Candidate check-ins</span>
+                  <span className="font-bold text-[#c7d2fe]">142 / 150</span>
                 </div>
-                <div className="h-2 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-violet-600 to-teal-500 rounded-full w-[94%]" />
+                <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-violet-500 to-teal-400 rounded-full w-[94%]" />
                 </div>
               </div>
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-100/70 dark:bg-slate-800/70 text-xs">
-                <span className="text-slate-700 dark:text-slate-300">Live leaderboard tracking</span>
-                <span className="text-teal-600 dark:text-teal-400 font-bold">Updated Live</span>
+
+              <div
+                className="flex items-center justify-between p-3.5 rounded-2xl text-xs"
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                  border: '1px solid rgba(255, 255, 255, 0.08)',
+                }}
+              >
+                <span style={{ color: 'rgba(255, 255, 255, 0.75)' }}>Live leaderboard tracking</span>
+                <span className="text-teal-400 font-bold">Updated Live</span>
               </div>
             </div>
           ) : mode === 'leaderboard' ? (
-            <div className="space-y-3">
-              <div className="text-xs font-mono text-slate-500 uppercase tracking-wider mb-2">
-                Live Event Standings (Sample)
+            <div className="space-y-2.5">
+              <div className="text-xs font-semibold mb-2" style={{ color: 'rgba(255, 255, 255, 0.65)' }}>
+                Live event standings
               </div>
               {[
                 { rank: '1', name: 'Student A.', score: '96 / 100', time: '14m 20s' },
@@ -236,50 +301,64 @@ export const ScreenCard: React.FC<ScreenCardProps> = ({
               ].map((row, i) => (
                 <div
                   key={i}
-                  className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/50 dark:border-slate-800/50 text-xs"
+                  className="flex items-center justify-between p-3 rounded-2xl text-xs"
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="w-5 font-bold font-mono text-indigo-600 dark:text-indigo-400">#{row.rank}</span>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">{row.name}</span>
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-5 font-bold text-blue-400">#{row.rank}</span>
+                    <span className="font-semibold text-white">{row.name}</span>
                   </div>
-                  <div className="flex items-center gap-4">
-                    <span className="font-bold text-slate-900 dark:text-white">{row.score}</span>
-                    <span className="text-slate-500 text-[11px] font-mono">{row.time}</span>
+                  <div className="flex items-center gap-3">
+                    <span className="font-bold text-teal-300">{row.score}</span>
+                    <span className="text-[11px]" style={{ color: 'rgba(255, 255, 255, 0.5)' }}>{row.time}</span>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="space-y-4">
-              <div className="p-4 rounded-xl bg-indigo-500/5 border border-indigo-500/20">
-                <div className="text-xs font-mono uppercase text-indigo-700 dark:text-indigo-400 mb-1">
-                  Concept Practice MCQ (Sample)
+            <div className="space-y-3.5">
+              <div
+                className="p-4 rounded-2xl"
+                style={{
+                  backgroundColor: 'rgba(26, 109, 255, 0.08)',
+                  border: '1px solid rgba(26, 109, 255, 0.15)',
+                }}
+              >
+                <div className="text-[12px] font-semibold text-blue-300 mb-1">
+                  Active diagnostic drill
                 </div>
-                <div className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                  Which principle describes the induced electromotive force in a closed loop?
+                <div className="text-base font-bold text-white">
+                  Electrostatics & Field Theory
+                </div>
+                <div className="text-xs mt-1" style={{ color: 'rgba(255, 255, 255, 0.65)' }}>
+                  Class 12 Physics · 15 Minutes timed session
                 </div>
               </div>
-              <div className="space-y-2">
-                {[
-                  { text: 'Faraday’s Law of Electromagnetic Induction', correct: true },
-                  { text: 'Coulomb’s Inverse Square Law', correct: false },
-                  { text: 'Pascal’s Principle of Fluid Transmission', correct: false },
-                ].map((opt, i) => (
-                  <div
-                    key={i}
-                    className={`flex items-center justify-between p-3 rounded-xl border text-xs sm:text-sm font-medium ${
-                      opt.correct
-                        ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-900 dark:text-emerald-200'
-                        : 'bg-slate-50/60 dark:bg-slate-800/40 border-slate-200/60 dark:border-slate-700/60 text-slate-700 dark:text-slate-300'
-                    }`}
-                  >
-                    <span>{opt.text}</span>
-                    {opt.correct && <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 ml-2" />}
-                  </div>
-                ))}
-              </div>
-              <div className="p-3 rounded-xl bg-slate-100/60 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 text-xs text-slate-600 dark:text-slate-400">
-                <span className="font-bold text-indigo-600 dark:text-indigo-400">Step-by-step breakdown:</span> Verified explanation and formula derivations available instantly.
+
+              <div className="grid grid-cols-2 gap-3">
+                <div
+                  className="p-3.5 rounded-2xl"
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}
+                >
+                  <div className="text-[12px]" style={{ color: 'rgba(255, 255, 255, 0.65)' }}>Questions solved</div>
+                  <div className="text-xl font-bold text-white mt-1">45 / 50</div>
+                </div>
+                <div
+                  className="p-3.5 rounded-2xl"
+                  style={{
+                    backgroundColor: 'rgba(255, 255, 255, 0.04)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}
+                >
+                  <div className="text-[12px]" style={{ color: 'rgba(255, 255, 255, 0.65)' }}>Accuracy</div>
+                  <div className="text-xl font-bold text-emerald-400 mt-1">88%</div>
+                </div>
               </div>
             </div>
           )}

@@ -4,7 +4,7 @@ import { Button } from './Button';
 import { SITE_STATS } from '../../../config/stats';
 import { UNIVERSITIES } from '../../../data/universities';
 import { UniversityLogoBadge } from '../../UniversityLogoBadge';
-import { ArrowRight, Sparkles, CheckCircle2 } from 'lucide-react';
+import { ArrowRight, Sparkles } from 'lucide-react';
 
 export interface HeroProps {
   eyebrow: string;
@@ -20,6 +20,16 @@ export interface HeroProps {
   tickerItems?: string[];
 }
 
+function formatSentenceCase(str: string): string {
+  if (!str) return '';
+  const trimmed = str.trim();
+  if (!/^[A-Z\s\-_0-9&,.]+$/.test(trimmed)) {
+    return trimmed;
+  }
+  const lower = trimmed.toLowerCase();
+  return lower.charAt(0).toUpperCase() + lower.slice(1);
+}
+
 export const Hero: React.FC<HeroProps> = ({
   eyebrow,
   staticHeadingPrefix,
@@ -32,10 +42,10 @@ export const Hero: React.FC<HeroProps> = ({
   onSecondaryCta,
   accent = 'default',
   tickerItems = [
-    'Student A. joined a Blitz · 142 registered (Sample)',
-    'Student B. completed Physics drill · 45 MCQs (Sample)',
-    'Student C. started timed mock session (Sample)',
-    'Student D. reviewed formula vault derivation (Sample)',
+    'Student A. joined a Blitz · 142 registered',
+    'Student B. completed Physics drill · 45 MCQs',
+    'Student C. started timed mock session',
+    'Student D. reviewed formula vault derivation',
   ],
 }) => {
   const shouldReduceMotion = useReducedMotion();
@@ -79,8 +89,8 @@ export const Hero: React.FC<HeroProps> = ({
   const accentClasses = {
     default: {
       eyebrow: 'text-indigo-600 dark:text-indigo-400 border-indigo-500/20 bg-indigo-500/10',
-      gradientText: 'bg-gradient-to-r from-indigo-600 via-violet-600 to-teal-500 bg-clip-text text-transparent',
-      caret: 'bg-indigo-600',
+      gradientText: 'bg-gradient-to-r from-indigo-600 via-blue-600 to-teal-500 bg-clip-text text-transparent',
+      caret: 'bg-[#1a6dff]',
     },
     captain: {
       eyebrow: 'text-amber-700 dark:text-amber-400 border-amber-500/20 bg-amber-500/10',
@@ -120,14 +130,12 @@ export const Hero: React.FC<HeroProps> = ({
   useEffect(() => {
     if (!statsVisible) return;
 
-    let start = 0;
     const duration = shouldReduceMotion ? 100 : 1200;
     const startTime = performance.now();
 
     const animateCounts = (now: number) => {
       const elapsed = now - startTime;
       const progress = Math.min(elapsed / duration, 1);
-      // Ease out cubic
       const eased = 1 - Math.pow(1 - progress, 3);
 
       setCounts({
@@ -153,15 +161,15 @@ export const Hero: React.FC<HeroProps> = ({
   const [isMarqueePaused, setIsMarqueePaused] = useState(false);
 
   return (
-    <div className="relative pt-24 sm:pt-32 pb-12 overflow-hidden text-center">
-      {/* Eyebrow Pill */}
-      <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-xs font-mono font-bold uppercase tracking-wider mb-6 shadow-xs backdrop-blur-md bg-white/70 dark:bg-slate-900/70 border-indigo-500/20 text-indigo-700 dark:text-indigo-300">
+    <div className="relative pt-28 sm:pt-36 pb-12 overflow-hidden text-center">
+      {/* Eyebrow Pill: Sentence case, 12-13px, weight 600, letter-spacing 0 */}
+      <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-[12px] sm:text-[13px] font-semibold tracking-normal mb-6 shadow-xs backdrop-blur-md bg-white/70 dark:bg-slate-900/70 border-indigo-500/20 text-indigo-700 dark:text-indigo-300">
         <Sparkles className="w-3.5 h-3.5 text-indigo-500" />
-        <span>{eyebrow}</span>
+        <span>{formatSentenceCase(eyebrow)}</span>
       </div>
 
-      {/* Main Two-tone Heading with Typewriter */}
-      <h1 className="max-w-4xl mx-auto px-4 text-3xl sm:text-5xl lg:text-6xl font-black font-display tracking-tight text-slate-950 dark:text-white leading-[1.12]">
+      {/* Main Two-tone Heading with Typewriter (line-height 1.2) */}
+      <h1 className="max-w-4xl mx-auto px-4 text-3xl sm:text-5xl lg:text-6xl font-bold font-display tracking-tight text-slate-950 dark:text-white leading-[1.2]">
         {staticHeadingPrefix}{' '}
         <span className={`inline-block ${accentClasses.gradientText}`}>
           {currentText}
@@ -175,8 +183,8 @@ export const Hero: React.FC<HeroProps> = ({
         {staticHeadingSuffix}
       </h1>
 
-      {/* Subtext */}
-      <p className="max-w-2xl mx-auto px-4 mt-6 text-base sm:text-lg text-slate-600 dark:text-slate-300 leading-relaxed font-sans">
+      {/* Subtext: line-height 1.6 */}
+      <p className="max-w-2xl mx-auto px-4 mt-6 text-sm sm:text-base text-slate-600 dark:text-slate-300 leading-[1.6]">
         {description}
       </p>
 
@@ -201,44 +209,44 @@ export const Hero: React.FC<HeroProps> = ({
         </Button>
       </div>
 
-      {/* Stats Row of 3 Items separated by thin dividers */}
+      {/* Stats Row of 3 Items separated by thin dividers: Sentence case labels, 13px, muted color */}
       <div
         ref={statsRef}
         className="max-w-3xl mx-auto mt-12 sm:mt-16 px-4"
       >
         <div className="grid grid-cols-3 divide-x divide-slate-200/80 dark:divide-slate-800/80 py-4 px-2 rounded-2xl bg-white/60 dark:bg-slate-900/60 backdrop-blur-md border border-slate-200/60 dark:border-slate-800/60 shadow-xs">
           <div className="px-2 sm:px-6 text-center">
-            <div className="text-xl sm:text-3xl font-black font-display text-slate-900 dark:text-white">
+            <div className="text-xl sm:text-3xl font-bold font-display text-slate-900 dark:text-white">
               {statsVisible ? `${counts.students}+` : SITE_STATS.studentsLabel}
             </div>
-            <div className="text-[11px] sm:text-xs font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mt-1">
+            <div className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
               Students
             </div>
           </div>
           <div className="px-2 sm:px-6 text-center">
-            <div className="text-xl sm:text-3xl font-black font-display text-slate-900 dark:text-white">
+            <div className="text-xl sm:text-3xl font-bold font-display text-slate-900 dark:text-white">
               {statsVisible ? `${counts.mcqs}k+` : SITE_STATS.questionBankLabel}
             </div>
-            <div className="text-[11px] sm:text-xs font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mt-1">
+            <div className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
               Verified MCQs
             </div>
           </div>
           <div className="px-2 sm:px-6 text-center">
-            <div className="text-xl sm:text-3xl font-black font-display text-slate-900 dark:text-white">
+            <div className="text-xl sm:text-3xl font-bold font-display text-slate-900 dark:text-white">
               {statsVisible ? `${counts.unis}+` : SITE_STATS.universitiesLabel}
             </div>
-            <div className="text-[11px] sm:text-xs font-mono uppercase tracking-wider text-slate-500 dark:text-slate-400 mt-1">
+            <div className="text-[13px] text-slate-500 dark:text-slate-400 mt-1">
               Universities
             </div>
           </div>
         </div>
       </div>
 
-      {/* Auto-scrolling horizontal logos marquee (pause on touch) */}
+      {/* Auto-scrolling horizontal logos marquee */}
       <div className="mt-12 w-full overflow-hidden">
         <div className="text-center mb-3">
-          <span className="text-[11px] font-mono font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-            COVERING TOP UNIVERSITIES & BOARDS
+          <span className="text-[12px] sm:text-[13px] font-semibold text-slate-500 dark:text-slate-400">
+            Covering top universities and boards
           </span>
         </div>
 
@@ -258,7 +266,7 @@ export const Hero: React.FC<HeroProps> = ({
                 className="flex flex-col items-center justify-center shrink-0 w-24 sm:w-28 text-center group cursor-default"
               >
                 <UniversityLogoBadge university={uni} size="lg" />
-                <span className="text-[11px] font-bold text-slate-600 dark:text-slate-300 mt-1.5 truncate max-w-full">
+                <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-300 mt-1.5 truncate max-w-full">
                   {uni.shortName}
                 </span>
               </div>
@@ -267,7 +275,7 @@ export const Hero: React.FC<HeroProps> = ({
         </div>
       </div>
 
-      {/* Live-activity ticker strip scrolling horizontally at bottom of hero */}
+      {/* Live-activity ticker strip */}
       <div className="mt-8 border-t border-slate-200/40 dark:border-slate-800/40 pt-3 overflow-hidden [mask-image:linear-gradient(to_right,transparent_0%,black_15%,black_85%,transparent_100%)]">
         <div className="flex items-center gap-8 animate-marquee-scroll whitespace-nowrap text-xs text-slate-500 dark:text-slate-400">
           {[...tickerItems, ...tickerItems].map((item, idx) => (

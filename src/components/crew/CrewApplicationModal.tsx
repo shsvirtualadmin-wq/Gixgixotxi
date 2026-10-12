@@ -50,6 +50,16 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
     }
   }, [profile, user]);
 
+  // Lock body scroll behind modal only while modal is open, restore on close
+  useEffect(() => {
+    if (!isOpen) return;
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -128,9 +138,23 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto overscroll-contain flex items-start justify-center p-4 bg-slate-950/70 backdrop-blur-sm transition-all"
+      style={{
+        height: '100dvh',
+        paddingTop: 'max(16px, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'calc(96px + env(safe-area-inset-bottom, 0px))',
+        paddingLeft: 'max(16px, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(16px, env(safe-area-inset-right, 0px))',
+        WebkitOverflowScrolling: 'touch',
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !submitting) onClose();
+      }}
+    >
       <div
-        className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200/80 p-6 sm:p-8 overflow-hidden animate-scale-in text-left my-8"
+        className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200/80 p-6 sm:p-8 text-left"
+        style={{ margin: 'auto 0', height: 'auto' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Close Button */}

@@ -153,7 +153,7 @@ export const FscMatricLandingPage: React.FC<FscMatricLandingPageProps> = ({
 
           <ScreenCard
             mode="practice"
-            title="Physics Class 11: Conservation of Energy (Sample)"
+            title="Physics Class 11: Conservation of Energy"
             subtitle="Mechanical Energy & Kinetic Formulas"
           />
         </div>

@@ -59,10 +59,10 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
           Board<span className={isDarkBg ? 'text-violet-400' : 'text-indigo-600'}>ly</span>
         </span>
       )}
-      {/* Optional Violet CREW Pill */}
+      {/* Optional Violet Crew Pill */}
       {showCrewBadge && (
-        <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-mono font-bold uppercase tracking-[0.08em] bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm border border-violet-400/30 shrink-0">
-          CREW
+        <span className="px-2.5 py-0.5 rounded-full text-[12px] font-semibold tracking-normal bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm border border-violet-400/30 shrink-0">
+          Crew
         </span>
       )}
     </div>

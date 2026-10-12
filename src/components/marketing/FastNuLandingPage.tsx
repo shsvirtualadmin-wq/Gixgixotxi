@@ -164,7 +164,7 @@ export const FastNuLandingPage: React.FC<FastNuLandingPageProps> = ({
 
           <ScreenCard
             mode="practice"
-            title="Advanced Math: Trigonometric Limits (Sample)"
+            title="Advanced Math: Trigonometric Limits"
             subtitle="Rapid Coefficient Rule & Verification"
           />
         </div>

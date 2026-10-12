@@ -43,181 +43,251 @@ export const PricingPage: React.FC<PricingPageProps> = ({
 
   return (
     <div className="w-full pt-20">
-      {/* 1. Header & Duration Toggle (Light) */}
-      <Section variant="light" className="pt-8 sm:pt-12">
-        <SectionHeader
-          eyebrow="TRANSPARENT PRICING"
-          title="Invest in Your Preparation,"
-          highlight="Not Heavy Academy Fees"
-          description="Traditional academies charge upwards of PKR 60,000 for standard coaching. Boardly provides authentic diagnostic testing at a fraction of the cost."
-        />
+      {/* 1. Header & Duration Toggle & Pricing Cards (Boardly Navy #0d1b3e Base + Glass UI) */}
+      <section className="relative w-full py-12 sm:py-20 bg-[#0d1b3e] text-white overflow-visible">
+        {/* Soft blurred gradient orbs behind the glass (blue #1a6dff and purple/teal) so blur is visible */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden="true">
+          <div
+            className="absolute top-12 left-1/4 -translate-x-1/2 w-96 h-96 rounded-full blur-[100px] opacity-60 pointer-events-none"
+            style={{ background: 'radial-gradient(circle, #1a6dff 0%, rgba(26,109,255,0) 70%)' }}
+          />
+          <div
+            className="absolute top-1/3 right-1/4 translate-x-1/4 w-96 h-96 rounded-full blur-[90px] opacity-50 pointer-events-none"
+            style={{ background: 'radial-gradient(circle, #8b5cf6 0%, rgba(139,92,246,0) 70%)' }}
+          />
+          <div
+            className="absolute bottom-12 left-1/3 w-80 h-80 rounded-full blur-[90px] opacity-45 pointer-events-none"
+            style={{ background: 'radial-gradient(circle, #14b8a6 0%, rgba(20,184,166,0) 70%)' }}
+          />
+        </div>
 
-        {/* Duration Segmented Control */}
-        <div className="flex justify-center mb-12">
-          <div className="inline-flex p-1.5 rounded-full bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800 shadow-sm gap-1">
-            {PRICING_DURATIONS.map((dur, idx) => {
-              const isActive = selectedDurationIndex === idx;
-              return (
-                <button
-                  key={dur.months}
-                  type="button"
-                  onClick={() => setSelectedDurationIndex(idx)}
-                  className={`relative px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-bold transition-all duration-150 cursor-pointer ${
-                    isActive
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                  }`}
-                >
-                  <span>{dur.label}</span>
-                  {dur.badge && (
-                    <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-amber-500 text-white text-[9px] font-mono font-bold px-2 py-0.2 rounded-full uppercase tracking-wider shadow-xs">
-                      {dur.badge}
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 relative z-10">
+          <SectionHeader
+            eyebrow="TRANSPARENT PRICING"
+            title="Invest in Your Preparation,"
+            highlight="Not Heavy Academy Fees"
+            description="Traditional academies charge upwards of PKR 60,000 for standard coaching. Boardly provides authentic diagnostic testing at a fraction of the cost."
+            dark={true}
+          />
+
+          {/* Duration Segmented Control - Glass Pills */}
+          <div className="flex justify-center mb-12">
+            <div
+              className="inline-flex p-1.5 rounded-full shadow-lg gap-1 relative"
+              style={{
+                backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                backdropFilter: 'blur(20px) saturate(160%)',
+                WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+              }}
+            >
+              {PRICING_DURATIONS.map((dur, idx) => {
+                const isActive = selectedDurationIndex === idx;
+                return (
+                  <button
+                    key={dur.months}
+                    type="button"
+                    onClick={() => setSelectedDurationIndex(idx)}
+                    className={`relative px-4 sm:px-6 py-2.5 rounded-full text-xs sm:text-sm font-bold transition-all duration-200 cursor-pointer ${
+                      isActive
+                        ? 'bg-[#1a6dff] text-white shadow-md shadow-[#1a6dff]/40'
+                        : 'text-white/70 hover:text-white hover:bg-white/5'
+                    }`}
+                  >
+                    <span>{dur.label}</span>
+                    {dur.badge && (
+                      <span className="absolute -top-2.5 left-1/2 -translate-x-1/2 bg-[#f5b942] text-[#0d1b3e] text-[10px] font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {dur.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 3 Pricing Cards - Stacked 1 Column on Mobile, 3 on Desktop, Scrollable in both directions */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch max-w-5xl mx-auto">
+            {/* 1. FREE PLAN */}
+            <ScrollReveal delayMs={0}>
+              <div
+                className="h-full p-6 sm:p-7 flex flex-col justify-between text-left transition-all"
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                  backdropFilter: 'blur(20px) saturate(160%)',
+                  WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                  borderRadius: '24px',
+                }}
+              >
+                <div>
+                  <div
+                    className="text-[13px] font-semibold tracking-normal"
+                    style={{ color: 'rgba(255, 255, 255, 0.65)' }}
+                  >
+                    Basic access
+                  </div>
+                  <h3 className="text-2xl font-black font-display text-white mt-1">
+                    {PRICING_PLANS.free.name}
+                  </h3>
+                  <p className="text-xs mt-2 leading-relaxed" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                    {PRICING_PLANS.free.tagline}
+                  </p>
+                  <div className="mt-6 mb-6">
+                    <span className="text-4xl font-black font-display text-white">PKR 0</span>
+                    <span className="text-xs ml-2" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                      Forever free
                     </span>
-                  )}
-                </button>
-              );
-            })}
+                  </div>
+                  <ul className="space-y-3 text-xs sm:text-sm text-white">
+                    {PRICING_PLANS.free.features.map((feat, i) => (
+                      <li key={i} className="flex items-start gap-2.5">
+                        <Check className="w-4 h-4 text-[#14b8a6] shrink-0 mt-0.5" />
+                        <span>{feat.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="pt-8">
+                  <button
+                    type="button"
+                    onClick={() => onSelectPlan('free', currentDurationKey)}
+                    className="w-full min-h-[48px] h-12 py-3 px-4 rounded-[14px] bg-white/10 hover:bg-white/15 border border-white/20 hover:border-white/35 text-white font-bold text-xs sm:text-sm transition-all shadow-md flex items-center justify-center cursor-pointer"
+                  >
+                    Start Free Practice
+                  </button>
+                </div>
+              </div>
+            </ScrollReveal>
+
+            {/* 2. PRO PLAN (Most Popular) */}
+            <ScrollReveal delayMs={60}>
+              <div
+                className="h-full p-6 sm:p-7 flex flex-col justify-between text-left relative transition-all"
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                  backdropFilter: 'blur(20px) saturate(160%)',
+                  WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+                  border: '1px solid #1a6dff',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35), 0 0 24px rgba(26, 109, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                  borderRadius: '24px',
+                }}
+              >
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-[#1a6dff] to-[#14b8a6] text-white text-[12px] font-semibold tracking-normal shadow-md">
+                  Most popular
+                </div>
+                <div>
+                  <div className="text-[13px] font-semibold text-[#38bdf8] tracking-normal">
+                    Complete exam prep
+                  </div>
+                  <h3 className="text-2xl font-black font-display text-white mt-1">
+                    {PRICING_PLANS.pro.name}
+                  </h3>
+                  <p className="text-xs mt-2 leading-relaxed" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                    {PRICING_PLANS.pro.tagline}
+                  </p>
+                  <div className="mt-6 mb-6">
+                    {(() => {
+                      const price = calculatePlanPricing(PRICING_PLANS.pro.basePrice, activeDuration);
+                      return (
+                        <div>
+                          <span className="text-4xl font-black font-display text-white">
+                            PKR {price.total.toLocaleString()}
+                          </span>
+                          <span className="text-xs ml-2" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                            / {activeDuration.label}
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <ul className="space-y-3 text-xs sm:text-sm text-white">
+                    {PRICING_PLANS.pro.features.map((feat, i) => (
+                      <li key={i} className="flex items-start gap-2.5">
+                        <Check className="w-4 h-4 text-[#14b8a6] shrink-0 mt-0.5" />
+                        <span>{feat.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="pt-8">
+                  <button
+                    type="button"
+                    onClick={() => onSelectPlan('pro', currentDurationKey)}
+                    className="w-full min-h-[48px] h-12 py-3 px-4 rounded-[14px] bg-gradient-to-r from-[#1a6dff] via-[#2563eb] to-[#0d9488] hover:from-[#2563eb] hover:to-[#0f766e] text-white font-bold text-xs sm:text-sm transition-all shadow-[0_0_20px_rgba(26,109,255,0.4)] hover:shadow-[0_0_25px_rgba(20,184,166,0.5)] flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    Unlock Pro Access
+                  </button>
+                </div>
+              </div>
+            </ScrollReveal>
+
+            {/* 3. PREMIUM PLAN (Gold Badge) */}
+            <ScrollReveal delayMs={120}>
+              <div
+                className="h-full p-6 sm:p-7 flex flex-col justify-between text-left relative transition-all"
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.06)',
+                  backdropFilter: 'blur(20px) saturate(160%)',
+                  WebkitBackdropFilter: 'blur(20px) saturate(160%)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
+                  borderRadius: '24px',
+                }}
+              >
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-[#f5b942] text-[#0d1b3e] text-[12px] font-semibold tracking-normal shadow-md">
+                  Premium edge
+                </div>
+                <div>
+                  <div className="text-[13px] font-semibold text-[#fcd34d] tracking-normal">
+                    Full suite
+                  </div>
+                  <h3 className="text-2xl font-black font-display text-white mt-1">
+                    {PRICING_PLANS.premium.name}
+                  </h3>
+                  <p className="text-xs mt-2 leading-relaxed" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                    {PRICING_PLANS.premium.tagline}
+                  </p>
+                  <div className="mt-6 mb-6">
+                    {(() => {
+                      const price = calculatePlanPricing(PRICING_PLANS.premium.basePrice, activeDuration);
+                      return (
+                        <div>
+                          <span className="text-4xl font-black font-display text-white">
+                            PKR {price.total.toLocaleString()}
+                          </span>
+                          <span className="text-xs ml-2" style={{ color: 'rgba(255, 255, 255, 0.6)' }}>
+                            / {activeDuration.label}
+                          </span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <ul className="space-y-3 text-xs sm:text-sm text-white">
+                    {PRICING_PLANS.premium.features.map((feat, i) => (
+                      <li key={i} className="flex items-start gap-2.5">
+                        <Check className="w-4 h-4 text-[#14b8a6] shrink-0 mt-0.5" />
+                        <span>{feat.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="pt-8">
+                  <button
+                    type="button"
+                    onClick={() => onSelectPlan('premium', currentDurationKey)}
+                    className="w-full min-h-[48px] h-12 py-3 px-4 rounded-[14px] bg-white/10 hover:bg-white/15 border border-[#f5b942]/40 hover:border-[#f5b942] text-white font-bold text-xs sm:text-sm transition-all shadow-md flex items-center justify-center cursor-pointer"
+                  >
+                    Get Premium
+                  </button>
+                </div>
+              </div>
+            </ScrollReveal>
           </div>
         </div>
-
-        {/* 3 Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch max-w-5xl mx-auto">
-          {/* FREE PLAN */}
-          <ScrollReveal delayMs={0}>
-            <div className="h-full p-6 sm:p-7 rounded-[24px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between text-left">
-              <div>
-                <div className="text-xs font-mono font-bold uppercase text-slate-500 tracking-wider">
-                  Basic Access
-                </div>
-                <h3 className="text-2xl font-black font-display text-slate-900 dark:text-white mt-1">
-                  {PRICING_PLANS.free.name}
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
-                  {PRICING_PLANS.free.tagline}
-                </p>
-                <div className="mt-6 mb-6">
-                  <span className="text-4xl font-black font-display text-slate-900 dark:text-white">PKR 0</span>
-                  <span className="text-xs text-slate-500 ml-2">Forever free</span>
-                </div>
-                <ul className="space-y-3 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
-                  {PRICING_PLANS.free.features.map((feat, i) => (
-                    <li key={i} className="flex items-start gap-2.5">
-                      <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <span>{feat.text}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="pt-8">
-                <Button
-                  variant="secondary"
-                  fullWidth
-                  onClick={() => onSelectPlan('free', currentDurationKey)}
-                >
-                  Start Free Practice
-                </Button>
-              </div>
-            </div>
-          </ScrollReveal>
-
-          {/* PRO PLAN (Popular) */}
-          <ScrollReveal delayMs={60}>
-            <div className="h-full p-6 sm:p-7 rounded-[24px] bg-gradient-to-b from-indigo-900/90 to-slate-900/95 text-white border-2 border-indigo-500/50 shadow-2xl shadow-indigo-600/15 flex flex-col justify-between text-left relative">
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-gradient-to-r from-indigo-500 to-teal-400 text-white font-mono text-[10px] font-bold uppercase tracking-widest shadow-md">
-                MOST POPULAR
-              </div>
-              <div>
-                <div className="text-xs font-mono font-bold uppercase text-indigo-300 tracking-wider">
-                  Complete Exam Prep
-                </div>
-                <h3 className="text-2xl font-black font-display text-white mt-1">
-                  {PRICING_PLANS.pro.name}
-                </h3>
-                <p className="text-xs text-slate-300 mt-2 leading-relaxed">
-                  {PRICING_PLANS.pro.tagline}
-                </p>
-                <div className="mt-6 mb-6">
-                  {(() => {
-                    const price = calculatePlanPricing(PRICING_PLANS.pro.basePrice, activeDuration);
-                    return (
-                      <div>
-                        <span className="text-4xl font-black font-display text-white">
-                          PKR {price.total.toLocaleString()}
-                        </span>
-                        <span className="text-xs text-indigo-300 ml-2">/ {activeDuration.label}</span>
-                      </div>
-                    );
-                  })()}
-                </div>
-                <ul className="space-y-3 text-xs sm:text-sm text-slate-200">
-                  {PRICING_PLANS.pro.features.map((feat, i) => (
-                    <li key={i} className="flex items-start gap-2.5">
-                      <Check className="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
-                      <span>{feat.text}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="pt-8">
-                <Button
-                  variant="primary"
-                  fullWidth
-                  onClick={() => onSelectPlan('pro', currentDurationKey)}
-                >
-                  Unlock Pro Access
-                </Button>
-              </div>
-            </div>
-          </ScrollReveal>
-
-          {/* PREMIUM PLAN */}
-          <ScrollReveal delayMs={120}>
-            <div className="h-full p-6 sm:p-7 rounded-[24px] bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col justify-between text-left">
-              <div>
-                <div className="text-xs font-mono font-bold uppercase text-violet-600 dark:text-violet-400 tracking-wider">
-                  Full Suite
-                </div>
-                <h3 className="text-2xl font-black font-display text-slate-900 dark:text-white mt-1">
-                  {PRICING_PLANS.premium.name}
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 leading-relaxed">
-                  {PRICING_PLANS.premium.tagline}
-                </p>
-                <div className="mt-6 mb-6">
-                  {(() => {
-                    const price = calculatePlanPricing(PRICING_PLANS.premium.basePrice, activeDuration);
-                    return (
-                      <div>
-                        <span className="text-4xl font-black font-display text-slate-900 dark:text-white">
-                          PKR {price.total.toLocaleString()}
-                        </span>
-                        <span className="text-xs text-slate-500 ml-2">/ {activeDuration.label}</span>
-                      </div>
-                    );
-                  })()}
-                </div>
-                <ul className="space-y-3 text-xs sm:text-sm text-slate-700 dark:text-slate-300">
-                  {PRICING_PLANS.premium.features.map((feat, i) => (
-                    <li key={i} className="flex items-start gap-2.5">
-                      <Check className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
-                      <span>{feat.text}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div className="pt-8">
-                <Button
-                  variant="secondary"
-                  fullWidth
-                  onClick={() => onSelectPlan('premium', currentDurationKey)}
-                >
-                  Get Premium
-                </Button>
-              </div>
-            </div>
-          </ScrollReveal>
-        </div>
-      </Section>
+      </section>
 
       {/* 2. Word Reveal (Dark) */}
       <Section variant="dark">

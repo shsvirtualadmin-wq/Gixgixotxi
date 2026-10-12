@@ -12,9 +12,9 @@ import { ScreenCard } from '../marketing/ScreenCard';
 import { WordReveal } from '../marketing/design-system/WordReveal';
 import { StepsList } from '../marketing/design-system/StepsList';
 import { FaqAccordion, FaqItem } from '../marketing/design-system/FaqAccordion';
-import { CtaSection } from '../marketing/design-system/CtaSection';
 import { ScrollReveal } from '../marketing/design-system/useScrollReveal';
-import { Award, Briefcase, TrendingUp, ShieldCheck, CheckCircle2 } from 'lucide-react';
+import { FinalCTA } from '../marketing/FinalCTA';
+import { Award, Briefcase, TrendingUp, ShieldCheck, CheckCircle2, ArrowLeft } from 'lucide-react';
 
 interface CaptainLandingPageProps {
   currentPath?: string;
@@ -89,9 +89,34 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
         }}
       />
 
+      {/* Top Back to Home row under navbar */}
+      <div className="pt-20 sm:pt-24 pb-2 px-4 max-w-6xl mx-auto flex items-center justify-between gap-3 text-[13px] font-semibold">
+        <a
+          href="/"
+          onClick={(e) => {
+            e.preventDefault();
+            onNavigate('/');
+          }}
+          className="inline-flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-colors cursor-pointer truncate"
+        >
+          <ArrowLeft className="w-4 h-4 shrink-0" />
+          <span>Back to Home</span>
+        </a>
+        <span
+          className="text-[12px] font-semibold px-2.5 py-0.5 rounded-full border shrink-0 whitespace-nowrap"
+          style={{
+            backgroundColor: 'rgba(255, 255, 255, 0.08)',
+            border: '1px solid rgba(255, 255, 255, 0.18)',
+            color: '#fcd34d',
+          }}
+        >
+          Captain program
+        </span>
+      </div>
+
       {/* 3. Hero */}
       <Hero
-        eyebrow="CAMPUS AMBASSADOR PROGRAM"
+        eyebrow="Boardly Captain program"
         staticHeadingPrefix="Step Up as a"
         typewriterPhrases={CAPTAIN_TYPEWRITER}
         staticHeadingSuffix="at Your College"
@@ -113,7 +138,7 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
       <Section variant="light" id="captain-perks" accent="captain">
         <SectionHeader
           accent="captain"
-          eyebrow="LEADERSHIP PERKS"
+          eyebrow="Leadership perks"
           title="Career Value That Builds Your"
           highlight="Professional Future"
           description="Tangible rewards and verified leadership accolades that differentiate your university and career applications."
@@ -165,7 +190,7 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
           <SectionHeader
             dark
             accent="captain"
-            eyebrow="COMMAND CENTER PREVIEW"
+            eyebrow="Ambassador tracking"
             title="Your Dedicated Captain"
             highlight="Tracking Portal"
             description="Inspect referral statistics, track peer registrations, and claim milestone rewards."
@@ -174,7 +199,7 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
           <ScreenCard
             mode="captain"
             accent="captain"
-            title="Captain Ambassador Portal (Sample)"
+            title="Captain Ambassador Portal"
             subtitle="Campus Batch Leader · Student A."
           />
         </div>
@@ -184,7 +209,7 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
       <Section variant="light" accent="captain">
         <SectionHeader
           accent="captain"
-          eyebrow="ONBOARDING TIMELINE"
+          eyebrow="Onboarding timeline"
           title="From Simple Application to"
           highlight="Verified Campus Leader"
           description="A quick four-step process designed to get you set up in under 48 hours."
@@ -227,31 +252,24 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
       <Section variant="light" accent="captain">
         <SectionHeader
           accent="captain"
-          eyebrow="AMBASSADOR FAQS"
+          eyebrow="Ambassador FAQs"
           title="Boardly Captain"
           highlight="Questions Answered"
         />
         <FaqAccordion items={CAPTAIN_FAQS} accent="captain" />
       </Section>
 
-      {/* 8. CTA (Dark) */}
-      <Section variant="dark" accent="captain" className="border-b-0">
-        <CtaSection
-          accent="captain"
-          watermarkText="CAPTAIN"
-          eyebrow="LEAD YOUR BATCH"
-          title="Become the Face of Boardly at"
-          highlight="Your Campus"
-          description="Applications for the upcoming semester batch are open. Lead your peers today."
-          primaryButtonText={isCaptainApproved ? 'Open Captain Dashboard' : 'Apply as Captain'}
-          secondaryButtonText="Explore Curriculum"
-          onPrimaryClick={() => {
-            if (isCaptainApproved) onNavigate('/captain/dashboard');
-            else setIsApplyModalOpen(true);
-          }}
-          onSecondaryClick={() => onNavigate('/features')}
-        />
-      </Section>
+      {/* 8. Final CTA Section */}
+      <FinalCTA
+        accent="captain"
+        primaryButtonText={isCaptainApproved ? 'Open Captain Dashboard' : 'Apply as Captain'}
+        secondaryButtonText="Explore Curriculum"
+        onPrimaryClick={() => {
+          if (isCaptainApproved) onNavigate('/captain/dashboard');
+          else setIsApplyModalOpen(true);
+        }}
+        onSecondaryClick={() => onNavigate('/features')}
+      />
 
       {/* 9. Shared Footer */}
       <Footer

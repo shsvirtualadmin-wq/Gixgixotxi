@@ -59,7 +59,7 @@ export const CtaSection: React.FC<CtaSectionProps> = ({
   }[accent];
 
   return (
-    <div className="relative py-20 sm:py-28 px-4 text-center overflow-hidden">
+    <div className="relative py-6 sm:py-10 px-4 text-center overflow-hidden">
       {/* Big Ghost Watermark Word behind heading */}
       <div
         ref={watermarkRef}
@@ -74,8 +74,15 @@ export const CtaSection: React.FC<CtaSectionProps> = ({
       <div className="relative z-10 max-w-3xl mx-auto">
         {/* Eyebrow */}
         <div className="mb-4">
-          <span className="font-mono text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full bg-white/10 text-teal-300 border border-white/10 backdrop-blur-md">
-            {eyebrow}
+          <span
+            className="inline-block text-[12px] sm:text-[13px] font-semibold tracking-normal px-3 py-1 rounded-full shadow-xs"
+            style={{
+              backgroundColor: 'rgba(255, 255, 255, 0.08)',
+              border: '1px solid rgba(255, 255, 255, 0.18)',
+              color: accent === 'crew' ? '#c7d2fe' : accent === 'captain' ? '#fcd34d' : '#2dd4bf',
+            }}
+          >
+            {eyebrow.charAt(0).toUpperCase() + eyebrow.slice(1).toLowerCase()}
           </span>
         </div>
 

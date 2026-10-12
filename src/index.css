@@ -1,9 +1,9 @@
 @import "tailwindcss";
 
 @theme {
-  --font-display: "Sora", sans-serif;
-  --font-sans: "Manrope", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
+  --font-display: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 /* Force Light Mode: neutralize Tailwind v4 dark variant so prefers-color-scheme never activates dark mode */
@@ -18,6 +18,12 @@
   html, body {
     max-width: 100vw;
     overflow-x: hidden;
+    font-family: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    line-height: 1.2;
   }
 
   .safe-area-bottom {
@@ -34,10 +40,10 @@
 
   :root {
     color-scheme: light;
-    /* Typography CSS Tokens */
-    --font-display: "Sora", sans-serif;
-    --font-sans: "Manrope", sans-serif;
-    --font-mono: "JetBrains Mono", monospace;
+    /* Typography CSS Tokens: Unified Clean Sans-Serif */
+    --font-display: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-sans: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
     /* Boardly Core Light Palette */
     --boardly-gold: #1E5AFF;
@@ -213,11 +219,10 @@
     font-family: var(--font-mono);
   }
 
-  /* Small mono tags: 11-12px with +0.08em tracking and uppercase */
+  /* Small tags and pills: 12-13px with 0 tracking, weight 600 */
   [class*="tracking-[0.08em]"], .mono-tag {
-    font-family: var(--font-mono);
-    letter-spacing: 0.08em !important;
-    text-transform: uppercase;
+    font-family: var(--font-sans);
+    letter-spacing: 0 !important;
   }
 }
 
@@ -753,7 +758,7 @@
 }
 
 .font-mono {
-  font-family: var(--font-mono) !important;
+  font-family: var(--font-sans) !important;
 }
 
 .font-poppins, [class*="font-['Space_Grotesk']"] {
