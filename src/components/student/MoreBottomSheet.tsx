@@ -17,11 +17,13 @@ import {
   MessageCircle,
   ExternalLink,
   Award,
+  Lock,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getPlanConfig } from '../../data/planLimits';
 import { fetchCaptainRecord, fetchUserCrewApplication, CaptainRecord, CrewApplication } from '../../lib/firebase';
 import { CrewApplicationModal } from '../crew/CrewApplicationModal';
+import { SetPasswordModal } from '../auth/SetPasswordModal';
 
 interface MoreBottomSheetProps {
   isOpen: boolean;
@@ -44,6 +46,13 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
   const [captainRecord, setCaptainRecord] = useState<CaptainRecord | null>(null);
   const [existingApp, setExistingApp] = useState<CrewApplication | null>(null);
   const [showCrewModal, setShowCrewModal] = useState<boolean>(false);
+
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordSuccessFlag, setPasswordSuccessFlag] = useState(false);
+  const hasPasswordProvider = Boolean(
+    passwordSuccessFlag ||
+    user?.providerData?.some((p: any) => p.providerId === 'password')
+  );
 
   // Check if user is an approved ambassador (Requirement 1: only for users with approved captains/{uid} doc)
   const isApprovedAmbassador = Boolean(profile?.isCrewMember || (captainRecord && captainRecord.status === 'active'));
@@ -205,10 +214,6 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
                 stiffness: 280,
                 mass: 0.9,
                 duration: shouldReduceMotion ? 0.05 : 0.5,
-                exit: {
-                  duration: shouldReduceMotion ? 0.05 : 0.35,
-                  ease: [0.22, 1, 0.36, 1],
-                },
               }}
               className="fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-2xl rounded-t-[32px] border-t border-white shadow-2xl p-5 pb-8 sm:pb-10 max-h-[85dvh] overflow-y-auto safe-area-bottom max-w-lg mx-auto touch-pan-y"
             >
@@ -468,6 +473,30 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
             <ExternalLink className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
           </a>
 
+          {/* Account Password Action */}
+          <button
+            type="button"
+            onClick={() => {
+              setShowPasswordModal(true);
+            }}
+            className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 text-left transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center">
+                <Lock className="w-4 h-4 text-slate-600" />
+              </div>
+              <div>
+                <span className="text-xs font-bold text-[#0d1b3e] block">
+                  {hasPasswordProvider ? 'Change Password' : 'Set Account Password'}
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  {hasPasswordProvider ? 'Update your account password' : 'Add password for email sign-in'}
+                </span>
+              </div>
+            </div>
+            <ChevronRight className="w-4 h-4 text-slate-400" />
+          </button>
+
           {/* Switch to Admin Portal (admins only) */}
           {isAdmin && (
             <button
@@ -529,6 +558,19 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
                 if (app) setExistingApp(app);
               }).catch(console.warn);
             }
+          }}
+        />
+      )}
+
+      {/* Set Password Modal */}
+      {user && (
+        <SetPasswordModal
+          isOpen={showPasswordModal}
+          onClose={() => setShowPasswordModal(false)}
+          user={user}
+          mode={hasPasswordProvider ? 'change' : 'set'}
+          onSuccess={() => {
+            setPasswordSuccessFlag(true);
           }}
         />
       )}

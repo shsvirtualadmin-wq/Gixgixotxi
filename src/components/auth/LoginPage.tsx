@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
 import { Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { auth } from '../../lib/firebase';
 import { BrandLogo } from '../marketing/BrandLogo';
 import { TrustFooter } from '../ui/TrustFooter';
 
@@ -64,7 +65,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
     setIsLoading(false);
 
     if (res.success) {
-      const destination = getValidatedPostLoginPath();
+      const isOwnerAdmin = email.trim().toLowerCase() === 'shsvirtualadmin@gmail.com';
+      const destination = isOwnerAdmin ? '/admin' : getValidatedPostLoginPath();
       onNavigate(destination);
     } else {
       setErrorMsg(res.error || 'Failed to sign in. Please verify your credentials.');
@@ -78,7 +80,8 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
     try {
       const res = await signInGoogle();
       if (res.success) {
-        const destination = getValidatedPostLoginPath();
+        const isOwnerAdmin = (auth.currentUser?.email || '').trim().toLowerCase() === 'shsvirtualadmin@gmail.com';
+        const destination = isOwnerAdmin ? '/admin' : getValidatedPostLoginPath();
         onNavigate(destination);
       } else {
         setGoogleLoading(false);

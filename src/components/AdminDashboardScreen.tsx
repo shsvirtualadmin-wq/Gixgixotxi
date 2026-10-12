@@ -25,6 +25,7 @@ import {
   setDoc,
   getDoc,
   getCountFromServer,
+  deleteField,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { StatCard } from './ui/StatCard';
@@ -69,6 +70,7 @@ import {
   Bot,
   Activity,
   LogOut,
+  ShieldCheck,
 } from 'lucide-react';
 
 interface AdminDashboardScreenProps {
@@ -135,6 +137,139 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
 
   const adminEmail = user?.email || 'shsvirtualadmin@gmail.com';
   const questionBankStats = useMemo(() => getDynamicQuestionBankStats(), []);
+
+  const [repairRunning, setRepairRunning] = useState<boolean>(false);
+  const [repairResult, setRepairResult] = useState<string | null>(null);
+  const [showRepairModal, setShowRepairModal] = useState<boolean>(false);
+
+  const handleRepairAdminAccount = async () => {
+    setRepairRunning(true);
+    setRepairResult(null);
+    setShowRepairModal(true);
+    const details: string[] = [];
+    try {
+      const targetAdminEmail = 'shsvirtualadmin@gmail.com';
+      const adminUid = user?.uid;
+
+      // 1. Remove from crewApplications
+      try {
+        const q1 = query(collection(db, 'crewApplications'), where('email', '==', targetAdminEmail));
+        const snap1 = await getDocs(q1);
+        for (const d of snap1.docs) {
+          await deleteDoc(d.ref);
+          details.push(`Deleted crew application: ${d.id}`);
+        }
+        if (adminUid) {
+          const q1b = query(collection(db, 'crewApplications'), where('userId', '==', adminUid));
+          const snap1b = await getDocs(q1b);
+          for (const d of snap1b.docs) {
+            await deleteDoc(d.ref);
+            details.push(`Deleted crew application by UID: ${d.id}`);
+          }
+        }
+      } catch (e: any) {
+        console.warn('Error cleaning crewApplications:', e);
+      }
+
+      // 2. Remove from captainApplications
+      try {
+        if (adminUid) {
+          const capAppRef = doc(db, 'captainApplications', adminUid);
+          const capAppSnap = await getDoc(capAppRef);
+          if (capAppSnap.exists()) {
+            await deleteDoc(capAppRef);
+            details.push(`Deleted captain application: ${adminUid}`);
+          }
+        }
+        const q2 = query(collection(db, 'captainApplications'), where('email', '==', targetAdminEmail));
+        const snap2 = await getDocs(q2);
+        for (const d of snap2.docs) {
+          await deleteDoc(d.ref);
+          details.push(`Deleted captain application document: ${d.id}`);
+        }
+      } catch (e: any) {
+        console.warn('Error cleaning captainApplications:', e);
+      }
+
+      // 3. Remove from captains collection
+      try {
+        if (adminUid) {
+          const capRef = doc(db, 'captains', adminUid);
+          const capSnap = await getDoc(capRef);
+          if (capSnap.exists()) {
+            await deleteDoc(capRef);
+            details.push(`Deleted captains document: ${adminUid}`);
+          }
+        }
+        const q3 = query(collection(db, 'captains'), where('email', '==', targetAdminEmail));
+        const snap3 = await getDocs(q3);
+        for (const d of snap3.docs) {
+          await deleteDoc(d.ref);
+          details.push(`Deleted captains document: ${d.id}`);
+        }
+      } catch (e: any) {
+        console.warn('Error cleaning captains collection:', e);
+      }
+
+      // 4. Remove pending config flag if any
+      try {
+        const emailKey = targetAdminEmail.replace(/[^a-z0-9]/g, '_');
+        const configRef = doc(db, 'config', `crew_pending_${emailKey}`);
+        const configSnap = await getDoc(configRef);
+        if (configSnap.exists()) {
+          await deleteDoc(configRef);
+          details.push(`Deleted config doc: crew_pending_${emailKey}`);
+        }
+      } catch (e) {}
+
+      // 5. Reset admin's users document
+      if (adminUid) {
+        const userRef = doc(db, 'users', adminUid);
+        await updateDoc(userRef, {
+          role: 'admin',
+          roles: ['admin', 'student'],
+          plan: 'premium',
+          isPremium: true,
+          isCrewMember: false,
+          crewStatus: 'none',
+          crewReferralCode: deleteField(),
+          crewStartDate: deleteField(),
+          crewInstitution: deleteField(),
+          isPaidInternshipEligible: false,
+          crewReferralsCount: 0,
+          crewActiveUsersCount: 0,
+          updatedAt: new Date().toISOString(),
+        });
+        details.push(`Reset users/${adminUid} doc: role='admin', isCrewMember=false, removed crew referral codes.`);
+      }
+
+      // 6. Ensure document exists in admins collection
+      if (adminUid) {
+        const adminDocRef = doc(db, 'admins', adminUid);
+        await setDoc(adminDocRef, {
+          email: targetAdminEmail,
+          uid: adminUid,
+          role: 'admin',
+          verifiedAt: new Date().toISOString(),
+        }, { merge: true });
+        details.push(`Confirmed document in admins/${adminUid}`);
+      }
+
+      // 7. Clear local active role override
+      try {
+        localStorage.removeItem('boardly_active_role');
+        localStorage.setItem('boardly_active_role', 'admin');
+      } catch (e) {}
+
+      setRepairResult(details.length > 0 ? details.join('\n') : 'Admin account was already clean! Confirmed admin document in admins collection.');
+      loadStudents();
+      loadCrewApplicationsCount();
+    } catch (err: any) {
+      setRepairResult(`Repair encountered error: ${err.message || err}`);
+    } finally {
+      setRepairRunning(false);
+    }
+  };
 
   // 1. Fetch Students, Count, & Live Metrics from Named Firestore
   const loadStudents = useCallback(async () => {
@@ -502,15 +637,34 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
           </nav>
         </div>
 
-        {/* Bottom Actions: Return to Student & Log out */}
+        {/* Bottom Actions: View Switchers, Repair, & Log out */}
         <div className="p-4 border-t border-slate-800/80 space-y-2">
           <button
             type="button"
             onClick={onBack}
             className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white font-bold text-xs transition-colors cursor-pointer"
+            title="View Student Portal"
           >
-            <ArrowLeft className="w-4 h-4 text-violet-400" />
-            <span>← Return to Student View</span>
+            <BookOpen className="w-4 h-4 text-violet-400" />
+            <span>Student View</span>
+          </button>
+          <a
+            href="/crew-dashboard"
+            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white font-bold text-xs transition-colors cursor-pointer"
+            title="View Crew Ambassador Dashboard"
+          >
+            <Sparkles className="w-4 h-4 text-amber-400" />
+            <span>Crew Dashboard</span>
+          </a>
+          <button
+            type="button"
+            onClick={handleRepairAdminAccount}
+            disabled={repairRunning}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 font-bold text-xs border border-emerald-800/40 transition-colors cursor-pointer disabled:opacity-50"
+            title="Clean any crew applications and ensure admin role is clean"
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>{repairRunning ? 'Repairing...' : 'Repair Admin Account'}</span>
           </button>
           <button
             type="button"
@@ -529,15 +683,33 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
       <div className="flex-1 flex flex-col min-w-0 overflow-y-auto">
         {/* Mobile top controls */}
         <div className="md:hidden p-3 flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md">
-          <button
-            type="button"
-            onClick={onBack}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5 text-violet-600" />
-            <span>← Return to Student View</span>
-          </button>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-violet-600" />
+              <span>Student View</span>
+            </button>
+            <a
+              href="/crew-dashboard"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-200 font-bold text-xs"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+              <span>Crew</span>
+            </a>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleRepairAdminAccount}
+              disabled={repairRunning}
+              className="p-1.5 rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 cursor-pointer"
+              title="Repair Admin Account"
+            >
+              <ShieldCheck className="w-4 h-4 text-emerald-600" />
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -1157,6 +1329,54 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
         }}
         onClose={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
       />
+
+      {/* Repair Admin Account Modal */}
+      {showRepairModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
+          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-7 text-left space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  Admin Account Integrity Tool
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Target: shsvirtualadmin@gmail.com
+                </p>
+              </div>
+            </div>
+
+            {repairRunning ? (
+              <div className="py-8 text-center space-y-3">
+                <RefreshCw className="w-7 h-7 text-emerald-600 animate-spin mx-auto" />
+                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
+                  Scrubbing crew applications and resetting admin permissions…
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto text-slate-700 dark:text-slate-300">
+                  {repairResult || 'Repair complete.'}
+                </div>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowRepairModal(false);
+                      setRepairResult(null);
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-[#0d1b3e] text-white font-bold text-xs hover:bg-[#152a5c] cursor-pointer"
+                  >
+                    Done
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

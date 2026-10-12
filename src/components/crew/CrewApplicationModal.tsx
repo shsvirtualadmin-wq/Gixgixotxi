@@ -14,7 +14,7 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
   onClose,
   onSuccess,
 }) => {
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
 
   const [fullName, setFullName] = useState(profile?.name || user?.displayName || '');
   const [email, setEmail] = useState(profile?.email || user?.email || '');
@@ -77,6 +77,12 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
       return;
     }
 
+    // Block admin accounts from applying
+    if (isAdmin || user?.email?.toLowerCase() === 'shsvirtualadmin@gmail.com') {
+      setErrorMessage('Administrator accounts cannot apply for Boardly Crew.');
+      return;
+    }
+
     // Block duplicate applications
     if (existingApp?.status === 'pending') {
       setErrorMessage('You already have an application under review. Duplicate applications are blocked.');
@@ -135,6 +141,45 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
           <div className="py-16 text-center text-slate-400 space-y-2">
             <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600" />
             <p className="text-xs font-semibold">Checking application status…</p>
+          </div>
+        ) : isAdmin || user?.email?.toLowerCase() === 'shsvirtualadmin@gmail.com' ? (
+          <div className="text-center py-6 space-y-4 animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto shadow-sm ring-8 ring-amber-50/50">
+              <Award className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-1.5 max-w-sm mx-auto">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold uppercase tracking-wider mb-1">
+                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                <span>Admin Account Detected</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-[#0d1b3e] tracking-tight">
+                Admin Cannot Apply for Crew
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                Your account is the administrator account for Boardly. Admin accounts cannot become campus ambassadors. You can review and approve student applications from the Admin Portal.
+              </p>
+            </div>
+
+            <div className="pt-3 flex flex-col sm:flex-row gap-2.5 max-w-xs mx-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  window.location.href = '/admin';
+                }}
+                className="w-full py-2.5 px-4 rounded-xl bg-[#0d1b3e] text-white text-xs font-bold hover:bg-[#152a5c] transition-all cursor-pointer"
+              >
+                Go to Admin Portal
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-2.5 px-4 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
           </div>
         ) : !user ? (
           /* NOT LOGGED IN STATE - REQUIRE LOGIN (Requirement 1) */

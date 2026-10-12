@@ -25,6 +25,7 @@ import { useAuth } from '../../context/AuthContext';
 import { getCrewStatusInfo, checkAndEnforceCrewExpiration, CREW_TENURE_SIGNUP_TARGET, CREW_INTERNSHIP_SIGNUP_TARGET } from '../../lib/crewLogic';
 import { fetchReferralCount } from '../../lib/firebase';
 import { SeoHead } from '../common/SeoHead';
+import { SetPasswordModal } from '../auth/SetPasswordModal';
 
 interface CrewDashboardPageProps {
   onBackToApp?: () => void;
@@ -39,6 +40,14 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [liveReferralCount, setLiveReferralCount] = useState<number | null>(null);
+
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordSuccessFlag, setPasswordSuccessFlag] = useState(false);
+
+  const hasPasswordProvider = Boolean(
+    passwordSuccessFlag ||
+    user?.providerData?.some((p: any) => p.providerId === 'password')
+  );
 
   // Auto-check tenure expiration on mount
   useEffect(() => {
@@ -686,8 +695,69 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
               Goal: 50 Signups
             </span>
           </div>
+      {/* ACCOUNT & SECURITY SECTION */}
+      <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4 text-left animate-fade-in-up">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <Lock className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-[#0d1b3e] uppercase tracking-wider">
+              Account &amp; Security
+            </h3>
+            <p className="text-[11px] text-slate-500 font-medium">
+              Manage your credentials and sign-in methods
+            </p>
+          </div>
+        </div>
+
+        <div className="divide-y divide-slate-100 text-xs">
+          <div className="py-3 flex items-center justify-between">
+            <div>
+              <span className="font-bold text-slate-700 block">Ambassador Account</span>
+              <span className="text-slate-500 font-medium">{user?.email || profile?.email || 'N/A'}</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-800 text-[10px] font-bold border border-emerald-200">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Active Ambassador</span>
+            </div>
+          </div>
+
+          <div className="py-3.5 flex items-center justify-between gap-3">
+            <div>
+              <span className="font-bold text-slate-900 block">
+                {hasPasswordProvider ? 'Account Password' : 'Set Account Password'}
+              </span>
+              <span className="text-slate-500 font-medium text-[11px]">
+                {hasPasswordProvider
+                  ? 'Password is active. You can log in via email or Google.'
+                  : 'Signed in with Google. Set a password to also log in via email.'}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowPasswordModal(true)}
+              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs transition-colors cursor-pointer shrink-0"
+            >
+              {hasPasswordProvider ? 'Change Password' : 'Set Password'}
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Set Password Modal */}
+      {user && (
+        <SetPasswordModal
+          isOpen={showPasswordModal}
+          onClose={() => setShowPasswordModal(false)}
+          user={user}
+          mode={hasPasswordProvider ? 'change' : 'set'}
+          onSuccess={() => {
+            setPasswordSuccessFlag(true);
+          }}
+        />
+      )}
     </div>
   );
 };

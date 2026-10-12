@@ -17,6 +17,7 @@ import {
   GoogleAuthProvider,
   updatePassword,
 } from 'firebase/auth';
+import { SetPasswordModal } from './auth/SetPasswordModal';
 import {
   User as UserIcon,
   Mail,
@@ -99,6 +100,17 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   const [showUniModal, setShowUniModal] = useState<boolean>(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [showPasswordModal, setShowPasswordModal] = useState<boolean>(false);
+  const [passwordSuccessFlag, setPasswordSuccessFlag] = useState<boolean>(false);
+
+  const hasPasswordProvider = Boolean(
+    passwordSuccessFlag ||
+    effectiveUser?.providerData?.some((p: any) => p.providerId === 'password')
+  );
+  const hasGoogleProvider = Boolean(
+    effectiveUser?.providerData?.some((p: any) => p.providerId === 'google.com')
+  );
 
   // Ambassador verification (Requirement 1: only for users with an approved captains/{uid} doc)
   const [captainRecord, setCaptainRecord] = useState<any>(null);
@@ -705,6 +717,74 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
       </div>
 
       {/* ========================================================= */}
+      {/* 2.5. ACCOUNT & SECURITY CARD                              */}
+      {/* ========================================================= */}
+      <div className="bg-white rounded-3xl p-6 sm:p-7 shadow-xs border border-slate-200/80 space-y-4">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+            <Lock className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-[#0d1b3e] uppercase tracking-wider">
+              Account &amp; Security
+            </h3>
+            <p className="text-[11px] text-slate-500 font-medium">
+              Manage your credentials and login methods
+            </p>
+          </div>
+        </div>
+
+        <div className="divide-y divide-slate-100 text-xs">
+          {/* Email row */}
+          <div className="py-3 flex items-center justify-between">
+            <div>
+              <span className="font-bold text-slate-700 block">Email Address</span>
+              <span className="text-slate-500 font-medium">{effectiveUser?.email || effectiveProfile?.email || 'N/A'}</span>
+            </div>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 text-[10px] font-bold">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Verified</span>
+            </div>
+          </div>
+
+          {/* Login Methods row */}
+          <div className="py-3 flex items-center justify-between">
+            <div>
+              <span className="font-bold text-slate-700 block">Linked Login Methods</span>
+              <span className="text-slate-500 font-medium">
+                {[
+                  hasGoogleProvider ? 'Google' : null,
+                  hasPasswordProvider ? 'Email & Password' : null,
+                ].filter(Boolean).join(' • ') || 'Google'}
+              </span>
+            </div>
+          </div>
+
+          {/* Password Action Row */}
+          <div className="py-3.5 flex items-center justify-between gap-3">
+            <div>
+              <span className="font-bold text-slate-900 block">
+                {hasPasswordProvider ? 'Password' : 'Set Account Password'}
+              </span>
+              <span className="text-slate-500 font-medium text-[11px]">
+                {hasPasswordProvider
+                  ? 'Password is active for email logins'
+                  : 'Signed in with Google. Set a password to also log in via email.'}
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowPasswordModal(true)}
+              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-extrabold text-xs transition-colors cursor-pointer shrink-0"
+            >
+              {hasPasswordProvider ? 'Change Password' : 'Set Password'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ========================================================= */}
       {/* 3. CURRENT PLAN CARD: Dark Gradient Card + Checklist + Upgrade/Renew */}
       {/* ========================================================= */}
       <div id="current-plan-card" className="bg-gradient-to-br from-[#0d1b3e] via-[#102554] to-[#0a142e] text-white rounded-3xl p-6 sm:p-7 shadow-xl space-y-5 relative overflow-hidden border border-white/10 scroll-mt-24">
@@ -847,6 +927,21 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
           authContext?.refreshProfile?.();
         }}
       />
+
+      {/* Set / Change Password Modal */}
+      {effectiveUser && (
+        <SetPasswordModal
+          isOpen={showPasswordModal}
+          onClose={() => setShowPasswordModal(false)}
+          user={effectiveUser}
+          mode={hasPasswordProvider ? 'change' : 'set'}
+          onSuccess={() => {
+            setPasswordSuccessFlag(true);
+            setToast({ text: 'Password set. You can now log in with email and password' });
+            setTimeout(() => setToast(null), 4000);
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -259,10 +259,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               transition={{
                 duration: shouldReduceMotion ? 0.05 : 0.6,
                 ease: [0.22, 1, 0.36, 1],
-                exit: {
-                  duration: shouldReduceMotion ? 0.05 : 0.35,
-                  ease: [0.22, 1, 0.36, 1],
-                },
               }}
               className="fixed top-16 right-3 left-3 sm:left-auto sm:right-6 sm:w-[380px] z-50 rounded-[28px] bg-white/90 backdrop-blur-[24px] shadow-2xl border border-white/80 p-5 max-h-[calc(100dvh-5rem)] overflow-y-auto focus:outline-none"
             >

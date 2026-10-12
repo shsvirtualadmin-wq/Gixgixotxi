@@ -22,7 +22,7 @@ import {
   browserLocalPersistence,
   setPersistence,
 } from '../lib/firebase';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { getKarachiTodayString, normalizePlanId, PlanType } from '../data/planLimits';
 import { findUniversity } from '../data/universities';
 
@@ -145,12 +145,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSessionExpired(false);
   }, []);
 
+  const [isAdminFromCollection, setIsAdminFromCollection] = useState<boolean>(false);
+
+  // Check the admins collection for admin status
+  useEffect(() => {
+    let isMounted = true;
+    if (!user?.uid) {
+      setIsAdminFromCollection(false);
+      return;
+    }
+    const checkAdminDoc = async () => {
+      try {
+        const snap = await getDoc(doc(db, 'admins', user.uid));
+        if (isMounted) {
+          setIsAdminFromCollection(snap.exists());
+        }
+      } catch {
+        if (isMounted) setIsAdminFromCollection(false);
+      }
+    };
+    checkAdminDoc();
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.uid]);
+
   const normalizedEmail = (user?.email || '').trim().toLowerCase();
+  const isEmailVerified = Boolean(
+    user?.emailVerified === true ||
+    user?.providerData?.some((p) => p.providerId === 'google.com')
+  );
+
+  // Hardcode shsvirtualadmin@gmail.com as the ONLY admin Gmail.
+  // The admin check MUST NEVER depend on a field that other flows can change (not users.role, not plan, not ambassador status).
   const isAdmin = Boolean(
-    normalizedEmail === 'shsvirtualadmin@gmail.com' ||
-    normalizedEmail === 'support@boardly.cfd' ||
-    profile?.role === 'admin' ||
-    profile?.roles?.includes('admin')
+    (normalizedEmail === 'shsvirtualadmin@gmail.com' && isEmailVerified) ||
+    isAdminFromCollection
   );
 
   // Single source of truth for "is registered": true if admin or onboarding is complete
@@ -189,7 +219,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    */
   const syncProfile = useCallback(async (firebaseUser: User): Promise<StudentUserProfile> => {
     const email = (firebaseUser.email || '').trim().toLowerCase();
-    const isMasterAdmin = email === 'shsvirtualadmin@gmail.com' || email === 'support@boardly.cfd';
+    const isMasterAdmin = email === 'shsvirtualadmin@gmail.com';
     const todayStr = getKarachiTodayString();
 
     // 1. Fetch user profile from Firestore (handles cache & getDocFromServer fail-safes)
@@ -200,15 +230,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (isMasterAdmin) {
         existingProfile.role = 'admin';
         existingProfile.plan = 'premium';
+        existingProfile.isCrewMember = false;
+        delete existingProfile.crewStatus;
+        delete existingProfile.crewReferralCode;
+        delete existingProfile.crewStartDate;
+        delete existingProfile.crewInstitution;
         existingProfile.onboardingCompleted = true;
         existingProfile.onboardingComplete = true;
-        if (!existingProfile.roles?.includes('admin')) {
-          existingProfile.roles = [...(existingProfile.roles || ['student']), 'admin'];
-        }
+        existingProfile.roles = ['admin', 'student'];
         saveUserProfile(firebaseUser.uid, {
           role: 'admin',
           plan: 'premium',
-          roles: existingProfile.roles,
+          isCrewMember: false,
+          crewStatus: undefined,
+          roles: ['admin', 'student'],
           onboardingCompleted: true,
           onboardingComplete: true,
         }).catch(console.warn);

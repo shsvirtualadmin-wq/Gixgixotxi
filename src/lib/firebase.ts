@@ -1135,6 +1135,9 @@ export async function approveCrewApplication(
   // 30 days expiry date
   const expiryDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
   const normalizedEmail = (app.email || '').trim().toLowerCase();
+  if (normalizedEmail === 'shsvirtualadmin@gmail.com') {
+    throw new Error('Admin account shsvirtualadmin@gmail.com cannot be converted into a Crew ambassador.');
+  }
 
   // 1. Generate clean referral code: CREW-<FIRST_NAME>-<RANDOM>
   const cleanName = (app.fullName || 'CREW').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6) || 'AMB';
@@ -1505,6 +1508,13 @@ export async function rejectCrewApplication(appId: string, userId: string, admin
 export async function revokeCrewMemberStatus(userId: string, adminEmail: string, reason?: string): Promise<void> {
   const now = new Date().toISOString();
   const userRef = doc(db, 'users', userId);
+  const snap = await getDoc(userRef);
+  if (snap.exists()) {
+    const data = snap.data();
+    if (data.email?.toLowerCase() === 'shsvirtualadmin@gmail.com' || data.role === 'admin') {
+      throw new Error('Cannot revoke or modify administrator account.');
+    }
+  }
   await updateDoc(userRef, {
     isCrewMember: false,
     crewStatus: 'revoked',
