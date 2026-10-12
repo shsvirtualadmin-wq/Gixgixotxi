@@ -41,7 +41,6 @@ import {
   CrewApplication,
 } from '../../lib/firebase';
 import { SeoHead } from '../common/SeoHead';
-import { BrandLogo } from '../marketing/BrandLogo';
 import { CREW_OG_IMAGE } from '../../config/seo';
 
 interface CrewLandingPageProps {
@@ -136,6 +135,29 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
+  // Dedicated scroll progress for Section D timeline line draw
+  const [timelineProgress, setTimelineProgress] = useState(25);
+
+  useEffect(() => {
+    const handleTimelineScroll = () => {
+      if (!howItWorksRef.current) return;
+      const rect = howItWorksRef.current.getBoundingClientRect();
+      const windowHeight = window.innerHeight;
+      const start = windowHeight * 0.85;
+      const end = -rect.height * 0.15;
+      const current = start - rect.top;
+      const total = start - end;
+      if (total > 0) {
+        const progress = Math.min(100, Math.max(12, (current / total) * 100));
+        setTimelineProgress(progress);
+      }
+    };
+
+    window.addEventListener('scroll', handleTimelineScroll, { passive: true });
+    handleTimelineScroll();
+    return () => window.removeEventListener('scroll', handleTimelineScroll);
+  }, []);
+
   // Handle route and hash-based scrolling on mount and URL changes
   useEffect(() => {
     const pathname = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/crew';
@@ -182,14 +204,11 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
 
     const timer = setTimeout(() => {
       if (!isDeleting) {
-        // Typing forward
         setCurrentWordText(currentWord.slice(0, currentWordText.length + 1));
         if (currentWordText.length + 1 === currentWord.length) {
-          // Pause before deleting
           setTimeout(() => setIsDeleting(true), 1800);
         }
       } else {
-        // Deleting backward
         setCurrentWordText(currentWord.slice(0, currentWordText.length - 1));
         if (currentWordText.length <= 1) {
           setIsDeleting(false);
@@ -349,6 +368,49 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
     return 'Boardly Crew: Lead your campus';
   }, [currentPath]);
 
+  const timelineSteps = [
+    {
+      number: '01',
+      title: 'Apply in 2 Minutes',
+      desc: 'Submit your 3-step profile below with your current institution, contact details, and a quick sentence on your campus network.',
+      checklist: [
+        'Open to all Matric, FSC, ICS & University students',
+        'Zero prior ambassador experience needed',
+        '100% free to apply with zero hidden commitments',
+      ],
+    },
+    {
+      number: '02',
+      title: 'Get Verified by Our Team',
+      desc: 'Our student community team verifies your campus details within 24–48 hours and confirms your admission into the active cohort.',
+      checklist: [
+        'Official welcome email and onboarding guide',
+        'Verification of campus and enrollment standing',
+        'Direct invite to our private Ambassador community',
+      ],
+    },
+    {
+      number: '03',
+      title: 'Unlock 30 Days Free Pro & Live Dashboard',
+      desc: 'Upon approval, your Boardly account instantly receives 30 days of free Pro access and unlocks your private Crew ambassador analytics portal.',
+      checklist: [
+        'Immediate 30-day Pro testing pass for your account',
+        'Personalized referral code & custom share link',
+        'Live referral counter and batch analytics',
+      ],
+    },
+    {
+      number: '04',
+      title: 'Grow, Lead & Earn Career Rewards',
+      desc: 'Share your link, host study sessions, and watch your impact rise. Consistent performers unlock paid internships and signed CV letters.',
+      checklist: [
+        '1-year active tenure as official Campus Ambassador',
+        'Official signed Certificate of Leadership',
+        'Paid marketing and operations internships at SHS Academy',
+      ],
+    },
+  ];
+
   return (
     <div className="min-h-screen bg-[#06061a] text-slate-100 font-sans selection:bg-[#6d4aff] selection:text-white relative overflow-x-hidden">
       {/* Dynamic SEO Meta Tags for client SPA rendering */}
@@ -389,29 +451,38 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
       />
 
       {/* Floating Glass Navbar */}
-      <header className="fixed top-4 left-0 right-0 z-40 px-4 sm:px-6 max-w-7xl mx-auto">
+      <header className="fixed top-3 sm:top-4 left-0 right-0 z-40 px-2.5 sm:px-6 max-w-7xl mx-auto">
         <nav
-          className="bg-[#0b0a2a]/80 backdrop-blur-xl border border-violet-500/25 shadow-2xl shadow-violet-950/40 rounded-full px-4 sm:px-6 py-3 flex items-center justify-between transition-all"
+          className="bg-[#0b0a2a]/90 backdrop-blur-xl border border-violet-500/25 shadow-2xl shadow-violet-950/40 rounded-full px-3 sm:px-6 py-2 sm:py-3 flex items-center justify-between transition-all"
           aria-label="Boardly Crew Navigation"
         >
-          {/* Brand Logo & Wordmark */}
-          <div className="flex items-center gap-3">
+          {/* Brand Logo & Wordmark: [B icon] + white "Boardly" + violet CREW pill (single display with high contrast) */}
+          <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               onClick={() => onNavigate('/')}
-              className="flex items-center gap-2 group cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-violet-400 rounded-lg p-1"
+              className="flex items-center gap-1.5 sm:gap-2 group cursor-pointer text-left focus:outline-none focus:ring-2 focus:ring-violet-400 rounded-lg p-0.5"
               aria-label="Return to Boardly Home"
             >
-              <BrandLogo size="sm" />
-              <div className="flex items-center gap-2">
-                <span className="font-extrabold text-white text-base tracking-tight font-display">Boardly</span>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm border border-violet-400/30">
-                  Crew
-                </span>
-              </div>
+              <img
+                src="/assets/boardly-logo-transparent.png"
+                alt="Boardly"
+                className="h-6 w-6 sm:h-7 sm:w-7 object-contain shrink-0"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.onerror = null;
+                  target.src = '/assets/boardly-logo-solid.png';
+                }}
+              />
+              <span className="font-bold text-white text-base sm:text-lg tracking-normal font-display select-none">
+                Boardly
+              </span>
+              <span className="px-1.5 sm:px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-mono font-bold uppercase tracking-[0.08em] bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm border border-violet-400/30 shrink-0">
+                CREW
+              </span>
             </button>
           </div>
 
-          {/* Desktop Nav Links */}
+          {/* Desktop Nav Links (Hidden on screens under 768px) */}
           <div className="hidden md:flex items-center gap-1 text-sm font-semibold text-slate-300">
             <button
               onClick={() => navigateToSection('how-it-works')}
@@ -439,34 +510,34 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
             </button>
           </div>
 
-          {/* Action Buttons */}
-          <div className="hidden sm:flex items-center gap-3">
+          {/* Desktop Right Actions (>= 768px) */}
+          <div className="hidden md:flex items-center gap-3">
             <button
               onClick={() => onNavigate('/')}
-              className="px-3.5 py-2 text-xs font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
+              className="px-3.5 py-2 text-sm font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
             >
               Main Site
             </button>
             <button
               onClick={() => navigateToSection('apply')}
-              className="px-5 py-2 rounded-full text-xs sm:text-sm font-bold bg-gradient-to-r from-[#6d4aff] to-[#4f35f5] text-white shadow-lg shadow-violet-600/30 hover:shadow-violet-600/50 hover:brightness-110 active:scale-95 transition-all cursor-pointer border border-violet-400/40 min-h-[44px] flex items-center gap-1.5"
+              className="px-5 py-2 rounded-full text-sm font-bold bg-gradient-to-r from-[#6d4aff] to-[#4f35f5] text-white shadow-lg shadow-violet-600/30 hover:shadow-violet-600/50 hover:brightness-110 active:scale-95 transition-all cursor-pointer border border-violet-400/40 min-h-[44px] flex items-center gap-1.5"
             >
               <span>Apply Now</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
 
-          {/* Mobile Hamburger Button */}
-          <div className="flex sm:hidden items-center gap-2">
+          {/* Mobile Right Bar (< 768px): Shows Apply Now + Hamburger */}
+          <div className="flex md:hidden items-center gap-1.5 sm:gap-2 shrink-0">
             <button
               onClick={() => navigateToSection('apply')}
-              className="px-3 py-1.5 rounded-full text-xs font-bold bg-gradient-to-r from-[#6d4aff] to-[#4f35f5] text-white shadow-md shadow-violet-600/30"
+              className="px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-full text-xs font-bold bg-gradient-to-r from-[#6d4aff] to-[#4f35f5] text-white shadow-md shadow-violet-600/30 min-h-[38px] flex items-center gap-1 cursor-pointer shrink-0"
             >
-              Apply
+              <span>Apply Now</span>
             </button>
             <button
               onClick={() => setMobileMenuOpen((prev) => !prev)}
-              className="p-2 rounded-full text-slate-300 hover:text-white hover:bg-white/10 active:bg-white/15 transition-colors min-h-[44px] min-w-[44px] flex items-center justify-center cursor-pointer"
+              className="p-1.5 sm:p-2 rounded-full text-slate-300 hover:text-white hover:bg-white/10 active:bg-white/15 transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center cursor-pointer shrink-0"
               aria-label="Toggle menu"
               aria-expanded={mobileMenuOpen}
             >
@@ -476,7 +547,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         </nav>
       </header>
 
-      {/* Mobile Drawer Menu */}
+      {/* Mobile Drawer Menu (< 768px) */}
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div
@@ -484,52 +555,56 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -16 }}
             transition={{ duration: 0.2 }}
-            className="fixed inset-x-4 top-20 z-40 bg-[#0b0a2a]/95 backdrop-blur-2xl border border-violet-500/30 shadow-2xl rounded-3xl p-6 sm:hidden flex flex-col gap-4 text-center"
+            className="fixed inset-x-4 top-20 z-40 bg-[#0b0a2a]/95 backdrop-blur-2xl border border-violet-500/30 shadow-2xl rounded-3xl p-6 md:hidden flex flex-col gap-4 text-center"
           >
             <div className="flex flex-col gap-2 font-semibold text-slate-200">
               <button
                 onClick={() => navigateToSection('how-it-works')}
-                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between"
+                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between text-base"
               >
                 <span>How It Works</span>
                 <ArrowRight className="w-4 h-4 text-violet-400" />
               </button>
               <button
                 onClick={() => navigateToSection('perks')}
-                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between"
+                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between text-base"
               >
                 <span>Ambassador Perks</span>
                 <ArrowRight className="w-4 h-4 text-violet-400" />
               </button>
               <button
                 onClick={() => navigateToSection('dashboard')}
-                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between"
+                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between text-base"
               >
                 <span>Live Dashboard Preview</span>
                 <ArrowRight className="w-4 h-4 text-violet-400" />
               </button>
               <button
                 onClick={() => navigateToSection('faq')}
-                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between"
+                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between text-base"
               >
                 <span>Questions &amp; FAQ</span>
                 <ArrowRight className="w-4 h-4 text-violet-400" />
               </button>
+              <button
+                onClick={() => {
+                  setMobileMenuOpen(false);
+                  onNavigate('/');
+                }}
+                className="py-3 px-4 rounded-xl hover:bg-white/5 active:bg-white/10 transition-colors text-left flex items-center justify-between text-base text-slate-300"
+              >
+                <span>Main Boardly Site</span>
+                <ExternalLink className="w-4 h-4 text-slate-400" />
+              </button>
             </div>
 
-            <div className="pt-2 border-t border-violet-500/20 flex flex-col gap-2.5">
+            <div className="pt-3 border-t border-violet-500/20 flex flex-col gap-2.5">
               <button
                 onClick={() => navigateToSection('apply')}
-                className="w-full py-3.5 rounded-full font-bold bg-gradient-to-r from-[#6d4aff] to-[#4f35f5] text-white shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2"
+                className="w-full py-3.5 rounded-full font-bold text-base bg-gradient-to-r from-[#6d4aff] to-[#4f35f5] text-white shadow-lg shadow-violet-600/30 flex items-center justify-center gap-2 min-h-[48px]"
               >
                 <Sparkles className="w-4 h-4" />
                 <span>Apply to Join Crew</span>
-              </button>
-              <button
-                onClick={() => onNavigate('/')}
-                className="w-full py-2.5 text-xs text-slate-400 hover:text-white"
-              >
-                Return to Main Boardly Site
               </button>
             </div>
           </motion.div>
@@ -560,7 +635,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.1 }}
-            className="text-4xl sm:text-6xl md:text-7xl font-black text-white tracking-tight leading-[1.1] font-display max-w-4xl"
+            className="text-4xl sm:text-6xl md:text-7xl font-bold text-white leading-[1.15] font-display max-w-4xl"
           >
             Be the face of Boardly at your campus.{' '}
             <span className="block mt-2 sm:mt-3 text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-indigo-300 to-sky-400">
@@ -612,25 +687,25 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
             className="mt-14 pt-8 border-t border-violet-500/15 w-full grid grid-cols-2 sm:grid-cols-4 gap-4 text-center"
           >
             <div className="p-3">
-              <div className="text-2xl sm:text-3xl font-black text-white font-mono">30 Days</div>
-              <div className="text-xs text-slate-400 mt-1">Free Pro Access Granted</div>
+              <div className="text-2xl sm:text-3xl font-bold text-white font-mono">30 Days</div>
+              <div className="text-sm text-slate-400 mt-1">Free Pro Access Granted</div>
             </div>
             <div className="p-3">
-              <div className="text-2xl sm:text-3xl font-black text-violet-400 font-mono">1 Year</div>
-              <div className="text-xs text-slate-400 mt-1">Official Ambassador Tenure</div>
+              <div className="text-2xl sm:text-3xl font-bold text-violet-400 font-mono">1 Year</div>
+              <div className="text-sm text-slate-400 mt-1">Official Ambassador Tenure</div>
             </div>
             <div className="p-3">
-              <div className="text-2xl sm:text-3xl font-black text-sky-400 font-mono">100%</div>
-              <div className="text-xs text-slate-400 mt-1">Free To Apply &amp; Join</div>
+              <div className="text-2xl sm:text-3xl font-bold text-sky-400 font-mono">100%</div>
+              <div className="text-sm text-slate-400 mt-1">Free To Apply &amp; Join</div>
             </div>
             <div className="p-3">
-              <div className="text-2xl sm:text-3xl font-black text-emerald-400 font-mono">Paid</div>
-              <div className="text-xs text-slate-400 mt-1">Internship Opportunities</div>
+              <div className="text-2xl sm:text-3xl font-bold text-emerald-400 font-mono">Paid</div>
+              <div className="text-sm text-slate-400 mt-1">Internship Opportunities</div>
             </div>
           </motion.div>
         </section>
 
-        {/* SECTION B: Scrolling Ticker Band (Slightly tilted, pauses on touch) */}
+        {/* SECTION B: Scrolling Ticker Band (Pauses on touch/hover) */}
         <section
           className="relative py-4 -rotate-1 sm:-rotate-1.5 overflow-hidden bg-gradient-to-r from-violet-900/40 via-indigo-900/60 to-violet-950/40 border-y border-violet-500/30 shadow-2xl backdrop-blur-md"
           onMouseEnter={() => setIsTickerPaused(true)}
@@ -663,13 +738,13 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 'Saad A. (PIEAS Islamabad) — Tier-3 Leadership Badge Earned',
                 'Maryam H. (LUMS Lahore) — 72 test preppers guided',
               ].map((item, idx) => (
-                <div key={idx} className="flex items-center gap-3 text-xs sm:text-sm font-semibold text-slate-200">
+                <div key={idx} className="flex items-center gap-3 text-sm sm:text-base font-semibold text-slate-200">
                   <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-                  <span className="text-[11px] font-mono text-violet-300 font-bold uppercase tracking-wider bg-violet-500/20 px-2 py-0.5 rounded border border-violet-400/30">
+                  <span className="text-[11px] font-mono text-violet-300 font-bold uppercase tracking-[0.08em] bg-violet-500/20 px-2.5 py-0.5 rounded border border-violet-400/30">
                     Sample Activity
                   </span>
                   <span>{item}</span>
-                  <span className="text-violet-500/50 font-black">/</span>
+                  <span className="text-violet-500/50 font-bold">/</span>
                 </div>
               ))}
             </motion.div>
@@ -679,16 +754,16 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         {/* SECTION C: The Gap */}
         <section id="the-gap" className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center max-w-3xl mx-auto mb-14">
-            <span className="text-xs font-mono font-bold tracking-widest uppercase text-violet-400 bg-violet-950/60 px-3 py-1 rounded-full border border-violet-500/30">
+            <span className="text-xs font-mono font-bold tracking-[0.08em] uppercase text-violet-400 bg-violet-950/60 px-3 py-1 rounded-full border border-violet-500/30">
               The Movement
             </span>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mt-4 font-display">
+            <h2 className="text-3xl sm:text-5xl font-bold text-white mt-4 font-display leading-[1.15]">
               One central team cannot reach every campus. <br className="hidden sm:inline" />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-sky-400">
                 Thousands of passionate students can.
               </span>
             </h2>
-            <p className="mt-4 text-slate-300 text-sm sm:text-base leading-relaxed">
+            <p className="mt-4 text-slate-300 text-base leading-relaxed">
               Every college across Pakistan has unique study cultures, local syllabi challenges, and brilliant students
               who deserve better testing tools. Boardly Crew bridges that gap by empowering local campus champions.
             </p>
@@ -697,15 +772,15 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8">
             {/* Card 1: Traditional Way */}
             <div className="bg-[#0b0a2a]/60 border border-slate-700/50 rounded-3xl p-6 sm:p-8 backdrop-blur-xl relative overflow-hidden">
-              <div className="text-xs font-mono uppercase tracking-wider font-bold text-rose-400 bg-rose-950/50 px-3 py-1 rounded-full inline-block border border-rose-500/30 mb-4">
+              <div className="text-xs font-mono uppercase tracking-[0.08em] font-bold text-rose-400 bg-rose-950/50 px-3 py-1 rounded-full inline-block border border-rose-500/30 mb-4">
                 The Old Centralized Model
               </div>
               <h3 className="text-xl sm:text-2xl font-bold text-white mb-3">Isolated Academies &amp; Gatekeeping</h3>
-              <p className="text-slate-400 text-sm leading-relaxed mb-6">
+              <p className="text-slate-300 text-base leading-relaxed mb-6">
                 Commercial coaching centers charge exorbitant fees, keep past paper derivations secret, and leave regional
                 college students guessing formulas and cutoffs on their own.
               </p>
-              <ul className="space-y-3 text-sm text-slate-300">
+              <ul className="space-y-3 text-sm sm:text-base text-slate-300 leading-relaxed">
                 <li className="flex items-start gap-2.5">
                   <span className="text-rose-400 font-bold mt-0.5">✕</span>
                   <span>Expensive tuition packages with outdated physical booklets</span>
@@ -723,15 +798,15 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
 
             {/* Card 2: The Crew Way */}
             <div className="bg-gradient-to-br from-violet-950/70 via-[#0d0b38]/80 to-indigo-950/70 border border-violet-500/40 rounded-3xl p-6 sm:p-8 backdrop-blur-xl relative overflow-hidden shadow-2xl shadow-violet-950/50">
-              <div className="text-xs font-mono uppercase tracking-wider font-bold text-emerald-300 bg-emerald-950/50 px-3 py-1 rounded-full inline-block border border-emerald-500/30 mb-4">
+              <div className="text-xs font-mono uppercase tracking-[0.08em] font-bold text-emerald-300 bg-emerald-950/50 px-3 py-1 rounded-full inline-block border border-emerald-500/30 mb-4">
                 The Boardly Crew Way
               </div>
               <h3 className="text-xl sm:text-2xl font-bold text-white mb-3">Peer-Led Democratic Excellence</h3>
-              <p className="text-slate-200 text-sm leading-relaxed mb-6">
+              <p className="text-slate-200 text-base leading-relaxed mb-6">
                 A verified Boardly Ambassador leads every college, providing peer study circles with unlimited digital
                 MCQs, instant step-by-step derivations, and diagnostic testing.
               </p>
-              <ul className="space-y-3 text-sm text-slate-200">
+              <ul className="space-y-3 text-sm sm:text-base text-slate-200 leading-relaxed">
                 <li className="flex items-start gap-2.5">
                   <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
                   <span>Free Pro access shared across campus batches</span>
@@ -749,115 +824,166 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
           </div>
         </section>
 
-        {/* SECTION D: How It Works */}
+        {/* SECTION D: How It Works (Single column on mobile < 768px, Zigzag on desktop >= 768px) */}
         <section ref={howItWorksRef} id="how-it-works" className="max-w-5xl mx-auto px-4 sm:px-6">
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <span className="text-xs font-mono font-bold tracking-widest uppercase text-violet-400 bg-violet-950/60 px-3 py-1 rounded-full border border-violet-500/30">
+            <span className="text-xs font-mono font-bold tracking-[0.08em] uppercase text-violet-400 bg-violet-950/60 px-3 py-1 rounded-full border border-violet-500/30">
               Step-by-Step Path
             </span>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mt-4 font-display">
+            <h2 className="text-3xl sm:text-5xl font-bold text-white mt-4 font-display leading-[1.15]">
               How Boardly Crew Works
             </h2>
-            <p className="mt-3 text-slate-300 text-sm sm:text-base">
+            <p className="mt-3 text-slate-300 text-base leading-[1.65]">
               Four simple milestones from application to national leadership.
             </p>
           </div>
 
           <div className="relative">
-            {/* Scroll-drawing vertical timeline bar */}
-            <div className="absolute left-6 sm:left-1/2 top-0 bottom-0 w-0.5 bg-violet-500/20 -translate-x-1/2 hidden sm:block" />
+            {/* Desktop Center Vertical Line (>= 768px) with dynamic scroll draw */}
+            <div className="absolute left-1/2 top-6 bottom-12 w-0.5 -translate-x-1/2 hidden md:block bg-slate-800/80 overflow-hidden rounded-full">
+              <div
+                className="w-full bg-gradient-to-b from-violet-500 via-indigo-400 to-sky-400 transition-all duration-200 shadow-[0_0_12px_rgba(139,92,246,0.8)]"
+                style={{ height: `${shouldReduceMotion ? 100 : Math.max(12, timelineProgress)}%` }}
+              />
+            </div>
 
-            <div className="space-y-12 sm:space-y-16">
-              {[
-                {
-                  number: '01',
-                  title: 'Apply in 2 Minutes',
-                  desc: 'Submit your 3-step profile below with your current institution, contact details, and a quick sentence on your campus network.',
-                  checklist: [
-                    'Open to all Matric, FSC, ICS & University students',
-                    'Zero prior ambassador experience needed',
-                    '100% free to apply with zero hidden commitments',
-                  ],
-                },
-                {
-                  number: '02',
-                  title: 'Get Verified by Our Team',
-                  desc: 'Our student community team verifies your campus details within 24–48 hours and confirms your admission into the active cohort.',
-                  checklist: [
-                    'Official welcome email and onboarding guide',
-                    'Verification of campus and enrollment standing',
-                    'Direct invite to our private Ambassador community',
-                  ],
-                },
-                {
-                  number: '03',
-                  title: 'Unlock 30 Days Free Pro & Live Dashboard',
-                  desc: 'Upon approval, your Boardly account instantly receives 30 days of free Pro access and unlocks your private Crew ambassador analytics portal.',
-                  checklist: [
-                    'Immediate 30-day Pro testing pass for your account',
-                    'Personalized referral code & custom share link',
-                    'Live referral counter and batch analytics',
-                  ],
-                },
-                {
-                  number: '04',
-                  title: 'Grow, Lead & Earn Career Rewards',
-                  desc: 'Share your link, host study sessions, and watch your impact rise. Consistent performers unlock paid internships and signed CV letters.',
-                  checklist: [
-                    '1-year active tenure as official Campus Ambassador',
-                    'Official signed Certificate of Leadership',
-                    'Paid marketing and operations internships at SHS Academy',
-                  ],
-                },
-              ].map((stepItem, idx) => (
-                <div
+            {/* Mobile Left Vertical Line (< 768px): exactly centered through circle (circle w-10 = 40px, centered at 20px, left-5 is 20px) */}
+            <div className="absolute left-5 top-5 bottom-10 w-0.5 -translate-x-1/2 md:hidden bg-slate-800/80 overflow-hidden rounded-full">
+              <div
+                className="w-full bg-gradient-to-b from-violet-500 via-indigo-400 to-sky-400 transition-all duration-200 shadow-[0_0_12px_rgba(139,92,246,0.8)]"
+                style={{ height: `${shouldReduceMotion ? 100 : Math.max(12, timelineProgress)}%` }}
+              />
+            </div>
+
+            <div className="space-y-8 md:space-y-16">
+              {timelineSteps.map((stepItem, idx) => (
+                <motion.div
                   key={idx}
-                  className={`flex flex-col sm:flex-row items-center gap-8 ${
-                    idx % 2 === 1 ? 'sm:flex-row-reverse' : ''
-                  }`}
+                  initial={{ opacity: 0, y: 24 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: '-40px' }}
+                  transition={{ duration: 0.8, delay: shouldReduceMotion ? 0 : idx * 0.1 }}
+                  className="relative"
                 >
-                  {/* Step Card */}
-                  <div className="w-full sm:w-1/2 bg-[#0b0a2a]/80 border border-violet-500/25 rounded-3xl p-6 sm:p-8 backdrop-blur-xl shadow-xl shadow-violet-950/40 relative">
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-3xl sm:text-4xl font-black font-mono text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-sky-400">
-                        {stepItem.number}
-                      </span>
-                      <span className="text-[11px] font-mono font-bold text-violet-300 uppercase tracking-widest bg-violet-950/80 px-2.5 py-1 rounded-full border border-violet-500/30">
-                        Phase {idx + 1}
-                      </span>
+                  {/* MOBILE VIEW (< 768px): Single column, line on left, circle on line, card to its right at full width */}
+                  <div className="flex md:hidden items-start gap-4 sm:gap-6 relative">
+                    {/* Numbered circle on the vertical line */}
+                    <div className="shrink-0 pt-0.5 z-10">
+                      <div className="w-10 h-10 rounded-full bg-violet-950 border-2 border-violet-400 text-white font-mono font-bold text-sm shadow-lg shadow-violet-500/30 flex items-center justify-center shrink-0">
+                        {idx + 1}
+                      </div>
                     </div>
 
-                    <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">{stepItem.title}</h3>
-                    <p className="text-slate-300 text-sm leading-relaxed mb-6">{stepItem.desc}</p>
+                    {/* Step Card at 100% full width to the right */}
+                    <div className="flex-1 min-w-0 bg-[#0b0a2a]/80 border border-violet-500/25 rounded-3xl p-5 sm:p-7 backdrop-blur-xl shadow-xl shadow-violet-950/40 text-left">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-2xl sm:text-3xl font-bold font-mono text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-sky-400">
+                          {stepItem.number}
+                        </span>
+                        <span className="text-[11px] font-mono font-bold text-violet-300 uppercase tracking-[0.08em] bg-violet-950/80 px-2.5 py-1 rounded-full border border-violet-500/30">
+                          Phase {idx + 1}
+                        </span>
+                      </div>
+                      <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 font-display">{stepItem.title}</h3>
+                      <p className="text-slate-300 text-base leading-[1.65] mb-5">{stepItem.desc}</p>
+                      <div className="space-y-2.5 pt-4 border-t border-violet-500/15">
+                        {stepItem.checklist.map((chk, cIdx) => (
+                          <div key={cIdx} className="flex items-center gap-2 text-sm sm:text-base text-slate-300 leading-[1.65]">
+                            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>{chk}</span>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-5">
+                        <button
+                          onClick={() => navigateToSection('apply')}
+                          className="text-sm font-bold text-violet-400 hover:text-violet-300 flex items-center gap-1.5 transition-colors cursor-pointer group"
+                        >
+                          <span>Start this step</span>
+                          <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
 
-                    <div className="space-y-2 pt-4 border-t border-violet-500/15">
-                      {stepItem.checklist.map((chk, cIdx) => (
-                        <div key={cIdx} className="flex items-center gap-2 text-xs sm:text-sm text-slate-300">
-                          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                          <span>{chk}</span>
+                  {/* DESKTOP VIEW (>= 768px): Alternating left/right zigzag */}
+                  <div className="hidden md:flex md:items-center md:gap-8">
+                    {/* Left Slot: Card if even (idx 0, 2), Empty spacer if odd (idx 1, 3) */}
+                    <div className="w-[calc(50%-2.5rem)] shrink-0">
+                      {idx % 2 === 0 ? (
+                        <div className="bg-[#0b0a2a]/80 border border-violet-500/25 rounded-3xl p-7 lg:p-8 backdrop-blur-xl shadow-xl shadow-violet-950/40 text-left">
+                          <div className="flex items-center justify-between mb-4">
+                            <span className="text-3xl sm:text-4xl font-bold font-mono text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-sky-400">
+                              {stepItem.number}
+                            </span>
+                            <span className="text-[11px] font-mono font-bold text-violet-300 uppercase tracking-[0.08em] bg-violet-950/80 px-2.5 py-1 rounded-full border border-violet-500/30">
+                              Phase {idx + 1}
+                            </span>
+                          </div>
+                          <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 font-display">{stepItem.title}</h3>
+                          <p className="text-slate-300 text-base leading-[1.65] mb-6">{stepItem.desc}</p>
+                          <div className="space-y-2.5 pt-4 border-t border-violet-500/15">
+                            {stepItem.checklist.map((chk, cIdx) => (
+                              <div key={cIdx} className="flex items-center gap-2 text-sm sm:text-base text-slate-300 leading-[1.65]">
+                                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                                <span>{chk}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-6">
+                            <button
+                              onClick={() => navigateToSection('apply')}
+                              className="text-sm font-bold text-violet-400 hover:text-violet-300 flex items-center gap-1.5 transition-colors cursor-pointer group"
+                            >
+                              <span>Start this step</span>
+                              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                            </button>
+                          </div>
                         </div>
-                      ))}
+                      ) : null}
                     </div>
 
-                    <div className="mt-6">
-                      <button
-                        onClick={() => navigateToSection('apply')}
-                        className="text-xs sm:text-sm font-bold text-violet-400 hover:text-violet-300 flex items-center gap-1.5 transition-colors cursor-pointer group"
-                      >
-                        <span>Start this step</span>
-                        <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                      </button>
+                    {/* Center Circle on the line */}
+                    <div className="flex items-center justify-center w-12 h-12 rounded-full bg-violet-950 border-2 border-violet-400 text-white font-mono font-bold text-base shadow-lg shadow-violet-500/30 z-10 shrink-0">
+                      {idx + 1}
+                    </div>
+
+                    {/* Right Slot: Empty spacer if even (idx 0, 2), Card if odd (idx 1, 3) */}
+                    <div className="w-[calc(50%-2.5rem)] shrink-0">
+                      {idx % 2 === 1 ? (
+                        <div className="bg-[#0b0a2a]/80 border border-violet-500/25 rounded-3xl p-7 lg:p-8 backdrop-blur-xl shadow-xl shadow-violet-950/40 text-left">
+                          <div className="flex items-center justify-between mb-4">
+                            <span className="text-3xl sm:text-4xl font-bold font-mono text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-sky-400">
+                              {stepItem.number}
+                            </span>
+                            <span className="text-[11px] font-mono font-bold text-violet-300 uppercase tracking-[0.08em] bg-violet-950/80 px-2.5 py-1 rounded-full border border-violet-500/30">
+                              Phase {idx + 1}
+                            </span>
+                          </div>
+                          <h3 className="text-xl sm:text-2xl font-bold text-white mb-2 font-display">{stepItem.title}</h3>
+                          <p className="text-slate-300 text-base leading-[1.65] mb-6">{stepItem.desc}</p>
+                          <div className="space-y-2.5 pt-4 border-t border-violet-500/15">
+                            {stepItem.checklist.map((chk, cIdx) => (
+                              <div key={cIdx} className="flex items-center gap-2 text-sm sm:text-base text-slate-300 leading-[1.65]">
+                                <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                                <span>{chk}</span>
+                              </div>
+                            ))}
+                          </div>
+                          <div className="mt-6">
+                            <button
+                              onClick={() => navigateToSection('apply')}
+                              className="text-sm font-bold text-violet-400 hover:text-violet-300 flex items-center gap-1.5 transition-colors cursor-pointer group"
+                            >
+                              <span>Start this step</span>
+                              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
-
-                  {/* Center Node Indicator */}
-                  <div className="hidden sm:flex items-center justify-center w-12 h-12 rounded-full bg-violet-950 border-2 border-violet-400 text-white font-mono font-bold shadow-lg shadow-violet-500/30 z-10 shrink-0">
-                    {idx + 1}
-                  </div>
-
-                  {/* Empty counterpart for balance */}
-                  <div className="hidden sm:block w-1/2" />
-                </div>
+                </motion.div>
               ))}
             </div>
           </div>
@@ -866,13 +992,13 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         {/* SECTION E: Perks */}
         <section ref={perksRef} id="perks" className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <span className="text-xs font-mono font-bold tracking-widest uppercase text-violet-400 bg-violet-950/60 px-3 py-1 rounded-full border border-violet-500/30">
+            <span className="text-xs font-mono font-bold tracking-[0.08em] uppercase text-violet-400 bg-violet-950/60 px-3 py-1 rounded-full border border-violet-500/30">
               The Rewards
             </span>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mt-4 font-display">
+            <h2 className="text-3xl sm:text-5xl font-bold text-white mt-4 font-display leading-[1.15]">
               Unrivaled Ambassador Perks
             </h2>
-            <p className="mt-3 text-slate-300 text-sm sm:text-base">
+            <p className="mt-3 text-slate-300 text-base leading-relaxed">
               Tangible value that propels your academic scores and elevates your professional resume.
             </p>
           </div>
@@ -933,21 +1059,21 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                       <div className={`p-3 rounded-2xl bg-gradient-to-br ${perk.color} border`}>
                         <IconComp className="w-6 h-6" />
                       </div>
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-300 bg-white/5 px-2.5 py-1 rounded-full border border-white/10">
+                      <span className="text-[11px] font-mono font-bold uppercase tracking-[0.08em] text-slate-300 bg-white/5 px-2.5 py-1 rounded-full border border-white/10">
                         {perk.badge}
                       </span>
                     </div>
 
-                    <h3 className="text-xl font-bold text-white group-hover:text-violet-300 transition-colors mb-2">
+                    <h3 className="text-xl font-bold text-white group-hover:text-violet-300 transition-colors mb-2 font-display">
                       {perk.title}
                     </h3>
-                    <p className="text-slate-300 text-sm leading-relaxed">{perk.desc}</p>
+                    <p className="text-slate-300 text-base leading-[1.65]">{perk.desc}</p>
                   </div>
 
                   <div className="mt-6 pt-4 border-t border-violet-500/15">
                     <button
                       onClick={() => navigateToSection('apply')}
-                      className="text-xs font-bold text-violet-400 hover:text-violet-300 flex items-center gap-1 cursor-pointer"
+                      className="text-sm font-bold text-violet-400 hover:text-violet-300 flex items-center gap-1 cursor-pointer"
                     >
                       <span>Unlock this benefit</span>
                       <ArrowRight className="w-3.5 h-3.5" />
@@ -962,31 +1088,31 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         {/* SECTION F: Dashboard Preview (Phone Frame Mockup) */}
         <section ref={dashboardRef} id="dashboard" className="max-w-5xl mx-auto px-4 sm:px-6">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <span className="text-xs font-mono font-bold tracking-widest uppercase text-violet-400 bg-violet-950/60 px-3 py-1 rounded-full border border-violet-500/30">
+            <span className="text-xs font-mono font-bold tracking-[0.08em] uppercase text-violet-400 bg-violet-950/60 px-3 py-1 rounded-full border border-violet-500/30">
               Interactive Preview
             </span>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mt-4 font-display">
+            <h2 className="text-3xl sm:text-5xl font-bold text-white mt-4 font-display leading-[1.15]">
               Your Command Center
             </h2>
-            <p className="mt-3 text-slate-300 text-sm sm:text-base">
+            <p className="mt-3 text-slate-300 text-base leading-[1.65]">
               Every approved ambassador gets a dedicated mobile-optimized dashboard. Real-time referral counts, live
               rankings, and one-tap link sharing.
             </p>
           </div>
 
           {/* Phone Frame Device Container */}
-          <div className="max-w-sm sm:max-w-md mx-auto">
-            <div className="relative rounded-[40px] p-3 sm:p-4 bg-gradient-to-b from-slate-700 via-slate-800 to-slate-900 shadow-2xl shadow-violet-950/80 border-4 border-slate-700/80">
+          <div className="w-full max-w-[340px] sm:max-w-md mx-auto">
+            <div className="relative rounded-[36px] sm:rounded-[40px] p-2.5 sm:p-4 bg-gradient-to-b from-slate-700 via-slate-800 to-slate-900 shadow-2xl shadow-violet-950/80 border-4 border-slate-700/80">
               {/* Speaker & Notch */}
-              <div className="absolute top-6 left-1/2 -translate-x-1/2 w-24 h-4 bg-slate-900 rounded-full z-20 flex items-center justify-center">
-                <div className="w-10 h-1 bg-slate-700 rounded-full" />
+              <div className="absolute top-5 left-1/2 -translate-x-1/2 w-20 sm:w-24 h-3.5 sm:h-4 bg-slate-900 rounded-full z-20 flex items-center justify-center">
+                <div className="w-8 sm:w-10 h-1 bg-slate-700 rounded-full" />
               </div>
 
               {/* Phone Screen Glass Interior */}
-              <div className="bg-[#080721] rounded-[32px] pt-8 pb-6 px-4 sm:px-5 border border-violet-500/30 overflow-hidden relative">
+              <div className="bg-[#080721] rounded-[28px] sm:rounded-[32px] pt-8 pb-6 px-3.5 sm:px-5 border border-violet-500/30 overflow-hidden relative">
                 {/* Sample Tag watermark */}
                 <div className="text-center mb-3">
-                  <span className="text-[10px] font-mono font-black tracking-widest text-violet-300 uppercase bg-violet-950/80 px-3 py-0.5 rounded-full border border-violet-500/40">
+                  <span className="text-[11px] font-mono font-bold tracking-[0.08em] text-violet-300 uppercase bg-violet-950/80 px-3 py-0.5 rounded-full border border-violet-500/40">
                     Sample Ambassador Portal
                   </span>
                 </div>
@@ -998,8 +1124,8 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                       AK
                     </div>
                     <div>
-                      <div className="text-sm font-bold text-white leading-tight">Ali Khan</div>
-                      <div className="text-[11px] text-slate-400">FAST-NU Islamabad</div>
+                      <div className="text-sm font-bold text-white leading-tight font-display">Ali Khan</div>
+                      <div className="text-sm text-slate-400">FAST-NU Islamabad</div>
                     </div>
                   </div>
                   <span className="text-[10px] font-mono font-bold text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/40">
@@ -1009,11 +1135,11 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
 
                 {/* Main Stat Card */}
                 <div className="mt-4 p-4 rounded-2xl bg-gradient-to-br from-violet-900/40 via-indigo-900/30 to-violet-950/50 border border-violet-500/30 shadow-inner">
-                  <div className="text-xs text-slate-300 font-medium">Batch Referrals</div>
-                  <div className="text-3xl font-black text-white font-mono mt-1 flex items-baseline gap-2">
-                    42 <span className="text-xs font-sans text-emerald-400 font-semibold">+6 this week</span>
+                  <div className="text-sm text-slate-300 font-medium">Batch Referrals</div>
+                  <div className="text-3xl font-bold text-white font-mono mt-1 flex items-baseline gap-2">
+                    42 <span className="text-sm font-sans text-emerald-400 font-semibold">+6 this week</span>
                   </div>
-                  <div className="mt-3 flex items-center justify-between text-xs text-slate-300 pt-2 border-t border-violet-500/20">
+                  <div className="mt-3 flex items-center justify-between text-sm text-slate-300 pt-2 border-t border-violet-500/20">
                     <span>National Rank: <strong className="text-white">#4</strong></span>
                     <span>Status: <strong className="text-sky-300">Level 2 Leader</strong></span>
                   </div>
@@ -1021,12 +1147,12 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
 
                 {/* Share Link Box */}
                 <div className="mt-4 p-3 rounded-2xl bg-white/5 border border-white/10">
-                  <div className="text-[11px] text-slate-400 mb-1 font-medium">Your Unique Ambassador Link</div>
+                  <div className="text-sm text-slate-400 mb-1 font-medium">Your Unique Ambassador Link</div>
                   <div className="flex items-center justify-between gap-2 bg-[#06061a] p-2 rounded-xl border border-violet-500/20 text-xs font-mono text-slate-300">
                     <span className="truncate">boardly.cfd/r/FAST-AK42</span>
                     <button
                       onClick={() => handleCopySampleCode('https://boardly.cfd/r/FAST-AK42')}
-                      className="px-2.5 py-1 rounded-lg bg-violet-600 text-white font-sans text-[11px] font-bold hover:bg-violet-500 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
+                      className="px-2.5 py-1 rounded-lg bg-violet-600 text-white font-sans text-xs font-bold hover:bg-violet-500 transition-colors shrink-0 flex items-center gap-1 cursor-pointer"
                     >
                       {copyCodeSuccess ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
                       <span>{copyCodeSuccess ? 'Copied' : 'Copy'}</span>
@@ -1036,11 +1162,11 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
 
                 {/* Mini Leaderboard Snapshot */}
                 <div className="mt-4">
-                  <div className="flex items-center justify-between text-xs font-bold text-slate-300 mb-2">
+                  <div className="flex items-center justify-between text-sm font-bold text-slate-300 mb-2">
                     <span>Campus Leaderboard</span>
-                    <span className="text-[10px] text-violet-400">May Cohort</span>
+                    <span className="text-[11px] font-mono text-violet-400">May Cohort</span>
                   </div>
-                  <div className="space-y-1.5 text-xs">
+                  <div className="space-y-1.5 text-sm">
                     <div className="flex items-center justify-between p-2 rounded-xl bg-white/5 text-slate-200">
                       <div className="flex items-center gap-2">
                         <span className="text-amber-400 font-mono font-bold">1</span>
@@ -1069,7 +1195,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 <div className="mt-5 pt-3 border-t border-violet-500/20 text-center">
                   <button
                     onClick={() => navigateToSection('apply')}
-                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-xs shadow-md shadow-violet-700/40 cursor-pointer"
+                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-bold text-sm shadow-md shadow-violet-700/40 cursor-pointer min-h-[44px]"
                   >
                     Unlock Your Own Dashboard
                   </button>
@@ -1082,13 +1208,13 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         {/* SECTION G: Testimonials (Horizontal swipe cards with Verified badges) */}
         <section id="testimonials" className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="text-center max-w-2xl mx-auto mb-12">
-            <span className="text-xs font-mono font-bold tracking-widest uppercase text-violet-400 bg-violet-950/60 px-3 py-1 rounded-full border border-violet-500/30">
+            <span className="text-xs font-mono font-bold tracking-[0.08em] uppercase text-violet-400 bg-violet-950/60 px-3 py-1 rounded-full border border-violet-500/30">
               Ambassador Stories
             </span>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mt-4 font-display">
+            <h2 className="text-3xl sm:text-5xl font-bold text-white mt-4 font-display leading-[1.15]">
               Voices from the Campuses
             </h2>
-            <p className="mt-3 text-slate-300 text-sm sm:text-base">
+            <p className="mt-3 text-slate-300 text-base leading-[1.65]">
               Real student experiences across major institutions in Pakistan.
             </p>
           </div>
@@ -1135,20 +1261,20 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                         <Star key={i} className="w-3.5 h-3.5 fill-current" />
                       ))}
                     </div>
-                    <span className="text-[10px] font-mono text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
+                    <span className="text-[11px] font-mono text-emerald-300 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center gap-1">
                       <ShieldCheck className="w-3 h-3 text-emerald-400" />
                       <span>Verified</span>
                     </span>
                   </div>
-                  <p className="text-slate-300 text-xs sm:text-sm leading-relaxed italic mb-6">
+                  <p className="text-slate-300 text-base leading-[1.65] italic mb-6">
                     &ldquo;{testi.quote}&rdquo;
                   </p>
                 </div>
 
                 <div className="pt-4 border-t border-violet-500/15">
-                  <div className="text-sm font-bold text-white">{testi.name}</div>
-                  <div className="text-xs text-violet-400 font-medium">{testi.campus}</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5 font-mono">{testi.batch}</div>
+                  <div className="text-base font-bold text-white font-display">{testi.name}</div>
+                  <div className="text-sm text-violet-400 font-medium">{testi.campus}</div>
+                  <div className="text-xs text-slate-400 mt-0.5 font-mono">{testi.batch}</div>
                 </div>
               </div>
             ))}
@@ -1158,13 +1284,13 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         {/* SECTION H: FAQ (Smooth Accordion with + / x icon) */}
         <section ref={faqRef} id="faq" className="max-w-4xl mx-auto px-4 sm:px-6">
           <div className="text-center max-w-2xl mx-auto mb-14">
-            <span className="text-xs font-mono font-bold tracking-widest uppercase text-violet-400 bg-violet-950/60 px-3 py-1 rounded-full border border-violet-500/30">
+            <span className="text-xs font-mono font-bold tracking-[0.08em] uppercase text-violet-400 bg-violet-950/60 px-3 py-1 rounded-full border border-violet-500/30">
               Clear Answers
             </span>
-            <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight mt-4 font-display">
+            <h2 className="text-3xl sm:text-5xl font-bold text-white mt-4 font-display leading-[1.15]">
               Frequently Asked Questions
             </h2>
-            <p className="mt-3 text-slate-300 text-sm sm:text-base">
+            <p className="mt-3 text-slate-300 text-base leading-[1.65]">
               Everything you need to know about joining and succeeding in Boardly Crew.
             </p>
           </div>
@@ -1204,10 +1330,10 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 >
                   <button
                     onClick={() => setExpandedFaqIndex(isExpanded ? null : idx)}
-                    className="w-full p-5 sm:p-6 text-left flex items-center justify-between gap-4 cursor-pointer focus:outline-none focus:bg-white/5"
+                    className="w-full p-5 sm:p-6 text-left flex items-center justify-between gap-4 cursor-pointer focus:outline-none focus:bg-white/5 min-h-[56px]"
                     aria-expanded={isExpanded}
                   >
-                    <span className="text-base sm:text-lg font-bold text-white">{faq.q}</span>
+                    <span className="text-base sm:text-lg font-bold text-white font-display">{faq.q}</span>
                     <span className="w-8 h-8 rounded-full bg-violet-950/80 border border-violet-500/40 text-violet-300 flex items-center justify-center shrink-0">
                       {isExpanded ? <X className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                     </span>
@@ -1220,7 +1346,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                         animate={{ height: 'auto', opacity: 1 }}
                         exit={{ height: 0, opacity: 0 }}
                         transition={{ duration: 0.25 }}
-                        className="px-5 pb-5 sm:px-6 sm:pb-6 text-slate-300 text-sm sm:text-base leading-relaxed border-t border-violet-500/10 pt-4"
+                        className="px-5 pb-5 sm:px-6 sm:pb-6 text-slate-300 text-base leading-[1.65] border-t border-violet-500/10 pt-4"
                       >
                         {faq.a}
                       </motion.div>
@@ -1237,60 +1363,60 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
           <div className="bg-gradient-to-br from-violet-950/90 via-[#0d0b38]/95 to-indigo-950/90 border border-violet-500/40 rounded-3xl p-6 sm:p-10 shadow-2xl shadow-violet-950/60 backdrop-blur-2xl relative overflow-hidden">
             {/* Header */}
             <div className="text-center max-w-xl mx-auto mb-8">
-              <span className="text-xs font-mono font-bold tracking-widest uppercase text-violet-300 bg-violet-900/60 px-3 py-1 rounded-full border border-violet-400/40">
+              <span className="text-xs font-mono font-bold tracking-[0.08em] uppercase text-violet-300 bg-violet-900/60 px-3 py-1 rounded-full border border-violet-400/40">
                 Official Application
               </span>
-              <h2 className="text-3xl sm:text-4xl font-black text-white tracking-tight mt-3 font-display">
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mt-3 font-display leading-[1.15]">
                 Apply for Boardly Crew
               </h2>
-              <p className="mt-2 text-slate-300 text-sm">
+              <p className="mt-2 text-slate-300 text-base leading-[1.65]">
                 Complete this 3-step form to claim your campus ambassadorship and activate 30 days of free Premium.
               </p>
             </div>
 
             {/* Application Status Logic: Check if user already applied or approved */}
             {profile?.isCrewMember ? (
-              <div className="p-6 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-center">
+              <div className="p-6 sm:p-8 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-center">
                 <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
-                <h3 className="text-xl font-bold text-white mb-2">You Are an Active Boardly Crew Member!</h3>
-                <p className="text-slate-300 text-sm max-w-md mx-auto mb-6">
+                <h3 className="text-xl font-bold text-white mb-2 font-display">You Are an Active Boardly Crew Member!</h3>
+                <p className="text-slate-200 text-sm sm:text-base max-w-md mx-auto mb-6 leading-relaxed">
                   Your ambassadorship is verified. You can view your real-time referrals, student clicks, and rank directly
                   in your private ambassador dashboard.
                 </p>
                 <button
                   onClick={() => onNavigate('/crew-dashboard')}
-                  className="px-6 py-3 rounded-full font-bold text-sm bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-900/40 hover:brightness-110 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-2"
+                  className="px-6 py-3.5 rounded-full font-bold text-sm sm:text-base bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-900/40 hover:brightness-110 active:scale-95 transition-all cursor-pointer inline-flex items-center gap-2 min-h-[48px]"
                 >
                   <Trophy className="w-4 h-4" />
                   <span>Go to Ambassador Dashboard</span>
                 </button>
               </div>
             ) : existingApp?.status === 'pending' ? (
-              <div className="p-6 rounded-2xl bg-violet-950/60 border border-violet-500/40 text-center">
+              <div className="p-6 sm:p-8 rounded-2xl bg-violet-950/60 border border-violet-500/40 text-center">
                 <Clock className="w-12 h-12 text-violet-400 mx-auto mb-3 animate-pulse" />
-                <h3 className="text-xl font-bold text-white mb-2">Application Under Review</h3>
-                <p className="text-slate-300 text-sm max-w-md mx-auto mb-4">
+                <h3 className="text-xl font-bold text-white mb-2 font-display">Application Under Review</h3>
+                <p className="text-slate-200 text-sm sm:text-base max-w-md mx-auto mb-4 leading-relaxed">
                   Thank you, <strong className="text-white">{existingApp.fullName}</strong>! Your application submitted on{' '}
                   <strong className="text-white">{new Date(existingApp.createdAt).toLocaleDateString()}</strong> is being
                   reviewed by our campus leadership team.
                 </p>
-                <div className="inline-block px-3 py-1 rounded-full text-xs font-mono font-bold bg-violet-900/60 text-violet-300 border border-violet-500/30 mb-6">
+                <div className="inline-block px-3.5 py-1.5 rounded-full text-xs font-mono font-bold uppercase tracking-[0.08em] bg-violet-900/60 text-violet-300 border border-violet-500/30 mb-6">
                   Status: Pending Verification (24–48 hours)
                 </div>
                 <div>
                   <button
                     onClick={() => onNavigate('/')}
-                    className="px-6 py-2.5 rounded-full font-semibold text-xs bg-white/10 text-slate-200 hover:bg-white/15 transition-colors"
+                    className="px-6 py-3 rounded-full font-semibold text-sm bg-white/10 text-slate-200 hover:bg-white/15 transition-colors min-h-[44px]"
                   >
                     Back to Boardly
                   </button>
                 </div>
               </div>
             ) : existingApp?.status === 'revoked' ? (
-              <div className="p-6 rounded-2xl bg-rose-950/60 border border-rose-500/40 text-center">
+              <div className="p-6 sm:p-8 rounded-2xl bg-rose-950/60 border border-rose-500/40 text-center">
                 <AlertTriangle className="w-12 h-12 text-rose-400 mx-auto mb-3" />
-                <h3 className="text-xl font-bold text-white mb-2">Ambassador Access Revoked</h3>
-                <p className="text-slate-300 text-sm max-w-md mx-auto">
+                <h3 className="text-xl font-bold text-white mb-2 font-display">Ambassador Access Revoked</h3>
+                <p className="text-slate-200 text-sm sm:text-base max-w-md mx-auto leading-relaxed">
                   Your Crew ambassador account has been suspended or revoked. If you believe this is an error, please
                   contact SHS Virtual Academy support at <strong className="text-white">shsvirtualadmin@gmail.com</strong>.
                 </p>
@@ -1298,15 +1424,15 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
             ) : submittedSuccess ? (
               <div className="p-8 rounded-2xl bg-emerald-950/60 border border-emerald-500/40 text-center">
                 <CheckCircle2 className="w-14 h-14 text-emerald-400 mx-auto mb-4" />
-                <h3 className="text-2xl font-bold text-white mb-2">Application Submitted!</h3>
-                <p className="text-slate-200 text-sm max-w-md mx-auto mb-6">
+                <h3 className="text-2xl font-bold text-white mb-2 font-display">Application Submitted!</h3>
+                <p className="text-slate-200 text-base max-w-md mx-auto mb-6 leading-relaxed">
                   Welcome to the selection process! Our student community team will review your application within 24–48
                   hours. Check your email for next steps.
                 </p>
                 <div className="flex flex-wrap justify-center gap-3">
                   <button
                     onClick={() => onNavigate('/')}
-                    className="px-6 py-3 rounded-full font-bold text-sm bg-white/10 hover:bg-white/15 text-white transition-colors cursor-pointer"
+                    className="px-6 py-3 rounded-full font-bold text-sm sm:text-base bg-white/10 hover:bg-white/15 text-white transition-colors cursor-pointer min-h-[44px]"
                   >
                     Explore Boardly
                   </button>
@@ -1318,14 +1444,14 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 <div className="w-12 h-12 rounded-full bg-violet-900/60 border border-violet-500/40 text-violet-300 flex items-center justify-center mx-auto mb-4">
                   <Lock className="w-6 h-6" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-2">Please Sign In to Apply</h3>
-                <p className="text-slate-300 text-sm max-w-md mx-auto mb-6">
+                <h3 className="text-xl font-bold text-white mb-2 font-display">Please Sign In to Apply</h3>
+                <p className="text-slate-300 text-base max-w-md mx-auto mb-6 leading-relaxed">
                   You need a student account so we can automatically activate 30 days of free Premium and connect your
                   ambassador referral code upon approval.
                 </p>
 
                 {formError && (
-                  <div className="mb-4 p-3 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs">
+                  <div className="mb-4 p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-sm">
                     {formError}
                   </div>
                 )}
@@ -1334,7 +1460,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                   <button
                     onClick={handleGoogleSignInForCrew}
                     disabled={googleAuthLoading}
-                    className="w-full py-3.5 px-6 rounded-full font-bold text-sm bg-white text-slate-900 hover:bg-slate-100 active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer min-h-[44px]"
+                    className="w-full py-3.5 px-6 rounded-full font-bold text-sm sm:text-base bg-white text-slate-900 hover:bg-slate-100 active:scale-95 transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer min-h-[48px]"
                   >
                     {googleAuthLoading ? (
                       <Loader2 className="w-4 h-4 animate-spin text-slate-900" />
@@ -1366,7 +1492,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                       sessionStorage.setItem('postLoginPath', '/crew/apply');
                       onNavigate('/login');
                     }}
-                    className="w-full py-3.5 px-6 rounded-full font-bold text-sm bg-violet-600/30 hover:bg-violet-600/50 text-white border border-violet-400/30 transition-all cursor-pointer min-h-[44px]"
+                    className="w-full py-3.5 px-6 rounded-full font-bold text-sm sm:text-base bg-violet-600/30 hover:bg-violet-600/50 text-white border border-violet-400/30 transition-all cursor-pointer min-h-[48px]"
                   >
                     Email Sign In
                   </button>
@@ -1377,7 +1503,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
               <form onSubmit={handleApplicationSubmit} className="space-y-6">
                 {/* Progress Bar & Steps Indicator */}
                 <div className="mb-6">
-                  <div className="flex items-center justify-between text-xs font-mono font-bold text-slate-300 mb-2">
+                  <div className="flex items-center justify-between text-xs font-mono font-bold tracking-[0.08em] uppercase text-slate-300 mb-2">
                     <span className={step === 1 ? 'text-violet-400' : ''}>1. About You</span>
                     <span className={step === 2 ? 'text-violet-400' : ''}>2. Your Campus</span>
                     <span className={step === 3 ? 'text-violet-400' : ''}>3. Your Plan</span>
@@ -1391,7 +1517,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 </div>
 
                 {formError && (
-                  <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-xs flex items-center gap-2">
+                  <div className="p-3.5 rounded-xl bg-rose-950/60 border border-rose-500/40 text-rose-300 text-sm flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400" />
                     <span>{formError}</span>
                   </div>
@@ -1401,7 +1527,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 {step === 1 && (
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      <label className="block text-sm font-semibold text-slate-300 mb-1.5">
                         Full Name <span className="text-violet-400">*</span>
                       </label>
                       <div className="relative">
@@ -1411,14 +1537,14 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                           value={fullName}
                           onChange={(e) => setFullName(e.target.value)}
                           placeholder="e.g. Ali Khan"
-                          className="w-full bg-[#080721] border border-violet-500/30 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 transition-colors"
+                          className="w-full bg-[#080721] border border-violet-500/30 rounded-xl pl-10 pr-4 py-3.5 text-base text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 transition-colors"
                           required
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      <label className="block text-sm font-semibold text-slate-300 mb-1.5">
                         Email Address <span className="text-violet-400">*</span>
                       </label>
                       <div className="relative">
@@ -1427,16 +1553,16 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                           type="email"
                           value={user.email || email}
                           disabled
-                          className="w-full bg-[#080721]/60 border border-slate-700 rounded-xl pl-10 pr-4 py-3 text-sm text-slate-400 cursor-not-allowed"
+                          className="w-full bg-[#080721]/60 border border-slate-700 rounded-xl pl-10 pr-4 py-3.5 text-base text-slate-400 cursor-not-allowed"
                         />
                       </div>
-                      <span className="text-[11px] text-slate-500 mt-1 block">
+                      <span className="text-sm text-slate-400 mt-1 block">
                         Linked directly to your authenticated Boardly account.
                       </span>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      <label className="block text-sm font-semibold text-slate-300 mb-1.5">
                         WhatsApp / Contact Number <span className="text-violet-400">*</span>
                       </label>
                       <div className="relative">
@@ -1446,7 +1572,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                           value={phone}
                           onChange={(e) => setPhone(e.target.value)}
                           placeholder="e.g. 0300 1234567"
-                          className="w-full bg-[#080721] border border-violet-500/30 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 transition-colors"
+                          className="w-full bg-[#080721] border border-violet-500/30 rounded-xl pl-10 pr-4 py-3.5 text-base text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 transition-colors"
                           required
                         />
                       </div>
@@ -1467,7 +1593,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                           setFormError(null);
                           setStep(2);
                         }}
-                        className="px-6 py-3 rounded-full font-bold text-sm bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-700/40 hover:brightness-110 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer min-h-[44px]"
+                        className="px-6 py-3.5 rounded-full font-bold text-base bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-700/40 hover:brightness-110 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer min-h-[48px]"
                       >
                         <span>Next: Campus Details</span>
                         <ArrowRight className="w-4 h-4" />
@@ -1480,7 +1606,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 {step === 2 && (
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      <label className="block text-sm font-semibold text-slate-300 mb-1.5">
                         Institution / College / University Name <span className="text-violet-400">*</span>
                       </label>
                       <div className="relative">
@@ -1490,14 +1616,14 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                           value={institution}
                           onChange={(e) => setInstitution(e.target.value)}
                           placeholder="e.g. FAST Islamabad, Punjab College Lahore, Army Public School"
-                          className="w-full bg-[#080721] border border-violet-500/30 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 transition-colors"
+                          className="w-full bg-[#080721] border border-violet-500/30 rounded-xl pl-10 pr-4 py-3.5 text-base text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 transition-colors"
                           required
                         />
                       </div>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      <label className="block text-sm font-semibold text-slate-300 mb-1.5">
                         Academic Stream / Class <span className="text-violet-400">*</span>
                       </label>
                       <div className="relative">
@@ -1505,7 +1631,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                         <select
                           value={academicLevel}
                           onChange={(e) => setAcademicLevel(e.target.value)}
-                          className="w-full bg-[#080721] border border-violet-500/30 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:outline-none focus:border-violet-400 transition-colors"
+                          className="w-full bg-[#080721] border border-violet-500/30 rounded-xl pl-10 pr-4 py-3.5 text-base text-white focus:outline-none focus:border-violet-400 transition-colors"
                         >
                           <option value="FSC Pre-Medical (11th & 12th)">FSC Pre-Medical (11th &amp; 12th)</option>
                           <option value="FSC Pre-Engineering (11th & 12th)">FSC Pre-Engineering (11th &amp; 12th)</option>
@@ -1518,7 +1644,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      <label className="block text-sm font-semibold text-slate-300 mb-1.5">
                         City / Campus Location <span className="text-violet-400">*</span>
                       </label>
                       <input
@@ -1526,7 +1652,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                         value={city}
                         onChange={(e) => setCity(e.target.value)}
                         placeholder="e.g. Islamabad, Lahore, Rawalpindi, Karachi, Peshawar, Multan"
-                        className="w-full bg-[#080721] border border-violet-500/30 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 transition-colors"
+                        className="w-full bg-[#080721] border border-violet-500/30 rounded-xl px-4 py-3.5 text-base text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 transition-colors"
                         required
                       />
                     </div>
@@ -1535,7 +1661,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                       <button
                         type="button"
                         onClick={() => setStep(1)}
-                        className="px-5 py-2.5 rounded-full font-semibold text-sm bg-white/10 text-slate-300 hover:bg-white/15 transition-colors cursor-pointer"
+                        className="px-5 py-3 rounded-full font-semibold text-sm bg-white/10 text-slate-300 hover:bg-white/15 transition-colors cursor-pointer min-h-[44px]"
                       >
                         Back
                       </button>
@@ -1553,7 +1679,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                           setFormError(null);
                           setStep(3);
                         }}
-                        className="px-6 py-3 rounded-full font-bold text-sm bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-700/40 hover:brightness-110 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer min-h-[44px]"
+                        className="px-6 py-3.5 rounded-full font-bold text-base bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-700/40 hover:brightness-110 active:scale-95 transition-all flex items-center gap-1.5 cursor-pointer min-h-[48px]"
                       >
                         <span>Next: Promotion Plan</span>
                         <ArrowRight className="w-4 h-4" />
@@ -1566,13 +1692,13 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                 {step === 3 && (
                   <div className="space-y-4">
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      <label className="block text-sm font-semibold text-slate-300 mb-1.5">
                         Estimated Batch / Peer Reach
                       </label>
                       <select
                         value={networkReach}
                         onChange={(e) => setNetworkReach(e.target.value)}
-                        className="w-full bg-[#080721] border border-violet-500/30 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-violet-400 transition-colors"
+                        className="w-full bg-[#080721] border border-violet-500/30 rounded-xl px-4 py-3.5 text-base text-white focus:outline-none focus:border-violet-400 transition-colors"
                       >
                         <option value="20 - 50 students">20 - 50 students (Close class batch)</option>
                         <option value="50 - 150 students">50 - 150 students (Multiple sections)</option>
@@ -1582,7 +1708,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                      <label className="block text-sm font-semibold text-slate-300 mb-1.5">
                         How do you plan to promote Boardly at your campus? <span className="text-violet-400">*</span>
                       </label>
                       <textarea
@@ -1590,10 +1716,10 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                         value={promotionPlan}
                         onChange={(e) => setPromotionPlan(e.target.value)}
                         placeholder="e.g. Sharing past paper links in class WhatsApp groups, organizing peer study sessions before midterms, and posting on college society boards."
-                        className="w-full bg-[#080721] border border-violet-500/30 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 transition-colors resize-none"
+                        className="w-full bg-[#080721] border border-violet-500/30 rounded-xl px-4 py-3.5 text-base text-white placeholder-slate-500 focus:outline-none focus:border-violet-400 transition-colors resize-none leading-relaxed"
                         required
                       />
-                      <span className="text-[11px] text-slate-500 mt-1 block">
+                      <span className="text-sm text-slate-400 mt-1 block">
                         Keep it authentic and practical (minimum 15 characters).
                       </span>
                     </div>
@@ -1602,14 +1728,14 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
                       <button
                         type="button"
                         onClick={() => setStep(2)}
-                        className="px-5 py-2.5 rounded-full font-semibold text-sm bg-white/10 text-slate-300 hover:bg-white/15 transition-colors cursor-pointer"
+                        className="px-5 py-3 rounded-full font-semibold text-sm bg-white/10 text-slate-300 hover:bg-white/15 transition-colors cursor-pointer min-h-[44px]"
                       >
                         Back
                       </button>
                       <button
                         type="submit"
                         disabled={submitting}
-                        className="px-8 py-3.5 rounded-full font-bold text-sm bg-gradient-to-r from-[#6d4aff] to-[#4f35f5] text-white shadow-xl shadow-violet-600/40 hover:brightness-110 active:scale-95 transition-all flex items-center gap-2 cursor-pointer border border-violet-400/40 min-h-[44px]"
+                        className="px-8 py-3.5 rounded-full font-bold text-base bg-gradient-to-r from-[#6d4aff] to-[#4f35f5] text-white shadow-xl shadow-violet-600/40 hover:brightness-110 active:scale-95 transition-all flex items-center gap-2 cursor-pointer border border-violet-400/40 min-h-[48px]"
                       >
                         {submitting ? (
                           <>
@@ -1634,10 +1760,10 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         {/* SECTION I (Part 2): Final Call to Action */}
         <section className="max-w-4xl mx-auto px-4 sm:px-6 text-center pb-8">
           <div className="p-8 sm:p-12 rounded-3xl bg-gradient-to-r from-violet-900/30 via-indigo-900/40 to-violet-950/30 border border-violet-500/30 shadow-2xl relative overflow-hidden backdrop-blur-md">
-            <h2 className="text-3xl sm:text-5xl font-black text-white tracking-tight font-display">
+            <h2 className="text-3xl sm:text-5xl font-bold text-white font-display leading-[1.15]">
               Your campus is waiting for someone to step up.
             </h2>
-            <p className="mt-4 text-slate-300 text-sm sm:text-base max-w-xl mx-auto">
+            <p className="mt-4 text-slate-300 text-base max-w-xl mx-auto leading-relaxed">
               Be the ambassador who brings modern, AI-powered diagnostic test prep to your peers. Applications are
               reviewed on a rolling basis.
             </p>
@@ -1657,13 +1783,27 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
       {/* Crew Footer */}
       <footer className="relative z-10 border-t border-violet-500/20 bg-[#040412] mt-16 py-12 px-4 sm:px-6">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-6 text-center md:text-left">
-          {/* Brand info */}
+          {/* Brand info (single display: [B logo icon] + white "Boardly" + violet CREW pill) */}
           <div>
-            <div className="flex items-center justify-center md:justify-start gap-2 mb-2">
-              <BrandLogo size="sm" />
-              <span className="font-extrabold text-white text-base tracking-tight font-display">Boardly Crew</span>
+            <div className="flex items-center justify-center md:justify-start gap-2.5 mb-2">
+              <img
+                src="/assets/boardly-logo-transparent.png"
+                alt="Boardly"
+                className="h-6 w-6 object-contain"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.onerror = null;
+                  target.src = '/assets/boardly-logo-solid.png';
+                }}
+              />
+              <span className="font-bold text-white text-base tracking-normal font-display">
+                Boardly
+              </span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase tracking-[0.08em] bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm border border-violet-400/30">
+                CREW
+              </span>
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-sm text-slate-400 leading-relaxed">
               An educational initiative by{' '}
               <a
                 href="https://shsvirtualacademy.pro"
@@ -1678,23 +1818,23 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
           </div>
 
           {/* Legal and Navigation Links */}
-          <div className="flex flex-wrap items-center justify-center gap-6 text-xs text-slate-400">
-            <button onClick={() => onNavigate('/privacy')} className="hover:text-white transition-colors cursor-pointer">
+          <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-slate-400">
+            <button onClick={() => onNavigate('/privacy')} className="hover:text-white transition-colors cursor-pointer min-h-[44px] flex items-center">
               Privacy Policy
             </button>
-            <button onClick={() => onNavigate('/terms')} className="hover:text-white transition-colors cursor-pointer">
+            <button onClick={() => onNavigate('/terms')} className="hover:text-white transition-colors cursor-pointer min-h-[44px] flex items-center">
               Terms of Service
             </button>
-            <button onClick={() => onNavigate('/contact')} className="hover:text-white transition-colors cursor-pointer">
+            <button onClick={() => onNavigate('/contact')} className="hover:text-white transition-colors cursor-pointer min-h-[44px] flex items-center">
               Contact Support
             </button>
-            <button onClick={() => onNavigate('/')} className="hover:text-white transition-colors cursor-pointer">
+            <button onClick={() => onNavigate('/')} className="hover:text-white transition-colors cursor-pointer min-h-[44px] flex items-center">
               Main Boardly Portal
             </button>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto mt-8 pt-6 border-t border-white/5 text-center text-[11px] text-slate-500 font-mono">
+        <div className="max-w-7xl mx-auto mt-8 pt-6 border-t border-white/5 text-center text-xs text-slate-400 font-mono tracking-[0.08em]">
           &copy; 2026 Boardly by SHS Virtual Academy. All rights reserved.
         </div>
       </footer>

@@ -302,7 +302,7 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                 target.src = '/assets/boardly-logo-transparent.png';
               }}
             />
-            <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+            <span className="text-xl font-bold tracking-normal font-display text-gray-900 dark:text-white">
               Board<span className="text-indigo-600 dark:text-indigo-400">ly</span>
             </span>
           </div>
@@ -614,7 +614,7 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
                 target.src = '/assets/boardly-logo-transparent.png';
               }}
             />
-            <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+            <span className="text-xl font-bold tracking-normal font-display text-gray-900 dark:text-white">
               Board<span className="text-indigo-600 dark:text-indigo-400">ly</span>
             </span>
           </div>

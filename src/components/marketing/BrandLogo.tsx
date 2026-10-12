@@ -7,46 +7,65 @@ interface BrandLogoProps {
   className?: string;
   size?: 'sm' | 'md' | 'lg' | 'xl';
   light?: boolean;
+  variant?: 'light' | 'dark';
+  iconOnly?: boolean;
+  showCrewBadge?: boolean;
 }
 
 export const BrandLogo: React.FC<BrandLogoProps> = ({
   className = '',
   size = 'md',
   light = false,
+  variant,
+  iconOnly = false,
+  showCrewBadge = false,
 }) => {
+  const isDarkBg = light || variant === 'dark';
+
   const iconHeightClasses = {
     sm: 'h-6 sm:h-7',
-    md: 'h-8',
+    md: 'h-7 sm:h-8',
     lg: 'h-8 sm:h-9',
     xl: 'h-9 sm:h-10',
   };
 
   const textClasses = {
-    sm: 'text-lg',
-    md: 'text-xl',
-    lg: 'text-2xl',
-    xl: 'text-3xl',
+    sm: 'text-base sm:text-lg',
+    md: 'text-lg sm:text-xl',
+    lg: 'text-xl sm:text-2xl',
+    xl: 'text-2xl sm:text-3xl',
   };
 
   return (
-    <div className={`flex items-center gap-2 select-none ${className}`}>
+    <div className={`flex items-center gap-2 select-none shrink-0 ${className}`}>
+      {/* Brand Icon [B logo] */}
       <img
-        src={BOARDLY_LOGO_TRANSPARENT}
-        alt="Boardly Logo"
-        className={`${iconHeightClasses[size] || 'h-8'} w-auto object-contain`}
+        src="/assets/boardly-logo-transparent.png"
+        alt="Boardly"
+        className={`${iconHeightClasses[size] || 'h-8'} w-auto object-contain shrink-0`}
         onError={(e) => {
           const target = e.target as HTMLImageElement;
           target.onerror = null;
-          target.src = '/assets/boardly-logo-transparent.png';
+          target.src = '/assets/boardly-logo-solid.png';
         }}
       />
-      <span
-        className={`${textClasses[size] || 'text-xl'} font-bold tracking-tight ${
-          light ? 'text-white' : 'text-gray-900 dark:text-white'
-        }`}
-      >
-        Board<span className={light ? 'text-indigo-500' : 'text-indigo-600 dark:text-indigo-400'}>ly</span>
-      </span>
+      {/* Single Wordmark with crisp contrast */}
+      {!iconOnly && (
+        <span
+          className={`${textClasses[size] || 'text-xl'} font-bold tracking-normal font-display ${
+            isDarkBg ? 'text-white' : 'text-slate-900'
+          }`}
+        >
+          Board<span className={isDarkBg ? 'text-violet-400' : 'text-indigo-600'}>ly</span>
+        </span>
+      )}
+      {/* Optional Violet CREW Pill */}
+      {showCrewBadge && (
+        <span className="px-2 py-0.5 rounded-full text-[10px] sm:text-[11px] font-mono font-bold uppercase tracking-[0.08em] bg-gradient-to-r from-violet-600 to-indigo-600 text-white shadow-sm border border-violet-400/30 shrink-0">
+          CREW
+        </span>
+      )}
     </div>
   );
 };
+
