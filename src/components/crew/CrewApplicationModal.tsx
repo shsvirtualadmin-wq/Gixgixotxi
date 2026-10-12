@@ -87,9 +87,15 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
       return;
     }
 
+    if (!user || !user.uid) {
+      setErrorMessage('Please sign in to apply.');
+      return;
+    }
+
     setSubmitting(true);
     try {
-      const userId = user?.uid || `guest_${Date.now()}`;
+      // Requirement 1: Always save the real Firebase auth uid as userId (no guest IDs)
+      const userId = user.uid;
       await submitCrewApplication({
         userId,
         fullName: fullName.trim(),
@@ -129,6 +135,58 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
           <div className="py-16 text-center text-slate-400 space-y-2">
             <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600" />
             <p className="text-xs font-semibold">Checking application status…</p>
+          </div>
+        ) : !user ? (
+          /* NOT LOGGED IN STATE - REQUIRE LOGIN (Requirement 1) */
+          <div className="text-center py-6 space-y-4 animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto shadow-sm ring-8 ring-indigo-50/50">
+              <User className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-1.5 max-w-sm mx-auto">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-800 text-[11px] font-bold uppercase tracking-wider mb-1">
+                <Sparkles className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Authentication Required</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-[#0d1b3e] tracking-tight">
+                Please sign in to apply
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                You must have a Boardly student account to apply for the Boardly Crew ambassador program. Your 30 days of free Premium access and ambassador dashboard will be activated directly on your account upon approval.
+              </p>
+            </div>
+
+            <div className="pt-3 flex flex-col sm:flex-row gap-2.5 max-w-xs mx-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  if (typeof window !== 'undefined') {
+                    sessionStorage.setItem('postLoginPath', window.location.pathname || '/crew');
+                    window.history.pushState({}, '', '/login');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }
+                }}
+                className="flex-1 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>Sign In</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  if (typeof window !== 'undefined') {
+                    sessionStorage.setItem('postLoginPath', window.location.pathname || '/crew');
+                    window.history.pushState({}, '', '/signup');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }
+                }}
+                className="flex-1 py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold text-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>Sign Up</span>
+              </button>
+            </div>
           </div>
         ) : profile?.isCrewMember ? (
           /* ALREADY APPROVED STATE */

@@ -409,6 +409,8 @@ export interface StudentUserProfile {
   isPaidInternshipEligible?: boolean;
   isPremium?: boolean;
   premiumExpiresAt?: string;
+  pendingPremium?: boolean;
+  pendingPremiumEmail?: string;
 }
 
 export interface UserNotification {
@@ -435,6 +437,9 @@ export interface CrewApplication {
   createdAt: string;
   reviewedAt?: string;
   reviewedBy?: string;
+  pendingPremium?: boolean;
+  pendingPremiumEmail?: string;
+  referralCode?: string;
 }
 
 export interface StoredTestAttempt {
@@ -560,18 +565,77 @@ export async function fetchUserProfile(uid: string): Promise<StudentUserProfile 
       ? rawData.roles
       : [normalizedRole];
 
+    // Check if user has an active or pending Boardly Crew ambassador 30-day Premium grant
+    const userEmailNorm = (rawData.email || '').trim().toLowerCase();
+    let pendingCrewConfig: any = null;
+
+    if (userEmailNorm) {
+      try {
+        const emailKey = userEmailNorm.replace(/[^a-z0-9]/g, '_');
+        const configSnap = await getDoc(doc(db, 'config', `crew_pending_${emailKey}`));
+        if (configSnap.exists()) {
+          const cfg = configSnap.data();
+          if (cfg?.pendingPremium) {
+            pendingCrewConfig = cfg;
+          }
+        }
+      } catch (e) {
+        // Safe read failure notice
+      }
+    }
+
+    const hasPendingPremium = Boolean(rawData.pendingPremium || pendingCrewConfig?.pendingPremium);
+    const premiumExpiryFromConfig = pendingCrewConfig?.expiryDate || (hasPendingPremium ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : undefined);
+    const effectivePremiumExpiresAt = rawData.premiumExpiresAt || premiumExpiryFromConfig;
+
     const isPremiumExpired = Boolean(
-      rawData.premiumExpiresAt &&
-      new Date(rawData.premiumExpiresAt).getTime() < Date.now()
+      effectivePremiumExpiresAt &&
+      new Date(effectivePremiumExpiresAt).getTime() < Date.now()
     );
-    const effectivePlan: PlanType = isPremiumExpired ? 'starter' : plan;
-    const effectiveIsPremium: boolean = isPremiumExpired ? false : Boolean(rawData.isPremium);
+
+    const isActivatedPremium = hasPendingPremium && !isPremiumExpired;
+    const effectivePlan: PlanType = isActivatedPremium ? 'premium' : (isPremiumExpired ? 'starter' : plan);
+    const effectiveIsPremium: boolean = isActivatedPremium ? true : (isPremiumExpired ? false : Boolean(rawData.isPremium));
+    const effectiveIsCrewMember: boolean = isActivatedPremium ? true : Boolean(rawData.isCrewMember);
+    const effectiveCrewStatus = isActivatedPremium ? 'active' : (rawData.crewStatus || (effectiveIsCrewMember ? 'active' : undefined));
+    const effectiveCrewCode = rawData.crewReferralCode || pendingCrewConfig?.referralCode;
+    const effectiveCrewInstitution = rawData.crewInstitution || pendingCrewConfig?.institution;
+
+    if (pendingCrewConfig && effectiveCrewCode) {
+      try {
+        setDoc(
+          doc(db, 'captains', uid),
+          {
+            userId: uid,
+            studentName: rawData.name || pendingCrewConfig.fullName || 'Ambassador',
+            email: userEmailNorm,
+            institution: effectiveCrewInstitution || '',
+            referralCode: effectiveCrewCode,
+            referralCount: 0,
+            activeUsersCount: 0,
+            points: 0,
+            status: 'active',
+            type: 'crew_ambassador',
+            createdAt: new Date().toISOString(),
+            expiresAt: effectivePremiumExpiresAt,
+          },
+          { merge: true }
+        ).catch(console.warn);
+      } catch (capErr) {
+        // Safe notice
+      }
+    }
 
     const profile: StudentUserProfile = {
       ...rawData,
       uid,
       plan: effectivePlan,
       isPremium: effectiveIsPremium,
+      premiumExpiresAt: effectivePremiumExpiresAt,
+      isCrewMember: effectiveIsCrewMember,
+      crewStatus: effectiveCrewStatus,
+      crewReferralCode: effectiveCrewCode,
+      crewInstitution: effectiveCrewInstitution,
       role: normalizedRole,
       roles,
       streak: typeof rawData.streak === 'number' ? rawData.streak : (typeof rawData.streakDays === 'number' ? rawData.streakDays : 0),
@@ -973,98 +1037,290 @@ export async function fetchCrewApplications(): Promise<CrewApplication[]> {
   }
 }
 
+export interface ApproveCrewResult {
+  status: 'upgraded' | 'pending';
+  message: 'Approved and upgraded' | 'Approved; Premium will apply when the student signs up';
+  targetUserId: string;
+  referralCode: string;
+}
+
 /**
  * Approve a Crew application:
- * 1. Sets application status to 'approved' with reviewedAt & reviewedBy
- * 2. Upgrades user to Premium for 30 days and stores expiry date
- * 3. Creates captains/{userId} doc with unique referral code
- * 4. Creates an in-app notification for the user
- * 5. Sends email from noreply@boardly.cfd: "You're approved"
+ * 1. Finds user by userId first. If no document exists, looks up user by application email in users collection.
+ * 2. If still not found, doesn't fail: marks application approved, stores pendingPremium flag with email in config/crew_pending_<emailKey>,
+ *    and applies 30 days Premium automatically when that email signs up or logs in.
+ * 3. Uses setDoc with merge:true instead of updateDoc for the Premium upgrade so missing document doesn't crash.
+ * 4. Returns status with exact messages: "Approved and upgraded" or "Approved; Premium will apply when the student signs up".
  */
-export async function approveCrewApplication(app: CrewApplication, adminEmail: string): Promise<void> {
+export async function approveCrewApplication(
+  app: CrewApplication,
+  adminEmail: string
+): Promise<ApproveCrewResult> {
   const now = new Date().toISOString();
   // 30 days expiry date
   const expiryDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const normalizedEmail = (app.email || '').trim().toLowerCase();
 
-  // 1. Update application doc
-  if (app.id) {
-    const appRef = doc(db, 'crewApplications', app.id);
-    await updateDoc(appRef, {
-      status: 'approved',
-      reviewedAt: now,
-      reviewedBy: adminEmail,
-    });
-  }
-
-  // 2. Generate clean referral code: CREW-<FIRST_NAME>-<RANDOM>
+  // 1. Generate clean referral code: CREW-<FIRST_NAME>-<RANDOM>
   const cleanName = (app.fullName || 'CREW').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 6) || 'AMB';
   const randSuffix = Math.floor(1000 + Math.random() * 9000);
-  const referralCode = `CREW-${cleanName}-${randSuffix}`;
+  const referralCode = app.referralCode || `CREW-${cleanName}-${randSuffix}`;
 
-  // 3. Upgrade user account to Premium for 30 days with expiry date
-  const userRef = doc(db, 'users', app.userId);
-  await updateDoc(userRef, {
-    plan: 'premium',
-    isPremium: true,
-    premiumExpiresAt: expiryDate,
-    isCrewMember: true,
-    crewStatus: 'active',
-    crewStartDate: now,
-    crewInstitution: app.institution,
-    crewReferralCode: referralCode,
-    crewReferralsCount: 0,
-    crewActiveUsersCount: 0,
-    isPaidInternshipEligible: false,
-    updatedAt: now,
-  });
+  // 2. Find user by userId first
+  let targetUserId = app.userId;
+  let userFound = false;
 
-  // 4. Create captains/{userId} document with unique referral code
-  try {
-    await setDoc(doc(db, 'captains', app.userId), {
-      userId: app.userId,
-      studentName: app.fullName,
-      email: app.email,
-      phone: app.phone,
-      institution: app.institution,
-      referralCode,
-      referralCount: 0,
-      activeUsersCount: 0,
-      points: 0,
-      status: 'active',
-      type: 'crew_ambassador',
-      createdAt: now,
-      expiresAt: expiryDate,
-    });
-  } catch (capErr) {
-    console.warn('[Crew Approve] Captain doc create notice:', capErr);
+  if (targetUserId && !targetUserId.startsWith('guest_')) {
+    try {
+      const snap = await getDoc(doc(db, 'users', targetUserId));
+      if (snap.exists()) {
+        userFound = true;
+      }
+    } catch (err) {
+      console.warn('[approveCrewApplication] check user by id error:', err);
+    }
   }
 
-  // 5. Create in-app notification for the user
-  try {
-    await addDoc(collection(db, 'notifications'), {
-      userId: app.userId,
-      title: "🎉 You're Approved for Boardly Crew!",
-      message: `Congratulations! Your Boardly Crew application has been approved. You now have 30 days of free Premium access and your unique ambassador referral code (${referralCode}).`,
-      type: 'crew_approval',
-      read: false,
-      createdAt: now,
-      metadata: {
+  // If no document exists, look up user by application email in users collection
+  if (!userFound && normalizedEmail) {
+    try {
+      const usersQ = query(
+        collection(db, 'users'),
+        where('email', '==', normalizedEmail),
+        limit(1)
+      );
+      const snap = await getDocs(usersQ);
+      if (!snap.empty) {
+        targetUserId = snap.docs[0].id;
+        userFound = true;
+      }
+    } catch (err) {
+      console.warn('[approveCrewApplication] lookup user by email error:', err);
+    }
+  }
+
+  if (userFound && targetUserId) {
+    // 3. User document was found: use setDoc with merge:true instead of updateDoc
+    const userRef = doc(db, 'users', targetUserId);
+    await setDoc(
+      userRef,
+      {
+        plan: 'premium',
+        isPremium: true,
+        premiumExpiresAt: expiryDate,
+        isCrewMember: true,
+        crewStatus: 'active',
+        crewStartDate: now,
+        crewInstitution: app.institution,
+        crewReferralCode: referralCode,
+        crewReferralsCount: 0,
+        crewActiveUsersCount: 0,
+        isPaidInternshipEligible: false,
+        pendingPremium: false,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    // Create / update captains/{userId} doc
+    try {
+      await setDoc(
+        doc(db, 'captains', targetUserId),
+        {
+          userId: targetUserId,
+          studentName: app.fullName,
+          email: normalizedEmail,
+          phone: app.phone,
+          institution: app.institution,
+          referralCode,
+          referralCount: 0,
+          activeUsersCount: 0,
+          points: 0,
+          status: 'active',
+          type: 'crew_ambassador',
+          createdAt: now,
+          expiresAt: expiryDate,
+        },
+        { merge: true }
+      );
+    } catch (capErr) {
+      console.warn('[Crew Approve] Captain doc create notice:', capErr);
+    }
+
+    // Create in-app notification
+    try {
+      await addDoc(collection(db, 'notifications'), {
+        userId: targetUserId,
+        title: "🎉 You're Approved for Boardly Crew!",
+        message: `Congratulations! Your Boardly Crew application has been approved. You now have 30 days of free Premium access and your unique ambassador referral code (${referralCode}).`,
+        type: 'crew_approval',
+        read: false,
+        createdAt: now,
+        metadata: {
+          referralCode,
+          expiresAt: expiryDate,
+        },
+      });
+    } catch (notifErr) {
+      console.warn('[Crew Approve] In-app notification notice:', notifErr);
+    }
+
+    // Update application doc
+    if (app.id) {
+      await setDoc(
+        doc(db, 'crewApplications', app.id),
+        {
+          status: 'approved',
+          reviewedAt: now,
+          reviewedBy: adminEmail,
+          userId: targetUserId,
+          referralCode,
+          pendingPremium: false,
+        },
+        { merge: true }
+      );
+    }
+
+    // Send email via Resend
+    try {
+      fetch('/api/crew/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'approve',
+          to: normalizedEmail,
+          name: app.fullName,
+          referralCode,
+          institution: app.institution,
+        }),
+      }).catch((e) => console.warn('[Crew Approve] Email dispatch notice:', e));
+    } catch (emailErr) {
+      console.warn('[Crew Approve] Email trigger notice:', emailErr);
+    }
+
+    await recordAuditLog({
+      adminId: 'admin',
+      adminEmail,
+      action: 'APPROVE_CREW_APPLICATION',
+      targetType: 'crewApplications',
+      targetId: app.id || targetUserId,
+      details: `Approved ${app.fullName} (${app.institution}) as Crew Ambassador with 30d Premium & code ${referralCode}`,
+    });
+
+    return {
+      status: 'upgraded',
+      message: 'Approved and upgraded',
+      targetUserId,
+      referralCode,
+    };
+  }
+
+  // Still not found: don't fail!
+  // Mark the application approved, store a pendingPremium flag with the email,
+  // and apply the 30 days Premium automatically when that email signs up or logs in.
+  // Use setDoc with merge:true instead of updateDoc for the Premium upgrade so a missing document doesn't crash it.
+  const fallbackUserId = app.userId || `guest_${Date.now()}`;
+
+  // 1. Mark application approved with pendingPremium flag and email
+  if (app.id) {
+    await setDoc(
+      doc(db, 'crewApplications', app.id),
+      {
+        status: 'approved',
+        reviewedAt: now,
+        reviewedBy: adminEmail,
         referralCode,
+        pendingPremium: true,
+        pendingPremiumEmail: normalizedEmail,
+        userId: fallbackUserId,
+      },
+      { merge: true }
+    );
+  }
+
+  // 2. Store pendingPremium flag with the email in config (readable by all users per firestore.rules)
+  try {
+    const emailKey = normalizedEmail.replace(/[^a-z0-9]/g, '_');
+    await setDoc(
+      doc(db, 'config', `crew_pending_${emailKey}`),
+      {
+        email: normalizedEmail,
+        applicationId: app.id || '',
+        fullName: app.fullName,
+        institution: app.institution,
+        referralCode,
+        pendingPremium: true,
+        approvedAt: now,
+        expiryDate,
+      },
+      { merge: true }
+    );
+  } catch (configErr) {
+    console.warn('[approveCrewApplication] config pending flag notice:', configErr);
+  }
+
+  // 3. Use setDoc with merge:true for the Premium upgrade on fallback user doc so missing document doesn't crash
+  try {
+    await setDoc(
+      doc(db, 'users', fallbackUserId),
+      {
+        email: normalizedEmail,
+        name: app.fullName,
+        plan: 'premium',
+        isPremium: true,
+        premiumExpiresAt: expiryDate,
+        isCrewMember: true,
+        crewStatus: 'active',
+        crewStartDate: now,
+        crewInstitution: app.institution,
+        crewReferralCode: referralCode,
+        crewReferralsCount: 0,
+        crewActiveUsersCount: 0,
+        isPaidInternshipEligible: false,
+        pendingPremium: true,
+        pendingPremiumEmail: normalizedEmail,
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+  } catch (userErr) {
+    console.warn('[approveCrewApplication] setDoc on fallback user notice:', userErr);
+  }
+
+  // 4. Create captain document with merge:true
+  try {
+    await setDoc(
+      doc(db, 'captains', fallbackUserId),
+      {
+        userId: fallbackUserId,
+        studentName: app.fullName,
+        email: normalizedEmail,
+        phone: app.phone,
+        institution: app.institution,
+        referralCode,
+        referralCount: 0,
+        activeUsersCount: 0,
+        points: 0,
+        status: 'active',
+        type: 'crew_ambassador',
+        pendingPremium: true,
+        createdAt: now,
         expiresAt: expiryDate,
       },
-    });
-  } catch (notifErr) {
-    console.warn('[Crew Approve] In-app notification notice:', notifErr);
+      { merge: true }
+    );
+  } catch (capErr) {
+    console.warn('[approveCrewApplication] captain doc notice:', capErr);
   }
 
-  // 6. Send approval email via Resend API
+  // 5. Send approval email via Resend
   try {
     fetch('/api/crew/notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'approve',
-        to: app.email,
+        to: normalizedEmail,
         name: app.fullName,
         referralCode,
         institution: app.institution,
@@ -1074,15 +1330,21 @@ export async function approveCrewApplication(app: CrewApplication, adminEmail: s
     console.warn('[Crew Approve] Email trigger notice:', emailErr);
   }
 
-  // 7. Audit Log
   await recordAuditLog({
     adminId: 'admin',
     adminEmail,
-    action: 'APPROVE_CREW_APPLICATION',
+    action: 'APPROVE_CREW_APPLICATION_PENDING_REGISTRATION',
     targetType: 'crewApplications',
-    targetId: app.id || app.userId,
-    details: `Approved ${app.fullName} (${app.institution}) as Crew Ambassador with 30d Premium & code ${referralCode}`,
+    targetId: app.id || fallbackUserId,
+    details: `Approved application for ${app.fullName} (${normalizedEmail}) - pending student registration. Code: ${referralCode}`,
   });
+
+  return {
+    status: 'pending',
+    message: 'Approved; Premium will apply when the student signs up',
+    targetUserId: fallbackUserId,
+    referralCode,
+  };
 }
 
 /**

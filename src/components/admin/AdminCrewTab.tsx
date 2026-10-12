@@ -98,8 +98,11 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
   const handleApprove = async (app: CrewApplication) => {
     setActionInProgress(app.id || 'approving');
     try {
-      await approveCrewApplication(app, adminEmail);
-      setToastMessage(`Approved ${app.fullName} as Crew Ambassador! Account upgraded to Premium.`);
+      const res = await approveCrewApplication(app, adminEmail);
+      // Requirement 4: Show a clear message to the admin:
+      // "Approved and upgraded" or "Approved; Premium will apply when the student signs up"
+      const message = res?.message || 'Approved and upgraded';
+      setToastMessage(message);
       await loadData();
     } catch (err: any) {
       console.error('Approve error:', err);
@@ -341,8 +344,13 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
 
                         <div>
                           {app.status === 'approved' && (
-                            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
-                              <Check className="w-3.5 h-3.5" /> Approved
+                            <span className={`inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-black ${
+                              app.pendingPremium
+                                ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            }`}>
+                              <Check className="w-3.5 h-3.5" />
+                              <span>{app.pendingPremium ? 'Approved (Pending Signup)' : 'Approved'}</span>
                             </span>
                           )}
                           {app.status === 'rejected' && (
@@ -429,7 +437,9 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
                         </div>
                       ) : (
                         <div className="text-[11px] font-bold text-slate-400">
-                          {app.status === 'approved' ? '✓ Ambassador Active' : 'Status: Rejected'}
+                          {app.status === 'approved'
+                            ? (app.pendingPremium ? '✓ Approved; Premium will apply when student signs up' : '✓ Ambassador Active')
+                            : 'Status: Rejected'}
                         </div>
                       )}
                     </div>

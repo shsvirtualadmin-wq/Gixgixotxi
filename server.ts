@@ -8614,6 +8614,78 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
+  // API Endpoint: Boardly Crew Notifications (Health check & Email Dispatch)
+  app.get("/api/crew/notify", (_req: express.Request, res: express.Response) => {
+    res.status(200).json({
+      ok: true,
+      service: "boardly-crew-notifications",
+      configured: {
+        resend: Boolean(process.env.RESEND_API_KEY),
+      },
+    });
+  });
+
+  app.post("/api/crew/notify", async (req: express.Request, res: express.Response) => {
+    try {
+      const body = req.body || {};
+      const type = String(body.type || 'submit').trim();
+      const resendApiKey = process.env.RESEND_API_KEY;
+      const fromAddress = process.env.CONTACT_FROM || 'Boardly <noreply@boardly.cfd>';
+
+      if (type === 'approve') {
+        const applicantEmail = String(body.to || body.email || '').trim().toLowerCase();
+        const applicantName = String(body.name || body.fullName || 'Student').trim();
+        const referralCode = String(body.referralCode || '').trim();
+        const institution = String(body.institution || '').trim();
+
+        if (resendApiKey && applicantEmail) {
+          const referralLink = `https://boardly.cfd/signup?ref=${encodeURIComponent(referralCode)}`;
+          const emailHtml = `
+            <!DOCTYPE html>
+            <html>
+            <head><meta charset="utf-8"></head>
+            <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f8fafc; padding: 24px; color: #1e293b;">
+              <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 16px; border: 1px solid #e2e8f0; overflow: hidden;">
+                <div style="background: linear-gradient(135deg, #0A1330 0%, #16a34a 100%); padding: 26px 32px; color: #ffffff;">
+                  <h2 style="margin: 0; font-size: 22px;">Welcome to Boardly Crew! 🎉</h2>
+                  <p style="margin: 4px 0 0; font-size: 13px; opacity: 0.95;">Official Campus Ambassador for ${institution || 'your institution'}</p>
+                </div>
+                <div style="padding: 28px 32px; font-size: 14px; line-height: 1.6;">
+                  <p>Hi <strong>${applicantName}</strong>,</p>
+                  <p>Congratulations! Your Boardly Crew application has been approved. You now have 30 days of free Premium access and your unique referral code:</p>
+                  <div style="margin: 20px 0; padding: 16px; background: #f8fafc; border-radius: 12px; border: 1px dashed #cbd5e1; text-align: center;">
+                    <div style="font-size: 20px; font-weight: 800; color: #4338ca; letter-spacing: 0.05em;">${referralCode}</div>
+                    <p style="font-size: 12px; color: #64748b; margin: 8px 0 0;"><a href="${referralLink}">${referralLink}</a></p>
+                  </div>
+                </div>
+              </div>
+            </body>
+            </html>
+          `;
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${resendApiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              from: fromAddress,
+              to: [applicantEmail],
+              subject: `[Boardly Crew] Welcome to Boardly Crew! Application Approved`,
+              html: emailHtml,
+              text: `Welcome to Boardly Crew! Your application is approved. Referral Code: ${referralCode}`,
+            }),
+          }).catch((e) => console.warn('[server crew/notify approve error]:', e));
+        }
+      }
+
+      return res.status(200).json({ ok: true });
+    } catch (err: any) {
+      console.warn('[server crew/notify error]:', err);
+      return res.status(200).json({ ok: true, notice: err?.message });
+    }
+  });
+
   // API Endpoint: Supabase to Firebase Student History Migration Routine
   app.post("/api/auth/migrate-student-history", async (req: express.Request, res: express.Response) => {
     try {
