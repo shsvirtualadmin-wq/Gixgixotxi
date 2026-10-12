@@ -2313,23 +2313,18 @@ $$K.E._{\\text{max}} = h\\\\nu - \\\\Phi$$
             {/* Column 1: Brand Blurb */}
             <div className="space-y-3 sm:col-span-2 lg:col-span-1">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-[#0A1330] border border-[#1E5AFF]/40 p-0.5 flex items-center justify-center shadow-xs overflow-hidden shrink-0">
-                  <img
-                    src="https://i.ibb.co/ymPFp2Wb/Chat-Box-1256234838.jpg"
-                    alt="Boardly Logo"
-                    className="w-full h-full object-cover rounded-md"
-                    onError={(e) => {
-                      const target = e.target as HTMLImageElement;
-                      target.onerror = null;
-                      target.src = '/logo.png';
-                    }}
-                  />
-                </div>
-                <span
-                  className="text-base font-black tracking-tight text-slate-900 "
-                  style={{ fontFamily: "'Space Grotesk', sans-serif" }}
-                >
-                  BOARDLY
+                <img
+                  src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000028e88211b439a564acc83f64.png"
+                  alt="Boardly Logo"
+                  className="h-8 w-auto object-contain"
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    target.onerror = null;
+                    target.src = '/assets/boardly-logo-transparent.png';
+                  }}
+                />
+                <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+                  Board<span className="text-indigo-600 dark:text-indigo-400">ly</span>
                 </span>
               </div>
               <p className="text-slate-600  leading-relaxed font-normal">

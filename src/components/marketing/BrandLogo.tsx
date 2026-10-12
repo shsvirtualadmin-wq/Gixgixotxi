@@ -14,23 +14,39 @@ export const BrandLogo: React.FC<BrandLogoProps> = ({
   size = 'md',
   light = false,
 }) => {
-  const heightClasses = {
-    sm: 'h-7',
-    md: 'h-8 sm:h-9',
-    lg: 'h-9 sm:h-10',
-    xl: 'h-11 sm:h-12',
+  const iconHeightClasses = {
+    sm: 'h-6 sm:h-7',
+    md: 'h-8',
+    lg: 'h-8 sm:h-9',
+    xl: 'h-9 sm:h-10',
+  };
+
+  const textClasses = {
+    sm: 'text-lg',
+    md: 'text-xl',
+    lg: 'text-2xl',
+    xl: 'text-3xl',
   };
 
   return (
-    <img
-      src={BOARDLY_LOGO_TRANSPARENT}
-      alt="Boardly Logo"
-      className={`${heightClasses[size] || 'h-8 sm:h-9'} w-auto object-contain select-none transition-transform duration-200 ${light ? 'brightness-0 invert' : ''} ${className}`}
-      onError={(e) => {
-        const target = e.target as HTMLImageElement;
-        target.onerror = null;
-        target.src = '/assets/boardly-logo-transparent.png';
-      }}
-    />
+    <div className={`flex items-center gap-2 select-none ${className}`}>
+      <img
+        src={BOARDLY_LOGO_TRANSPARENT}
+        alt="Boardly Logo"
+        className={`${iconHeightClasses[size] || 'h-8'} w-auto object-contain`}
+        onError={(e) => {
+          const target = e.target as HTMLImageElement;
+          target.onerror = null;
+          target.src = '/assets/boardly-logo-transparent.png';
+        }}
+      />
+      <span
+        className={`${textClasses[size] || 'text-xl'} font-bold tracking-tight ${
+          light ? 'text-white' : 'text-gray-900 dark:text-white'
+        }`}
+      >
+        Board<span className={light ? 'text-indigo-500' : 'text-indigo-600 dark:text-indigo-400'}>ly</span>
+      </span>
+    </div>
   );
 };

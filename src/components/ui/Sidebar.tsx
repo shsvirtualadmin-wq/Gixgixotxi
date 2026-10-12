@@ -151,16 +151,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* Brand Header */}
       <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between">
         <div className="flex flex-col gap-1.5">
-          <img
-            src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000028e88211b439a564acc83f64.png"
-            alt="Boardly Logo"
-            className="h-8 sm:h-9 w-auto object-contain"
-            onError={(e) => {
-              const target = e.target as HTMLImageElement;
-              target.onerror = null;
-              target.src = '/assets/boardly-logo-transparent.png';
-            }}
-          />
+          <div className="flex items-center gap-2">
+            <img
+              src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000028e88211b439a564acc83f64.png"
+              alt="Boardly Logo"
+              className="h-8 w-auto object-contain"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                target.onerror = null;
+                target.src = '/assets/boardly-logo-transparent.png';
+              }}
+            />
+            <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+              Board<span className="text-indigo-600 dark:text-indigo-400">ly</span>
+            </span>
+          </div>
           <div className="flex items-center gap-1.5 pl-0.5">
             <span className={`w-1.5 h-1.5 rounded-full ${roleTheme.dot}`} />
             <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">

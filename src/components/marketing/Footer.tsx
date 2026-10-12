@@ -66,7 +66,21 @@ export const Footer: React.FC<FooterProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-12 gap-10 pb-12 border-b border-slate-800/80">
           {/* Brand Col */}
           <div className="md:col-span-4 space-y-4">
-            <BrandLogo size="lg" light />
+            <div className="flex items-center gap-2 select-none">
+              <img
+                src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000028e88211b439a564acc83f64.png"
+                alt="Boardly Logo"
+                className="h-8 w-auto object-contain"
+                onError={(e) => {
+                  const target = e.target as HTMLImageElement;
+                  target.onerror = null;
+                  target.src = '/assets/boardly-logo-transparent.png';
+                }}
+              />
+              <span className="text-xl font-bold tracking-tight text-white">
+                Board<span className="text-indigo-500">ly</span>
+              </span>
+            </div>
             <p className="text-sm text-slate-400 max-w-sm leading-relaxed">
               Boardly is Pakistan’s premier self-paced diagnostic testing engine and exam revision suite for Matric, FSC, and competitive entrance test candidates.
             </p>

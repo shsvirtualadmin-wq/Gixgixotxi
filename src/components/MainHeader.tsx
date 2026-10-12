@@ -294,13 +294,16 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
             <img
               src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000028e88211b439a564acc83f64.png"
               alt="Boardly Logo"
-              className="h-8 sm:h-9 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
+              className="h-8 w-auto object-contain transition-transform duration-200 group-hover:scale-105"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 target.onerror = null;
                 target.src = '/assets/boardly-logo-transparent.png';
               }}
             />
+            <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+              Board<span className="text-indigo-600 dark:text-indigo-400">ly</span>
+            </span>
           </div>
         </div>
 
@@ -598,13 +601,16 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
             <img
               src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_0000000028e88211b439a564acc83f64.png"
               alt="Boardly Logo"
-              className="h-7 w-auto object-contain"
+              className="h-8 w-auto object-contain"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
                 target.onerror = null;
                 target.src = '/assets/boardly-logo-transparent.png';
               }}
             />
+            <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white">
+              Board<span className="text-indigo-600 dark:text-indigo-400">ly</span>
+            </span>
           </div>
           <div className="flex flex-col gap-1.5 text-xs font-bold text-slate-800 ">
             {/* 1. LOGGED-OUT VISITOR LINKS */}
