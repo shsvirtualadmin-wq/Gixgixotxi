@@ -8471,10 +8471,28 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
+  // API Healthcheck Endpoint: Student Contact & Inquiries
+  app.get("/api/contact", (req: express.Request, res: express.Response) => {
+    return res.json({
+      ok: true,
+      configured: {
+        resend: Boolean(process.env.RESEND_API_KEY),
+        firestore: Boolean(process.env.FIREBASE_API_KEY || process.env.GOOGLE_SERVICE_ACCOUNT_KEY),
+      },
+    });
+  });
+
   // API Endpoint: Student Inquiry & Contact Routing (Emailed to support@boardly.cfd)
   app.post("/api/contact", async (req: express.Request, res: express.Response) => {
     try {
-      const { name, email, phone, category, message } = req.body || {};
+      const { name, email, phone, category, message, _hp, renderedAt } = req.body || {};
+      if (_hp) {
+        return res.status(400).json({ ok: false, success: false, error: "Spam submission detected." });
+      }
+      if (renderedAt && Date.now() - Number(renderedAt) < 3000) {
+        return res.status(400).json({ ok: false, success: false, error: "Submission was too fast. Please take your time." });
+      }
+
       const studentName = String(name || '').trim();
       const studentEmail = String(email || '').trim().toLowerCase();
       const studentPhone = String(phone || '').trim();
@@ -8483,6 +8501,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
 
       if (!studentName || !studentEmail || !studentMessage) {
         return res.status(400).json({
+          ok: false,
           success: false,
           error: "Please provide your name, email, and message.",
         });
@@ -8580,6 +8599,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       });
 
       return res.status(200).json({
+        ok: true,
         success: true,
         message: "Your inquiry has been received and routed directly to support@boardly.cfd.",
         ticketId: inquiryRecord.id,
@@ -8587,6 +8607,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     } catch (err: any) {
       console.error("[api/contact error]:", err);
       return res.status(500).json({
+        ok: false,
         success: false,
         error: err?.message || "Failed to process contact inquiry.",
       });

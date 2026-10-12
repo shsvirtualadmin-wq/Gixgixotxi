@@ -15,32 +15,66 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
     message: '',
   });
 
+  const [renderTime] = useState<number>(() => Date.now());
+  const [honeypot, setHoneypot] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<{ text: string; showWhatsApp?: boolean } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name || !formData.email || !formData.message) return;
+    if (!formData.name.trim() || !formData.email.trim() || !formData.message.trim()) return;
 
     setSubmitting(true);
     setErrorMessage(null);
+
     try {
       const res = await fetch('/api/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData),
+        body: JSON.stringify({
+          ...formData,
+          _hp: honeypot,
+          renderedAt: renderTime,
+        }),
       });
-      const data = await res.json();
-      if (res.ok && data.success) {
+
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        // Non-JSON response (e.g. HTML from SPA fallback or Cloudflare proxy)
+        setErrorMessage({
+          text: "Couldn't send right now. Please message us on WhatsApp",
+          showWhatsApp: true,
+        });
+        return;
+      }
+
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        setErrorMessage({
+          text: "Couldn't send right now. Please message us on WhatsApp",
+          showWhatsApp: true,
+        });
+        return;
+      }
+
+      // Show success only when ok is true
+      if (res.ok && data.ok) {
         setSubmitted(true);
       } else {
-        setErrorMessage(data.error || 'Failed to send inquiry. Please try again or message via WhatsApp.');
+        setErrorMessage({
+          text: data.error || "Couldn't send right now. Please message us on WhatsApp",
+          showWhatsApp: true,
+        });
       }
     } catch (err: any) {
       console.warn('[Contact dispatch error]:', err);
-      // Fallback optimistic submission so student is never stranded
-      setSubmitted(true);
+      setErrorMessage({
+        text: "Couldn't send right now. Please message us on WhatsApp",
+        showWhatsApp: true,
+      });
     } finally {
       setSubmitting(false);
     }
@@ -54,7 +88,9 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
       category: 'academic',
       message: '',
     });
+    setHoneypot('');
     setSubmitted(false);
+    setErrorMessage(null);
   };
 
   return (
@@ -184,6 +220,38 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
                     Fill out the form below and we’ll get back to you promptly.
                   </p>
                 </div>
+
+                {/* Honeypot field for bot protection (hidden from users) */}
+                <input
+                  type="text"
+                  name="_hp"
+                  value={honeypot}
+                  onChange={(e) => setHoneypot(e.target.value)}
+                  style={{ display: 'none', position: 'absolute', left: '-9999px' }}
+                  tabIndex={-1}
+                  autoComplete="off"
+                  aria-hidden="true"
+                />
+
+                {/* Error Banner with WhatsApp fallback link */}
+                {errorMessage && (
+                  <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200/90 text-amber-900 text-xs sm:text-sm space-y-2 animate-in fade-in">
+                    <p className="font-semibold">{errorMessage.text}</p>
+                    {errorMessage.showWhatsApp && (
+                      <div className="pt-1">
+                        <a
+                          href="https://wa.me/923058969050"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition-colors shadow-sm"
+                        >
+                          <MessageCircle className="w-3.5 h-3.5 fill-white stroke-none" />
+                          <span>Message us on WhatsApp (+92 305 8969050)</span>
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Name */}
                 <div className="space-y-1.5">

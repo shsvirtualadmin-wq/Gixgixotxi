@@ -876,8 +876,8 @@ function prerenderAllRoutes() {
     }
   }
 
-  // Ensure sitemap.xml, robots.txt, and _redirects are in dist
-  const publicFiles = ['sitemap.xml', 'robots.txt', '_redirects', '_headers'];
+  // Ensure sitemap.xml, robots.txt, _routes.json, and _redirects are in dist
+  const publicFiles = ['sitemap.xml', 'robots.txt', '_redirects', '_headers', '_routes.json'];
   for (const file of publicFiles) {
     const srcPath = path.resolve(process.cwd(), 'public', file);
     const destPath = path.resolve(distDir, file);
