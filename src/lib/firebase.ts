@@ -1037,6 +1037,81 @@ export async function fetchCrewApplications(): Promise<CrewApplication[]> {
   }
 }
 
+export interface CaptainRecord {
+  userId: string;
+  studentName?: string;
+  email?: string;
+  phone?: string;
+  institution?: string;
+  referralCode?: string;
+  referralCount?: number;
+  activeUsersCount?: number;
+  points?: number;
+  status?: string;
+  type?: string;
+  createdAt?: string;
+  expiresAt?: string;
+}
+
+/**
+ * Fetch approved captain document for a user (from captains/{uid})
+ */
+export async function fetchCaptainRecord(uid: string): Promise<CaptainRecord | null> {
+  if (!uid) return null;
+  try {
+    const snap = await getDoc(doc(db, 'captains', uid));
+    if (snap.exists()) {
+      return snap.data() as CaptainRecord;
+    }
+    return null;
+  } catch (err) {
+    console.warn('[fetchCaptainRecord] notice:', err);
+    return null;
+  }
+}
+
+/**
+ * Record a referral signup when a student registers with ref=CREW-XXXX
+ */
+export async function recordReferralOnSignup(params: {
+  referralCode: string;
+  referredUserId: string;
+  referredUserName: string;
+  referredUserEmail: string;
+}): Promise<{ success: boolean; referralCount?: number }> {
+  try {
+    const res = await fetch('/api/referrals/record', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return { success: true, referralCount: data.referralCount };
+    }
+  } catch (err) {
+    console.warn('[recordReferralOnSignup] notice:', err);
+  }
+  return { success: false };
+}
+
+/**
+ * Fetch live referral count for an ambassador by code or captainId
+ */
+export async function fetchReferralCount(referralCode: string): Promise<number> {
+  if (!referralCode) return 0;
+  try {
+    const res = await fetch(`/api/referrals/count?code=${encodeURIComponent(referralCode)}`);
+    if (res.ok) {
+      const data = await res.json();
+      return typeof data.count === 'number' ? data.count : 0;
+    }
+  } catch (err) {
+    console.warn('[fetchReferralCount] notice:', err);
+  }
+  return 0;
+}
+
 export interface ApproveCrewResult {
   status: 'upgraded' | 'pending';
   message: 'Approved and upgraded' | 'Approved; Premium will apply when the student signs up';

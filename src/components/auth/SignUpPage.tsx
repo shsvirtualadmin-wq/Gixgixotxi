@@ -14,6 +14,13 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onNavigate }) => {
   const [referralCode] = useState<string>(() => {
     if (typeof window === 'undefined') return '';
     try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const queryRef = urlParams.get('ref') || urlParams.get('referral');
+      if (queryRef && queryRef.trim()) {
+        const clean = queryRef.trim();
+        sessionStorage.setItem('referralCode', clean);
+        return clean;
+      }
       return sessionStorage.getItem('referralCode') || '';
     } catch {
       return '';
@@ -84,6 +91,7 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onNavigate }) => {
       confirmPassword,
       preparingFor,
       referralSource: effectiveReferralSource,
+      referralCode: referralCode || undefined,
       termsAccepted: agreedToTerms,
     });
     setIsLoading(false);
@@ -213,6 +221,17 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onNavigate }) => {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* Ambassador Referral Applied Indicator */}
+          {referralCode && (
+            <div className="mb-5 p-3 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-semibold flex items-center justify-between shadow-xs animate-fade-in">
+              <div className="flex items-center gap-2">
+                <Gift className="w-4 h-4 text-indigo-600 shrink-0" />
+                <span>Referred by Ambassador: <strong className="font-mono text-indigo-700 tracking-wide">{referralCode}</strong></span>
+              </div>
+              <span className="text-[10px] bg-indigo-600 text-white font-black px-2 py-0.5 rounded-full uppercase tracking-wider">Applied</span>
             </div>
           )}
 

@@ -8686,6 +8686,95 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
+  // API Endpoints: Referral Tracking for Campus Ambassadors & Boardly Crew
+  app.post("/api/referrals/record", async (req: express.Request, res: express.Response) => {
+    try {
+      const { referralCode, referredUserId, referredUserName, referredUserEmail } = req.body || {};
+      const cleanCode = String(referralCode || '').trim().toUpperCase();
+      if (!cleanCode) {
+        return res.status(400).json({ success: false, error: "referralCode is required" });
+      }
+
+      const referralsPath = path.join(process.cwd(), 'data', 'crew_referrals.json');
+      let referrals: any[] = [];
+      if (fs.existsSync(referralsPath)) {
+        try {
+          referrals = JSON.parse(fs.readFileSync(referralsPath, 'utf8'));
+          if (!Array.isArray(referrals)) referrals = [];
+        } catch {
+          referrals = [];
+        }
+      }
+
+      // Check if this user was already recorded for this ambassador referral code
+      const alreadyExists = referrals.some((r) => {
+        const sameCode = String(r.referralCode || '').toUpperCase() === cleanCode;
+        const sameUid = referredUserId && r.referredUserId === referredUserId;
+        const sameEmail = referredUserEmail && r.referredUserEmail &&
+          String(r.referredUserEmail).toLowerCase() === String(referredUserEmail).toLowerCase();
+        return sameCode && (sameUid || sameEmail);
+      });
+
+      if (!alreadyExists) {
+        const newRecord = {
+          id: `ref_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          referralCode: cleanCode,
+          referredUserId: String(referredUserId || ''),
+          referredUserName: String(referredUserName || 'Student').trim(),
+          referredUserEmail: String(referredUserEmail || '').trim().toLowerCase(),
+          createdAt: new Date().toISOString(),
+        };
+        referrals.unshift(newRecord);
+        try {
+          fs.writeFileSync(referralsPath, JSON.stringify(referrals, null, 2), 'utf8');
+        } catch (fsErr) {
+          console.warn('[referrals/record write error]:', fsErr);
+        }
+      }
+
+      // Live count for this ambassador code
+      const liveCount = referrals.filter(
+        (r) => String(r.referralCode || '').toUpperCase() === cleanCode
+      ).length;
+
+      return res.status(200).json({
+        success: true,
+        referralCount: liveCount,
+      });
+    } catch (err: any) {
+      console.warn('[/api/referrals/record error]:', err);
+      return res.status(500).json({ success: false, error: err?.message || "Failed to record referral" });
+    }
+  });
+
+  app.get("/api/referrals/count", (req: express.Request, res: express.Response) => {
+    try {
+      const cleanCode = String(req.query.code || '').trim().toUpperCase();
+      if (!cleanCode) {
+        return res.status(200).json({ success: true, count: 0 });
+      }
+
+      const referralsPath = path.join(process.cwd(), 'data', 'crew_referrals.json');
+      let referrals: any[] = [];
+      if (fs.existsSync(referralsPath)) {
+        try {
+          referrals = JSON.parse(fs.readFileSync(referralsPath, 'utf8'));
+          if (!Array.isArray(referrals)) referrals = [];
+        } catch {
+          referrals = [];
+        }
+      }
+
+      const count = referrals.filter(
+        (r) => String(r.referralCode || '').toUpperCase() === cleanCode
+      ).length;
+
+      return res.status(200).json({ success: true, count });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, error: err?.message || "Failed to get referral count" });
+    }
+  });
+
   // API Endpoint: Supabase to Firebase Student History Migration Routine
   app.post("/api/auth/migrate-student-history", async (req: express.Request, res: express.Response) => {
     try {

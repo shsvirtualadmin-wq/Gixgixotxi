@@ -96,9 +96,11 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
     consumeAiChatReply,
   } = useUsage();
 
-  const firstName = isAdmin
-    ? 'Admin'
-    : (profile?.name?.trim().split(' ')[0] || 'Student');
+  // Bug 5 fix: Always greet the user using their profile first name, not generic "Admin"
+  const firstName =
+    profile?.name?.trim().split(' ')[0] ||
+    user?.displayName?.trim().split(' ')[0] ||
+    (isAdmin ? 'Admin' : 'Student');
 
   const targetTest = profile?.targetUniversity || profile?.testTrack || '';
 

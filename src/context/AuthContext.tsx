@@ -16,6 +16,7 @@ import {
   saveUserProfile,
   createInitialUserDoc,
   performGoogleSignIn,
+  recordReferralOnSignup,
   StudentUserProfile,
   UserRole,
   browserLocalPersistence,
@@ -33,6 +34,7 @@ export interface SignUpFormData {
   confirmPassword: string;
   preparingFor?: 'Engineering & CS' | 'Business & Finance' | 'Not sure';
   referralSource?: string;
+  referralCode?: string;
   termsAccepted: boolean;
 }
 
@@ -489,6 +491,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setProfile(userDocData as any);
       setDocumentExists(true);
       setActiveRole('student');
+
+      // Requirement 4: Record referral signup live for Campus Ambassador / Boardly Crew
+      const activeReferralCode = (
+        formData.referralCode ||
+        (typeof window !== 'undefined' ? sessionStorage.getItem('referralCode') : '') ||
+        (formData.referralSource?.startsWith('Campus Captain: ') ? formData.referralSource.replace('Campus Captain: ', '') : '') ||
+        ''
+      ).trim();
+
+      if (activeReferralCode) {
+        recordReferralOnSignup({
+          referralCode: activeReferralCode,
+          referredUserId: uid,
+          referredUserName: name,
+          referredUserEmail: email,
+        }).then((refRes) => {
+          if (refRes.success) {
+            console.log(`[Boardly Referral] Recorded referral for code ${activeReferralCode}. Live count: ${refRes.referralCount}`);
+          }
+        }).catch((refErr) => {
+          console.warn('[Boardly Referral] Notice recording signup referral:', refErr);
+        });
+      }
+
+      // Check if this newly registered student has pending Crew Ambassador 30-day Premium
+      try {
+        const synced = await fetchUserProfile(uid);
+        if (synced && synced.isPremium && synced.plan === 'premium') {
+          setProfile(synced);
+        }
+      } catch (pendingErr) {
+        console.warn('[signUpEmail] pending premium auto-upgrade check notice:', pendingErr);
+      }
 
       try {
         await sendEmailVerification(cred.user);

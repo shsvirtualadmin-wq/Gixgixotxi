@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Swords,
   Map,
@@ -15,9 +15,12 @@ import {
   User,
   MessageCircle,
   ExternalLink,
+  Award,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getPlanConfig } from '../../data/planLimits';
+import { fetchCaptainRecord, fetchUserCrewApplication, CaptainRecord, CrewApplication } from '../../lib/firebase';
+import { CrewApplicationModal } from '../crew/CrewApplicationModal';
 
 interface MoreBottomSheetProps {
   isOpen: boolean;
@@ -35,6 +38,28 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
   const { user, profile, isAdmin, logOut } = useAuth();
   const planConfig = getPlanConfig(profile?.plan);
   const sheetRef = useRef<HTMLDivElement | null>(null);
+
+  const [captainRecord, setCaptainRecord] = useState<CaptainRecord | null>(null);
+  const [existingApp, setExistingApp] = useState<CrewApplication | null>(null);
+  const [showCrewModal, setShowCrewModal] = useState<boolean>(false);
+
+  // Check if user is an approved ambassador (Requirement 1: only for users with approved captains/{uid} doc)
+  const isApprovedAmbassador = Boolean(profile?.isCrewMember || (captainRecord && captainRecord.status === 'active'));
+
+  useEffect(() => {
+    if (!isOpen || !user?.uid) return;
+    fetchCaptainRecord(user.uid).then((rec) => {
+      if (rec && rec.status === 'active') {
+        setCaptainRecord(rec);
+      }
+    }).catch(console.warn);
+
+    fetchUserCrewApplication(user.uid).then((app) => {
+      if (app) {
+        setExistingApp(app);
+      }
+    }).catch(console.warn);
+  }, [isOpen, user?.uid]);
 
   // Close on Esc
   useEffect(() => {
