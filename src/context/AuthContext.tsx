@@ -330,8 +330,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (currentUser) {
             lastKnownUserRef.current = currentUser;
             setUser(currentUser);
-            // Profile stays loading until Firestore profile read has finished
-            setProfileLoading(true);
+
+            // 1. Immediately hydrate from cache so the user is never blocked by slow Firestore reads
+            let hasCachedProfile = false;
+            try {
+              const cachedStr = localStorage.getItem(`boardly_cached_profile_${currentUser.uid}`);
+              if (cachedStr) {
+                const parsed = JSON.parse(cachedStr);
+                if (parsed && typeof parsed === 'object') {
+                  setProfile(parsed);
+                  setDocumentExists(true);
+                  setProfileLoading(false);
+                  setAuthLoading(false);
+                  setInitialAuthChecked(true);
+                  setStatus('signedIn');
+                  hasCachedProfile = true;
+                }
+              }
+            } catch {}
+
+            if (!hasCachedProfile) {
+              setProfileLoading(true);
+            }
 
             try {
               const loadedProfile = await syncProfile(currentUser);
@@ -339,6 +359,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setProfile(loadedProfile);
                 setDocumentExists(true);
                 setStatus('signedIn');
+                try {
+                  localStorage.setItem(`boardly_cached_profile_${currentUser.uid}`, JSON.stringify(loadedProfile));
+                } catch {}
               }
             } catch (syncErr) {
               console.warn('[AuthContext] syncProfile background issue:', syncErr);

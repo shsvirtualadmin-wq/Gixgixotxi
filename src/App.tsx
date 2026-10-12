@@ -3763,6 +3763,7 @@ export function App() {
                             created_at: new Date().toISOString(),
                             updated_at: new Date().toISOString(),
                           }}
+                          isAdmin={Boolean(isAdmin)}
                           onRefreshProfile={() => refreshUserProfile()}
                           onStartPractice={() => setScreen('subjects')}
                           onSignOut={async () => {

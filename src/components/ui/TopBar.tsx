@@ -35,7 +35,14 @@ export const TopBar: React.FC<TopBarProps> = ({
   onNavigateBilling,
   onSearchChange,
 }) => {
-  const { user, profile, isAdmin, activeRole, switchRole, availableRoles, logOut } = useAuth();
+  const auth = useAuth();
+  const user = auth?.user;
+  const profile = auth?.profile;
+  const activeRole = auth?.activeRole || 'student';
+  const switchRole = auth?.switchRole || (() => {});
+  const availableRoles = auth?.availableRoles || ['student'];
+  const logOut = auth?.logOut || (async () => {});
+  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
 

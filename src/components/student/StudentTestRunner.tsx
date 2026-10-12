@@ -67,7 +67,10 @@ export const StudentTestRunner: React.FC<StudentTestRunnerProps> = ({
   onExit,
   onUpgrade,
 }) => {
-  const { profile, user, isAdmin } = useAuth();
+  const auth = useAuth();
+  const profile = auth?.profile;
+  const user = auth?.user;
+  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
   const isPremiumUser = isAdmin || profile?.plan === 'premium';
 
   const [currentIndex, setCurrentIndex] = useState<number>(() => {

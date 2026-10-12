@@ -51,7 +51,9 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
   onUpgrade,
   attempts,
 }) => {
-  const { profile, isAdmin } = useAuth();
+  const auth = useAuth();
+  const profile = auth?.profile;
+  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
 
   const firstName = profile?.name?.trim().split(' ')[0] || 'Student';
 

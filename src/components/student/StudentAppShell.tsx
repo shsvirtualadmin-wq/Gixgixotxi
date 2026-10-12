@@ -884,6 +884,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
           <StudentProfileView
             user={user}
             profile={profile}
+            isAdmin={Boolean(isAdmin)}
             onRefreshProfile={() => {
               // Handled via AuthContext
             }}

@@ -19,7 +19,9 @@ export const StudentUsageModal: React.FC<StudentUsageModalProps> = ({
   onAskBoardy,
   onViewPlans,
 }) => {
-  const { profile, isAdmin } = useAuth();
+  const auth = useAuth();
+  const profile = auth?.profile;
+  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
   const {
     loading: usageLoading,
     isUnlimited,

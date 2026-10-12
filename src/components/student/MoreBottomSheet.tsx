@@ -39,7 +39,11 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
   onNavigateTab,
   onNavigateUrl,
 }) => {
-  const { user, profile, isAdmin, logOut } = useAuth();
+  const auth = useAuth();
+  const user = auth?.user;
+  const profile = auth?.profile;
+  const logOut = auth?.logOut;
+  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
   const shouldReduceMotion = useReducedMotion();
   const planConfig = getPlanConfig(profile?.plan);
   const sheetRef = useRef<HTMLDivElement | null>(null);
@@ -96,6 +100,13 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
 
     return () => unsub();
   }, [isOpen, user?.uid, isAdmin]);
+
+  // Prefetch Profile chunk as soon as More sheet opens for instant navigation
+  useEffect(() => {
+    if (isOpen) {
+      import('../StudentProfileView').catch(() => {});
+    }
+  }, [isOpen]);
 
   // Close on Esc
   useEffect(() => {
@@ -283,6 +294,8 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
 
                 <button
                   type="button"
+                  onMouseEnter={() => import('../StudentProfileView').catch(() => {})}
+                  onFocus={() => import('../StudentProfileView').catch(() => {})}
                   onClick={() => handleTileNavigation(() => onNavigateTab('profile'))}
                   className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-xs font-bold text-slate-700 transition-colors shrink-0 cursor-pointer shadow-xs"
                 >

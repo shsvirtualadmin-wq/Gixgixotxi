@@ -406,13 +406,15 @@ export interface StudentUserProfile {
 
   // Boardly Crew Ambassador & Internship Program
   isCrewMember?: boolean;
-  crewStatus?: 'active' | 'revoked' | 'graduated' | 'intern';
+  crewStatus?: 'active' | 'approved' | 'revoked' | 'graduated' | 'intern' | 'none';
   crewStartDate?: string;
   crewInstitution?: string;
   crewReferralCode?: string;
   crewReferralsCount?: number;
   crewActiveUsersCount?: number;
   isPaidInternshipEligible?: boolean;
+  crewRevokedAt?: string;
+  crewRevokeReason?: string;
   isPremium?: boolean;
   premiumExpiresAt?: string;
   pendingPremium?: boolean;
@@ -438,7 +440,7 @@ export interface CrewApplication {
   phone: string;
   institution: string;
   promotionPlan: string;
-  status: 'pending' | 'approved' | 'rejected';
+  status: 'pending' | 'approved' | 'rejected' | 'revoked';
   rejectionReason?: string;
   createdAt: string;
   reviewedAt?: string;

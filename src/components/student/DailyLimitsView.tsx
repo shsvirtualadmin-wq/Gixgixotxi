@@ -27,7 +27,10 @@ export const DailyLimitsView: React.FC<DailyLimitsViewProps> = ({
   onNavigatePractice,
   onNavigateBoardy,
 }) => {
-  const { user, profile, isAdmin } = useAuth();
+  const auth = useAuth();
+  const user = auth?.user;
+  const profile = auth?.profile;
+  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
   const {
     loading: usageLoading,
     isUnlimited,

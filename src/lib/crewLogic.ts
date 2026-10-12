@@ -2,7 +2,7 @@ import { StudentUserProfile, revokeCrewMemberStatus, updateDoc, doc, db } from '
 
 export interface CrewStatusInfo {
   isCrewMember: boolean;
-  crewStatus: 'active' | 'revoked' | 'graduated' | 'intern' | 'none';
+  crewStatus: 'active' | 'approved' | 'revoked' | 'graduated' | 'intern' | 'none';
   crewStartDate: string | null;
   daysActive: number;
   daysRemainingInTrial: number;

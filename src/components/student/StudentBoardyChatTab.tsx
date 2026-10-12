@@ -85,7 +85,11 @@ export const StudentBoardyChatTab: React.FC<StudentBoardyChatTabProps> = ({
   onInputBlur,
   isFullScreen = true,
 }) => {
-  const { user, profile, isAdmin, updateProfileData } = useAuth();
+  const auth = useAuth();
+  const user = auth?.user;
+  const profile = auth?.profile;
+  const updateProfileData = auth?.updateProfileData;
+  const isAdmin = Boolean(auth?.isAdmin || profile?.role === 'admin' || (Array.isArray(profile?.roles) && profile.roles.includes('admin')));
   const {
     loading: usageLoading,
     isUnlimited,

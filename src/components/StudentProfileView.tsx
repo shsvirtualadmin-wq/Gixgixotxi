@@ -5,6 +5,7 @@ import {
   User,
   updateStudentPersonalInfo,
   uploadUserAvatar,
+  isAdminEmail,
 } from '../lib/supabase';
 import { PRICING_PLANS, normalizePlan, PlanKey } from '../config/pricing';
 import { TargetUniversityModal } from './TargetUniversityModal';
@@ -49,6 +50,7 @@ import {
 export interface StudentProfileViewProps {
   user?: User | any;
   profile?: StudentProfile | any;
+  isAdmin?: boolean;
   onRefreshProfile?: () => void;
   onStartPractice?: () => void;
   onSignOut?: () => void;
@@ -59,6 +61,7 @@ export interface StudentProfileViewProps {
 export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   user: propUser,
   profile: propProfile,
+  isAdmin: propIsAdmin,
   onRefreshProfile,
   onStartPractice,
   onSignOut,
@@ -66,8 +69,20 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   onOpenUpgrade,
 }) => {
   const authContext = useAuth();
-  const effectiveUser = propUser || authContext.user;
-  const effectiveProfile = propProfile || authContext.profile;
+  const effectiveUser = propUser || authContext?.user || null;
+  const effectiveProfile = propProfile || authContext?.profile || null;
+
+  // Safe admin derivation matching app-wide admin rules
+  // Defaults to false while user data is still loading to prevent ReferenceError / TypeError
+  const userEmail = (effectiveUser?.email || effectiveProfile?.email || '').trim().toLowerCase();
+  const isAdmin: boolean = typeof propIsAdmin === 'boolean'
+    ? propIsAdmin
+    : Boolean(
+        authContext?.isAdmin ||
+        effectiveProfile?.role === 'admin' ||
+        (Array.isArray(effectiveProfile?.roles) && effectiveProfile.roles.includes('admin')) ||
+        (userEmail && isAdminEmail(userEmail))
+      );
 
   const chosenUniName =
     effectiveProfile?.targetUniversity ||
