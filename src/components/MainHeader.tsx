@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { triggerHaptic, HAPTIC_PATTERNS } from '../lib/haptics';
 import { UserAvatar } from './UserAvatar';
+import { NotificationBell } from './common/NotificationBell';
 import {
   Menu,
   X,
@@ -518,6 +519,11 @@ export const MainHeader: React.FC<MainHeaderProps> = React.memo(({
               <GraduationCap className="w-3.5 h-3.5" />
               <span>{trackInfo.shortLabel}</span>
             </div>
+          )}
+
+          {/* In-app Notification Bell for Logged-In Users */}
+          {!isLoggedOut && currentUser && (
+            <NotificationBell />
           )}
 
           {/* Attempt History Button */}

@@ -407,6 +407,19 @@ export interface StudentUserProfile {
   crewReferralsCount?: number;
   crewActiveUsersCount?: number;
   isPaidInternshipEligible?: boolean;
+  isPremium?: boolean;
+  premiumExpiresAt?: string;
+}
+
+export interface UserNotification {
+  id?: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: 'crew_approval' | 'crew_rejection' | 'announcement' | 'system';
+  read: boolean;
+  createdAt: string;
+  metadata?: Record<string, any>;
 }
 
 export interface CrewApplication {
@@ -547,10 +560,18 @@ export async function fetchUserProfile(uid: string): Promise<StudentUserProfile 
       ? rawData.roles
       : [normalizedRole];
 
+    const isPremiumExpired = Boolean(
+      rawData.premiumExpiresAt &&
+      new Date(rawData.premiumExpiresAt).getTime() < Date.now()
+    );
+    const effectivePlan: PlanType = isPremiumExpired ? 'starter' : plan;
+    const effectiveIsPremium: boolean = isPremiumExpired ? false : Boolean(rawData.isPremium);
+
     const profile: StudentUserProfile = {
       ...rawData,
       uid,
-      plan,
+      plan: effectivePlan,
+      isPremium: effectiveIsPremium,
       role: normalizedRole,
       roles,
       streak: typeof rawData.streak === 'number' ? rawData.streak : (typeof rawData.streakDays === 'number' ? rawData.streakDays : 0),
@@ -894,7 +915,45 @@ export async function submitCrewApplication(appData: Omit<CrewApplication, 'id' 
     status: 'pending',
     createdAt: now,
   });
+
+  // Admin Notification on submit via Resend HTTP API
+  try {
+    fetch('/api/crew/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'submit',
+        name: appData.fullName,
+        email: appData.email,
+        phone: appData.phone,
+        institution: appData.institution,
+        promotionPlan: appData.promotionPlan,
+      }),
+    }).catch((e) => console.warn('[Crew submit] Email notify notice:', e));
+  } catch (notifyErr) {
+    console.warn('[Crew submit] Notification dispatch notice:', notifyErr);
+  }
+
   return docRef.id;
+}
+
+/**
+ * Fetch a specific user's latest Crew application
+ */
+export async function fetchUserCrewApplication(userId: string): Promise<CrewApplication | null> {
+  if (!userId) return null;
+  try {
+    const coll = collection(db, 'crewApplications');
+    const q = query(coll, where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(1));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      return { id: snap.docs[0].id, ...(snap.docs[0].data() as any) };
+    }
+    return null;
+  } catch (err) {
+    console.warn('[fetchUserCrewApplication] query notice:', err);
+    return null;
+  }
 }
 
 /**
@@ -913,11 +972,18 @@ export async function fetchCrewApplications(): Promise<CrewApplication[]> {
 }
 
 /**
- * Approve a Crew application: updates application status & upgrades user to Premium with Crew status
+ * Approve a Crew application:
+ * 1. Sets application status to 'approved' with reviewedAt & reviewedBy
+ * 2. Upgrades user to Premium for 30 days and stores expiry date
+ * 3. Creates captains/{userId} doc with unique referral code
+ * 4. Creates an in-app notification for the user
+ * 5. Sends email from noreply@boardly.cfd: "You're approved"
  */
 export async function approveCrewApplication(app: CrewApplication, adminEmail: string): Promise<void> {
   const now = new Date().toISOString();
-  
+  // 30 days expiry date
+  const expiryDate = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
   // 1. Update application doc
   if (app.id) {
     const appRef = doc(db, 'crewApplications', app.id);
@@ -933,9 +999,12 @@ export async function approveCrewApplication(app: CrewApplication, adminEmail: s
   const randSuffix = Math.floor(1000 + Math.random() * 9000);
   const referralCode = `CREW-${cleanName}-${randSuffix}`;
 
-  // 3. Update User profile with Crew Ambassador status and automatic Premium upgrade
+  // 3. Upgrade user account to Premium for 30 days with expiry date
   const userRef = doc(db, 'users', app.userId);
   await updateDoc(userRef, {
+    plan: 'premium',
+    isPremium: true,
+    premiumExpiresAt: expiryDate,
     isCrewMember: true,
     crewStatus: 'active',
     crewStartDate: now,
@@ -944,28 +1013,101 @@ export async function approveCrewApplication(app: CrewApplication, adminEmail: s
     crewReferralsCount: 0,
     crewActiveUsersCount: 0,
     isPaidInternshipEligible: false,
-    plan: 'premium',
-    role: 'student',
     updatedAt: now,
   });
 
-  // 4. Audit Log
+  // 4. Create captains/{userId} document with unique referral code
+  try {
+    await setDoc(doc(db, 'captains', app.userId), {
+      userId: app.userId,
+      studentName: app.fullName,
+      email: app.email,
+      phone: app.phone,
+      institution: app.institution,
+      referralCode,
+      referralCount: 0,
+      activeUsersCount: 0,
+      points: 0,
+      status: 'active',
+      type: 'crew_ambassador',
+      createdAt: now,
+      expiresAt: expiryDate,
+    });
+  } catch (capErr) {
+    console.warn('[Crew Approve] Captain doc create notice:', capErr);
+  }
+
+  // 5. Create in-app notification for the user
+  try {
+    await addDoc(collection(db, 'notifications'), {
+      userId: app.userId,
+      title: "🎉 You're Approved for Boardly Crew!",
+      message: `Congratulations! Your Boardly Crew application has been approved. You now have 30 days of free Premium access and your unique ambassador referral code (${referralCode}).`,
+      type: 'crew_approval',
+      read: false,
+      createdAt: now,
+      metadata: {
+        referralCode,
+        expiresAt: expiryDate,
+      },
+    });
+  } catch (notifErr) {
+    console.warn('[Crew Approve] In-app notification notice:', notifErr);
+  }
+
+  // 6. Send approval email via Resend API
+  try {
+    fetch('/api/crew/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'approve',
+        to: app.email,
+        name: app.fullName,
+        referralCode,
+        institution: app.institution,
+      }),
+    }).catch((e) => console.warn('[Crew Approve] Email dispatch notice:', e));
+  } catch (emailErr) {
+    console.warn('[Crew Approve] Email trigger notice:', emailErr);
+  }
+
+  // 7. Audit Log
   await recordAuditLog({
     adminId: 'admin',
     adminEmail,
     action: 'APPROVE_CREW_APPLICATION',
     targetType: 'crewApplications',
     targetId: app.id || app.userId,
-    details: `Approved ${app.fullName} (${app.institution}) as Crew Ambassador with Premium access & code ${referralCode}`,
+    details: `Approved ${app.fullName} (${app.institution}) as Crew Ambassador with 30d Premium & code ${referralCode}`,
   });
 }
 
 /**
- * Reject a Crew application
+ * Reject a Crew application:
+ * 1. Updates status to 'rejected' with reviewedAt, reviewedBy, rejectionReason
+ * 2. Creates in-app notification for user
+ * 3. Sends rejection email with reason
  */
 export async function rejectCrewApplication(appId: string, userId: string, adminEmail: string, reason?: string): Promise<void> {
   const now = new Date().toISOString();
   const appRef = doc(db, 'crewApplications', appId);
+  
+  // Fetch app details for email recipient
+  let applicantEmail = '';
+  let applicantName = '';
+  try {
+    const snap = await getDoc(appRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      applicantEmail = data.email || '';
+      applicantName = data.fullName || '';
+    }
+  } catch (fetchErr) {
+    console.warn('[Crew Reject] Fetch app doc notice:', fetchErr);
+  }
+
+  // 1. Update application status
   await updateDoc(appRef, {
     status: 'rejected',
     rejectionReason: reason || 'Application did not meet current cohort criteria',
@@ -973,6 +1115,41 @@ export async function rejectCrewApplication(appId: string, userId: string, admin
     reviewedBy: adminEmail,
   });
 
+  // 2. Create in-app notification
+  try {
+    await addDoc(collection(db, 'notifications'), {
+      userId: userId,
+      title: 'Boardly Crew Application Status',
+      message: reason
+        ? `Your Boardly Crew application was reviewed: ${reason}`
+        : 'Thank you for applying to Boardly Crew. Unfortunately, your application was not accepted for this cohort.',
+      type: 'crew_rejection',
+      read: false,
+      createdAt: now,
+    });
+  } catch (notifErr) {
+    console.warn('[Crew Reject] Notification notice:', notifErr);
+  }
+
+  // 3. Send rejection email with reason
+  if (applicantEmail) {
+    try {
+      fetch('/api/crew/notify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'reject',
+          to: applicantEmail,
+          name: applicantName,
+          reason: reason || 'Application did not meet current cohort criteria',
+        }),
+      }).catch((e) => console.warn('[Crew Reject] Email dispatch notice:', e));
+    } catch (emailErr) {
+      console.warn('[Crew Reject] Email trigger notice:', emailErr);
+    }
+  }
+
+  // 4. Audit Log
   await recordAuditLog({
     adminId: 'admin',
     adminEmail,
@@ -993,6 +1170,7 @@ export async function revokeCrewMemberStatus(userId: string, adminEmail: string,
     isCrewMember: false,
     crewStatus: 'revoked',
     plan: 'free',
+    isPremium: false,
     updatedAt: now,
   });
 
@@ -1002,7 +1180,35 @@ export async function revokeCrewMemberStatus(userId: string, adminEmail: string,
     action: 'REVOKE_CREW_STATUS',
     targetType: 'users',
     targetId: userId,
-    details: `Revoked Crew status for ${userId}. Plan reverted to free. Reason: ${reason || 'Inactivity / admin review'}`,
+    details: `Revoked Crew status for ${userId}. Reason: ${reason || 'Admin action'}`,
   });
+}
+
+/**
+ * Fetch in-app notifications for the logged-in user
+ */
+export async function fetchUserNotifications(userId: string): Promise<UserNotification[]> {
+  if (!userId) return [];
+  try {
+    const coll = collection(db, 'notifications');
+    const q = query(coll, where('userId', '==', userId), orderBy('createdAt', 'desc'), limit(30));
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+  } catch (err) {
+    console.warn('[fetchUserNotifications] notice:', err);
+    return [];
+  }
+}
+
+/**
+ * Mark a notification as read
+ */
+export async function markNotificationAsRead(notifId: string): Promise<void> {
+  if (!notifId) return;
+  try {
+    await updateDoc(doc(db, 'notifications', notifId), { read: true });
+  } catch (err) {
+    console.warn('[markNotificationAsRead] notice:', err);
+  }
 }
 

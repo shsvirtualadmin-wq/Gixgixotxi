@@ -20,13 +20,48 @@ service cloud.firestore {
       );
     }
 
-    // Users collection: A logged-in user can read and write to their own user document and subcollections; admin has full access
+    // Protect critical fields (plan, role, premium, crew status) so students cannot escalate their privileges
+    function userDoesNotChangeProtectedFields() {
+      let protectedKeys = [
+        'plan',
+        'role',
+        'roles',
+        'isPremium',
+        'premiumExpiresAt',
+        'isCrewMember',
+        'crewStatus',
+        'crewStartDate',
+        'crewReferralCode',
+        'isPaidInternshipEligible'
+      ];
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedKeys);
+    }
+
+    function userInitialDocHasSafeFields() {
+      let data = request.resource.data;
+      return (!('role' in data) || data.role == 'student')
+        && (!('plan' in data) || data.plan in ['free', 'starter'])
+        && (!('isPremium' in data) || data.isPremium == false)
+        && (!('isCrewMember' in data) || data.isCrewMember == false);
+    }
+
+    // Users collection: Students can read and update non-protected fields on their own document; only admins can edit plan/role/premium
     match /users/{userId} {
-      allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if (isOwner(userId) && (isAdmin() || userInitialDocHasSafeFields())) || isAdmin();
+      allow update: if (isOwner(userId) && userDoesNotChangeProtectedFields()) || isAdmin();
+      allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
-        allow read, write: if request.auth != null && (request.auth.uid == userId || isAdmin());
+        allow read, write: if isOwner(userId) || isAdmin();
       }
+    }
+
+    // In-App Notifications: Users read and mark read their own notifications; admins create and delete
+    match /notifications/{notifId} {
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow update: if (isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])) || isAdmin();
+      allow create, delete: if isAdmin();
     }
 
     // Reviews collection

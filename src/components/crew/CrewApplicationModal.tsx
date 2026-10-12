@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, CheckCircle2, Sparkles, Building, Mail, Phone, User, Send, Award, Clock } from 'lucide-react';
+import { X, Loader2, CheckCircle2, Sparkles, Building, Mail, Phone, User, Send, Award, Clock, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { submitCrewApplication, CrewApplication } from '../../lib/firebase';
+import { submitCrewApplication, fetchUserCrewApplication, CrewApplication } from '../../lib/firebase';
 
 interface CrewApplicationModalProps {
   isOpen: boolean;
@@ -22,9 +22,23 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
   const [institution, setInstitution] = useState(profile?.targetUniversity || '');
   const [promotionPlan, setPromotionPlan] = useState('');
 
+  const [existingApp, setExistingApp] = useState<CrewApplication | null>(null);
+  const [checkingExisting, setCheckingExisting] = useState(false);
+
   const [submitting, setSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Check for existing applications whenever modal opens
+  useEffect(() => {
+    if (isOpen && user?.uid) {
+      setCheckingExisting(true);
+      fetchUserCrewApplication(user.uid)
+        .then((app) => setExistingApp(app))
+        .catch(console.warn)
+        .finally(() => setCheckingExisting(false));
+    }
+  }, [isOpen, user?.uid]);
 
   // Sync profile details if loaded
   useEffect(() => {
@@ -60,6 +74,16 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
     }
     if (!promotionPlan.trim() || promotionPlan.trim().length < 15) {
       setErrorMessage('Please share a brief note (at least 15 characters) on how you plan to promote Boardly.');
+      return;
+    }
+
+    // Block duplicate applications
+    if (existingApp?.status === 'pending') {
+      setErrorMessage('You already have an application under review. Duplicate applications are blocked.');
+      return;
+    }
+    if (profile?.isCrewMember) {
+      setErrorMessage('You are already an approved Boardly Crew member!');
       return;
     }
 
@@ -101,7 +125,90 @@ export const CrewApplicationModal: React.FC<CrewApplicationModalProps> = ({
           <X className="w-5 h-5" />
         </button>
 
-        {isSuccess ? (
+        {checkingExisting ? (
+          <div className="py-16 text-center text-slate-400 space-y-2">
+            <Loader2 className="w-8 h-8 animate-spin mx-auto text-indigo-600" />
+            <p className="text-xs font-semibold">Checking application status…</p>
+          </div>
+        ) : profile?.isCrewMember ? (
+          /* ALREADY APPROVED STATE */
+          <div className="text-center py-6 space-y-4 animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-sm ring-8 ring-emerald-50/50">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            <div className="space-y-1.5 max-w-sm mx-auto">
+              <h3 className="text-xl sm:text-2xl font-black text-[#0d1b3e] tracking-tight">
+                You're Already on the Crew!
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                Your ambassador status is active with full Premium privileges. You do not need to reapply.
+              </p>
+            </div>
+            <div className="pt-2 flex flex-col sm:flex-row gap-2.5">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  if (typeof window !== 'undefined') {
+                    window.history.pushState({}, '', '/crew-dashboard');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }
+                }}
+                className="w-full py-3 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-indigo-600/20 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <span>Open Crew Dashboard</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        ) : existingApp?.status === 'pending' ? (
+          /* APPLICATION UNDER REVIEW STATE (Requirement 4: Block duplicates & show status) */
+          <div className="text-center py-6 space-y-4 animate-fade-in">
+            <div className="w-16 h-16 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto shadow-sm ring-8 ring-amber-50/50">
+              <Clock className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-1.5 max-w-sm mx-auto">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[11px] font-bold uppercase tracking-wider mb-1">
+                <span>Application Under Review</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-[#0d1b3e] tracking-tight">
+                Review in Progress
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                You have already submitted an application for <strong className="text-indigo-600">{existingApp.institution}</strong>. Our student ambassador coordinators are reviewing your profile.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 text-left text-xs text-slate-700 space-y-2.5 mt-2">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-400 font-medium">Applicant:</span>
+                <span className="font-bold text-slate-900">{existingApp.fullName}</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-400 font-medium">Campus:</span>
+                <span className="font-bold text-indigo-700">{existingApp.institution}</span>
+              </div>
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="text-slate-400 font-medium">Applied on:</span>
+                <span className="text-slate-600">{new Date(existingApp.createdAt).toLocaleDateString()}</span>
+              </div>
+              <div className="pt-2 border-t border-slate-200/80 text-[11px] text-slate-500 leading-relaxed">
+                Duplicate submissions are blocked while your application is under review. You will receive an in-app alert and email notification once verified.
+              </div>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="w-full py-3 px-5 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 font-bold text-xs transition-all cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        ) : isSuccess ? (
           /* SUCCESS STATE */
           <div className="text-center py-6 space-y-4 animate-fade-in">
             <div className="w-16 h-16 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-sm ring-8 ring-emerald-50/50">

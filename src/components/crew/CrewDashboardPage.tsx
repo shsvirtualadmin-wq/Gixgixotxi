@@ -481,6 +481,177 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
           </div>
         </div>
       </div>
+
+      {/* AMBASSADOR MISSIONS SECTION (Requirement 4) */}
+      <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-5 animate-fade-in-up">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-indigo-600" />
+              <h3 className="font-extrabold text-base text-[#0d1b3e]">
+                Weekly Ambassador Missions
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500">
+              Complete action missions to engage classmates and speed up your paid internship unlock.
+            </p>
+          </div>
+          <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100">
+            Active Challenges
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1 text-xs">
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2 flex flex-col justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-slate-900">1. Study Squad Introduction</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">+50 XP</span>
+              </div>
+              <p className="text-slate-500 text-[11px] leading-relaxed">
+                Share your referral link inside your batch WhatsApp group or study circle.
+              </p>
+            </div>
+            <div className="pt-2 flex items-center justify-between border-t border-slate-200/60 text-[11px]">
+              <span className="text-emerald-600 font-bold">Ready to Share</span>
+              <button
+                type="button"
+                onClick={handleShareWhatsApp}
+                className="text-indigo-600 font-extrabold hover:underline cursor-pointer"
+              >
+                Share Now &rarr;
+              </button>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2 flex flex-col justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-slate-900">2. First 5 Peer Signups</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                  {Math.min(5, crewInfo.referralsCount)}/5
+                </span>
+              </div>
+              <p className="text-slate-500 text-[11px] leading-relaxed">
+                Have 5 classmates register using your ambassador code to unlock the Tenure Tracker milestone.
+              </p>
+            </div>
+            <div className="pt-2 flex items-center justify-between border-t border-slate-200/60 text-[11px]">
+              <span className="text-slate-500">
+                {crewInfo.referralsCount >= 5 ? '✓ Completed' : `${Math.max(0, 5 - crewInfo.referralsCount)} more needed`}
+              </span>
+              <span className="font-bold text-indigo-600">Milestone 1</span>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2 flex flex-col justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-slate-900">3. Diagnostic Mock Attempt</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Engagement</span>
+              </div>
+              <p className="text-slate-500 text-[11px] leading-relaxed">
+                Encourage enrolled peers to complete at least 1 full diagnostic mock drill.
+              </p>
+            </div>
+            <div className="pt-2 flex items-center justify-between border-t border-slate-200/60 text-[11px]">
+              <span className="text-slate-500">Active peer users: {crewInfo.activeUsersCount}</span>
+              <span className="font-bold text-emerald-600">Active Track</span>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2 flex flex-col justify-between">
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-slate-900">4. Paid Internship Qualification</span>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">
+                  {crewInfo.referralsCount}/{CREW_INTERNSHIP_SIGNUP_TARGET}
+                </span>
+              </div>
+              <p className="text-slate-500 text-[11px] leading-relaxed">
+                Reach {CREW_INTERNSHIP_SIGNUP_TARGET} total active peer referrals for remote paid ambassador interview.
+              </p>
+            </div>
+            <div className="pt-2 flex items-center justify-between border-t border-slate-200/60 text-[11px]">
+              <span className="text-slate-500">
+                {crewInfo.isPaidInternshipEligible ? '🎉 Eligible' : `${crewInfo.internshipGoalRemaining} referrals remaining`}
+              </span>
+              <span className="font-bold text-indigo-600">Tier 3</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* REWARDS TIER SECTION (Requirement 4) */}
+      <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-5 animate-fade-in-up">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2">
+              <Award className="w-5 h-5 text-amber-600" />
+              <h3 className="font-extrabold text-base text-[#0d1b3e]">
+                Ambassador Rewards &amp; Recognition
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500">
+              Rewards unlocked through verified campus ambassadorship and student engagement.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200/80 space-y-2">
+            <div className="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold">
+              1
+            </div>
+            <h4 className="font-black text-slate-900">30 Days Premium</h4>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              Full access to AI tutor Boardy, mock analytics, and question banks unlocked upon approval.
+            </p>
+            <span className="inline-block text-[10px] font-extrabold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+              ✓ Active Now
+            </span>
+          </div>
+
+          <div className={`p-4 rounded-2xl border space-y-2 ${crewInfo.tenureGoalAchieved ? 'bg-indigo-50/70 border-indigo-200/80' : 'bg-slate-50 border-slate-200/70'}`}>
+            <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+              2
+            </div>
+            <h4 className="font-black text-slate-900">1-Year Tenure</h4>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              Maintain your spot on the official Boardly campus directory for a full 365 days with 10 signups.
+            </p>
+            <span className={`inline-block text-[10px] font-extrabold px-2 py-0.5 rounded-full ${crewInfo.tenureGoalAchieved ? 'text-indigo-700 bg-indigo-100' : 'text-slate-500 bg-slate-200'}`}>
+              {crewInfo.tenureGoalAchieved ? '✓ Unlocked' : 'Goal: 10 Signups'}
+            </span>
+          </div>
+
+          <div className={`p-4 rounded-2xl border space-y-2 ${crewInfo.isPaidInternshipEligible ? 'bg-amber-50/70 border-amber-200/80' : 'bg-slate-50 border-slate-200/70'}`}>
+            <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold">
+              3
+            </div>
+            <h4 className="font-black text-slate-900">Paid Internship</h4>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              Remote paid student ambassadorship stipend with SHS Virtual Academy for top 25 performers.
+            </p>
+            <span className={`inline-block text-[10px] font-extrabold px-2 py-0.5 rounded-full ${crewInfo.isPaidInternshipEligible ? 'text-amber-800 bg-amber-100' : 'text-slate-500 bg-slate-200'}`}>
+              {crewInfo.isPaidInternshipEligible ? '✓ Eligible' : `Goal: ${CREW_INTERNSHIP_SIGNUP_TARGET} Signups`}
+            </span>
+          </div>
+
+          <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70 space-y-2">
+            <div className="w-8 h-8 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center font-bold">
+              4
+            </div>
+            <h4 className="font-black text-slate-900">Letter of Rec</h4>
+            <p className="text-[11px] text-slate-600 leading-relaxed">
+              Official Letter of Recommendation signed by Academic Directors for college applications.
+            </p>
+            <span className="inline-block text-[10px] font-extrabold text-slate-500 bg-slate-200 px-2 py-0.5 rounded-full">
+              Goal: 50 Signups
+            </span>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

@@ -33,8 +33,8 @@ import { Badge } from './ui/Badge';
 import { StatusPill } from './ui/StatusPill';
 import { Drawer } from './ui/Drawer';
 import { ConfirmDialog } from './ui/ConfirmDialog';
-import { SparkLineTrendChart, DonutDistributionChart } from './ui/Charts';
 import { getDynamicQuestionBankStats } from '../lib/questionBankStats';
+import { AdminCrewTab } from './admin/AdminCrewTab';
 import {
   LayoutDashboard,
   Users,
@@ -58,6 +58,7 @@ import {
   Edit,
   Trash2,
   Lock,
+  Sparkles,
   UserCheck,
   Power,
   ChevronDown,
@@ -231,13 +232,26 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     }
   }, []);
 
+  // 6. Fetch Pending Crew Applications Count (for red badge)
+  const [pendingCrewCount, setPendingCrewCount] = useState<number>(0);
+  const loadCrewApplicationsCount = useCallback(async () => {
+    try {
+      const q = query(collection(db, 'crewApplications'), where('status', '==', 'pending'));
+      const snap = await getDocs(q);
+      setPendingCrewCount(snap.size);
+    } catch (err) {
+      console.warn('[Admin] loadCrewApplicationsCount warning:', err);
+    }
+  }, []);
+
   useEffect(() => {
     loadStudents();
     loadPaymentRequests();
     loadReviews();
     loadAuditLogs();
     loadAiChatLogs();
-  }, [loadStudents, loadPaymentRequests, loadReviews, loadAuditLogs, loadAiChatLogs]);
+    loadCrewApplicationsCount();
+  }, [loadStudents, loadPaymentRequests, loadReviews, loadAuditLogs, loadAiChatLogs, loadCrewApplicationsCount]);
 
   // LIVE ACTION: Approve / Activate Student
   const handleActivateStudent = async (student: StudentUserProfile) => {
@@ -409,6 +423,13 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   const navItems = [
     { id: 'overview', label: 'Overview', icon: <LayoutDashboard className="w-4 h-4" /> },
     { id: 'students', label: 'Student Directory', icon: <Users className="w-4 h-4" />, badge: totalStudentCount || students.length },
+    {
+      id: 'crew',
+      label: 'Crew Applications',
+      icon: <Sparkles className="w-4 h-4 text-indigo-400" />,
+      badge: pendingCrewCount > 0 ? pendingCrewCount : undefined,
+      isRedBadge: true,
+    },
     { id: 'content', label: 'Question Bank', icon: <Database className="w-4 h-4" />, badge: questionBankStats.totalBankMCQs },
     { id: 'boardy', label: 'AI Chat Logs & Controls', icon: <Bot className="w-4 h-4" /> },
     { id: 'payments', label: 'Plans & Payments', icon: <DollarSign className="w-4 h-4" />, badge: paymentRequests.filter(p => p.status === 'pending').length || undefined },
@@ -465,7 +486,11 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                     <span>{item.label}</span>
                   </div>
                   {item.badge !== undefined && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-200 font-extrabold">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-black ${
+                      (item as any).isRedBadge
+                        ? 'bg-rose-600 text-white animate-pulse shadow-sm'
+                        : 'bg-slate-800 text-slate-200'
+                    }`}>
                       {item.badge}
                     </span>
                   )}
@@ -518,6 +543,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                 loadPaymentRequests();
                 loadReviews();
                 loadAiChatLogs();
+                loadCrewApplicationsCount();
               }}
               className="p-1.5 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-500 cursor-pointer"
               title="Refresh data"
@@ -535,6 +561,38 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+        </div>
+
+        {/* Mobile Horizontal Navigation Tabs */}
+        <div className="md:hidden flex items-center gap-1.5 p-2.5 overflow-x-auto border-b border-slate-200/80 dark:border-slate-800 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm no-scrollbar">
+          {navItems.map((item) => {
+            const isActive = activeSection === item.id;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setActiveSection(item.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition-all cursor-pointer shrink-0 ${
+                  isActive
+                    ? 'bg-violet-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                <span>{item.label}</span>
+                {item.badge !== undefined && (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                      (item as any).isRedBadge
+                        ? 'bg-rose-600 text-white animate-pulse'
+                        : 'bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-200'
+                    }`}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* Content Body */}
@@ -1050,6 +1108,11 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                 ]}
               />
             </div>
+          )}
+
+          {/* 8. CREW APPLICATIONS */}
+          {activeSection === 'crew' && (
+            <AdminCrewTab adminEmail={adminEmail} />
           )}
         </main>
       </div>

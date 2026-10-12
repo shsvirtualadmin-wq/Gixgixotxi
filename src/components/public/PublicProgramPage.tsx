@@ -39,6 +39,17 @@ export const PublicProgramPage: React.FC<ProgramPageProps> = ({
     : 'Student Leadership, Campus Ambassadorship & Educational Outreach';
 
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
+  const [userCrewApp, setUserCrewApp] = useState<any>(null);
+
+  useEffect(() => {
+    if (isCrew && user?.uid) {
+      import('../../lib/firebase').then(({ fetchUserCrewApplication }) => {
+        fetchUserCrewApplication(user.uid)
+          .then((app) => setUserCrewApp(app))
+          .catch(console.warn);
+      });
+    }
+  }, [isCrew, user?.uid]);
 
   const handleApplyClick = () => {
     setIsApplyModalOpen(true);
@@ -50,6 +61,9 @@ export const PublicProgramPage: React.FC<ProgramPageProps> = ({
       window.dispatchEvent(new PopStateEvent('popstate'));
     }
   };
+
+  const isPendingReview = isCrew && userCrewApp?.status === 'pending';
+  const isApprovedMember = isCrew && (profile?.isCrewMember || userCrewApp?.status === 'approved');
 
   return (
     <div className="min-h-[100dvh] pt-28 pb-20 px-4 sm:px-6 max-w-4xl mx-auto">
@@ -180,25 +194,36 @@ export const PublicProgramPage: React.FC<ProgramPageProps> = ({
               Back to Home
             </a>
 
-            {isCrew && profile?.isCrewMember && (
-              <button
-                type="button"
-                onClick={handleNavigateCrewDashboard}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 active:scale-95 transition-all cursor-pointer"
-              >
-                Go to Crew Dashboard &rarr;
-              </button>
-            )}
-
             {isCrew ? (
-              <button
-                type="button"
-                onClick={handleApplyClick}
-                className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 hover:brightness-105 active:scale-95 transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/25 cursor-pointer"
-              >
-                <span>Apply for Boardly Crew</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </button>
+              isApprovedMember ? (
+                <button
+                  type="button"
+                  onClick={handleNavigateCrewDashboard}
+                  className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-emerald-600 hover:bg-emerald-700 active:scale-95 transition-all flex items-center gap-1.5 shadow-md shadow-emerald-600/25 cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Crew Dashboard</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              ) : isPendingReview ? (
+                <button
+                  type="button"
+                  onClick={handleApplyClick}
+                  className="px-6 py-2.5 rounded-xl text-xs font-black text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 active:scale-95 transition-all flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Clock className="w-3.5 h-3.5 text-amber-700 animate-pulse" />
+                  <span>Application Under Review</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleApplyClick}
+                  className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 hover:brightness-105 active:scale-95 transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/25 cursor-pointer"
+                >
+                  <span>Apply for Boardly Crew</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )
             ) : (
               <a
                 href="/app"
