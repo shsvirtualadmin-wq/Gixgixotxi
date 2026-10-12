@@ -200,6 +200,15 @@ export const BoardlyAppRouter: React.FC = () => {
 
         // 1. Sign Up
         if (currentPath === '/signup') {
+          if (typeof window !== 'undefined') {
+            try {
+              const urlParams = new URLSearchParams(window.location.search);
+              const refParam = urlParams.get('ref') || urlParams.get('referral');
+              if (refParam && refParam.trim()) {
+                sessionStorage.setItem('referralCode', refParam.trim());
+              }
+            } catch {}
+          }
           if (user) {
             navigate(isRegistered ? getHighestRolePath() : '/onboarding', true);
             return null;

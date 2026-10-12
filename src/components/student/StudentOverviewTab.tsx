@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   ArrowRight,
   Zap,
@@ -13,10 +13,15 @@ import {
   Star,
   CheckCircle,
   Lock,
+  Copy,
+  Check,
+  Share2,
+  Award,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useUsage } from '../../context/UsageContext';
-import { StoredTestAttempt } from '../../lib/firebase';
+import { StoredTestAttempt, fetchCaptainRecord, fetchReferralCount, CaptainRecord } from '../../lib/firebase';
+import { getCrewStatusInfo } from '../../lib/crewLogic';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
 import { UNIVERSITIES, findUniversity, University } from '../../data/universities';
 import { getTimeUntilKarachiMidnight, getPlanConfig, PlanType } from '../../data/planLimits';
@@ -49,6 +54,43 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
   const { profile, isAdmin } = useAuth();
 
   const firstName = profile?.name?.trim().split(' ')[0] || 'Student';
+
+  // Ambassador Verification & Live Referral Stats (Requirement 1 & 3)
+  const [captainRecord, setCaptainRecord] = useState<CaptainRecord | null>(null);
+  const [liveReferralCount, setLiveReferralCount] = useState<number | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const isAmbassador = Boolean(
+    profile?.isCrewMember || (captainRecord && captainRecord.status === 'active')
+  );
+
+  useEffect(() => {
+    if (profile?.uid) {
+      fetchCaptainRecord(profile.uid).then((rec) => {
+        if (rec && rec.status === 'active') {
+          setCaptainRecord(rec);
+        }
+      }).catch(console.warn);
+    }
+  }, [profile?.uid]);
+
+  const crewInfo = useMemo(() => {
+    return getCrewStatusInfo(profile);
+  }, [profile]);
+
+  const activeReferralCode = profile?.crewReferralCode || captainRecord?.referralCode || crewInfo.referralCode;
+
+  useEffect(() => {
+    if (activeReferralCode) {
+      fetchReferralCount(activeReferralCode).then((cnt) => {
+        setLiveReferralCount(cnt);
+      }).catch(console.warn);
+    }
+  }, [activeReferralCode]);
+
+  const effectiveSignups = typeof liveReferralCount === 'number'
+    ? Math.max(liveReferralCount, crewInfo.referralsCount)
+    : crewInfo.referralsCount;
 
   // Read saved profile fields: targetExam, targetUniversity, examDate
   const chosenUniKey =
@@ -188,16 +230,152 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
     return 'Advance Maths';
   }, [calculatedWeakAreas, profile?.weakSubjects]);
 
+  const campusInstitution = profile?.crewInstitution || captainRecord?.institution || targetUni?.shortName || 'Campus';
+
   return (
     <div className="space-y-6 pb-20">
-      {/* Date & Greeting Header */}
+      {/* ========================================================= */}
+      {/* Requirement 1: CREW AMBASSADOR CARD AT THE TOP OF OVERVIEW */}
+      {/* (Only for users with an approved captains/{uid} document) */}
+      {/* ========================================================= */}
+      {isAmbassador && (
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#0d1b3e] via-indigo-950 to-violet-950 text-white p-5 sm:p-7 shadow-xl shadow-indigo-950/15 border border-indigo-500/20 animate-fade-in">
+          {/* Subtle background glow */}
+          <div className="absolute -top-10 -right-10 w-44 h-44 bg-indigo-500/10 rounded-full blur-2xl pointer-events-none" />
+
+          <div className="relative z-10 space-y-4 sm:space-y-5">
+            {/* Header row with badge & Open Crew Dashboard CTA */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300 shrink-0">
+                  <Sparkles className="w-5 h-5 text-amber-300" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-indigo-200 uppercase tracking-wider">
+                      Boardly Crew Ambassador
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-400/30 text-emerald-300 text-[10px] font-black uppercase tracking-wider">
+                      Active
+                    </span>
+                  </div>
+                  <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
+                    Campus Ambassador · {campusInstitution}
+                  </h2>
+                </div>
+              </div>
+
+              {/* Open Crew Dashboard Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.history.pushState({}, '', '/crew-dashboard');
+                    window.dispatchEvent(new PopStateEvent('popstate'));
+                  }
+                }}
+                className="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white text-xs font-black shadow-md shadow-indigo-950/30 transition-all flex items-center gap-1.5 cursor-pointer border border-indigo-400/30 shrink-0"
+              >
+                <span>Open Crew Dashboard</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            {/* Stats Row: Referral Code, Total Signups, Tenure Progress (x/10), Premium Days Left */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 pt-1">
+              {/* 1. Referral Code */}
+              <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-wider">
+                  Referral Code
+                </span>
+                <div className="flex items-center justify-between gap-1 mt-1">
+                  <span className="font-mono font-black text-sm text-amber-300 tracking-wider truncate">
+                    {activeReferralCode}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activeReferralCode) {
+                        navigator.clipboard.writeText(activeReferralCode);
+                        setCopiedCode(true);
+                        setTimeout(() => setCopiedCode(false), 2000);
+                      }
+                    }}
+                    className="p-1 rounded-lg bg-white/10 hover:bg-white/20 text-indigo-200 transition-colors cursor-pointer shrink-0"
+                    title="Copy Referral Code"
+                  >
+                    {copiedCode ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* 2. Total Signups */}
+              <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-wider">
+                  Total Signups
+                </span>
+                <div className="flex items-baseline gap-1.5 mt-1">
+                  <span className="text-xl font-black text-white">
+                    {effectiveSignups}
+                  </span>
+                  <span className="text-[11px] text-indigo-300 font-semibold">peers registered</span>
+                </div>
+              </div>
+
+              {/* 3. Tenure Progress (x/10) */}
+              <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs flex flex-col justify-between">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-wider">
+                    Tenure Progress
+                  </span>
+                  <span className="text-xs font-black text-amber-300">
+                    {effectiveSignups}/10
+                  </span>
+                </div>
+                <div className="mt-2">
+                  <div className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(100, Math.round((effectiveSignups / 10) * 100))}%` }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-indigo-200 mt-1 block">
+                    {effectiveSignups >= 10 ? '🎉 1-Year Tenure Secured' : `${Math.max(0, 10 - effectiveSignups)} more for 1-yr tenure`}
+                  </span>
+                </div>
+              </div>
+
+              {/* 4. Premium Days Left */}
+              <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs flex flex-col justify-between">
+                <span className="text-[10px] font-bold text-indigo-200 uppercase tracking-wider">
+                  Premium Access
+                </span>
+                <div className="flex items-baseline gap-1.5 mt-1">
+                  <span className="text-xl font-black text-amber-300">
+                    {crewInfo.daysRemainingInTrial}
+                  </span>
+                  <span className="text-[11px] text-indigo-200 font-semibold">days remaining</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Date & Greeting Header (Requirement 3: Good afternoon, Hashir · Campus Ambassador (LUMS)) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider block">
             {todayFormatted}
           </span>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-1">
-            {greeting}, {firstName}
+            {isAmbassador ? (
+              <span>
+                {greeting}, {firstName} · <span className="text-indigo-600 font-black">Campus Ambassador ({campusInstitution})</span>
+              </span>
+            ) : (
+              <span>{greeting}, {firstName}</span>
+            )}
           </h1>
           {targetUni ? (
             <p className="mt-1 text-xs sm:text-sm text-slate-600">
@@ -245,6 +423,82 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
           )}
         </div>
       </div>
+
+      {/* ========================================================= */}
+      {/* Requirement 3: AMBASSADOR-ONLY WEEKLY MISSIONS STRIP */}
+      {/* ========================================================= */}
+      {isAmbassador && (
+        <div className="p-4 sm:p-5 rounded-3xl bg-indigo-50/80 border border-indigo-200/80 shadow-xs animate-fade-in space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-indigo-600 text-white">
+                <Award className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs sm:text-sm font-black text-[#0d1b3e] uppercase tracking-wide">
+                  Weekly Ambassador Missions
+                </h3>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Complete weekly activities to level up your ambassadorship and earn tenure points
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://boardly.cfd';
+                const shareUrl = `${appOrigin}/signup?ref=${encodeURIComponent(activeReferralCode)}`;
+                const text = encodeURIComponent(
+                  `Hey! Prepare for your Board exams and entry tests with Boardly & SHS Virtual Academy. Sign up using my ambassador code ${activeReferralCode} to practice diagnostic tests and timed sprints: ${shareUrl}`
+                );
+                window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
+              }}
+              className="text-xs font-bold text-indigo-700 hover:text-indigo-900 bg-white hover:bg-indigo-50 px-3 py-1.5 rounded-xl border border-indigo-200 transition-all flex items-center gap-1.5 cursor-pointer self-start sm:self-auto shadow-2xs"
+            >
+              <Share2 className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Share on WhatsApp</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5 pt-1">
+            {/* Mission 1 */}
+            <div className="p-3 rounded-2xl bg-white border border-indigo-100 shadow-2xs flex items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <span className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">Mission 1</span>
+                <h4 className="text-xs font-bold text-[#0d1b3e] truncate">Share Referral Code</h4>
+                <p className="text-[11px] text-slate-500">Post in your batch WhatsApp or study group</p>
+              </div>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${effectiveSignups > 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                {effectiveSignups > 0 ? 'Active' : 'Pending'}
+              </span>
+            </div>
+
+            {/* Mission 2 */}
+            <div className="p-3 rounded-2xl bg-white border border-indigo-100 shadow-2xs flex items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <span className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">Mission 2</span>
+                <h4 className="text-xs font-bold text-[#0d1b3e] truncate">Tenure Goal: 10 Signups</h4>
+                <p className="text-[11px] text-slate-500">Progress: {effectiveSignups}/10 peers joined</p>
+              </div>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${effectiveSignups >= 10 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                {effectiveSignups >= 10 ? 'Completed' : `${Math.max(0, 10 - effectiveSignups)} left`}
+              </span>
+            </div>
+
+            {/* Mission 3 */}
+            <div className="p-3 rounded-2xl bg-white border border-indigo-100 shadow-2xs flex items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <span className="text-[10px] font-black uppercase text-indigo-600 tracking-wider">Mission 3</span>
+                <h4 className="text-xs font-bold text-[#0d1b3e] truncate">Paid Internship (25 Signups)</h4>
+                <p className="text-[11px] text-slate-500">Progress: {effectiveSignups}/25 signups</p>
+              </div>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${effectiveSignups >= 25 ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                {effectiveSignups >= 25 ? 'Unlocked' : `${Math.max(0, 25 - effectiveSignups)} left`}
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Hero Card: Start Here Sprint */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-indigo-600 via-indigo-700 to-violet-800 text-white p-6 sm:p-8 shadow-xl shadow-indigo-500/15 hover:-translate-y-1 hover:shadow-lg hover:shadow-indigo-500/20 active:scale-[0.99] transition-all duration-200 animate-fade-in-up">

@@ -19,9 +19,11 @@ import {
   Send,
   Lock,
   CheckCircle2,
+  ArrowLeft,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getCrewStatusInfo, checkAndEnforceCrewExpiration, CREW_TENURE_SIGNUP_TARGET, CREW_INTERNSHIP_SIGNUP_TARGET } from '../../lib/crewLogic';
+import { fetchReferralCount } from '../../lib/firebase';
 import { SeoHead } from '../common/SeoHead';
 
 interface CrewDashboardPageProps {
@@ -36,6 +38,7 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
   const { user, profile, isAdmin, updateProfileData } = useAuth();
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [liveReferralCount, setLiveReferralCount] = useState<number | null>(null);
 
   // Auto-check tenure expiration on mount
   useEffect(() => {
@@ -46,6 +49,19 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
 
   const crewInfo = getCrewStatusInfo(profile);
   const isApprovedCrew = profile?.isCrewMember === true || isAdmin;
+
+  // Requirement 4: Live referral count synchronization
+  useEffect(() => {
+    if (crewInfo.referralCode) {
+      fetchReferralCount(crewInfo.referralCode).then((cnt) => {
+        setLiveReferralCount(cnt);
+      }).catch(console.warn);
+    }
+  }, [crewInfo.referralCode]);
+
+  const effectiveReferralsCount = typeof liveReferralCount === 'number'
+    ? Math.max(liveReferralCount, crewInfo.referralsCount)
+    : crewInfo.referralsCount;
 
   const appOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://boardly.cfd';
   const referralUrl = `${appOrigin}/signup?ref=${encodeURIComponent(crewInfo.referralCode)}`;
@@ -144,8 +160,11 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
   // Calculate internship progress (target: 25 signups)
   const internshipProgressPercent = Math.min(
     100,
-    Math.round((crewInfo.referralsCount / CREW_INTERNSHIP_SIGNUP_TARGET) * 100)
+    Math.round((effectiveReferralsCount / CREW_INTERNSHIP_SIGNUP_TARGET) * 100)
   );
+
+  const tenureGoalAchieved = effectiveReferralsCount >= CREW_TENURE_SIGNUP_TARGET;
+  const tenureGoalRemaining = Math.max(0, CREW_TENURE_SIGNUP_TARGET - effectiveReferralsCount);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] pt-24 pb-20 px-4 sm:px-6 max-w-5xl mx-auto space-y-6">
@@ -164,9 +183,10 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
                   window.dispatchEvent(new PopStateEvent('popstate'));
                 }
               }}
-              className="hover:text-indigo-600 transition-colors cursor-pointer"
+              className="hover:text-indigo-600 transition-colors cursor-pointer flex items-center gap-1 font-bold"
             >
-              &larr; Student Portal
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Student Portal</span>
             </button>
             <span>/</span>
             <span className="text-slate-800 font-bold">Crew Ambassador Dashboard</span>
@@ -179,7 +199,23 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-2 self-start sm:self-auto">
+        <div className="flex items-center gap-2.5 self-start sm:self-auto flex-wrap">
+          {/* Requirement 3: Link back from the Crew Dashboard to the student app */}
+          <button
+            type="button"
+            onClick={() => {
+              if (onBackToApp) onBackToApp();
+              else if (typeof window !== 'undefined') {
+                window.history.pushState({}, '', '/app');
+                window.dispatchEvent(new PopStateEvent('popstate'));
+              }
+            }}
+            className="px-3.5 py-1.5 rounded-full bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold transition-all cursor-pointer active:scale-95 border border-slate-200 shadow-2xs flex items-center gap-1.5"
+          >
+            <ArrowLeft className="w-3.5 h-3.5 text-slate-500" />
+            <span>Return to Student App</span>
+          </button>
+
           <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold">
             <ShieldCheck className="w-4 h-4 text-emerald-600" />
             <span>Active Ambassador</span>
@@ -229,17 +265,17 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
             </div>
 
             <h2 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-              {crewInfo.tenureGoalAchieved ? (
-                <>🎉 1-Year Tenure Secured! ({crewInfo.referralsCount} signups recorded)</>
+              {tenureGoalAchieved ? (
+                <>🎉 1-Year Tenure Secured! ({effectiveReferralsCount} signups recorded)</>
               ) : (
                 <>
-                  You have <span className="text-amber-300 font-extrabold">{crewInfo.daysRemainingInTrial} days</span> of Premium Access remaining. Get {crewInfo.tenureGoalRemaining} signups to extend your status!
+                  You have <span className="text-amber-300 font-extrabold">{crewInfo.daysRemainingInTrial} days</span> of Premium Access remaining. Get {tenureGoalRemaining} signups to extend your status!
                 </>
               )}
             </h2>
 
             <p className="text-xs sm:text-sm text-indigo-100/90 leading-relaxed max-w-xl">
-              {crewInfo.tenureGoalAchieved
+              {tenureGoalAchieved
                 ? 'Congratulations! You have crossed the minimum threshold for your 1-year ambassadorship. Keep bringing peers to unlock the Paid Internship tier!'
                 : `Every Crew Ambassador receives 30 days of complimentary full Premium access upon joining. Bring in at least ${CREW_TENURE_SIGNUP_TARGET} active students from your campus to maintain your spot for the full 1-year tenure.`}
             </p>
@@ -256,7 +292,7 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
               </div>
               <div className="flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-indigo-400" />
-                <span>Tenure Target: {crewInfo.referralsCount}/{CREW_TENURE_SIGNUP_TARGET}</span>
+                <span>Tenure Target: {effectiveReferralsCount}/{CREW_TENURE_SIGNUP_TARGET}</span>
               </div>
             </div>
           </div>
@@ -355,7 +391,7 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
             </div>
           </div>
           <div className="text-3xl font-black text-[#0d1b3e]">
-            {crewInfo.referralsCount}
+            {effectiveReferralsCount}
           </div>
           <p className="text-[11px] text-slate-400">
             Registered students who joined via your code/link
@@ -391,20 +427,20 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
             </div>
           </div>
           <div className="text-2xl font-black text-[#0d1b3e]">
-            {crewInfo.tenureGoalAchieved ? (
+            {tenureGoalAchieved ? (
               <span className="text-emerald-600 flex items-center gap-1.5">
                 <Check className="w-6 h-6" /> Confirmed
               </span>
             ) : (
               <span className="text-amber-600">
-                {crewInfo.referralsCount} / {CREW_TENURE_SIGNUP_TARGET}
+                {effectiveReferralsCount} / {CREW_TENURE_SIGNUP_TARGET}
               </span>
             )}
           </div>
           <p className="text-[11px] text-slate-400">
-            {crewInfo.tenureGoalAchieved
+            {tenureGoalAchieved
               ? 'Tenure unlocked for full 365 days'
-              : `${crewInfo.tenureGoalRemaining} more signups required`}
+              : `${tenureGoalRemaining} more signups required`}
           </p>
         </div>
       </div>

@@ -213,9 +213,17 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
               </div>
             )}
             <div className="min-w-0">
-              <h4 className="font-extrabold text-sm text-[#0d1b3e] truncate">
-                {displayName}
-              </h4>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <h4 className="font-extrabold text-sm text-[#0d1b3e] truncate">
+                  {displayName}
+                </h4>
+                {isApprovedAmbassador && (
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-[9px] font-black uppercase tracking-wider shrink-0 shadow-xs">
+                    <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                    <span>Crew</span>
+                  </span>
+                )}
+              </div>
               <p className="text-[11px] text-slate-500 truncate font-medium">
                 {planConfig.name} plan · {userEmail}
               </p>
@@ -260,6 +268,102 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
 
         {/* Below the grid actions */}
         <div className="space-y-1.5 pt-2 border-t border-slate-100">
+          {/* Requirement 1 & 2: Placed FIRST in the list */}
+          {isApprovedAmbassador ? (
+            /* 1. APPROVED AMBASSADOR: Crew Dashboard item with badge (First in list, Never show Apply) */
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                if (onNavigateUrl) {
+                  onNavigateUrl('/crew-dashboard');
+                } else if (typeof window !== 'undefined') {
+                  window.history.pushState({}, '', '/crew-dashboard');
+                  window.dispatchEvent(new PopStateEvent('popstate'));
+                }
+              }}
+              className="w-full flex items-center justify-between p-3 rounded-2xl bg-gradient-to-r from-indigo-50/90 to-violet-50/90 hover:from-indigo-100 hover:to-violet-100 border border-indigo-200/80 text-left transition-all cursor-pointer shadow-xs group"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black text-[#0d1b3e]">
+                      Crew Dashboard
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded-md bg-indigo-600 text-white text-[9px] font-black uppercase tracking-wider">
+                      Ambassador
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Campus Ambassador portal, perks &amp; referrals
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-indigo-500" />
+            </button>
+          ) : existingApp?.status === 'pending' ? (
+            /* 2. NON-AMBASSADOR WITH PENDING APPLICATION: "Application Under Review" */
+            <button
+              type="button"
+              onClick={() => {
+                setShowCrewModal(true);
+              }}
+              className="w-full flex items-center justify-between p-3 rounded-2xl bg-amber-50/80 hover:bg-amber-100 border border-amber-200 text-left transition-colors cursor-pointer shadow-xs"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+                  <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-amber-900">
+                      Application Under Review
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded-md bg-amber-200 text-amber-900 text-[9px] font-bold uppercase tracking-wider">
+                      Pending
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-amber-700">
+                    Boardly Crew application is being reviewed by our team
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-amber-500" />
+            </button>
+          ) : (
+            /* 3. NON-AMBASSADOR WITH NO APPLICATION: Normal "Apply for Boardly Crew" */
+            <button
+              type="button"
+              onClick={() => {
+                setShowCrewModal(true);
+              }}
+              className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 text-left transition-colors cursor-pointer"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                  <Award className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-[#0d1b3e]">
+                      Apply for Boardly Crew
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-200 text-indigo-700 text-[9px] font-bold uppercase tracking-wider">
+                      30d Premium
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-500">
+                    Become a campus ambassador &amp; unlock free access
+                  </p>
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </button>
+          )}
+
           {/* University Explorer row */}
           <button
             type="button"
@@ -363,6 +467,22 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Crew Application & Review Modal */}
+      {showCrewModal && (
+        <CrewApplicationModal
+          isOpen={showCrewModal}
+          onClose={() => {
+            setShowCrewModal(false);
+            // Refresh app status after modal closes
+            if (user?.uid) {
+              fetchUserCrewApplication(user.uid).then((app) => {
+                if (app) setExistingApp(app);
+              }).catch(console.warn);
+            }
+          }}
+        />
+      )}
     </>
   );
 };

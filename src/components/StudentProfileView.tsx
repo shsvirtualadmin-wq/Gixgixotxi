@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   StudentProfile,
@@ -9,6 +9,7 @@ import {
 import { PRICING_PLANS, normalizePlan, PlanKey } from '../config/pricing';
 import { TargetUniversityModal } from './TargetUniversityModal';
 import { findUniversity } from '../data/universities';
+import { fetchCaptainRecord } from '../lib/firebase';
 import {
   User as UserIcon,
   Mail,
@@ -87,6 +88,21 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
   const [showUniModal, setShowUniModal] = useState<boolean>(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Ambassador verification (Requirement 1: only for users with an approved captains/{uid} doc)
+  const [captainRecord, setCaptainRecord] = useState<any>(null);
+  useEffect(() => {
+    const uid = effectiveUser?.uid || effectiveProfile?.uid;
+    if (uid) {
+      fetchCaptainRecord(uid).then((cap) => {
+        if (cap && cap.status === 'active') setCaptainRecord(cap);
+      }).catch(console.warn);
+    }
+  }, [effectiveUser?.uid, effectiveProfile?.uid]);
+
+  const isApprovedAmbassador = Boolean(
+    effectiveProfile?.isCrewMember || (captainRecord && captainRecord.status === 'active')
+  );
 
   const planKey: PlanKey = normalizePlan(effectiveProfile?.plan);
   const planConfig = PRICING_PLANS[planKey];
@@ -384,9 +400,17 @@ export const StudentProfileView: React.FC<StudentProfileViewProps> = ({
 
           {/* Identity Info: Name, Email, Joined Date, Target University */}
           <div className="space-y-2">
-            <h2 className="text-xl sm:text-2xl font-black text-[#0d1b3e] tracking-tight">
-              {effectiveProfile?.name || effectiveUser?.displayName || 'Student Aspirant'}
-            </h2>
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h2 className="text-xl sm:text-2xl font-black text-[#0d1b3e] tracking-tight">
+                {effectiveProfile?.name || effectiveUser?.displayName || 'Student Aspirant'}
+              </h2>
+              {isApprovedAmbassador && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-[11px] font-black uppercase tracking-wider shadow-xs">
+                  <Sparkles className="w-3 h-3 text-amber-300" />
+                  <span>Crew</span>
+                </span>
+              )}
+            </div>
 
             <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs text-slate-600 font-medium">
               {/* Email with Ellipsis Truncation - Never overflows card */}
