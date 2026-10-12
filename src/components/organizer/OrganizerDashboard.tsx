@@ -8,6 +8,7 @@ import { Stepper } from '../ui/Stepper';
 import { Badge } from '../ui/Badge';
 import { Modal } from '../ui/Modal';
 import { SparkLineTrendChart } from '../ui/Charts';
+import { ErrorBoundary } from '../ErrorBoundary';
 import {
   Calendar,
   Users,
@@ -168,16 +169,24 @@ export const OrganizerDashboard: React.FC = () => {
                 <span>Create Session</span>
               </button>
             </div>
-            <SparkLineTrendChart
-              data={[
-                { label: 'W1', value: 58 },
-                { label: 'W2', value: 64 },
-                { label: 'W3', value: 71 },
-                { label: 'W4', value: 78 },
-              ]}
-              color="#0D9488"
-              height={180}
-            />
+            <ErrorBoundary
+              fallback={
+                <div className="h-[180px] flex items-center justify-center p-4 rounded-2xl bg-slate-50 text-xs text-slate-400">
+                  Performance progression chart unavailable
+                </div>
+              }
+            >
+              <SparkLineTrendChart
+                data={[
+                  { label: 'W1', value: 58 },
+                  { label: 'W2', value: 64 },
+                  { label: 'W3', value: 71 },
+                  { label: 'W4', value: 78 },
+                ]}
+                color="#0D9488"
+                height={180}
+              />
+            </ErrorBoundary>
           </div>
         </div>
       )}

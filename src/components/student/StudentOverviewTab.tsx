@@ -23,6 +23,7 @@ import { getTimeUntilKarachiMidnight, getPlanConfig, PlanType } from '../../data
 import { SparkLineTrendChart } from '../ui/Charts';
 import { Badge } from '../ui/Badge';
 import { UsageMeter } from '../ui/UsageMeter';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 interface StudentOverviewTabProps {
   onStartSprint: (subject: string) => void;
@@ -405,7 +406,15 @@ export const StudentOverviewTab: React.FC<StudentOverviewTabProps> = ({
               </div>
               <Badge variant="indigo">Live Analytics</Badge>
             </div>
-            <SparkLineTrendChart data={trendData} color="#4F46E5" height={190} />
+            <ErrorBoundary
+              fallback={
+                <div className="h-[190px] flex items-center justify-center p-4 rounded-2xl bg-slate-50 text-xs text-slate-400">
+                  Analytics trend unavailable
+                </div>
+              }
+            >
+              <SparkLineTrendChart data={trendData} color="#4F46E5" height={190} />
+            </ErrorBoundary>
           </div>
 
           {/* Weak Topics to Drill */}

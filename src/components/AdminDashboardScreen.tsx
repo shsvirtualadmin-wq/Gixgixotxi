@@ -35,6 +35,8 @@ import { Drawer } from './ui/Drawer';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { getDynamicQuestionBankStats } from '../lib/questionBankStats';
 import { AdminCrewTab } from './admin/AdminCrewTab';
+import { SparkLineTrendChart, DonutDistributionChart } from './ui/Charts';
+import { ErrorBoundary } from './ErrorBoundary';
 import {
   LayoutDashboard,
   Users,
@@ -652,30 +654,46 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                     </div>
                     <Badge variant="violet">Live</Badge>
                   </div>
-                  <SparkLineTrendChart
-                    data={[
-                      { label: 'Week 1', value: 45 },
-                      { label: 'Week 2', value: 89 },
-                      { label: 'Week 3', value: 165 },
-                      { label: 'Week 4', value: totalStudentCount || 230 },
-                    ]}
-                    color="#7C3AED"
-                    height={200}
-                  />
+                  <ErrorBoundary
+                    fallback={
+                      <div className="h-[200px] flex items-center justify-center p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 text-xs text-slate-400">
+                        Signups velocity chart unavailable
+                      </div>
+                    }
+                  >
+                    <SparkLineTrendChart
+                      data={[
+                        { label: 'Week 1', value: 45 },
+                        { label: 'Week 2', value: 89 },
+                        { label: 'Week 3', value: 165 },
+                        { label: 'Week 4', value: totalStudentCount || 230 },
+                      ]}
+                      color="#7C3AED"
+                      height={200}
+                    />
+                  </ErrorBoundary>
                 </div>
 
                 <div className="lg:col-span-4 p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4">
                   <h3 className="font-extrabold text-base text-slate-900 dark:text-white">
                     Subscription Tier Distribution
                   </h3>
-                  <DonutDistributionChart
-                    data={[
-                      { name: 'Free', value: Math.max(1, students.filter((s) => s.plan === 'free').length), color: '#94A3B8' },
-                      { name: 'Pro', value: Math.max(1, students.filter((s) => s.plan === 'pro').length), color: '#4F46E5' },
-                      { name: 'Premium', value: Math.max(1, students.filter((s) => s.plan === 'premium').length), color: '#7C3AED' },
-                    ]}
-                    height={200}
-                  />
+                  <ErrorBoundary
+                    fallback={
+                      <div className="h-[200px] flex items-center justify-center p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 text-xs text-slate-400">
+                        Tier distribution chart unavailable
+                      </div>
+                    }
+                  >
+                    <DonutDistributionChart
+                      data={[
+                        { name: 'Free', value: Math.max(1, students.filter((s) => s.plan === 'free').length), color: '#94A3B8' },
+                        { name: 'Pro', value: Math.max(1, students.filter((s) => s.plan === 'pro').length), color: '#4F46E5' },
+                        { name: 'Premium', value: Math.max(1, students.filter((s) => s.plan === 'premium').length), color: '#7C3AED' },
+                      ]}
+                      height={200}
+                    />
+                  </ErrorBoundary>
                 </div>
               </div>
 
@@ -1112,7 +1130,16 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
 
           {/* 8. CREW APPLICATIONS */}
           {activeSection === 'crew' && (
-            <AdminCrewTab adminEmail={adminEmail} />
+            <ErrorBoundary
+              fallback={
+                <div className="p-8 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-2">
+                  <h4 className="font-bold text-slate-800 dark:text-white">Unable to load Crew Applications Tab</h4>
+                  <p className="text-xs text-slate-400">Please refresh or check your network connection.</p>
+                </div>
+              }
+            >
+              <AdminCrewTab adminEmail={adminEmail} />
+            </ErrorBoundary>
           )}
         </main>
       </div>

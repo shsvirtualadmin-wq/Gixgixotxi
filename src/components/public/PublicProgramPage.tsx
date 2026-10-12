@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   Gift,
   TrendingUp,
+  Clock,
 } from 'lucide-react';
 import { SeoHead } from '../common/SeoHead';
 import { useAuth } from '../../context/AuthContext';
