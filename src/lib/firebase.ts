@@ -29,18 +29,32 @@ import {
   DocumentSnapshot,
 } from 'firebase/firestore';
 
+export {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  collection,
+  addDoc,
+  query,
+  where,
+  orderBy,
+  limit,
+  getDocs,
+};
+
 import firebaseAppletConfig from '../../firebase-applet-config.json';
 import { normalizePlanId, PlanType } from '../data/planLimits';
 
-// Default production project credentials (fail-safe)
+// Default project credentials from firebase-applet-config.json (fail-safe)
 const DEFAULTS = {
-  apiKey: "AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs",
-  authDomain: "gen-lang-client-0365509316.firebaseapp.com",
-  projectId: "gen-lang-client-0365509316",
-  storageBucket: "gen-lang-client-0365509316.firebasestorage.app",
-  messagingSenderId: "556734245207",
-  appId: "1:556734245207:web:4797f3915b424209b03612",
-  firestoreDatabaseId: "ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712",
+  apiKey: firebaseAppletConfig.apiKey || "",
+  authDomain: firebaseAppletConfig.authDomain || "",
+  projectId: firebaseAppletConfig.projectId || "",
+  storageBucket: firebaseAppletConfig.storageBucket || "",
+  messagingSenderId: firebaseAppletConfig.messagingSenderId || "",
+  appId: firebaseAppletConfig.appId || "",
+  firestoreDatabaseId: firebaseAppletConfig.firestoreDatabaseId || "",
 };
 
 export function cleanEnvVar(val: unknown): string {
