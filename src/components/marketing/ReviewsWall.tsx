@@ -103,22 +103,22 @@ export const ReviewsWall: React.FC<ReviewsWallProps> = ({
     return (
       <div
         key={key}
-        className={`glass-floating-card rounded-2xl p-5 border border-white/70 shadow-md flex flex-col justify-between transition-transform duration-200 hover:-translate-y-1 bg-white/90 backdrop-blur-sm ${
-          isTicker ? 'w-[280px] sm:w-[340px] shrink-0' : 'w-full'
+        className={`bg-white rounded-[28px] border border-[#e2e8f0] p-6 shadow-[0_10px_30px_rgba(15,23,42,0.06)] flex flex-col justify-between transition-transform duration-200 hover:-translate-y-1 ${
+          isTicker ? 'w-[300px] shrink-0 min-w-[300px] h-[210px]' : 'w-full min-h-[200px]'
         }`}
       >
-        {/* Testimonial Quote */}
-        <div className="relative mb-3">
-          <Quote className="w-4 h-4 text-indigo-500/40 inline-block mr-1.5 align-top shrink-0" />
-          <p className="text-xs sm:text-[13px] text-slate-800 leading-relaxed font-medium inline">
+        {/* Top: Quote Icon + Quote Text */}
+        <div>
+          <Quote className="w-7 h-7 text-[#c7d2fe] mb-3 shrink-0" />
+          <p className="text-[16px] font-medium text-[#0f172a] leading-[1.6] line-clamp-3">
             "{rev.quote}"
           </p>
         </div>
 
         {/* Footer: Student Name + Exam Track pill */}
-        <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
-          <span className="font-bold text-slate-900 font-sans">{rev.name}</span>
-          <span className="font-semibold text-indigo-600 bg-indigo-50/80 px-2.5 py-0.5 rounded-full text-[11px] border border-indigo-100 font-sans">
+        <div className="pt-4 border-t border-[#e2e8f0] flex items-center justify-between gap-2 mt-3">
+          <span className="text-[15px] font-bold text-[#0f172a] font-sans truncate">{rev.name}</span>
+          <span className="bg-[#eef2ff] text-[#4f46e5] text-[13px] font-semibold px-3 py-1 rounded-full whitespace-nowrap shrink-0">
             {trackLabel}
           </span>
         </div>
@@ -166,10 +166,16 @@ export const ReviewsWall: React.FC<ReviewsWallProps> = ({
       )}
 
       {/* Smooth Infinite Scrolling Ticker (Two rows moving in opposite directions, pauses on hover/tap) */}
-      <div className="space-y-4 relative [mask-image:linear-gradient(to_right,transparent_0%,black_8%,black_92%,transparent_100%)] [-webkit-mask-image:linear-gradient(to_right,transparent_0%,black_8%,black_92%,transparent_100%)]">
+      <div
+        className="space-y-4 relative overflow-hidden"
+        style={{
+          maskImage: 'linear-gradient(to right, transparent, black 8%, black 92%, transparent)',
+          WebkitMaskImage: 'linear-gradient(to right, transparent, black 8%, black 92%, transparent)',
+        }}
+      >
         {/* Row 1: Left to Right scroll */}
         <div className="ticker-wrapper group flex overflow-hidden">
-          <div className="flex gap-4 animate-ticker-left group-hover:[animation-play-state:paused] group-active:[animation-play-state:paused] py-1">
+          <div className="flex gap-4 animate-ticker-left group-hover:[animation-play-state:paused] group-active:[animation-play-state:paused] [touch-action:pan-y] py-1">
             {tickerRowOne.map((rev, idx) =>
               renderReviewCard(rev, `ticker-1-${idx}`)
             )}
@@ -178,7 +184,7 @@ export const ReviewsWall: React.FC<ReviewsWallProps> = ({
 
         {/* Row 2: Right to Left scroll */}
         <div className="ticker-wrapper group flex overflow-hidden">
-          <div className="flex gap-4 animate-ticker-right group-hover:[animation-play-state:paused] group-active:[animation-play-state:paused] py-1">
+          <div className="flex gap-4 animate-ticker-right group-hover:[animation-play-state:paused] group-active:[animation-play-state:paused] [touch-action:pan-y] py-1">
             {tickerRowTwo.map((rev, idx) =>
               renderReviewCard(rev, `ticker-2-${idx}`)
             )}

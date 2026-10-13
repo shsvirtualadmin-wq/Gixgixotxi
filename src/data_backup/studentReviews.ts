@@ -21,7 +21,7 @@ export const REAL_STUDENT_REVIEWS: StudentReviewItem[] = [
     testType: 'NET Engineering',
     scoreOrAggregate: '158/200 NET',
     rating: 5,
-    quote: 'Boardy broke down conic sections and integration substitutions step by step whenever I got stuck at midnight. Practicing the timed NET sets built my speed so I finished with 15 minutes to spare.',
+    quote: 'Boardly broke down conic sections and integration substitutions step by step whenever I got stuck at midnight. Practicing the timed NET sets built my speed so I finished with 15 minutes to spare.',
     verified: true,
     date: 'February 2026',
     approved: true,

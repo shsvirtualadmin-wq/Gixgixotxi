@@ -23,8 +23,7 @@ import { Section } from './design-system/Section';
 import { SectionHeader } from './design-system/SectionHeader';
 import { Button } from './design-system/Button';
 import { ScreenCard } from './ScreenCard';
-import { WordReveal } from './design-system/WordReveal';
-import { StepsList } from './design-system/StepsList';
+
 import { FaqAccordion, FaqItem } from './design-system/FaqAccordion';
 import { ScrollReveal } from './design-system/useScrollReveal';
 import { ReviewsWall } from './ReviewsWall';
@@ -183,52 +182,157 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </Section>
 
-      {/* 3. HOW IT WORKS & WORD REVEAL (Dark Section) */}
-      <Section variant="dark">
-        <WordReveal statement="Active question practice builds deeper retention and real exam timing than passive lectures ever could." />
+      {/* 3. HOW IT WORKS & THREE STEP FLOW */}
+      <section
+        className="relative w-full overflow-hidden [overflow-x:clip] text-[#0f172a]"
+        style={{
+          background: 'linear-gradient(180deg, #f5f7ff 0%, #ffffff 100%)',
+          padding: '64px 20px',
+        }}
+      >
+        {/* Smooth fade into sections above and below */}
+        <div
+          className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-[#f0f6ff]/40 to-transparent pointer-events-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#f6f5ff]/40 to-transparent pointer-events-none"
+          aria-hidden="true"
+        />
 
-        <div className="mt-12">
-          <SectionHeader
-            dark
-            eyebrow="Three step flow"
-            title="How Boardly"
-            highlight="Powers Your Revision"
-            description="From track selection to diagnostic mastery in three focused steps."
-          />
+        {/* Glow orb */}
+        <div
+          className="absolute top-1/3 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full pointer-events-none"
+          style={{
+            backgroundColor: '#1a6dff',
+            opacity: 0.12,
+            filter: 'blur(80px)',
+          }}
+          aria-hidden="true"
+        />
 
-          <StepsList
-            steps={[
+        <div className="max-w-4xl mx-auto relative z-10">
+          {/* Quote Banner */}
+          <div className="py-4 px-4 mb-12 text-center">
+            <p className="text-[24px] font-bold text-[#0f172a] leading-[1.4] max-w-[340px] sm:max-w-2xl mx-auto text-center">
+              Active question practice builds deeper retention and real exam timing than passive lectures ever could.
+            </p>
+          </div>
+
+          {/* Section Header */}
+          <div className="text-center max-w-2xl mx-auto mb-12">
+            {/* Pill above heading */}
+            <div className="mb-3">
+              <span className="inline-block bg-white border border-[#dbe3f5] text-[#1a6dff] rounded-full text-[13px] font-semibold px-3.5 py-1 shadow-xs">
+                Three step flow
+              </span>
+            </div>
+
+            {/* Heading */}
+            <h2 className="text-[28px] font-extrabold text-[#0f172a] leading-[1.2] font-display">
+              How Boardly <span style={{ color: '#1a6dff' }}>Powers Your Revision</span>
+            </h2>
+
+            {/* Subtext */}
+            <p className="mt-3 text-[16px] text-[#475569] leading-[1.6]">
+              From track selection to diagnostic mastery in three focused steps.
+            </p>
+          </div>
+
+          {/* Three step flow cards */}
+          <div className="max-w-2xl mx-auto space-y-6">
+            {[
               {
-                number: '1',
+                number: 1,
                 title: 'Select Your Academic Track',
                 description:
                   'Choose between MDCAT Medical, FSC Pre-Engineering, ICS, FAST-NU, or Matric boards. Your question feeds immediately calibrate to your syllabus.',
                 checklist: ['PMDC & FBISE Aligned', 'Automated Syllabus Calibration'],
-                linkText: 'Explore Tracks →',
+                linkText: 'Explore Tracks',
                 onLinkClick: () => onNavigate('features'),
+                linkHref: '/features',
               },
               {
-                number: '2',
+                number: 2,
                 title: 'Attempt Timed Diagnostic Drills',
                 description:
                   'Solve bite-sized 15-minute drills or complete full-length mock exams with real countdown timers and negative marking penalties.',
                 checklist: ['Single Question Mode', 'Realistic Exam Pressure'],
-                linkText: 'Try Free Drill →',
+                linkText: 'Try Free Drill',
                 onLinkClick: onGetStarted,
+                linkHref: '/app',
               },
               {
-                number: '3',
+                number: 3,
                 title: 'Review Derivations & Eliminate Weaknesses',
                 description:
                   'Never guess why an option was right. Inspect complete mathematical steps, textbook citations, and diagnostic score trends.',
                 checklist: ['Step-by-step Explanations', 'Diagnostic Score History'],
-                linkText: 'Start Practicing →',
+                linkText: 'Start Practicing',
                 onLinkClick: onGetStarted,
+                linkHref: '/app',
               },
-            ]}
-          />
+            ].map((step, idx, arr) => (
+              <div key={step.number} className="relative flex items-start gap-4 sm:gap-6">
+                {/* Number circle column */}
+                <div className="relative flex flex-col items-center shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-[#1a6dff] text-white font-bold text-base flex items-center justify-center shrink-0 shadow-sm z-10">
+                    {step.number}
+                  </div>
+                  {/* Vertical line connecting the circles: 2px #c7d2fe, ending at the last circle */}
+                  {idx < arr.length - 1 && (
+                    <div
+                      className="w-[2px] bg-[#c7d2fe] absolute top-10 bottom-[-24px] left-1/2 -translate-x-1/2"
+                      aria-hidden="true"
+                    />
+                  )}
+                </div>
+
+                {/* Card on the right */}
+                <div className="flex-1 bg-white border border-[#e2e8f0] rounded-[28px] p-6 shadow-[0_10px_30px_rgba(15,23,42,0.06)] text-left">
+                  <h3 className="text-[18px] font-bold text-[#0f172a]">
+                    {step.title}
+                  </h3>
+                  <p className="mt-2 text-[15px] text-[#475569] leading-[1.6]">
+                    {step.description}
+                  </p>
+
+                  {/* Checklist items */}
+                  {step.checklist && step.checklist.length > 0 && (
+                    <ul className="mt-4 pt-4 border-t border-[#e2e8f0] space-y-2">
+                      {step.checklist.map((item, cIdx) => (
+                        <li key={cIdx} className="flex items-center gap-2 text-[14px] text-[#334155]">
+                          <span className="p-0.5 rounded-full bg-blue-50 text-[#1a6dff] shrink-0">
+                            <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                          </span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+
+                  {/* Text link */}
+                  {step.linkText && (
+                    <div className="mt-4 pt-2">
+                      <a
+                        href={step.linkHref || '#'}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          step.onLinkClick();
+                        }}
+                        className="inline-flex items-center gap-1.5 text-[15px] font-semibold text-[#1a6dff] hover:text-blue-700 transition-colors cursor-pointer"
+                      >
+                        <span>{step.linkText}</span>
+                        <ArrowRight className="w-4 h-4" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </Section>
+      </section>
 
       {/* 4. COMPARISON MATRIX (Light Section) */}
       <Section variant="light">
@@ -333,20 +437,61 @@ export const HomePage: React.FC<HomePageProps> = ({
         </div>
       </Section>
 
-      {/* 5. REVIEWS WALL (Dark Section) */}
-      <Section variant="dark">
-        <SectionHeader
-          dark
-          eyebrow="Student testimonials"
-          title="Practicing With Real"
-          highlight="Confidence"
-          description="Read experiences from students using Boardly for their exam revision across Pakistan."
+      {/* 5. REVIEWS WALL / TESTIMONIALS */}
+      <section
+        className="relative w-full overflow-hidden [overflow-x:clip] text-[#0f172a]"
+        style={{
+          background: 'linear-gradient(180deg, #f5f7ff 0%, #ffffff 100%)',
+          padding: '64px 20px',
+        }}
+      >
+        {/* Smooth fade into sections above and below */}
+        <div
+          className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-[#f0f6ff]/40 to-transparent pointer-events-none"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#f6f5ff]/40 to-transparent pointer-events-none"
+          aria-hidden="true"
         />
 
-        <div className="max-w-4xl mx-auto">
-          <ReviewsWall hideHeader={true} />
+        {/* Glow orb */}
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full pointer-events-none"
+          style={{
+            backgroundColor: '#1a6dff',
+            opacity: 0.12,
+            filter: 'blur(80px)',
+          }}
+          aria-hidden="true"
+        />
+
+        <div className="max-w-6xl mx-auto relative z-10">
+          {/* Section Header */}
+          <div className="text-center max-w-2xl mx-auto mb-10">
+            {/* Pill above heading */}
+            <div className="mb-3">
+              <span className="inline-block bg-white border border-[#dbe3f5] text-[#1a6dff] rounded-full text-[13px] font-semibold px-3.5 py-1 shadow-xs">
+                Student testimonials
+              </span>
+            </div>
+
+            {/* Heading */}
+            <h2 className="text-[28px] font-extrabold text-[#0f172a] leading-[1.2] font-display">
+              Practicing With Real <span style={{ color: '#1a6dff' }}>Confidence</span>
+            </h2>
+
+            {/* Subtext */}
+            <p className="mt-3 text-[16px] text-[#475569] leading-[1.6]">
+              Read experiences from students using Boardly for their exam revision across Pakistan.
+            </p>
+          </div>
+
+          <div className="w-full">
+            <ReviewsWall hideHeader={true} />
+          </div>
         </div>
-      </Section>
+      </section>
 
       {/* 6. FAQ (Light Section) */}
       <Section variant="light">

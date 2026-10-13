@@ -26,7 +26,7 @@ export const REAL_STUDENT_REVIEWS: StudentReviewItem[] = [
     id: 'ph-rev-1',
     name: 'Hamza K.',
     track: 'FSc Pre-Engineering',
-    quote: 'Boardy broke down difficult math derivations step by step whenever I got stuck late at night.',
+    quote: 'Boardly broke down difficult math derivations step by step whenever I got stuck late at night.',
   },
   {
     id: 'ph-rev-2',

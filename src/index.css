@@ -870,13 +870,20 @@
 .animate-ticker-left {
   display: flex;
   width: max-content;
-  animation: tickerLeft 35s linear infinite;
+  animation: tickerLeft 40s linear infinite;
 }
 
 .animate-ticker-right {
   display: flex;
   width: max-content;
-  animation: tickerRight 35s linear infinite;
+  animation: tickerRight 40s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-ticker-left,
+  .animate-ticker-right {
+    animation: none !important;
+  }
 }
 
 /* ========================================================================= */
