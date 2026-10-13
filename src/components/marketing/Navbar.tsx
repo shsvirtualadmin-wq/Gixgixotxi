@@ -41,6 +41,8 @@ export interface NavbarProps {
   onOpenEventModal?: (event: 'blitz' | 'arena') => void;
   onOpenProgramModal?: (program: 'circles' | 'captains') => void;
   onGetStarted?: () => void;
+  getStartedText?: string;
+  getStartedHref?: string;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -49,6 +51,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   programTag,
   onNavigate,
   onGetStarted,
+  getStartedText,
+  getStartedHref,
 }) => {
   const { user } = useAuth();
   const shouldReduceMotion = useReducedMotion();
@@ -179,15 +183,40 @@ export const Navbar: React.FC<NavbarProps> = ({
     }, 200);
   };
 
-  const handleGetStarted = () => {
+  const finalTargetHref =
+    getStartedHref ||
+    (accent === 'crew'
+      ? '/crew/apply'
+      : accent === 'captain'
+      ? '/captain/apply'
+      : user
+      ? '/app'
+      : '/signup');
+
+  const finalTargetText =
+    getStartedText ||
+    (accent === 'crew'
+      ? 'Apply to Join Crew'
+      : accent === 'captain'
+      ? 'Apply as Captain'
+      : user
+      ? 'Open Student Dashboard'
+      : 'Get Started Free');
+
+  const handleGetStarted = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) {
+      return;
+    }
+    e.preventDefault();
     setIsOpen(false);
     setTimeout(() => {
       if (onGetStarted) {
         onGetStarted();
       } else if (typeof window !== 'undefined') {
-        window.history.pushState({}, '', user ? '/app' : '/signup');
+        window.history.pushState({}, '', finalTargetHref);
         window.dispatchEvent(new PopStateEvent('popstate'));
       }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }, 200);
   };
 
@@ -374,13 +403,13 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                 {/* Bottom Primary Action Button */}
                 <div className="mt-6 pt-4 border-t border-white/10 space-y-2">
-                  <button
-                    type="button"
+                  <a
+                    href={finalTargetHref}
                     onClick={handleGetStarted}
-                    className={`w-full min-h-[52px] py-3.5 px-6 rounded-full overflow-hidden text-center font-bold text-base cursor-pointer transition-transform duration-150 active:scale-[0.98] ${accentStyles.buttonBg}`}
+                    className={`w-full min-h-[52px] py-3.5 px-6 rounded-full overflow-hidden text-center font-bold text-base cursor-pointer transition-transform duration-150 active:scale-[0.98] flex items-center justify-center select-none ${accentStyles.buttonBg}`}
                   >
-                    {user ? 'Open Student Dashboard' : 'Get Started Free'}
-                  </button>
+                    {finalTargetText}
+                  </a>
                   {!user && (
                     <a
                       href="/login"

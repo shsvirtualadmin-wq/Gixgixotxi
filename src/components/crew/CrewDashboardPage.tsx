@@ -215,11 +215,13 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
           </div>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
-            <button
-              type="button"
-              onClick={() => {
+            <a
+              href="/crew/apply"
+              onClick={(e) => {
+                if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                e.preventDefault();
                 if (typeof window !== 'undefined') {
-                  window.history.pushState({}, '', '/programs/crew');
+                  window.history.pushState({}, '', '/crew/apply');
                   window.dispatchEvent(new PopStateEvent('popstate'));
                 }
               }}
@@ -227,7 +229,7 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
             >
               <span>Apply for Boardly Crew</span>
               <ArrowRight className="w-4 h-4" />
-            </button>
+            </a>
             <button
               type="button"
               onClick={() => {

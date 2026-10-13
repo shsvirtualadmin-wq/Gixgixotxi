@@ -83,6 +83,8 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         programTag="Crew"
         onNavigate={(p) => onNavigate(`/${p}`)}
         onGetStarted={() => onNavigate(applyHref)}
+        getStartedText={applyText}
+        getStartedHref={applyHref}
       />
 
       {/* Top Back to Home row under navbar */}

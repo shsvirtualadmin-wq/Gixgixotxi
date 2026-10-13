@@ -43,7 +43,7 @@ export const ProgramApplicationPage: React.FC<ProgramApplicationPageProps> = ({
 
   // Set document title
   useEffect(() => {
-    document.title = `${pageTitle} | Boardly`;
+    document.title = pageTitle;
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [pageTitle]);
 

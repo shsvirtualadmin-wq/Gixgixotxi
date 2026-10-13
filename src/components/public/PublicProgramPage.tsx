@@ -42,7 +42,6 @@ export const PublicProgramPage: React.FC<ProgramPageProps> = ({
     ? 'Represent Boardly and SHS Virtual Academy at your institution. Top performers unlock paid internships.'
     : 'Student Leadership, Campus Ambassadorship & Educational Outreach';
 
-  const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
   const [userCrewApp, setUserCrewApp] = useState<any>(null);
 
   useEffect(() => {

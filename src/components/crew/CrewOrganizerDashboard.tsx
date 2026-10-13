@@ -298,15 +298,18 @@ export const CrewOrganizerDashboard: React.FC<CrewOrganizerDashboardProps> = ({
           </div>
 
           <div className="flex flex-col sm:flex-row gap-2 pt-2">
-            <button
-              onClick={() => {
+            <a
+              href="/crew/apply"
+              onClick={(e) => {
+                if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                e.preventDefault();
                 if (onNavigateApply) onNavigateApply();
-                else window.history.pushState({}, '', '/crew');
+                else window.history.pushState({}, '', '/crew/apply');
               }}
-              className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 text-white font-bold text-xs hover:opacity-90 transition-opacity cursor-pointer shadow-lg shadow-violet-600/30"
+              className="flex-1 py-3 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 text-white font-bold text-xs hover:opacity-90 transition-opacity cursor-pointer shadow-lg shadow-violet-600/30 text-center inline-flex items-center justify-center"
             >
               Apply as Crew Organizer
-            </button>
+            </a>
             <button
               onClick={() => {
                 if (onBackToApp) onBackToApp();

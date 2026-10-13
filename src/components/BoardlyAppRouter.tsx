@@ -19,7 +19,6 @@ import { SeoHead } from './common/SeoHead';
 import { PublicEventPage } from './public/PublicEventPage';
 import { PublicProgramPage } from './public/PublicProgramPage';
 import { CrewDashboardPage } from './crew/CrewDashboardPage';
-import { CrewApplicationPage } from './crew/CrewApplicationPage';
 import { CrewLandingPage } from './crew/CrewLandingPage';
 import { ProgramApplicationPage } from './common/ProgramApplicationPage';
 import { initReferralTracker } from '../lib/referralTracker';
@@ -412,12 +411,17 @@ export const BoardlyAppRouter: React.FC = () => {
                   Campus Captain access requires an approved application.
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={() => navigate('/captain')}
-                    className="px-5 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 cursor-pointer"
+                  <a
+                    href="/captain/apply"
+                    onClick={(e) => {
+                      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                      e.preventDefault();
+                      navigate('/captain/apply');
+                    }}
+                    className="px-5 py-2.5 rounded-xl bg-amber-600 text-white text-xs font-bold hover:bg-amber-700 cursor-pointer inline-flex items-center justify-center"
                   >
                     Apply as Captain
-                  </button>
+                  </a>
                   <button
                     onClick={() => navigate('/app', true)}
                     className="px-5 py-2.5 rounded-xl bg-slate-200 text-slate-800 text-xs font-bold hover:bg-slate-300 cursor-pointer"
@@ -542,7 +546,7 @@ export const BoardlyAppRouter: React.FC = () => {
             <ErrorBoundary onReset={() => navigate('/')}>
               <CrewOrganizerDashboard
                 onBackToApp={() => navigate('/app')}
-                onNavigateApply={() => navigate('/crew')}
+                onNavigateApply={() => navigate('/crew/apply')}
                 onOpenPublicEvent={(id) => navigate(`/events/${id}`)}
               />
             </ErrorBoundary>
