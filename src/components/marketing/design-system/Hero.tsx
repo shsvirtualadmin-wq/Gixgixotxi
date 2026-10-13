@@ -14,6 +14,8 @@ export interface HeroProps {
   description: string;
   primaryCtaText?: string;
   secondaryCtaText?: string;
+  primaryHref?: string;
+  secondaryHref?: string;
   onPrimaryCta?: () => void;
   onSecondaryCta?: () => void;
   accent?: 'default' | 'captain' | 'crew';
@@ -39,6 +41,8 @@ export const Hero: React.FC<HeroProps> = ({
   description,
   primaryCtaText = 'Start Free Practice',
   secondaryCtaText = 'Explore Curriculum',
+  primaryHref,
+  secondaryHref,
   onPrimaryCta,
   onSecondaryCta,
   accent = 'default',
@@ -200,6 +204,7 @@ export const Hero: React.FC<HeroProps> = ({
           variant="primary"
           size="lg"
           accent={accent}
+          href={primaryHref}
           onClick={onPrimaryCta}
           icon={<ArrowRight className="w-4 h-4" />}
         >
@@ -209,6 +214,7 @@ export const Hero: React.FC<HeroProps> = ({
           variant="secondary"
           size="lg"
           accent={accent}
+          href={secondaryHref}
           onClick={onSecondaryCta}
         >
           {secondaryCtaText}

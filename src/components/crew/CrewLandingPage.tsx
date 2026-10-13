@@ -1,20 +1,16 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { SeoHead } from '../common/SeoHead';
-import { UnifiedProgramApplicationModal } from '../common/UnifiedProgramApplicationModal';
 import { Navbar } from '../marketing/Navbar';
 import { Footer } from '../marketing/Footer';
 import { ScrollProgress } from '../marketing/design-system/ScrollProgress';
 import { Hero } from '../marketing/design-system/Hero';
 import { Section } from '../marketing/design-system/Section';
 import { SectionHeader } from '../marketing/design-system/SectionHeader';
-import { ScreenCard } from '../marketing/ScreenCard';
-import { WordReveal } from '../marketing/design-system/WordReveal';
-import { StepsList } from '../marketing/design-system/StepsList';
 import { FaqAccordion, FaqItem } from '../marketing/design-system/FaqAccordion';
 import { ScrollReveal } from '../marketing/design-system/useScrollReveal';
 import { FinalCTA } from '../marketing/FinalCTA';
-import { Users, Award, ShieldCheck, Zap, Briefcase, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Zap, ShieldCheck, Award, BarChart3, Users, Clock, CheckCircle2 } from 'lucide-react';
 
 interface CrewLandingPageProps {
   currentPath?: string;
@@ -54,8 +50,7 @@ const CREW_FAQS: FaqItem[] = [
 export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
   onNavigate,
 }) => {
-  const { user, profile, isAdmin } = useAuth();
-  const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
+  const { profile, isAdmin } = useAuth();
 
   const isCrewApproved =
     isAdmin ||
@@ -63,6 +58,9 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
     profile?.roles?.includes('crew') ||
     profile?.role === 'organizer' ||
     profile?.roles?.includes('organizer');
+
+  const applyHref = isCrewApproved ? '/crew/dashboard' : '/crew/apply';
+  const applyText = isCrewApproved ? 'Open Organizer Portal' : 'Apply to Join Crew';
 
   return (
     <div className="w-full">
@@ -84,10 +82,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         accent="crew"
         programTag="Crew"
         onNavigate={(p) => onNavigate(`/${p}`)}
-        onGetStarted={() => {
-          if (isCrewApproved) onNavigate('/crew/dashboard');
-          else setIsApplyModalOpen(true);
-        }}
+        onGetStarted={() => onNavigate(applyHref)}
       />
 
       {/* Top Back to Home row under navbar */}
@@ -95,49 +90,44 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         <a
           href="/"
           onClick={(e) => {
+            if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
             e.preventDefault();
             onNavigate('/');
           }}
-          className="inline-flex items-center gap-1.5 text-indigo-300 hover:text-white px-3.5 py-1.5 rounded-full border border-white/15 bg-white/5 transition-colors cursor-pointer truncate"
+          className="inline-flex items-center gap-1.5 text-indigo-700 dark:text-indigo-300 hover:text-indigo-900 dark:hover:text-white px-3.5 py-1.5 rounded-full border border-indigo-200 dark:border-white/15 bg-indigo-50/70 dark:bg-white/5 transition-colors cursor-pointer truncate"
         >
           <ArrowLeft className="w-4 h-4 shrink-0" />
           <span>Back to Home</span>
         </a>
         <span
-          className="text-[12px] font-semibold px-3 py-1 rounded-full border shrink-0 whitespace-nowrap"
-          style={{
-            backgroundColor: 'rgba(255, 255, 255, 0.08)',
-            border: '1px solid rgba(255, 255, 255, 0.18)',
-            color: '#c7d2fe',
-          }}
+          className="text-[12px] font-semibold px-3 py-1 rounded-full border shrink-0 whitespace-nowrap bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-white/10 dark:text-indigo-300 dark:border-white/20"
         >
           Crew program
         </span>
       </div>
 
-      {/* 3. Hero */}
+      {/* Hero Header */}
       <Hero
         eyebrow="Boardly Crew program"
         staticHeadingPrefix="Host Live Study Circles as a"
         typewriterPhrases={CREW_TYPEWRITER}
         staticHeadingSuffix="Across Pakistan"
         description="Organize timed mock exams, lead study circles on your campus, and build verifiable community leadership credentials backed by Boardly."
-        primaryCtaText={isCrewApproved ? 'Open Organizer Portal' : 'Apply to Join Crew'}
-        secondaryCtaText="See Organizer Perks"
-        onPrimaryCta={() => {
-          if (isCrewApproved) onNavigate('/crew/dashboard');
-          else setIsApplyModalOpen(true);
-        }}
+        primaryCtaText={applyText}
+        secondaryCtaText="See Benefits"
+        primaryHref={applyHref}
+        secondaryHref="#crew-benefits"
+        onPrimaryCta={() => onNavigate(applyHref)}
         onSecondaryCta={() => {
-          const el = document.getElementById('crew-perks');
+          const el = document.getElementById('crew-benefits');
           el?.scrollIntoView({ behavior: 'smooth' });
         }}
         accent="crew"
         compactTop={true}
       />
 
-      {/* 4. Organizer Perks (Light) */}
-      <Section variant="light" id="crew-perks" accent="crew">
+      {/* SECTION 1: Hook - The benefits (3-4 short points) */}
+      <Section variant="light" id="crew-benefits" accent="crew">
         <SectionHeader
           accent="crew"
           eyebrow="Organizer privileges"
@@ -151,7 +141,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
             {
               title: 'Host Custom Live Events',
               desc: 'Select question counts, test durations, and target subjects to generate instant public event links and live leaderboards.',
-              icon: <Zap className="w-5 h-5 text-violet-600" />,
+              icon: <Zap className="w-5 h-5 text-indigo-600" />,
             },
             {
               title: '30 Days Free Pro Access',
@@ -161,13 +151,13 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
             {
               title: 'Signed Leadership Credentials',
               desc: 'Receive official certificates of recognition detailing tournament participant counts and campus engagement for resumes and LinkedIn.',
-              icon: <Award className="w-5 h-5 text-violet-600" />,
+              icon: <Award className="w-5 h-5 text-indigo-600" />,
             },
           ].map((perk, i) => (
             <ScrollReveal key={i} delayMs={i * 60}>
-              <div className="p-6 rounded-[24px] bg-white/85 backdrop-blur-md border border-violet-500/20 shadow-xs text-left h-full flex flex-col justify-between">
+              <div className="p-6 rounded-[24px] bg-white border border-indigo-100 shadow-sm text-left h-full flex flex-col justify-between">
                 <div>
-                  <div className="p-2.5 rounded-xl bg-violet-500/10 text-violet-600 w-fit mb-3">
+                  <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600 w-fit mb-3">
                     {perk.icon}
                   </div>
                   <h3 className="text-base font-bold text-slate-900 font-display">{perk.title}</h3>
@@ -181,76 +171,103 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         </div>
       </Section>
 
-      {/* 5. Word Reveal & Interactive ScreenCard (Dark) */}
-      <Section variant="dark" accent="crew">
-        <WordReveal
-          accent="crew"
-          statement="Peer collaboration and timed practice competitions turn difficult revision into a shared victory."
-        />
-
-        <div className="mt-12 max-w-4xl mx-auto">
-          <SectionHeader
-            dark
-            accent="crew"
-            eyebrow="Event command center"
-            title="Your Dedicated Event"
-            highlight="Organizer Portal"
-            description="Manage live participant entries, launch new quiz bouts, and broadcast real-time rankings."
-          />
-
-          <ScreenCard
-            mode="crew"
-            accent="crew"
-            title="Organizer Event Control"
-            subtitle="Campus Study Sprint · 142 Candidates"
-          />
-        </div>
-      </Section>
-
-      {/* 6. Steps (Light) */}
+      {/* SECTION 2: Responsibilities - What they have to do */}
       <Section variant="light" accent="crew">
         <SectionHeader
           accent="crew"
-          eyebrow="How Crew works"
-          title="Four Simple Steps to"
-          highlight="National Student Leadership"
-          description="From fast application to hosting your first campus tournament."
+          eyebrow="Organizer responsibilities"
+          title="What You Do as an"
+          highlight="Official Crew Organizer"
+          description="Clear, lightweight responsibilities designed to fit smoothly around your studies."
         />
 
-        <StepsList
-          accent="crew"
-          steps={[
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          {[
             {
-              number: '1',
-              title: 'Apply in Under 2 Minutes',
-              description: 'Submit your campus name, study circle vision, and expected batch size.',
-              checklist: ['No Fees or Purchases', 'Open to All Academic Streams'],
-              linkText: 'Apply to Crew →',
-              onLinkClick: () => setIsApplyModalOpen(true),
+              number: '01',
+              title: 'Create & Schedule Test Bouts',
+              desc: 'Launch 15-minute Blitz sprints or comprehensive mock exams for your classmates using Boardly’s 17,000+ verified questions.',
+              icon: <Clock className="w-5 h-5 text-indigo-600" />,
             },
             {
-              number: '2',
-              title: 'Verification & Access Token',
-              description: 'Our team verifies your submission within 24–48 hours and activates your organizer privileges.',
-              checklist: ['Quick 24h Review', 'Dedicated Support Hotline'],
+              number: '02',
+              title: 'Share Event Links & PINs',
+              desc: 'Distribute event invite links in campus WhatsApp groups, academic societies, and student forums.',
+              icon: <Users className="w-5 h-5 text-indigo-600" />,
             },
             {
-              number: '3',
-              title: 'Create and Share Event Links',
-              description: 'Select questions, configure timers, and share the event link in WhatsApp groups and campus forums.',
-              checklist: ['Instant Event PIN Generation', 'Mobile-Friendly for All Peers'],
+              number: '03',
+              title: 'Lead Collaborative Review',
+              desc: 'Encourage peer discussions on tough concepts, track batch score trends, and celebrate top leaderboard finishers.',
+              icon: <CheckCircle2 className="w-5 h-5 text-teal-600" />,
             },
-            {
-              number: '4',
-              title: 'Broadcast Live Leaderboard Standings',
-              description: 'Watch submissions roll in as students compete for top scores with automated real-time rankings.',
-              checklist: ['Automated Score Computation', 'Exportable Aggregate Summary'],
-            },
-          ]}
-        />
+          ].map((resp, i) => (
+            <ScrollReveal key={i} delayMs={i * 60}>
+              <div className="p-6 rounded-[24px] bg-white border border-indigo-100 shadow-sm text-left h-full flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600 w-fit">
+                      {resp.icon}
+                    </div>
+                    <span className="text-xs font-bold text-indigo-400 font-mono">STEP {resp.number}</span>
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 font-display">{resp.title}</h3>
+                  <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed font-sans">
+                    {resp.desc}
+                  </p>
+                </div>
+              </div>
+            </ScrollReveal>
+          ))}
+        </div>
       </Section>
 
-      {/* 7. FAQs (Light) */}
+      {/* SECTION 3: How it will be recorded and evaluated */}
+      <Section variant="light" accent="crew">
+        <SectionHeader
+          accent="crew"
+          eyebrow="Evaluation & tracking"
+          title="How Your Events are"
+          highlight="Recorded & Evaluated"
+          description="Automated tracking calculates scores and attendance so you never have to manage spreadsheets."
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          {[
+            {
+              title: 'Live Participant Logging',
+              desc: 'Every attendee who enters your event code is automatically logged in your private event dashboard.',
+              icon: <Users className="w-5 h-5 text-indigo-600" />,
+            },
+            {
+              title: 'Instant Aggregate Analytics',
+              desc: 'Automated grading tallies score distributions, difficulty breakdowns, and negative marking live.',
+              icon: <BarChart3 className="w-5 h-5 text-indigo-600" />,
+            },
+            {
+              title: 'Milestone Verification',
+              desc: 'As your hosted events reach attendance targets, official certificates of recognition are unlocked for your profile.',
+              icon: <Award className="w-5 h-5 text-teal-600" />,
+            },
+          ].map((item, i) => (
+            <ScrollReveal key={i} delayMs={i * 60}>
+              <div className="p-6 rounded-[24px] bg-white border border-indigo-100 shadow-sm text-left h-full flex flex-col justify-between">
+                <div>
+                  <div className="p-2.5 rounded-xl bg-indigo-50 text-indigo-600 w-fit mb-3">
+                    {item.icon}
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 font-display">{item.title}</h3>
+                  <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed font-sans">
+                    {item.desc}
+                  </p>
+                </div>
+              </div>
+            </ScrollReveal>
+          ))}
+        </div>
+      </Section>
+
+      {/* SECTION 4: Questions (FAQ) */}
       <Section variant="light" accent="crew">
         <SectionHeader
           accent="crew"
@@ -261,37 +278,24 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
         <FaqAccordion items={CREW_FAQS} accent="crew" />
       </Section>
 
-      {/* 8. Final CTA Section */}
+      {/* Final CTA Section: Links directly to /crew/apply */}
       <FinalCTA
         accent="crew"
-        primaryButtonText={isCrewApproved ? 'Open Organizer Portal' : 'Apply to Join Crew'}
+        primaryButtonText={applyText}
         secondaryButtonText="Explore Curriculum"
-        onPrimaryClick={() => {
-          if (isCrewApproved) onNavigate('/crew/dashboard');
-          else setIsApplyModalOpen(true);
-        }}
+        primaryHref={applyHref}
+        secondaryHref="/features"
+        onPrimaryClick={() => onNavigate(applyHref)}
         onSecondaryClick={() => onNavigate('/features')}
       />
 
-      {/* 9. Shared Footer */}
+      {/* Shared Footer */}
       <Footer
         accent="crew"
         programName="Crew"
         onNavigate={(p) => onNavigate(`/${p}`)}
       />
-
-      {/* 10. Application Modal */}
-      {isApplyModalOpen && (
-        <UnifiedProgramApplicationModal
-          defaultProgram="crew"
-          isOpen={isApplyModalOpen}
-          onClose={() => setIsApplyModalOpen(false)}
-          onSuccess={() => {
-            setIsApplyModalOpen(false);
-            if (user) onNavigate('/crew/dashboard');
-          }}
-        />
-      )}
     </div>
   );
 };
+export default CrewLandingPage;

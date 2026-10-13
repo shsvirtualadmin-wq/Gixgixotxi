@@ -24,7 +24,6 @@ import { useAuth } from '../../context/AuthContext';
 import { useAuthRole } from '../../hooks/useAuthRole';
 import { getPlanConfig } from '../../data/planLimits';
 import { fetchCaptainRecord, fetchUserCrewApplication, CaptainRecord, CrewApplication, onSnapshot, doc, db } from '../../lib/firebase';
-import { CrewApplicationModal } from '../crew/CrewApplicationModal';
 import { SetPasswordModal } from '../auth/SetPasswordModal';
 
 interface MoreBottomSheetProps {
@@ -445,10 +444,18 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
                   </button>
                 ) : (
                   /* 4. NON-AMBASSADOR WITH NO APPLICATION: Normal "Apply for Boardly Crew" */
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCrewModal(true);
+                  <a
+                    href="/crew/apply"
+                    onClick={(e) => {
+                      if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                      e.preventDefault();
+                      onClose();
+                      if (onNavigateUrl) {
+                        onNavigateUrl('/crew/apply');
+                      } else if (typeof window !== 'undefined') {
+                        window.history.pushState({}, '', '/crew/apply');
+                        window.dispatchEvent(new PopStateEvent('popstate'));
+                      }
                     }}
                     className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-slate-50 text-left transition-colors cursor-pointer"
                   >
@@ -471,7 +478,7 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
                       </div>
                     </div>
                     <ChevronRight className="w-4 h-4 text-slate-400" />
-                  </button>
+                  </a>
                 )}
 
           {/* University Explorer row */}
@@ -604,22 +611,6 @@ export const MoreBottomSheet: React.FC<MoreBottomSheetProps> = ({
       </>
     )}
   </AnimatePresence>
-
-      {/* Crew Application & Review Modal */}
-      {showCrewModal && (
-        <CrewApplicationModal
-          isOpen={showCrewModal}
-          onClose={() => {
-            setShowCrewModal(false);
-            // Refresh app status after modal closes
-            if (user?.uid) {
-              fetchUserCrewApplication(user.uid).then((app) => {
-                if (app) setExistingApp(app);
-              }).catch(console.warn);
-            }
-          }}
-        />
-      )}
 
       {/* Set Password Modal */}
       {user && (

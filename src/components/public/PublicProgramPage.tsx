@@ -18,7 +18,6 @@ import {
 } from 'lucide-react';
 import { SeoHead } from '../common/SeoHead';
 import { useAuth } from '../../context/AuthContext';
-import { CrewApplicationModal } from '../crew/CrewApplicationModal';
 import { fetchUserCrewApplication } from '../../lib/firebase';
 import { ErrorBoundary } from '../ErrorBoundary';
 
@@ -67,7 +66,11 @@ export const PublicProgramPage: React.FC<ProgramPageProps> = ({
   }, [isCrew, user?.uid]);
 
   const handleApplyClick = () => {
-    setIsApplyModalOpen(true);
+    const target = isCrew ? '/crew/apply' : '/captain/apply';
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', target);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
   };
 
   const handleNavigateCrewDashboard = () => {
@@ -263,14 +266,18 @@ export const PublicProgramPage: React.FC<ProgramPageProps> = ({
                   <span>Application Under Review</span>
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={handleApplyClick}
+                <a
+                  href="/crew/apply"
+                  onClick={(e) => {
+                    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+                    e.preventDefault();
+                    handleApplyClick();
+                  }}
                   className="px-6 py-2.5 rounded-xl text-xs font-black text-white bg-indigo-600 hover:bg-indigo-700 hover:brightness-105 active:scale-95 transition-all flex items-center gap-1.5 shadow-md shadow-indigo-600/25 cursor-pointer"
                 >
                   <span>Apply for Boardly Crew</span>
                   <ArrowRight className="w-3.5 h-3.5" />
-                </button>
+                </a>
               )
             ) : (
               <a
@@ -289,14 +296,6 @@ export const PublicProgramPage: React.FC<ProgramPageProps> = ({
           </div>
         </div>
       </div>
-
-      {/* Embedded Application Modal */}
-      <ErrorBoundary fallback={null}>
-        <CrewApplicationModal
-          isOpen={isApplyModalOpen}
-          onClose={() => setIsApplyModalOpen(false)}
-        />
-      </ErrorBoundary>
     </div>
   );
 };

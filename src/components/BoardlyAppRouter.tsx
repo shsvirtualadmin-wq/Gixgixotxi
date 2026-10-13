@@ -21,6 +21,7 @@ import { PublicProgramPage } from './public/PublicProgramPage';
 import { CrewDashboardPage } from './crew/CrewDashboardPage';
 import { CrewApplicationPage } from './crew/CrewApplicationPage';
 import { CrewLandingPage } from './crew/CrewLandingPage';
+import { ProgramApplicationPage } from './common/ProgramApplicationPage';
 import { initReferralTracker } from '../lib/referralTracker';
 import { UniversityExplorer } from './universities/UniversityExplorer';
 import { MeritMeter } from './merit/MeritMeter';
@@ -430,7 +431,16 @@ export const BoardlyAppRouter: React.FC = () => {
           return <CaptainDashboard />;
         }
 
-        // 9b. Boardly Captain Landing & Application Page (/captain, /captain/apply)
+        // 9a. Dedicated Boardly Captain Application Page (/captain/apply)
+        if (currentPath === '/captain/apply') {
+          return (
+            <ErrorBoundary onReset={() => navigate('/captain')}>
+              <ProgramApplicationPage program="captain" onNavigate={(route) => navigate(route)} />
+            </ErrorBoundary>
+          );
+        }
+
+        // 9b. Boardly Captain Landing Page (/captain)
         if (currentPath === '/captain' || currentPath.startsWith('/captain/')) {
           return (
             <ErrorBoundary onReset={() => navigate('/')}>
@@ -450,7 +460,11 @@ export const BoardlyAppRouter: React.FC = () => {
           navigate(`/captain${search}`, true);
           return null;
         }
-        if (currentPath === '/captains' || currentPath === '/captains/apply' || currentPath === '/programs/captains') {
+        if (currentPath === '/captains/apply' || currentPath === '/programs/captains/apply') {
+          navigate('/captain/apply', true);
+          return null;
+        }
+        if (currentPath === '/captains' || currentPath === '/programs/captains') {
           navigate('/captain', true);
           return null;
         }
@@ -535,7 +549,16 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
-        // Dedicated Boardly Crew Landing Page (/crew, /crew/how-it-works, /crew/perks, /crew/faq, /crew/apply)
+        // Dedicated Boardly Crew Application Page (/crew/apply)
+        if (currentPath === '/crew/apply') {
+          return (
+            <ErrorBoundary onReset={() => navigate('/crew')}>
+              <ProgramApplicationPage program="crew" onNavigate={(route) => navigate(route)} />
+            </ErrorBoundary>
+          );
+        }
+
+        // Dedicated Boardly Crew Landing Page (/crew, /crew/how-it-works, /crew/perks, /crew/faq)
         if (currentPath === '/crew' || currentPath.startsWith('/crew/')) {
           return (
             <ErrorBoundary onReset={() => navigate('/')}>
@@ -544,7 +567,11 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
-        // Public Programs Pages (/programs/crew)
+        // Public Programs Pages (/programs/crew, /programs/crew/apply)
+        if (currentPath === '/programs/crew/apply') {
+          navigate('/crew/apply', true);
+          return null;
+        }
         if (currentPath === '/programs/crew') {
           navigate('/crew', true);
           return null;

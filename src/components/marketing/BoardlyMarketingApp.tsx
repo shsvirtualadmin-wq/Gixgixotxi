@@ -23,7 +23,6 @@ import { ArenaLanding } from '../events/ArenaLanding';
 import { CirclesLanding } from '../events/CirclesLanding';
 import { OrganizerApply } from '../events/OrganizerApply';
 import { EventsModal } from './EventsModal';
-import { ProgramsModal } from './ProgramsModal';
 import { BillingDuration } from '../../data/marketingPricingData';
 
 interface BoardlyMarketingAppProps {
@@ -160,7 +159,6 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
   });
 
   const [activeEventModal, setActiveEventModal] = useState<'blitz' | 'arena' | null>(null);
-  const [activeProgramModal, setActiveProgramModal] = useState<'circles' | 'captains' | null>(null);
 
   // Sync browser URL and scroll to top on navigation
   const handleNavigate = (page: MarketingPage) => {
@@ -256,7 +254,7 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
         currentPage={currentPage}
         onNavigate={handleNavigate}
         onOpenEventModal={(ev) => handleNavigate(ev === 'blitz' ? 'blitz' : 'arena')}
-        onOpenProgramModal={(prog) => (prog === 'circles' ? handleNavigate('circles') : setActiveProgramModal('captains'))}
+        onOpenProgramModal={(prog) => handleRouteNavigate(prog === 'circles' ? '/crew' : '/captain')}
         onGetStarted={handleGetStarted}
       />
 
@@ -367,7 +365,7 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
       <Footer
         onNavigate={handleNavigate}
         onOpenEventModal={(ev) => handleNavigate(ev === 'blitz' ? 'blitz' : 'arena')}
-        onOpenProgramModal={(prog) => (prog === 'circles' ? handleNavigate('circles') : setActiveProgramModal('captains'))}
+        onOpenProgramModal={(prog) => handleRouteNavigate(prog === 'circles' ? '/crew' : '/captain')}
       />
 
       {/* Modals */}
@@ -376,18 +374,6 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
           event={activeEventModal}
           onClose={() => setActiveEventModal(null)}
           onGetStarted={handleGetStarted}
-        />
-      )}
-
-      {activeProgramModal && (
-        <ProgramsModal
-          program={activeProgramModal}
-          onClose={() => setActiveProgramModal(null)}
-          onGetStarted={handleGetStarted}
-          onNavigateContact={() => {
-            setActiveProgramModal(null);
-            handleNavigate('contact');
-          }}
         />
       )}
     </div>

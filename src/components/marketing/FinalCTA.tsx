@@ -8,6 +8,8 @@ export interface FinalCTAProps {
   description?: string;
   primaryButtonText?: string;
   secondaryButtonText?: string;
+  primaryHref?: string;
+  secondaryHref?: string;
   onPrimaryClick?: () => void;
   onSecondaryClick?: () => void;
 }
@@ -18,6 +20,8 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({
   description,
   primaryButtonText,
   secondaryButtonText,
+  primaryHref,
+  secondaryHref,
   onPrimaryClick,
   onSecondaryClick,
 }) => {
@@ -28,6 +32,8 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({
         'Create your free account and take your first practice test today. Your results will show you exactly what to work on next.',
       defaultPrimaryText: 'Start Free Practice',
       defaultSecondaryText: 'View Pricing',
+      defaultPrimaryHref: '/signup',
+      defaultSecondaryHref: '/pricing',
       cardGradient: 'linear-gradient(135deg, #1a3fa8 0%, #050a1f 100%)',
       primaryBg: '#1a6dff',
       primaryText: '#ffffff',
@@ -38,6 +44,8 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({
         'Free access is ready immediately. Upgrade to Pro whenever you want full archive access.',
       defaultPrimaryText: 'Create Free Account',
       defaultSecondaryText: 'Contact Support',
+      defaultPrimaryHref: '/signup',
+      defaultSecondaryHref: '/contact',
       cardGradient: 'linear-gradient(135deg, #1a3fa8 0%, #050a1f 100%)',
       primaryBg: '#1a6dff',
       primaryText: '#ffffff',
@@ -48,6 +56,8 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({
         'Join students organizing peer study bouts across colleges in Pakistan.',
       defaultPrimaryText: 'Apply to Join Crew',
       defaultSecondaryText: 'Explore Curriculum',
+      defaultPrimaryHref: '/crew/apply',
+      defaultSecondaryHref: '/features',
       cardGradient: 'linear-gradient(135deg, #312e81 0%, #050a1f 100%)',
       primaryBg: '#6366f1',
       primaryText: '#ffffff',
@@ -58,9 +68,11 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({
         'Applications for the upcoming semester batch are open. Lead your peers today.',
       defaultPrimaryText: 'Apply as Captain',
       defaultSecondaryText: 'Explore Curriculum',
+      defaultPrimaryHref: '/captain/apply',
+      defaultSecondaryHref: '/features',
       cardGradient: 'linear-gradient(135deg, #78350f 0%, #050a1f 100%)',
-      primaryBg: '#d97706',
-      primaryText: '#ffffff',
+      primaryBg: '#f5b942',
+      primaryText: '#0f172a',
     },
   }[accent];
 
@@ -68,6 +80,25 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({
   const displayDescription = description || config.defaultDescription;
   const displayPrimary = primaryButtonText || config.defaultPrimaryText;
   const displaySecondary = secondaryButtonText || config.defaultSecondaryText;
+  const targetPrimaryHref = primaryHref || config.defaultPrimaryHref;
+  const targetSecondaryHref = secondaryHref || config.defaultSecondaryHref;
+
+  const handleLinkClick = (
+    e: React.MouseEvent<HTMLAnchorElement>,
+    href: string,
+    onClick?: () => void
+  ) => {
+    if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    if (onClick) {
+      e.preventDefault();
+      onClick();
+    } else if (typeof window !== 'undefined') {
+      e.preventDefault();
+      window.history.pushState({}, '', href);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   return (
     <section className="relative w-full py-16 px-5 bg-[#f8f9ff] text-left overflow-hidden">
@@ -116,32 +147,32 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({
 
             {/* 3. Buttons: Full width pill buttons, 60px tall, 14px gap */}
             <div className="mt-8 flex flex-col gap-[14px] w-full max-w-md">
-              {/* Primary pill button: full width, 60px tall, radius 9999px (rounded-full), solid accent, bold text, overflow-hidden */}
-              <button
-                type="button"
-                onClick={onPrimaryClick}
-                className="w-full h-[60px] min-h-[60px] rounded-full overflow-hidden font-bold text-[17px] sm:text-[18px] transition-transform active:scale-[0.98] cursor-pointer flex items-center justify-center shadow-lg"
+              {/* Primary pill button: real <a href> link, full width, 60px tall, radius 9999px (rounded-full), solid accent, bold text */}
+              <a
+                href={targetPrimaryHref}
+                onClick={(e) => handleLinkClick(e, targetPrimaryHref, onPrimaryClick)}
+                className="w-full h-[60px] min-h-[60px] rounded-full overflow-hidden font-bold text-[17px] sm:text-[18px] transition-transform active:scale-[0.98] cursor-pointer flex items-center justify-center shadow-lg text-center select-none"
                 style={{
                   backgroundColor: config.primaryBg,
                   color: config.primaryText,
                 }}
               >
                 {displayPrimary}
-              </button>
+              </a>
 
-              {/* Secondary pill button: full width, 60px tall, rounded-full, transparent with border */}
+              {/* Secondary pill button: real <a href> link, full width, 60px tall, rounded-full, transparent with border */}
               {displaySecondary && (
-                <button
-                  type="button"
-                  onClick={onSecondaryClick}
-                  className="w-full h-[60px] min-h-[60px] rounded-full overflow-hidden font-semibold text-[17px] sm:text-[18px] text-white transition-colors hover:bg-white/10 active:scale-[0.98] cursor-pointer flex items-center justify-center"
+                <a
+                  href={targetSecondaryHref}
+                  onClick={(e) => handleLinkClick(e, targetSecondaryHref, onSecondaryClick)}
+                  className="w-full h-[60px] min-h-[60px] rounded-full overflow-hidden font-semibold text-[17px] sm:text-[18px] text-white transition-colors hover:bg-white/10 active:scale-[0.98] cursor-pointer flex items-center justify-center text-center select-none"
                   style={{
                     backgroundColor: 'transparent',
                     border: '1px solid rgba(255, 255, 255, 0.25)',
                   }}
                 >
                   {displaySecondary}
-                </button>
+                </a>
               )}
             </div>
           </div>

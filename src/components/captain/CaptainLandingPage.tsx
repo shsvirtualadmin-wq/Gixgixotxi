@@ -1,20 +1,16 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { SeoHead } from '../common/SeoHead';
-import { UnifiedProgramApplicationModal } from '../common/UnifiedProgramApplicationModal';
 import { Navbar } from '../marketing/Navbar';
 import { Footer } from '../marketing/Footer';
 import { ScrollProgress } from '../marketing/design-system/ScrollProgress';
 import { Hero } from '../marketing/design-system/Hero';
 import { Section } from '../marketing/design-system/Section';
 import { SectionHeader } from '../marketing/design-system/SectionHeader';
-import { ScreenCard } from '../marketing/ScreenCard';
-import { WordReveal } from '../marketing/design-system/WordReveal';
-import { StepsList } from '../marketing/design-system/StepsList';
 import { FaqAccordion, FaqItem } from '../marketing/design-system/FaqAccordion';
 import { ScrollReveal } from '../marketing/design-system/useScrollReveal';
 import { FinalCTA } from '../marketing/FinalCTA';
-import { Award, Briefcase, TrendingUp, ShieldCheck, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { Award, Briefcase, ShieldCheck, ArrowLeft, Users, TrendingUp, CheckCircle2, MessageSquare } from 'lucide-react';
 
 interface CaptainLandingPageProps {
   currentPath?: string;
@@ -54,14 +50,16 @@ const CAPTAIN_FAQS: FaqItem[] = [
 export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
   onNavigate,
 }) => {
-  const { user, profile, isAdmin } = useAuth();
-  const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
+  const { profile, isAdmin } = useAuth();
 
   const isCaptainApproved =
     isAdmin ||
     profile?.role === 'captain' ||
     profile?.roles?.includes('captain') ||
     profile?.isCrewMember;
+
+  const applyHref = isCaptainApproved ? '/captain/dashboard' : '/captain/apply';
+  const applyText = isCaptainApproved ? 'Open Captain Dashboard' : 'Apply as Captain';
 
   return (
     <div className="w-full">
@@ -83,50 +81,42 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
         accent="captain"
         programTag="Captain"
         onNavigate={(p) => onNavigate(`/${p}`)}
-        onGetStarted={() => {
-          if (isCaptainApproved) onNavigate('/captain/dashboard');
-          else setIsApplyModalOpen(true);
-        }}
+        onGetStarted={() => onNavigate(applyHref)}
       />
 
       {/* Top Back to Home row under navbar */}
-      <div className="pt-20 sm:pt-24 pb-2 px-4 max-w-6xl mx-auto flex items-center justify-between gap-3 text-[13px] font-semibold">
+      <div className="pt-24 pb-2 px-4 max-w-6xl mx-auto flex items-center justify-between gap-3 text-[13px] font-semibold">
         <a
           href="/"
           onClick={(e) => {
+            if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
             e.preventDefault();
             onNavigate('/');
           }}
-          className="inline-flex items-center gap-1.5 text-amber-400 hover:text-amber-300 transition-colors cursor-pointer truncate"
+          className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-300 hover:text-amber-900 dark:hover:text-white px-3.5 py-1.5 rounded-full border border-amber-200 dark:border-white/15 bg-amber-50/70 dark:bg-white/5 transition-colors cursor-pointer truncate"
         >
           <ArrowLeft className="w-4 h-4 shrink-0" />
           <span>Back to Home</span>
         </a>
         <span
-          className="text-[12px] font-semibold px-2.5 py-0.5 rounded-full border shrink-0 whitespace-nowrap"
-          style={{
-            backgroundColor: 'rgba(255, 255, 255, 0.08)',
-            border: '1px solid rgba(255, 255, 255, 0.18)',
-            color: '#fcd34d',
-          }}
+          className="text-[12px] font-semibold px-3 py-1 rounded-full border shrink-0 whitespace-nowrap bg-amber-50 text-amber-800 border-amber-200 dark:bg-white/10 dark:text-amber-300 dark:border-white/20"
         >
           Captain program
         </span>
       </div>
 
-      {/* 3. Hero */}
+      {/* Hero Header */}
       <Hero
-        eyebrow="Boardly Captain program"
+        eyebrow="Campus ambassador program"
         staticHeadingPrefix="Step Up as a"
         typewriterPhrases={CAPTAIN_TYPEWRITER}
         staticHeadingSuffix="at Your College"
         description="Represent Boardly at your institution. Empower your classmates with national-standard test prep, build verified leadership credentials, and unlock career perks."
-        primaryCtaText={isCaptainApproved ? 'Open Captain Dashboard' : 'Apply as Captain'}
-        secondaryCtaText="See Ambassador Perks"
-        onPrimaryCta={() => {
-          if (isCaptainApproved) onNavigate('/captain/dashboard');
-          else setIsApplyModalOpen(true);
-        }}
+        primaryCtaText={applyText}
+        secondaryCtaText="See Perks"
+        primaryHref={applyHref}
+        secondaryHref="#captain-perks"
+        onPrimaryCta={() => onNavigate(applyHref)}
         onSecondaryCta={() => {
           const el = document.getElementById('captain-perks');
           el?.scrollIntoView({ behavior: 'smooth' });
@@ -135,7 +125,7 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
         compactTop={true}
       />
 
-      {/* 4. Ambassador Perks (Light) */}
+      {/* SECTION 1: Hook - The benefits (3-4 short points) */}
       <Section variant="light" id="captain-perks" accent="captain">
         <SectionHeader
           accent="captain"
@@ -150,7 +140,7 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
             {
               title: 'Signed Recommendation Letter',
               desc: 'Official verification letter signed by SHS Virtual Academy leadership detailing your initiative, outreach impact, and batch size.',
-              icon: <Award className="w-5 h-5 text-amber-500" />,
+              icon: <Award className="w-5 h-5 text-amber-600" />,
             },
             {
               title: '30 Days Free Pro Access',
@@ -164,9 +154,9 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
             },
           ].map((perk, i) => (
             <ScrollReveal key={i} delayMs={i * 60}>
-              <div className="p-6 rounded-[24px] bg-white/85 backdrop-blur-md border border-amber-500/20 shadow-xs text-left h-full flex flex-col justify-between">
+              <div className="p-6 rounded-[24px] bg-white border border-amber-100 shadow-sm text-left h-full flex flex-col justify-between">
                 <div>
-                  <div className="p-2.5 rounded-xl bg-amber-500/10 text-amber-600 w-fit mb-3">
+                  <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 w-fit mb-3">
                     {perk.icon}
                   </div>
                   <h3 className="text-base font-bold text-slate-900 font-display">{perk.title}</h3>
@@ -180,76 +170,103 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
         </div>
       </Section>
 
-      {/* 5. Word Reveal & Interactive ScreenCard (Dark) */}
-      <Section variant="dark" accent="captain">
-        <WordReveal
-          accent="captain"
-          statement="Real student leadership means empowering your batchmates with national-standard prep tools."
-        />
-
-        <div className="mt-12 max-w-4xl mx-auto">
-          <SectionHeader
-            dark
-            accent="captain"
-            eyebrow="Ambassador tracking"
-            title="Your Dedicated Captain"
-            highlight="Tracking Portal"
-            description="Inspect referral statistics, track peer registrations, and claim milestone rewards."
-          />
-
-          <ScreenCard
-            mode="captain"
-            accent="captain"
-            title="Captain Ambassador Portal"
-            subtitle="Campus Batch Leader · Student A."
-          />
-        </div>
-      </Section>
-
-      {/* 6. How To Become A Captain (Light) */}
+      {/* SECTION 2: Responsibilities - What they have to do */}
       <Section variant="light" accent="captain">
         <SectionHeader
           accent="captain"
-          eyebrow="Onboarding timeline"
-          title="From Simple Application to"
-          highlight="Verified Campus Leader"
-          description="A quick four-step process designed to get you set up in under 48 hours."
+          eyebrow="Ambassador responsibilities"
+          title="What You Do as an"
+          highlight="Official Campus Captain"
+          description="Represent Boardly with pride and support your batchmates in achieving exam excellence."
         />
 
-        <StepsList
-          accent="captain"
-          steps={[
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          {[
             {
-              number: '1',
-              title: 'Submit 2-Minute Application',
-              description: 'Provide your institution name, academic stream, and student leadership background.',
-              checklist: ['No Prior Experience Required', 'Instant Confirmation'],
-              linkText: 'Apply Now →',
-              onLinkClick: () => setIsApplyModalOpen(true),
+              number: '01',
+              title: 'Represent Boardly on Campus',
+              desc: 'Serve as the trusted campus advocate for modern test prep, helping classmates find study resources and diagnostic drills.',
+              icon: <Users className="w-5 h-5 text-amber-600" />,
             },
             {
-              number: '2',
-              title: 'Verification & Onboarding',
-              description: 'Our community relations team reviews your details within 24–48 hours and confirms your admission.',
-              checklist: ['Fast 24-48 Hour Review', 'Community Welcome Call'],
+              number: '02',
+              title: 'Share Tracking Links & Codes',
+              desc: 'Distribute your personal referral link in study groups, academy circles, and campus WhatsApp chats.',
+              icon: <TrendingUp className="w-5 h-5 text-amber-600" />,
             },
             {
-              number: '3',
-              title: 'Unlock Dashboard & Pro Access',
-              description: 'Receive your custom referral code and access your private analytics command center.',
-              checklist: ['Free Pro Account Upgrade', 'Unique Referral Tracking Link'],
+              number: '03',
+              title: 'Voice Student Feedback',
+              desc: 'Share insights with our academic team on what your batch needs most to help shape future test bank updates.',
+              icon: <MessageSquare className="w-5 h-5 text-teal-600" />,
             },
-            {
-              number: '4',
-              title: 'Lead & Unlock Career Rewards',
-              description: 'Share prep resources with classmates and qualify for signed letters of recommendation.',
-              checklist: ['Verifiable CV Credentials', 'Paid Internship Eligibility'],
-            },
-          ]}
-        />
+          ].map((resp, i) => (
+            <ScrollReveal key={i} delayMs={i * 60}>
+              <div className="p-6 rounded-[24px] bg-white border border-amber-100 shadow-sm text-left h-full flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 w-fit">
+                      {resp.icon}
+                    </div>
+                    <span className="text-xs font-bold text-amber-600 font-mono">ROLE {resp.number}</span>
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 font-display">{resp.title}</h3>
+                  <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed font-sans">
+                    {resp.desc}
+                  </p>
+                </div>
+              </div>
+            </ScrollReveal>
+          ))}
+        </div>
       </Section>
 
-      {/* 7. FAQs (Light) */}
+      {/* SECTION 3: How it will be recorded and evaluated */}
+      <Section variant="light" accent="captain">
+        <SectionHeader
+          accent="captain"
+          eyebrow="Evaluation & tracking"
+          title="How Your Ambassadorship is"
+          highlight="Recorded & Evaluated"
+          description="Transparent analytics measure your community impact in real time."
+        />
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+          {[
+            {
+              title: 'Real-Time Referral Analytics',
+              desc: 'Every classmate registration through your referral link is attributed automatically to your dashboard.',
+              icon: <TrendingUp className="w-5 h-5 text-amber-600" />,
+            },
+            {
+              title: 'Tiered Milestone Progress',
+              desc: 'Watch your progress bar advance as peers complete diagnostic tests and unlock higher recognition tiers.',
+              icon: <CheckCircle2 className="w-5 h-5 text-teal-600" />,
+            },
+            {
+              title: 'Direct Letter Endorsements',
+              desc: 'Official letters of recommendation and verified LinkedIn credentials are generated upon reaching milestones.',
+              icon: <Award className="w-5 h-5 text-amber-600" />,
+            },
+          ].map((item, i) => (
+            <ScrollReveal key={i} delayMs={i * 60}>
+              <div className="p-6 rounded-[24px] bg-white border border-amber-100 shadow-sm text-left h-full flex flex-col justify-between">
+                <div>
+                  <div className="p-2.5 rounded-xl bg-amber-50 text-amber-600 w-fit mb-3">
+                    {item.icon}
+                  </div>
+                  <h3 className="text-base font-bold text-slate-900 font-display">{item.title}</h3>
+                  <p className="text-xs sm:text-sm text-slate-600 mt-2 leading-relaxed font-sans">
+                    {item.desc}
+                  </p>
+                </div>
+              </div>
+            </ScrollReveal>
+          ))}
+        </div>
+      </Section>
+
+      {/* SECTION 4: Questions (FAQ) */}
       <Section variant="light" accent="captain">
         <SectionHeader
           accent="captain"
@@ -260,37 +277,24 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
         <FaqAccordion items={CAPTAIN_FAQS} accent="captain" />
       </Section>
 
-      {/* 8. Final CTA Section */}
+      {/* Final CTA Section: Links directly to /captain/apply */}
       <FinalCTA
         accent="captain"
-        primaryButtonText={isCaptainApproved ? 'Open Captain Dashboard' : 'Apply as Captain'}
+        primaryButtonText={applyText}
         secondaryButtonText="Explore Curriculum"
-        onPrimaryClick={() => {
-          if (isCaptainApproved) onNavigate('/captain/dashboard');
-          else setIsApplyModalOpen(true);
-        }}
+        primaryHref={applyHref}
+        secondaryHref="/features"
+        onPrimaryClick={() => onNavigate(applyHref)}
         onSecondaryClick={() => onNavigate('/features')}
       />
 
-      {/* 9. Shared Footer */}
+      {/* Shared Footer */}
       <Footer
         accent="captain"
         programName="Captain"
         onNavigate={(p) => onNavigate(`/${p}`)}
       />
-
-      {/* 10. Application Modal */}
-      {isApplyModalOpen && (
-        <UnifiedProgramApplicationModal
-          defaultProgram="captain"
-          isOpen={isApplyModalOpen}
-          onClose={() => setIsApplyModalOpen(false)}
-          onSuccess={() => {
-            setIsApplyModalOpen(false);
-            if (user) onNavigate('/captain/dashboard');
-          }}
-        />
-      )}
     </div>
   );
 };
+export default CaptainLandingPage;

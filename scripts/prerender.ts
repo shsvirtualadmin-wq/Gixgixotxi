@@ -861,7 +861,7 @@ const PUBLIC_ROUTES: RouteMetadata[] = [
   },
   {
     path: '/crew/apply',
-    title: 'Apply to Boardly Crew | Student Campus Ambassador Program',
+    title: 'Apply for Boardly Crew',
     description: 'Submit your student ambassador application for Boardly Crew. Lead your batch, share test prep resources, and unlock student leader perks.',
     canonical: 'https://boardly.cfd/crew/apply',
     ogImage: 'https://boardly.cfd/assets/boardly-crew-og.png',
@@ -869,18 +869,58 @@ const PUBLIC_ROUTES: RouteMetadata[] = [
     schema: {
       '@context': 'https://schema.org',
       '@type': 'WebPage',
-      name: 'Apply to Boardly Crew',
+      name: 'Apply for Boardly Crew',
       url: 'https://boardly.cfd/crew/apply',
     },
     generateContent: () => `
       <section class="py-16 px-4 max-w-3xl mx-auto text-center">
         <h1 class="text-3xl sm:text-5xl font-black text-slate-900 mb-4">Apply for Boardly Crew</h1>
-        <p class="text-slate-600 mb-8">Represent your campus, lead your batch, and unlock 30 days of free Premium.</p>
+        <p class="text-slate-600 mb-8">Help organize study events on your campus.</p>
         <div class="p-8 rounded-2xl bg-white border border-slate-200 text-left shadow-sm">
-          <h2 class="text-xl font-bold text-slate-900 mb-4">Application Form</h2>
-          <p class="text-sm text-slate-600 mb-6">Open the full interactive Boardly Crew portal to complete your 3-step application.</p>
-          <a href="/crew/apply" class="px-8 py-3.5 rounded-full bg-violet-600 text-white font-bold inline-block hover:bg-violet-700">Open Application Form</a>
+          <a href="/crew/apply" class="px-8 py-3.5 rounded-full bg-indigo-600 text-white font-bold inline-block hover:bg-indigo-700">Apply to Join Crew</a>
         </div>
+      </section>
+    `,
+  },
+  {
+    path: '/captain',
+    title: 'Boardly Captain | Campus Ambassador Program',
+    description: 'Represent Boardly at your institution. Empower classmates with verified test prep, build verifiable leadership experience, and unlock exclusive rewards.',
+    canonical: 'https://boardly.cfd/captain',
+    ogImage: 'https://boardly.cfd/assets/boardly-crew-og.png',
+    robots: 'index,follow',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Boardly Captain',
+      url: 'https://boardly.cfd/captain',
+    },
+    generateContent: () => `
+      <section class="py-16 px-4 max-w-4xl mx-auto text-center">
+        <h1 class="text-3xl sm:text-5xl font-black text-slate-900 mb-4">Boardly Captain Ambassador Program</h1>
+        <p class="text-slate-600 mb-8">Lead your campus batch, empower peers with authentic test prep, and earn verified credentials.</p>
+        <a href="/captain/apply" class="px-8 py-3.5 rounded-full bg-amber-500 text-slate-900 font-bold inline-block hover:bg-amber-600">Apply as Captain</a>
+      </section>
+    `,
+  },
+  {
+    path: '/captain/apply',
+    title: 'Apply for Boardly Captain',
+    description: 'Submit your student ambassador application for Boardly Captain. Represent Boardly at your college, share prep resources, and unlock student leader perks.',
+    canonical: 'https://boardly.cfd/captain/apply',
+    ogImage: 'https://boardly.cfd/assets/boardly-crew-og.png',
+    robots: 'index,follow',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Apply for Boardly Captain',
+      url: 'https://boardly.cfd/captain/apply',
+    },
+    generateContent: () => `
+      <section class="py-16 px-4 max-w-3xl mx-auto text-center">
+        <h1 class="text-3xl sm:text-5xl font-black text-slate-900 mb-4">Apply for Boardly Captain</h1>
+        <p class="text-slate-600 mb-8">Represent Boardly and lead your campus.</p>
+        <a href="/captain/apply" class="px-8 py-3.5 rounded-full bg-amber-500 text-slate-900 font-bold inline-block hover:bg-amber-600">Apply as Captain</a>
       </section>
     `,
   },
