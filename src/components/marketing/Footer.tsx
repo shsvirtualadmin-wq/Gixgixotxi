@@ -91,18 +91,20 @@ export const Footer: React.FC<FooterProps> = ({
   };
 
   return (
-    <div className="w-full bg-[#f8f9ff] pt-20">
-      {/* B) FOOTER CONTAINER
-          Starts ~80px below CTA section (light background in between).
-          Very dark navy #060a1a, LARGE rounded top: radius 48px, full screen width.
-          Padding 56px 32px 40px.
-          Thin 1px glowing line along the top edge: accent color fading to transparent. */}
+    <div className="w-full max-w-[100vw] overflow-x-clip bg-[#f8f9ff] pt-12 sm:pt-16">
+      {/* FOOTER CONTAINER:
+          width 100%, max-width 100vw, box-sizing border-box, padding 40px 24px 32px, overflow-x clip.
+          radius 32px on top corners, full width, no side margins. */}
       <footer
-        className="relative w-full bg-[#060a1a] text-white overflow-hidden text-left"
+        className="relative w-full max-w-[100vw] bg-[#060a1a] text-white text-left box-border"
         style={{
-          borderTopLeftRadius: '48px',
-          borderTopRightRadius: '48px',
-          padding: '56px 32px 40px',
+          borderTopLeftRadius: '32px',
+          borderTopRightRadius: '32px',
+          padding: '40px 24px 32px',
+          overflowX: 'clip',
+          maxWidth: '100vw',
+          width: '100%',
+          boxSizing: 'border-box',
         }}
       >
         {/* Glowing 1px line along the top edge */}
@@ -114,54 +116,46 @@ export const Footer: React.FC<FooterProps> = ({
           aria-hidden="true"
         />
 
-        <div className="max-w-4xl mx-auto w-full text-left">
-          {/* C-1. Logo in a white circle (64px) + "Boardly" beside it (white, 24px, "Board" bold + "ly" lighter), 16px gap */}
-          <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-full bg-white flex items-center justify-center p-2.5 shadow-md shrink-0">
-              <img
-                src="/assets/boardly-logo-solid.png"
-                alt="Boardly"
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.onerror = null;
-                  target.src = '/assets/boardly-logo-transparent.png';
-                }}
-              />
-            </div>
-            <div className="text-[24px] text-white">
-              <span className="font-bold">Board</span>
-              <span className="font-light">ly</span>
-            </div>
+        <div className="max-w-4xl mx-auto w-full text-left min-w-0 max-w-full [overflow-wrap:anywhere]">
+          {/* 1. Logo: Transparent logo icon at 40px height + "Boardly" (white, 24px, weight 700), 12px gap, one row */}
+          <div className="flex items-center gap-[12px] min-w-0 max-w-full">
+            <img
+              src="/assets/boardly-logo-transparent.png"
+              alt="Boardly"
+              className="h-[40px] w-auto shrink-0 object-contain select-none"
+              style={{
+                filter: 'drop-shadow(0 0 12px rgba(26, 109, 255, 0.35))',
+              }}
+            />
+            <span className="text-[24px] font-bold text-white tracking-tight leading-none select-none">
+              Boardly
+            </span>
           </div>
 
-          {/* C-2. Description (18px, line-height 1.7, rgba(255,255,255,0.85)), 32px below the logo */}
+          {/* 2. Description: 16px, line-height 1.7, rgba(255,255,255,0.8) */}
           <p
-            className="mt-8 text-[18px] leading-[1.7] max-w-2xl"
-            style={{ color: 'rgba(255, 255, 255, 0.85)' }}
+            className="mt-6 text-[16px] leading-[1.7] max-w-2xl min-w-0 max-w-full [overflow-wrap:anywhere]"
+            style={{ color: 'rgba(255, 255, 255, 0.8)' }}
           >
             {accentConfig.description}
           </p>
 
-          {/* C-3. TWO-COLUMN link grid, row gap 48px, column gap 32px, 64px below description:
-              Row 1: Product | Events. Row 2: Company | Legal.
-              Group heading: 15px, weight 700, uppercase, letter-spacing 0.15em, accent color, 24px above links.
-              Links: 20px, weight 400, white, 24px between links, easy to tap. */}
-          <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-12">
+          {/* 3. Link grid: two columns (Product | Events, then Company | Legal),
+              column gap 24px, row gap 32px, both columns inside screen width */}
+          <div className="mt-10 grid grid-cols-2 gap-x-[24px] gap-y-[32px] w-full min-w-0 max-w-full">
             {/* ROW 1: Column 1 - Product */}
-            <div>
+            <div className="min-w-0 max-w-full">
               <h3
-                className="text-[15px] font-bold uppercase tracking-[0.15em] mb-6 font-sans"
-                style={{ color: accentConfig.headingColor }}
+                className="text-[13px] font-bold uppercase tracking-[0.1em] mb-4 font-sans text-[#6ea8ff] block truncate"
               >
                 Product
               </h3>
-              <ul className="space-y-6 text-[20px] font-normal text-white">
+              <ul className="space-y-[14px] text-[16px] text-white">
                 <li>
                   <a
                     href="/features"
                     onClick={(e) => handleLink(e, '/features')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     Features
                   </a>
@@ -170,7 +164,7 @@ export const Footer: React.FC<FooterProps> = ({
                   <a
                     href="/boardly-ai"
                     onClick={(e) => handleLink(e, '/boardly-ai')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     Boardly AI
                   </a>
@@ -179,7 +173,7 @@ export const Footer: React.FC<FooterProps> = ({
                   <a
                     href="/mdcat"
                     onClick={(e) => handleLink(e, '/mdcat')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     MDCAT Prep
                   </a>
@@ -188,7 +182,7 @@ export const Footer: React.FC<FooterProps> = ({
                   <a
                     href="/fsc-matric"
                     onClick={(e) => handleLink(e, '/fsc-matric')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     FSC &amp; Matric
                   </a>
@@ -197,7 +191,7 @@ export const Footer: React.FC<FooterProps> = ({
                   <a
                     href="/fast-nu"
                     onClick={(e) => handleLink(e, '/fast-nu')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     FAST-NU Prep
                   </a>
@@ -206,7 +200,7 @@ export const Footer: React.FC<FooterProps> = ({
                   <a
                     href="/pricing"
                     onClick={(e) => handleLink(e, '/pricing')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     Pricing
                   </a>
@@ -215,19 +209,18 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
 
             {/* ROW 1: Column 2 - Events */}
-            <div>
+            <div className="min-w-0 max-w-full">
               <h3
-                className="text-[15px] font-bold uppercase tracking-[0.15em] mb-6 font-sans"
-                style={{ color: accentConfig.headingColor }}
+                className="text-[13px] font-bold uppercase tracking-[0.1em] mb-4 font-sans text-[#6ea8ff] block truncate"
               >
                 Events
               </h3>
-              <ul className="space-y-6 text-[20px] font-normal text-white">
+              <ul className="space-y-[14px] text-[16px] text-white">
                 <li>
                   <a
                     href="/events/blitz"
                     onClick={(e) => handleLink(e, '/events/blitz')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     Boardly Blitz
                   </a>
@@ -236,7 +229,7 @@ export const Footer: React.FC<FooterProps> = ({
                   <a
                     href="/events/arena"
                     onClick={(e) => handleLink(e, '/events/arena')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     Boardly Arena
                   </a>
@@ -245,7 +238,7 @@ export const Footer: React.FC<FooterProps> = ({
                   <a
                     href="/captain"
                     onClick={(e) => handleLink(e, '/captain')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     Boardly Captain
                   </a>
@@ -254,7 +247,7 @@ export const Footer: React.FC<FooterProps> = ({
                   <a
                     href="/crew"
                     onClick={(e) => handleLink(e, '/crew')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     Boardly Crew
                   </a>
@@ -263,7 +256,7 @@ export const Footer: React.FC<FooterProps> = ({
                   <a
                     href="/universities"
                     onClick={(e) => handleLink(e, '/universities')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     University Explorer
                   </a>
@@ -272,19 +265,18 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
 
             {/* ROW 2: Column 1 - Company */}
-            <div>
+            <div className="min-w-0 max-w-full">
               <h3
-                className="text-[15px] font-bold uppercase tracking-[0.15em] mb-6 font-sans"
-                style={{ color: accentConfig.headingColor }}
+                className="text-[13px] font-bold uppercase tracking-[0.1em] mb-4 font-sans text-[#6ea8ff] block truncate"
               >
                 Company
               </h3>
-              <ul className="space-y-6 text-[20px] font-normal text-white">
+              <ul className="space-y-[14px] text-[16px] text-white">
                 <li>
                   <a
                     href="/about"
                     onClick={(e) => handleLink(e, '/about')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     About Boardly
                   </a>
@@ -293,7 +285,7 @@ export const Footer: React.FC<FooterProps> = ({
                   <a
                     href="/contact"
                     onClick={(e) => handleLink(e, '/contact')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     Contact Support
                   </a>
@@ -302,7 +294,7 @@ export const Footer: React.FC<FooterProps> = ({
                   <a
                     href="/faqs"
                     onClick={(e) => handleLink(e, '/faqs')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     Help &amp; FAQ
                   </a>
@@ -311,19 +303,18 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
 
             {/* ROW 2: Column 2 - Legal */}
-            <div>
+            <div className="min-w-0 max-w-full">
               <h3
-                className="text-[15px] font-bold uppercase tracking-[0.15em] mb-6 font-sans"
-                style={{ color: accentConfig.headingColor }}
+                className="text-[13px] font-bold uppercase tracking-[0.1em] mb-4 font-sans text-[#6ea8ff] block truncate"
               >
                 Legal
               </h3>
-              <ul className="space-y-6 text-[20px] font-normal text-white">
+              <ul className="space-y-[14px] text-[16px] text-white">
                 <li>
                   <a
                     href="/privacy"
                     onClick={(e) => handleLink(e, '/privacy')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     Privacy Policy
                   </a>
@@ -332,7 +323,7 @@ export const Footer: React.FC<FooterProps> = ({
                   <a
                     href="/terms"
                     onClick={(e) => handleLink(e, '/terms')}
-                    className="hover:opacity-80 transition-opacity inline-block cursor-pointer"
+                    className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     Terms of Service
                   </a>
@@ -341,102 +332,101 @@ export const Footer: React.FC<FooterProps> = ({
             </div>
           </div>
 
-          {/* C-4. Community card, 64px below the links: radius 32px, padding 32px, rgba(255,255,255,0.04) background, 1px border */}
+          {/* 4. Community card: heading 22px, text 15px, WhatsApp button full-width pill, 52px tall, 16px text */}
           <div
-            className="mt-16 w-full text-left"
+            className="mt-12 w-full text-left min-w-0 max-w-full [overflow-wrap:anywhere]"
             style={{
-              borderRadius: '32px',
-              padding: '32px',
+              borderRadius: '24px',
+              padding: '24px',
               backgroundColor: 'rgba(255, 255, 255, 0.04)',
               border: '1px solid rgba(255, 255, 255, 0.12)',
+              boxSizing: 'border-box',
             }}
           >
-            <h3 className="text-[28px] font-semibold text-white tracking-tight">
+            <h3 className="text-[22px] font-semibold text-white tracking-tight leading-snug">
               Join the Boardly community
             </h3>
             <p
-              className="mt-2 text-[18px] leading-relaxed"
-              style={{ color: 'rgba(255, 255, 255, 0.65)' }}
+              className="mt-2 text-[15px] leading-relaxed"
+              style={{ color: 'rgba(255, 255, 255, 0.7)' }}
             >
               Hear about new events first and get study tips from the team on WhatsApp.
             </p>
-            {/* FULL-WIDTH WHITE pill button, 60px tall, dark text "Join on WhatsApp", no icon, no side-by-side */}
             <button
               type="button"
               onClick={handleWhatsApp}
-              className="mt-6 w-full h-[60px] min-h-[60px] rounded-full bg-white text-[#060a1a] font-bold text-[18px] transition-transform active:scale-[0.98] cursor-pointer flex items-center justify-center shadow-md"
+              className="mt-5 w-full h-[52px] min-h-[52px] rounded-full bg-white text-[#060a1a] font-bold text-[16px] transition-transform active:scale-[0.98] cursor-pointer flex items-center justify-center shadow-md select-none"
             >
               Join on WhatsApp
             </button>
           </div>
 
-          {/* C-5. Social icons, centered, 64px below the card: WhatsApp, Instagram, YouTube, TikTok. 32px white icons, 36px gap, no circles or borders */}
-          <div className="mt-16 flex items-center justify-center gap-9 text-white">
+          {/* 5. Social icons: 28px icons, 28px gap */}
+          <div className="mt-10 flex items-center justify-center gap-[28px] text-white">
             <a
               href="https://chat.whatsapp.com/FTXFo4P7kct0L047d5zRGy?s=cl&p=a&mlu=4&ilr=4"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="WhatsApp"
-              className="text-white hover:opacity-80 transition-opacity"
+              className="text-white hover:opacity-80 transition-opacity inline-flex items-center justify-center"
             >
-              <WhatsAppIcon className="w-8 h-8" />
+              <WhatsAppIcon className="w-[28px] h-[28px]" />
             </a>
             <a
               href="https://www.instagram.com/shsvirtualacademy?vrfl=MXR2c2NuZDFwd3RsMQ=="
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Instagram"
-              className="text-white hover:opacity-80 transition-opacity"
+              className="text-white hover:opacity-80 transition-opacity inline-flex items-center justify-center"
             >
-              <InstagramIcon className="w-8 h-8" />
+              <InstagramIcon className="w-[28px] h-[28px]" />
             </a>
             <a
               href="https://youtube.com/@shsvirtualacademy?si=BhCdzhaFyz4MNyJC"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="YouTube"
-              className="text-white hover:opacity-80 transition-opacity"
+              className="text-white hover:opacity-80 transition-opacity inline-flex items-center justify-center"
             >
-              <YouTubeIcon className="w-8 h-8" />
+              <YouTubeIcon className="w-[28px] h-[28px]" />
             </a>
             <a
               href="https://www.tiktok.com/@shsvirtualacademy?_r=1&_t=ZS-9ASYILp1Sq5"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="TikTok"
-              className="text-white hover:opacity-80 transition-opacity"
+              className="text-white hover:opacity-80 transition-opacity inline-flex items-center justify-center"
             >
-              <TikTokIcon className="w-8 h-8" />
+              <TikTokIcon className="w-[28px] h-[28px]" />
             </a>
           </div>
 
-          {/* C-6. Copyright, centered, 20px below the icons, 18px, rgba(255,255,255,0.8) */}
+          {/* 6. Copyright: 14px, disclaimer: 12px */}
           <p
-            className="mt-5 text-center text-[18px]"
+            className="mt-5 text-center text-[14px] min-w-0 max-w-full [overflow-wrap:anywhere]"
             style={{ color: 'rgba(255, 255, 255, 0.8)' }}
           >
             &copy; 2026 Boardly. Operated by SHS Virtual Academy.
           </p>
 
-          {/* C-7. Disclaimer below it, centered, 13px, muted, max-width 320px */}
           <p
-            className="mt-2 mx-auto text-center text-[13px] max-w-[320px] leading-relaxed"
+            className="mt-2 mx-auto text-center text-[12px] max-w-[320px] leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere]"
             style={{ color: 'rgba(255, 255, 255, 0.55)' }}
           >
             Independent online testing engine. All institute names and test marks belong to their respective authorities.
           </p>
 
-          {/* C-8. HUGE faded "Boardly" wordmark at the very bottom, full width (font-size about 28vw, weight 800),
-              gradient from the accent color at 35% opacity at the top to transparent at the bottom, cut off by bottom edge, 40px of space above it */}
+          {/* 7. "Boardly" watermark at the bottom: max 22vw, cut off by bottom edge, never wider than screen */}
           <div
-            className="w-full overflow-hidden flex justify-center pointer-events-none select-none mt-10 -mb-6 leading-none"
+            className="w-full max-w-full overflow-hidden flex justify-center pointer-events-none select-none mt-8 -mb-8 leading-none"
             aria-hidden="true"
           >
             <span
               className="font-extrabold tracking-tighter text-transparent bg-clip-text text-center whitespace-nowrap"
               style={{
-                fontSize: '28vw',
+                fontSize: '22vw',
                 lineHeight: 0.8,
+                maxWidth: '100vw',
                 backgroundImage: `linear-gradient(to bottom, ${accentConfig.wordmarkRgba} 0%, transparent 85%)`,
               }}
             >

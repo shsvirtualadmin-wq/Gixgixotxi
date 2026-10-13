@@ -222,7 +222,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      {/* Background Dim Backdrop (No extra blur band) */}
+      {/* Background Dim Backdrop */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -232,198 +232,214 @@ export const Navbar: React.FC<NavbarProps> = ({
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={() => setIsOpen(false)}
-            className="fixed inset-0 z-40 bg-slate-950/40 cursor-pointer"
+            className="fixed inset-0 z-40 cursor-pointer"
+            style={{
+              backgroundColor: 'rgba(15, 23, 42, 0.35)',
+              backdropFilter: 'blur(6px)',
+              WebkitBackdropFilter: 'blur(6px)',
+            }}
             aria-hidden="true"
           />
         )}
       </AnimatePresence>
 
-      {/* Floating Clean Glass Pill Navigation Container: height 64px, radius 9999px */}
-      <header className="fixed top-3.5 sm:top-5 left-0 right-0 z-50 px-3 sm:px-6 max-w-4xl mx-auto pointer-events-none">
+      {/* Floating Clean Glass Pill Navigation Container */}
+      <header
+        ref={containerRef}
+        className="fixed top-3.5 sm:top-5 left-0 right-0 z-50 px-3 sm:px-6 max-w-4xl mx-auto pointer-events-none"
+      >
+        {/* Top Navbar Pill: stays white while open, radius 9999px */}
         <div
-          ref={containerRef}
-          className="pointer-events-auto relative w-full transition-all duration-300 overflow-hidden shadow-xl"
+          className="pointer-events-auto relative w-full transition-all duration-200 overflow-hidden shadow-xl flex items-center justify-between px-4 sm:px-6 h-16 min-h-[64px]"
           style={{
             backgroundColor: isOpen
-              ? 'rgba(15, 23, 42, 0.95)'
+              ? '#ffffff'
               : isLightSection
-              ? 'rgba(255, 255, 255, 0.75)'
-              : 'rgba(15, 23, 42, 0.6)',
-            backdropFilter: 'blur(16px)',
-            WebkitBackdropFilter: 'blur(16px)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            borderRadius: isOpen ? '28px' : '20px',
-            minHeight: '64px',
-            boxShadow:
-              isLightSection && !isOpen
-                ? '0 8px 32px rgba(15, 23, 42, 0.08)'
-                : '0 8px 32px rgba(0, 0, 0, 0.28)',
+              ? 'rgba(255, 255, 255, 0.85)'
+              : 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: isOpen ? 'none' : 'blur(16px)',
+            WebkitBackdropFilter: isOpen ? 'none' : 'blur(16px)',
+            border: isOpen
+              ? '1px solid #e2e8f0'
+              : isLightSection
+              ? '1px solid rgba(0, 0, 0, 0.08)'
+              : '1px solid rgba(255, 255, 255, 0.12)',
+            borderRadius: '9999px',
+            boxShadow: isOpen
+              ? '0 10px 30px rgba(15, 23, 42, 0.08)'
+              : isLightSection
+              ? '0 8px 32px rgba(15, 23, 42, 0.08)'
+              : '0 8px 32px rgba(0, 0, 0, 0.28)',
           }}
         >
-          {/* Top Pill Bar - Exactly 64px high */}
-          <div className="flex items-center justify-between px-4 sm:px-6 h-16 min-h-[64px]">
-            {/* Logo on Left: icon + Boardly wordmark, ONE logo only + optional program tag */}
-            <a
-              href="/"
-              onClick={(e) => handleLinkClick(e, '/')}
-              className="flex items-center gap-2.5 select-none group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a6dff] rounded-lg"
-              aria-label="Boardly Home"
-            >
-              <BrandLogo size="md" variant={isLightSection && !isOpen ? 'light' : 'dark'} />
-              {programTag && (
-                <span
-                  className="text-[12px] font-semibold tracking-normal px-2.5 py-0.5 rounded-full border border-white/15"
-                  style={{
-                    backgroundColor:
-                      isLightSection && !isOpen
-                        ? 'rgba(15, 23, 42, 0.06)'
-                        : 'rgba(255, 255, 255, 0.08)',
-                    color:
-                      accent === 'crew'
-                        ? isLightSection && !isOpen
-                          ? '#4f46e5'
-                          : '#c7d2fe'
-                        : accent === 'captain'
-                        ? isLightSection && !isOpen
-                          ? '#b45309'
-                          : '#fcd34d'
-                        : isLightSection && !isOpen
-                        ? '#1d4ed8'
-                        : '#93c5fd',
-                  }}
-                >
-                  {programTag === 'Crew' ? 'Crew' : 'Captain'}
-                </span>
-              )}
-            </a>
-
-            {/* Hamburger Button on Right (Morphs to X) */}
-            <button
-              type="button"
-              onClick={() => setIsOpen((prev) => !prev)}
-              aria-expanded={isOpen}
-              aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
-              className="w-10 h-10 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a6dff] cursor-pointer"
-            >
-              <div className="w-5 h-4 relative flex flex-col justify-between pointer-events-none">
-                <span
-                  style={{
-                    backgroundColor: isLightSection && !isOpen ? '#0f172a' : '#ffffff',
-                    transition:
-                      'transform 260ms cubic-bezier(0.22, 1, 0.36, 1), background-color 200ms ease',
-                    transform: isOpen ? 'translateY(7px) rotate(45deg)' : 'none',
-                  }}
-                  className="block h-0.5 w-full rounded-full origin-center"
-                />
-                <span
-                  style={{
-                    backgroundColor: isLightSection && !isOpen ? '#0f172a' : '#ffffff',
-                    transition: 'opacity 200ms ease, background-color 200ms ease',
-                    opacity: isOpen ? 0 : 1,
-                  }}
-                  className="block h-0.5 w-full rounded-full"
-                />
-                <span
-                  style={{
-                    backgroundColor: isLightSection && !isOpen ? '#0f172a' : '#ffffff',
-                    transition:
-                      'transform 260ms cubic-bezier(0.22, 1, 0.36, 1), background-color 200ms ease',
-                    transform: isOpen ? 'translateY(-7px) rotate(-45deg)' : 'none',
-                  }}
-                  className="block h-0.5 w-full rounded-full origin-center"
-                />
-              </div>
-            </button>
-          </div>
-
-          {/* Expanded Downward Menu Card */}
-          <AnimatePresence>
-            {isOpen && (
-              <motion.div
-                key="menu-content"
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{
-                  duration: shouldReduceMotion ? 0.05 : 0.32,
-                  ease: [0.22, 1, 0.36, 1],
+          {/* Logo on Left: icon + Boardly wordmark, ONE logo only + optional program tag */}
+          <a
+            href="/"
+            onClick={(e) => handleLinkClick(e, '/')}
+            className="flex items-center gap-2.5 select-none group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a6dff] rounded-lg"
+            aria-label="Boardly Home"
+          >
+            <BrandLogo size="md" variant={isOpen || isLightSection ? 'light' : 'dark'} />
+            {programTag && (
+              <span
+                className="text-[12px] font-semibold tracking-normal px-2.5 py-0.5 rounded-full border"
+                style={{
+                  backgroundColor:
+                    isOpen || isLightSection
+                      ? 'rgba(15, 23, 42, 0.06)'
+                      : 'rgba(255, 255, 255, 0.08)',
+                  borderColor:
+                    isOpen || isLightSection
+                      ? 'rgba(15, 23, 42, 0.1)'
+                      : 'rgba(255, 255, 255, 0.15)',
+                  color:
+                    accent === 'crew'
+                      ? isOpen || isLightSection
+                        ? '#4f46e5'
+                        : '#c7d2fe'
+                      : accent === 'captain'
+                      ? isOpen || isLightSection
+                        ? '#b45309'
+                        : '#fcd34d'
+                      : isOpen || isLightSection
+                      ? '#1d4ed8'
+                      : '#93c5fd',
                 }}
-                className="px-4 sm:px-6 pb-6 pt-2 border-t border-white/10 max-h-[calc(85dvh-4rem)] overflow-y-auto"
               >
-                <div className="space-y-4 pt-2">
-                  {sections.map((section, sIdx) => (
-                    <div key={section.name} className="space-y-1">
-                      <div className="text-[12px] font-semibold text-white/60 tracking-normal px-3">
-                        {section.name}
-                      </div>
+                {programTag === 'Crew' ? 'Crew' : 'Captain'}
+              </span>
+            )}
+          </a>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
-                        {section.items.map((item, iIdx) => {
-                          const active = isCurrentActive(item.href);
-                          const totalIdx = sIdx * 4 + iIdx;
+          {/* Hamburger Button on Right (Morphs to X) */}
+          <button
+            type="button"
+            onClick={() => setIsOpen((prev) => !prev)}
+            aria-expanded={isOpen}
+            aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            className="w-10 h-10 min-h-[44px] min-w-[44px] flex items-center justify-center rounded-full hover:bg-black/5 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1a6dff] cursor-pointer"
+          >
+            <div className="w-5 h-4 relative flex flex-col justify-between pointer-events-none">
+              <span
+                style={{
+                  backgroundColor: isOpen || isLightSection ? '#0f172a' : '#ffffff',
+                  transition:
+                    'transform 260ms cubic-bezier(0.22, 1, 0.36, 1), background-color 200ms ease',
+                  transform: isOpen ? 'translateY(7px) rotate(45deg)' : 'none',
+                }}
+                className="block h-0.5 w-full rounded-full origin-center"
+              />
+              <span
+                style={{
+                  backgroundColor: isOpen || isLightSection ? '#0f172a' : '#ffffff',
+                  transition: 'opacity 200ms ease, background-color 200ms ease',
+                  opacity: isOpen ? 0 : 1,
+                }}
+                className="block h-0.5 w-full rounded-full"
+              />
+              <span
+                style={{
+                  backgroundColor: isOpen || isLightSection ? '#0f172a' : '#ffffff',
+                  transition:
+                    'transform 260ms cubic-bezier(0.22, 1, 0.36, 1), background-color 200ms ease',
+                  transform: isOpen ? 'translateY(-7px) rotate(-45deg)' : 'none',
+                }}
+                className="block h-0.5 w-full rounded-full origin-center"
+              />
+            </div>
+          </button>
+        </div>
 
-                          return (
-                            <motion.div
-                              key={item.href}
-                              initial={{ opacity: 0, x: -6 }}
-                              animate={{ opacity: 1, x: 0 }}
-                              transition={{
-                                delay: shouldReduceMotion ? 0 : totalIdx * 0.04,
-                                duration: 0.2,
-                              }}
-                            >
-                              <a
-                                href={item.href}
-                                onClick={(e) => handleLinkClick(e, item.href)}
-                                className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm font-semibold transition-colors duration-150 relative cursor-pointer ${
-                                  active
-                                    ? `bg-white/15 text-white`
-                                    : 'text-white/80 hover:text-white hover:bg-white/10'
-                                }`}
-                              >
-                                {/* Left accent indicator for active page */}
-                                {active && (
-                                  <span
-                                    className={`absolute left-0 top-1.5 bottom-1.5 w-1 rounded-r-full ${accentStyles.activeBar}`}
-                                  />
-                                )}
-                                <div className="flex items-center gap-2 pl-1">
-                                  <span>{item.label}</span>
-                                  {item.isAi && <Sparkles className="w-3.5 h-3.5 text-amber-400" />}
-                                </div>
-                                <ArrowRight className="w-3.5 h-3.5 opacity-40 text-white" />
-                              </a>
-                            </motion.div>
-                          );
-                        })}
-                      </div>
+        {/* Menu Panel - attached right under navbar with 8px gap */}
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              key="menu-panel"
+              initial={{ opacity: 0, y: -6, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -6, scale: 0.98 }}
+              transition={{
+                duration: shouldReduceMotion ? 0.05 : 0.22,
+                ease: [0.22, 1, 0.36, 1],
+              }}
+              className="pointer-events-auto mt-2 w-full overflow-hidden flex flex-col"
+              style={{
+                backgroundColor: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderRadius: '28px',
+                boxShadow: '0 20px 50px rgba(15, 23, 42, 0.15)',
+                maxHeight: 'calc(100dvh - 120px)',
+                overscrollBehavior: 'contain',
+              }}
+            >
+              <div className="overflow-y-auto overscroll-contain p-4 sm:p-6 pb-6 space-y-4">
+                {sections.map((section) => (
+                  <div key={section.name} className="space-y-1">
+                    <div className="text-[12px] font-semibold text-[#64748b] px-3 pt-4 first:pt-0">
+                      {section.name}
                     </div>
-                  ))}
-                </div>
 
-                {/* Bottom Primary Action Button */}
-                <div className="mt-6 pt-4 border-t border-white/10 space-y-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                      {section.items.map((item) => {
+                        const active = isCurrentActive(item.href);
+
+                        return (
+                          <a
+                            key={item.href}
+                            href={item.href}
+                            onClick={(e) => handleLinkClick(e, item.href)}
+                            className={`w-full h-[52px] min-h-[52px] flex items-center justify-between px-4 rounded-[16px] text-[16px] transition-colors cursor-pointer select-none ${
+                              active
+                                ? 'bg-[#eef2ff] text-[#1a6dff] font-semibold'
+                                : 'text-[#0f172a] font-medium hover:bg-[#f1f5f9] active:bg-[#f1f5f9]'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>{item.label}</span>
+                              {item.isAi && <Sparkles className="w-4 h-4 text-[#f5b942]" />}
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-[#94a3b8]" />
+                          </a>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Bottom Primary Action Button and Sign In link */}
+                <div className="pt-4 border-t border-[#e2e8f0] space-y-4">
                   <a
                     href={finalTargetHref}
                     onClick={handleGetStarted}
-                    className={`w-full min-h-[52px] py-3.5 px-6 rounded-full overflow-hidden text-center font-bold text-base cursor-pointer transition-transform duration-150 active:scale-[0.98] flex items-center justify-center select-none ${accentStyles.buttonBg}`}
+                    className="w-full h-[56px] min-h-[56px] rounded-full text-white font-bold text-[16px] cursor-pointer transition-transform duration-150 active:scale-[0.98] flex items-center justify-center select-none shadow-sm"
+                    style={{
+                      borderRadius: '9999px',
+                      backgroundColor: '#1a6dff',
+                      color: '#ffffff',
+                    }}
                   >
                     {finalTargetText}
                   </a>
+
                   {!user && (
-                    <a
-                      href="/login"
-                      onClick={(e) => handleLinkClick(e, '/login')}
-                      className="block w-full py-2.5 text-center text-xs font-semibold text-white/60 hover:text-white cursor-pointer"
-                    >
-                      Already have an account? <span className="underline">Sign in</span>
-                    </a>
+                    <div className="text-center pt-1 pb-1">
+                      <a
+                        href="/login"
+                        onClick={(e) => handleLinkClick(e, '/login')}
+                        className="inline-block text-[14px] text-[#475569] hover:text-[#0f172a] transition-colors cursor-pointer"
+                      >
+                        Already have an account?{' '}
+                        <span className="text-[#1a6dff] font-semibold underline underline-offset-2">
+                          Sign in
+                        </span>
+                      </a>
+                    </div>
                   )}
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </header>
     </>
   );
