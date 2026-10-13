@@ -4,6 +4,7 @@ import { MarketingPage } from './Navbar';
 export interface FooterProps {
   accent?: 'default' | 'home' | 'captain' | 'crew';
   programName?: 'Captain' | 'Crew';
+  arenaNote?: boolean;
   onNavigate?: (page: MarketingPage) => void;
   onOpenEventModal?: (event: 'blitz' | 'arena') => void;
   onOpenProgramModal?: (program: 'circles' | 'captains') => void;
@@ -36,6 +37,7 @@ const YouTubeIcon: React.FC<{ className?: string }> = ({ className = 'w-8 h-8' }
 export const Footer: React.FC<FooterProps> = ({
   accent = 'default',
   programName,
+  arenaNote,
   onNavigate,
 }) => {
   const normalizedAccent = accent === 'default' ? 'home' : accent;
@@ -227,8 +229,8 @@ export const Footer: React.FC<FooterProps> = ({
                 </li>
                 <li>
                   <a
-                    href="/events/arena"
-                    onClick={(e) => handleLink(e, '/events/arena')}
+                    href="/arena"
+                    onClick={(e) => handleLink(e, '/arena')}
                     className="hover:opacity-80 transition-opacity min-h-[40px] flex items-center cursor-pointer min-w-0 [overflow-wrap:anywhere]"
                   >
                     Boardly Arena
@@ -415,6 +417,15 @@ export const Footer: React.FC<FooterProps> = ({
           >
             Independent online testing engine. All institute names and test marks belong to their respective authorities.
           </p>
+
+          {(arenaNote || (typeof window !== 'undefined' && window.location.pathname.startsWith('/arena'))) && (
+            <p
+              className="mt-2.5 mx-auto text-center text-[12px] max-w-[360px] leading-relaxed min-w-0 max-w-full [overflow-wrap:anywhere]"
+              style={{ color: '#6ea8ff' }}
+            >
+              Boardly Arena is an independent practice event run by Boardly.
+            </p>
+          )}
 
           {/* 7. "Boardly" watermark at the bottom: max 22vw, cut off by bottom edge, never wider than screen */}
           <div

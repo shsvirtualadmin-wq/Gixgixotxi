@@ -188,7 +188,7 @@ export const MDCAT_LOGICAL_REASONING_BATCH10: Question[] = [
   },
   {
     id: 'mdcat-b10-lr-12',
-    q: 'Problem Statement: "A sudden seasonal outbreak of dengue hemorrhagic fever has severely overwhelmed the bed capacity of a municipal public hospital." Proposed Courses of Action: I. Establish temporary triage and hydration wards in adjacent civic centers staffed by redeployed clinical teams. II. Deploy municipal public health squads to conduct targeted indoor residual spraying and eliminate stagnant water breeding sites. Which course(s) of action is/are appropriate?',
+    q: 'Problem Statement: "A sudden seasonal outbreak of dengue hemorrhagic fever has severely overwhelmed the bed capacity of a municipal public hospital." Proposed Courses of Action: I. Establish temporary triage and hydration wards in adjacent civic centers staffed by redeployed clinical teams. II. Deploy municipal public health teams to conduct targeted indoor residual spraying and eliminate stagnant water breeding sites. Which course(s) of action is/are appropriate?',
     options: [
       'Both Course I and Course II are appropriate',
       'Only Course I is appropriate',

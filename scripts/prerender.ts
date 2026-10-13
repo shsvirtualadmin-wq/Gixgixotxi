@@ -924,6 +924,79 @@ const PUBLIC_ROUTES: RouteMetadata[] = [
       </section>
     `,
   },
+  {
+    path: '/arena',
+    title: 'Boardly Arena: live timed MCQ practice',
+    description: 'Compete in a timed MCQ session, get instant results and see your rank. Free for every student.',
+    canonical: 'https://boardly.cfd/arena',
+    ogImage: 'https://boardly.cfd/og-arena.png',
+    robots: 'index,follow',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Boardly Arena: live timed MCQ practice',
+      url: 'https://boardly.cfd/arena',
+    },
+    generateContent: () => `
+      <section class="py-16 px-4 max-w-3xl mx-auto text-center">
+        <span class="inline-block px-4 py-1.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 mb-4">
+          Live Timed Practice · National Competition
+        </span>
+        <h1 class="text-4xl sm:text-6xl font-black text-slate-900 tracking-tight mb-4">
+          Boardly <span class="text-blue-600">Arena</span>
+        </h1>
+        <p class="text-lg text-slate-600 max-w-2xl mx-auto mb-8">
+          Compete in a timed MCQ session on one subject, get instant results, and see your rank on a public leaderboard. Free for every student.
+        </p>
+        <div class="flex flex-wrap justify-center gap-4">
+          <a href="/arena/register" class="px-8 py-3.5 rounded-full bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-md">Register for Arena</a>
+          <a href="/arena/leaderboard" class="px-8 py-3.5 rounded-full bg-slate-100 text-slate-800 font-bold hover:bg-slate-200">View Leaderboard</a>
+        </div>
+      </section>
+    `,
+  },
+  {
+    path: '/arena/register',
+    title: 'Register for Boardly Arena',
+    description: 'Free entry. Takes about a minute.',
+    canonical: 'https://boardly.cfd/arena/register',
+    ogImage: 'https://boardly.cfd/og-arena.png',
+    robots: 'index,follow',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Register for Boardly Arena',
+      url: 'https://boardly.cfd/arena/register',
+    },
+    generateContent: () => `
+      <section class="py-16 px-4 max-w-xl mx-auto text-center">
+        <h1 class="text-3xl sm:text-4xl font-black text-slate-900 mb-3">Register for Boardly Arena</h1>
+        <p class="text-slate-600 mb-6">Free entry. Takes about a minute.</p>
+        <a href="/arena/register" class="px-8 py-3.5 rounded-full bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-md">Register for Arena</a>
+      </section>
+    `,
+  },
+  {
+    path: '/arena/leaderboard',
+    title: 'Boardly Arena Leaderboard',
+    description: 'See the latest Arena rankings.',
+    canonical: 'https://boardly.cfd/arena/leaderboard',
+    ogImage: 'https://boardly.cfd/og-arena.png',
+    robots: 'index,follow',
+    schema: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'Boardly Arena Leaderboard',
+      url: 'https://boardly.cfd/arena/leaderboard',
+    },
+    generateContent: () => `
+      <section class="py-16 px-4 max-w-3xl mx-auto text-center">
+        <h1 class="text-3xl sm:text-5xl font-black text-slate-900 mb-4">Boardly Arena Leaderboard</h1>
+        <p class="text-slate-600 mb-8">See the latest Arena rankings and verified participant scores.</p>
+        <a href="/arena" class="px-8 py-3.5 rounded-full bg-blue-600 text-white font-bold hover:bg-blue-700 shadow-md">Back to Arena</a>
+      </section>
+    `,
+  },
 ];
 
 function generateNavigationHeader(): string {
@@ -938,6 +1011,7 @@ function generateNavigationHeader(): string {
           <a href="/" class="hover:text-blue-600">Home</a>
           <a href="/features" class="hover:text-blue-600">Features</a>
           <a href="/pricing" class="hover:text-blue-600">Pricing</a>
+          <a href="/arena" class="hover:text-blue-600">Arena</a>
           <a href="/boardly-ai" class="hover:text-blue-600">Boardly AI</a>
           <a href="/mdcat" class="hover:text-blue-600">MDCAT</a>
           <a href="/fsc-matric" class="hover:text-blue-600">FSC &amp; Matric</a>
@@ -963,6 +1037,7 @@ function generateNavigationFooter(): string {
           <ul class="space-y-2 text-sm">
             <li><a href="/features" class="hover:text-white">Features</a></li>
             <li><a href="/pricing" class="hover:text-white">Pricing</a></li>
+            <li><a href="/arena" class="hover:text-white">Boardly Arena</a></li>
             <li><a href="/boardly-ai" class="hover:text-white">Boardly AI (24/7)</a></li>
           </ul>
         </div>

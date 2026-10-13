@@ -28,6 +28,7 @@ export type MarketingPage =
   | 'blitz/register'
   | 'blitz/leaderboard'
   | 'arena'
+  | 'arena/register'
   | 'arena/leaderboard'
   | 'circles'
   | 'circles/apply'

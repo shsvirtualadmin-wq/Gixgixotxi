@@ -425,7 +425,7 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
               Your Ambassador Referral Link
             </h3>
             <p className="text-xs text-slate-500">
-              Share this link directly in batch WhatsApp groups, Discord, or class study squads.
+              Share this link directly in batch WhatsApp groups, Discord, or class study circles.
             </p>
           </div>
           <span className="text-xs font-bold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-md">
@@ -732,7 +732,7 @@ export const CrewDashboardPage: React.FC<CrewDashboardPageProps> = ({
           <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2 flex flex-col justify-between">
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <span className="font-extrabold text-slate-900">1. Study Squad Introduction</span>
+                <span className="font-extrabold text-slate-900">1. Study Group Introduction</span>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">+50 XP</span>
               </div>
               <p className="text-slate-500 text-[11px] leading-relaxed">

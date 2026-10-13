@@ -14,4 +14,12 @@
 /contact /index.html 200
 /privacy /index.html 200
 /terms /index.html 200
+/arena /index.html 200
+/arena/register /index.html 200
+/arena/leaderboard /index.html 200
+/arena/test /index.html 200
+/arena/* /index.html 200
+/admin/arena /index.html 200
+/events/arena /index.html 200
+/events/arena/* /index.html 200
 /* /index.html 200

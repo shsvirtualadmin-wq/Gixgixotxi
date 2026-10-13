@@ -39832,7 +39832,7 @@
   },
   "mdcat-b10-lr-12": {
     "id": "mdcat-b10-lr-12",
-    "qHtml": "Problem Statement: &quot;A sudden seasonal outbreak of dengue hemorrhagic fever has severely overwhelmed the bed capacity of a municipal public hospital.&quot; Proposed Courses of Action: I. Establish temporary triage and hydration wards in adjacent civic centers staffed by redeployed clinical teams. II. Deploy municipal public health squads to conduct targeted indoor residual spraying and eliminate stagnant water breeding sites. Which course(s) of action is/are appropriate?",
+    "qHtml": "Problem Statement: &quot;A sudden seasonal outbreak of dengue hemorrhagic fever has severely overwhelmed the bed capacity of a municipal public hospital.&quot; Proposed Courses of Action: I. Establish temporary triage and hydration wards in adjacent civic centers staffed by redeployed clinical teams. II. Deploy municipal public health teams to conduct targeted indoor residual spraying and eliminate stagnant water breeding sites. Which course(s) of action is/are appropriate?",
     "optionsHtml": [
       "Both Course I and Course II are appropriate",
       "Only Course I is appropriate",

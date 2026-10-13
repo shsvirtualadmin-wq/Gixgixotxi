@@ -21,6 +21,9 @@ import { PublicProgramPage } from './public/PublicProgramPage';
 import { CrewDashboardPage } from './crew/CrewDashboardPage';
 import { CrewLandingPage } from './crew/CrewLandingPage';
 import { ProgramApplicationPage } from './common/ProgramApplicationPage';
+import { ArenaLandingPage } from './arena/ArenaLandingPage';
+import { ArenaRegisterPage } from './arena/ArenaRegisterPage';
+import { ArenaLeaderboardPage } from './arena/ArenaLeaderboardPage';
 import { initReferralTracker } from '../lib/referralTracker';
 import { UniversityExplorer } from './universities/UniversityExplorer';
 import { MeritMeter } from './merit/MeritMeter';
@@ -609,12 +612,36 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
+        // Dedicated Boardly Arena Routes (/arena, /arena/register, /arena/leaderboard)
+        if (currentPath === '/arena/register') {
+          return (
+            <ErrorBoundary onReset={() => navigate('/arena')}>
+              <ArenaRegisterPage onNavigate={(route) => navigate(route)} />
+            </ErrorBoundary>
+          );
+        }
+        if (currentPath === '/arena/leaderboard') {
+          return (
+            <ErrorBoundary onReset={() => navigate('/arena')}>
+              <ArenaLeaderboardPage onNavigate={(route) => navigate(route)} />
+            </ErrorBoundary>
+          );
+        }
+        if (currentPath === '/arena' || currentPath === '/events/arena') {
+          return (
+            <ErrorBoundary onReset={() => navigate('/')}>
+              <ArenaLandingPage onNavigate={(route) => navigate(route)} />
+            </ErrorBoundary>
+          );
+        }
+
         // 13. Marketing Website
         let initialMarketingPage: any = 'home';
         if (currentPath === '/blitz') initialMarketingPage = 'blitz';
         else if (currentPath === '/blitz/register') initialMarketingPage = 'blitz/register';
         else if (currentPath === '/blitz/leaderboard') initialMarketingPage = 'blitz/leaderboard';
         else if (currentPath === '/arena') initialMarketingPage = 'arena';
+        else if (currentPath === '/arena/register') initialMarketingPage = 'arena/register';
         else if (currentPath === '/arena/leaderboard') initialMarketingPage = 'arena/leaderboard';
         else if (currentPath === '/circles') initialMarketingPage = 'circles';
         else if (currentPath === '/boardly-ai' || currentPath === '/boardy' || currentPath === '/study-buddy' || currentPath === '/ai') initialMarketingPage = 'boardly-ai';

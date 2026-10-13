@@ -4,7 +4,7 @@ import fs from "fs";
 import multer from "multer";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
-const createClient: any = () => null;
+import { createClient } from "@supabase/supabase-js";
 import dotenv from "dotenv";
 import { getGoogleAccessToken } from "./functions/_utils/googleAuth.js";
 import nodemailer from "nodemailer";
@@ -8205,7 +8205,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     track?: string;
     adminUrl?: string;
   }) {
-    const defaultAdminUrl = adminUrl || "https://ais-pre-sunimgeeaslxzathtqw22b-183477009687.asia-east1.run.app/#admin-payment-requests";
+    const defaultAdminUrl = adminUrl || "https://boardly.cfd/admin";
     return `
       <!DOCTYPE html>
       <html>
@@ -8323,7 +8323,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
             <div class="option-card">
               <strong style="font-size: 14px; color: #0f172a;">1. Start Free Tier Practice Immediately</strong>
               <p style="font-size: 12px; color: #64748b; margin: 4px 0 10px 0;">Access free practice MCQs, sample tests, and daily exam questions right away without waiting.</p>
-              <a href="https://ais-pre-sunimgeeaslxzathtqw22b-183477009687.asia-east1.run.app" class="btn-primary" target="_blank">Launch Free Practice Tests</a>
+              <a href="https://boardly.cfd/app" class="btn-primary" target="_blank">Launch Free Practice Tests</a>
             </div>
 
             <div class="option-card">
@@ -8868,6 +8868,279 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     } catch (err: any) {
       console.error('[applications/submit error]:', err);
       return res.status(500).json({ success: false, error: err?.message || 'Server error submitting application.' });
+    }
+  });
+
+  // ==========================================
+  // Boardly Arena: Session Config, Registration & Stats
+  // ==========================================
+  const defaultArenaConfig = {
+    registrationOpen: true,
+    sessionName: "Arena Sprint #1",
+    subject: "Physics & Mathematics",
+    startsAt: "Saturday, 8:00 PM PKT",
+    durationMinutes: 45,
+    questionCount: 40,
+  };
+
+  async function getArenaSessionConfig() {
+    try {
+      const adminSb = getSupabaseAdminClient();
+      if (adminSb) {
+        const { data, error } = await adminSb
+          .from('arena_config')
+          .select('*')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (data && !error) {
+          return {
+            registrationOpen: data.registration_open !== false && data.registrationOpen !== false,
+            sessionName: data.session_name || data.sessionName || defaultArenaConfig.sessionName,
+            subject: data.subject || defaultArenaConfig.subject,
+            startsAt: data.starts_at || data.startsAt || defaultArenaConfig.startsAt,
+            durationMinutes: Number(data.duration_minutes || data.durationMinutes || defaultArenaConfig.durationMinutes),
+            questionCount: Number(data.question_count || data.questionCount || defaultArenaConfig.questionCount),
+          };
+        }
+      }
+    } catch (e) {
+      // Supabase table fallback
+    }
+
+    try {
+      const configPath = path.join(process.cwd(), 'data', 'arena_config.json');
+      if (fs.existsSync(configPath)) {
+        const raw = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+        return {
+          registrationOpen: raw.registrationOpen !== false,
+          sessionName: raw.sessionName || defaultArenaConfig.sessionName,
+          subject: raw.subject || defaultArenaConfig.subject,
+          startsAt: raw.startsAt || defaultArenaConfig.startsAt,
+          durationMinutes: Number(raw.durationMinutes || defaultArenaConfig.durationMinutes),
+          questionCount: Number(raw.questionCount || defaultArenaConfig.questionCount),
+        };
+      }
+    } catch {}
+
+    return defaultArenaConfig;
+  }
+
+  app.get("/api/arena/config", async (_req: express.Request, res: express.Response) => {
+    try {
+      const config = await getArenaSessionConfig();
+      return res.status(200).json({ success: true, config });
+    } catch (err: any) {
+      return res.status(200).json({ success: true, config: defaultArenaConfig });
+    }
+  });
+
+  app.get("/api/arena/stats", async (_req: express.Request, res: express.Response) => {
+    try {
+      let registeredCount = 0;
+      let sessionsCount = 0;
+      let questionsAnsweredCount = 0;
+
+      // 1. Check Supabase
+      try {
+        const adminSb = getSupabaseAdminClient();
+        if (adminSb) {
+          const { count, error } = await adminSb
+            .from('arena_registrations')
+            .select('*', { count: 'exact', head: true });
+          if (!error && typeof count === 'number') {
+            registeredCount = count;
+          }
+        }
+      } catch {}
+
+      // 2. Check local JSON fallback
+      try {
+        const regFile = path.join(process.cwd(), 'data', 'arena_registrations.json');
+        if (fs.existsSync(regFile)) {
+          const list = JSON.parse(fs.readFileSync(regFile, 'utf8'));
+          if (Array.isArray(list)) {
+            registeredCount = Math.max(registeredCount, list.length);
+          }
+        }
+      } catch {}
+
+      // Real database numbers only: hide any stat with no real value
+      return res.status(200).json({
+        success: true,
+        stats: {
+          studentsRegistered: registeredCount > 0 ? registeredCount : null,
+          sessionsRun: sessionsCount > 0 ? sessionsCount : null,
+          questionsAnswered: questionsAnsweredCount > 0 ? questionsAnsweredCount : null,
+        },
+      });
+    } catch (err: any) {
+      return res.status(200).json({
+        success: true,
+        stats: {
+          studentsRegistered: null,
+          sessionsRun: null,
+          questionsAnswered: null,
+        },
+      });
+    }
+  });
+
+  app.post("/api/arena/register", async (req: express.Request, res: express.Response) => {
+    try {
+      const body = req.body || {};
+      const {
+        fullName,
+        email,
+        phone,
+        campus,
+        city = '',
+        academicLevel = '',
+        consent,
+        honeypot,
+        formLoadedAt,
+      } = body;
+
+      // Spam checks
+      if (honeypot || body.website_verify) {
+        return res.status(200).json({ success: true, message: "You're registered" });
+      }
+      if (formLoadedAt && Date.now() - Number(formLoadedAt) < 1500) {
+        return res.status(400).json({ success: false, error: 'Form completed too quickly. Please take a moment to review.' });
+      }
+
+      // Check current session config
+      const currentConfig = await getArenaSessionConfig();
+      if (!currentConfig.registrationOpen) {
+        return res.status(400).json({ success: false, error: 'Registration is currently closed for this session.' });
+      }
+
+      // Field validation
+      const cleanName = String(fullName || '').trim();
+      const cleanEmail = String(email || '').trim().toLowerCase();
+      const cleanPhone = String(phone || '').replace(/\D/g, '');
+      const cleanCampus = String(campus || '').trim();
+      const cleanCity = String(city || '').trim();
+      const cleanLevel = String(academicLevel || '').trim();
+
+      if (cleanName.length < 2) {
+        return res.status(400).json({ success: false, error: 'Please enter your full name.' });
+      }
+      if (!cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+        return res.status(400).json({ success: false, error: 'Please enter a valid email address.' });
+      }
+      if (cleanPhone.length < 8) {
+        return res.status(400).json({ success: false, error: 'Please enter a valid WhatsApp or phone number (at least 8 digits).' });
+      }
+      if (cleanCampus.length < 2) {
+        return res.status(400).json({ success: false, error: 'Please provide your college or campus name.' });
+      }
+      if (!consent) {
+        return res.status(400).json({ success: false, error: 'You must agree to the Terms of Service and Privacy Policy to register.' });
+      }
+
+      const sessionId = currentConfig.sessionName;
+
+      // Duplicate check in local store
+      const regDir = path.join(process.cwd(), 'data');
+      if (!fs.existsSync(regDir)) fs.mkdirSync(regDir, { recursive: true });
+      const regFile = path.join(regDir, 'arena_registrations.json');
+
+      let localRegistrations: any[] = [];
+      if (fs.existsSync(regFile)) {
+        try {
+          localRegistrations = JSON.parse(fs.readFileSync(regFile, 'utf8'));
+          if (!Array.isArray(localRegistrations)) localRegistrations = [];
+        } catch {}
+      }
+
+      const isDuplicateLocal = localRegistrations.some(
+        (r) =>
+          r.session_id === sessionId &&
+          (r.email?.toLowerCase() === cleanEmail || (r.phone && r.phone.replace(/\D/g, '') === cleanPhone))
+      );
+
+      if (isDuplicateLocal) {
+        return res.status(400).json({
+          success: false,
+          error: 'You are already registered for this Arena session.',
+        });
+      }
+
+      // Duplicate check in Supabase
+      const adminSb = getSupabaseAdminClient();
+      if (adminSb) {
+        try {
+          const { data: dupEmail } = await adminSb
+            .from('arena_registrations')
+            .select('id')
+            .eq('session_id', sessionId)
+            .ilike('email', cleanEmail)
+            .limit(1)
+            .maybeSingle();
+
+          if (dupEmail) {
+            return res.status(400).json({
+              success: false,
+              error: 'You are already registered for this Arena session.',
+            });
+          }
+
+          const { data: dupPhone } = await adminSb
+            .from('arena_registrations')
+            .select('id')
+            .eq('session_id', sessionId)
+            .eq('phone', String(phone).trim())
+            .limit(1)
+            .maybeSingle();
+
+          if (dupPhone) {
+            return res.status(400).json({
+              success: false,
+              error: 'You are already registered for this Arena session.',
+            });
+          }
+        } catch (sbErr) {
+          console.warn('[arena/register] Supabase lookup notice:', sbErr);
+        }
+      }
+
+      const regId = `arena_reg_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      const nowIso = new Date().toISOString();
+      const record = {
+        id: regId,
+        created_at: nowIso,
+        session_id: sessionId,
+        full_name: cleanName,
+        email: cleanEmail,
+        phone: String(phone).trim(),
+        campus: cleanCampus,
+        city: cleanCity,
+        academic_level: cleanLevel,
+        consent_at: nowIso,
+      };
+
+      // Persist to local storage
+      localRegistrations.push(record);
+      fs.writeFileSync(regFile, JSON.stringify(localRegistrations, null, 2), 'utf8');
+
+      // Persist to Supabase
+      if (adminSb) {
+        try {
+          await adminSb.from('arena_registrations').insert([record]);
+        } catch (sbInsertErr) {
+          console.warn('[arena/register] Supabase insert notice:', sbInsertErr);
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: "You're registered",
+        registrationId: regId,
+      });
+    } catch (err: any) {
+      console.error('[arena/register error]:', err);
+      return res.status(500).json({ success: false, error: err?.message || 'Server error processing registration.' });
     }
   });
 

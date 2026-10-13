@@ -19,7 +19,9 @@ import { ReviewsWall } from './ReviewsWall';
 import { BlitzLanding } from '../events/BlitzLanding';
 import { BlitzRegister } from '../events/BlitzRegister';
 import { LeaderboardView } from '../events/LeaderboardView';
-import { ArenaLanding } from '../events/ArenaLanding';
+import { ArenaLandingPage } from '../arena/ArenaLandingPage';
+import { ArenaRegisterPage } from '../arena/ArenaRegisterPage';
+import { ArenaLeaderboardPage } from '../arena/ArenaLeaderboardPage';
 import { CirclesLanding } from '../events/CirclesLanding';
 import { OrganizerApply } from '../events/OrganizerApply';
 import { EventsModal } from './EventsModal';
@@ -36,7 +38,7 @@ function parseMarketingPageFromLocation(): MarketingPage {
   const pathname = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/';
 
   // Redirect legacy AI routes to /boardy
-  if (['/study-buddy', '/ai', '/ustaad', '/jojo', '/zehni', '/socratic'].includes(pathname)) {
+  if (['/study-buddy', '/ai', '/ustaad', '/zehni', '/socratic'].includes(pathname)) {
     try {
       window.history.replaceState({ page: 'boardy' }, '', '/boardy');
     } catch {}
@@ -46,7 +48,8 @@ function parseMarketingPageFromLocation(): MarketingPage {
   if (pathname === '/blitz') return 'blitz';
   if (pathname === '/blitz/register') return 'blitz/register';
   if (pathname === '/blitz/leaderboard') return 'blitz/leaderboard';
-  if (pathname === '/arena') return 'arena';
+  if (pathname === '/arena' || pathname === '/events/arena') return 'arena';
+  if (pathname === '/arena/register') return 'arena/register';
   if (pathname === '/arena/leaderboard') return 'arena/leaderboard';
   if (pathname === '/circles') return 'circles';
   if (pathname === '/circles/apply') return 'circles/apply';
@@ -71,6 +74,7 @@ function parseMarketingPageFromLocation(): MarketingPage {
     if (pageParam === 'blitz-register' || pageParam === 'blitz/register') return 'blitz/register';
     if (pageParam === 'blitz-leaderboard' || pageParam === 'blitz/leaderboard') return 'blitz/leaderboard';
     if (pageParam === 'arena') return 'arena';
+    if (pageParam === 'arena-register' || pageParam === 'arena/register') return 'arena/register';
     if (pageParam === 'arena-leaderboard' || pageParam === 'arena/leaderboard') return 'arena/leaderboard';
     if (pageParam === 'circles') return 'circles';
     if (pageParam === 'circles-apply' || pageParam === 'circles/apply') return 'circles/apply';
@@ -349,11 +353,15 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
         )}
 
         {currentPage === 'arena' && (
-          <ArenaLanding onNavigate={handleRouteNavigate} />
+          <ArenaLandingPage onNavigate={handleRouteNavigate} />
+        )}
+
+        {currentPage === 'arena/register' && (
+          <ArenaRegisterPage onNavigate={handleRouteNavigate} />
         )}
 
         {currentPage === 'arena/leaderboard' && (
-          <LeaderboardView type="arena" onNavigate={handleRouteNavigate} />
+          <ArenaLeaderboardPage onNavigate={handleRouteNavigate} />
         )}
 
         {currentPage === 'circles' && (

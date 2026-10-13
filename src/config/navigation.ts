@@ -21,7 +21,7 @@ export const MAIN_NAV_ITEMS: NavItemConfig[] = [
 
   // Events
   { label: 'Boardly Blitz', href: '/events/blitz', section: 'Events' },
-  { label: 'Boardly Arena', href: '/events/arena', section: 'Events' },
+  { label: 'Boardly Arena', href: '/arena', section: 'Events' },
 
   // Programs
   { label: 'Boardly Captain', href: '/captain', section: 'Programs' },
