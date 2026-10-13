@@ -132,6 +132,7 @@ export const CaptainLandingPage: React.FC<CaptainLandingPageProps> = ({
           el?.scrollIntoView({ behavior: 'smooth' });
         }}
         accent="captain"
+        compactTop={true}
       />
 
       {/* 4. Ambassador Perks (Light) */}

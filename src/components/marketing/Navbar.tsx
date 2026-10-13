@@ -193,7 +193,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <>
-      {/* Background Dim Backdrop */}
+      {/* Background Dim Backdrop (No extra blur band) */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -201,15 +201,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
+            transition={{ duration: 0.2 }}
             onClick={() => setIsOpen(false)}
-            className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-xs cursor-pointer"
+            className="fixed inset-0 z-40 bg-slate-950/40 cursor-pointer"
             aria-hidden="true"
           />
         )}
       </AnimatePresence>
 
-      {/* Floating Glass Pill Navigation Container */}
+      {/* Floating Clean Glass Pill Navigation Container: height 64px, radius 9999px */}
       <header className="fixed top-3.5 sm:top-5 left-0 right-0 z-50 px-3 sm:px-6 max-w-4xl mx-auto pointer-events-none">
         <div
           ref={containerRef}
@@ -222,19 +222,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               : 'rgba(15, 23, 42, 0.6)',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
-            border:
-              isLightSection && !isOpen
-                ? '1px solid rgba(15, 23, 42, 0.08)'
-                : '1px solid rgba(255, 255, 255, 0.12)',
-            borderRadius: '20px',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            borderRadius: isOpen ? '28px' : '20px',
+            minHeight: '64px',
             boxShadow:
               isLightSection && !isOpen
                 ? '0 8px 32px rgba(15, 23, 42, 0.08)'
                 : '0 8px 32px rgba(0, 0, 0, 0.28)',
           }}
         >
-          {/* Top Pill Bar */}
-          <div className="flex items-center justify-between px-3.5 sm:px-5 py-2.5 sm:py-3">
+          {/* Top Pill Bar - Exactly 64px high */}
+          <div className="flex items-center justify-between px-4 sm:px-6 h-16 min-h-[64px]">
             {/* Logo on Left: icon + Boardly wordmark, ONE logo only + optional program tag */}
             <a
               href="/"
@@ -379,7 +377,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     type="button"
                     onClick={handleGetStarted}
-                    className={`w-full min-h-[48px] py-3 px-6 rounded-[14px] text-center font-bold text-sm cursor-pointer transition-transform duration-150 active:scale-[0.98] ${accentStyles.buttonBg}`}
+                    className={`w-full min-h-[52px] py-3.5 px-6 rounded-full overflow-hidden text-center font-bold text-base cursor-pointer transition-transform duration-150 active:scale-[0.98] ${accentStyles.buttonBg}`}
                   >
                     {user ? 'Open Student Dashboard' : 'Get Started Free'}
                   </button>

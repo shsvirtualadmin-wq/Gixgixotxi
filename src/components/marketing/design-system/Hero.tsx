@@ -18,6 +18,7 @@ export interface HeroProps {
   onSecondaryCta?: () => void;
   accent?: 'default' | 'captain' | 'crew';
   tickerItems?: string[];
+  compactTop?: boolean;
 }
 
 function formatSentenceCase(str: string): string {
@@ -47,6 +48,7 @@ export const Hero: React.FC<HeroProps> = ({
     'Student C. started timed mock session',
     'Student D. reviewed formula vault derivation',
   ],
+  compactTop = false,
 }) => {
   const shouldReduceMotion = useReducedMotion();
 
@@ -161,7 +163,11 @@ export const Hero: React.FC<HeroProps> = ({
   const [isMarqueePaused, setIsMarqueePaused] = useState(false);
 
   return (
-    <div className="relative pt-28 sm:pt-36 pb-12 overflow-hidden text-center">
+    <div
+      className={`relative ${
+        compactTop ? 'pt-4 sm:pt-8' : 'pt-24 sm:pt-32'
+      } pb-10 sm:pb-12 overflow-hidden text-center`}
+    >
       {/* Eyebrow Pill: Sentence case, 12-13px, weight 600, letter-spacing 0 */}
       <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-[12px] sm:text-[13px] font-semibold tracking-normal mb-6 shadow-xs backdrop-blur-md bg-white/70 dark:bg-slate-900/70 border-indigo-500/20 text-indigo-700 dark:text-indigo-300">
         <Sparkles className="w-3.5 h-3.5 text-indigo-500" />

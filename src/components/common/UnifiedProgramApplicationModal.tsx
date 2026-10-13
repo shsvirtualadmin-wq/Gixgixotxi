@@ -152,7 +152,7 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
     return {
       backgroundColor: 'rgba(255, 255, 255, 0.05)',
       border: isFocused ? '1px solid #1a6dff' : '1px solid rgba(255, 255, 255, 0.12)',
-      borderRadius: '14px',
+      borderRadius: '16px',
       color: '#ffffff',
       boxShadow: isFocused ? '0 0 14px rgba(26, 109, 255, 0.4)' : 'none',
       transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
@@ -209,17 +209,17 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
           WebkitBackdropFilter: 'blur(20px) saturate(160%)',
           border: '1px solid rgba(255, 255, 255, 0.15)',
           boxShadow: '0 8px 32px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.2)',
-          borderRadius: '24px',
+          borderRadius: '28px',
         }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Subtle top ambient accent bar */}
-        <div className="h-1 w-full bg-gradient-to-r from-[#1a6dff] via-[#8b5cf6] to-[#14b8a6] rounded-t-[24px]" />
+        <div className="h-1.5 w-full bg-gradient-to-r from-[#1a6dff] via-[#8b5cf6] to-[#14b8a6] rounded-t-[28px]" />
 
         {/* Modal Header */}
         <div className="p-5 sm:p-6 pb-4 border-b border-white/10 flex items-start justify-between">
           <div className="space-y-1 text-left">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[12px] font-semibold bg-white/10 text-white border border-white/15">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-semibold bg-white/10 text-white border border-white/15">
               <Sparkles className="w-3.5 h-3.5 text-[#14b8a6]" />
               <span>Official student programs</span>
             </div>
@@ -235,7 +235,7 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl bg-white/5 hover:bg-white/15 text-white/70 hover:text-white transition-colors cursor-pointer shrink-0 ml-3"
+            className="p-2 rounded-full bg-white/5 hover:bg-white/15 text-white/70 hover:text-white transition-colors cursor-pointer shrink-0 ml-3"
             disabled={submitting}
             aria-label="Close modal"
           >
@@ -287,7 +287,7 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
             <button
               type="button"
               onClick={onClose}
-              className="w-full min-h-[48px] h-12 py-3 rounded-[14px] bg-gradient-to-r from-[#1a6dff] via-[#2563eb] to-[#0d9488] hover:from-[#2563eb] hover:to-[#0f766e] text-white text-sm font-bold transition-all shadow-[0_0_20px_rgba(26,109,255,0.4)] cursor-pointer"
+              className="w-full min-h-[52px] h-[52px] py-3.5 rounded-full overflow-hidden bg-gradient-to-r from-[#1a6dff] via-[#2563eb] to-[#0d9488] hover:from-[#2563eb] hover:to-[#0f766e] text-white text-base font-bold transition-all shadow-[0_0_20px_rgba(26,109,255,0.4)] cursor-pointer"
             >
               Done
             </button>
@@ -516,7 +516,7 @@ export const UnifiedProgramApplicationModal: React.FC<UnifiedApplicationModalPro
               <button
                 type="submit"
                 disabled={submitting}
-                className="w-full min-h-[48px] h-12 py-3 px-4 rounded-[14px] bg-gradient-to-r from-[#1a6dff] via-[#2563eb] to-[#0d9488] hover:from-[#2563eb] hover:to-[#0f766e] text-white font-bold text-xs sm:text-sm transition-all shadow-[0_0_20px_rgba(26,109,255,0.4)] hover:shadow-[0_0_25px_rgba(20,184,166,0.5)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                className="w-full min-h-[52px] h-[52px] py-3.5 px-6 rounded-full overflow-hidden bg-gradient-to-r from-[#1a6dff] via-[#2563eb] to-[#0d9488] hover:from-[#2563eb] hover:to-[#0f766e] text-white font-bold text-base transition-all shadow-[0_0_20px_rgba(26,109,255,0.4)] hover:shadow-[0_0_25px_rgba(20,184,166,0.5)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
               >
                 {submitting ? (
                   <>

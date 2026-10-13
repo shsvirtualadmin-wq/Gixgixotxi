@@ -37,9 +37,9 @@ export const Button: React.FC<ButtonProps> = ({
   };
 
   const sizeClasses = {
-    sm: 'min-h-[48px] px-4 py-2.5 text-xs font-bold rounded-[14px]',
-    md: 'min-h-[48px] px-6 py-3 text-sm font-bold rounded-[14px]',
-    lg: 'min-h-[48px] sm:min-h-[52px] px-8 py-3.5 text-base font-bold rounded-[14px]',
+    sm: 'min-h-[44px] px-6 py-2.5 text-sm font-semibold rounded-full',
+    md: 'min-h-[52px] px-7 py-3 text-base font-semibold rounded-full',
+    lg: 'min-h-[52px] px-8 py-3.5 text-base font-semibold rounded-full',
   }[size];
 
   const variantStyles = {
@@ -52,18 +52,19 @@ export const Button: React.FC<ButtonProps> = ({
         'bg-gradient-to-r from-[#1a6dff] via-[#2563eb] to-[#0d9488] hover:from-[#2563eb] hover:to-[#0f766e] text-white shadow-lg shadow-[#1a6dff]/30 hover:shadow-[#1a6dff]/45 border border-white/20',
     }[accent],
     secondary:
-      'bg-white/85 dark:bg-slate-900/85 backdrop-blur-md text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700/80 shadow-md shadow-slate-900/5 hover:bg-white dark:hover:bg-slate-900 hover:border-slate-300 rounded-[14px]',
+      'bg-transparent dark:bg-transparent text-slate-800 dark:text-white border border-[#cbd5e1] dark:border-white/25 shadow-sm hover:bg-slate-100/50 dark:hover:bg-white/10 rounded-full',
     ghost:
-      'bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 border border-transparent rounded-[14px]',
+      'bg-transparent text-slate-700 dark:text-slate-300 hover:bg-slate-100/60 dark:hover:bg-slate-800/60 border border-transparent rounded-full',
   }[variant];
 
   return (
     <button
       onPointerDown={handlePointerDown}
       onClick={onClick}
-      className={`relative inline-flex items-center justify-center gap-2 cursor-pointer transition-transform duration-150 active:scale-[0.97] overflow-hidden select-none touch-manipulation font-sans ${sizeClasses} ${variantStyles} ${
+      className={`relative inline-flex items-center justify-center gap-2 cursor-pointer transition-transform duration-150 active:scale-[0.98] overflow-hidden select-none touch-manipulation font-sans ${sizeClasses} ${variantStyles} ${
         fullWidth ? 'w-full' : ''
       } ${className}`}
+      style={{ borderRadius: '9999px', overflow: 'hidden' }}
       {...props}
     >
       {/* Touch Bubble / Ripple layer */}

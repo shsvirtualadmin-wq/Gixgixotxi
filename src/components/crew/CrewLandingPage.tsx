@@ -91,20 +91,20 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
       />
 
       {/* Top Back to Home row under navbar */}
-      <div className="pt-20 sm:pt-24 pb-2 px-4 max-w-6xl mx-auto flex items-center justify-between gap-3 text-[13px] font-semibold">
+      <div className="pt-24 pb-2 px-4 max-w-6xl mx-auto flex items-center justify-between gap-3 text-[13px] font-semibold">
         <a
           href="/"
           onClick={(e) => {
             e.preventDefault();
             onNavigate('/');
           }}
-          className="inline-flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 transition-colors cursor-pointer truncate"
+          className="inline-flex items-center gap-1.5 text-indigo-300 hover:text-white px-3.5 py-1.5 rounded-full border border-white/15 bg-white/5 transition-colors cursor-pointer truncate"
         >
           <ArrowLeft className="w-4 h-4 shrink-0" />
           <span>Back to Home</span>
         </a>
         <span
-          className="text-[12px] font-semibold px-2.5 py-0.5 rounded-full border shrink-0 whitespace-nowrap"
+          className="text-[12px] font-semibold px-3 py-1 rounded-full border shrink-0 whitespace-nowrap"
           style={{
             backgroundColor: 'rgba(255, 255, 255, 0.08)',
             border: '1px solid rgba(255, 255, 255, 0.18)',
@@ -133,6 +133,7 @@ export const CrewLandingPage: React.FC<CrewLandingPageProps> = ({
           el?.scrollIntoView({ behavior: 'smooth' });
         }}
         accent="crew"
+        compactTop={true}
       />
 
       {/* 4. Organizer Perks (Light) */}
