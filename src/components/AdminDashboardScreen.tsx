@@ -1065,6 +1065,8 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                     Live Firestore synchronization with inline actions: Approve, Suspend, Change Plan, and Delete User.
                   </p>
                 </div>
+              </div>
+
               <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold text-slate-500">Plan Filter:</span>
