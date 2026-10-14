@@ -1,4 +1,5 @@
 import { createClient } from "../../_utils/supabaseStub.js";
+import { requireAdmin } from "../../_utils/verifyAdmin.js";
 
 interface PagesContext {
   request: Request;
@@ -12,17 +13,6 @@ function getSupabaseAdminClient(env: Record<string, string | undefined>) {
   return createClient(url, serviceKey);
 }
 
-const ADMIN_EMAILS = [
-  "shsvirtualadmin@gmail.com",
-  "support@boardly.cfd",
-];
-
-function isAdminEmail(email?: string | null): boolean {
-  if (!email) return false;
-  const normalized = email.trim().toLowerCase();
-  return ADMIN_EMAILS.includes(normalized);
-}
-
 const handleUpdateStudentStatus = async (context: PagesContext) => {
   const { request, env } = context;
 
@@ -34,6 +24,9 @@ const handleUpdateStudentStatus = async (context: PagesContext) => {
   };
 
   try {
+    // Verify caller holds a valid Firebase ID token for an admin account
+    await requireAdmin(request, env);
+
     let body: any = {};
     try {
       const text = await request.text();
@@ -45,21 +38,8 @@ const handleUpdateStudentStatus = async (context: PagesContext) => {
     }
 
     const urlParams = new URL(request.url).searchParams;
-    const requesterEmail = body.requesterEmail || body.adminEmail || urlParams.get("requesterEmail") || urlParams.get("adminEmail") || "";
     const studentId = body.studentId || urlParams.get("studentId") || "";
     const status = body.status || urlParams.get("status") || "";
-
-    const isAdmin = isAdminEmail(requesterEmail);
-
-    if (!isAdmin) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Forbidden: Only administrators can update student status.",
-        }),
-        { status: 403, headers: corsHeaders }
-      );
-    }
 
     if (!studentId || !status || !["active", "suspended"].includes(status)) {
       return new Response(
@@ -109,6 +89,7 @@ const handleUpdateStudentStatus = async (context: PagesContext) => {
       { status: 200, headers: corsHeaders }
     );
   } catch (err: any) {
+    if (err instanceof Response) return err;
     console.error("[functions/api/admin/update-student-status exception]:", err);
     return new Response(
       JSON.stringify({ success: false, error: err?.message || "Failed to update student status." }),

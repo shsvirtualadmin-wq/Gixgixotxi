@@ -1,14 +1,10 @@
 import { createClient } from "../../_utils/supabaseStub.js";
+import { requireAdmin } from "../../_utils/verifyAdmin.js";
 
 interface PagesContext {
   request: Request;
   env: Record<string, any>;
 }
-
-const ADMIN_EMAILS = [
-  "shsvirtualadmin@gmail.com",
-  "support@boardly.cfd",
-];
 
 function getSupabaseAdminClient(env: Record<string, any>) {
   const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL || "https://wbvzbbnapowwmrjecdyt.supabase.co";
@@ -37,22 +33,15 @@ export const onRequestPost = async (context: PagesContext) => {
   };
 
   try {
+    // Verify caller holds a valid Firebase ID token for an admin account
+    const requesterEmail = await requireAdmin(request, env);
+
     const formData = await request.formData();
     const file = formData.get("file") as File | null;
     const title = (formData.get("title") as string || "").trim();
     const subject = (formData.get("subject") as string || "").trim() || "General";
     const targetClass = (formData.get("class") as string || "").trim() || "All";
     const category = (formData.get("category") as string || "").trim() as "past_paper" | "mcq_drill";
-    const requesterEmail = (formData.get("requesterEmail") as string || "").trim().toLowerCase();
-
-    // Check admin authorization
-    const isAdmin = Boolean(requesterEmail && ADMIN_EMAILS.includes(requesterEmail));
-    if (!isAdmin) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized: Only administrators can upload resources." }),
-        { status: 403, headers: corsHeaders }
-      );
-    }
 
     if (!file || typeof file.arrayBuffer !== "function") {
       return new Response(
@@ -171,6 +160,7 @@ export const onRequestPost = async (context: PagesContext) => {
       { status: 200, headers: corsHeaders }
     );
   } catch (err: any) {
+    if (err instanceof Response) return err;
     console.error("Error uploading resource:", err);
     return new Response(
       JSON.stringify({ success: false, error: err.message || "Failed to process resource upload." }),

@@ -6,6 +6,7 @@ export interface SupabaseUser {
   identities?: any[];
 }
 import { HistoryItem, TestResult, BoardClass, ResourceCategory, ResourceItem } from '../types';
+import { auth } from './firebase';
 export const normalizePackageTrack = (val: string): string => String(val || '').toLowerCase().trim();
 export const findDuplicatePaymentGroups = (_requests: any[]): any[] => [];
 import { deriveTrackDetailsFromAssignableClass } from '../data/portalMasterTracks';
@@ -38,6 +39,7 @@ export const supabase: any = {
 
 export const ADMIN_EMAILS = [
   'shsvirtualadmin@gmail.com',
+  'support@boardly.cfd',
 ];
 
 export function isAdminEmail(email?: string | null): boolean {
@@ -100,18 +102,23 @@ export function withTimeout<T>(
  */
 export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers);
-  try {
-    const sessionRes = await withTimeout(
-      supabase.auth.getSession(),
-      1200,
-      { data: { session: null }, error: null },
-      'apiFetch.getSession'
-    );
-    if (sessionRes?.data?.session?.access_token && !headers.has('Authorization')) {
-      headers.set('Authorization', `Bearer ${sessionRes.data.session.access_token}`);
+  if (!headers.has('Authorization')) {
+    try {
+      const currentUser = auth?.currentUser;
+      if (currentUser && typeof currentUser.getIdToken === 'function') {
+        const token = await withTimeout(
+          currentUser.getIdToken(),
+          2000,
+          '',
+          'apiFetch.getIdToken'
+        );
+        if (token) {
+          headers.set('Authorization', `Bearer ${token}`);
+        }
+      }
+    } catch {
+      // Proceed without bearer token if auth lookup fails
     }
-  } catch {
-    // Proceed without bearer token if auth session lookup times out
   }
 
   return fetch(input, {

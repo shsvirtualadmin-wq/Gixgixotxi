@@ -1,4 +1,5 @@
 import { createClient } from "../../../_utils/supabaseStub.js";
+import { requireAdmin } from "../../../_utils/verifyAdmin.js";
 
 interface PagesContext {
   request: Request;
@@ -18,17 +19,6 @@ function getSupabaseAdminClient(env: Record<string, string | undefined>) {
   return createClient(url, serviceKey);
 }
 
-const ADMIN_EMAILS = [
-  "shsvirtualadmin@gmail.com",
-  "support@boardly.cfd",
-];
-
-function isAdminEmail(email?: string | null): boolean {
-  if (!email) return false;
-  const normalized = email.trim().toLowerCase();
-  return ADMIN_EMAILS.includes(normalized);
-}
-
 export const onRequestOptions = async () => {
   return new Response(null, {
     status: 204,
@@ -42,7 +32,6 @@ export const onRequestOptions = async () => {
 
 export const onRequestGet = async (context: PagesContext) => {
   const { request, env } = context;
-  const url = new URL(request.url);
 
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -51,13 +40,8 @@ export const onRequestGet = async (context: PagesContext) => {
     "Content-Type": "application/json",
   };
 
-  const adminEmail = url.searchParams.get("adminEmail") || request.headers.get("x-admin-email") || "";
-  if (adminEmail && !isAdminEmail(adminEmail)) {
-    return new Response(
-      JSON.stringify({ success: false, error: "Forbidden: Access restricted to authorized administrators." }),
-      { status: 403, headers: corsHeaders }
-    );
-  }
+  // Verify caller holds a valid Firebase ID token for an admin account
+  await requireAdmin(request, env);
 
   const supabaseAdmin = getSupabaseAdminClient(env);
   if (supabaseAdmin) {

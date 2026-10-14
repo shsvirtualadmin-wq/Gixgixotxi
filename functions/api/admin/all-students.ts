@@ -1,4 +1,5 @@
 import { createClient } from "../../_utils/supabaseStub.js";
+import { requireAdmin } from "../../_utils/verifyAdmin.js";
 
 interface PagesContext {
   request: Request;
@@ -13,7 +14,7 @@ function getSupabaseAdminClient(env: Record<string, string | undefined>) {
 }
 
 export const onRequestGet = async (context: PagesContext) => {
-  const { env } = context;
+  const { request, env } = context;
 
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
@@ -23,6 +24,9 @@ export const onRequestGet = async (context: PagesContext) => {
   };
 
   try {
+    // Verify caller is an authenticated admin
+    await requireAdmin(request, env);
+
     const supabaseAdmin = getSupabaseAdminClient(env);
     if (!supabaseAdmin) {
       return new Response(
@@ -48,6 +52,7 @@ export const onRequestGet = async (context: PagesContext) => {
       { status: 200, headers: corsHeaders }
     );
   } catch (err: any) {
+    if (err instanceof Response) return err;
     return new Response(
       JSON.stringify({ success: false, error: err?.message || "Error fetching students" }),
       { status: 500, headers: corsHeaders }

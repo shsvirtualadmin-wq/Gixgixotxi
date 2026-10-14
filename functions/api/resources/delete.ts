@@ -1,14 +1,10 @@
 import { createClient } from "../../_utils/supabaseStub.js";
+import { requireAdmin } from "../../_utils/verifyAdmin.js";
 
 interface PagesContext {
   request: Request;
   env: Record<string, any>;
 }
-
-const ADMIN_EMAILS = [
-  "shsvirtualadmin@gmail.com",
-  "support@boardly.cfd",
-];
 
 function getSupabaseAdminClient(env: Record<string, any>) {
   const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL || "https://wbvzbbnapowwmrjecdyt.supabase.co";
@@ -28,16 +24,11 @@ export const onRequestPost = async (context: PagesContext) => {
   };
 
   try {
-    const body = await request.json() as any;
-    const { id, requesterEmail } = body || {};
+    // Verify caller holds a valid Firebase ID token for an admin account
+    await requireAdmin(request, env);
 
-    const isAdmin = Boolean(requesterEmail && ADMIN_EMAILS.includes(String(requesterEmail).trim().toLowerCase()));
-    if (!isAdmin) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized: Only administrators can delete resources." }),
-        { status: 403, headers: corsHeaders }
-      );
-    }
+    const body = await request.json() as any;
+    const { id } = body || {};
 
     if (!id) {
       return new Response(
@@ -81,6 +72,7 @@ export const onRequestPost = async (context: PagesContext) => {
       { status: 200, headers: corsHeaders }
     );
   } catch (err: any) {
+    if (err instanceof Response) return err;
     console.error("Error deleting resource:", err);
     return new Response(
       JSON.stringify({ success: false, error: err.message || "Failed to delete resource." }),

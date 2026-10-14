@@ -20,7 +20,7 @@ import {
   Lock,
   X,
 } from 'lucide-react';
-import { StudentProfile, User, safeJsonResponse, evaluateStudentAccess, isUserProOrPaid } from '../lib/supabase';
+import { StudentProfile, User, safeJsonResponse, evaluateStudentAccess, isUserProOrPaid, apiFetch } from '../lib/supabase';
 import { validatePdfFile } from '../lib/pdfValidator';
 
 export interface DriveFileItem {
@@ -209,7 +209,7 @@ export const PastPapersSection: React.FC<PastPapersSectionProps> = ({
         formData.append('adminEmail', currentUser.email);
       }
 
-      const res = await fetch('/api/drive-upload', {
+      const res = await apiFetch('/api/drive-upload', {
         method: 'POST',
         headers: {
           'X-Admin-Email': currentUser?.email || 'shsvirtualadmin@gmail.com',
@@ -256,7 +256,7 @@ export const PastPapersSection: React.FC<PastPapersSectionProps> = ({
     setSuccessMessage('');
 
     try {
-      const res = await fetch(`/api/drive-delete/${encodeURIComponent(fileId)}`, {
+      const res = await apiFetch(`/api/drive-delete/${encodeURIComponent(fileId)}`, {
         method: 'DELETE',
         headers: {
           'X-Admin-Email': currentUser?.email || 'shsvirtualadmin@gmail.com',

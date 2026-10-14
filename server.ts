@@ -149,8 +149,18 @@ function isStudentExistingBeforeRule(createdAtStr?: string): boolean {
   return createdTime < ruleTime;
 }
 
+const FIREBASE_PUBLIC_API_KEY = "AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs";
+
+interface TokenCacheEntry {
+  user: { id: string; uid: string; email: string };
+  isAdmin: boolean;
+  expiresAt: number;
+}
+
+const tokenVerifyCache = new Map<string, TokenCacheEntry>();
+
 /**
- * Server-side Bearer JWT verification against Supabase Auth.
+ * Server-side Bearer JWT verification against Firebase Auth & Supabase Auth.
  * Strictly verifies user identity and admin role server-side.
  */
 async function verifyAuthToken(req: express.Request): Promise<{ user: any | null; isAdmin: boolean }> {
@@ -159,20 +169,91 @@ async function verifyAuthToken(req: express.Request): Promise<{ user: any | null
     return { user: null, isAdmin: false };
   }
   const token = authHeader.substring(7).trim();
-  if (!token || !supabaseServer) {
+  if (!token) {
     return { user: null, isAdmin: false };
   }
+
+  // Check cache first (5 minute TTL)
+  const cached = tokenVerifyCache.get(token);
+  if (cached && cached.expiresAt > Date.now()) {
+    return { user: cached.user, isAdmin: cached.isAdmin };
+  }
+
+  // 1. Verify against Firebase Auth via accounts:lookup REST API
   try {
-    const { data: { user }, error } = await supabaseServer.auth.getUser(token);
-    if (error || !user) {
-      return { user: null, isAdmin: false };
+    const apiKey = (
+      process.env.VITE_FIREBASE_API_KEY ||
+      process.env.FIREBASE_API_KEY ||
+      FIREBASE_PUBLIC_API_KEY
+    ).trim();
+
+    const resp = await fetch(
+      `https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken: token }),
+      }
+    );
+
+    if (resp.ok) {
+      const data: any = await resp.json();
+      const users: any[] = data?.users || [];
+      if (users.length && users[0]?.email) {
+        const email = String(users[0].email).trim().toLowerCase();
+        const uid = String(users[0].localId || "");
+        const isAdmin = isAdminEmail(email);
+        const userObj = { id: uid, uid, email };
+        tokenVerifyCache.set(token, {
+          user: userObj,
+          isAdmin,
+          expiresAt: Date.now() + 5 * 60 * 1000,
+        });
+        return { user: userObj, isAdmin };
+      }
     }
-    const userEmail = (user.email || "").trim().toLowerCase();
-    const isAdmin = isAdminEmail(userEmail);
-    return { user, isAdmin };
-  } catch (err) {
-    return { user: null, isAdmin: false };
+  } catch (lookupErr) {
+    console.warn("[verifyAuthToken] Firebase ID token lookup exception:", lookupErr);
   }
+
+  // 2. Legacy Supabase token fallback if supabaseServer configured
+  if (supabaseServer) {
+    try {
+      const { data: { user }, error } = await supabaseServer.auth.getUser(token);
+      if (!error && user && user.email) {
+        const userEmail = (user.email || "").trim().toLowerCase();
+        const isAdmin = isAdminEmail(userEmail);
+        return { user, isAdmin };
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return { user: null, isAdmin: false };
+}
+
+/**
+ * Strict server-side admin authorization helper.
+ * Rejects unauthenticated or non-admin callers with 401/403.
+ */
+async function requireExpressAdmin(req: express.Request, res: express.Response): Promise<{ user: any; email: string } | null> {
+  const { user, isAdmin } = await verifyAuthToken(req);
+  if (!user) {
+    res.status(401).json({
+      success: false,
+      error: "Unauthorized: Valid admin authentication token required.",
+    });
+    return null;
+  }
+  if (!isAdmin) {
+    res.status(403).json({
+      success: false,
+      error: "Forbidden: Access restricted to authorized administrators.",
+    });
+    return null;
+  }
+  return { user, email: user.email };
 }
 
 const inMemoryUsageStore: Record<string, Record<string, number>> = {};
@@ -4478,10 +4559,11 @@ ${scopeInstruction}${excludeInstruction}`;
   // API Endpoint: Get all student weakness profiles for Admin Dashboard
   app.get("/api/admin/all-student-weakness-profiles", async (req, res) => {
     try {
-      const requesterEmail = (req.query.adminEmail as string) || '';
-      const { user, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const isAdmin = isTokenAdmin || isAdminEmail(requesterEmail) || isAdminEmail(user?.email) || !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
-      if (!isAdmin && requesterEmail && !isAdminEmail(requesterEmail)) {
+      const { user, isAdmin } = await verifyAuthToken(req);
+      if (!user) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
         return res.status(403).json({ success: false, error: "Forbidden: Admin access required" });
       }
 
@@ -4949,6 +5031,14 @@ ${scopeInstruction}${excludeInstruction}`;
   // API Endpoint: Admin Fetch All Test Results (Supabase Admin Service-Role + Server Memory Merge)
   app.get("/api/admin/all-test-results", async (req, res) => {
     try {
+      const { user, isAdmin } = await verifyAuthToken(req);
+      if (!user) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+      }
+
       const resultsMap = new Map<string, any>();
 
       // 1. Query Supabase using admin service client (bypasses RLS)
@@ -5052,6 +5142,14 @@ ${scopeInstruction}${excludeInstruction}`;
   // API Endpoint: Admin Fetch All Test Sessions (In-Progress, Submitted, Abandoned)
   app.get("/api/admin/all-test-sessions", async (req, res) => {
     try {
+      const { user, isAdmin } = await verifyAuthToken(req);
+      if (!user) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+      }
+
       const sessions = Array.from(persistentTestSessions.values()).sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
@@ -5068,10 +5166,14 @@ ${scopeInstruction}${excludeInstruction}`;
     console.log("[api/admin/update-student-grade-stream] Payload:", req.body);
     try {
       const { studentId, studentEmail, studentName, grade, stream, subjects = [], requesterEmail, adminEmail } = req.body || {};
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
 
-      const requestedByEmail = (adminEmail || requesterEmail || tokenUser?.email || "").trim().toLowerCase();
-      const isAdmin = isTokenAdmin || isAdminEmail(requestedByEmail);
+      if (!tokenUser) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized: Valid admin authentication token required.",
+        });
+      }
 
       if (!isAdmin) {
         console.warn(`[Forbidden Access Attempt]: Unauthorized request attempted to update grade/stream for student ${studentId || studentEmail}`);
@@ -5611,18 +5713,21 @@ ${scopeInstruction}${excludeInstruction}`;
       res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
       return res.status(204).end();
     }
-    const { requesterEmail, studentId, status } = req.body;
-
-    const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-    const requestedBy = requesterEmail || tokenUser?.email || '';
-    const isAdmin = isTokenAdmin || isAdminEmail(requestedBy);
-
+    const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+    if (!tokenUser) {
+      return res.status(401).json({
+        success: false,
+        error: "Unauthorized: Valid admin authentication token required.",
+      });
+    }
     if (!isAdmin) {
       return res.status(403).json({
         success: false,
         error: "Forbidden: Only administrators can change student status.",
       });
     }
+
+    const { studentId, status } = req.body || {};
 
     if (!studentId || !status || !['active', 'suspended'].includes(status)) {
       return res.status(400).json({
@@ -5664,6 +5769,14 @@ ${scopeInstruction}${excludeInstruction}`;
   // API Endpoint: Admin Fetch All Students (Supabase + In-Memory merge)
   app.get("/api/admin/all-students", async (req, res) => {
     try {
+      const { user, isAdmin } = await verifyAuthToken(req);
+      if (!user) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+      }
+
       const studentMap = new Map<string, any>();
 
       // 1. First add all baseline/in-memory students
@@ -5774,6 +5887,14 @@ ${scopeInstruction}${excludeInstruction}`;
   // API Endpoint: Admin Fetch All Study Buddy History (Supabase + In-Memory)
   app.get("/api/admin/all-study-buddy-history", async (req, res) => {
     try {
+      const { user, isAdmin } = await verifyAuthToken(req);
+      if (!user) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+      }
+
       const logsMap = new Map<string, any>();
 
       // 1. In-memory logs
@@ -6249,16 +6370,20 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       const { title, subject, class: targetClass, category, requesterEmail } = req.body || {};
       const file = req.file;
 
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req as any);
-      const requestedBy = (requesterEmail || tokenUser?.email || "").trim().toLowerCase();
-      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy);
-
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req as any);
+      if (!tokenUser) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized: Valid admin authentication token required.",
+        });
+      }
       if (!isAdmin) {
         return res.status(403).json({
           success: false,
           error: "Unauthorized: Only administrators can upload resources.",
         });
       }
+      const requestedBy = (tokenUser.email || "").trim().toLowerCase();
 
       if (!file) {
         return res.status(400).json({
@@ -6345,10 +6470,13 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     try {
       const { id, requesterEmail } = req.body || {};
 
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const requestedBy = (requesterEmail || tokenUser?.email || "").trim().toLowerCase();
-      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy);
-
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+      if (!tokenUser) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized: Valid admin authentication token required.",
+        });
+      }
       if (!isAdmin) {
         return res.status(403).json({
           success: false,
@@ -7485,11 +7613,13 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   app.post("/api/drive-upload", driveUploadMulter.single("file") as any, async (req: any, res: any) => {
     try {
       // 1. Strict Server-Side Admin Role Verification
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const headerAdminEmail = (req.headers["x-admin-email"] as string || "").trim().toLowerCase();
-      const bodyAdminEmail = (req.body?.adminEmail || "").trim().toLowerCase();
-      const isAdmin = isTokenAdmin || isAdminEmail(headerAdminEmail) || isAdminEmail(bodyAdminEmail);
-
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+      if (!tokenUser) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized: Valid admin authentication token required.",
+        });
+      }
       if (!isAdmin) {
         return res.status(403).json({
           success: false,
@@ -7754,11 +7884,10 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // API Endpoint: Delete Past Paper Document (Admin Only)
   app.delete("/api/drive-delete/:id", async (req: express.Request, res: express.Response) => {
     try {
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const headerAdminEmail = (req.headers["x-admin-email"] as string || "").trim().toLowerCase();
-      const bodyAdminEmail = (req.query?.adminEmail as string || "").trim().toLowerCase();
-      const isAdmin = isTokenAdmin || isAdminEmail(headerAdminEmail) || isAdminEmail(bodyAdminEmail);
-
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+      if (!tokenUser) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
       if (!isAdmin) {
         return res.status(403).json({ success: false, error: "Forbidden: Deleting study resources is strictly restricted to administrators." });
       }
@@ -9748,6 +9877,14 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // API Endpoint: Admin Fetch All Payment Requests
   app.get("/api/admin/payment-requests", async (req: express.Request, res: express.Response) => {
     try {
+      const { user, isAdmin } = await verifyAuthToken(req);
+      if (!user) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+      }
+
       const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req);
 
       let list: any[] = [];
@@ -9791,6 +9928,14 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // API Endpoint: Admin Review Payment Request (Approve / Reject)
   app.post("/api/admin/payment-requests/review", async (req: express.Request, res: express.Response) => {
     try {
+      const { user, isAdmin } = await verifyAuthToken(req);
+      if (!user) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+      }
+
       const { requestId, status, adminNote, reviewerEmail } = req.body || {};
 
       if (!requestId || !status || !['approved', 'rejected'].includes(status)) {
@@ -9957,6 +10102,14 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // API Endpoint: Admin Delete Individual Payment Request
   app.post("/api/admin/payment-requests/delete", async (req: express.Request, res: express.Response) => {
     try {
+      const { user, isAdmin } = await verifyAuthToken(req);
+      if (!user) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+      }
+
       const { requestId, adminEmail } = req.body || {};
       if (!requestId) {
         return res.status(400).json({ success: false, error: "Missing required parameter: requestId." });
@@ -9987,7 +10140,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         }
       }
 
-      console.log(`✅ [Payment Request Deleted]: ID ${requestId} by ${adminEmail || 'admin'}`);
+      console.log(`✅ [Payment Request Deleted]: ID ${requestId} by ${adminEmail || user.email || 'admin'}`);
       return res.status(200).json({ success: true, message: `Payment request ${requestId} deleted successfully.` });
     } catch (err: any) {
       console.error("Error deleting payment request:", err);
@@ -9998,6 +10151,14 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // Also support standard HTTP DELETE /api/admin/payment-requests/:requestId
   app.delete("/api/admin/payment-requests/:requestId", async (req: express.Request, res: express.Response) => {
     try {
+      const { user, isAdmin } = await verifyAuthToken(req);
+      if (!user) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+      }
+
       const { requestId } = req.params;
       const { adminEmail } = req.body || {};
       if (!requestId) {
@@ -10027,7 +10188,7 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         }
       }
 
-      console.log(`✅ [Payment Request Deleted]: ID ${requestId} by ${adminEmail || 'admin'}`);
+      console.log(`✅ [Payment Request Deleted]: ID ${requestId} by ${adminEmail || user.email || 'admin'}`);
       return res.status(200).json({ success: true, message: `Payment request ${requestId} deleted successfully.` });
     } catch (err: any) {
       console.error("Error deleting payment request:", err);
@@ -10038,6 +10199,14 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // API Endpoint: Admin Cleanup All Duplicate Payment Requests
   app.post("/api/admin/payment-requests/cleanup-duplicates", async (req: express.Request, res: express.Response) => {
     try {
+      const { user, isAdmin } = await verifyAuthToken(req);
+      if (!user) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
+        return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+      }
+
       const { adminEmail } = req.body || {};
       const supabaseAdmin = getSupabaseAdminClient() || getAuthClient(req);
 
@@ -10172,10 +10341,13 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
       } = req.body || {};
 
       // Server-side strict authorization check: Admin role verification
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const requestedByEmail = (adminEmail || tokenUser?.email || "").trim().toLowerCase();
-      const isAdmin = isTokenAdmin || isAdminEmail(requestedByEmail);
-
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+      if (!tokenUser) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized: Valid admin authentication token required."
+        });
+      }
       if (!isAdmin) {
         return res.status(403).json({
           success: false,
@@ -11451,12 +11623,11 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // API Endpoint: Admin Backfill Promo Links Redemption Counts from promo_redemptions table
   app.post("/api/admin/promo-links/backfill", async (req: express.Request, res: express.Response) => {
     try {
-      const requesterEmail = (req.body?.adminEmail as string) || (req.query.adminEmail as string) || "";
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const requestedBy = requesterEmail || tokenUser?.email || "";
-      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
-
-      if (!isAdmin && requesterEmail && !isAdminEmail(requesterEmail)) {
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+      if (!tokenUser) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
         return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
       }
 
@@ -11588,12 +11759,11 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     res.setHeader("Expires", "0");
 
     try {
-      const requesterEmail = (req.query.adminEmail as string) || "";
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const requestedBy = requesterEmail || tokenUser?.email || "";
-      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
-
-      if (!isAdmin && requesterEmail && !isAdminEmail(requesterEmail)) {
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+      if (!tokenUser) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
         return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
       }
 
@@ -11703,36 +11873,41 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // Direct table endpoints
   app.get("/api/admin/promo-codes", async (req: express.Request, res: express.Response) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    const { user, isAdmin } = await verifyAuthToken(req);
+    if (!user) {
+      return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+    }
+    if (!isAdmin) {
+      return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+    }
     return res.json({ success: true, promo_codes: loadPromoCodes() });
   });
 
   app.get("/api/admin/promo-redemptions", async (req: express.Request, res: express.Response) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    const { user, isAdmin } = await verifyAuthToken(req);
+    if (!user) {
+      return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+    }
+    if (!isAdmin) {
+      return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
+    }
     return res.json({ success: true, promo_redemptions: loadPromoRedemptions() });
   });
 
   // API Endpoint: Admin Create Promo Link
   app.post("/api/admin/promo-links/create", async (req: express.Request, res: express.Response) => {
     try {
-      const { label, customCode, maxRedemptions, expiresDays, adminEmail } = req.body || {};
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const headerAdminEmail = ((req.headers["x-admin-email"] as string) || "").trim().toLowerCase();
-      const bodyAdminEmail = ((adminEmail as string) || "").trim().toLowerCase();
-      const tokenAdminEmail = ((tokenUser?.email as string) || "").trim().toLowerCase();
-      const queryAdminEmail = ((req.query.adminEmail as string) || "").trim().toLowerCase();
-      const requestedBy = bodyAdminEmail || headerAdminEmail || tokenAdminEmail || queryAdminEmail || "shsvirtualadmin@gmail.com";
-      const isAdmin =
-        isTokenAdmin ||
-        isAdminEmail(requestedBy) ||
-        isAdminEmail(headerAdminEmail) ||
-        isAdminEmail(bodyAdminEmail) ||
-        isAdminEmail(tokenAdminEmail) ||
-        !process.env.NODE_ENV ||
-        process.env.NODE_ENV === "development";
-
-      if (!isAdmin && requestedBy && !isAdminEmail(requestedBy)) {
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+      if (!tokenUser) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
         return res.status(403).json({ success: false, error: "Forbidden: Access restricted to authorized administrators." });
       }
+
+      const { label, customCode, maxRedemptions, expiresDays, adminEmail } = req.body || {};
+      const requestedBy = (tokenUser.email || adminEmail || "shsvirtualadmin@gmail.com").trim().toLowerCase();
 
       if (!label || !String(label).trim()) {
         return res.status(400).json({ success: false, error: "A label or campaign name is required." });
@@ -11846,14 +12021,15 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // API Endpoint: Admin Toggle Active Status
   app.post("/api/admin/promo-links/toggle", async (req: express.Request, res: express.Response) => {
     try {
-      const { id, isActive, adminEmail } = req.body || {};
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const requestedBy = adminEmail || tokenUser?.email || "";
-      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
-
-      if (!isAdmin && requestedBy && !isAdminEmail(requestedBy)) {
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+      if (!tokenUser) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
         return res.status(403).json({ success: false, error: "Forbidden: Access restricted to administrators." });
       }
+
+      const { id, isActive } = req.body || {};
 
       const links = loadPromoLinks();
       const link = links.find((l) => l.id === id);
@@ -11883,15 +12059,15 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // API Endpoint: Admin Delete Promo Link
   app.delete("/api/admin/promo-links/:id", async (req: express.Request, res: express.Response) => {
     try {
-      const { id } = req.params;
-      const requesterEmail = (req.query.adminEmail as string) || "";
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const requestedBy = requesterEmail || tokenUser?.email || "";
-      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
-
-      if (!isAdmin && requestedBy && !isAdminEmail(requestedBy)) {
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+      if (!tokenUser) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
         return res.status(403).json({ success: false, error: "Forbidden: Access restricted to administrators." });
       }
+
+      const { id } = req.params;
 
       const links = loadPromoLinks();
       const linkToDelete = links.find((l) => l.id === id);
@@ -11913,12 +12089,11 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // API Endpoint: Admin Fetch Activity Logs
   app.get("/api/admin/activity-logs", async (req: express.Request, res: express.Response) => {
     try {
-      const requesterEmail = (req.query.adminEmail as string) || '';
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const requestedBy = requesterEmail || tokenUser?.email || '';
-      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === 'development';
-      
-      if (!isAdmin && requesterEmail && !isAdminEmail(requesterEmail)) {
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+      if (!tokenUser) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
+      if (!isAdmin) {
         return res.status(403).json({ success: false, error: "Forbidden: Admin activity logs restricted to authorized administrators." });
       }
 
@@ -11980,40 +12155,10 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   // ADMIN DASHBOARD MODULES (SUBSCRIPTIONS, QUOTAS, EVENTS, PROGRAMS, INQUIRIES)
   // =========================================================================
 
-  function parseJwtPayload(token: string): any {
-    try {
-      const parts = token.split('.');
-      if (parts.length < 2) return null;
-      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-      const json = Buffer.from(base64, 'base64').toString('utf8');
-      return JSON.parse(json);
-    } catch {
-      return null;
-    }
-  }
-
   const checkIsAdminStrict = async (req: express.Request): Promise<{ isAdmin: boolean; email: string }> => {
-    let email = '';
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.substring(7).trim();
-      const jwt = parseJwtPayload(token);
-      if (jwt && jwt.email) {
-        email = String(jwt.email).trim().toLowerCase();
-      }
-    }
-    if (!email) {
-      const headerEmail = req.headers['x-admin-email'];
-      if (headerEmail && typeof headerEmail === 'string') {
-        email = headerEmail.trim().toLowerCase();
-      } else if (req.query?.adminEmail) {
-        email = String(req.query.adminEmail).trim().toLowerCase();
-      } else if (req.body?.adminEmail) {
-        email = String(req.body.adminEmail).trim().toLowerCase();
-      }
-    }
-    const isAuthorized = isAdminEmail(email);
-    return { isAdmin: isAuthorized, email };
+    const { user, isAdmin } = await verifyAuthToken(req);
+    const email = user?.email ? String(user.email).trim().toLowerCase() : '';
+    return { isAdmin: Boolean(isAdmin && isAdminEmail(email)), email };
   };
 
   // 1. Module 1: Update Student Active Subscription Tier & Duration
@@ -12575,10 +12720,13 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   const handlePermanentUserDeletion = async (req: express.Request, res: express.Response) => {
     res.setHeader("Content-Type", "application/json");
     try {
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const requestedBy = (req.body?.requesterEmail || req.query?.requesterEmail || tokenUser?.email || "").trim().toLowerCase();
-      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
-
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+      if (!tokenUser) {
+        return res.status(401).json({
+          success: false,
+          error: "Unauthorized: Valid admin authentication token required.",
+        });
+      }
       if (!isAdmin) {
         return res.status(403).json({
           success: false,
@@ -13043,10 +13191,10 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   const handleVerifyUserDeletion = async (req: express.Request, res: express.Response) => {
     res.setHeader("Content-Type", "application/json");
     try {
-      const { user: tokenUser, isAdmin: isTokenAdmin } = await verifyAuthToken(req);
-      const requestedBy = (req.body?.requesterEmail || req.query?.requesterEmail || tokenUser?.email || "").trim().toLowerCase();
-      const isAdmin = isTokenAdmin || isAdminEmail(requestedBy) || !process.env.NODE_ENV || process.env.NODE_ENV === "development";
-
+      const { user: tokenUser, isAdmin } = await verifyAuthToken(req);
+      if (!tokenUser) {
+        return res.status(401).json({ success: false, error: "Unauthorized: Valid admin authentication token required." });
+      }
       if (!isAdmin) {
         return res.status(403).json({ success: false, error: "Forbidden: Access restricted to administrators." });
       }

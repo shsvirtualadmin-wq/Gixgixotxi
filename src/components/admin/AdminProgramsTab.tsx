@@ -20,6 +20,7 @@ import {
   Sparkles,
   Award,
 } from 'lucide-react';
+import { apiFetch } from '../../lib/supabase';
 
 export interface StudyCircle {
   id: string;
@@ -84,7 +85,7 @@ export const AdminProgramsTab: React.FC<AdminProgramsTabProps> = ({
   const fetchProgramsData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/programs?adminEmail=${encodeURIComponent(currentUserEmail)}`, {
+      const res = await apiFetch(`/api/admin/programs?adminEmail=${encodeURIComponent(currentUserEmail)}`, {
         headers: { 'x-admin-email': currentUserEmail },
       });
       const data = await res.json();
@@ -107,7 +108,7 @@ export const AdminProgramsTab: React.FC<AdminProgramsTabProps> = ({
     if (!selectedApp) return;
     setReviewing(true);
     try {
-      const res = await fetch('/api/admin/captain-applications/review', {
+      const res = await apiFetch('/api/admin/captain-applications/review', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -141,7 +142,7 @@ export const AdminProgramsTab: React.FC<AdminProgramsTabProps> = ({
     if (!circleName.trim()) return;
     setCreatingCircle(true);
     try {
-      const res = await fetch('/api/admin/study-circles/create', {
+      const res = await apiFetch('/api/admin/study-circles/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -174,7 +175,7 @@ export const AdminProgramsTab: React.FC<AdminProgramsTabProps> = ({
 
   const handleModerateCircle = async (circleId: string, status: 'active' | 'paused' | 'archived') => {
     try {
-      const res = await fetch('/api/admin/study-circles/moderate', {
+      const res = await apiFetch('/api/admin/study-circles/moderate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

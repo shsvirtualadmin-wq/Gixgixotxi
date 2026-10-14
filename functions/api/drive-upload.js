@@ -1,4 +1,5 @@
 import { getGoogleAccessToken } from "../_utils/googleAuth.js";
+import { requireAdmin } from "../_utils/verifyAdmin.js";
 
 const SHARED_FOLDER_ID = "1Kb6pb7EKoS5mCWPI8tRPeG1rc3yqpMsv";
 const MAX_FILE_SIZE = 15 * 1024 * 1024; // 15MB max limit
@@ -14,16 +15,8 @@ export const onRequestPost = async (context) => {
   };
 
   try {
-    const adminEmail = (request.headers.get("x-admin-email") || "").trim().toLowerCase();
-    const ADMIN_EMAILS = ["shsvirtualadmin@gmail.com", "support@boardly.cfd"];
-    const isAdmin = ADMIN_EMAILS.includes(adminEmail);
-
-    if (!isAdmin) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Forbidden: Uploading past papers is strictly restricted to authorized administrators." }),
-        { status: 403, headers: corsHeaders }
-      );
-    }
+    // Verify caller holds a valid Firebase ID token for an admin account
+    await requireAdmin(request, env);
 
     const contentType = request.headers.get("content-type") || "";
     if (!contentType.includes("multipart/form-data")) {
@@ -199,6 +192,7 @@ export const onRequestPost = async (context) => {
       { status: 200, headers: corsHeaders }
     );
   } catch (err) {
+    if (err instanceof Response) return err;
     return new Response(
       JSON.stringify({ success: false, error: err.message || "Failed to process drive upload" }),
       { status: 500, headers: corsHeaders }

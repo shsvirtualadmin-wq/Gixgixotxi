@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Shield,
 } from 'lucide-react';
+import { apiFetch } from '../../lib/supabase';
 
 export interface ContactInquiry {
   id: string;
@@ -49,7 +50,7 @@ export const AdminSupportTab: React.FC<AdminSupportTabProps> = ({
   const fetchInquiries = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/inquiries?adminEmail=${encodeURIComponent(currentUserEmail)}`, {
+      const res = await apiFetch(`/api/admin/inquiries?adminEmail=${encodeURIComponent(currentUserEmail)}`, {
         headers: { 'x-admin-email': currentUserEmail },
       });
       const data = await res.json();
@@ -71,7 +72,7 @@ export const AdminSupportTab: React.FC<AdminSupportTabProps> = ({
     if (!selectedInquiry) return;
     setResolving(true);
     try {
-      const res = await fetch('/api/admin/inquiries/reply', {
+      const res = await apiFetch('/api/admin/inquiries/reply', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

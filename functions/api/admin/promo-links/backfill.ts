@@ -1,4 +1,5 @@
 import { createClient } from "../../../_utils/supabaseStub.js";
+import { requireAdmin } from "../../../_utils/verifyAdmin.js";
 
 interface PagesContext {
   request: Request;
@@ -16,17 +17,6 @@ function getSupabaseAdminClient(env: Record<string, string | undefined>) {
     "";
   if (!url || !serviceKey) return null;
   return createClient(url, serviceKey);
-}
-
-const ADMIN_EMAILS = [
-  "shsvirtualadmin@gmail.com",
-  "support@boardly.cfd",
-];
-
-function isAdminEmail(email?: string | null): boolean {
-  if (!email) return false;
-  const normalized = email.trim().toLowerCase();
-  return ADMIN_EMAILS.includes(normalized);
 }
 
 export const onRequestOptions = async () => {
@@ -51,23 +41,15 @@ export const onRequestPost = async (context: PagesContext) => {
   };
 
   try {
+    // Verify caller holds a valid Firebase ID token for an admin account
+    await requireAdmin(request, env);
+
     let body: any = {};
     try {
       const text = await request.text();
       if (text && text.trim()) body = JSON.parse(text);
     } catch {
       body = {};
-    }
-
-    const headerAdminEmail = (request.headers.get("x-admin-email") || "").trim().toLowerCase();
-    const bodyAdminEmail = ((body.adminEmail as string) || "").trim().toLowerCase();
-    const requestedBy = bodyAdminEmail || headerAdminEmail || "shsvirtualadmin@gmail.com";
-
-    if (!isAdminEmail(requestedBy)) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Forbidden: Access restricted to authorized administrators." }),
-        { status: 403, headers: corsHeaders }
-      );
     }
 
     const supabaseAdmin = getSupabaseAdminClient(env);
@@ -177,6 +159,7 @@ export const onRequestPost = async (context: PagesContext) => {
       { status: 200, headers: corsHeaders }
     );
   } catch (err: any) {
+    if (err instanceof Response) return err;
     return new Response(
       JSON.stringify({ success: false, error: err?.message || "Failed to backfill promo redemption counts." }),
       { status: 500, headers: corsHeaders }

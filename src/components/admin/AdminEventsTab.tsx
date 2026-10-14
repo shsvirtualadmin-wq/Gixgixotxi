@@ -17,6 +17,7 @@ import {
   Share2,
   Filter,
 } from 'lucide-react';
+import { apiFetch } from '../../lib/supabase';
 
 export interface PlatformEvent {
   id: string;
@@ -68,7 +69,7 @@ export const AdminEventsTab: React.FC<AdminEventsTabProps> = ({
   const fetchEvents = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/events?adminEmail=${encodeURIComponent(currentUserEmail)}`, {
+      const res = await apiFetch(`/api/admin/events?adminEmail=${encodeURIComponent(currentUserEmail)}`, {
         headers: { 'x-admin-email': currentUserEmail },
       });
       const data = await res.json();
@@ -136,7 +137,7 @@ export const AdminEventsTab: React.FC<AdminEventsTabProps> = ({
       const scheduledAtIso = new Date(`${formScheduledDate || new Date().toISOString().split('T')[0]}T${formScheduledTime || '16:00'}:00.000Z`).toISOString();
 
       if (modalMode === 'create') {
-        const res = await fetch('/api/admin/events/create', {
+        const res = await apiFetch('/api/admin/events/create', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -164,7 +165,7 @@ export const AdminEventsTab: React.FC<AdminEventsTabProps> = ({
           setToast({ type: 'error', message: data.error || 'Failed to create event.' });
         }
       } else {
-        const res = await fetch('/api/admin/events/update', {
+        const res = await apiFetch('/api/admin/events/update', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -204,7 +205,7 @@ export const AdminEventsTab: React.FC<AdminEventsTabProps> = ({
 
   const handleLaunchNow = async (event: PlatformEvent) => {
     try {
-      const res = await fetch('/api/admin/events/update', {
+      const res = await apiFetch('/api/admin/events/update', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -227,7 +228,7 @@ export const AdminEventsTab: React.FC<AdminEventsTabProps> = ({
   const handleDelete = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this event?')) return;
     try {
-      const res = await fetch(`/api/admin/events/${id}?adminEmail=${encodeURIComponent(currentUserEmail)}`, {
+      const res = await apiFetch(`/api/admin/events/${id}?adminEmail=${encodeURIComponent(currentUserEmail)}`, {
         method: 'DELETE',
         headers: { 'x-admin-email': currentUserEmail },
       });

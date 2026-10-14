@@ -1,4 +1,5 @@
 import { createClient } from "../../_utils/supabaseStub.js";
+import { requireAdmin } from "../../_utils/verifyAdmin.js";
 
 interface PagesContext {
   request: Request;
@@ -10,17 +11,6 @@ function getSupabaseAdminClient(env: Record<string, string | undefined>) {
   const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_KEY || env.VITE_SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || "";
   if (!url || !serviceKey) return null;
   return createClient(url, serviceKey);
-}
-
-const ADMIN_EMAILS = [
-  "shsvirtualadmin@gmail.com",
-  "support@boardly.cfd",
-];
-
-function isAdminEmail(email?: string | null): boolean {
-  if (!email) return false;
-  const normalized = email.trim().toLowerCase();
-  return ADMIN_EMAILS.includes(normalized);
 }
 
 function sanitizeGrade(raw: string): string {
@@ -67,6 +57,9 @@ export const onRequestPost = async (context: PagesContext) => {
   };
 
   try {
+    // Verify caller holds a valid Firebase ID token for an admin account
+    await requireAdmin(request, env);
+
     let body: any = {};
     try {
       const text = await request.text();
@@ -85,22 +78,7 @@ export const onRequestPost = async (context: PagesContext) => {
       grade,
       stream,
       subjects = [],
-      requesterEmail,
-      adminEmail,
     } = body || {};
-
-    const requestedByEmail = (adminEmail || requesterEmail || "").trim().toLowerCase();
-    const isAdmin = isAdminEmail(requestedByEmail);
-
-    if (!isAdmin) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Forbidden: Class and Stream updates are strictly restricted to authorized administrators.",
-        }),
-        { status: 403, headers: corsHeaders }
-      );
-    }
 
     if ((!studentId && !studentEmail) || !grade || !stream) {
       console.error("[functions/api/admin/update-student-grade-stream] Missing parameters:", body);
@@ -247,6 +225,7 @@ export const onRequestPost = async (context: PagesContext) => {
       { status: 200, headers: corsHeaders }
     );
   } catch (err: any) {
+    if (err instanceof Response) return err;
     console.error("Payload:", context.request);
     console.error("Database Error / Exception:", err);
     return new Response(

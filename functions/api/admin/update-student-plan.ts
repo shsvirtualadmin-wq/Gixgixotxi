@@ -1,4 +1,5 @@
 import { createClient } from "../../_utils/supabaseStub.js";
+import { requireAdmin } from "../../_utils/verifyAdmin.js";
 
 interface PagesContext {
   request: Request;
@@ -12,17 +13,6 @@ function getSupabaseAdminClient(env: Record<string, string | undefined>) {
   return createClient(url, serviceKey);
 }
 
-const ADMIN_EMAILS = [
-  "shsvirtualadmin@gmail.com",
-  "support@boardly.cfd",
-];
-
-function isAdminEmail(email?: string | null): boolean {
-  if (!email) return false;
-  const normalized = email.trim().toLowerCase();
-  return ADMIN_EMAILS.includes(normalized);
-}
-
 export const onRequestPost = async (context: PagesContext) => {
   const { request, env } = context;
 
@@ -34,6 +24,9 @@ export const onRequestPost = async (context: PagesContext) => {
   };
 
   try {
+    // Verify caller holds a valid Firebase ID token for an admin account
+    const requestedByEmail = await requireAdmin(request, env);
+
     let body: any = {};
     try {
       const text = await request.text();
@@ -54,25 +47,11 @@ export const onRequestPost = async (context: PagesContext) => {
       isPro,
       expirationMonths = 12,
       adminNote,
-      adminEmail,
       grade: reqGrade,
       stream: reqStream,
       target_university: reqTargetUni,
       dream_university: reqDreamUni,
     } = body || {};
-
-    const requestedByEmail = (adminEmail || "").trim().toLowerCase();
-    const isAdmin = isAdminEmail(requestedByEmail);
-
-    if (!isAdmin) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Forbidden: Manual plan changes are strictly restricted to authorized administrators.",
-        }),
-        { status: 403, headers: corsHeaders }
-      );
-    }
 
     if ((!studentId && !studentEmail) || !Array.isArray(subscribedPlans) || !packageName) {
       return new Response(
@@ -280,6 +259,7 @@ export const onRequestPost = async (context: PagesContext) => {
       { status: 200, headers: corsHeaders }
     );
   } catch (err: any) {
+    if (err instanceof Response) return err;
     return new Response(
       JSON.stringify({ success: false, error: err?.message || "Internal server error." }),
       { status: 500, headers: corsHeaders }

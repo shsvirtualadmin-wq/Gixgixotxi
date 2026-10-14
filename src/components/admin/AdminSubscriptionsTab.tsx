@@ -20,6 +20,7 @@ import {
   UserCheck,
   Check,
 } from 'lucide-react';
+import { apiFetch } from '../../lib/supabase';
 
 export type PlanTier = 'free' | 'pro' | 'premium';
 export type PlanDuration = 'monthly' | '3_months' | '8_months' | '12_months';
@@ -74,7 +75,7 @@ export const AdminSubscriptionsTab: React.FC<AdminSubscriptionsTabProps> = ({
   const fetchQuotas = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/usage-quotas?adminEmail=${encodeURIComponent(currentUserEmail)}`, {
+      const res = await apiFetch(`/api/admin/usage-quotas?adminEmail=${encodeURIComponent(currentUserEmail)}`, {
         headers: {
           'x-admin-email': currentUserEmail,
         },
@@ -110,7 +111,7 @@ export const AdminSubscriptionsTab: React.FC<AdminSubscriptionsTabProps> = ({
     if (!editingStudent) return;
     setSaving(true);
     try {
-      const res = await fetch('/api/admin/subscription/update-tier', {
+      const res = await apiFetch('/api/admin/subscription/update-tier', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
