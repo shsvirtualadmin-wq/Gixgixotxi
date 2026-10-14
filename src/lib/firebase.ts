@@ -558,31 +558,7 @@ export async function saveUserProfile(uid: string, fields: Partial<StudentUserPr
       }
     });
 
-    try {
-      await updateDoc(userRef, cleanFields);
-    } catch (updateErr: any) {
-      // If doc is not found, fallback to setDoc with merge
-      if (
-        updateErr?.code === 'not-found' ||
-        updateErr?.message?.includes('No document to update') ||
-        updateErr?.message?.includes('NOT_FOUND')
-      ) {
-        const fallbackDoc: Record<string, any> = {
-          uid,
-          name: auth.currentUser?.displayName || (auth.currentUser?.email ? auth.currentUser.email.split('@')[0] : 'Student'),
-          email: auth.currentUser?.email || '',
-          plan: 'free',
-          role: 'student',
-          roles: ['student'],
-          status: 'active',
-          createdAt: new Date().toISOString(),
-          ...cleanFields,
-        };
-        await setDoc(userRef, fallbackDoc, { merge: true });
-      } else {
-        throw updateErr;
-      }
-    }
+    await setDoc(userRef, cleanFields, { merge: true });
 
     try {
       const existingStr = localStorage.getItem(`boardly_cached_profile_${uid}`);

@@ -79,6 +79,10 @@ export function friendlyAuthError(err: any): string {
   const code: string = err?.code || '';
   const rawMsg: string = err?.message || (typeof err === 'string' ? err : '');
 
+  if (code === 'auth/user-suspended' || rawMsg.toLowerCase().includes('suspended')) {
+    return 'Your account has been suspended. Contact support@boardly.cfd.';
+  }
+
   if (
     code === 'auth/api-key-not-valid' ||
     code === 'auth/invalid-api-key' ||
@@ -227,6 +231,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let existingProfile = await fetchUserProfile(firebaseUser.uid);
 
     if (existingProfile) {
+      if (!isMasterAdmin && (existingProfile.suspended === true || existingProfile.status === 'suspended' || (existingProfile as any).isSuspended === true)) {
+        console.warn(`[Boardly Auth] Student ${firebaseUser.uid} (${firebaseUser.email}) is suspended. Enforcing sign out.`);
+        try {
+          localStorage.removeItem(`boardly_cached_profile_${firebaseUser.uid}`);
+          localStorage.removeItem('boardly_active_role');
+        } catch {}
+        await signOut(auth);
+        setUser(null);
+        setProfile(null);
+        setDocumentExists(false);
+        setStatus('signedOut');
+        const suspError = new Error('Your account has been suspended. Contact support@boardly.cfd.');
+        (suspError as any).code = 'auth/user-suspended';
+        throw suspError;
+      }
+
       // Returning user found: preserve all saved data and onboarding status
       if (isMasterAdmin) {
         existingProfile.role = 'admin';

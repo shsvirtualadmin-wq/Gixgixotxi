@@ -110,7 +110,16 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   // Selected student for drawer
   const [selectedStudent, setSelectedStudent] = useState<StudentUserProfile | null>(null);
   const [showStudentDrawer, setShowStudentDrawer] = useState<boolean>(false);
+  const [drawerPlan, setDrawerPlan] = useState<'free' | 'pro' | 'premium'>('free');
+  const [drawerExpiry, setDrawerExpiry] = useState<string>('');
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string>('');
+
+  useEffect(() => {
+    if (selectedStudent) {
+      setDrawerPlan(((selectedStudent.plan as any) || 'free').toLowerCase());
+      setDrawerExpiry(selectedStudent.premiumExpiresAt ? selectedStudent.premiumExpiresAt.split('T')[0] : '');
+    }
+  }, [selectedStudent]);
 
   // Payment requests
   const [paymentRequests, setPaymentRequests] = useState<StoredPaymentRequest[]>([]);
@@ -287,34 +296,87 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     setLoadingStudents(true);
     setStudentsError(null);
     try {
-      // Total Registered Students via count aggregation
+      // 1. Wait for onAuthStateChanged if auth is still resolving
+      let currentAuth = auth.currentUser;
+      if (!currentAuth) {
+        currentAuth = await new Promise<any>((resolve) => {
+          const unsubscribe = auth.onAuthStateChanged((u) => {
+            unsubscribe();
+            resolve(u);
+          });
+          setTimeout(() => {
+            unsubscribe();
+            resolve(null);
+          }, 3500);
+        });
+      }
+
+      const activeEmail = (currentAuth?.email || '').trim().toLowerCase();
+      if (!currentAuth || activeEmail !== 'shsvirtualadmin@gmail.com') {
+        setStudentsError('Access restricted: Only the superadmin (shsvirtualadmin@gmail.com) is permitted to access the admin portal.');
+        setLoadingStudents(false);
+        return;
+      }
+
+      // 2. Query the "users" collection from the named Firestore
+      const usersCol = collection(db, 'users');
+      let snap;
       try {
-        const total = await getUserCountTotal();
-        setTotalStudentCount(total);
-      } catch (countErr: any) {
-        console.warn('[Admin] getUserCountTotal fallback:', countErr);
+        const qOrdered = query(usersCol, orderBy('createdAt', 'desc'));
+        snap = await getDocs(qOrdered);
+      } catch (orderErr: any) {
+        console.warn('[Admin] Ordered query failed or missing field, querying collection directly:', orderErr);
+        snap = await getDocs(usersCol);
       }
 
-      // Fetch students paginated
-      const { students: fetchedList } = await fetchAllUsersPaginated(100);
+      const fetchedList: StudentUserProfile[] = snap.docs.map((d) => {
+        const data = d.data();
+        let createdDateStr = '—';
+        if (data.createdAt) {
+          if (typeof data.createdAt?.toDate === 'function') {
+            createdDateStr = data.createdAt.toDate().toISOString();
+          } else if (typeof data.createdAt === 'string') {
+            createdDateStr = data.createdAt;
+          }
+        }
+
+        const isSuspended = Boolean(data.suspended === true || data.status === 'suspended' || data.isSuspended === true);
+
+        return {
+          ...data,
+          uid: d.id,
+          name: data.displayName || data.name || (data.email ? data.email.split('@')[0] : 'Student'),
+          displayName: data.displayName || data.name || (data.email ? data.email.split('@')[0] : 'Student'),
+          email: data.email || '',
+          plan: data.plan || 'free',
+          university: data.targetUniversity || data.university || data.dream_university || '—',
+          targetUniversity: data.targetUniversity || data.university || data.dream_university || '—',
+          testDate: data.targetTestDate || data.targetExamDate || data.examDate || '—',
+          targetTestDate: data.targetTestDate || data.targetExamDate || data.examDate || '—',
+          createdAt: createdDateStr,
+          suspended: isSuspended,
+          status: isSuspended ? 'suspended' : 'active',
+          role: data.role || 'student',
+        } as StudentUserProfile;
+      });
+
+      // Sort in-memory by date descending
+      fetchedList.sort((a, b) => {
+        const timeA = a.createdAt && a.createdAt !== '—' ? new Date(a.createdAt).getTime() : 0;
+        const timeB = b.createdAt && b.createdAt !== '—' ? new Date(b.createdAt).getTime() : 0;
+        return timeB - timeA;
+      });
+
       setStudents(fetchedList);
+      setTotalStudentCount(fetchedList.length);
+      setActiveSubscriptionCount(fetchedList.filter((s) => s.plan === 'pro' || s.plan === 'premium').length);
+      setSuspendedUsersCount(fetchedList.filter((s) => s.suspended || s.status === 'suspended').length);
 
-      if (fetchedList.length > 0) {
-        // Active Subscriptions (Pro / Premium)
-        const paidCount = fetchedList.filter((s) => s.plan === 'pro' || s.plan === 'premium').length;
-        setActiveSubscriptionCount(paidCount);
-
-        // Suspended Users
-        const suspendedCount = fetchedList.filter((s) => s.status === 'suspended').length;
-        setSuspendedUsersCount(suspendedCount);
-
-        // Total AI Queries logged across students
-        const queriesCount = fetchedList.reduce(
-          (acc, s) => acc + (s.boardyQuestionsUsedToday || 0),
-          0
-        );
-        setAiQueriesLoggedCount(queriesCount > 0 ? queriesCount : 142); // live sum with active baseline
-      }
+      const queriesCount = fetchedList.reduce(
+        (acc, s) => acc + (s.boardyQuestionsUsedToday || 0),
+        0
+      );
+      setAiQueriesLoggedCount(queriesCount > 0 ? queriesCount : 142);
     } catch (err: any) {
       console.error('[Admin] loadStudents error:', err);
       setStudentsError(err?.message || 'Failed to connect to Named Firestore.');
@@ -404,9 +466,13 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   // LIVE ACTION: Approve / Activate Student
   const handleActivateStudent = async (student: StudentUserProfile) => {
     try {
-      await saveUserProfile(student.uid, { status: 'active' });
+      await updateDoc(doc(db, 'users', student.uid), {
+        suspended: false,
+        status: 'active',
+        isSuspended: false,
+      });
       await recordAuditLog({
-        adminId: user?.uid || 'admin',
+        adminId: auth.currentUser?.uid || user?.uid || 'admin',
         adminEmail,
         action: 'ACTIVATE_USER',
         targetType: 'user',
@@ -417,7 +483,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
       setTimeout(() => setActionSuccessMsg(''), 3000);
       loadStudents();
       if (selectedStudent?.uid === student.uid) {
-        setSelectedStudent({ ...selectedStudent, status: 'active' });
+        setSelectedStudent({ ...selectedStudent, status: 'active', suspended: false });
       }
     } catch (err: any) {
       alert(`Error activating user: ${err?.message}`);
@@ -434,9 +500,13 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
       confirmVariant: 'danger',
       onConfirm: async () => {
         try {
-          await saveUserProfile(student.uid, { status: 'suspended' });
+          await updateDoc(doc(db, 'users', student.uid), {
+            suspended: true,
+            status: 'suspended',
+            isSuspended: true,
+          });
           await recordAuditLog({
-            adminId: user?.uid || 'admin',
+            adminId: auth.currentUser?.uid || user?.uid || 'admin',
             adminEmail,
             action: 'SUSPEND_USER',
             targetType: 'user',
@@ -447,7 +517,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
           setTimeout(() => setActionSuccessMsg(''), 3000);
           loadStudents();
           if (selectedStudent?.uid === student.uid) {
-            setSelectedStudent({ ...selectedStudent, status: 'suspended' });
+            setSelectedStudent({ ...selectedStudent, status: 'suspended', suspended: true });
           }
         } catch (err: any) {
           alert(`Error suspending user: ${err?.message}`);
@@ -457,22 +527,30 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   };
 
   // LIVE ACTION: Change Plan
-  const handleChangeStudentPlan = async (studentId: string, newPlan: 'free' | 'pro' | 'premium') => {
+  const handleChangeStudentPlan = async (studentId: string, newPlan: 'free' | 'pro' | 'premium', premiumExpiresAt?: string) => {
     try {
-      await saveUserProfile(studentId, { plan: newPlan });
+      const updates: Record<string, any> = {
+        plan: newPlan,
+        isPremium: newPlan !== 'free',
+        premium: newPlan !== 'free',
+      };
+      if (premiumExpiresAt !== undefined) {
+        updates.premiumExpiresAt = premiumExpiresAt;
+      }
+      await updateDoc(doc(db, 'users', studentId), updates);
       await recordAuditLog({
-        adminId: user?.uid || 'admin',
+        adminId: auth.currentUser?.uid || user?.uid || 'admin',
         adminEmail,
         action: 'CHANGE_STUDENT_PLAN',
         targetType: 'user',
         targetId: studentId,
-        details: `Updated plan to ${newPlan.toUpperCase()}`,
+        details: `Updated plan to ${newPlan.toUpperCase()}${premiumExpiresAt ? ` (expires: ${premiumExpiresAt})` : ''}`,
       });
       setActionSuccessMsg(`Plan upgraded to ${newPlan.toUpperCase()}`);
       setTimeout(() => setActionSuccessMsg(''), 3000);
       loadStudents();
       if (selectedStudent && selectedStudent.uid === studentId) {
-        setSelectedStudent({ ...selectedStudent, plan: newPlan });
+        setSelectedStudent({ ...selectedStudent, ...updates });
       }
     } catch (err: any) {
       alert(`Error updating plan: ${err?.message}`);
@@ -489,9 +567,9 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
       confirmVariant: 'danger',
       onConfirm: async () => {
         try {
-          await deleteUserProfile(student.uid);
+          await deleteDoc(doc(db, 'users', student.uid));
           await recordAuditLog({
-            adminId: user?.uid || 'admin',
+            adminId: auth.currentUser?.uid || user?.uid || 'admin',
             adminEmail,
             action: 'DELETE_USER',
             targetType: 'user',
@@ -979,8 +1057,12 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                   data={students}
                   isLoading={loadingStudents}
                   keyExtractor={(s) => s.uid}
+                  onRowClick={(s) => {
+                    setSelectedStudent(s);
+                    setShowStudentDrawer(true);
+                  }}
                   onExportCsv={handleExportStudentsCsv}
-                  searchPlaceholder="Search by name, email, or plan..."
+                  searchPlaceholder="Search by name, email, plan, or university..."
                   columns={[
                     {
                       key: 'name',
@@ -1009,24 +1091,14 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                       ),
                     },
                     {
-                      key: 'authProvider',
-                      header: 'Auth Provider',
-                      render: (s) => (
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg">
-                          {s.email?.includes('@gmail.com') ? 'Google' : 'Password'}
-                        </span>
-                      ),
-                    },
-                    {
                       key: 'plan',
                       header: 'Plan',
                       sortable: true,
                       render: (s) => (
-                        <div className="relative inline-block">
+                        <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
                           <select
                             value={s.plan || 'free'}
                             onChange={(e) => handleChangeStudentPlan(s.uid, e.target.value as any)}
-                            onClick={(e) => e.stopPropagation()}
                             className="text-xs font-black uppercase px-2.5 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 cursor-pointer focus:ring-2 focus:ring-violet-500/30"
                           >
                             <option value="free">Free</option>
@@ -1037,20 +1109,41 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                       ),
                     },
                     {
+                      key: 'university',
+                      header: 'University',
+                      sortable: true,
+                      render: (s) => (
+                        <span className="text-xs text-slate-600 dark:text-slate-300 truncate max-w-[140px] block" title={s.targetUniversity || s.university || '—'}>
+                          {s.targetUniversity || s.university || '—'}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'testDate',
+                      header: 'Test Date',
+                      sortable: true,
+                      render: (s) => (
+                        <span className="text-xs text-slate-500">
+                          {s.targetTestDate || s.testDate || '—'}
+                        </span>
+                      ),
+                    },
+                    {
                       key: 'createdAt',
-                      header: 'Date Joined',
+                      header: 'Created Date',
                       sortable: true,
                       render: (s) => (
                         <span className="text-slate-500 text-xs">
-                          {s.createdAt ? new Date(s.createdAt).toLocaleDateString() : 'Recent'}
+                          {s.createdAt && s.createdAt !== '—' ? new Date(s.createdAt).toLocaleDateString() : 'Recent'}
                         </span>
                       ),
                     },
                     {
                       key: 'status',
-                      header: 'Status',
+                      header: 'Suspended Status',
+                      sortable: true,
                       render: (s) => (
-                        <StatusPill status={s.status || 'active'} />
+                        <StatusPill status={s.suspended || s.status === 'suspended' ? 'suspended' : 'active'} />
                       ),
                     },
                     {
@@ -1058,8 +1151,21 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                       header: 'Actions',
                       render: (s) => (
                         <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          {/* Details Button */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedStudent(s);
+                              setShowStudentDrawer(true);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 hover:bg-violet-100 border border-violet-200 dark:border-violet-800 text-[11px] font-bold cursor-pointer transition-colors"
+                            title="Open Student Details"
+                          >
+                            Details
+                          </button>
+
                           {/* Approve / Activate Button */}
-                          {s.status === 'suspended' ? (
+                          {s.suspended || s.status === 'suspended' ? (
                             <button
                               type="button"
                               onClick={() => handleActivateStudent(s)}
@@ -1369,6 +1475,162 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
           )}
         </main>
       </div>
+
+      {/* Student Details Drawer */}
+      <Drawer
+        isOpen={showStudentDrawer && !!selectedStudent}
+        onClose={() => {
+          setShowStudentDrawer(false);
+          setSelectedStudent(null);
+        }}
+        title="Student Profile Details"
+        subtitle={selectedStudent?.email || ''}
+        width="lg"
+      >
+        {selectedStudent && (
+          <div className="p-6 space-y-6">
+            {/* Header info */}
+            <div className="flex items-center gap-3 p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60">
+              <div className="w-12 h-12 rounded-2xl bg-violet-600 text-white font-black text-lg flex items-center justify-center shrink-0">
+                {selectedStudent.name ? selectedStudent.name.charAt(0).toUpperCase() : 'S'}
+              </div>
+              <div className="min-w-0 flex-1">
+                <h4 className="font-extrabold text-base text-slate-900 dark:text-white truncate">
+                  {selectedStudent.name || selectedStudent.displayName || 'Student'}
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                  {selectedStudent.email}
+                </p>
+                <p className="text-[10px] font-mono text-slate-400 truncate mt-0.5">
+                  UID: {selectedStudent.uid}
+                </p>
+              </div>
+              <StatusPill status={selectedStudent.suspended || selectedStudent.status === 'suspended' ? 'suspended' : 'active'} />
+            </div>
+
+            {/* Plan Management */}
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-4">
+              <h5 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Subscription & Tier Management
+              </h5>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Select Plan
+                  </label>
+                  <select
+                    value={drawerPlan}
+                    onChange={(e) => setDrawerPlan(e.target.value as any)}
+                    className="w-full text-xs font-bold px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-violet-500/30"
+                  >
+                    <option value="free">Free</option>
+                    <option value="pro">Pro</option>
+                    <option value="premium">Premium</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Premium Expiry (Optional)
+                  </label>
+                  <input
+                    type="date"
+                    value={drawerExpiry}
+                    onChange={(e) => setDrawerExpiry(e.target.value)}
+                    className="w-full text-xs font-bold px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-violet-500/30"
+                  />
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (selectedStudent) {
+                    await handleChangeStudentPlan(selectedStudent.uid, drawerPlan, drawerExpiry || undefined);
+                  }
+                }}
+                className="w-full py-2.5 rounded-xl bg-violet-600 text-white font-bold text-xs hover:bg-violet-700 cursor-pointer shadow-md shadow-violet-600/20"
+              >
+                Save Plan Changes
+              </button>
+            </div>
+
+            {/* Profile & Academic Details */}
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3">
+              <h5 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Academic & Diagnostic Info
+              </h5>
+              <div className="space-y-2 text-xs">
+                <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Target University</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {selectedStudent.targetUniversity || selectedStudent.university || 'Not set'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Target Test Date</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {selectedStudent.targetTestDate || selectedStudent.testDate || 'Not set'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Subjects Selected</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 text-right max-w-[200px] truncate">
+                    {Array.isArray(selectedStudent.subjects) ? selectedStudent.subjects.join(', ') : 'Default'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Onboarding Completed</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {selectedStudent.onboardingCompleted ? 'Yes' : 'No'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5">
+                  <span className="text-slate-500">Created Date</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {selectedStudent.createdAt && selectedStudent.createdAt !== '—'
+                      ? new Date(selectedStudent.createdAt).toLocaleString()
+                      : 'Recent'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Account Actions */}
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 space-y-3">
+              <h5 className="font-extrabold text-xs uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Account Actions
+              </h5>
+              <div className="flex flex-col sm:flex-row gap-2">
+                {selectedStudent.suspended || selectedStudent.status === 'suspended' ? (
+                  <button
+                    type="button"
+                    onClick={() => handleActivateStudent(selectedStudent)}
+                    className="flex-1 py-2.5 rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 text-xs font-bold cursor-pointer transition-colors text-center"
+                  >
+                    Activate Account
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleSuspendStudent(selectedStudent)}
+                    className="flex-1 py-2.5 rounded-xl bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800 text-xs font-bold cursor-pointer transition-colors text-center"
+                  >
+                    Suspend Account
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleDeleteStudent(selectedStudent)}
+                  className="py-2.5 px-4 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 hover:bg-rose-100 border border-rose-200 dark:border-rose-800 text-xs font-bold cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete Profile</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Drawer>
 
       {/* Confirmation Dialog */}
       <ConfirmDialog

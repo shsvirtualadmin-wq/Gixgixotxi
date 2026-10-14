@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Check, Calendar, Sparkles, BookOpen, Clock, ArrowRight, Loader2, Target, HelpCircle, AlertCircle } from 'lucide-react';
-import { doc, updateDoc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { BrandLogo } from '../marketing/BrandLogo';
 import { UNIVERSITIES, University } from '../../data/universities';
 import { getUniversityPaperConfig } from '../../config/universityPapers';
@@ -100,50 +100,107 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
     setErrorMessage(null);
     setIsSaving(true);
 
-    const targetUid = user?.uid || auth.currentUser?.uid;
-    if (!targetUid) {
+    // 1. Ensure user is signed in, wait for onAuthStateChanged if auth is still initializing
+    let activeUser = auth.currentUser || user;
+    if (!activeUser) {
+      activeUser = await new Promise<any>((resolve) => {
+        const unsubscribe = auth.onAuthStateChanged((u) => {
+          unsubscribe();
+          resolve(u);
+        });
+        setTimeout(() => {
+          unsubscribe();
+          resolve(null);
+        }, 3500);
+      });
+    }
+
+    if (!activeUser || !activeUser.uid) {
       setIsSaving(false);
-      setErrorMessage('User session not found. Please log in again.');
+      setErrorMessage('Please sign in to save your onboarding progress and continue to the dashboard.');
       return;
     }
 
+    const targetUid = activeUser.uid;
+    const userDocRef = doc(db, 'users', targetUid);
+    const userPath = `users/${targetUid}`;
+
+    const displayName = activeUser.displayName || (activeUser.email ? activeUser.email.split('@')[0] : 'Student');
+    const examDateVal = isNotSureDate ? '' : examDate;
+    const selectedTrackVal = selectedTrack || 'Engineering & CS';
+    const chosenSubjects = ['Advance Maths', 'IQ', ...selectedWorries.filter((s) => s !== 'Not sure, help me find out')];
+
+    // Build onboarding payload: only permitted student fields!
     const onboardingPayload: Record<string, any> = {
       uid: targetUid,
-      testTrack: selectedTrack || 'Engineering & CS',
-      targetExam: selectedTrack || 'Engineering & CS',
-      targetUniversityId: targetUniId,
+      email: activeUser.email || '',
+      displayName: displayName,
+      name: displayName,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      onboardingCompleted: true,
+      onboardingComplete: true,
       targetUniversity: targetUni.shortName,
+      targetUniversityId: targetUniId,
       university: targetUni.shortName,
       dream_university: targetUni.shortName,
       target_university: targetUni.shortName,
-      targetExamDate: isNotSureDate ? '' : examDate,
-      examDate: isNotSureDate ? '' : examDate,
+      targetTestDate: examDateVal,
+      targetExamDate: examDateVal,
+      examDate: examDateVal,
       targetExamDaysLeft: daysUntilTest,
+      testTrack: selectedTrackVal,
+      targetExam: selectedTrackVal,
       weakSubjects: selectedWorries,
+      diagnosticSettings: {
+        track: selectedTrackVal,
+        universityId: targetUniId,
+        worries: selectedWorries,
+        diagnosticFormat: '30-question diagnostic test',
+      },
+      subjects: chosenSubjects,
       firstTest: '30-question diagnostic test',
-      onboardingComplete: true,
-      onboardingCompleted: true,
-      updatedAt: new Date().toISOString(),
+      plan: 'free',
+      role: 'student',
+      isPremium: false,
+      admin: false,
     };
 
+    // Never write privileged or protected fields from a student's browser on update
+    const FORBIDDEN_FIELDS = [
+      'roles',
+      'premium',
+      'premiumExpiresAt',
+      'premiumSource',
+      'previousPlan',
+      'isCrewMember',
+      'crewStatus',
+      'crewStartDate',
+      'crewReferralCode',
+      'crewRevokedAt',
+      'crewRevokeReason',
+      'isPaidInternshipEligible',
+      'ambassador',
+      'isAdmin',
+      'suspended',
+      'isSuspended',
+    ];
+    FORBIDDEN_FIELDS.forEach((key) => {
+      delete onboardingPayload[key];
+    });
+
     try {
-      // 1. Save onboarding data to user profile via completeOnboarding
-      const res = await completeOnboarding(onboardingPayload);
-      if (!res.success) {
-        setIsSaving(false);
-        setErrorMessage(res.error || 'Failed to save onboarding details. Please try again.');
-        return;
-      }
+      // 1. Save onboarding data directly with setDoc(doc(db, "users", auth.currentUser.uid), data, { merge: true })
+      await setDoc(userDocRef, onboardingPayload, { merge: true });
 
-      // Also ensure direct write fallback to users/{uid} document has succeeded
+      // 2. Synchronize in-memory auth context profile state
       try {
-        const userDocRef = doc(db, 'users', targetUid);
-        await setDoc(userDocRef, onboardingPayload, { merge: true });
-      } catch (setErr) {
-        console.warn('[Onboarding] Direct write fallback note:', setErr);
+        await completeOnboarding(onboardingPayload);
+      } catch (ctxErr) {
+        console.warn('[Onboarding] completeOnboarding context update notice:', ctxErr);
       }
 
-      // 2. Clear onboarding session/storage flags
+      // 3. Clear onboarding session/storage flags
       if (typeof window !== 'undefined') {
         try {
           sessionStorage.removeItem('boardly_onboarding_step');
@@ -156,17 +213,16 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
 
       setIsSaving(false);
 
-      // 3. Save succeeded! Go to the dashboard once with replace: true
+      // 4. Save succeeded! Go to the dashboard
       onComplete(false, {
         universityId: targetUniId,
         track: selectedTrack,
         weakSubjects: selectedWorries,
       });
     } catch (err: any) {
-      console.error('[Onboarding] Direct save failed:', err);
+      console.error(`[Firestore Onboarding Error] Failed to write to path: ${userPath}`, err?.code || '', err?.message || '', err);
       setIsSaving(false);
-      const errorText = err?.message || 'Failed to save your preferences. Please try again.';
-      setErrorMessage(errorText);
+      setErrorMessage(`Firestore error: ${err?.message || 'Missing or insufficient permissions.'}`);
     }
   };
 
