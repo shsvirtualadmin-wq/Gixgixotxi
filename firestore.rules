@@ -61,7 +61,8 @@ service cloud.firestore {
     // Owners can read and update their own document but cannot change plan, role, premium, premiumSource, ambassador or admin fields.
     // Only admins can change those.
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
       allow create: if (isOwner(userId) && (isAdmin() || userInitialDocHasSafeFields())) || isAdmin();
       allow update: if (isOwner(userId) && userDoesNotChangeProtectedFields()) || isAdmin();
       allow delete: if isAdmin();

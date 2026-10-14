@@ -143,7 +143,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
                   >
                     Basic access
                   </div>
-                  <h3 className="text-[24px] font-bold text-white mt-1">
+                  <h3 className="text-[24px] font-bold font-editorial text-white mt-1">
                     {PRICING_PLANS.free.name}
                   </h3>
                   <p
@@ -215,7 +215,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
                   >
                     Complete exam prep
                   </div>
-                  <h3 className="text-[24px] font-bold text-white mt-1">
+                  <h3 className="text-[24px] font-bold font-editorial text-white mt-1">
                     {PRICING_PLANS.pro.name}
                   </h3>
                   <p
@@ -292,7 +292,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({
                   >
                     Full suite
                   </div>
-                  <h3 className="text-[24px] font-bold text-white mt-1">
+                  <h3 className="text-[24px] font-bold font-editorial text-white mt-1">
                     {PRICING_PLANS.premium.name}
                   </h3>
                   <p

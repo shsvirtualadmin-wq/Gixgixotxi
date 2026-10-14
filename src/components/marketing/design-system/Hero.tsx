@@ -179,7 +179,7 @@ export const Hero: React.FC<HeroProps> = ({
       </div>
 
       {/* Main Two-tone Heading with Typewriter (line-height 1.2) */}
-      <h1 className="max-w-4xl mx-auto px-4 text-3xl sm:text-5xl lg:text-6xl font-bold font-display tracking-tight text-slate-950 dark:text-white leading-[1.2]">
+      <h1 className="max-w-4xl mx-auto px-4 text-3xl sm:text-5xl lg:text-6xl font-bold font-editorial tracking-tight text-slate-950 dark:text-white leading-[1.2]">
         {staticHeadingPrefix}{' '}
         <span className={`inline-block ${accentClasses.gradientText}`}>
           {currentText}
