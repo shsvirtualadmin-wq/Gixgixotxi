@@ -85,6 +85,26 @@
     --ios-text-primary: #0F172A;
     --ios-text-secondary: #475569;
     --ios-border: rgba(30, 90, 255, 0.15);
+
+    /* Semantic Design System Palette Tokens */
+    --brand: #1E5AFF;
+    --brand-primary: #1E5AFF;
+    --brand-hover: #1546CC;
+    --brand-navy: #0F172A;
+    --surface: #FFFFFF;
+    --surface-page: #F8FAFC;
+    --surface-card: #FFFFFF;
+    --surface-muted: #F1F5F9;
+    --text: #0F172A;
+    --text-primary: #0F172A;
+    --text-secondary: #475569;
+    --muted: #64748B;
+    --text-muted: #64748B;
+    --border: #E2E8F0;
+    --border-subtle: rgba(15, 23, 42, 0.08);
+    --success: #10B981;
+    --warning: #F59E0B;
+    --danger: #EF4444;
   }
 
   /* True Frosted Glass System (Strict anti-smear discipline) */

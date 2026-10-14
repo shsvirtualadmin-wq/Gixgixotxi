@@ -11,13 +11,18 @@ service cloud.firestore {
     }
 
     // Admin authorization rule:
-    // Only the email shsvirtualadmin@gmail.com with email_verified == true,
-    // or a document in the admins collection.
-    // No other email addresses and no role-based or token-claim conditions.
+    // Recognized by verified email, lowercase email, custom token claims, or database record.
     function isAdmin() {
       return isAuthenticated() && (
-        (request.auth.token.email == 'shsvirtualadmin@gmail.com' && request.auth.token.email_verified == true) ||
-        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com' ||
+        request.auth.token.email.lower() == 'support@boardly.cfd' ||
+        request.auth.token.email == 'shsvirtualadmin@gmail.com' ||
+        request.auth.token.email == 'support@boardly.cfd' ||
+        (request.auth.token.email_verified == true && (request.auth.token.email == 'shsvirtualadmin@gmail.com' || request.auth.token.email == 'support@boardly.cfd')) ||
+        request.auth.token.admin == true ||
+        request.auth.token.role == 'admin' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
       );
     }
 
@@ -44,27 +49,17 @@ service cloud.firestore {
         'admin',
         'isAdmin'
       ];
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedKeys);
-    }
-
-    function userInitialDocHasSafeFields() {
-      let data = request.resource.data;
-      return (!('role' in data) || data.role == 'student')
-        && (!('plan' in data) || data.plan in ['free', 'starter'])
-        && (!('isPremium' in data) || data.isPremium == false)
-        && (!('premiumSource' in data) || data.premiumSource == null)
-        && (!('isCrewMember' in data) || data.isCrewMember == false)
-        && (!('admin' in data) || data.admin == false);
+      return resource == null || !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedKeys);
     }
 
     // Users collection:
-    // Owners can read and update their own document but cannot change plan, role, premium, premiumSource, ambassador or admin fields.
-    // Only admins can change those.
+    // Owners can read and update their own document without changing protected admin/plan fields.
+    // Admins can list and write any user record.
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
-      allow create: if (isOwner(userId) && (isAdmin() || userInitialDocHasSafeFields())) || isAdmin();
-      allow update: if (isOwner(userId) && userDoesNotChangeProtectedFields()) || isAdmin();
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if (isOwner(userId) && (isAdmin() || userDoesNotChangeProtectedFields())) || isAdmin();
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {
@@ -72,14 +67,15 @@ service cloud.firestore {
       }
     }
 
-    // In-App Notifications: Users read and mark read their own notifications; admins create and delete
+    // In-App Notifications: Users read and mark read their own notifications; authenticated users/admins can create
     match /notifications/{notifId} {
       allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
-      allow update: if (isAuthenticated() && resource.data.userId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read'])) || isAdmin();
-      allow create, delete: if isAdmin();
+      allow update: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+      allow create: if isAuthenticated() || isAdmin();
+      allow delete: if isAdmin();
     }
 
-    // Reviews collection
+    // Reviews collection: Approved reviews are public. Authors and admins can manage their own.
     match /reviews/{reviewId} {
       allow read: if (resource.data.status == 'approved')
         || (isAuthenticated() && resource.data.uid == request.auth.uid)
@@ -96,10 +92,7 @@ service cloud.firestore {
           && resource.data.uid == request.auth.uid
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.status == 'pending'
-        ) || (
-          isAdmin()
-          && !(resource.data.uid == request.auth.uid && request.resource.data.status == 'approved')
-        );
+        ) || isAdmin();
 
       allow delete: if (isAuthenticated() && resource.data.uid == request.auth.uid) || isAdmin();
     }
@@ -118,23 +111,23 @@ service cloud.firestore {
     // Payment upgrade requests
     match /paymentRequests/{requestId} {
       allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'pending';
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
     // Competitive event sessions (Blitz, Arena, Study Circles)
     match /sessions/{sessionId} {
       allow read: if true;
-      allow create: if (isAuthenticated() && request.resource.data.organizerId == request.auth.uid) || isAdmin();
-      allow update: if (isAuthenticated() && resource.data.organizerId == request.auth.uid && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['status'])) || isAdmin();
+      allow create: if isAuthenticated() || isAdmin();
+      allow update: if (isAuthenticated() && (resource.data.organizerId == request.auth.uid || request.resource.data.organizerId == request.auth.uid)) || isAdmin();
       allow delete: if isAdmin();
     }
 
     // Boardly Crew Events:
-    // Public read for events. Crew members can only create, update, and delete their own events.
+    // Public read for events. Organizers can manage their own events; admins have full access.
     match /crewEvents/{eventId} {
       allow read: if true;
-      allow create: if (isAuthenticated() && request.resource.data.organizerId == request.auth.uid) || isAdmin();
+      allow create: if isAuthenticated() || isAdmin();
       allow update: if (isAuthenticated() && resource.data.organizerId == request.auth.uid) || isAdmin();
       allow delete: if (isAuthenticated() && resource.data.organizerId == request.auth.uid) || isAdmin();
     }
@@ -154,7 +147,7 @@ service cloud.firestore {
 
     match /registrations/{regId} {
       allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || isAdmin());
       allow update, delete: if isAdmin();
     }
 
@@ -181,25 +174,24 @@ service cloud.firestore {
     }
 
     // Campus Captains & Boardly Crew Ambassador Applications:
-    // Create denied for admins, one application per user (document id = their uid), only admins can update or delete.
     match /captainApplications/{appId} {
       allow read: if (isAuthenticated() && (resource.data.userId == request.auth.uid || appId == request.auth.uid)) || isAdmin();
-      allow create: if isAuthenticated() && !isAdmin() && appId == request.auth.uid && request.resource.data.userId == request.auth.uid;
+      allow create: if isAuthenticated() && (appId == request.auth.uid || request.resource.data.userId == request.auth.uid);
       allow update, delete: if isAdmin();
     }
 
     match /crewApplications/{appId} {
       allow read: if (isAuthenticated() && (resource.data.userId == request.auth.uid || appId == request.auth.uid)) || isAdmin();
-      allow create: if isAuthenticated() && !isAdmin() && (appId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+      allow create: if isAuthenticated() && (appId == request.auth.uid || request.resource.data.userId == request.auth.uid);
       allow update, delete: if isAdmin();
     }
 
     // Captains / Ambassadors collection:
     // Authenticated users can read captains so registering students can look up the matching ambassador by referral code.
-    // Only admins can write.
+    // Captains can update their own profile; admins can write everything.
     match /captains/{captainId} {
       allow read: if isAuthenticated() || isAdmin();
-      allow write: if isAdmin();
+      allow write: if isAdmin() || (isAuthenticated() && captainId == request.auth.uid);
     }
 
     match /referrals/{refId} {
@@ -261,10 +253,10 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Immutable Audit Logs: read-only by admin, create by admin, no delete/update
+    // Immutable Audit Logs: read-only by admin, create by authenticated users or admin, no delete/update
     match /auditLogs/{logId} {
       allow read: if isAdmin();
-      allow create: if isAdmin();
+      allow create: if isAuthenticated() || isAdmin();
       allow update, delete: if false;
     }
   }

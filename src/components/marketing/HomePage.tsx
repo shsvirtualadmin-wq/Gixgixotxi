@@ -23,6 +23,7 @@ import { Section } from './design-system/Section';
 import { SectionHeader } from './design-system/SectionHeader';
 import { Button } from './design-system/Button';
 import { ScreenCard } from './ScreenCard';
+import { IPhoneAppPreview } from './IPhoneAppPreview';
 
 import { FaqAccordion, FaqItem } from './design-system/FaqAccordion';
 import { ScrollReveal } from './design-system/useScrollReveal';
@@ -126,6 +127,23 @@ export const HomePage: React.FC<HomePageProps> = ({
         onSecondaryCta={() => onNavigate('features')}
       />
 
+      {/* 1.5 REAL APP PREVIEW (Pure CSS/SVG iPhone 16 Pro Frame) */}
+      <section className="relative w-full py-12 sm:py-16 px-4 overflow-hidden border-y border-slate-200/60 bg-gradient-to-b from-slate-50/60 via-white to-slate-50/40">
+        <div className="max-w-4xl mx-auto text-center mb-6 sm:mb-8">
+          <div className="inline-block bg-white border border-[#dbe3f5] text-[#1a6dff] rounded-full text-[12px] font-semibold px-3 py-1 shadow-xs mb-3">
+            Real app experience
+          </div>
+          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#0f172a] tracking-tight font-display">
+            Built for Real Exam Readiness
+          </h2>
+          <p className="mt-2.5 text-sm sm:text-base text-slate-600 max-w-xl mx-auto leading-relaxed">
+            Practice board-aligned MCQs, review step derivations, compete in circle leaderboards, and coordinate college mockathons.
+          </p>
+        </div>
+
+        <IPhoneAppPreview initialTab="student" />
+      </section>
+
       {/* 2. CORE CAPABILITIES (Light Section) */}
       <Section variant="light">
         <SectionHeader
@@ -197,17 +215,6 @@ export const HomePage: React.FC<HomePageProps> = ({
         />
         <div
           className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#f6f5ff]/40 to-transparent pointer-events-none"
-          aria-hidden="true"
-        />
-
-        {/* Glow orb */}
-        <div
-          className="absolute top-1/3 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full pointer-events-none"
-          style={{
-            backgroundColor: '#1a6dff',
-            opacity: 0.12,
-            filter: 'blur(80px)',
-          }}
           aria-hidden="true"
         />
 
@@ -452,17 +459,6 @@ export const HomePage: React.FC<HomePageProps> = ({
         />
         <div
           className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#f6f5ff]/40 to-transparent pointer-events-none"
-          aria-hidden="true"
-        />
-
-        {/* Glow orb */}
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 rounded-full pointer-events-none"
-          style={{
-            backgroundColor: '#1a6dff',
-            opacity: 0.12,
-            filter: 'blur(80px)',
-          }}
           aria-hidden="true"
         />
 

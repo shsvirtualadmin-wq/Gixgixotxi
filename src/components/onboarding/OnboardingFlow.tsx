@@ -138,14 +138,9 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
       // Also ensure direct write fallback to users/{uid} document has succeeded
       try {
         const userDocRef = doc(db, 'users', targetUid);
-        await updateDoc(userDocRef, onboardingPayload);
-      } catch (updateErr: any) {
-        try {
-          const userDocRef = doc(db, 'users', targetUid);
-          await setDoc(userDocRef, onboardingPayload, { merge: true });
-        } catch (setErr) {
-          console.warn('[Onboarding] Direct write fallback note:', setErr);
-        }
+        await setDoc(userDocRef, onboardingPayload, { merge: true });
+      } catch (setErr) {
+        console.warn('[Onboarding] Direct write fallback note:', setErr);
       }
 
       // 2. Clear onboarding session/storage flags

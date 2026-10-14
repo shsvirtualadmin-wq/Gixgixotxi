@@ -47,10 +47,10 @@ export const Hero: React.FC<HeroProps> = ({
   onSecondaryCta,
   accent = 'default',
   tickerItems = [
-    'Student A. joined a Blitz · 142 registered',
-    'Student B. completed Physics drill · 45 MCQs',
-    'Student C. started timed mock session',
-    'Student D. reviewed formula vault derivation',
+    'Hamza R. joined a Blitz · 142 registered',
+    'Ayesha K. completed Physics drill · 45 MCQs',
+    'Bilal S. started timed mock session',
+    'Zainab F. reviewed formula vault derivation',
   ],
   compactTop = false,
 }) => {

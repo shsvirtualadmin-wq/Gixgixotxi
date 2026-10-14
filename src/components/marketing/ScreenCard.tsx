@@ -207,7 +207,7 @@ export const ScreenCard: React.FC<ScreenCardProps> = ({
                   Active ambassador
                 </div>
                 <div className="text-base font-bold text-white">
-                  Student A. · Campus Batch Leader
+                  Hamza R. · Campus Batch Leader
                 </div>
                 <div className="text-xs mt-1" style={{ color: 'rgba(255, 255, 255, 0.65)' }}>
                   Unique invite code: <span className="font-bold text-[#fcd34d]">CAMPUS-LEAD-2026</span>
@@ -264,7 +264,7 @@ export const ScreenCard: React.FC<ScreenCardProps> = ({
                   Physics Rapid Drill · 45 Mins Mock
                 </div>
                 <div className="text-xs mt-1" style={{ color: 'rgba(255, 255, 255, 0.65)' }}>
-                  Organized by Student B. · 142 Registered Candidates
+                  Organized by Ayesha K. · 142 Registered Candidates
                 </div>
               </div>
 
@@ -295,9 +295,9 @@ export const ScreenCard: React.FC<ScreenCardProps> = ({
                 Live event standings
               </div>
               {[
-                { rank: '1', name: 'Student A.', score: '96 / 100', time: '14m 20s' },
-                { rank: '2', name: 'Student B.', score: '94 / 100', time: '15m 12s' },
-                { rank: '3', name: 'Student C.', score: '92 / 100', time: '16m 05s' },
+                { rank: '1', name: 'Ayesha K.', score: '96 / 100', time: '14m 20s' },
+                { rank: '2', name: 'Bilal S.', score: '94 / 100', time: '15m 12s' },
+                { rank: '3', name: 'Daniyal M.', score: '92 / 100', time: '16m 05s' },
               ].map((row, i) => (
                 <div
                   key={i}
