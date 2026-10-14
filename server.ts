@@ -2592,6 +2592,49 @@ async function startServer() {
     res.json({ status: "ok", service: "Boardly Student & MCQs API" });
   });
 
+  // Server time endpoint for test timer synchronization
+  app.get("/api/server-time", (req, res) => {
+    res.json({ serverTime: Date.now() });
+  });
+
+  // Clean questions endpoint with KaTeX control char repair and mathChecked flag
+  app.post("/api/clean-questions-for-test", async (req, res) => {
+    try {
+      const { questions } = req.body || {};
+      if (!Array.isArray(questions)) {
+        return res.status(400).json({ error: "questions array is required" });
+      }
+
+      const cleanStr = (s: any) => {
+        if (!s || typeof s !== "string") return s;
+        return s
+          .replace(/\x0c/g, "\\frac")
+          .replace(/\t/g, "\\theta")
+          .replace(/\x08/g, "\\beta")
+          .replace(/\r/g, "")
+          .replace(/\x0b/g, "\\vec")
+          .replace(/\n\s*eq/g, "\\neq");
+      };
+
+      const cleaned = questions.map((q: any) => ({
+        ...q,
+        q: cleanStr(q.q || q.question),
+        question: cleanStr(q.question || q.q),
+        options: Array.isArray(q.options) ? q.options.map(cleanStr) : q.options,
+        explain: cleanStr(q.explain || q.explanation),
+        explanation: cleanStr(q.explanation || q.explain),
+        correct: typeof q.correct === "number" ? q.correct : (q.correctAnswer ?? 0),
+        correctAnswer: typeof q.correctAnswer === "number" ? q.correctAnswer : (q.correct ?? 0),
+        mathChecked: true,
+      }));
+
+      res.json({ questions: cleaned, count: cleaned.length });
+    } catch (err: any) {
+      console.error("[cleanQuestionsForTest route error]:", err);
+      res.status(500).json({ error: err.message || "Failed to clean questions" });
+    }
+  });
+
   // Seamless Supabase migration fallback check for existing students
   app.post("/api/auth/migrate-check", async (req, res) => {
     try {

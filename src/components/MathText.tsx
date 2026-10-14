@@ -1,7 +1,9 @@
 import React from 'react';
-import { renderMath } from '../lib/boardyMath';
+import { MathText as UiMathText, normalizeMath } from './ui/MathText';
 
-interface MathTextProps {
+export { normalizeMath };
+
+export interface MathTextProps {
   text: string;
   className?: string;
   isUrduOrIslamiat?: boolean;
@@ -15,19 +17,7 @@ export const MathText: React.FC<MathTextProps> = React.memo(({
   block = false,
 }) => {
   if (!text) return null;
-
-  const html = renderMath(text);
-
-  const containerClasses = `${block ? 'block' : 'inline'} ${
-    isUrduOrIslamiat ? 'font-["Noto_Nastaliq_Urdu","Noto_Sans_Arabic",serif]' : ''
-  } ${className}`;
-
-  return (
-    <span
-      className={containerClasses}
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
-  );
+  return <UiMathText text={text} className={className} isUrduOrIslamiat={isUrduOrIslamiat} block={block} />;
 });
 
 export default MathText;

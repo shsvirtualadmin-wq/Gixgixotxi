@@ -27,7 +27,7 @@ import {
   getCountFromServer,
   deleteField,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { auth, db } from '../lib/firebase';
 import { StatCard } from './ui/StatCard';
 import { DataTable } from './ui/DataTable';
 import { Badge } from './ui/Badge';
@@ -36,6 +36,7 @@ import { Drawer } from './ui/Drawer';
 import { ConfirmDialog } from './ui/ConfirmDialog';
 import { getDynamicQuestionBankStats } from '../lib/questionBankStats';
 import { AdminCrewTab } from './admin/AdminCrewTab';
+import { AdminQuestionBankTab } from './admin/AdminQuestionBankTab';
 import { SparkLineTrendChart, DonutDistributionChart } from './ui/Charts';
 import { ErrorBoundary } from './ErrorBoundary';
 import {
@@ -158,136 +159,95 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   const adminEmail = user?.email || 'shsvirtualadmin@gmail.com';
   const questionBankStats = useMemo(() => getDynamicQuestionBankStats(), []);
 
-  const [repairRunning, setRepairRunning] = useState<boolean>(false);
-  const [repairResult, setRepairResult] = useState<string | null>(null);
-  const [showRepairModal, setShowRepairModal] = useState<boolean>(false);
+  // Student Directory Plan Filter
+  const [studentPlanFilter, setStudentPlanFilter] = useState<'all' | 'free' | 'pro' | 'premium'>('all');
 
-  const handleRepairAdminAccount = async () => {
-    setRepairRunning(true);
-    setRepairResult(null);
-    setShowRepairModal(true);
-    const details: string[] = [];
+  // Boardy AI Daily Limits stored in config collection
+  const [boardyLimits, setBoardyLimits] = useState<{
+    freeLimit: number;
+    proLimit: number;
+    premiumLimit: number;
+    isPaused: boolean;
+  }>({
+    freeLimit: 10,
+    proLimit: 50,
+    premiumLimit: 200,
+    isPaused: false,
+  });
+
+  // Group signups for the last 30 days dynamically from users.createdAt
+  const signups30Days = useMemo(() => {
+    const days: Record<string, number> = {};
+    const now = new Date();
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+      const key = `${d.getMonth() + 1}/${d.getDate()}`;
+      days[key] = 0;
+    }
+    students.forEach((s) => {
+      if (s.createdAt && s.createdAt !== '—') {
+        const d = new Date(s.createdAt);
+        if (!isNaN(d.getTime())) {
+          const diffDays = Math.floor((now.getTime() - d.getTime()) / (1000 * 60 * 60 * 24));
+          if (diffDays >= 0 && diffDays < 30) {
+            const key = `${d.getMonth() + 1}/${d.getDate()}`;
+            if (days[key] !== undefined) {
+              days[key] += 1;
+            }
+          }
+        }
+      }
+    });
+    return Object.entries(days).map(([label, value]) => ({ label, value }));
+  }, [students]);
+
+  const hasSignupsData = useMemo(() => signups30Days.some((d) => d.value > 0), [signups30Days]);
+
+  const realPlanDistribution = useMemo(() => {
+    const free = students.filter((s) => !s.plan || s.plan === 'free').length;
+    const pro = students.filter((s) => s.plan === 'pro').length;
+    const premium = students.filter((s) => s.plan === 'premium').length;
+    return [
+      { name: 'Free', value: free, color: '#94A3B8' },
+      { name: 'Pro', value: pro, color: '#4F46E5' },
+      { name: 'Premium', value: premium, color: '#7C3AED' },
+    ];
+  }, [students]);
+
+  const hasPlanData = useMemo(() => realPlanDistribution.some((p) => p.value > 0), [realPlanDistribution]);
+
+  const filteredStudents = useMemo(() => {
+    if (studentPlanFilter === 'all') return students;
+    return students.filter((s) => (s.plan || 'free') === studentPlanFilter);
+  }, [students, studentPlanFilter]);
+
+  const loadBoardyLimits = useCallback(async () => {
     try {
-      const targetAdminEmail = 'shsvirtualadmin@gmail.com';
-      const adminUid = user?.uid;
-
-      // 1. Remove from crewApplications
-      try {
-        const q1 = query(collection(db, 'crewApplications'), where('email', '==', targetAdminEmail));
-        const snap1 = await getDocs(q1);
-        for (const d of snap1.docs) {
-          await deleteDoc(d.ref);
-          details.push(`Deleted crew application: ${d.id}`);
-        }
-        if (adminUid) {
-          const q1b = query(collection(db, 'crewApplications'), where('userId', '==', adminUid));
-          const snap1b = await getDocs(q1b);
-          for (const d of snap1b.docs) {
-            await deleteDoc(d.ref);
-            details.push(`Deleted crew application by UID: ${d.id}`);
-          }
-        }
-      } catch (e: any) {
-        console.warn('Error cleaning crewApplications:', e);
-      }
-
-      // 2. Remove from captainApplications
-      try {
-        if (adminUid) {
-          const capAppRef = doc(db, 'captainApplications', adminUid);
-          const capAppSnap = await getDoc(capAppRef);
-          if (capAppSnap.exists()) {
-            await deleteDoc(capAppRef);
-            details.push(`Deleted captain application: ${adminUid}`);
-          }
-        }
-        const q2 = query(collection(db, 'captainApplications'), where('email', '==', targetAdminEmail));
-        const snap2 = await getDocs(q2);
-        for (const d of snap2.docs) {
-          await deleteDoc(d.ref);
-          details.push(`Deleted captain application document: ${d.id}`);
-        }
-      } catch (e: any) {
-        console.warn('Error cleaning captainApplications:', e);
-      }
-
-      // 3. Remove from captains collection
-      try {
-        if (adminUid) {
-          const capRef = doc(db, 'captains', adminUid);
-          const capSnap = await getDoc(capRef);
-          if (capSnap.exists()) {
-            await deleteDoc(capRef);
-            details.push(`Deleted captains document: ${adminUid}`);
-          }
-        }
-        const q3 = query(collection(db, 'captains'), where('email', '==', targetAdminEmail));
-        const snap3 = await getDocs(q3);
-        for (const d of snap3.docs) {
-          await deleteDoc(d.ref);
-          details.push(`Deleted captains document: ${d.id}`);
-        }
-      } catch (e: any) {
-        console.warn('Error cleaning captains collection:', e);
-      }
-
-      // 4. Remove pending config flag if any
-      try {
-        const emailKey = targetAdminEmail.replace(/[^a-z0-9]/g, '_');
-        const configRef = doc(db, 'config', `crew_pending_${emailKey}`);
-        const configSnap = await getDoc(configRef);
-        if (configSnap.exists()) {
-          await deleteDoc(configRef);
-          details.push(`Deleted config doc: crew_pending_${emailKey}`);
-        }
-      } catch (e) {}
-
-      // 5. Reset admin's users document
-      if (adminUid) {
-        const userRef = doc(db, 'users', adminUid);
-        await updateDoc(userRef, {
-          role: 'admin',
-          roles: ['admin', 'student'],
-          plan: 'premium',
-          isPremium: true,
-          isCrewMember: false,
-          crewStatus: 'none',
-          crewReferralCode: deleteField(),
-          crewStartDate: deleteField(),
-          crewInstitution: deleteField(),
-          isPaidInternshipEligible: false,
-          crewReferralsCount: 0,
-          crewActiveUsersCount: 0,
-          updatedAt: new Date().toISOString(),
+      const snap = await getDoc(doc(db, 'config', 'boardy_limits'));
+      if (snap.exists()) {
+        const data = snap.data();
+        setBoardyLimits({
+          freeLimit: data.freeLimit ?? 10,
+          proLimit: data.proLimit ?? 50,
+          premiumLimit: data.premiumLimit ?? 200,
+          isPaused: Boolean(data.isPaused),
         });
-        details.push(`Reset users/${adminUid} doc: role='admin', isCrewMember=false, removed crew referral codes.`);
+        setBoardyKillSwitch(Boolean(data.isPaused));
       }
+    } catch (e) {
+      console.warn('[Admin] loadBoardyLimits warning:', e);
+    }
+  }, []);
 
-      // 6. Ensure document exists in admins collection
-      if (adminUid) {
-        const adminDocRef = doc(db, 'admins', adminUid);
-        await setDoc(adminDocRef, {
-          email: targetAdminEmail,
-          uid: adminUid,
-          role: 'admin',
-          verifiedAt: new Date().toISOString(),
-        }, { merge: true });
-        details.push(`Confirmed document in admins/${adminUid}`);
-      }
-
-      // 7. Clear local active role override
-      try {
-        localStorage.removeItem('boardly_active_role');
-        localStorage.setItem('boardly_active_role', 'admin');
-      } catch (e) {}
-
-      setRepairResult(details.length > 0 ? details.join('\n') : 'Admin account was already clean! Confirmed admin document in admins collection.');
-      loadStudents();
-      loadCrewApplicationsCount();
+  const saveBoardyLimits = async (newLimits: typeof boardyLimits) => {
+    try {
+      await setDoc(doc(db, 'config', 'boardy_limits'), newLimits, { merge: true });
+      setBoardyLimits(newLimits);
+      setBoardyKillSwitch(newLimits.isPaused);
+      setActionSuccessMsg('Boardy limits and kill-switch saved to Firestore config.');
+      setTimeout(() => setActionSuccessMsg(''), 3000);
     } catch (err: any) {
-      setRepairResult(`Repair encountered error: ${err.message || err}`);
-    } finally {
-      setRepairRunning(false);
+      alert(`Error saving limits: ${err?.message}`);
     }
   };
 
@@ -442,13 +402,17 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     }
   }, []);
 
-  // 6. Fetch Pending Crew Applications Count (for red badge)
+  // 6. Fetch Pending Crew & Captain Applications Count (for red badge)
   const [pendingCrewCount, setPendingCrewCount] = useState<number>(0);
   const loadCrewApplicationsCount = useCallback(async () => {
     try {
-      const q = query(collection(db, 'crewApplications'), where('status', '==', 'pending'));
-      const snap = await getDocs(q);
-      setPendingCrewCount(snap.size);
+      const qCrew = query(collection(db, 'crewApplications'), where('status', '==', 'pending'));
+      const qCap = query(collection(db, 'captainApplications'), where('status', '==', 'pending'));
+      const [snapCrew, snapCap] = await Promise.all([
+        getDocs(qCrew).catch(() => ({ size: 0 })),
+        getDocs(qCap).catch(() => ({ size: 0 })),
+      ]);
+      setPendingCrewCount((snapCrew as any).size + (snapCap as any).size);
     } catch (err) {
       console.warn('[Admin] loadCrewApplicationsCount warning:', err);
     }
@@ -533,6 +497,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
         plan: newPlan,
         isPremium: newPlan !== 'free',
         premium: newPlan !== 'free',
+        premiumSource: 'admin',
       };
       if (premiumExpiresAt !== undefined) {
         updates.premiumExpiresAt = premiumExpiresAt;
@@ -598,19 +563,90 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
           reviewedBy: adminEmail,
         });
       }
-      await saveUserProfile(req.userId, { plan: req.planId });
+      const expiry = new Date();
+      expiry.setFullYear(expiry.getFullYear() + 1);
+      await updateDoc(doc(db, 'users', req.userId), {
+        plan: req.planId,
+        isPremium: req.planId !== 'free',
+        premium: req.planId !== 'free',
+        premiumExpiresAt: expiry.toISOString(),
+        premiumSource: 'payment_approved',
+      });
       await recordAuditLog({
-        adminId: user?.uid || 'admin',
+        adminId: auth.currentUser?.uid || user?.uid || 'admin',
         adminEmail,
         action: 'APPROVE_PAYMENT',
         targetType: 'paymentRequest',
         targetId: req.id || req.userId,
         details: `Approved PKR ${req.amountPkr} for ${req.userEmail} -> ${req.planId}`,
       });
+      setActionSuccessMsg(`Payment approved for ${req.userEmail}`);
+      setTimeout(() => setActionSuccessMsg(''), 3000);
       loadPaymentRequests();
       loadStudents();
     } catch (err: any) {
       alert(`Error approving payment: ${err?.message}`);
+    }
+  };
+
+  // Handle payment request rejection
+  const handleRejectPayment = async (req: StoredPaymentRequest) => {
+    try {
+      if (req.id) {
+        await updateDoc(doc(db, 'paymentRequests', req.id), {
+          status: 'rejected',
+          reviewedAt: new Date().toISOString(),
+          reviewedBy: adminEmail,
+        });
+      }
+      await recordAuditLog({
+        adminId: auth.currentUser?.uid || user?.uid || 'admin',
+        adminEmail,
+        action: 'REJECT_PAYMENT',
+        targetType: 'paymentRequest',
+        targetId: req.id || req.userId,
+        details: `Rejected payment request from ${req.userEmail}`,
+      });
+      setActionSuccessMsg(`Payment rejected for ${req.userEmail}`);
+      setTimeout(() => setActionSuccessMsg(''), 3000);
+      loadPaymentRequests();
+    } catch (err: any) {
+      alert(`Error rejecting payment: ${err?.message}`);
+    }
+  };
+
+  // Reviews moderation handlers
+  const handleApproveReview = async (r: StoredReview) => {
+    try {
+      if (r.id) {
+        await updateDoc(doc(db, 'reviews', r.id), {
+          status: 'approved',
+          reviewedAt: new Date().toISOString(),
+          reviewedBy: adminEmail,
+        });
+      }
+      setActionSuccessMsg('Review approved.');
+      setTimeout(() => setActionSuccessMsg(''), 3000);
+      loadReviews();
+    } catch (err: any) {
+      alert(`Error approving review: ${err?.message}`);
+    }
+  };
+
+  const handleRejectReview = async (r: StoredReview) => {
+    try {
+      if (r.id) {
+        await updateDoc(doc(db, 'reviews', r.id), {
+          status: 'rejected',
+          reviewedAt: new Date().toISOString(),
+          reviewedBy: adminEmail,
+        });
+      }
+      setActionSuccessMsg('Review rejected.');
+      setTimeout(() => setActionSuccessMsg(''), 3000);
+      loadReviews();
+    } catch (err: any) {
+      alert(`Error rejecting review: ${err?.message}`);
     }
   };
 
@@ -651,7 +687,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     { id: 'students', label: 'Student Directory', icon: <Users className="w-4 h-4" />, badge: totalStudentCount || students.length },
     {
       id: 'crew',
-      label: 'Crew Applications',
+      label: 'Crew & Captains',
       icon: <Sparkles className="w-4 h-4 text-indigo-400" />,
       badge: pendingCrewCount > 0 ? pendingCrewCount : undefined,
       isRedBadge: true,
@@ -753,16 +789,6 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
           >
             {copiedCrewLink ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4 text-indigo-400" />}
             <span>{copiedCrewLink ? 'Copied Crew Link!' : 'Copy Crew Link'}</span>
-          </button>
-          <button
-            type="button"
-            onClick={handleRepairAdminAccount}
-            disabled={repairRunning}
-            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 font-bold text-xs border border-emerald-800/40 transition-colors cursor-pointer disabled:opacity-50"
-            title="Clean any crew applications and ensure admin role is clean"
-          >
-            <ShieldCheck className="w-4 h-4 text-emerald-400" />
-            <span>{repairRunning ? 'Repairing...' : 'Repair Admin Account'}</span>
           </button>
           <button
             type="button"
@@ -936,7 +962,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
             />
             <StatCard
               label="AI Queries Logged"
-              value={aiQueriesLoggedCount || 142}
+              value={aiQueriesLoggedCount}
               subtitle="Boardy AI interactions"
               accent="violet"
               icon={<Bot className="w-5 h-5 text-teal-600" />}
@@ -965,16 +991,19 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                       </div>
                     }
                   >
-                    <SparkLineTrendChart
-                      data={[
-                        { label: 'Week 1', value: 45 },
-                        { label: 'Week 2', value: 89 },
-                        { label: 'Week 3', value: 165 },
-                        { label: 'Week 4', value: totalStudentCount || 230 },
-                      ]}
-                      color="#7C3AED"
-                      height={200}
-                    />
+                    {hasSignupsData ? (
+                      <SparkLineTrendChart
+                        data={signups30Days}
+                        color="#7C3AED"
+                        height={200}
+                      />
+                    ) : (
+                      <div className="h-[200px] flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 text-xs text-slate-400 text-center space-y-1">
+                        <Users className="w-6 h-6 text-slate-400 mx-auto" />
+                        <p className="font-semibold text-slate-600 dark:text-slate-300">No signups recorded in last 30 days</p>
+                        <p className="text-[11px] text-slate-400">New student signups will populate this velocity curve.</p>
+                      </div>
+                    )}
                   </ErrorBoundary>
                 </div>
 
@@ -989,14 +1018,16 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                       </div>
                     }
                   >
-                    <DonutDistributionChart
-                      data={[
-                        { name: 'Free', value: Math.max(1, students.filter((s) => s.plan === 'free').length), color: '#94A3B8' },
-                        { name: 'Pro', value: Math.max(1, students.filter((s) => s.plan === 'pro').length), color: '#4F46E5' },
-                        { name: 'Premium', value: Math.max(1, students.filter((s) => s.plan === 'premium').length), color: '#7C3AED' },
-                      ]}
-                      height={200}
-                    />
+                    {hasPlanData ? (
+                      <DonutDistributionChart
+                        data={realPlanDistribution}
+                        height={200}
+                      />
+                    ) : (
+                      <div className="h-[200px] flex flex-col items-center justify-center p-4 rounded-2xl bg-slate-50 dark:bg-slate-800 text-xs text-slate-400 text-center space-y-1">
+                        <p className="font-semibold text-slate-600 dark:text-slate-300">No student plans recorded</p>
+                      </div>
+                    )}
                   </ErrorBoundary>
                 </div>
               </div>
@@ -1034,6 +1065,29 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                     Live Firestore synchronization with inline actions: Approve, Suspend, Change Plan, and Delete User.
                   </p>
                 </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-500">Plan Filter:</span>
+                  <div className="flex items-center gap-1">
+                    {(['all', 'free', 'pro', 'premium'] as const).map((tier) => (
+                      <button
+                        key={tier}
+                        type="button"
+                        onClick={() => setStudentPlanFilter(tier)}
+                        className={`px-3 py-1 rounded-xl text-xs font-bold capitalize transition-colors cursor-pointer ${
+                          studentPlanFilter === tier
+                            ? 'bg-violet-600 text-white shadow-xs'
+                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                        }`}
+                      >
+                        {tier} ({tier === 'all' ? students.length : students.filter(s => (s.plan || 'free') === tier).length})
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <span className="text-xs text-slate-400">
+                  Showing {filteredStudents.length} of {students.length} students
+                </span>
               </div>
 
               {studentsError ? (
@@ -1054,7 +1108,8 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                 </div>
               ) : (
                 <DataTable
-                  data={students}
+                  data={filteredStudents}
+                  pageSize={25}
                   isLoading={loadingStudents}
                   keyExtractor={(s) => s.uid}
                   onRowClick={(s) => {
@@ -1203,127 +1258,125 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
             </div>
           )}
 
-          {/* 3. QUESTION BANK MANAGER VIEW (SECONDARY TAB) */}
+          {/* 3. QUESTION BANK MANAGER VIEW */}
           {activeSection === 'content' && (
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-black text-lg text-slate-900 dark:text-white">
-                    Question Bank Manager
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Comprehensive catalog across Entrance Exams, MDCAT, TCAT, and Intermediate Boards.
-                  </p>
-                </div>
-              </div>
-
-              {/* Question Bank Breakdown Cards */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-2">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">Total Active MCQs</div>
-                  <div className="text-2xl font-black text-violet-600 dark:text-violet-400">
-                    {questionBankStats.totalBankMCQs.toLocaleString()}
-                  </div>
-                  <p className="text-[11px] text-slate-500">Categorized by university syllabus & chapters</p>
-                </div>
-                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-2">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">MDCAT & Medical Bank</div>
-                  <div className="text-2xl font-black text-teal-600 dark:text-teal-400">
-                    {questionBankStats.mdcatCount.toLocaleString()} MCQs
-                  </div>
-                  <p className="text-[11px] text-slate-500">Biology, Chemistry, Physics, English & Logic</p>
-                </div>
-                <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-2">
-                  <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">TCAT & Engineering Bank</div>
-                  <div className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
-                    {questionBankStats.tcatCount.toLocaleString()} MCQs
-                  </div>
-                  <p className="text-[11px] text-slate-500">FAST, NUST, GIKI, UET Taxila, and NTS</p>
-                </div>
-              </div>
-
-              {/* Status Banner */}
-              <div className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
-                    <CheckCircle className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h4 className="font-extrabold text-sm text-slate-900 dark:text-white">All Question Sets Validated</h4>
-                    <p className="text-xs text-slate-400">Zero duplicate IDs and verified LaTeX equation math syntax.</p>
-                  </div>
-                </div>
-                <Badge variant="emerald">Operational</Badge>
-              </div>
-            </div>
+            <AdminQuestionBankTab adminEmail={adminEmail} />
           )}
 
-          {/* 4. AI CHAT LOGS VIEW (SECONDARY TAB) */}
+          {/* 4. AI CHAT LOGS & LIMIT CONTROLS VIEW */}
           {activeSection === 'boardy' && (
             <div className="space-y-6">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm">
                 <div>
                   <h3 className="font-black text-lg text-slate-900 dark:text-white">
-                    Boardy AI Chat Logs & Operations
+                    Boardy AI Controls & Limits
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Real-time monitoring of AI tutor inquiries, prompt latency, and emergency kill-switch.
+                    Configure daily AI query quotas per student plan tier and toggle emergency kill-switch.
                   </p>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setBoardyKillSwitch(!boardyKillSwitch)}
+                  onClick={() => {
+                    const newPaused = !boardyLimits.isPaused;
+                    saveBoardyLimits({ ...boardyLimits, isPaused: newPaused });
+                  }}
                   className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer ${
-                    boardyKillSwitch
+                    boardyLimits.isPaused
                       ? 'bg-rose-600 text-white shadow-rose-500/20'
                       : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200'
                   }`}
                 >
                   <Power className="w-4 h-4" />
-                  <span>{boardyKillSwitch ? 'AI TUTOR PAUSED' : 'AI TUTOR ACTIVE'}</span>
+                  <span>{boardyLimits.isPaused ? 'AI TUTOR PAUSED' : 'AI TUTOR ACTIVE'}</span>
                 </button>
               </div>
 
-              {/* Kill-switch notice */}
-              {boardyKillSwitch && (
-                <div className="p-4 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 text-rose-900 dark:text-rose-200 text-xs font-bold">
-                  Emergency Kill Switch is ON. Boardy AI responses are paused.
+              {/* Tier Daily Quotas Card */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm space-y-4">
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white">Daily Query Quotas (Queries / Day)</h4>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-600 dark:text-slate-400">Free Tier Limit</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={boardyLimits.freeLimit}
+                      onChange={(e) => setBoardyLimits({ ...boardyLimits, freeLimit: parseInt(e.target.value) || 10 })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-indigo-600 dark:text-indigo-400">Pro Tier Limit</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={500}
+                      value={boardyLimits.proLimit}
+                      onChange={(e) => setBoardyLimits({ ...boardyLimits, proLimit: parseInt(e.target.value) || 50 })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-violet-600 dark:text-violet-400">Premium Tier Limit</label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={1000}
+                      value={boardyLimits.premiumLimit}
+                      onChange={(e) => setBoardyLimits({ ...boardyLimits, premiumLimit: parseInt(e.target.value) || 200 })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-800 dark:text-slate-200"
+                    />
+                  </div>
                 </div>
-              )}
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => saveBoardyLimits(boardyLimits)}
+                    className="px-4 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white font-bold text-xs cursor-pointer shadow-xs"
+                  >
+                    Save Limits Configuration
+                  </button>
+                </div>
+              </div>
 
               {/* Chat / Audit Logs Table */}
-              <DataTable
-                data={chatLogs}
-                isLoading={loadingChatLogs}
-                keyExtractor={(l) => l.id || Math.random().toString()}
-                emptyMessage="No AI error logs logged."
-                columns={[
-                  {
-                    key: 'createdAt',
-                    header: 'Timestamp',
-                    render: (l) => (
-                      <span className="font-mono text-slate-400 text-xs">
-                        {l.createdAt ? new Date(l.createdAt).toLocaleString() : 'Recent'}
-                      </span>
-                    ),
-                  },
-                  {
-                    key: 'adminEmail',
-                    header: 'Actor / User',
-                    render: (l) => <span className="font-bold text-xs">{l.adminEmail || 'Student'}</span>,
-                  },
-                  {
-                    key: 'action',
-                    header: 'Action',
-                    render: (l) => <Badge variant="violet">{l.action || 'AI_QUERY'}</Badge>,
-                  },
-                  {
-                    key: 'details',
-                    header: 'Log Message',
-                    render: (l) => <span className="text-xs text-slate-600 dark:text-slate-300">{l.details}</span>,
-                  },
-                ]}
-              />
+              <div className="space-y-2">
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white">Recent AI Inquiries & Interactions</h4>
+                <DataTable
+                  data={chatLogs}
+                  isLoading={loadingChatLogs}
+                  keyExtractor={(l) => l.id || Math.random().toString()}
+                  emptyMessage="No AI queries logged in audit trail."
+                  columns={[
+                    {
+                      key: 'createdAt',
+                      header: 'Timestamp',
+                      render: (l) => (
+                        <span className="font-mono text-slate-400 text-xs">
+                          {l.createdAt ? new Date(l.createdAt).toLocaleString() : 'Recent'}
+                        </span>
+                      ),
+                    },
+                    {
+                      key: 'adminEmail',
+                      header: 'Student / User',
+                      render: (l) => <span className="font-bold text-xs">{l.adminEmail || l.targetId || 'Student'}</span>,
+                    },
+                    {
+                      key: 'action',
+                      header: 'Action',
+                      render: (l) => <Badge variant="violet">{l.action || 'AI_QUERY'}</Badge>,
+                    },
+                    {
+                      key: 'details',
+                      header: 'Details',
+                      render: (l) => <span className="text-xs text-slate-600 dark:text-slate-300">{l.details}</span>,
+                    },
+                  ]}
+                />
+              </div>
             </div>
           )}
 
@@ -1394,9 +1447,16 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                           >
                             Approve
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRejectPayment(p)}
+                            className="px-3 py-1 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 font-bold text-xs cursor-pointer border border-rose-200"
+                          >
+                            Reject
+                          </button>
                         </div>
                       ) : (
-                        <span className="text-slate-400 text-xs">Reviewed</span>
+                        <span className="text-slate-400 text-xs capitalize">{p.status}</span>
                       ),
                   },
                 ]}
@@ -1424,19 +1484,21 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            onClick={async () => {
-                              if (r.id) {
-                                await updateDoc(doc(db, 'reviews', r.id), { status: 'approved' });
-                                loadReviews();
-                              }
-                            }}
-                            className="px-3 py-1 rounded-xl bg-emerald-600 text-white font-bold text-xs"
+                            onClick={() => handleApproveReview(r)}
+                            className="px-3 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs cursor-pointer shadow-xs"
                           >
                             Approve
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRejectReview(r)}
+                            className="px-3 py-1 rounded-xl bg-rose-50 text-rose-600 hover:bg-rose-100 font-bold text-xs cursor-pointer border border-rose-200"
+                          >
+                            Reject
+                          </button>
                         </div>
                       ) : (
-                        <span className="text-slate-400 text-xs">Processed</span>
+                        <span className="text-slate-400 text-xs capitalize">{r.status}</span>
                       ),
                   },
                 ]}
@@ -1645,54 +1707,6 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
         }}
         onClose={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
       />
-
-      {/* Repair Admin Account Modal */}
-      {showRepairModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-3xl shadow-2xl border border-slate-200 dark:border-slate-800 p-6 sm:p-7 text-left space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 flex items-center justify-center">
-                <ShieldCheck className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                  Admin Account Integrity Tool
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Target: shsvirtualadmin@gmail.com
-                </p>
-              </div>
-            </div>
-
-            {repairRunning ? (
-              <div className="py-8 text-center space-y-3">
-                <RefreshCw className="w-7 h-7 text-emerald-600 animate-spin mx-auto" />
-                <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
-                  Scrubbing crew applications and resetting admin permissions…
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-xs font-mono whitespace-pre-wrap max-h-60 overflow-y-auto text-slate-700 dark:text-slate-300">
-                  {repairResult || 'Repair complete.'}
-                </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowRepairModal(false);
-                      setRepairResult(null);
-                    }}
-                    className="px-5 py-2.5 rounded-xl bg-[#0d1b3e] text-white font-bold text-xs hover:bg-[#152a5c] cursor-pointer"
-                  >
-                    Done
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

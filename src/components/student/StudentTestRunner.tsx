@@ -111,15 +111,30 @@ export const StudentTestRunner: React.FC<StudentTestRunnerProps> = ({
   const [isGeneratingPdf, setIsGeneratingPdf] = useState<boolean>(false);
   const [pdfProgress, setPdfProgress] = useState<{ page: number; totalPages: number; percent: number } | null>(null);
 
-  // Timer interval: resilient wall-clock time
+  // Time warnings & 5s grace period
+  const [warningBanner, setWarningBanner] = useState<string | null>(null);
+  const warned10mRef = React.useRef(false);
+  const warned5mRef = React.useRef(false);
+
+  // Timer interval: resilient wall-clock time with 5s grace period
   useEffect(() => {
     const timer = setInterval(() => {
       const remaining = calculateRemainingSeconds();
       setTimeLeft(remaining);
 
-      if (remaining <= 0) {
+      if (remaining <= 600 && remaining > 300 && !warned10mRef.current) {
+        warned10mRef.current = true;
+        setWarningBanner('⚠️ 10 minutes remaining! Review your flagged questions.');
+        setTimeout(() => setWarningBanner(null), 6000);
+      } else if (remaining <= 300 && !warned5mRef.current) {
+        warned5mRef.current = true;
+        setWarningBanner('🚨 5 minutes remaining! Final questions should be answered.');
+        setTimeout(() => setWarningBanner(null), 6000);
+      }
+
+      // 5-second grace period on auto-submit to prevent network-lag timeouts
+      if (remaining <= -5) {
         clearInterval(timer);
-        // Auto-submit when time expires
         handleSubmitTest();
       }
     }, 1000);
@@ -221,7 +236,7 @@ export const StudentTestRunner: React.FC<StudentTestRunnerProps> = ({
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const isLowTime = timeLeft < 180;
+  const isLowTime = timeLeft <= 300;
 
   // Filtered indices for navigator
   const filteredPaletteIndices = useMemo(() => {
@@ -235,7 +250,17 @@ export const StudentTestRunner: React.FC<StudentTestRunnerProps> = ({
   return (
     <div className="min-h-screen bg-[#F8F9FB] flex flex-col justify-between selection:bg-blue-100 selection:text-blue-900 font-sans max-w-full overflow-x-hidden">
       {/* A2: Top Bar on ONE LINE */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-200/90 px-3 sm:px-4 py-2.5 shadow-sm">
+      <header className={`sticky top-0 z-30 transition-colors border-b px-3 sm:px-4 py-2.5 shadow-sm ${
+        isLowTime
+          ? 'bg-rose-50/95 dark:bg-rose-950/95 border-rose-300 dark:border-rose-900 text-rose-900 dark:text-rose-100'
+          : 'bg-white/95 backdrop-blur-xl border-slate-200/90'
+      }`}>
+        {warningBanner && (
+          <div className="max-w-3xl mx-auto w-full mb-1 px-3 py-1 bg-rose-600 text-white rounded-lg text-xs font-bold text-center flex items-center justify-center gap-1.5 animate-pulse">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>{warningBanner}</span>
+          </div>
+        )}
         <div className="max-w-3xl mx-auto w-full flex items-center justify-between gap-2">
           {/* Close button */}
           <button

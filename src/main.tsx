@@ -4,6 +4,7 @@ import App from './App.tsx';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import './lib/boardyMath.ts';
 import './index.css';
+import 'katex/dist/katex.min.css';
 import { initReferralTracker } from './lib/referralTracker';
 
 // Initialize referral capture from URL query params (?ref=... with 7-day retention)

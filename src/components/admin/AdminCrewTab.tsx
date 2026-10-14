@@ -51,13 +51,21 @@ import {
 import { CREW_TENURE_SIGNUP_TARGET, CREW_INTERNSHIP_SIGNUP_TARGET } from '../../lib/crewLogic';
 import { UniversityLogoBadge } from '../UniversityLogoBadge';
 
+export interface UnifiedApplication extends CrewApplication {
+  appliedRole?: 'Crew' | 'Campus Captain';
+  collectionSource?: 'crewApplications' | 'captainApplications';
+  city?: string;
+  statement?: string;
+  why?: string;
+}
+
 interface AdminCrewTabProps {
   adminEmail: string;
 }
 
 export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
   const [subTab, setSubTab] = useState<'applications' | 'active' | 'revoked'>('applications');
-  const [applications, setApplications] = useState<CrewApplication[]>([]);
+  const [applications, setApplications] = useState<UnifiedApplication[]>([]);
   const [activeMembers, setActiveMembers] = useState<StudentUserProfile[]>([]);
   const [revokedMembers, setRevokedMembers] = useState<StudentUserProfile[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +78,7 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
   // Action states
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const [selectedApp, setSelectedApp] = useState<CrewApplication | null>(null);
+  const [selectedApp, setSelectedApp] = useState<UnifiedApplication | null>(null);
   const [rejectReasonInput, setRejectReasonInput] = useState('');
   const [showRejectModal, setShowRejectModal] = useState(false);
 
@@ -88,11 +96,47 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
   const loadData = async () => {
     setLoading(true);
     try {
-      // 1. Fetch applications
-      const apps = await fetchCrewApplications();
-      setApplications(apps);
+      // 1. Fetch Crew and Campus Captain applications in parallel
+      const crewColl = collection(db, 'crewApplications');
+      const capColl = collection(db, 'captainApplications');
+      const [crewSnap, capSnap] = await Promise.all([
+        getDocs(query(crewColl, orderBy('createdAt', 'desc'), limit(100))).catch(() => ({ docs: [] })),
+        getDocs(query(capColl, orderBy('createdAt', 'desc'), limit(100))).catch(() => ({ docs: [] })),
+      ]);
 
-      // 2. Fetch active crew members from users collection
+      const crewItems: UnifiedApplication[] = (crewSnap.docs as any[]).map((d) => ({
+        id: d.id,
+        appliedRole: 'Crew',
+        collectionSource: 'crewApplications',
+        ...(d.data() as any),
+      }));
+
+      const capItems: UnifiedApplication[] = (capSnap.docs as any[]).map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          appliedRole: 'Campus Captain',
+          collectionSource: 'captainApplications',
+          userId: data.userId || d.id,
+          fullName: data.fullName || data.name || data.studentName || 'Applicant',
+          email: data.email || '',
+          phone: data.phone || data.whatsapp || '',
+          institution: data.institution || data.university || data.college || '',
+          city: data.city || '',
+          statement: data.statement || data.why || data.reason || data.promotionPlan || '',
+          promotionPlan: data.promotionPlan || data.statement || data.why || '',
+          status: data.status || 'pending',
+          createdAt: data.createdAt || new Date().toISOString(),
+          ...data,
+        };
+      });
+
+      const combined = [...crewItems, ...capItems].sort(
+        (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      );
+      setApplications(combined);
+
+      // 2. Fetch active crew & captain members from users collection
       const usersColl = collection(db, 'users');
       const q = query(usersColl, where('isCrewMember', '==', true), limit(50));
       const snap = await getDocs(q);
@@ -105,7 +149,7 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
       const revoked = snapRevoked.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
       setRevokedMembers(revoked);
     } catch (err) {
-      console.error('Failed to load crew data:', err);
+      console.error('Failed to load crew/captain data:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -121,14 +165,61 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
     loadData();
   };
 
-  const handleApprove = async (app: CrewApplication) => {
+  const handleApprove = async (app: UnifiedApplication) => {
     setActionInProgress(app.id || 'approving');
     try {
-      const res = await approveCrewApplication(app, adminEmail);
-      // Requirement 4: Show a clear message to the admin:
-      // "Approved and upgraded" or "Approved; Premium will apply when the student signs up"
-      const message = res?.message || 'Approved and upgraded';
-      setToastMessage(message);
+      const now = new Date().toISOString();
+      if (app.appliedRole === 'Campus Captain' || app.collectionSource === 'captainApplications') {
+        const cleanName = (app.fullName || 'CAP').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 5) || 'CAP';
+        const randSuffix = Math.floor(1000 + Math.random() * 9000);
+        const refCode = app.referralCode || `CAP-${cleanName}-${randSuffix}`;
+        const targetUid = app.userId && !app.userId.startsWith('guest_') ? app.userId : (app.id || `cap_${Date.now()}`);
+
+        if (app.id) {
+          await updateDoc(doc(db, 'captainApplications', app.id), {
+            status: 'approved',
+            reviewedAt: now,
+            reviewedBy: adminEmail,
+            referralCode: refCode,
+          });
+        }
+
+        await setDoc(
+          doc(db, 'captains', targetUid),
+          {
+            userId: targetUid,
+            studentName: app.fullName,
+            email: app.email?.toLowerCase().trim() || '',
+            phone: app.phone,
+            institution: app.institution,
+            city: app.city || '',
+            referralCode: refCode,
+            referralCount: 0,
+            activeUsersCount: 0,
+            points: 0,
+            status: 'active',
+            role: 'captain',
+            createdAt: now,
+          },
+          { merge: true }
+        );
+
+        if (targetUid && !targetUid.startsWith('guest_') && !targetUid.startsWith('cap_')) {
+          await updateDoc(doc(db, 'users', targetUid), {
+            role: 'captain',
+            isCaptain: true,
+            captainStatus: 'active',
+            referralCode: refCode,
+            updatedAt: now,
+          }).catch(() => {});
+        }
+
+        setToastMessage(`Approved Campus Captain: ${app.fullName} (Code: ${refCode})`);
+      } else {
+        const res = await approveCrewApplication(app, adminEmail);
+        const message = res?.message || 'Approved and upgraded';
+        setToastMessage(message);
+      }
       await loadData();
     } catch (err: any) {
       console.error('Approve error:', err);
@@ -138,7 +229,7 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
     }
   };
 
-  const handleOpenReject = (app: CrewApplication) => {
+  const handleOpenReject = (app: UnifiedApplication) => {
     setSelectedApp(app);
     setRejectReasonInput('');
     setShowRejectModal(true);
@@ -148,8 +239,20 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
     if (!selectedApp || !selectedApp.id) return;
     setActionInProgress(selectedApp.id);
     try {
-      await rejectCrewApplication(selectedApp.id, selectedApp.userId, adminEmail, rejectReasonInput.trim());
-      setToastMessage(`Rejected application for ${selectedApp.fullName}.`);
+      const now = new Date().toISOString();
+      const reason = rejectReasonInput.trim() || 'Application did not meet current cohort criteria';
+      if (selectedApp.appliedRole === 'Campus Captain' || selectedApp.collectionSource === 'captainApplications') {
+        await updateDoc(doc(db, 'captainApplications', selectedApp.id), {
+          status: 'rejected',
+          rejectionReason: reason,
+          reviewedAt: now,
+          reviewedBy: adminEmail,
+        });
+        setToastMessage(`Rejected Campus Captain application for ${selectedApp.fullName}.`);
+      } else {
+        await rejectCrewApplication(selectedApp.id, selectedApp.userId, adminEmail, reason);
+        setToastMessage(`Rejected Crew application for ${selectedApp.fullName}.`);
+      }
       setShowRejectModal(false);
       setSelectedApp(null);
       await loadData();
@@ -744,15 +847,27 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
                     className="p-5 sm:p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 shadow-sm hover:shadow-md transition-all space-y-4 flex flex-col justify-between text-left"
                   >
                     <div className="space-y-3.5">
-                      {/* Top Row: Name, Institution, Status Badge */}
+                      {/* Top Row: Name, Institution, Applied Role, Status Badge */}
                       <div className="flex items-start justify-between gap-3">
                         <div className="space-y-0.5">
-                          <h4 className="text-base font-black text-[#0d1b3e] dark:text-white tracking-tight">
-                            {app.fullName}
-                          </h4>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-base font-black text-[#0d1b3e] dark:text-white tracking-tight">
+                              {app.fullName}
+                            </h4>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                              app.appliedRole === 'Campus Captain'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 border border-amber-300 dark:border-amber-700'
+                                : 'bg-violet-100 text-violet-800 dark:bg-violet-950/70 dark:text-violet-300 border border-violet-300 dark:border-violet-700'
+                            }`}>
+                              {app.appliedRole || 'Crew'}
+                            </span>
+                          </div>
                           <div className="flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-bold">
                             <Building className="w-3.5 h-3.5 shrink-0" />
                             <span>{app.institution}</span>
+                            {app.city && (
+                              <span className="text-slate-400 font-medium">({app.city})</span>
+                            )}
                           </div>
                         </div>
 
@@ -790,19 +905,19 @@ export const AdminCrewTab: React.FC<AdminCrewTabProps> = ({ adminEmail }) => {
                         </div>
                         <div className="flex items-center gap-2">
                           <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                          <a href={`https://wa.me/${app.phone.replace(/\\D/g, '')}`} target="_blank" rel="noreferrer" className="hover:text-emerald-600 truncate">
-                            {app.phone}
+                          <a href={`https://wa.me/${app.phone ? app.phone.replace(/\D/g, '') : ''}`} target="_blank" rel="noreferrer" className="hover:text-emerald-600 truncate">
+                            {app.phone || 'N/A'}
                           </a>
                         </div>
                       </div>
 
-                      {/* Promotion Plan */}
+                      {/* Statement / Why / Promotion Plan */}
                       <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/70 border border-slate-100 dark:border-slate-800 space-y-1">
                         <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                          Promotion &amp; Ambassador Strategy
+                          {app.appliedRole === 'Campus Captain' ? 'Statement / Why' : 'Promotion & Ambassador Strategy'}
                         </span>
                         <p className="text-xs text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap break-words">
-                          {app.promotionPlan}
+                          {app.statement || app.why || app.promotionPlan || 'No statement provided.'}
                         </p>
                       </div>
 

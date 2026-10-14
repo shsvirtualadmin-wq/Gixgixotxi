@@ -19,7 +19,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 
-export type PreviewTab = 'student' | 'crew' | 'captain';
+export type PreviewTab = 'student' | 'crew' | 'captain' | 'arena';
 
 interface IPhoneAppPreviewProps {
   initialTab?: PreviewTab;
@@ -46,35 +46,35 @@ export const IPhoneAppPreview: React.FC<IPhoneAppPreviewProps> = ({
       {/* Tab Switcher */}
       {showTabs && (
         <div className="flex flex-col items-center mb-8 sm:mb-10">
-          <div className="inline-flex p-1.5 rounded-2xl bg-slate-900/5 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 backdrop-blur-md shadow-xs gap-1">
+          <div className="inline-flex p-1.5 rounded-2xl bg-slate-900/5 dark:bg-white/5 border border-slate-200/80 dark:border-white/10 backdrop-blur-md shadow-xs gap-1 flex-wrap justify-center">
             <button
               type="button"
               onClick={() => setActiveTab('student')}
-              className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-3.5 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
                 activeTab === 'student'
                   ? 'bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm border border-slate-200/60 dark:border-white/10'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Target className="w-4 h-4" />
-              <span>Student Practice</span>
+              <span>Student</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('crew')}
-              className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-3.5 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
                 activeTab === 'crew'
                   ? 'bg-white dark:bg-slate-800 text-violet-600 dark:text-violet-400 shadow-sm border border-slate-200/60 dark:border-white/10'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Users className="w-4 h-4" />
-              <span>Crew Circles</span>
+              <span>Crew</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('captain')}
-              className={`flex items-center gap-2 px-4 sm:px-6 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+              className={`flex items-center gap-2 px-3.5 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
                 activeTab === 'captain'
                   ? 'bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-sm border border-slate-200/60 dark:border-white/10'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
@@ -83,11 +83,24 @@ export const IPhoneAppPreview: React.FC<IPhoneAppPreviewProps> = ({
               <Award className="w-4 h-4" />
               <span>Campus Captain</span>
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('arena')}
+              className={`flex items-center gap-2 px-3.5 sm:px-5 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
+                activeTab === 'arena'
+                  ? 'bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 shadow-sm border border-slate-200/60 dark:border-white/10'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              <Zap className="w-4 h-4 text-rose-500" />
+              <span>Arena Blitz</span>
+            </button>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-2.5">
             {activeTab === 'student' && 'Diagnostic test drills, test countdowns, and question-level derivations'}
             {activeTab === 'crew' && 'Peer study circles, group blitz drills, and campus leaderboards'}
             {activeTab === 'captain' && 'Host college mockathons, track registrations, and manage verified referrals'}
+            {activeTab === 'arena' && 'Real-time multi-player synchronized MCQ blitz with live leaderboard'}
           </p>
         </div>
       )}
@@ -482,6 +495,70 @@ export const IPhoneAppPreview: React.FC<IPhoneAppPreviewProps> = ({
                         <div className="flex items-center justify-between py-0.5">
                           <span className="text-slate-700">Saad M. registered</span>
                           <span className="font-semibold text-slate-400">Verified</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* SCREEN 4: ARENA LIVE BLITZ SESSION */}
+                {activeTab === 'arena' && (
+                  <div className="p-4 space-y-3.5 animate-fadeIn">
+                    {/* Arena Header */}
+                    <div className="flex items-center justify-between pb-1 border-b border-slate-200/80">
+                      <div className="flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping" />
+                        <span className="text-xs font-black text-rose-600">ARENA BLITZ · LIVE</span>
+                      </div>
+                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 text-[10px] font-bold border border-rose-200">
+                        <Clock className="w-3 h-3 text-rose-600" />
+                        <span>00:38</span>
+                      </div>
+                    </div>
+
+                    {/* Question Card */}
+                    <div className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                        <span className="font-bold text-indigo-600">Q8 of 15 · Physics</span>
+                        <span>24 Competitors Active</span>
+                      </div>
+                      <p className="text-xs font-bold text-slate-900 leading-snug">
+                        In uniform circular motion, the centripetal acceleration vector is always oriented:
+                      </p>
+                      <div className="space-y-1.5 pt-1 text-[11px]">
+                        <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 flex items-center justify-between">
+                          <span>A. Tangent to the circular path</span>
+                          <span className="text-[10px] text-slate-400">12%</span>
+                        </div>
+                        <div className="p-2 rounded-xl bg-emerald-50 border border-emerald-300 text-emerald-800 font-bold flex items-center justify-between">
+                          <span>B. Radially toward the circle center</span>
+                          <span className="text-[10px] text-emerald-600">79% ✓</span>
+                        </div>
+                        <div className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 flex items-center justify-between">
+                          <span>C. Away from the center of rotation</span>
+                          <span className="text-[10px] text-slate-400">9%</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Live Podium Standings */}
+                    <div className="p-3 rounded-2xl bg-slate-900 text-white text-[11px] space-y-2 shadow-xs">
+                      <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                        <span>Live Standings</span>
+                        <span className="text-amber-400">Speed Multiplier ×2.0</span>
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between bg-white/10 px-2.5 py-1 rounded-lg">
+                          <span className="font-bold text-amber-300">🥇 1. Areeba Khan (FAST)</span>
+                          <span className="font-mono font-black text-amber-300">1,140 pts</span>
+                        </div>
+                        <div className="flex items-center justify-between bg-white/5 px-2.5 py-1 rounded-lg">
+                          <span className="font-semibold text-slate-200">🥈 2. Bilal Shah (NUST)</span>
+                          <span className="font-mono text-slate-300">980 pts</span>
+                        </div>
+                        <div className="flex items-center justify-between bg-rose-500/20 border border-rose-500/40 px-2.5 py-1 rounded-lg">
+                          <span className="font-bold text-rose-300">🥉 3. You (Boardly)</span>
+                          <span className="font-mono font-bold text-rose-300">940 pts</span>
                         </div>
                       </div>
                     </div>

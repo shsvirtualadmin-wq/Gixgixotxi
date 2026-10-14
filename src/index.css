@@ -9,9 +9,9 @@
 }
 
 @theme {
-  --font-display: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Oblata Display", "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-sans: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-mono: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --font-editorial: "Oblata Display", Georgia, Cambria, "Times New Roman", serif;
   --font-display-serif: "Oblata Display", Georgia, Cambria, "Times New Roman", serif;
 }
@@ -1059,4 +1059,107 @@
 .btn-interactive:disabled {
   pointer-events: none;
   opacity: 0.6;
+}
+
+/* Phase 3: Dark-first Ink & Glassmorphic Design Tokens */
+:root {
+  --bg-deep-ink: #070B14;
+  --bg-ink-surface: #0E1626;
+  --aurora-blue: rgba(30, 90, 255, 0.15);
+  --aurora-cyan: rgba(6, 182, 212, 0.12);
+  --aurora-violet: rgba(124, 58, 237, 0.15);
+  --aurora-amber: rgba(245, 158, 11, 0.12);
+
+  /* Role Accents */
+  --role-student-primary: #1E5AFF;
+  --role-student-secondary: #06B6D4;
+  --role-crew-primary: #7C3AED;
+  --role-crew-secondary: #D946EF;
+  --role-captain-primary: #F59E0B;
+  --role-captain-secondary: #EA580C;
+  --role-admin-primary: #475569;
+  --role-admin-secondary: #10B981;
+
+  --status-mint: #10B981;
+  --status-amber: #F59E0B;
+  --status-coral: #F43F5E;
+}
+
+/* True Glassmorphism (blur 16-28px, 8-14% tint, inner top highlight, layered shadow) */
+.glass-card {
+  background: rgba(255, 255, 255, 0.07);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.glass-card-hover {
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.22s ease, border-color 0.22s ease;
+}
+
+.glass-card-hover:hover {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+}
+
+.glass-nav {
+  background: rgba(7, 11, 20, 0.82);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-modal {
+  background: rgba(14, 22, 38, 0.92);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  backdrop-filter: blur(28px) saturate(190%);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+
+.glass-pill {
+  background: rgba(255, 255, 255, 0.08);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .glass-card {
+    background: #0E1626;
+  }
+  .glass-nav {
+    background: #070B14;
+  }
+  .glass-modal {
+    background: #0E1626;
+  }
+  .glass-pill {
+    background: #1E293B;
+  }
+}
+
+@keyframes auroraFloat {
+  0% { transform: translate(0px, 0px) scale(1); }
+  50% { transform: translate(20px, -18px) scale(1.06); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+.animate-aurora {
+  animation: auroraFloat 18s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-aurora,
+  .animate-fade-in,
+  .animate-fade-in-up,
+  .animate-scale-in,
+  .card-interactive,
+  .glass-card-hover {
+    animation: none !important;
+    transition: none !important;
+    transform: none !important;
+  }
 }
