@@ -10,6 +10,7 @@ import { StudentAppShell } from './student/StudentAppShell';
 import { BoardlyMarketingApp } from './marketing/BoardlyMarketingApp';
 import { AdminDashboardScreen } from './AdminDashboardScreen';
 import { MigrationCheckPage } from './admin/MigrationCheckPage';
+import { MigrationPage } from './admin/MigrationPage';
 import { OrganizerDashboard } from './organizer/OrganizerDashboard';
 import { CaptainDashboard } from './captain/CaptainDashboard';
 import { CaptainLandingPage } from './captain/CaptainLandingPage';
@@ -543,6 +544,13 @@ export const BoardlyAppRouter: React.FC = () => {
           if (!isAdmin) {
             navigate('/app', true);
             return null;
+          }
+          if (currentPath === '/admin/migrate') {
+            return (
+              <MigrationPage
+                onNavigate={(p) => navigate(p, true)}
+              />
+            );
           }
           if (currentPath === '/admin/migration-check') {
             return (

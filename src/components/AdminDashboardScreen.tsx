@@ -1207,6 +1207,14 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
             <span>{repairRunning ? 'Repairing...' : 'Repair Admin Account'}</span>
           </button>
           <a
+            href="/admin/migrate"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 font-bold text-xs border border-indigo-800/40 transition-colors cursor-pointer"
+            title="Supabase to Firebase Data Migration & Wipe"
+          >
+            <Database className="w-4 h-4 text-indigo-400" />
+            <span>Migrate & Purge</span>
+          </a>
+          <a
             href="/admin/migration-check"
             className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-950/40 hover:bg-violet-900/50 text-violet-300 font-bold text-xs border border-violet-800/40 transition-colors cursor-pointer"
             title="Cross-System Student Migration Audit"

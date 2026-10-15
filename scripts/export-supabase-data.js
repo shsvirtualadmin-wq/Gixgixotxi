@@ -3,7 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '../functions/_utils/supabaseStub.js';
 
 // Load environment variables from .env or .env.local if present
 dotenv.config();

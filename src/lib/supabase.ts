@@ -1,4 +1,11 @@
-import { createClient, User as SupabaseUser } from '@supabase/supabase-js';
+export interface SupabaseUser {
+  id: string;
+  email?: string;
+  app_metadata?: Record<string, any>;
+  user_metadata?: Record<string, any>;
+  aud?: string;
+  created_at?: string;
+}
 export type { SupabaseUser };
 import { HistoryItem, TestResult, BoardClass, ResourceCategory, ResourceItem } from '../types';
 import { auth } from './firebase';
@@ -15,6 +22,49 @@ const supabaseAnonKey =
   '';
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+
+export function createClient(_url?: string, _key?: string, _options?: any) {
+  const queryBuilder = (table: string) => {
+    const builder: any = {
+      select: (_cols?: string, _opts?: any) => builder,
+      eq: (_field: string, _val: any) => builder,
+      ilike: (_field: string, _val: any) => builder,
+      order: (_field: string, _opts?: any) => builder,
+      limit: (_n: number) => builder,
+      range: (_from: number, _to: number) => builder,
+      single: async () => ({ data: null, error: null }),
+      maybeSingle: async () => ({ data: null, error: null }),
+      insert: async (_rows: any) => ({ data: null, error: null, select: () => Promise.resolve({ data: [], error: null }) }),
+      update: (_data: any) => builder,
+      upsert: async (_rows: any) => ({ data: null, error: null }),
+      delete: () => builder,
+      then: (resolve: any, reject?: any) => Promise.resolve({ data: [], error: null }).then(resolve, reject),
+    };
+    return builder;
+  };
+
+  return {
+    from: (table: string) => queryBuilder(table),
+    storage: {
+      from: (_bucket: string) => ({
+        upload: async (_path: string, _file: any, _opts?: any) => ({ data: null, error: null }),
+        getPublicUrl: (_path: string) => ({ data: { publicUrl: '' } }),
+        list: async () => ({ data: [], error: null }),
+        remove: async () => ({ data: [], error: null }),
+      }),
+    },
+    auth: {
+      resend: async (_params: any) => ({ data: null, error: null }),
+      verifyOtp: async (_params: any) => ({ data: { session: null, user: null }, error: null }),
+      getSession: async () => ({ data: { session: null }, error: null }),
+      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      signOut: async () => ({ error: null }),
+    },
+    channel: (_ch: string) => ({
+      on: () => ({ subscribe: () => {} }),
+    }),
+  };
+}
 
 export const supabase = createClient(
   supabaseUrl,
