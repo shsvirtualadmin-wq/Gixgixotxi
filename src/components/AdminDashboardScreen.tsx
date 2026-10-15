@@ -1206,6 +1206,14 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span>{repairRunning ? 'Repairing...' : 'Repair Admin Account'}</span>
           </button>
+          <a
+            href="/admin/migration-check"
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-violet-950/40 hover:bg-violet-900/50 text-violet-300 font-bold text-xs border border-violet-800/40 transition-colors cursor-pointer"
+            title="Cross-System Student Migration Audit"
+          >
+            <Database className="w-4 h-4 text-violet-400" />
+            <span>Migration Audit</span>
+          </a>
           <button
             type="button"
             onClick={async () => {

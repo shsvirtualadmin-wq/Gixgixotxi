@@ -322,8 +322,8 @@ export async function fetchUserProfile(uid: string): Promise<StudentUserProfile 
     if (!snap.exists() && isFromCache) {
       try {
         snap = await getDocFromServer(userRef);
-      } catch (serverErr) {
-        console.warn('[Boardly Firebase] getDocFromServer failed or network offline:', serverErr);
+      } catch (serverErr: any) {
+        console.error(`[Boardly Firebase] getDocFromServer failed for ${userPath}: [code: ${serverErr?.code || 'UNKNOWN'}] [message: ${serverErr?.message || serverErr}]`, serverErr);
       }
     }
 
@@ -442,7 +442,7 @@ export async function fetchUserProfile(uid: string): Promise<StudentUserProfile 
 
     return profile;
   } catch (err: any) {
-    console.warn('[Boardly Firebase] fetchUserProfile error, falling back to cache:', err);
+    console.error(`[Boardly Firebase] fetchUserProfile error for ${userPath}: [code: ${err?.code || 'UNKNOWN'}] [message: ${err?.message || err}]`, err);
     try {
       const cached = localStorage.getItem(`boardly_cached_profile_${uid}`);
       if (cached) return JSON.parse(cached);

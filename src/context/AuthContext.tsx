@@ -392,8 +392,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   localStorage.setItem(`boardly_cached_profile_${currentUser.uid}`, JSON.stringify(loadedProfile));
                 } catch {}
               }
-            } catch (syncErr) {
-              console.warn('[AuthContext] syncProfile background issue:', syncErr);
+            } catch (syncErr: any) {
+              console.error(
+                `[AuthContext] syncProfile failed for user ${currentUser.uid} (${currentUser.email}): [code: ${syncErr?.code || 'UNKNOWN'}] [message: ${syncErr?.message || syncErr}]`,
+                syncErr
+              );
               // Read local storage before any fallback to protect onboarding status
               let cachedProfile: StudentUserProfile | null = null;
               try {

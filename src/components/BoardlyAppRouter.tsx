@@ -9,6 +9,7 @@ import { OnboardingFlow } from './onboarding/OnboardingFlow';
 import { StudentAppShell } from './student/StudentAppShell';
 import { BoardlyMarketingApp } from './marketing/BoardlyMarketingApp';
 import { AdminDashboardScreen } from './AdminDashboardScreen';
+import { MigrationCheckPage } from './admin/MigrationCheckPage';
 import { OrganizerDashboard } from './organizer/OrganizerDashboard';
 import { CaptainDashboard } from './captain/CaptainDashboard';
 import { CaptainLandingPage } from './captain/CaptainLandingPage';
@@ -484,7 +485,7 @@ export const BoardlyAppRouter: React.FC = () => {
         if (currentPath === '/admin' || currentPath.startsWith('/admin/')) {
           if (!user) {
             if (typeof window !== 'undefined') {
-              sessionStorage.setItem('postLoginPath', '/admin');
+              sessionStorage.setItem('postLoginPath', currentPath);
             }
             navigate('/login', true);
             return null;
@@ -492,6 +493,13 @@ export const BoardlyAppRouter: React.FC = () => {
           if (!isAdmin) {
             navigate('/app', true);
             return null;
+          }
+          if (currentPath === '/admin/migration-check') {
+            return (
+              <MigrationCheckPage
+                onBack={() => navigate('/admin', true)}
+              />
+            );
           }
           return (
             <AdminDashboardScreen
