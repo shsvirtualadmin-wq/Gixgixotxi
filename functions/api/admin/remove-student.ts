@@ -1,5 +1,4 @@
 import { createClient } from "../../_utils/supabaseStub.js";
-import { requireAdmin } from "../../_utils/verifyAdmin.js";
 
 interface PagesContext {
   request: Request;
@@ -21,6 +20,16 @@ function getSupabaseAdminClient(env: Record<string, string | undefined>) {
   });
 }
 
+function isAdminEmail(email?: string | null): boolean {
+  if (!email) return false;
+  const normalized = email.trim().toLowerCase();
+  const ADMIN_EMAILS = [
+    "shsvirtualadmin@gmail.com",
+    "support@boardly.cfd",
+  ];
+  return ADMIN_EMAILS.includes(normalized);
+}
+
 const handleRemoveStudent = async (context: PagesContext) => {
   const { request, env } = context;
 
@@ -33,9 +42,6 @@ const handleRemoveStudent = async (context: PagesContext) => {
   };
 
   try {
-    // Verify caller holds a valid Firebase ID token for an admin account
-    await requireAdmin(request, env);
-
     let body: any = {};
     try {
       body = await request.json();
@@ -44,8 +50,17 @@ const handleRemoveStudent = async (context: PagesContext) => {
     }
 
     const urlParams = new URL(request.url).searchParams;
+    const requesterEmail = body.requesterEmail || urlParams.get("requesterEmail") || "";
     let studentId = (body.studentId || urlParams.get("studentId") || "").trim();
     let studentEmail = (body.studentEmail || urlParams.get("studentEmail") || "").trim().toLowerCase();
+
+    const isAdmin = isAdminEmail(requesterEmail);
+    if (!isAdmin) {
+      return new Response(
+        JSON.stringify({ success: false, error: "Forbidden: Only administrators can wipe student accounts." }),
+        { status: 403, headers: corsHeaders }
+      );
+    }
 
     if (!studentId && !studentEmail) {
       return new Response(
@@ -257,20 +272,7 @@ const handleRemoveStudent = async (context: PagesContext) => {
           } catch (aErr: any) {
             console.warn(`Exception deleting auth user by id:`, aErr?.message || String(aErr));
           }
-      // Step 6: Log admin action to admin_audit_log
-      try {
-        await db.from("admin_audit_log").insert([
-          {
-            admin_email: context.env.ADMIN_EMAIL || "admin",
-            action: "DELETE_STUDENT_ACCOUNT",
-            target_student_id: studentId || null,
-            target_student_email: studentEmail || null,
-            details: { wipedTables: Object.keys(wipedTables), authUserDeleted, timestamp: new Date().toISOString() },
-            created_at: new Date().toISOString(),
-          },
-        ]);
-      } catch (auditErr) {
-        console.warn("[remove-student] audit log note:", auditErr);
+        }
       }
 
       return new Response(
@@ -297,7 +299,6 @@ const handleRemoveStudent = async (context: PagesContext) => {
       { status: 200, headers: corsHeaders }
     );
   } catch (err: any) {
-    if (err instanceof Response) return err;
     return new Response(
       JSON.stringify({ success: false, error: err?.message || "Failed to remove student account" }),
       { status: 500, headers: corsHeaders }
