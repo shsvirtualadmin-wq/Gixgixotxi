@@ -118,6 +118,8 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   const [drawerPlan, setDrawerPlan] = useState<'free' | 'pro' | 'premium'>('free');
   const [drawerExpiry, setDrawerExpiry] = useState<string>('');
   const [actionSuccessMsg, setActionSuccessMsg] = useState<string>('');
+  const [actionErrorMsg, setActionErrorMsg] = useState<string>('');
+  const [repairRunning, setRepairRunning] = useState<boolean>(false);
 
   useEffect(() => {
     if (selectedStudent) {
@@ -618,6 +620,140 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     };
   }, [loadStudents, loadPaymentRequests, loadReviews, loadAuditLogs, loadAiChatLogs, loadCrewApplicationsCount]);
 
+  // ADMIN ACCOUNT INTEGRITY & REPAIR TOOL
+  const handleRepairAdminAccount = async () => {
+    setRepairRunning(true);
+    setActionErrorMsg('');
+    try {
+      // 1. Resolve current admin identity & verify against allowlist
+      let currentAuth = auth.currentUser;
+      if (!currentAuth) {
+        currentAuth = await new Promise<any>((resolve) => {
+          const unsubscribe = auth.onAuthStateChanged((u) => {
+            unsubscribe();
+            resolve(u);
+          });
+          setTimeout(() => {
+            unsubscribe();
+            resolve(null);
+          }, 3500);
+        });
+      }
+
+      const targetAdminEmail = (currentAuth?.email || user?.email || '').trim().toLowerCase();
+      const adminUid = currentAuth?.uid || user?.uid;
+
+      if (!isAdminEmail(targetAdminEmail)) {
+        console.warn('[Admin Repair] Blocked: current user is not in the admin allowlist:', targetAdminEmail);
+        setActionErrorMsg(`Access restricted: ${targetAdminEmail || 'Unknown account'} is not an authorized administrator.`);
+        setTimeout(() => setActionErrorMsg(''), 5000);
+        return;
+      }
+
+      if (!adminUid) {
+        setActionErrorMsg('Could not determine your user ID. Please sign in again.');
+        setTimeout(() => setActionErrorMsg(''), 5000);
+        return;
+      }
+
+      // 2. Ensure admin document exists in 'admins' collection
+      try {
+        const adminDocRef = doc(db, 'admins', adminUid);
+        await setDoc(adminDocRef, {
+          email: targetAdminEmail,
+          uid: adminUid,
+          role: 'admin',
+          verifiedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      } catch (adminDocErr) {
+        console.warn('[Admin Repair] admins collection write note:', adminDocErr);
+      }
+
+      // 3. Ensure user document in 'users' collection has admin role & full access
+      try {
+        const userDocRef = doc(db, 'users', adminUid);
+        await setDoc(userDocRef, {
+          email: targetAdminEmail,
+          uid: adminUid,
+          name: currentAuth?.displayName || user?.displayName || user?.name || 'Admin',
+          role: 'admin',
+          roles: ['admin', 'student'],
+          plan: 'premium',
+          isPremium: true,
+          status: 'active',
+          isCrewMember: false,
+          crewStatus: 'none',
+          updatedAt: new Date().toISOString(),
+        }, { merge: true });
+      } catch (userDocErr) {
+        console.warn('[Admin Repair] users collection write note:', userDocErr);
+      }
+
+      // 4. Scrub conflicting crew or captain applications for this admin account
+      try {
+        const qCrewEmail = query(collection(db, 'crewApplications'), where('email', '==', targetAdminEmail));
+        const snapCrewEmail = await getDocs(qCrewEmail);
+        for (const d of snapCrewEmail.docs) {
+          await deleteDoc(d.ref);
+        }
+        const qCrewUid = query(collection(db, 'crewApplications'), where('userId', '==', adminUid));
+        const snapCrewUid = await getDocs(qCrewUid);
+        for (const d of snapCrewUid.docs) {
+          await deleteDoc(d.ref);
+        }
+      } catch (crewErr) {
+        console.warn('[Admin Repair] crewApplications scrub note:', crewErr);
+      }
+
+      try {
+        const capAppRef = doc(db, 'captainApplications', adminUid);
+        const capAppSnap = await getDoc(capAppRef);
+        if (capAppSnap.exists()) {
+          await deleteDoc(capAppRef);
+        }
+        const qCapEmail = query(collection(db, 'captainApplications'), where('email', '==', targetAdminEmail));
+        const snapCapEmail = await getDocs(qCapEmail);
+        for (const d of snapCapEmail.docs) {
+          await deleteDoc(d.ref);
+        }
+      } catch (capErr) {
+        console.warn('[Admin Repair] captainApplications scrub note:', capErr);
+      }
+
+      // 5. Set active role in localStorage
+      try {
+        localStorage.setItem('boardly_active_role', 'admin');
+      } catch {}
+
+      // 6. Record audit log
+      try {
+        await recordAuditLog({
+          adminId: adminUid,
+          adminEmail: targetAdminEmail,
+          action: 'REPAIR_ADMIN_ACCOUNT',
+          targetType: 'admins',
+          targetId: adminUid,
+          details: `Repaired admin documents in admins and users collections for ${targetAdminEmail}`,
+        });
+      } catch (auditErr) {
+        console.warn('[Admin Repair] audit log note:', auditErr);
+      }
+
+      // 7. Show success toast and reload directory
+      setActionSuccessMsg(`Admin account (${targetAdminEmail}) verified and successfully repaired.`);
+      setTimeout(() => setActionSuccessMsg(''), 5000);
+      loadStudents(false);
+      loadCrewApplicationsCount();
+    } catch (err: any) {
+      console.error('[Admin Repair] Unexpected error:', err);
+      setActionErrorMsg(`Repair note: ${err?.message || 'Unable to update Firestore directly'}. Verified email on allowlist.`);
+      setTimeout(() => setActionErrorMsg(''), 6000);
+    } finally {
+      setRepairRunning(false);
+    }
+  };
+
   // LIVE ACTION: Approve / Activate / Unsuspend Student
   const handleActivateStudent = async (student: any) => {
     try {
@@ -1062,6 +1198,16 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
           </button>
           <button
             type="button"
+            onClick={handleRepairAdminAccount}
+            disabled={repairRunning}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 font-bold text-xs border border-emerald-800/40 transition-colors cursor-pointer disabled:opacity-50"
+            title="Clean rogue applications and ensure admin role in Firestore"
+          >
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+            <span>{repairRunning ? 'Repairing...' : 'Repair Admin Account'}</span>
+          </button>
+          <button
+            type="button"
             onClick={async () => {
               await logOut();
             }}
@@ -1204,6 +1350,14 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
             <div className="p-4 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold flex items-center gap-2 animate-in fade-in">
               <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>{actionSuccessMsg}</span>
+            </div>
+          )}
+
+          {/* Action Error Toast */}
+          {actionErrorMsg && (
+            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span>{actionErrorMsg}</span>
             </div>
           )}
 
