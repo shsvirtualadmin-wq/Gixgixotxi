@@ -162,6 +162,102 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     onConfirm: () => {},
   });
 
+  // Duplicate profiles management (Requirement 10)
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState<boolean>(false);
+  const [isScanningDuplicates, setIsScanningDuplicates] = useState<boolean>(false);
+  const [isMergingDuplicates, setIsMergingDuplicates] = useState<boolean>(false);
+  const [duplicateGroups, setDuplicateGroups] = useState<Array<{
+    email: string;
+    docs: Array<{ id: string; fieldCount: number; data: any }>;
+    targetDocId: string;
+  }>>([]);
+  const [mergeReport, setMergeReport] = useState<string[] | null>(null);
+
+  const handleScanDuplicates = async () => {
+    setIsScanningDuplicates(true);
+    setMergeReport(null);
+    setDuplicateModalOpen(true);
+    try {
+      const snap = await getDocs(collection(db, 'users'));
+      const emailMap = new Map<string, Array<{ id: string; fieldCount: number; data: any }>>();
+
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        const rawEmail = data.email || data.student_email;
+        if (!rawEmail || typeof rawEmail !== 'string') return;
+        const normalized = rawEmail.trim().toLowerCase();
+        const fieldCount = Object.keys(data).filter((k) => data[k] != null && data[k] !== '').length;
+
+        if (!emailMap.has(normalized)) {
+          emailMap.set(normalized, []);
+        }
+        emailMap.get(normalized)!.push({ id: d.id, fieldCount, data });
+      });
+
+      const duplicates: Array<{
+        email: string;
+        docs: Array<{ id: string; fieldCount: number; data: any }>;
+        targetDocId: string;
+      }> = [];
+
+      emailMap.forEach((docs, email) => {
+        if (docs.length > 1) {
+          docs.sort((a, b) => b.fieldCount - a.fieldCount);
+          const targetDoc = docs.find((d) => d.id === d.data?.uid || d.id === d.data?.firebase_uid) || docs[0];
+          duplicates.push({
+            email,
+            docs,
+            targetDocId: targetDoc.id,
+          });
+        }
+      });
+
+      setDuplicateGroups(duplicates);
+    } catch (err: any) {
+      console.error('[AdminDashboard] Duplicate scan error:', err);
+    } finally {
+      setIsScanningDuplicates(false);
+    }
+  };
+
+  const handleMergeDuplicates = async () => {
+    if (duplicateGroups.length === 0 || isMergingDuplicates) return;
+    setIsMergingDuplicates(true);
+    const reports: string[] = [];
+
+    try {
+      for (const group of duplicateGroups) {
+        const targetRef = doc(db, 'users', group.targetDocId);
+        let mergedData: Record<string, any> = {};
+
+        const sortedDocs = [...group.docs].reverse();
+        for (const d of sortedDocs) {
+          mergedData = { ...mergedData, ...d.data };
+        }
+
+        mergedData.email = group.email;
+        mergedData.registrationComplete = true;
+        mergedData.onboardingComplete = true;
+        mergedData.onboardingCompleted = true;
+        mergedData.updatedAt = new Date().toISOString();
+
+        await setDoc(targetRef, mergedData, { merge: true });
+        reports.push(
+          `Merged ${group.docs.length} profiles for "${group.email}" into users/${group.targetDocId} (preserved ${Object.keys(mergedData).length} total fields). Original doc IDs: ${group.docs.map((d) => d.id).join(', ')}`
+        );
+      }
+
+      setMergeReport(reports);
+      await handleScanDuplicates();
+    } catch (err: any) {
+      console.error('[AdminDashboard] Merge duplicates error:', err);
+      reports.push(`Error during merge: ${err?.message || err}`);
+      setMergeReport(reports);
+    } finally {
+      setIsMergingDuplicates(false);
+    }
+  };
+
   const adminEmail = user?.email || 'shsvirtualadmin@gmail.com';
   const questionBankStats = useMemo(() => getDynamicQuestionBankStats(), []);
 
@@ -1222,6 +1318,15 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
             <Database className="w-4 h-4 text-violet-400" />
             <span>Migration Audit</span>
           </a>
+          <button
+            type="button"
+            onClick={handleScanDuplicates}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 font-bold text-xs border border-amber-800/40 transition-colors cursor-pointer"
+            title="Scan and merge duplicate student profiles in Firestore"
+          >
+            <Users className="w-4 h-4 text-amber-400" />
+            <span>Duplicate Profiles</span>
+          </button>
           <button
             type="button"
             onClick={async () => {
@@ -2317,6 +2422,115 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
           </div>
         )}
       </Drawer>
+
+      {/* Duplicate Profiles Modal (Requirement 10) */}
+      {duplicateModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-3xl w-full max-h-[85vh] flex flex-col shadow-2xl text-slate-100">
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <h3 className="text-base font-black text-white flex items-center gap-2">
+                  <Users className="w-5 h-5 text-amber-400" />
+                  Duplicate Profile Documents Scanner
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Scans Firestore <code className="text-amber-300">users</code> for repeated registrations sharing the same email with different doc IDs.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDuplicateModalOpen(false)}
+                className="text-slate-400 hover:text-white p-2 text-sm font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-4 flex-1 text-xs">
+              {isScanningDuplicates ? (
+                <div className="py-12 text-center text-slate-400">
+                  <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-amber-400" />
+                  Scanning Firestore users collection for duplicates...
+                </div>
+              ) : duplicateGroups.length === 0 ? (
+                <div className="py-12 text-center bg-slate-800/40 rounded-2xl border border-slate-800">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
+                  <p className="font-bold text-emerald-300">No duplicate profiles found!</p>
+                  <p className="text-slate-400 text-[11px] mt-1">All registered accounts in Firestore have unique emails.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="p-3 bg-amber-950/40 border border-amber-800/60 rounded-xl text-amber-300">
+                    Found <strong>{duplicateGroups.length}</strong> email(s) with multiple document IDs. Review the list below before merging.
+                  </div>
+
+                  {duplicateGroups.map((group, idx) => (
+                    <div key={idx} className="p-4 bg-slate-800/60 border border-slate-700/60 rounded-2xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-white text-sm">{group.email}</span>
+                        <span className="px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[11px] font-mono">
+                          {group.docs.length} docs
+                        </span>
+                      </div>
+                      <div className="text-[11px] text-slate-400">
+                        Target Document ID: <code className="text-indigo-300 font-bold font-mono">users/{group.targetDocId}</code>
+                      </div>
+                      <div className="divide-y divide-slate-700/40 text-[11px]">
+                        {group.docs.map((d, dIdx) => (
+                          <div key={dIdx} className="py-1.5 flex items-center justify-between">
+                            <span className="font-mono text-slate-300">
+                              {d.id} {d.id === group.targetDocId ? '(Target Primary)' : ''}
+                            </span>
+                            <span className="text-slate-400 font-mono">
+                              {d.fieldCount} fields • Plan: {d.data?.plan || '-'} • Role: {d.data?.role || '-'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {mergeReport && (
+                <div className="p-4 bg-indigo-950/50 border border-indigo-800/60 rounded-2xl space-y-2">
+                  <p className="font-bold text-indigo-300 text-xs">Merge Report:</p>
+                  <ul className="space-y-1 text-[11px] font-mono text-indigo-200 list-disc pl-4">
+                    {mergeReport.map((r, rIdx) => (
+                      <li key={rIdx}>{r}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+
+            <div className="p-6 border-t border-slate-800 flex items-center justify-between">
+              <span className="text-[11px] text-slate-500">
+                Notice: Merging updates users/{'{uid}'} with the most complete data without deleting documents.
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setDuplicateModalOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold cursor-pointer"
+                >
+                  Close
+                </button>
+                {duplicateGroups.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleMergeDuplicates}
+                    disabled={isMergingDuplicates}
+                    className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-lg shadow-amber-600/20 cursor-pointer disabled:opacity-50"
+                  >
+                    {isMergingDuplicates ? 'Merging...' : `Merge ${duplicateGroups.length} Duplicate Sets`}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Confirmation Dialog */}
       <ConfirmDialog

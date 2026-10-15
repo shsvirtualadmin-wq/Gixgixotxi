@@ -239,8 +239,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isMasterAdmin = email === 'shsvirtualadmin@gmail.com';
     const todayStr = getKarachiTodayString();
 
-    // 1. Fetch user profile from Firestore using 3-step lookup (users/{uid}, email query, legacy query)
-    let existingProfile = await fetchUserProfile(firebaseUser.uid, firebaseUser.email);
+    // 1. Fetch user profile from Firestore using 3-step lookup with 15s timeout and automatic retry (Requirement 6 & 7)
+    const fetchWith15sTimeoutAndRetry = async (): Promise<StudentUserProfile | null> => {
+      const executeOneAttempt = (attemptNum: number): Promise<StudentUserProfile | null> => {
+        return new Promise<StudentUserProfile | null>((resolve, reject) => {
+          const timer = setTimeout(() => {
+            const timeoutError = new Error(`Profile lookup timed out after 15 seconds (attempt ${attemptNum}).`);
+            (timeoutError as any).code = 'timeout';
+            reject(timeoutError);
+          }, 15000);
+
+          fetchUserProfile(firebaseUser.uid, firebaseUser.email)
+            .then((res) => {
+              clearTimeout(timer);
+              resolve(res);
+            })
+            .catch((err) => {
+              clearTimeout(timer);
+              reject(err);
+            });
+        });
+      };
+
+      try {
+        return await executeOneAttempt(1);
+      } catch (firstErr: any) {
+        console.warn(`[AuthContext] Initial profile lookup attempt 1 failed [code: ${firstErr?.code || 'UNKNOWN'}]. Performing one automatic retry...`, firstErr);
+        try {
+          return await executeOneAttempt(2);
+        } catch (retryErr: any) {
+          console.error(`[AuthContext] Automatic retry attempt 2 also failed [code: ${retryErr?.code || 'UNKNOWN'}]:`, retryErr);
+          throw retryErr;
+        }
+      }
+    };
+
+    let existingProfile = await fetchWith15sTimeoutAndRetry();
 
     if (existingProfile) {
       if (!isMasterAdmin && (existingProfile.suspended === true || existingProfile.status === 'suspended' || (existingProfile as any).isSuspended === true)) {
@@ -521,15 +555,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
-    // 8-Second Safety Timeout Fallback:
-    // Ensures loading is NEVER stuck indefinitely on network drops or slow Firestore reads.
+    // 32-Second Safety Timeout Fallback:
+    // Ensures loading is NEVER stuck indefinitely on network drops while allowing 15s lookup + retry.
     const safetyTimeout = setTimeout(() => {
       if (isMounted) {
         setAuthLoading(false);
         setProfileLoading(false);
         setInitialAuthChecked(true);
       }
-    }, 8000);
+    }, 32000);
 
     return () => {
       isMounted = false;

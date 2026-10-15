@@ -15,6 +15,7 @@ import {
   signInWithPopup,
 } from 'firebase/auth';
 import {
+  initializeFirestore,
   getFirestore,
   doc,
   getDoc,
@@ -41,6 +42,8 @@ import {
 } from 'firebase/firestore';
 
 export {
+  initializeFirestore,
+  getFirestore,
   doc,
   getDoc,
   setDoc,
@@ -189,5 +192,15 @@ export async function performGoogleSignIn(): Promise<any> {
   }
 }
 
-// Initialize Firestore Database with named database instance
-export const db = getFirestore(app, TARGET_FIRESTORE_DATABASE_ID);
+// Initialize Firestore Database with named database instance and experimentalAutoDetectLongPolling (Requirement 5)
+let firestoreDb: any;
+try {
+  firestoreDb = initializeFirestore(
+    app,
+    { experimentalAutoDetectLongPolling: true },
+    TARGET_FIRESTORE_DATABASE_ID
+  );
+} catch {
+  firestoreDb = getFirestore(app, TARGET_FIRESTORE_DATABASE_ID);
+}
+export const db = firestoreDb;

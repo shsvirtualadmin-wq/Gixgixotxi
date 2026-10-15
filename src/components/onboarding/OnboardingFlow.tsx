@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { ArrowLeft, Check, Calendar, Sparkles, BookOpen, Clock, ArrowRight, Loader2, Target, HelpCircle, AlertCircle } from 'lucide-react';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { BrandLogo } from '../marketing/BrandLogo';
 import { UNIVERSITIES, University } from '../../data/universities';
 import { getUniversityPaperConfig } from '../../config/universityPapers';
@@ -56,6 +56,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
   const [selectedWorries, setSelectedWorries] = useState<string[]>(['Advance Maths', 'IQ']);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
 
   // Filter universities based on selected track
   const universitiesList = useMemo(() => {
@@ -98,6 +99,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
   const handleSaveAndGoToDashboard = async () => {
     if (isSaving) return;
     setErrorMessage(null);
+    setErrorCode(null);
     setIsSaving(true);
 
     // 1. Ensure user is signed in, wait for onAuthStateChanged if auth is still initializing
@@ -125,21 +127,28 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
     const userDocRef = doc(db, 'users', targetUid);
     const userPath = `users/${targetUid}`;
 
-    const displayName = activeUser.displayName || (activeUser.email ? activeUser.email.split('@')[0] : 'Student');
+    const emailNorm = (activeUser.email || '').trim().toLowerCase();
+    const displayName = activeUser.displayName || (emailNorm ? emailNorm.split('@')[0] : 'Student');
     const examDateVal = isNotSureDate ? '' : examDate;
     const selectedTrackVal = selectedTrack || 'Engineering & CS';
     const chosenSubjects = ['Advance Maths', 'IQ', ...selectedWorries.filter((s) => s !== 'Not sure, help me find out')];
 
-    // Build onboarding payload: only permitted student fields!
+    // Build onboarding payload: only permitted student profile fields! (Requirement 2 & 3)
+    // Never write protected plan/role/admin fields to prevent permission-denied errors.
     const onboardingPayload: Record<string, any> = {
       uid: targetUid,
-      email: activeUser.email || '',
+      email: emailNorm,
       displayName: displayName,
       name: displayName,
+      class: selectedTrackVal,
+      grade: selectedTrackVal,
+      stream: selectedTrackVal,
+      board: targetUni.shortName,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       onboardingCompleted: true,
       onboardingComplete: true,
+      registrationComplete: true,
       targetUniversity: targetUni.shortName,
       targetUniversityId: targetUniId,
       university: targetUni.shortName,
@@ -160,15 +169,14 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
       },
       subjects: chosenSubjects,
       firstTest: '30-question diagnostic test',
-      plan: 'free',
-      role: 'student',
-      isPremium: false,
-      admin: false,
     };
 
     // Never write privileged or protected fields from a student's browser on update
     const FORBIDDEN_FIELDS = [
+      'plan',
+      'role',
       'roles',
+      'isPremium',
       'premium',
       'premiumExpiresAt',
       'premiumSource',
@@ -181,6 +189,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
       'crewRevokeReason',
       'isPaidInternshipEligible',
       'ambassador',
+      'admin',
       'isAdmin',
       'suspended',
       'isSuspended',
@@ -193,14 +202,23 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
       // 1. Save onboarding data directly with setDoc(doc(db, "users", auth.currentUser.uid), data, { merge: true })
       await setDoc(userDocRef, onboardingPayload, { merge: true });
 
-      // 2. Synchronize in-memory auth context profile state
+      // 2. Immediately re-read with getDoc and confirm it exists and has registrationComplete true (Requirement 3)
+      const verifySnap = await getDoc(userDocRef);
+      if (!verifySnap.exists() || !verifySnap.data()?.registrationComplete) {
+        const verifyError = new Error('Profile write verification failed: document was not saved or registrationComplete flag is false.');
+        (verifyError as any).code = 'verification-failed';
+        console.error('[OnboardingFlow] Profile write verification failed:', verifyError);
+        throw verifyError;
+      }
+
+      // 3. Synchronize in-memory auth context profile state
       try {
         await completeOnboarding(onboardingPayload);
       } catch (ctxErr) {
         console.warn('[Onboarding] completeOnboarding context update notice:', ctxErr);
       }
 
-      // 3. Clear onboarding session/storage flags
+      // 4. Clear onboarding session/storage flags
       if (typeof window !== 'undefined') {
         try {
           sessionStorage.removeItem('boardly_onboarding_step');
@@ -213,16 +231,19 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
 
       setIsSaving(false);
 
-      // 4. Save succeeded! Go to the dashboard
+      // 5. Save succeeded and verified! Go to the dashboard
       onComplete(false, {
         universityId: targetUniId,
         track: selectedTrack,
         weakSubjects: selectedWorries,
       });
     } catch (err: any) {
-      console.error(`[Firestore Onboarding Error] Failed to write to path: ${userPath}`, err?.code || '', err?.message || '', err);
+      const errCode = err?.code || 'save-error';
+      const errMsg = err?.message || 'Missing or insufficient permissions.';
+      console.error(`[Firestore Onboarding Error] Failed to write/verify path: ${userPath} [code: ${errCode}] [message: ${errMsg}]`, err);
       setIsSaving(false);
-      setErrorMessage(`Firestore error: ${err?.message || 'Missing or insufficient permissions.'}`);
+      setErrorCode(errCode);
+      setErrorMessage(`Firestore error: ${errMsg}`);
     }
   };
 
@@ -674,9 +695,24 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
               {errorMessage && (
                 <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-start gap-3 animate-in fade-in">
                   <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-                  <div className="space-y-1">
-                    <p className="font-bold text-rose-900">Failed to save</p>
+                  <div className="space-y-1 flex-1">
+                    <p className="font-bold text-rose-900">Failed to save profile</p>
                     <p className="text-rose-700 leading-relaxed">{errorMessage}</p>
+                    {errorCode && (
+                      <p className="text-[11px] font-mono text-rose-600">
+                        [Code: {errorCode}]
+                      </p>
+                    )}
+                    <div className="pt-2">
+                      <button
+                        type="button"
+                        onClick={handleSaveAndGoToDashboard}
+                        disabled={isSaving}
+                        className="px-3 py-1.5 rounded-lg bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 transition-colors cursor-pointer"
+                      >
+                        Retry Save
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

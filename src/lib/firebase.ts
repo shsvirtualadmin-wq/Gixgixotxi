@@ -370,22 +370,40 @@ export async function fetchUserProfile(
     try {
       const q = query(
         collection(db, 'users'),
-        where('email', '==', normalizedEmail),
-        limit(1)
+        where('email', '==', normalizedEmail)
       );
       const emailSnap = await getDocs(q);
 
       if (!emailSnap.empty) {
-        const docMatch = emailSnap.docs[0];
-        matchedRawData = docMatch.data();
-        matchedDocId = docMatch.id;
+        if (emailSnap.docs.length > 1) {
+          console.warn(
+            `[Boardly Auth] Multiple (${emailSnap.docs.length}) profile documents found for email ${normalizedEmail}:`,
+            emailSnap.docs.map((d) => d.id)
+          );
+          // Pick the document with the most complete data (Requirement 7)
+          let bestDoc = emailSnap.docs[0];
+          let bestScore = -1;
+          for (const d of emailSnap.docs) {
+            const data = d.data();
+            const score = Object.keys(data).filter((k) => data[k] != null && data[k] !== '').length;
+            if (score > bestScore) {
+              bestScore = score;
+              bestDoc = d;
+            }
+          }
+          matchedRawData = bestDoc.data();
+          matchedDocId = bestDoc.id;
+        } else {
+          const docMatch = emailSnap.docs[0];
+          matchedRawData = docMatch.data();
+          matchedDocId = docMatch.id;
+        }
         matchStep = 'email';
       } else if (rawEmail && rawEmail !== normalizedEmail) {
         // Fallback: check raw unnormalized casing if different
         const qRaw = query(
           collection(db, 'users'),
-          where('email', '==', rawEmail),
-          limit(1)
+          where('email', '==', rawEmail)
         );
         const rawSnap = await getDocs(qRaw);
         if (!rawSnap.empty) {
@@ -776,12 +794,9 @@ export async function createInitialUserDoc(
       await setDoc(userRef, fallbackProfile, { merge: true });
       localStorage.setItem(`boardly_cached_profile_${uid}`, JSON.stringify(fallbackProfile));
       return fallbackProfile;
-    } catch (setErr) {
-      console.warn('[Boardly Firebase] Fallback setDoc also failed, returning local session profile:', setErr);
-      try {
-        localStorage.setItem(`boardly_cached_profile_${uid}`, JSON.stringify(fallbackProfile));
-      } catch {}
-      return fallbackProfile;
+    } catch (setErr: any) {
+      console.error(`[Boardly Firebase] Fallback setDoc in createInitialUserDoc failed: [code: ${setErr?.code || 'UNKNOWN'}] [message: ${setErr?.message || setErr}]`, setErr);
+      throw setErr;
     }
   }
 

@@ -184,7 +184,7 @@ export const BoardlyAppRouter: React.FC = () => {
     }
     const timer = setTimeout(() => {
       setLoadingTimedOut(true);
-    }, 8000);
+    }, 32000);
     return () => clearTimeout(timer);
   }, [loading, authLoading, profileLoading, initialAuthChecked]);
 
