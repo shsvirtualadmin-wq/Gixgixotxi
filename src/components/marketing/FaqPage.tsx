@@ -66,41 +66,41 @@ export const FaqPage: React.FC<FaqPageProps> = ({ onNavigate, onGetStarted }) =>
     <div className="pt-28 pb-20 px-4 sm:px-6 max-w-4xl mx-auto space-y-12">
       {/* Header */}
       <div className="text-center space-y-4 max-w-2xl mx-auto">
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-indigo-50 border border-indigo-200/80 text-indigo-700 text-xs font-semibold">
-          <HelpCircle className="w-3.5 h-3.5 text-indigo-600" />
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--surface)] border border-[var(--border)] text-[var(--brand-2)] text-xs font-semibold">
+          <HelpCircle className="w-3.5 h-3.5" />
           <span>Knowledge Base & Support</span>
         </div>
-        <h1 className="text-3xl sm:text-5xl font-black text-[#0A1330] font-poppins tracking-tight">
+        <h1 className="text-3xl sm:text-5xl font-black text-[var(--text)] tracking-tight">
           Frequently Asked Questions
         </h1>
-        <p className="text-sm sm:text-base text-slate-600 leading-relaxed">
+        <p className="text-sm sm:text-base text-[var(--text-muted)] leading-relaxed">
           Find instant answers to questions regarding our question banks, plans, AI tutor, and payment options in Pakistan.
         </p>
       </div>
 
       {/* Search Input Bar */}
       <div className="relative max-w-xl mx-auto">
-        <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" />
+        <Search className="w-5 h-5 text-[var(--text-faint)] absolute left-4 top-1/2 -translate-y-1/2" />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search by topic, e.g. 'MDCAT', 'JazzCash', 'PDF', 'AI'..."
-          className="w-full pl-12 pr-4 py-3.5 rounded-full bg-white border border-slate-200/80 text-slate-900 placeholder:text-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm"
+          className="w-full pl-12 pr-4 py-3.5 rounded-full bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] placeholder:text-[var(--text-faint)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--brand)] shadow-sm backdrop-blur-md"
         />
       </div>
 
       {/* Categories Segmented Filter */}
       <div className="flex justify-center overflow-x-auto pb-2">
-        <div className="inline-flex gap-1.5 p-1.5 rounded-full bg-slate-200/60 border border-slate-200/70 max-w-full">
+        <div className="inline-flex gap-1.5 p-1.5 rounded-full bg-[var(--surface)] border border-[var(--border)] max-w-full backdrop-blur-md">
           {categories.map((cat) => (
             <button
               key={cat}
               onClick={() => setSelectedCategory(cat)}
               className={`px-4 py-2 rounded-full text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
                 selectedCategory === cat
-                  ? 'bg-white text-indigo-700 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-[var(--brand)] text-white shadow-sm'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
               }`}
             >
               {cat}
@@ -112,7 +112,7 @@ export const FaqPage: React.FC<FaqPageProps> = ({ onNavigate, onGetStarted }) =>
       {/* FAQs List */}
       <div className="space-y-3.5">
         {filteredFaqs.length === 0 ? (
-          <div className="text-center py-12 p-6 rounded-2xl bg-white border border-slate-200/70 text-slate-500 text-sm">
+          <div className="text-center py-12 p-6 rounded-2xl bg-[var(--surface)] border border-[var(--border)] text-[var(--text-muted)] text-sm">
             No questions found matching your search. Try another query or reach out to our team directly.
           </div>
         ) : (
@@ -121,25 +121,25 @@ export const FaqPage: React.FC<FaqPageProps> = ({ onNavigate, onGetStarted }) =>
             return (
               <div
                 key={faq.id}
-                className={`rounded-[22px] transition-all duration-200 border bg-white ${
+                className={`rounded-[22px] transition-all duration-200 border bg-[var(--surface)] backdrop-blur-md ${
                   isOpen
-                    ? 'border-indigo-300 shadow-md shadow-indigo-900/5'
-                    : 'border-slate-200/80 hover:border-slate-300'
+                    ? 'border-[var(--brand)] shadow-lg shadow-blue-500/10'
+                    : 'border-[var(--border)] hover:border-white/20'
                 }`}
               >
                 <button
                   onClick={() => setOpenId(isOpen ? null : faq.id)}
-                  className="w-full p-5 sm:p-6 text-left flex items-center justify-between gap-4 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 rounded-[22px]"
+                  className="w-full p-5 sm:p-6 text-left flex items-center justify-between gap-4 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)] rounded-[22px]"
                   aria-expanded={isOpen}
                 >
-                  <span className="text-base sm:text-lg font-bold text-[#0A1330]">
+                  <span className="text-base sm:text-lg font-bold text-[var(--text)]">
                     {faq.question}
                   </span>
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 transition-transform duration-200 ${
                       isOpen
-                        ? 'bg-indigo-600 text-white rotate-45'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        ? 'bg-[var(--brand)] text-white rotate-45'
+                        : 'bg-white/10 text-[var(--text-muted)] hover:bg-white/15'
                     }`}
                   >
                     <span className="text-lg font-semibold leading-none">+</span>
@@ -147,7 +147,7 @@ export const FaqPage: React.FC<FaqPageProps> = ({ onNavigate, onGetStarted }) =>
                 </button>
 
                 {isOpen && (
-                  <div className="px-5 sm:px-6 pb-6 pt-1 text-sm sm:text-base text-slate-600 leading-relaxed border-t border-slate-100">
+                  <div className="px-5 sm:px-6 pb-6 pt-1 text-sm sm:text-base text-[var(--text-muted)] leading-relaxed border-t border-[var(--border)]">
                     <p>{faq.answer}</p>
                   </div>
                 )}
@@ -158,16 +158,16 @@ export const FaqPage: React.FC<FaqPageProps> = ({ onNavigate, onGetStarted }) =>
       </div>
 
       {/* Still Need Help Box */}
-      <div className="p-8 rounded-[28px] bg-gradient-to-r from-indigo-50 via-slate-50 to-indigo-50 border border-indigo-200/70 text-center space-y-4">
-        <h3 className="text-xl font-bold font-poppins text-[#0A1330]">
+      <div className="p-8 rounded-[28px] bg-gradient-to-r from-[var(--surface)] via-[var(--surface-hover)] to-[var(--surface)] border border-[var(--border)] text-center space-y-4 backdrop-blur-md">
+        <h3 className="text-xl font-bold text-[var(--text)]">
           Still have an unanswered question?
         </h3>
-        <p className="text-sm text-slate-600 max-w-md mx-auto">
+        <p className="text-sm text-[var(--text-muted)] max-w-md mx-auto">
           Our Lahore & Islamabad academic support desks are here to assist with syllabus queries, custom bundles, or verification.
         </p>
         <button
           onClick={() => onNavigate('contact')}
-          className="px-6 py-3 rounded-full text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors shadow-md inline-flex items-center gap-2 cursor-pointer"
+          className="px-6 py-3 rounded-full text-sm font-bold text-white bg-[var(--brand)] hover:bg-[var(--brand)]/90 transition-all shadow-md shadow-blue-600/20 inline-flex items-center gap-2 cursor-pointer"
         >
           <span>Contact Academic Support</span>
           <ArrowRight className="w-4 h-4" />

@@ -1,33 +1,18 @@
 import React, { useState } from 'react';
-import { IPhoneAppPreview, PreviewTab } from '../marketing/IPhoneAppPreview';
-import { Smartphone, X, ChevronRight, Sparkles } from 'lucide-react';
+import { PhoneMockup, MockupScreen } from '../marketing/PhoneMockup';
+import { Smartphone, X } from 'lucide-react';
 
-interface PhoneMockupProps {
-  screen?: PreviewTab;
-  className?: string;
-  showTabs?: boolean;
-}
-
-export const PhoneMockup: React.FC<PhoneMockupProps> = ({
-  screen = 'student',
-  className = '',
-  showTabs = true,
-}) => {
-  return (
-    <div className={`relative transition-all ${className}`}>
-      <IPhoneAppPreview initialTab={screen} showTabs={showTabs} />
-    </div>
-  );
-};
+export { PhoneMockup };
+export type { MockupScreen };
 
 export const DashboardPhoneCard: React.FC<{
   title?: string;
   subtitle?: string;
-  initialScreen?: PreviewTab;
+  initialScreen?: MockupScreen;
   onDismiss?: () => void;
 }> = ({
-  title = 'Mobile App Experience',
-  subtitle = 'Experience Boardly optimized for iPhone and mobile web',
+  title = 'Boardly Mobile Study Cockpit',
+  subtitle = 'Experience distraction-free MCQ drills on any phone or tablet browser',
   initialScreen = 'student',
   onDismiss,
 }) => {
@@ -37,32 +22,30 @@ export const DashboardPhoneCard: React.FC<{
   if (dismissed) return null;
 
   return (
-    <div className="relative rounded-3xl p-5 bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-violet-600/10 border border-blue-200/60 dark:border-blue-900/40 shadow-sm transition-all overflow-hidden">
-      <div className="flex items-start justify-between gap-4">
+    <div className="relative rounded-[24px] p-5 bg-white/[0.04] backdrop-blur-xl border border-white/12 shadow-[0_20px_40px_-20px_rgba(0,0,0,0.6)] transition-all overflow-hidden mb-6">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-blue-500/20">
+          <div className="w-10 h-10 rounded-2xl bg-[#2F6BFF]/20 border border-[#2F6BFF]/30 text-[#22D3EE] flex items-center justify-center shrink-0 shadow-[0_0_16px_rgba(47,107,255,0.3)]">
             <Smartphone className="w-5 h-5" />
           </div>
           <div>
-            <h4 className="font-extrabold text-sm text-slate-900 dark:text-white flex items-center gap-1.5">
+            <h4 className="font-bold text-sm text-[#EAF0FF] flex items-center gap-2">
               <span>{title}</span>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300 font-bold uppercase tracking-wider">
-                Live Preview
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#2F6BFF]/15 text-[#22D3EE] border border-[#2F6BFF]/30 font-bold uppercase tracking-wider">
+                Sample preview
               </span>
             </h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              {subtitle}
-            </p>
+            <p className="text-xs text-[#A3B0CC] mt-0.5">{subtitle}</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
-            className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-50 border border-slate-200 dark:border-slate-700 cursor-pointer transition-colors"
+            className="px-3.5 py-1.5 rounded-xl bg-white/8 hover:bg-white/14 border border-white/12 text-xs font-semibold text-[#EAF0FF] cursor-pointer transition-colors"
           >
-            {expanded ? 'Hide Phone' : 'View Phone'}
+            {expanded ? 'Hide Mockup' : 'Preview Phone'}
           </button>
           <button
             type="button"
@@ -70,7 +53,7 @@ export const DashboardPhoneCard: React.FC<{
               setDismissed(true);
               onDismiss?.();
             }}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/50 cursor-pointer"
+            className="p-1.5 rounded-xl text-[#6F7C99] hover:text-[#EAF0FF] hover:bg-white/8 cursor-pointer transition-colors"
             title="Dismiss preview"
           >
             <X className="w-4 h-4" />
@@ -79,8 +62,8 @@ export const DashboardPhoneCard: React.FC<{
       </div>
 
       {expanded && (
-        <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-slate-700/60 animate-in fade-in">
-          <PhoneMockup screen={initialScreen} showTabs={true} />
+        <div className="mt-5 pt-5 border-t border-white/10 flex justify-center animate-in fade-in duration-300">
+          <PhoneMockup initialScreen={initialScreen} />
         </div>
       )}
     </div>

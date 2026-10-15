@@ -246,7 +246,7 @@ export const BoardlyMarketingApp: React.FC<BoardlyMarketingAppProps> = ({
   }
 
   return (
-    <div className="min-h-screen bg-[#FAF9F6] bg-grid-faint text-[#0A1330] flex flex-col selection:bg-indigo-600 selection:text-white font-poppins relative">
+    <div className="min-h-screen bg-[var(--bg)] bg-grid-48 text-[var(--text)] flex flex-col selection:bg-[var(--brand)] selection:text-white font-sans relative overflow-x-hidden">
       {/* Dynamic SEO Meta Tags, Canonical Link & Schema for Current Public Route */}
       <SeoHead pathname={getPathForMarketingPage(currentPage)} />
 

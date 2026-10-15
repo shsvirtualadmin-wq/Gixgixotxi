@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="en" class="bg-[#F8F9FB] light">
+<html lang="en" class="bg-[#070B14] dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Boardly — MCQ Practice for FSC &amp; Matric</title>
-    <meta name="description" content="Boardly by SHS Virtual Academy provides MCQ practice and test prep for FSC Matric and Post FSC students." />
+    <title>Boardly — MCQ Practice for Pakistani University Entrance Tests</title>
+    <meta name="description" content="Boardly provides distraction-free diagnostic MCQ practice and test prep for FAST-NUCES, NUST NET, GIKI, MDCAT, TCAT, and ECAT." />
     <link rel="canonical" href="https://boardly.cfd/" id="canonical-link" />
     <link rel="icon" type="image/png" href="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000e98c8211a04e8f3473512ef4.png" />
     <link rel="apple-touch-icon" href="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000e98c8211a04e8f3473512ef4.png" />
     <link rel="manifest" href="/manifest.json" />
-    <meta name="theme-color" content="#F8F9FB" id="theme-color-meta" />
+    <meta name="theme-color" content="#070B14" id="theme-color-meta" />
     <meta property="og:title" content="Boardly — MCQ Practice for FSC &amp; Matric" />
     <meta property="og:description" content="Boardly by SHS Virtual Academy provides MCQ practice and test prep for FSC Matric and Post FSC students." />
     <meta property="og:type" content="website" />
@@ -91,19 +91,24 @@
   ]
 }
     </script>
-    <meta name="color-scheme" content="light" />
+    <meta name="color-scheme" content="dark light" />
     <script>
       (function() {
         try {
-          localStorage.removeItem('boardly_theme');
-          localStorage.removeItem('shs_theme');
-          document.documentElement.setAttribute('data-theme', 'light');
-          document.documentElement.classList.add('light');
-          document.documentElement.classList.remove('dark');
-          document.documentElement.style.colorScheme = 'light';
-          document.documentElement.style.backgroundColor = '#F8F9FB';
+          var saved = localStorage.getItem('boardly_theme');
+          var isLight = saved === 'light';
+          document.documentElement.setAttribute('data-theme', isLight ? 'light' : 'dark');
+          if (isLight) {
+            document.documentElement.classList.add('light');
+            document.documentElement.classList.remove('dark');
+            document.documentElement.style.backgroundColor = '#EEF2FB';
+          } else {
+            document.documentElement.classList.add('dark');
+            document.documentElement.classList.remove('light');
+            document.documentElement.style.backgroundColor = '#070B14';
+          }
           var meta = document.getElementById('theme-color-meta');
-          if (meta) meta.setAttribute('content', '#F8F9FB');
+          if (meta) meta.setAttribute('content', isLight ? '#EEF2FB' : '#070B14');
         } catch (e) {}
       })();
     </script>
@@ -111,21 +116,21 @@
     <link rel="preload" href="/fonts/Oblata-Display-Regular.otf" as="font" type="font/otf" crossorigin>
 
   </head>
-  <body class="min-h-[100dvh] bg-[#F8F9FB] text-[#0d1b3e] antialiased selection:bg-[#4f46e5] selection:text-white" style="background-color: #F8F9FB;">
-    <!-- Requirement 1: Ambient background layer with blurred blobs and 40px grid -->
+  <body class="min-h-[100dvh] bg-[#070B14] text-[#EAF0FF] antialiased selection:bg-[#2F6BFF] selection:text-white" style="background-color: #070B14;">
+    <!-- Requirement 1: Ambient background layer with blurred blobs and 48px grid -->
     <div class="boardly-ambient-bg" aria-hidden="true"></div>
     <div id="root">
       <!-- Minimal lightweight loader until React tree mounts -->
-      <div id="initial-preloader" style="min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; background-color: #F8F9FB;">
-        <div style="width: 60px; height: 60px; border-radius: 18px; background-color: #FFFFFF; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 16px rgba(0,0,0,0.06); border: 1px solid rgba(226,232,240,0.8); animation: initial-pulse 1.8s ease-in-out infinite;">
+      <div id="initial-preloader" style="min-height: 100dvh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; background-color: #070B14;">
+        <div style="width: 64px; height: 64px; border-radius: 20px; background-color: rgba(255,255,255,0.06); display: flex; align-items: center; justify-content: center; box-shadow: 0 20px 50px -20px rgba(0,0,0,0.6); border: 1px solid rgba(255,255,255,0.12); backdrop-filter: blur(20px); animation: initial-pulse 1.8s ease-in-out infinite;">
           <img src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000e98c8211a04e8f3473512ef4.png" alt="Boardly Logo" style="width: 48px; height: 48px; object-fit: contain; border-radius: 14px;" />
         </div>
-        <div style="height: 16px; width: 144px; background-color: #E2E8F0; border-radius: 9999px; margin-top: 16px; animation: initial-pulse 1.8s ease-in-out infinite;"></div>
-        <div style="height: 12px; width: 224px; background-color: #F1F5F9; border-radius: 9999px; margin-top: 12px; animation: initial-pulse 1.8s ease-in-out infinite;"></div>
+        <div style="height: 14px; width: 140px; background-color: rgba(255,255,255,0.08); border-radius: 9999px; margin-top: 18px; animation: initial-pulse 1.8s ease-in-out infinite;"></div>
+        <div style="height: 10px; width: 200px; background-color: rgba(255,255,255,0.04); border-radius: 9999px; margin-top: 10px; animation: initial-pulse 1.8s ease-in-out infinite;"></div>
         <style>
           @keyframes initial-pulse {
             0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(0.98); }
+            50% { opacity: 0.55; transform: scale(0.98); }
           }
         </style>
       </div>

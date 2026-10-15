@@ -77,3 +77,15 @@ This document tracks all foundational architectural, security, and product desig
 - **Context:** The project operates on the Firebase Spark (free) plan which disallows Google Cloud Functions.
 - **Decision:** Static hosting and SPA routing are served by Cloudflare Pages (`dist/`). AI integrations and secret management run on Cloudflare Pages Functions (`/functions`), keeping all API keys out of client bundles.
 - **Consequences:** Free hosting, zero infrastructure costs, high edge performance, and enterprise-grade security.
+
+---
+
+## ADR 010: Design System Tokens, Dark Glass Theme, and Neutral Phone Mockup
+- **Status:** Approved
+- **Context:** Previous UI suffered from visual fragmentation (mixed light and dark themes, inconsistent button tap targets, harsh blue borders, and low contrast).
+- **Decision:**
+  1. Standardized all tokens in CSS variables: `--bg: #070B14`, `--bg-2: #0E1626`, `--surface: rgba(255,255,255,0.06)`, `--surface-hover: rgba(255,255,255,0.10)`, `--border: rgba(255,255,255,0.12)`, `--text: #EAF0FF`, `--text-muted: #A3B0CC`, `--text-faint: #6F7C99`, `--brand: #2F6BFF`, `--brand-2: #22D3EE`, `--violet: #7C5CFF`. Role accents: Student (blue to cyan), Crew (violet to magenta), Captain (amber to orange), Admin (emerald on slate).
+  2. Built unified base UI primitives (`Button`, `Card`, `Input`, `Select`, `Modal`, `Sheet`, `Tabs`, `Badge`, `Progress`, `Skeleton`, `Toast`, `Table`, `EmptyState`, `ErrorState`).
+  3. Created neutral metallic study hardware `PhoneMockup` with dark titanium gradient frame, glass diagonal reflection streak, centered camera pill, 3D cursor tilt, and 4 interactive preview screens (Student, Crew, Captain, Arena) badged with "Sample preview".
+  4. Redesigned public marketing pages (Home, Features, Pricing, Contact, Privacy, Terms, FAQs, About) using the dark glass aesthetic with 48px grid background and subtle radial glows.
+- **Consequences:** Cohesive visual identity, mobile-friendly 44px+ tap targets, accessible WCAG contrast ratios, and zero visual flicker.

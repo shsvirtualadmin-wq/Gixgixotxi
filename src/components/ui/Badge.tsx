@@ -2,39 +2,64 @@ import React from 'react';
 
 export interface BadgeProps {
   children: React.ReactNode;
-  variant?: 'indigo' | 'violet' | 'teal' | 'amber' | 'emerald' | 'rose' | 'slate' | 'neutral';
-  size?: 'xs' | 'sm' | 'md';
-  className?: string;
+  variant?:
+    | 'brand'
+    | 'student'
+    | 'crew'
+    | 'captain'
+    | 'admin'
+    | 'success'
+    | 'warning'
+    | 'danger'
+    | 'neutral'
+    | 'indigo'
+    | 'violet'
+    | 'teal'
+    | 'amber'
+    | 'emerald'
+    | 'rose'
+    | 'slate';
+  size?: 'sm' | 'md';
   icon?: React.ReactNode;
+  className?: string;
 }
 
 export const Badge: React.FC<BadgeProps> = ({
   children,
-  variant = 'indigo',
-  size = 'sm',
-  className = '',
+  variant = 'brand',
+  size = 'md',
   icon,
+  className = '',
 }) => {
-  const variantStyles = {
-    indigo: 'bg-indigo-50 text-indigo-700 border-indigo-200/80 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/60',
-    violet: 'bg-violet-50 text-violet-700 border-violet-200/80 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-800/60',
-    teal: 'bg-teal-50 text-teal-700 border-teal-200/80 dark:bg-teal-950/40 dark:text-teal-300 dark:border-teal-800/60',
-    amber: 'bg-amber-50 text-amber-750 border-amber-200/80 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800/60',
-    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200/80 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800/60',
-    rose: 'bg-rose-50 text-rose-700 border-rose-200/80 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800/60',
-    slate: 'bg-slate-100 text-slate-700 border-slate-200/80 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700',
-    neutral: 'bg-white/80 text-slate-800 border-slate-200/90 shadow-2xs dark:bg-slate-900/80 dark:text-slate-200 dark:border-slate-800',
+  const sizeClasses = {
+    sm: 'h-7 px-2.5 text-[11px] gap-1',
+    md: 'h-8 px-3.5 text-xs gap-1.5', // 32px height
   };
 
-  const sizeStyles = {
-    xs: 'text-[10px] px-2 py-0.5 font-semibold tracking-wide',
-    sm: 'text-xs px-2.5 py-0.5 font-bold',
-    md: 'text-xs px-3 py-1 font-bold',
+  const variantClasses: Record<string, string> = {
+    brand: 'bg-[#2F6BFF]/12 text-[#22D3EE] border-[#2F6BFF]/30',
+    student: 'bg-[#2F6BFF]/12 text-[#22D3EE] border-[#2F6BFF]/30',
+    crew: 'bg-[#7C5CFF]/12 text-[#E879F9] border-[#7C5CFF]/30',
+    captain: 'bg-[#F59E0B]/12 text-[#FB923C] border-[#F59E0B]/30',
+    admin: 'bg-[#10B981]/12 text-[#34D399] border-[#10B981]/30',
+    success: 'bg-[#34D399]/12 text-[#34D399] border-[#34D399]/30',
+    warning: 'bg-[#FBBF24]/12 text-[#FBBF24] border-[#FBBF24]/30',
+    danger: 'bg-[#F87171]/12 text-[#F87171] border-[#F87171]/30',
+    neutral: 'bg-white/8 text-[#A3B0CC] border-white/12',
+    indigo: 'bg-[#2F6BFF]/12 text-[#22D3EE] border-[#2F6BFF]/30',
+    violet: 'bg-[#7C5CFF]/12 text-[#E879F9] border-[#7C5CFF]/30',
+    teal: 'bg-[#22D3EE]/12 text-[#22D3EE] border-[#22D3EE]/30',
+    amber: 'bg-[#F59E0B]/12 text-[#FB923C] border-[#F59E0B]/30',
+    emerald: 'bg-[#10B981]/12 text-[#34D399] border-[#10B981]/30',
+    rose: 'bg-[#F87171]/12 text-[#F87171] border-[#F87171]/30',
+    slate: 'bg-white/8 text-[#A3B0CC] border-white/12',
   };
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border transition-colors ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      className={`inline-flex items-center justify-center font-semibold rounded-full border backdrop-blur-md select-none shrink-0 ${sizeClasses[size]} ${
+        variantClasses[variant] || variantClasses.neutral
+      } ${className}`}
     >
       {icon && <span className="shrink-0">{icon}</span>}
       <span>{children}</span>

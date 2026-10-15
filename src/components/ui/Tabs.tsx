@@ -12,7 +12,6 @@ export interface TabsProps {
   activeTab: string;
   onChange: (tabId: string) => void;
   variant?: 'pills' | 'underline';
-  size?: 'sm' | 'md';
   className?: string;
 }
 
@@ -21,15 +20,15 @@ export const Tabs: React.FC<TabsProps> = ({
   activeTab,
   onChange,
   variant = 'pills',
-  size = 'md',
   className = '',
 }) => {
   return (
     <div
-      className={`flex items-center gap-1 overflow-x-auto no-scrollbar ${
+      role="tablist"
+      className={`flex items-center gap-1.5 overflow-x-auto no-scrollbar ${
         variant === 'underline'
-          ? 'border-b border-slate-200 dark:border-slate-800'
-          : 'p-1 rounded-2xl bg-slate-100 dark:bg-slate-800/60'
+          ? 'border-b border-white/12 pb-1'
+          : 'p-1.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md'
       } ${className}`}
     >
       {tabs.map((tab) => {
@@ -39,29 +38,31 @@ export const Tabs: React.FC<TabsProps> = ({
           return (
             <button
               key={tab.id}
+              role="tab"
+              aria-selected={isActive}
               type="button"
               onClick={() => onChange(tab.id)}
-              className={`relative px-4 py-2.5 text-xs sm:text-sm font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-2 ${
+              className={`relative px-4 py-2.5 text-xs sm:text-sm font-semibold transition-all cursor-pointer whitespace-nowrap flex items-center gap-2 ${
                 isActive
-                  ? 'text-indigo-600 dark:text-violet-400'
-                  : 'text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white'
+                  ? 'text-[#22D3EE]'
+                  : 'text-[#A3B0CC] hover:text-[#EAF0FF]'
               }`}
             >
               {tab.icon && <span className="shrink-0">{tab.icon}</span>}
               <span>{tab.label}</span>
               {typeof tab.count === 'number' && (
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold tabular-nums ${
                     isActive
-                      ? 'bg-indigo-100 text-indigo-700 dark:bg-violet-950/80 dark:text-violet-300'
-                      : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                      ? 'bg-[#2F6BFF]/20 text-[#22D3EE] border border-[#22D3EE]/30'
+                      : 'bg-white/8 text-[#A3B0CC]'
                   }`}
                 >
                   {tab.count}
                 </span>
               )}
               {isActive && (
-                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 dark:bg-violet-500 rounded-full" />
+                <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-[#2F6BFF] to-[#22D3EE] rounded-full shadow-[0_0_12px_#22D3EE]" />
               )}
             </button>
           );
@@ -70,22 +71,24 @@ export const Tabs: React.FC<TabsProps> = ({
         return (
           <button
             key={tab.id}
+            role="tab"
+            aria-selected={isActive}
             type="button"
             onClick={() => onChange(tab.id)}
-            className={`px-3 sm:px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 cursor-pointer whitespace-nowrap flex items-center gap-2 select-none ${
               isActive
-                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-violet-400 shadow-xs'
-                : 'text-slate-600 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200/50 dark:hover:bg-slate-800'
+                ? 'bg-gradient-to-r from-[#2F6BFF] to-[#22D3EE] text-white shadow-[0_0_20px_-3px_rgba(47,107,255,0.5)] border border-white/20'
+                : 'text-[#A3B0CC] hover:text-[#EAF0FF] hover:bg-white/6'
             }`}
           >
             {tab.icon && <span className="shrink-0">{tab.icon}</span>}
             <span>{tab.label}</span>
             {typeof tab.count === 'number' && (
               <span
-                className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                className={`text-[10px] px-2 py-0.5 rounded-full font-bold tabular-nums ${
                   isActive
-                    ? 'bg-indigo-50 text-indigo-700 dark:bg-violet-950/60 dark:text-violet-300'
-                    : 'bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-300'
+                    ? 'bg-white/20 text-white'
+                    : 'bg-white/10 text-[#A3B0CC]'
                 }`}
               >
                 {tab.count}

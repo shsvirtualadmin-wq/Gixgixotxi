@@ -1,512 +1,591 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   ArrowRight,
   Sparkles,
   CheckCircle2,
   BookOpen,
-  Brain,
   Timer,
   BarChart3,
-  FileDown,
   Trophy,
   Users,
-  Star,
-  Check,
-  X,
-  Clock,
   ShieldCheck,
   Zap,
+  ChevronDown,
+  Check,
+  Flame,
+  Award,
+  GraduationCap,
 } from 'lucide-react';
-import { MarketingPage } from './Navbar';
-import { Hero } from './design-system/Hero';
-import { Section } from './design-system/Section';
-import { SectionHeader } from './design-system/SectionHeader';
-import { Button } from './design-system/Button';
-import { ScreenCard } from './ScreenCard';
-import { IPhoneAppPreview } from './IPhoneAppPreview';
-
-import { FaqAccordion, FaqItem } from './design-system/FaqAccordion';
-import { ScrollReveal } from './design-system/useScrollReveal';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { Badge } from '../ui/Badge';
+import { PhoneMockup } from './PhoneMockup';
 import { ReviewsWall } from './ReviewsWall';
-import { FinalCTA } from './FinalCTA';
 
 interface HomePageProps {
-  onNavigate: (page: MarketingPage) => void;
-  onGetStarted: () => void;
-  onOpenEventModal?: (event: 'blitz' | 'arena') => void;
+  onNavigate?: (page: string) => void;
+  onGetStarted?: () => void;
 }
 
-const HOME_TYPEWRITER_PHRASES = [
-  'Matric Success',
-  'FSc Confidence',
-  'Entry Test Wins',
-  'Academic Excellence',
-];
+export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onGetStarted }) => {
+  const [openFaq, setOpenFaq] = useState<number | null>(null);
 
-const COMPARISON_ROWS = [
-  {
-    title: 'Full Prep Season Cost',
-    isPrice: true,
-  },
-  {
-    title: 'Study 24/7 on Your Schedule',
-    boardly: true,
-    coaching: false,
-    freeLinks: true,
-  },
-  {
-    title: '17k+ Verified Questions',
-    boardly: true,
-    coaching: false,
-    freeLinks: false,
-  },
-  {
-    title: 'Timed Mocks & Penalties',
-    boardly: true,
-    coaching: true,
-    freeLinks: false,
-  },
-  {
-    title: 'Instant Step Derivations',
-    boardly: true,
-    coaching: false,
-    freeLinks: false,
-  },
-  {
-    title: 'Weakness Detection',
-    boardly: true,
-    coaching: false,
-    freeLinks: false,
-  },
-];
+  const handleRoute = (route: string) => {
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', route);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+    if (onNavigate) {
+      onNavigate(route.replace('/', '') || 'home');
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
-const HOME_FAQS: FaqItem[] = [
-  {
-    question: 'Is Boardly free to use?',
-    answer:
-      'Yes! Students can practice core chapter question banks, attempt diagnostic drills, and inspect step-by-step derivations completely free. Optional Pro upgrades unlock unlimited mocks and advanced diagnostic analytics.',
-  },
-  {
-    question: 'Which exams and boards are supported?',
-    answer:
-      'Boardly covers FBISE and provincial boards for SSC (Classes 9 & 10) and HSSC (Classes 11 & 12), as well as dedicated entry test modules for PMDC MDCAT, FAST-NU, and UET/ECAT.',
-  },
-  {
-    question: 'Can I practice on my smartphone?',
-    answer:
-      'Yes, Boardly is 100% mobile-first and works smoothly in any mobile browser without requiring large downloads. Your practice history synchronizes instantly across devices.',
-  },
-  {
-    question: 'How does negative marking work in mock exams?',
-    answer:
-      'In university entrance tests like FAST-NU or MDCAT, incorrect answers deduct fractional marks. Boardly applies authentic weighting formulas so your aggregate score reflects real test conditions.',
-  },
-  {
-    question: 'What is the strict no-refund policy?',
-    answer:
-      'Pro plan upgrades grant immediate access to digital testing archives and servers. Therefore, all digital Pro purchases are final and non-refundable.',
-  },
-];
+  const faqs = [
+    {
+      q: 'Is Boardly free to use?',
+      a: 'Yes! Every student gets daily practice sprints, diagnostic test results, and step-by-step KaTeX derivations completely free. The optional Pro membership (PKR 199/month) unlocks unlimited full-length past paper mocks and expanded AI tutoring.',
+    },
+    {
+      q: 'Which Pakistani university entrance tests are covered?',
+      a: 'Boardly has dedicated question banks and timers for FAST-NUCES (CS & Engineering), NUST NET (Engineering, Computing, Business), GIKI, PMDC MDCAT, UET ECAT, and FBISE HSSC SLO-based curriculum.',
+    },
+    {
+      q: 'How does Boardy AI Tutor explain mathematics and derivations?',
+      a: 'Boardy renders full mathematical formulas using KaTeX. When you get stuck on a difficult question in Physics or Mathematics, Boardy breaks down the exact formula step by step with zero hallucinations.',
+    },
+    {
+      q: 'What payment methods are supported for Boardly Pro (PKR 199)?',
+      a: 'We support local Pakistani payment methods: JazzCash, EasyPaisa, and direct bank transfers. Simply submit your payment slip through the portal, and your Pro upgrade is activated rapidly.',
+    },
+    {
+      q: 'Can I practice on my smartphone or low-speed internet?',
+      a: 'Yes. Boardly is built with a lightweight dark glass study cockpit optimized for mobile browsers, with local offline caching for fast loading on any cellular connection.',
+    },
+  ];
 
-export const HomePage: React.FC<HomePageProps> = ({
-  onNavigate,
-  onGetStarted,
-}) => {
   return (
-    <div className="w-full">
-      {/* 1. HERO SECTION */}
-      <Hero
-        eyebrow="Self-paced diagnostic practice"
-        staticHeadingPrefix="The Smarter Path to"
-        typewriterPhrases={HOME_TYPEWRITER_PHRASES}
-        staticHeadingSuffix="Across Pakistan"
-        description="Master 17,000+ board-aligned questions, test yourself under authentic timing and negative marking, and get instant step-by-step derivations."
-        primaryCtaText="Start Free Practice"
-        secondaryCtaText="Explore Features"
-        onPrimaryCta={onGetStarted}
-        onSecondaryCta={() => onNavigate('features')}
-      />
-
-      {/* 1.5 REAL APP PREVIEW (Pure CSS/SVG iPhone 16 Pro Frame) */}
-      <section className="relative w-full py-12 sm:py-16 px-4 overflow-hidden border-y border-slate-200/60 bg-gradient-to-b from-slate-50/60 via-white to-slate-50/40">
-        <div className="max-w-4xl mx-auto text-center mb-6 sm:mb-8">
-          <div className="inline-block bg-white border border-[#dbe3f5] text-[#1a6dff] rounded-full text-[12px] font-semibold px-3 py-1 shadow-xs mb-3">
-            Real app experience
+    <div className="w-full flex flex-col items-center pt-24 sm:pt-28 pb-16">
+      {/* ============================================================== */}
+      {/* 1. HERO SECTION                                                */}
+      {/* ============================================================== */}
+      <section className="w-full max-w-6xl px-4 sm:px-6 py-8 sm:py-16 text-center lg:text-left flex flex-col lg:flex-row items-center justify-between gap-12 lg:gap-16">
+        <div className="flex-1 flex flex-col items-center lg:items-start max-w-2xl">
+          {/* Trust Pill */}
+          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/6 border border-white/12 backdrop-blur-md mb-6">
+            <Sparkles className="w-4 h-4 text-[#22D3EE]" />
+            <span className="text-xs font-semibold text-[#A3B0CC]">
+              Engineered for Pakistani Entrance Exams
+            </span>
           </div>
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#0f172a] tracking-tight font-display">
-            Built for Real Exam Readiness
+
+          {/* Hero Headline with 1-2 gradient words */}
+          <h1 className="text-4xl sm:text-5xl lg:text-[56px] font-extrabold text-[#EAF0FF] tracking-[-0.03em] leading-[1.08] font-['Oblata_Display',sans-serif]">
+            Master University Entrance Tests with{' '}
+            <span className="bg-gradient-to-r from-[#2F6BFF] via-[#22D3EE] to-[#7C5CFF] bg-clip-text text-transparent">
+              Zero Distraction
+            </span>
+          </h1>
+
+          {/* Subline */}
+          <p className="mt-5 text-base sm:text-lg text-[#A3B0CC] leading-relaxed max-w-xl">
+            17,000+ verified MCQs, timed test engines, KaTeX step-by-step formula derivations, and 24/7 AI tutoring for FAST-NUCES, NUST NET, GIKI, MDCAT, and ECAT.
+          </p>
+
+          {/* Dual CTAs */}
+          <div className="mt-8 flex flex-col sm:flex-row items-center gap-3.5 w-full sm:w-auto">
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => handleRoute('/signup')}
+              rightIcon={<ArrowRight className="w-4 h-4" />}
+              className="w-full sm:w-auto text-base"
+            >
+              Start Free Practice
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => handleRoute('/pricing')}
+              className="w-full sm:w-auto text-base"
+            >
+              Explore Pro (PKR 199)
+            </Button>
+          </div>
+
+          {/* Trust Chips */}
+          <div className="mt-10 pt-8 border-t border-white/10 grid grid-cols-2 sm:grid-cols-4 gap-3 w-full text-left">
+            <div className="flex flex-col">
+              <span className="text-lg font-bold text-[#EAF0FF] tabular-nums">17,000+</span>
+              <span className="text-xs text-[#A3B0CC]">Verified MCQs</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-lg font-bold text-[#22D3EE]">KaTeX Math</span>
+              <span className="text-xs text-[#A3B0CC]">Step Derivations</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-lg font-bold text-[#34D399]">Live Timers</span>
+              <span className="text-xs text-[#A3B0CC]">Negative Marking</span>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-lg font-bold text-[#7C5CFF]">FAST · NUST</span>
+              <span className="text-xs text-[#A3B0CC]">MDCAT & GIKI</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Hero PhoneMockup (Neutral hardware, 3D tilt, 4 screens) */}
+        <div className="flex-1 flex justify-center items-center w-full max-w-md lg:max-w-none">
+          <PhoneMockup />
+        </div>
+      </section>
+
+      {/* ============================================================== */}
+      {/* 2. BENTO-GRID FEATURES SECTION                                */}
+      {/* ============================================================== */}
+      <section className="w-full max-w-6xl px-4 sm:px-6 py-16 sm:py-24 text-left">
+        <div className="text-center max-w-2xl mx-auto mb-14">
+          <Badge variant="brand" className="mb-3">
+            Cockpit Features
+          </Badge>
+          <h2 className="text-3xl sm:text-4xl font-extrabold text-[#EAF0FF] tracking-tight font-['Oblata_Display',sans-serif]">
+            Everything You Need to Secure Your University Seat
           </h2>
-          <p className="mt-2.5 text-sm sm:text-base text-slate-600 max-w-xl mx-auto leading-relaxed">
-            Practice board-aligned MCQs, review step derivations, compete in circle leaderboards, and coordinate college mockathons.
+          <p className="mt-3 text-sm sm:text-base text-[#A3B0CC]">
+            Say goodbye to disorganized WhatsApp groups and blurry past paper photocopies. Boardly brings structured exam engineering to your screen.
           </p>
         </div>
 
-        <IPhoneAppPreview initialTab="student" />
-      </section>
-
-      {/* 2. CORE CAPABILITIES (Light Section) */}
-      <Section variant="light">
-        <SectionHeader
-          eyebrow="Engineered for retention"
-          title="Active Drills Instead of"
-          highlight="Passive Cramming"
-          description="Most students read lecture notes without verifying whether they can solve tricky questions under time pressure. Boardly turns revision into an active diagnostic game."
-        />
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-          <div className="lg:col-span-6 space-y-4">
-            {[
-              {
-                icon: <Brain className="w-5 h-5 text-indigo-600" />,
-                title: 'Chapter-Wise Diagnostic Drills',
-                desc: 'Target specific subjects and subtopics with curated SLO-based questions.',
-              },
-              {
-                icon: <Timer className="w-5 h-5 text-teal-600" />,
-                title: 'Authentic Timed Mocks',
-                desc: 'Experience real exam pacing, countdown timers, and negative marking penalty formulas.',
-              },
-              {
-                icon: <BarChart3 className="w-5 h-5 text-violet-600" />,
-                title: 'Instant Weakness Analytics',
-                desc: 'Pinpoint exactly which formulas and chapters trigger score deductions.',
-              },
-            ].map((pillar, i) => (
-              <ScrollReveal key={i} delayMs={i * 60}>
-                <div className="p-5 rounded-2xl bg-white/80 backdrop-blur-md border border-slate-200/80 shadow-xs flex items-start gap-4">
-                  <div className="p-2.5 rounded-xl bg-slate-100 shrink-0">
-                    {pillar.icon}
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-slate-900">{pillar.title}</h3>
-                    <p className="text-xs sm:text-sm text-slate-600 mt-1 leading-relaxed">
-                      {pillar.desc}
-                    </p>
-                  </div>
-                </div>
-              </ScrollReveal>
-            ))}
-          </div>
-
-          <div className="lg:col-span-6">
-            <ScrollReveal delayMs={120}>
-              <ScreenCard
-                mode="practice"
-                title="Boardly Diagnostic Test"
-                subtitle="Physics · Electrostatics & Field Theory"
-              />
-            </ScrollReveal>
-          </div>
-        </div>
-      </Section>
-
-      {/* 3. HOW IT WORKS & THREE STEP FLOW */}
-      <section
-        className="relative w-full overflow-hidden [overflow-x:clip] text-[#0f172a]"
-        style={{
-          background: 'linear-gradient(180deg, #f5f7ff 0%, #ffffff 100%)',
-          padding: '64px 20px',
-        }}
-      >
-        {/* Smooth fade into sections above and below */}
-        <div
-          className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-[#f0f6ff]/40 to-transparent pointer-events-none"
-          aria-hidden="true"
-        />
-        <div
-          className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#f6f5ff]/40 to-transparent pointer-events-none"
-          aria-hidden="true"
-        />
-
-        <div className="max-w-4xl mx-auto relative z-10">
-          {/* Quote Banner */}
-          <div className="py-4 px-4 mb-12 text-center">
-            <p className="text-[24px] font-bold text-[#0f172a] leading-[1.4] max-w-[340px] sm:max-w-2xl mx-auto text-center">
-              Active question practice builds deeper retention and real exam timing than passive lectures ever could.
-            </p>
-          </div>
-
-          {/* Section Header */}
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            {/* Pill above heading */}
-            <div className="mb-3">
-              <span className="inline-block bg-white border border-[#dbe3f5] text-[#1a6dff] rounded-full text-[13px] font-semibold px-3.5 py-1 shadow-xs">
-                Three step flow
-              </span>
-            </div>
-
-            {/* Heading */}
-            <h2 className="text-[28px] font-extrabold text-[#0f172a] leading-[1.2] font-display">
-              How Boardly <span style={{ color: '#1a6dff' }}>Powers Your Revision</span>
-            </h2>
-
-            {/* Subtext */}
-            <p className="mt-3 text-[16px] text-[#475569] leading-[1.6]">
-              From track selection to diagnostic mastery in three focused steps.
-            </p>
-          </div>
-
-          {/* Three step flow cards */}
-          <div className="max-w-2xl mx-auto space-y-6">
-            {[
-              {
-                number: 1,
-                title: 'Select Your Academic Track',
-                description:
-                  'Choose between MDCAT Medical, FSC Pre-Engineering, ICS, FAST-NU, or Matric boards. Your question feeds immediately calibrate to your syllabus.',
-                checklist: ['PMDC & FBISE Aligned', 'Automated Syllabus Calibration'],
-                linkText: 'Explore Tracks',
-                onLinkClick: () => onNavigate('features'),
-                linkHref: '/features',
-              },
-              {
-                number: 2,
-                title: 'Attempt Timed Diagnostic Drills',
-                description:
-                  'Solve bite-sized 15-minute drills or complete full-length mock exams with real countdown timers and negative marking penalties.',
-                checklist: ['Single Question Mode', 'Realistic Exam Pressure'],
-                linkText: 'Try Free Drill',
-                onLinkClick: onGetStarted,
-                linkHref: '/app',
-              },
-              {
-                number: 3,
-                title: 'Review Derivations & Eliminate Weaknesses',
-                description:
-                  'Never guess why an option was right. Inspect complete mathematical steps, textbook citations, and diagnostic score trends.',
-                checklist: ['Step-by-step Explanations', 'Diagnostic Score History'],
-                linkText: 'Start Practicing',
-                onLinkClick: onGetStarted,
-                linkHref: '/app',
-              },
-            ].map((step, idx, arr) => (
-              <div key={step.number} className="relative flex items-start gap-4 sm:gap-6">
-                {/* Number circle column */}
-                <div className="relative flex flex-col items-center shrink-0">
-                  <div className="w-10 h-10 rounded-full bg-[#1a6dff] text-white font-bold text-base flex items-center justify-center shrink-0 shadow-sm z-10">
-                    {step.number}
-                  </div>
-                  {/* Vertical line connecting the circles: 2px #c7d2fe, ending at the last circle */}
-                  {idx < arr.length - 1 && (
-                    <div
-                      className="w-[2px] bg-[#c7d2fe] absolute top-10 bottom-[-24px] left-1/2 -translate-x-1/2"
-                      aria-hidden="true"
-                    />
-                  )}
-                </div>
-
-                {/* Card on the right */}
-                <div className="flex-1 bg-white border border-[#e2e8f0] rounded-[28px] p-6 shadow-[0_10px_30px_rgba(15,23,42,0.06)] text-left">
-                  <h3 className="text-[18px] font-bold text-[#0f172a]">
-                    {step.title}
-                  </h3>
-                  <p className="mt-2 text-[15px] text-[#475569] leading-[1.6]">
-                    {step.description}
-                  </p>
-
-                  {/* Checklist items */}
-                  {step.checklist && step.checklist.length > 0 && (
-                    <ul className="mt-4 pt-4 border-t border-[#e2e8f0] space-y-2">
-                      {step.checklist.map((item, cIdx) => (
-                        <li key={cIdx} className="flex items-center gap-2 text-[14px] text-[#334155]">
-                          <span className="p-0.5 rounded-full bg-blue-50 text-[#1a6dff] shrink-0">
-                            <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                          </span>
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-
-                  {/* Text link */}
-                  {step.linkText && (
-                    <div className="mt-4 pt-2">
-                      <a
-                        href={step.linkHref || '#'}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          step.onLinkClick();
-                        }}
-                        className="inline-flex items-center gap-1.5 text-[15px] font-semibold text-[#1a6dff] hover:text-blue-700 transition-colors cursor-pointer"
-                      >
-                        <span>{step.linkText}</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </a>
-                    </div>
-                  )}
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-5 sm:gap-6">
+          {/* Card 1: Span 8 - Test Cockpit & Timer */}
+          <Card
+            variant="default"
+            className="md:col-span-8 p-6 sm:p-8 flex flex-col justify-between"
+          >
+            <div>
+              <div className="w-12 h-12 rounded-2xl bg-[#2F6BFF]/15 border border-[#2F6BFF]/30 text-[#22D3EE] flex items-center justify-center mb-5 shadow-[0_0_20px_rgba(47,107,255,0.3)]">
+                <Timer className="w-6 h-6" />
               </div>
-            ))}
-          </div>
+              <h3 className="text-xl sm:text-2xl font-bold text-[#EAF0FF]">
+                Distraction-Free Exam Engine & Countdown Timer
+              </h3>
+              <p className="text-sm text-[#A3B0CC] mt-2 leading-relaxed max-w-xl">
+                Experience the exact stress conditions of exam day. Sticky glass timers turn red under 5 minutes, auto-saving your answers and enforcing exam-specific negative marking rules.
+              </p>
+            </div>
+            {/* Visual simulation strip */}
+            <div className="mt-6 p-4 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-between text-xs sm:text-sm">
+              <div className="flex items-center gap-3">
+                <span className="w-3 h-3 rounded-full bg-[#34D399] animate-pulse" />
+                <span className="font-semibold text-[#EAF0FF]">FAST CS Paper in progress</span>
+              </div>
+              <span className="font-mono font-bold text-[#F87171] bg-red-500/10 px-3 py-1 rounded-lg border border-red-500/20 tabular-nums">
+                04:32 Left
+              </span>
+            </div>
+          </Card>
+
+          {/* Card 2: Span 4 - 17k Question Bank */}
+          <Card variant="default" className="md:col-span-4 p-6 sm:p-8 flex flex-col justify-between">
+            <div>
+              <div className="w-12 h-12 rounded-2xl bg-[#22D3EE]/15 border border-[#22D3EE]/30 text-[#22D3EE] flex items-center justify-center mb-5 shadow-[0_0_20px_rgba(34,211,238,0.3)]">
+                <BookOpen className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-[#EAF0FF]">17,000+ Question Vault</h3>
+              <p className="text-sm text-[#A3B0CC] mt-2 leading-relaxed">
+                Indexed by university, board, subject, chapter, and difficulty level. Never practice obsolete questions.
+              </p>
+            </div>
+            <div className="mt-6 flex flex-wrap gap-2 text-xs">
+              <span className="px-2.5 py-1 rounded-lg bg-white/8 text-[#EAF0FF]">Mathematics</span>
+              <span className="px-2.5 py-1 rounded-lg bg-white/8 text-[#EAF0FF]">Physics</span>
+              <span className="px-2.5 py-1 rounded-lg bg-white/8 text-[#EAF0FF]">Chemistry</span>
+              <span className="px-2.5 py-1 rounded-lg bg-white/8 text-[#22D3EE]">Analytical IQ</span>
+            </div>
+          </Card>
+
+          {/* Card 3: Span 4 - KaTeX AI Study Buddy */}
+          <Card variant="default" className="md:col-span-4 p-6 sm:p-8 flex flex-col justify-between">
+            <div>
+              <div className="w-12 h-12 rounded-2xl bg-[#7C5CFF]/15 border border-[#7C5CFF]/30 text-[#7C5CFF] flex items-center justify-center mb-5 shadow-[0_0_20px_rgba(124,92,255,0.3)]">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl font-bold text-[#EAF0FF]">Boardy 24/7 AI Tutor</h3>
+              <p className="text-sm text-[#A3B0CC] mt-2 leading-relaxed">
+                Step-by-step formula derivations in clean LaTeX math. Ask follow-up questions at 2 AM without waiting for an academy teacher.
+              </p>
+            </div>
+            <div className="mt-6 p-3 rounded-xl bg-white/5 border border-white/8 text-xs font-mono text-[#22D3EE]">
+              \[ \int_0^{\pi/2} \sin^2(x) dx = \frac{\pi}{4} \]
+            </div>
+          </Card>
+
+          {/* Card 4: Span 8 - Live Arena & Blitz */}
+          <Card
+            variant="default"
+            className="md:col-span-8 p-6 sm:p-8 flex flex-col justify-between"
+          >
+            <div>
+              <div className="w-12 h-12 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-400 flex items-center justify-center mb-5 shadow-[0_0_20px_rgba(239,68,68,0.3)]">
+                <Trophy className="w-6 h-6" />
+              </div>
+              <h3 className="text-xl sm:text-2xl font-bold text-[#EAF0FF]">
+                Boardly Arena & Live Weekend Blitz Mocks
+              </h3>
+              <p className="text-sm text-[#A3B0CC] mt-2 leading-relaxed max-w-xl">
+                Compete synchronously with hundreds of serious students across Lahore, Karachi, Islamabad, and Peshawar. Live nationwide rank updates the second you submit.
+              </p>
+            </div>
+            <div className="mt-6 flex items-center gap-3">
+              <span className="relative flex h-3 w-3">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
+              </span>
+              <span className="text-xs font-bold uppercase tracking-wider text-red-400">
+                Weekly National Entrance Test Sessions
+              </span>
+            </div>
+          </Card>
         </div>
       </section>
 
-      {/* 4. COMPARISON MATRIX (Light Section) */}
-      <Section variant="light">
-        <SectionHeader
-          eyebrow="Why students switch"
-          title="Where Boardly Stands Against"
-          highlight="Traditional Coaching"
-          description="Comparing traditional coaching academies, scattered online links, and Boardly’s all-in-one testing portal."
-        />
-
-        <div className="max-w-4xl mx-auto rounded-[24px] bg-white/90 backdrop-blur-md border border-slate-200/90 shadow-md overflow-hidden">
-          <div className="overflow-x-auto overscroll-x-contain [-webkit-overflow-scrolling:touch]">
-            <table className="w-full text-left text-[14px] min-w-[560px] border-collapse">
-              <colgroup>
-                <col className="w-[150px] min-w-[150px]" />
-                <col className="w-[110px] min-w-[110px] sm:w-auto" />
-                <col className="w-[110px] min-w-[110px] sm:w-auto" />
-                <col className="w-[110px] min-w-[110px] sm:w-auto" />
-              </colgroup>
-              <thead className="bg-slate-50/95 border-b border-slate-200 text-slate-700">
-                <tr>
-                  <th className="p-[14px] font-bold sticky left-0 z-20 bg-slate-50/95 backdrop-blur-xs shadow-[2px_0_6px_rgba(0,0,0,0.04)]">
-                    Feature
-                  </th>
-                  <th className="p-[14px] font-bold text-[#1a6dff] bg-blue-500/10 border-x border-blue-500/20">
-                    Boardly
-                  </th>
-                  <th className="p-[14px] font-bold text-slate-600">
-                    Coaching
-                  </th>
-                  <th className="p-[14px] font-bold text-slate-500">
-                    PDF Links
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200/70 font-sans">
-                {COMPARISON_ROWS.map((row, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50/40 transition-colors">
-                    {/* Sticky first column on mobile: 150px wide */}
-                    <td className="p-[14px] font-semibold text-slate-900 sticky left-0 z-10 bg-white/95 backdrop-blur-xs shadow-[2px_0_6px_rgba(0,0,0,0.04)] leading-snug">
-                      {row.title}
-                    </td>
-
-                    {/* Boardly highlighted column: soft blue tint and border */}
-                    <td className="p-[14px] font-bold bg-blue-500/10 border-x border-blue-500/20 text-[#1a6dff]">
-                      {row.isPrice ? (
-                        <div>
-                          <div className="font-bold text-[#1a6dff] leading-tight">PKR 0-1,999</div>
-                          <div className="text-[11px] text-slate-500 font-medium leading-none mt-0.5">per year</div>
-                        </div>
-                      ) : row.boardly ? (
-                        <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-600">
-                          <Check className="w-4 h-4 stroke-[2.5]" />
-                        </div>
-                      ) : (
-                        <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-rose-50 text-rose-400">
-                          <X className="w-4 h-4 stroke-[2.2]" />
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Coaching centers */}
-                    <td className="p-[14px] text-slate-700">
-                      {row.isPrice ? (
-                        <div>
-                          <div className="font-semibold text-slate-800 leading-tight">PKR 45k-85k+</div>
-                          <div className="text-[11px] text-slate-500 font-normal leading-none mt-0.5">per year</div>
-                        </div>
-                      ) : row.coaching ? (
-                        <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-600">
-                          <Check className="w-4 h-4 stroke-[2.5]" />
-                        </div>
-                      ) : (
-                        <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-slate-400">
-                          <X className="w-4 h-4 stroke-[2.2]" />
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Scattered PDF links */}
-                    <td className="p-[14px] text-slate-600">
-                      {row.isPrice ? (
-                        <div>
-                          <div className="font-semibold text-slate-600 leading-tight">Free</div>
-                          <div className="text-[11px] text-slate-400 font-normal leading-none mt-0.5">fragmented</div>
-                        </div>
-                      ) : row.freeLinks ? (
-                        <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-emerald-100 text-emerald-600">
-                          <Check className="w-4 h-4 stroke-[2.5]" />
-                        </div>
-                      ) : (
-                        <div className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-100 text-slate-400">
-                          <X className="w-4 h-4 stroke-[2.2]" />
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </Section>
-
-      {/* 5. REVIEWS WALL / TESTIMONIALS */}
-      <section
-        className="relative w-full overflow-hidden [overflow-x:clip] text-[#0f172a]"
-        style={{
-          background: 'linear-gradient(180deg, #f5f7ff 0%, #ffffff 100%)',
-          padding: '64px 20px',
-        }}
-      >
-        {/* Smooth fade into sections above and below */}
-        <div
-          className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-[#f0f6ff]/40 to-transparent pointer-events-none"
-          aria-hidden="true"
-        />
-        <div
-          className="absolute bottom-0 left-0 right-0 h-16 bg-gradient-to-t from-[#f6f5ff]/40 to-transparent pointer-events-none"
-          aria-hidden="true"
-        />
-
-        <div className="max-w-6xl mx-auto relative z-10">
-          {/* Section Header */}
-          <div className="text-center max-w-2xl mx-auto mb-10">
-            {/* Pill above heading */}
-            <div className="mb-3">
-              <span className="inline-block bg-white border border-[#dbe3f5] text-[#1a6dff] rounded-full text-[13px] font-semibold px-3.5 py-1 shadow-xs">
-                Student testimonials
+      {/* ============================================================== */}
+      {/* 3. LIVE-STYLE ARENA LEADERBOARD STRIP (SAMPLE PREVIEW)         */}
+      {/* ============================================================== */}
+      <section className="w-full max-w-6xl px-4 sm:px-6 py-8">
+        <div className="p-6 sm:p-8 rounded-[28px] bg-[#0E1626]/80 backdrop-blur-2xl border border-white/12 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.6)] flex flex-col md:flex-row items-center justify-between gap-8 text-left">
+          <div className="max-w-md">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+              </span>
+              <span className="text-xs font-bold uppercase tracking-wider text-red-400">
+                Arena Leaderboard
+              </span>
+              <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-white/8 text-[#A3B0CC] border border-white/10">
+                Sample preview
               </span>
             </div>
-
-            {/* Heading */}
-            <h2 className="text-[28px] font-extrabold text-[#0f172a] leading-[1.2] font-display">
-              Practicing With Real <span style={{ color: '#1a6dff' }}>Confidence</span>
-            </h2>
-
-            {/* Subtext */}
-            <p className="mt-3 text-[16px] text-[#475569] leading-[1.6]">
-              Read experiences from students using Boardly for their exam revision across Pakistan.
+            <h3 className="text-xl sm:text-2xl font-bold text-[#EAF0FF]">
+              See How You Rank Against Real Aspirants
+            </h3>
+            <p className="text-xs sm:text-sm text-[#A3B0CC] mt-2 leading-relaxed">
+              Every Sunday mock publishes verified percentile scores. Names are displayed anonymously with privacy safeguards (&quot;First L.&quot;).
             </p>
           </div>
 
-          <div className="w-full">
-            <ReviewsWall hideHeader={true} />
+          {/* Mini Leaderboard Podium */}
+          <div className="w-full md:w-auto flex-1 max-w-lg flex flex-col gap-2">
+            <div className="flex items-center justify-between p-3 rounded-xl bg-white/6 border border-white/10 text-xs sm:text-sm">
+              <div className="flex items-center gap-3">
+                <span className="font-extrabold text-amber-400 w-5">#1</span>
+                <span className="font-bold text-[#EAF0FF]">Hamza K.</span>
+                <span className="text-xs text-[#6F7C99]">FAST CS Mock</span>
+              </div>
+              <span className="font-bold text-[#34D399] tabular-nums">96.7% · 58/60</span>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-xl bg-white/4 border border-white/8 text-xs sm:text-sm">
+              <div className="flex items-center gap-3">
+                <span className="font-bold text-slate-300 w-5">#2</span>
+                <span className="font-bold text-[#EAF0FF]">Ayesha M.</span>
+                <span className="text-xs text-[#6F7C99]">MDCAT Sprint</span>
+              </div>
+              <span className="font-bold text-[#22D3EE] tabular-nums">93.3% · 56/60</span>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-xl bg-white/4 border border-white/8 text-xs sm:text-sm">
+              <div className="flex items-center gap-3">
+                <span className="font-bold text-amber-600 w-5">#3</span>
+                <span className="font-bold text-[#EAF0FF]">Bilal S.</span>
+                <span className="text-xs text-[#6F7C99]">NET Engineering</span>
+              </div>
+              <span className="font-bold text-[#EAF0FF] tabular-nums">90.0% · 54/60</span>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* 6. FAQ (Light Section) */}
-      <Section variant="light">
-        <SectionHeader
-          eyebrow="Frequently asked questions"
-          title="Got Questions?"
-          highlight="We Have Answers"
-          description="Everything you need to know about Boardly test preparation and access."
-        />
+      {/* ============================================================== */}
+      {/* 4. 3-STEP HOW IT WORKS                                         */}
+      {/* ============================================================== */}
+      <section className="w-full max-w-6xl px-4 sm:px-6 py-16 sm:py-24 text-center">
+        <Badge variant="brand" className="mb-3">
+          Methodology
+        </Badge>
+        <h2 className="text-3xl sm:text-4xl font-extrabold text-[#EAF0FF] tracking-tight font-['Oblata_Display',sans-serif]">
+          How Boardly Prepares You to Rank in Top 1%
+        </h2>
+        <p className="mt-3 text-sm sm:text-base text-[#A3B0CC] max-w-xl mx-auto">
+          A scientific 3-step preparation system based on active recall, spaced testing, and real error diagnosis.
+        </p>
 
-        <FaqAccordion items={HOME_FAQS} />
-      </Section>
+        <div className="mt-12 grid grid-cols-1 md:grid-cols-3 gap-6 text-left">
+          <Card variant="default" className="p-6 sm:p-8 flex flex-col justify-between">
+            <div>
+              <span className="text-3xl font-extrabold text-[#2F6BFF] font-['Oblata_Display',sans-serif]">
+                01
+              </span>
+              <h4 className="text-lg font-bold text-[#EAF0FF] mt-3">
+                Set Target Exam & Take Diagnostic Baseline
+              </h4>
+              <p className="text-xs sm:text-sm text-[#A3B0CC] mt-2 leading-relaxed">
+                Pick FAST, NUST NET, GIKI, or MDCAT. Complete a rapid 20-question diagnostic to identify your strong and weak chapters automatically.
+              </p>
+            </div>
+            <div className="mt-6 flex items-center gap-1.5 text-xs text-[#22D3EE] font-semibold">
+              <span>Automatic Weakness Map</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </div>
+          </Card>
 
-      {/* 7. Final CTA Section */}
-      <FinalCTA
-        accent="home"
-        onPrimaryClick={onGetStarted}
-        onSecondaryClick={() => onNavigate('pricing')}
-      />
+          <Card variant="default" className="p-6 sm:p-8 flex flex-col justify-between">
+            <div>
+              <span className="text-3xl font-extrabold text-[#22D3EE] font-['Oblata_Display',sans-serif]">
+                02
+              </span>
+              <h4 className="text-lg font-bold text-[#EAF0FF] mt-3">
+                Drill Topic Sprints with KaTeX Derivations
+              </h4>
+              <p className="text-xs sm:text-sm text-[#A3B0CC] mt-2 leading-relaxed">
+                Practice chapter-wise MCQs. Whenever you make an error, inspect step-by-step mathematical proofs or ask Boardy AI for alternative approaches.
+              </p>
+            </div>
+            <div className="mt-6 flex items-center gap-1.5 text-xs text-[#22D3EE] font-semibold">
+              <span>Step-by-step Formulas</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </div>
+          </Card>
+
+          <Card variant="default" className="p-6 sm:p-8 flex flex-col justify-between">
+            <div>
+              <span className="text-3xl font-extrabold text-[#7C5CFF] font-['Oblata_Display',sans-serif]">
+                03
+              </span>
+              <h4 className="text-lg font-bold text-[#EAF0FF] mt-3">
+                Compete in Arena & Watch Merit Meter Climb
+              </h4>
+              <p className="text-xs sm:text-sm text-[#A3B0CC] mt-2 leading-relaxed">
+                Sit full-length timed mocks. The Merit Meter calculates your aggregate across FAST, NUST, and GIKI formulas so you know exactly where you stand.
+              </p>
+            </div>
+            <div className="mt-6 flex items-center gap-1.5 text-xs text-[#7C5CFF] font-semibold">
+              <span>Real Aggregate Calculation</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </div>
+          </Card>
+        </div>
+      </section>
+
+      {/* ============================================================== */}
+      {/* 5. PRICING SECTION (FREE VS PRO PKR 199/MO)                    */}
+      {/* ============================================================== */}
+      <section className="w-full max-w-6xl px-4 sm:px-6 py-16 sm:py-24 text-center">
+        <Badge variant="brand" className="mb-3">
+          Accessible & Transparent
+        </Badge>
+        <h2 className="text-3xl sm:text-4xl font-extrabold text-[#EAF0FF] tracking-tight font-['Oblata_Display',sans-serif]">
+          High-Yield Test Prep for Less Than a Cup of Chai
+        </h2>
+        <p className="mt-3 text-sm sm:text-base text-[#A3B0CC] max-w-xl mx-auto">
+          Physical academies charge PKR 40,000 to PKR 80,000 for outdated notes. Boardly Pro is PKR 199/month with instant digital access.
+        </p>
+
+        <div className="mt-12 grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto text-left">
+          {/* Card: Free Starter */}
+          <Card variant="default" className="p-8 flex flex-col justify-between">
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-[#A3B0CC]">
+                Free Starter
+              </span>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-4xl font-extrabold text-[#EAF0FF] tabular-nums font-['Oblata_Display',sans-serif]">
+                  PKR 0
+                </span>
+                <span className="text-xs text-[#A3B0CC]">/ forever</span>
+              </div>
+              <p className="text-xs sm:text-sm text-[#A3B0CC] mt-3 leading-relaxed">
+                Ideal for quick diagnostic testing and daily revision before your exam.
+              </p>
+
+              <ul className="mt-6 space-y-3 text-xs sm:text-sm text-[#EAF0FF]">
+                <li className="flex items-center gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-[#34D399] shrink-0" />
+                  <span>3 practice sprints per day</span>
+                </li>
+                <li className="flex items-center gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-[#34D399] shrink-0" />
+                  <span>10 Boardy AI questions per day</span>
+                </li>
+                <li className="flex items-center gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-[#34D399] shrink-0" />
+                  <span>Full KaTeX answer derivations</span>
+                </li>
+                <li className="flex items-center gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-[#34D399] shrink-0" />
+                  <span>Diagnostic weakness tracking</span>
+                </li>
+              </ul>
+            </div>
+
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={() => handleRoute('/signup')}
+              className="mt-8 w-full"
+            >
+              Start Free
+            </Button>
+          </Card>
+
+          {/* Card: Pro Plan (Highlighted with animated gradient border) */}
+          <div className="animated-border-card">
+            <div className="inner-content p-8 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-[#22D3EE]">
+                    Boardly Pro
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-[#2F6BFF]/20 text-[#22D3EE] text-[11px] font-bold border border-[#22D3EE]/30">
+                    Most Popular
+                  </span>
+                </div>
+
+                <div className="mt-3 flex items-baseline gap-2">
+                  <span className="text-4xl font-extrabold text-[#EAF0FF] tabular-nums font-['Oblata_Display',sans-serif]">
+                    PKR 199
+                  </span>
+                  <span className="text-xs text-[#A3B0CC]">/ month</span>
+                </div>
+                <p className="text-xs sm:text-sm text-[#A3B0CC] mt-3 leading-relaxed">
+                  Everything you need for intensive full-season entrance test mastery.
+                </p>
+
+                <ul className="mt-6 space-y-3 text-xs sm:text-sm text-[#EAF0FF]">
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#22D3EE] shrink-0" />
+                    <span className="font-semibold">Unlimited daily practice sprints</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#22D3EE] shrink-0" />
+                    <span className="font-semibold">100 Boardy AI queries per day</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#22D3EE] shrink-0" />
+                    <span>Full-length past paper test vault</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#22D3EE] shrink-0" />
+                    <span>Sunday Live Arena mock registrations</span>
+                  </li>
+                  <li className="flex items-center gap-2.5">
+                    <CheckCircle2 className="w-4 h-4 text-[#22D3EE] shrink-0" />
+                    <span>Pakistani payments: JazzCash & EasyPaisa</span>
+                  </li>
+                </ul>
+              </div>
+
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => handleRoute('/pricing')}
+                className="mt-8 w-full"
+              >
+                Get Pro Pass (PKR 199)
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ============================================================== */}
+      {/* 6. REVIEWS SECTION (STRICTLY PRESERVED AS REQUIRED BY HARD RULE 1) */}
+      {/* ============================================================== */}
+      <section className="w-full max-w-6xl px-4 sm:px-6 py-16 sm:py-24">
+        <ReviewsWall />
+      </section>
+
+      {/* ============================================================== */}
+      {/* 7. FAQ ACCORDION SECTION                                       */}
+      {/* ============================================================== */}
+      <section className="w-full max-w-4xl px-4 sm:px-6 py-16 sm:py-24 text-left">
+        <div className="text-center mb-12">
+          <Badge variant="brand" className="mb-3">
+            FAQ
+          </Badge>
+          <h2 className="text-3xl font-extrabold text-[#EAF0FF] font-['Oblata_Display',sans-serif]">
+            Frequently Asked Questions
+          </h2>
+        </div>
+
+        <div className="space-y-3.5">
+          {faqs.map((faq, index) => {
+            const isOpen = openFaq === index;
+            return (
+              <div
+                key={index}
+                className="rounded-2xl border border-white/10 bg-white/4 backdrop-blur-md overflow-hidden transition-colors"
+              >
+                <button
+                  onClick={() => setOpenFaq(isOpen ? null : index)}
+                  className="w-full p-5 text-left flex items-center justify-between gap-4 cursor-pointer"
+                >
+                  <span className="font-bold text-sm sm:text-base text-[#EAF0FF]">
+                    {faq.q}
+                  </span>
+                  <ChevronDown
+                    className={`w-4 h-4 text-[#A3B0CC] shrink-0 transition-transform duration-200 ${
+                      isOpen ? 'rotate-180 text-[#22D3EE]' : ''
+                    }`}
+                  />
+                </button>
+                {isOpen && (
+                  <div className="px-5 pb-5 text-xs sm:text-sm text-[#A3B0CC] leading-relaxed border-t border-white/6 pt-3 animate-in fade-in duration-200">
+                    {faq.a}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
+      {/* ============================================================== */}
+      {/* 8. FINAL CTA BANNER                                           */}
+      {/* ============================================================== */}
+      <section className="w-full max-w-6xl px-4 sm:px-6 py-12">
+        <div className="p-8 sm:p-14 rounded-[32px] bg-gradient-to-br from-[#2F6BFF]/25 via-[#0E1626] to-[#7C5CFF]/20 border border-white/14 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] backdrop-blur-2xl text-center flex flex-col items-center">
+          <Badge variant="brand" className="mb-4">
+            Start Your Journey Today
+          </Badge>
+          <h3 className="text-3xl sm:text-4xl font-extrabold text-[#EAF0FF] font-['Oblata_Display',sans-serif] max-w-2xl">
+            Join Thousands of Aspirants Preparing for FAST, NUST & MDCAT
+          </h3>
+          <p className="mt-3 text-sm sm:text-base text-[#A3B0CC] max-w-lg">
+            Create your free account in 30 seconds and take your first diagnostic sprint today.
+          </p>
+          <div className="mt-8 flex flex-col sm:flex-row items-center gap-3.5">
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => handleRoute('/signup')}
+              rightIcon={<ArrowRight className="w-4 h-4" />}
+            >
+              Create Free Account
+            </Button>
+            <Button
+              variant="secondary"
+              size="lg"
+              onClick={() => handleRoute('/features')}
+            >
+              Explore All Features
+            </Button>
+          </div>
+        </div>
+      </section>
     </div>
   );
 };
+
+export default HomePage;

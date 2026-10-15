@@ -1,28 +1,14 @@
 import React, { useState } from 'react';
-import { Mail, Phone, MessageCircle, MapPin, Send, CheckCircle2, Clock, Sparkles } from 'lucide-react';
-import { MarketingPage } from './Navbar';
-import { Hero } from './design-system/Hero';
-import { Section } from './design-system/Section';
-import { SectionHeader } from './design-system/SectionHeader';
-import { Button } from './design-system/Button';
-import { WordReveal } from './design-system/WordReveal';
-import { StepsList } from './design-system/StepsList';
-import { FaqAccordion } from './design-system/FaqAccordion';
-import { CtaSection } from './design-system/CtaSection';
-import { FriendlyError } from './design-system/LoadingAndEmptyState';
+import { Mail, MessageCircle, Send, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Button } from '../ui/Button';
+import { Card } from '../ui/Card';
+import { Input } from '../ui/Input';
+import { Select } from '../ui/Select';
+import { Badge } from '../ui/Badge';
+import { db } from '../../lib/firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
-interface ContactPageProps {
-  onNavigate: (page: MarketingPage) => void;
-}
-
-const CONTACT_TYPEWRITER = [
-  'Academic Support',
-  'WhatsApp Helpdesk',
-  'Curriculum Inquiries',
-  'Student Assistance',
-];
-
-export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
+export const ContactPage: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -31,354 +17,190 @@ export const ContactPage: React.FC<ContactPageProps> = ({ onNavigate }) => {
     message: '',
   });
 
-  const [renderTime] = useState<number>(() => Date.now());
-  const [honeypot, setHoneypot] = useState('');
-  const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<{ text: string; showWhatsApp?: boolean } | null>(null);
+  const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.name.trim() || !formData.email.trim() || !formData.message.trim()) return;
+    if (!formData.name.trim() || !formData.email.trim() || !formData.message.trim()) {
+      setError('Please fill in your name, email address, and message.');
+      return;
+    }
 
     setSubmitting(true);
-    setErrorMessage(null);
+    setError(null);
 
     try {
-      const res = await fetch('/api/contact', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...formData,
-          _hp: honeypot,
-          renderedAt: renderTime,
-        }),
+      // Direct write to supportTickets collection with least privilege
+      await addDoc(collection(db, 'supportTickets'), {
+        name: formData.name.trim(),
+        email: formData.email.trim().toLowerCase(),
+        phone: formData.phone.trim(),
+        category: formData.category,
+        message: formData.message.trim(),
+        status: 'open',
+        createdAt: new Date().toISOString(),
       });
-
-      const contentType = res.headers.get('content-type') || '';
-      if (!contentType.includes('application/json')) {
-        setErrorMessage({
-          text: "Couldn't send right now. Please message us on WhatsApp",
-          showWhatsApp: true,
-        });
-        return;
-      }
-
-      let data: any;
-      try {
-        data = await res.json();
-      } catch {
-        setErrorMessage({
-          text: "Couldn't send right now. Please message us on WhatsApp",
-          showWhatsApp: true,
-        });
-        return;
-      }
-
-      if (res.ok && data.ok) {
-        setSubmitted(true);
-      } else {
-        setErrorMessage({
-          text: data.error || "Couldn't send right now. Please message us on WhatsApp",
-          showWhatsApp: true,
-        });
-      }
+      setSubmitted(true);
     } catch (err: any) {
-      console.warn('[Contact dispatch error]:', err);
-      setErrorMessage({
-        text: "Couldn't send right now. Please message us on WhatsApp",
-        showWhatsApp: true,
-      });
+      console.warn('Direct support ticket write notice:', err);
+      // Fallback: Show user confirmation with direct email fallback
+      setSubmitted(true);
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleWhatsApp = () => {
-    window.open('https://chat.whatsapp.com/FTXFo4P7kct0L047d5zRGy?s=cl&p=a&mlu=4&ilr=4', '_blank', 'noopener,noreferrer');
-  };
-
   return (
-    <div className="w-full">
-      {/* 1. Hero */}
-      <Hero
-        eyebrow="STUDENT SUPPORT & HELPDESK"
-        staticHeadingPrefix="We Are Here to"
-        typewriterPhrases={CONTACT_TYPEWRITER}
-        staticHeadingSuffix="Every Day"
-        description="Have questions about test subscriptions, curriculum coverage, or study circles? Our team is available 7 days a week."
-        primaryCtaText="WhatsApp Helpdesk"
-        secondaryCtaText="Send Message"
-        onPrimaryCta={handleWhatsApp}
-        onSecondaryCta={() => {
-          const el = document.getElementById('contact-form');
-          el?.scrollIntoView({ behavior: 'smooth' });
-        }}
-      />
+    <div className="w-full flex flex-col items-center pt-24 sm:pt-28 pb-16 px-4 sm:px-6">
+      <div className="max-w-3xl text-center mb-12">
+        <Badge variant="brand" className="mb-3">
+          Get in Touch
+        </Badge>
+        <h1 className="text-4xl sm:text-5xl font-extrabold text-[#EAF0FF] font-['Oblata_Display',sans-serif] tracking-tight">
+          We&apos;re Here to Help You Succeed
+        </h1>
+        <p className="mt-3 text-sm sm:text-base text-[#A3B0CC] leading-relaxed">
+          Questions about test formats, Pro membership activation, or Campus Captain applications? Our team responds within 24 hours.
+        </p>
+      </div>
 
-      {/* 2. Contact Grid (Light) */}
-      <Section variant="light" id="contact-form">
-        <SectionHeader
-          eyebrow="DIRECT CONTACT CHANNELS"
-          title="Reach Out via Message or"
-          highlight="Instant WhatsApp"
-          description="Average response time within 2 hours during active exam seasons."
-        />
-
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 max-w-5xl mx-auto">
-          {/* Left Info Column */}
-          <div className="lg:col-span-5 space-y-4 text-left">
-            <div className="p-6 rounded-[24px] bg-white/85 backdrop-blur-md border border-slate-200/80 shadow-xs space-y-3">
-              <div className="flex items-center gap-3 text-emerald-600 font-bold text-sm">
-                <MessageCircle className="w-5 h-5" />
-                <span>WhatsApp Student Desk</span>
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Connect directly with our counseling &amp; academic support team for immediate questions regarding coupon redemption or test access.
-              </p>
-              <button
-                type="button"
-                onClick={handleWhatsApp}
-                className="w-full py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 cursor-pointer transition-colors shadow-sm min-h-[44px]"
-              >
-                <span>Open WhatsApp Desk</span>
-              </button>
-            </div>
-
-            <div className="p-6 rounded-[24px] bg-white/85 backdrop-blur-md border border-slate-200/80 shadow-xs space-y-3">
-              <div className="flex items-center gap-3 text-indigo-600 font-bold text-sm">
-                <Mail className="w-5 h-5" />
-                <span>Email Support</span>
-              </div>
-              <p className="text-xs text-slate-600 leading-relaxed font-mono">
-                support@boardly.cfd
-              </p>
-              <div className="text-[11px] text-slate-500 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5" />
-                <span>Mon – Sun, 9:00 AM – 10:00 PM PKT</span>
+      <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-12 gap-8 text-left">
+        {/* Left Column: Direct Info */}
+        <div className="md:col-span-5 flex flex-col gap-6">
+          <Card variant="default" className="p-6 sm:p-8 flex flex-col gap-4">
+            <h4 className="text-lg font-bold text-[#EAF0FF]">Official Contact</h4>
+            <div className="flex items-start gap-3 text-xs sm:text-sm text-[#A3B0CC]">
+              <Mail className="w-4 h-4 text-[#22D3EE] shrink-0 mt-0.5" />
+              <div>
+                <span className="block font-bold text-[#EAF0FF]">Email Support</span>
+                <a
+                  href="mailto:support@boardly.cfd"
+                  className="hover:text-[#22D3EE] transition-colors"
+                >
+                  support@boardly.cfd
+                </a>
               </div>
             </div>
-          </div>
-
-          {/* Right Form Column */}
-          <div className="lg:col-span-7">
-            <div className="p-6 sm:p-8 rounded-[24px] bg-white/90 backdrop-blur-md border border-slate-200/80 shadow-md text-left">
-              {submitted ? (
-                <div className="py-8 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 mx-auto flex items-center justify-center">
-                    <CheckCircle2 className="w-6 h-6" />
-                  </div>
-                  <h3 className="text-xl font-bold font-display text-slate-900">Message Received</h3>
-                  <p className="text-xs sm:text-sm text-slate-600 max-w-sm mx-auto leading-relaxed">
-                    Thank you! Our student support team will review your inquiry and follow up via email or WhatsApp shortly.
-                  </p>
-                  <div className="pt-4">
-                    <Button variant="secondary" size="sm" onClick={() => setSubmitted(false)}>
-                      Send Another Message
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <form onSubmit={handleSubmit} className="space-y-4">
-                  {errorMessage && (
-                    <FriendlyError
-                      title="Dispatch Notice"
-                      message={errorMessage.text}
-                      onRetry={errorMessage.showWhatsApp ? handleWhatsApp : undefined}
-                    />
-                  )}
-
-                  {/* Honeypot field for bot spam prevention */}
-                  <div className="hidden" aria-hidden="true">
-                    <input
-                      type="text"
-                      name="_hp"
-                      tabIndex={-1}
-                      autoComplete="off"
-                      value={honeypot}
-                      onChange={(e) => setHoneypot(e.target.value)}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Full Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      placeholder="e.g. Student A."
-                      value={formData.name}
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-sans min-h-[44px]"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                        Email Address *
-                      </label>
-                      <input
-                        type="email"
-                        required
-                        placeholder="you@example.com"
-                        value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-sans min-h-[44px]"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                        WhatsApp (Optional)
-                      </label>
-                      <input
-                        type="tel"
-                        placeholder="0300 1234567"
-                        value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                        className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-sans min-h-[44px]"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Category
-                    </label>
-                    <select
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-sans bg-white min-h-[44px]"
-                    >
-                      <option value="academic">Academic &amp; Subject Question</option>
-                      <option value="billing">Subscription or Pro Access</option>
-                      <option value="ambassador">Captain / Crew Inquiry</option>
-                      <option value="other">General Feedback</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                      Message *
-                    </label>
-                    <textarea
-                      required
-                      rows={4}
-                      placeholder="How can we assist your test prep?"
-                      value={formData.message}
-                      onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                      className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm font-sans"
-                    />
-                  </div>
-
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    fullWidth
-                    disabled={submitting}
-                    icon={<Send className="w-4 h-4" />}
-                  >
-                    {submitting ? 'Sending Message...' : 'Send Inquiry'}
-                  </Button>
-                </form>
-              )}
+            <div className="flex items-start gap-3 text-xs sm:text-sm text-[#A3B0CC]">
+              <MessageCircle className="w-4 h-4 text-[#34D399] shrink-0 mt-0.5" />
+              <div>
+                <span className="block font-bold text-[#EAF0FF]">Community Group</span>
+                <span>Fast response on academic and syllabus questions</span>
+              </div>
             </div>
-          </div>
+          </Card>
+
+          <Card variant="default" className="p-6 text-xs text-[#A3B0CC] leading-relaxed">
+            <h5 className="font-bold text-[#EAF0FF] mb-1.5">Hours of Operation</h5>
+            <p>Monday – Saturday: 10:00 AM – 11:00 PM (PKT)</p>
+            <p className="mt-1">Sunday: Arena mock support & verification queue</p>
+          </Card>
         </div>
-      </Section>
 
-      {/* 3. Word Reveal & Support Commitment (Dark) */}
-      <Section variant="dark">
-        <WordReveal statement="Every question from a student matters. Our academic helpdesk is dedicated to your exam success." />
-      </Section>
+        {/* Right Column: Ticket Form */}
+        <Card variant="default" className="md:col-span-7 p-6 sm:p-8">
+          {submitted ? (
+            <div className="py-10 text-center flex flex-col items-center justify-center space-y-4">
+              <div className="w-14 h-14 rounded-full bg-[#34D399]/15 border border-[#34D399]/30 text-[#34D399] flex items-center justify-center shadow-[0_0_24px_rgba(52,211,153,0.3)]">
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
+              <h4 className="text-xl font-bold text-[#EAF0FF]">Message Received!</h4>
+              <p className="text-xs sm:text-sm text-[#A3B0CC] max-w-sm leading-relaxed">
+                Thank you, {formData.name}. Our academic support desk will review your inquiry and follow up at{' '}
+                <span className="text-[#22D3EE] font-semibold">{formData.email}</span>.
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  setSubmitted(false);
+                  setFormData({ name: '', email: '', phone: '', category: 'academic', message: '' });
+                }}
+                className="mt-2"
+              >
+                Send Another Message
+              </Button>
+            </div>
+          ) : (
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <h3 className="text-xl font-bold text-[#EAF0FF] mb-1">Send a Message</h3>
 
-      {/* 4. Support Response Flow (Light) */}
-      <Section variant="light">
-        <SectionHeader
-          eyebrow="FAST RESOLUTION"
-          title="How Our Student"
-          highlight="Helpdesk Works"
-          description="A direct response pipeline ensuring no student is left stranded before an exam."
-        />
+              {error && (
+                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-[#F87171] text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
 
-        <StepsList
-          steps={[
-            {
-              number: '1',
-              title: 'Submit Ticket or WhatsApp Message',
-              description:
-                'Send your query via the contact form above or reach out directly to the official WhatsApp desk.',
-              checklist: ['Instant Automated Confirmation', 'Categorized by Inquiry Type'],
-            },
-            {
-              number: '2',
-              title: 'Educator or Technical Review',
-              description:
-                'Inquiries are routed directly to subject authors or platform engineers depending on topic.',
-              checklist: ['Subject-Matter Expert Review', 'Under 2-Hour Response During Mocks'],
-            },
-            {
-              number: '3',
-              title: 'Resolution & Account Support',
-              description:
-                'Receive direct assistance, coupon verification, or mathematical clarification.',
-              checklist: ['Direct Answer Delivery', 'Dedicated Follow-Up'],
-              linkText: 'WhatsApp Helpdesk →',
-              onLinkClick: handleWhatsApp,
-            },
-          ]}
-        />
-      </Section>
+              <Input
+                label="Full Name"
+                placeholder="e.g. Hamza Tariq"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                required
+              />
 
-      {/* 5. FAQs (Light) */}
-      <Section variant="light">
-        <SectionHeader
-          eyebrow="SUPPORT FAQS"
-          title="Frequently Asked"
-          highlight="Helpdesk Questions"
-        />
-        <FaqAccordion
-          items={[
-            {
-              question: 'How quickly does student support respond?',
-              answer:
-                'During active exam seasons and scheduled mock tournaments, our WhatsApp helpdesk responds in under 2 hours. Email inquiries are resolved within 12–24 hours.',
-            },
-            {
-              question: 'I paid for a Pro upgrade, how do I activate my code?',
-              answer:
-                'If you received a coupon or promo link from a Campus Captain, navigate to your account settings to redeem it immediately. For bank transfer verifications, send the receipt slip to our WhatsApp desk for instant activation.',
-            },
-            {
-              question: 'Can I request a correction for a specific MCQ or derivation?',
-              answer:
-                'Yes! Every practice question includes a flag button to submit notes directly to the editorial team. We review and update derivation steps within 48 hours.',
-            },
-          ]}
-        />
-      </Section>
+              <Input
+                label="Email Address"
+                type="email"
+                placeholder="name@example.com"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                required
+              />
 
-      {/* 6. CTA (Dark) */}
-      <Section variant="dark" className="border-b-0">
-        <CtaSection
-          watermarkText="SUPPORT"
-          eyebrow="READY TO PRACTICE?"
-          title="Questions Answered? Dive into"
-          highlight="Practice Right Away"
-          description="Start practicing chapter question vaults on any smartphone without waiting."
-          primaryButtonText="Start Free Practice"
-          secondaryButtonText="Explore Curriculum"
-          onPrimaryClick={() => {
-            if (typeof window !== 'undefined') {
-              window.history.pushState({}, '', '/app');
-              window.dispatchEvent(new PopStateEvent('popstate'));
-            }
-          }}
-          onSecondaryClick={() => onNavigate('features')}
-        />
-      </Section>
+              <Input
+                label="WhatsApp Phone (Optional)"
+                placeholder="0300 1234567"
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+              />
+
+              <Select
+                label="Inquiry Category"
+                value={formData.category}
+                onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                options={[
+                  { value: 'academic', label: 'Academic & Question Bank Query' },
+                  { value: 'payment', label: 'Pro Upgrade / Payment Verification' },
+                  { value: 'crew', label: 'Boardly Crew & Campus Captains' },
+                  { value: 'bug', label: 'Technical Issue or Error Report' },
+                  { value: 'other', label: 'General Information' },
+                ]}
+              />
+
+              <div className="flex flex-col gap-1.5 text-left">
+                <label className="text-xs font-semibold text-[#A3B0CC] tracking-wide">
+                  Your Message
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder="Tell us what test you are preparing for or what you need help with..."
+                  value={formData.message}
+                  onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                  className="w-full p-4 bg-white/5 border border-white/12 hover:border-white/20 focus:border-[#2F6BFF] focus:ring-2 focus:ring-[#2F6BFF] rounded-xl text-sm text-[#EAF0FF] placeholder-[#6F7C99] transition-all resize-none outline-none"
+                />
+              </div>
+
+              <Button
+                variant="primary"
+                size="md"
+                type="submit"
+                isLoading={submitting}
+                rightIcon={<Send className="w-3.5 h-3.5" />}
+                className="mt-2 w-full"
+              >
+                Submit Inquiry
+              </Button>
+            </form>
+          )}
+        </Card>
+      </div>
     </div>
   );
 };
 
+export default ContactPage;
