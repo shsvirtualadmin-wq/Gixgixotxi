@@ -214,6 +214,8 @@ try {
     );
   } catch {
     firestoreDb = getFirestore(app, TARGET_FIRESTORE_DATABASE_ID);
+  }
+}
 export const db = firestoreDb;
 
 // Wait for onAuthStateChanged to resolve before executing queries
