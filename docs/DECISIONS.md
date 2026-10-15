@@ -102,3 +102,28 @@ This document tracks all foundational architectural, security, and product desig
   4. Implemented referral capture storing `boardly_ref_code` in localStorage, writing idempotent masked records in `referrals` (`status: "joined"`, `hasTakenFirstTest: false`, `activated: false`, `createdAt: serverTimestamp()`), and clearing the token after attribution.
   5. Built explicit modular guards in `src/components/auth/Guards.tsx`: `GuestGuard`, `AuthGuard`, `AdminGuard`, `CaptainGuard`, and `CrewGuard`. Immediate suspension sign-out displays `"Your account has been suspended. Contact support@boardly.cfd."`.
 - **Consequences:** Zero permission-denied crashes during sign-up/onboarding, rock-solid attribution for campus captains, and guaranteed isolation for administrator panels.
+
+---
+
+## ADR 012: Phase 3 Student Cockpit Architecture, PKT Usage Partitioning, and Cloudflare AI Tutor Proxy
+- **Status:** Approved
+- **Context:** Phase 3 required a comprehensive student cockpit shell and modular portal views constructed strictly with real Firestore data (matching `/docs/DATA_AUDIT.md` and `/docs/SPEC.md`), eliminating all mock, fake, seed, or hardcoded values. Daily limits needed partitioning under PKT (`Asia/Karachi`), Gemini AI tutor needed serverless token verification without exposing API keys on the client, and participant privacy on leaderboards needed strict masking (`"First L."`).
+- **Decision:**
+  1. Built `StudentLayout` desktop collapsible 240px glass sidebar + sticky top bar (real `announcements` bell modal, streak counter, plan badge, profile dropdown with role switcher) + mobile bottom navigation bar (5 primary items: Overview, Practice, Events/Arena, AI Tutor, More) with glass "More" bottom sheet.
+  2. Implemented all 14 Phase 3 views using authentic Firestore data and standard state patterns:
+     - `OverviewView`: real exam countdown from `users/{uid}`, streak & attempts metrics, PKT daily usage meter (`users/{uid}/usage/{YYYY-MM-DD}`), recent attempts, priority weak chapters, dismissible sample mockup.
+     - `PracticeVaultView`: Firestore cursor pagination (`limit(25)` / `startAfter`), university past papers & question banks, customizable drill configurator modal.
+     - `ChapterMapView`: Syllabus blueprint for Math, Physics, Chemistry, Computer Science, Biology; calculates real student mastery % from attempts.
+     - `FormulaVaultView`: High-yield entrance test formula directory rendered with KaTeX (`MathText`), 1-click LaTeX copy, and direct "Ask Boardy Derivation" CTA.
+     - `SmartPlannerGrowthView`: Adaptive milestone timeline based on exam countdown and weak chapters; real historical accuracy progression.
+     - `TestHistoryView`: Paginated attempts list from `users/{uid}/testAttempts` and `attempts`, search filter, detailed attempt review modal.
+     - `MeritMeterView`: Real `universities` and `meritFormulas` data, matric/FSc/test weight calculation, comparison against closing merits.
+     - `UniversityExplorerView`: Directory of Pakistani universities with test criteria, direct links to Merit Meter and past paper mocks.
+     - `EventsArenaView`: Real `events` and `sessions`, registrations in `registrations/reg_{uid}_{eventId}`, live lobby countdown, and national leaderboards with masked privacy (`"First L."`).
+     - `StudyCirclesView`: Collaborative squad documents in `sessions` with unique invite codes (e.g. `FAS-842`), member list, and goals.
+     - `BoardyAiTutorView` & `functions/api/ai-tutor.ts`: Real-time chat proxy running on Cloudflare Pages Functions, verifying caller's Firebase ID token via Google REST API (`accounts:lookup`), enforcing Boardy persona with KaTeX formatting, and checking PKT daily prompt quotas.
+     - `PlansUsageView`: PKT daily meters, Free vs Pro comparison, payment receipt submissions writing to `paymentRequests` with `status: "pending"`.
+     - `StudentReviewsView`: Platform review submission form writing to `reviews` with `status: "pending"`, plus student's review moderation queue.
+     - `StudentSettingsView`: Safe student updates (`name`, `phone`, `targetUniversity`, `targetExamDate`, `testTrack`), password update form, and theme toggle.
+  3. Rewired `StudentAppShell.tsx` and `BoardlyAppRouter.tsx` to mount `StudentLayout` and route all `/dashboard/*` sub-paths seamlessly with test runner session integration.
+- **Consequences:** Zero fake data in student portal, real-time sync with Firestore, predictable PKT midnight quota resets, secure AI proxying with zero token leakage, and complete responsiveness across mobile and desktop.

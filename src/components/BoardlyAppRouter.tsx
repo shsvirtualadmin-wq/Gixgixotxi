@@ -95,7 +95,7 @@ export const BoardlyAppRouter: React.FC = () => {
     if (activeRole === 'crew' || profile?.role === 'crew' || profile?.roles?.includes('crew')) return '/crew/dashboard';
     if (activeRole === 'organizer' || profile?.role === 'organizer' || profile?.roles?.includes('organizer')) return '/organizer';
     if (activeRole === 'captain' || profile?.role === 'captain' || profile?.roles?.includes('captain')) return '/captain/dashboard';
-    return '/app';
+    return '/dashboard';
   }, [isAdmin, activeRole, profile]);
 
   const lastRedirectRef = useRef<string | null>(null);
@@ -354,13 +354,16 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
-        // 7. Student App (/app or /app/* or /dashboard or /boardy)
+        // 7. Student App (/dashboard, /app, /boardy, /practice)
         if (
+          currentPath === '/dashboard' ||
+          currentPath.startsWith('/dashboard/') ||
           currentPath === '/app' ||
           currentPath.startsWith('/app/') ||
-          currentPath === '/dashboard' ||
           currentPath === '/boardy' ||
-          currentPath.startsWith('/boardy/')
+          currentPath.startsWith('/boardy/') ||
+          currentPath === '/practice' ||
+          currentPath.startsWith('/practice/')
         ) {
           if (!user) {
             navigate('/login', true);
@@ -372,12 +375,14 @@ export const BoardlyAppRouter: React.FC = () => {
           }
           return (
             <>
-              <SeoHead pathname="/app" noIndex={true} />
+              <SeoHead pathname={currentPath} noIndex={true} />
               <StudentAppShell
+                currentPath={currentPath}
+                onNavigate={(p) => navigate(p)}
                 onNavigateMarketing={(p) => navigate(p)}
-                onOpenMeritMeter={() => navigate('/features')}
-                onOpenBlitz={() => navigate('/blitz')}
-                onOpenArena={() => navigate('/arena')}
+                onOpenMeritMeter={() => navigate('/dashboard/merit-meter')}
+                onOpenBlitz={() => navigate('/dashboard/events')}
+                onOpenArena={() => navigate('/dashboard/events')}
               />
             </>
           );

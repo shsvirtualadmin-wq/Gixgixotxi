@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Search, ChevronLeft, ChevronRight, ArrowUpDown, Download, Filter } from 'lucide-react';
-import { Skeleton } from './EmptyState';
+import { Skeleton } from './Skeleton';
 
 export interface ColumnDef<T> {
   key: string;

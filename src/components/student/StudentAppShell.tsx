@@ -1,195 +1,91 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
-import {
-  Home,
-  BookOpen,
-  Clock,
-  Sparkles,
-  MoreHorizontal,
-  User,
-  Zap,
-  Swords,
-  Layers,
-  FileText,
-  Calculator,
-  Compass,
-  BarChart2,
-  PieChart,
-  LogOut,
-  X,
-  ExternalLink,
-  Flame,
-  Coins,
-  Shield,
-  Star,
-  Award,
-  Calendar,
-  Lock,
-} from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { StoredTestAttempt, getTestAttempts, logTestAttempt, UserRole } from '../../lib/firebase';
-import { StudentOverviewTab } from './StudentOverviewTab';
-import { StudentPracticeTab } from './StudentPracticeTab';
-import { StudentHistoryTab } from './StudentHistoryTab';
-import { StudentBoardyChatTab } from './StudentBoardyChatTab';
-import { StudentEventsTab } from './StudentEventsTab';
+import { useUsage } from '../../context/UsageContext';
+import { StoredTestAttempt, getTestAttempts, logTestAttempt } from '../../lib/firebase';
+import { StudentLayout } from '../layout/StudentLayout';
+import { OverviewView } from './OverviewView';
+import { PracticeVaultView } from './PracticeVaultView';
+import { ChapterMapView } from './ChapterMapView';
+import { FormulaVaultView } from './FormulaVaultView';
+import { SmartPlannerGrowthView } from './SmartPlannerGrowthView';
+import { TestHistoryView } from './TestHistoryView';
+import { MeritMeterView } from './MeritMeterView';
+import { UniversityExplorerView } from './UniversityExplorerView';
+import { EventsArenaView } from './EventsArenaView';
+import { StudyCirclesView } from './StudyCirclesView';
+import { BoardyAiTutorView } from './BoardyAiTutorView';
+import { PlansUsageView } from './PlansUsageView';
+import { StudentReviewsView } from './StudentReviewsView';
+import { StudentSettingsView } from './StudentSettingsView';
 import { StudentTestRunner } from './StudentTestRunner';
 import { StudentTestResult } from './StudentTestResult';
-import { StudentUsageModal } from './StudentUsageModal';
-import { MeritMeterModal } from './MeritMeterModal';
-import { StudentProfileView } from '../StudentProfileView';
-import { TargetUniversityModal } from '../TargetUniversityModal';
-import { PricingModal } from '../pricing/PricingModal';
-import { ErrorBoundary } from '../ErrorBoundary';
-import { BottomSheet } from '../ui/Drawer';
-import { Modal } from '../ui/Modal';
-import { AppShell } from '../ui/AppShell';
-import { TrustFooter } from '../ui/TrustFooter';
-import { MoreBottomSheet } from './MoreBottomSheet';
-import { DailyLimitsView } from './DailyLimitsView';
-import { MeritMeter } from '../merit/MeritMeter';
-import { UniversityExplorer } from '../universities/UniversityExplorer';
-import { AdmissionPredictor } from '../predictor/AdmissionPredictor';
-import { ComingSoon } from '../common/ComingSoon';
-import { FormulaVaultScreen } from './FormulaVaultScreen';
 import { getEntranceExamQuestions } from '../../data/entranceExamQuestions';
-import { generateUniversityPaperExam, getUniversityPaperConfig } from '../../config/universityPapers';
+import { generateUniversityPaperExam } from '../../config/universityPapers';
 import { getSeenStemsForStudent, recordQuestionsAsSeen } from '../../lib/seenQuestionsTracker';
-import { University, UNIVERSITIES } from '../../data/universities';
+import { UNIVERSITIES, University } from '../../data/universities';
 import { Question } from '../../types';
-import { getPlanConfig } from '../../data/planLimits';
-import { EventSession } from '../../data/eventsStore';
-import { useUsage } from '../../context/UsageContext';
+import { Lock } from 'lucide-react';
 
 interface StudentAppShellProps {
-  onNavigateMarketing: (path: string) => void;
-  onOpenMeritMeter: () => void;
-  onOpenBlitz: () => void;
-  onOpenArena: () => void;
+  currentPath?: string;
+  onNavigate?: (path: string) => void;
+  onNavigateMarketing?: (path: string) => void;
+  onOpenMeritMeter?: () => void;
+  onOpenBlitz?: () => void;
+  onOpenArena?: () => void;
 }
 
 export const StudentAppShell: React.FC<StudentAppShellProps> = ({
-  onNavigateMarketing,
-  onOpenMeritMeter,
-  onOpenBlitz,
-  onOpenArena,
+  currentPath: propPath,
+  onNavigate: propNavigate,
 }) => {
-  const { user, profile, isAdmin, logOut, updateProfileData, activeRole, switchRole } = useAuth();
+  const { user, profile, updateProfileData } = useAuth();
   const { canStartTest, consumeTestStart, loading: usageLoading } = useUsage();
-  const shouldReduceMotion = useReducedMotion();
 
-  const prevTabRef = useRef<string>('overview');
-  const [activeTab, setActiveTab] = useState<string>(() => {
+  // Internal path tracking
+  const [currentPath, setCurrentPath] = useState<string>(() => {
+    if (propPath) return propPath.toLowerCase();
     if (typeof window !== 'undefined') {
-      const p = window.location.pathname.toLowerCase();
-      if (p === '/boardy' || p === '/app/boardy' || p.startsWith('/boardy') || p.startsWith('/app/boardy')) return 'boardy';
-      if (p.includes('/profile') || p === '/app/profile') return 'profile';
-      if (p.includes('/universities') || p === '/app/universities') return 'universities';
-      if (p.includes('/merit-meter') || p === '/app/merit-meter') return 'merit-meter';
-      if (p.includes('/predictor') || p === '/app/predictor') return 'predictor';
-      if (p.includes('/limits') || p === '/app/limits') return 'limits';
-      const sp = new URLSearchParams(window.location.search);
-      if (sp.get('tab')) return sp.get('tab')!;
+      return window.location.pathname.toLowerCase().replace(/\/$/, '') || '/dashboard';
     }
-    return 'overview';
+    return '/dashboard';
   });
-  const [showMoreSheet, setShowMoreSheet] = useState<boolean>(false);
-  const [isBoardyFocused, setIsBoardyFocused] = useState<boolean>(false);
-  const [showUsageModal, setShowUsageModal] = useState<boolean>(false);
-  const [showMeritMeterModal, setShowMeritMeterModal] = useState<boolean>(false);
-  const [showReviewModal, setShowReviewModal] = useState<boolean>(false);
-  const [showUpgradeModal, setShowUpgradeModal] = useState<boolean>(false);
-  const [upgradeFromBlocked, setUpgradeFromBlocked] = useState<boolean>(false);
-  const [showUniModal, setShowUniModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (propPath) {
+      setCurrentPath(propPath.toLowerCase());
+    }
+  }, [propPath]);
+
+  // Sync with browser navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      const p = window.location.pathname.toLowerCase().replace(/\/$/, '') || '/dashboard';
+      setCurrentPath(p);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const handleNavigate = useCallback(
+    (targetPath: string) => {
+      const cleanPath = targetPath.startsWith('/') ? targetPath : `/${targetPath}`;
+      if (typeof window !== 'undefined') {
+        window.history.pushState({}, '', cleanPath);
+      }
+      setCurrentPath(cleanPath.toLowerCase());
+      if (propNavigate) {
+        propNavigate(cleanPath);
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    },
+    [propNavigate]
+  );
+
+  // Active Boardy Prompt
   const [boardyPrompt, setBoardyPrompt] = useState<string>('');
 
-  const [revokeNotice, setRevokeNotice] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      const msg = sessionStorage.getItem('boardly_revoke_notice');
-      if (msg) {
-        sessionStorage.removeItem('boardly_revoke_notice');
-        return msg;
-      }
-    }
-    return null;
-  });
-
-  useEffect(() => {
-    const handlePop = () => {
-      const msg = sessionStorage.getItem('boardly_revoke_notice');
-      if (msg) {
-        sessionStorage.removeItem('boardly_revoke_notice');
-        setRevokeNotice(msg);
-      }
-    };
-    window.addEventListener('popstate', handlePop);
-    return () => window.removeEventListener('popstate', handlePop);
-  }, []);
-
-  const handleSelectTab = useCallback((tabId: string) => {
-    if (tabId === 'boardy') {
-      prevTabRef.current = activeTab !== 'boardy' ? activeTab : 'overview';
-      if (typeof window !== 'undefined') {
-        window.history.pushState({ tab: 'boardy', from: prevTabRef.current }, '', '/app/boardy');
-      }
-      setActiveTab('boardy');
-    } else {
-      if (activeTab === 'boardy') {
-        if (typeof window !== 'undefined') {
-          window.history.replaceState({ tab: tabId }, '', '/app');
-        }
-      }
-      prevTabRef.current = tabId;
-      setActiveTab(tabId);
-    }
-  }, [activeTab]);
-
-  const handleBackFromBoardy = useCallback(() => {
-    const returnTab = prevTabRef.current || 'overview';
-    if (typeof window !== 'undefined') {
-      window.history.replaceState({ tab: returnTab }, '', '/app');
-    }
-    setActiveTab(returnTab);
-  }, []);
-
-  // Close sheet on route / popstate change
-  useEffect(() => {
-    const handlePop = () => {
-      setShowMoreSheet(false);
-      const p = window.location.pathname.toLowerCase();
-      if (p === '/boardy' || p === '/app/boardy' || p.startsWith('/boardy') || p.startsWith('/app/boardy')) {
-        setActiveTab('boardy');
-      } else if (p.includes('/profile')) {
-        setActiveTab('profile');
-      } else if (p.includes('/universities')) {
-        setActiveTab('universities');
-      } else if (p.includes('/merit-meter')) {
-        setActiveTab('merit-meter');
-      } else if (p.includes('/predictor')) {
-        setActiveTab('predictor');
-      } else if (p.includes('/limits')) {
-        setActiveTab('limits');
-      } else {
-        setActiveTab(prevTabRef.current || 'overview');
-      }
-    };
-    window.addEventListener('popstate', handlePop);
-    return () => window.removeEventListener('popstate', handlePop);
-  }, []);
-
-  // Review Form State
-  const [reviewRating, setReviewRating] = useState<number>(5);
-  const [reviewText, setReviewText] = useState<string>('');
-  const [reviewSubmitted, setReviewSubmitted] = useState<boolean>(false);
-
-  // Upgrade Request State
-  const [upgradeTargetPlan, setUpgradeTargetPlan] = useState<'pro' | 'premium'>('pro');
-  const [upgradeMonths, setUpgradeMonths] = useState<number>(1);
-  const [paymentMethod, setPaymentMethod] = useState<'bank_transfer' | 'jazzcash' | 'easypaisa'>('jazzcash');
-  const [transactionId, setTransactionId] = useState<string>('');
-  const [upgradeSubmitted, setUpgradeSubmitted] = useState<boolean>(false);
-
-  // Test Runner State
+  // Active Test Runner Session
   const [activeTest, setActiveTest] = useState<{
     title: string;
     questions: Question[];
@@ -239,7 +135,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     return null;
   });
 
-  // Test Result State
+  // Completed Test Result
   const [completedResult, setCompletedResult] = useState<{
     title: string;
     questions: Question[];
@@ -251,62 +147,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     universityId?: string;
   } | null>(null);
 
-  // Test Attempts History directly mapped from active Firestore profile testHistory
-  const [attempts, setAttempts] = useState<StoredTestAttempt[]>(() => {
-    if (Array.isArray(profile?.testHistory) && profile.testHistory.length > 0) {
-      return profile.testHistory;
-    }
-    return [];
-  });
-
-  // Copy feedback state for manual payment details
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-
-  const handleCopyText = (text: string, key: string) => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      setCopiedKey(key);
-      setTimeout(() => setCopiedKey(null), 2000);
-    }
-  };
-
-  useEffect(() => {
-    if (Array.isArray(profile?.testHistory) && profile.testHistory.length > 0) {
-      setAttempts(profile.testHistory);
-    }
-  }, [profile?.testHistory]);
-
-  useEffect(() => {
-    // If no active test is running, clean up leftover auto-start flags
-    if (!activeTest) {
-      try {
-        localStorage.removeItem('boardly_start_diagnostic_on_load');
-        localStorage.removeItem('boardly_active_test_session');
-        sessionStorage.removeItem('boardly_auto_start_drill');
-        sessionStorage.removeItem('boardly_start_test');
-      } catch {}
-    }
-
-    if (user?.uid) {
-      getTestAttempts(user.uid).then((data) => {
-        if (data && data.length > 0) {
-          setAttempts((prev) => {
-            const map = new Map<string, StoredTestAttempt>();
-            data.forEach((item) => {
-              if (item.id) map.set(item.id, item);
-            });
-            prev.forEach((item) => {
-              if (item.id && !map.has(item.id)) map.set(item.id, item);
-            });
-            return Array.from(map.values()).sort(
-              (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-            );
-          });
-        }
-      });
-    }
-  }, [user]);
-
+  // Handle Progress update during test
   const handleProgressUpdate = (progress: {
     answers: (number | null)[];
     flagged: boolean[];
@@ -334,17 +175,16 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     } catch {}
   };
 
+  // Launch a Timed Sprint
   const handleStartSprint = async (subject: string) => {
     if (!canStartTest()) {
-      setUpgradeFromBlocked(true);
-      setShowUpgradeModal(true);
+      handleNavigate('/dashboard/plans');
       return;
     }
     const sessionId = `sprint-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const allowed = await consumeTestStart(sessionId);
     if (!allowed) {
-      setUpgradeFromBlocked(true);
-      setShowUpgradeModal(true);
+      handleNavigate('/dashboard/plans');
       return;
     }
 
@@ -363,22 +203,22 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     setCompletedResult(null);
   };
 
-  const handleStartUniversityPaper = async (uni: University) => {
+  // Launch Full University Mock Exam
+  const handleStartUniversityPaper = async (uniKeyOrObj: string | University) => {
     if (!canStartTest()) {
-      setUpgradeFromBlocked(true);
-      setShowUpgradeModal(true);
+      handleNavigate('/dashboard/plans');
       return;
     }
     const sessionId = `paper-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const allowed = await consumeTestStart(sessionId);
     if (!allowed) {
-      setUpgradeFromBlocked(true);
-      setShowUpgradeModal(true);
+      handleNavigate('/dashboard/plans');
       return;
     }
 
+    const uniId = typeof uniKeyOrObj === 'string' ? uniKeyOrObj : uniKeyOrObj.id;
     const studentSeenStems = getSeenStemsForStudent(user?.uid || profile?.uid);
-    const { config: paperConfig, questions } = generateUniversityPaperExam(uni.id, studentSeenStems);
+    const { config: paperConfig, questions } = generateUniversityPaperExam(uniId, studentSeenStems);
 
     const startTime = Date.now();
     const durationMinutes = paperConfig.durationMinutes;
@@ -391,7 +231,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       negativeMarkingPercent: paperConfig.negativeMarkingPercent,
       marksPerQuestion: paperConfig.marksPerQuestion,
       totalMarks: paperConfig.totalMarks,
-      universityId: uni.id,
+      universityId: uniId,
       startTime,
       endTime,
       initialAnswers: Array(questions.length).fill(null),
@@ -417,17 +257,74 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     setCompletedResult(null);
   };
 
-  const handleStartEventTest = (session: EventSession) => {
-    const rawQuestions = getEntranceExamQuestions('nust', session.subject || 'Advance Maths', session.totalQuestions || 40);
-    setActiveTest({
-      title: session.title,
-      questions: rawQuestions,
-      durationMinutes: session.durationMinutes || 40,
-      negativeMarkingPercent: session.type === 'arena' ? 0.25 : 0,
-    });
+  // Launch Custom Drill Session
+  const handleStartDrillSession = async (config: {
+    subject: string;
+    chapter?: string;
+    topic?: string;
+    questionCount: number;
+    durationMinutes: number;
+    difficulty?: string;
+    isPastPaper?: boolean;
+    universityId?: string;
+  }) => {
+    if (!canStartTest()) {
+      handleNavigate('/dashboard/plans');
+      return;
+    }
+    const sessionId = `drill-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+    const allowed = await consumeTestStart(sessionId);
+    if (!allowed) {
+      handleNavigate('/dashboard/plans');
+      return;
+    }
+
+    const uniId = config.universityId || profile?.targetUniversityId || 'nust';
+    const sub = config.subject === 'All Subjects' ? 'Advance Maths' : config.subject;
+    const studentSeenStems = getSeenStemsForStudent(user?.uid || profile?.uid);
+
+    let questions: Question[] = [];
+    if (config.isPastPaper && config.universityId) {
+      const exam = generateUniversityPaperExam(config.universityId, studentSeenStems);
+      questions = exam.questions.slice(0, config.questionCount);
+    } else {
+      questions = getEntranceExamQuestions(uniId, sub, config.questionCount);
+    }
+
+    const startTime = Date.now();
+    const endTime = startTime + config.durationMinutes * 60 * 1000;
+
+    const title = config.chapter
+      ? `${config.chapter} Drill · ${config.subject}`
+      : config.isPastPaper
+      ? `${config.universityId?.toUpperCase()} Past Paper Drill`
+      : `${config.subject} Custom Drill`;
+
+    const sessionState = {
+      title,
+      questions,
+      durationMinutes: config.durationMinutes,
+      negativeMarkingPercent: 0,
+      marksPerQuestion: 1,
+      totalMarks: questions.length,
+      universityId: uniId,
+      subject: config.subject,
+      startTime,
+      endTime,
+      initialAnswers: Array(questions.length).fill(null),
+      initialFlagged: Array(questions.length).fill(false),
+      initialIndex: 0,
+    };
+
+    try {
+      localStorage.setItem('boardly_university_test_session', JSON.stringify(sessionState));
+    } catch {}
+
+    setActiveTest(sessionState);
     setCompletedResult(null);
   };
 
+  // Complete active test
   const handleCompleteTest = async (results: {
     title: string;
     questions: Question[];
@@ -454,8 +351,9 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     });
 
     const perQuestionMark = results.marksPerQuestion ?? (activeTest?.marksPerQuestion || 1);
-    const effectiveTotalMarks = results.totalMarks ?? (activeTest?.totalMarks || (results.questions.length * perQuestionMark));
-    const rawScore = (correct * perQuestionMark) - (wrong * results.negativeMarkingPercent * perQuestionMark);
+    const effectiveTotalMarks =
+      results.totalMarks ?? (activeTest?.totalMarks || results.questions.length * perQuestionMark);
+    const rawScore = correct * perQuestionMark - wrong * results.negativeMarkingPercent * perQuestionMark;
     const finalScore = Math.max(0, Math.round(rawScore * 10) / 10);
     const percentage = Math.round((finalScore / effectiveTotalMarks) * 100);
 
@@ -475,21 +373,25 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
       createdAt: new Date().toISOString(),
     };
 
-    setAttempts((prev) => [newAttempt, ...prev]);
-
-    // Record questions as seen for this student
     if (results.questions.length > 0) {
-      recordQuestionsAsSeen(user?.uid || profile?.uid, results.questions, activeTest?.subject || 'University Paper', results.title);
+      recordQuestionsAsSeen(
+        user?.uid || profile?.uid,
+        results.questions,
+        activeTest?.subject || 'University Paper',
+        results.title
+      );
     }
 
     if (user?.uid) {
       logTestAttempt(newAttempt).catch(console.warn);
-      const currentUsed = profile?.testsUsedToday || 0;
       const existingHistory = Array.isArray(profile?.testHistory) ? profile.testHistory : [];
       const updatedHistory = [newAttempt, ...existingHistory];
-      const currentStreak = typeof profile?.streak === 'number'
-        ? profile.streak
-        : (typeof profile?.streakDays === 'number' ? profile.streakDays : 0);
+      const currentStreak =
+        typeof profile?.streak === 'number'
+          ? profile.streak
+          : typeof profile?.streakDays === 'number'
+          ? profile.streakDays
+          : 0;
       const newStreak = Math.max(1, currentStreak + 1);
       updateProfileData({
         testHistory: updatedHistory,
@@ -511,139 +413,57 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     setActiveTest(null);
   };
 
+  // Ask Boardy about a question from results
   const handleAskBoardyAboutQuestion = (q: Question, studentAnsIndex: number | null) => {
     const studentChoice =
       studentAnsIndex !== null
         ? `Option ${String.fromCharCode(65 + studentAnsIndex)}: "${q.options[studentAnsIndex]}"`
         : 'unattempted';
-    const prompt = `Please explain this question step-by-step:\n\n**Question**: ${q.q || q.question}\n\n**Options**:\nA) ${q.options[0]}\nB) ${q.options[1]}\nC) ${q.options[2]}\nD) ${q.options[3]}\n\nI answered ${studentChoice}. The correct answer is Option ${String.fromCharCode(65 + q.correct)}. Where did my logic go wrong?`;
+    const prompt = `Please explain this question step-by-step:\n\n**Question**: ${
+      q.q || q.question
+    }\n\n**Options**:\nA) ${q.options[0]}\nB) ${q.options[1]}\nC) ${q.options[2]}\nD) ${
+      q.options[3]
+    }\n\nI answered ${studentChoice}. The correct answer is Option ${String.fromCharCode(
+      65 + q.correct
+    )}. Where did my logic go wrong?`;
 
     setBoardyPrompt(prompt);
-    setActiveTab('boardy');
     setCompletedResult(null);
+    handleNavigate('/dashboard/ai-tutor');
   };
 
-  const handleSubmitReview = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!reviewText.trim() || reviewText.length < 10) return;
-    try {
-      const { collection, addDoc } = await import('firebase/firestore');
-      const { db } = await import('../../lib/firebase');
-      await addDoc(collection(db, 'reviews'), {
-        uid: user?.uid || 'guest',
-        name: profile?.name || 'Student',
-        nameDisplayChoice: 'first_initial',
-        rating: reviewRating,
-        text: reviewText.trim(),
-        exam: profile?.testTrack || 'FSC / Entry Test',
-        status: 'pending',
-        isVerifiedStudent: true,
-        createdAt: new Date().toISOString(),
-      });
-      setReviewSubmitted(true);
-      setTimeout(() => {
-        setShowReviewModal(false);
-        setReviewSubmitted(false);
-        setReviewText('');
-      }, 2500);
-    } catch (err) {
-      console.warn('[Review submit notice]:', err);
-      setShowReviewModal(false);
-    }
-  };
-
-  const handleSubmitUpgradeRequest = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!transactionId.trim()) return;
-    try {
-      const { collection, addDoc } = await import('firebase/firestore');
-      const { db } = await import('../../lib/firebase');
-      const amount = upgradeTargetPlan === 'pro' ? 2499 * upgradeMonths : 3999 * upgradeMonths;
-      await addDoc(collection(db, 'paymentRequests'), {
-        userId: user?.uid || 'guest',
-        userEmail: user?.email || '',
-        userName: profile?.name || 'Student',
-        planId: upgradeTargetPlan,
-        durationMonths: upgradeMonths,
-        amountPkr: amount,
-        paymentMethod,
-        transactionId: transactionId.trim(),
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      });
-      setUpgradeSubmitted(true);
-      setTimeout(() => {
-        setShowUpgradeModal(false);
-        setUpgradeSubmitted(false);
-        setTransactionId('');
-      }, 3000);
-    } catch (err) {
-      console.warn('[Upgrade submit notice]:', err);
-      setShowUpgradeModal(false);
-    }
-  };
-
-  const handlePricingUpgradeRequest = async (data: {
-    plan: 'pro' | 'premium';
-    durationMonths: number;
-    amount: number;
-    paymentMethod: 'bank_transfer' | 'jazzcash' | 'easypaisa';
-    transactionId: string;
-  }) => {
-    try {
-      const { collection, addDoc } = await import('firebase/firestore');
-      const { db } = await import('../../lib/firebase');
-      await addDoc(collection(db, 'paymentRequests'), {
-        userId: user?.uid || 'guest',
-        userEmail: user?.email || '',
-        userName: profile?.name || 'Student',
-        planId: data.plan,
-        durationMonths: data.durationMonths,
-        amountPkr: data.amount,
-        paymentMethod: data.paymentMethod,
-        transactionId: data.transactionId.trim(),
-        status: 'pending',
-        createdAt: new Date().toISOString(),
-      });
-    } catch (err) {
-      console.warn('[Upgrade submit notice]:', err);
-      throw err;
-    }
-  };
-
-  // If a test is actively running, render the dedicated runner
+  // Render Active Test Runner if running
   if (activeTest) {
-    // If not unlimited and user reached daily quota without an existing saved session, block test
-    const storedSession = typeof window !== 'undefined' ? localStorage.getItem('boardly_university_test_session') : null;
+    const storedSession =
+      typeof window !== 'undefined' ? localStorage.getItem('boardly_university_test_session') : null;
     if (!storedSession && !canStartTest() && !usageLoading) {
       return (
-        <div className="min-h-screen bg-[#F8F9FB] flex flex-col items-center justify-center p-6 text-center space-y-4">
-          <div className="w-16 h-16 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto shadow-xs">
+        <div className="min-h-screen bg-[#070B14] flex flex-col items-center justify-center p-6 text-center space-y-4">
+          <div className="w-16 h-16 rounded-2xl bg-rose-500/10 text-rose-400 border border-rose-500/20 flex items-center justify-center mx-auto">
             <Lock className="w-8 h-8" />
           </div>
-          <h2 className="text-xl font-extrabold text-[#0d1b3e]">
-            You have used today's free limit. Resets at midnight (PKT)
+          <h2 className="text-xl font-extrabold text-white">
+            Daily Test Limit Reached (Resets midnight PKT)
           </h2>
-          <p className="text-sm text-slate-500 max-w-md">
-            Upgrade to keep practicing with full-length university mocks and unlimited timed drills.
+          <p className="text-sm text-[var(--text-muted)] max-w-md">
+            Upgrade to Boardly Pro for unlimited tests and entrance mock papers.
           </p>
-          <div className="flex flex-col sm:flex-row gap-3">
+          <div className="flex gap-3">
             <button
               onClick={() => {
                 setActiveTest(null);
-                setUpgradeFromBlocked(true);
-                setShowUpgradeModal(true);
+                handleNavigate('/dashboard/plans');
               }}
-              className="px-6 py-3 rounded-2xl bg-indigo-600 text-white font-bold text-sm shadow-md hover:bg-indigo-700 transition-all cursor-pointer"
+              className="px-6 py-3 rounded-xl bg-[var(--brand)] text-white font-bold text-sm hover:opacity-90 transition-opacity cursor-pointer"
             >
               Upgrade Plan
             </button>
             <button
               onClick={() => {
                 setActiveTest(null);
-                setActiveTab('overview');
+                handleNavigate('/dashboard');
               }}
-              className="px-6 py-3 rounded-2xl bg-slate-200 text-slate-700 font-bold text-sm hover:bg-slate-300 transition-all cursor-pointer"
+              className="px-6 py-3 rounded-xl bg-white/10 text-white font-bold text-sm hover:bg-white/15 transition-colors cursor-pointer"
             >
               Back to Dashboard
             </button>
@@ -677,7 +497,7 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
     );
   }
 
-  // If test is completed, render detailed result screen
+  // Render Completed Test Result Screen
   if (completedResult) {
     return (
       <StudentTestResult
@@ -689,493 +509,254 @@ export const StudentAppShell: React.FC<StudentAppShellProps> = ({
         marksPerQuestion={completedResult.marksPerQuestion}
         totalMarks={completedResult.totalMarks}
         onRetake={() => {
-          const uniKey = completedResult.universityId || profile?.targetUniversityId || profile?.targetUniversity || profile?.university || 'nust';
           if (completedResult.title.includes('Sprint')) {
-            handleStartSprint(completedResult.universityId || 'Advance Maths');
-            return;
+            handleStartSprint('Advance Maths');
+          } else {
+            handleStartUniversityPaper(completedResult.universityId || 'nust');
           }
-
-          const { config: paperConfig, questions } = generateUniversityPaperExam(
-            uniKey,
-            getSeenStemsForStudent(user?.uid || profile?.uid)
-          );
-          const startTime = Date.now();
-          const durationMinutes = paperConfig.durationMinutes;
-          const endTime = startTime + durationMinutes * 60 * 1000;
-
-          const sessionState = {
-            title: `${paperConfig.shortName} Full Entrance Mock Paper`,
-            questions,
-            durationMinutes,
-            negativeMarkingPercent: paperConfig.negativeMarkingPercent,
-            marksPerQuestion: paperConfig.marksPerQuestion,
-            totalMarks: paperConfig.totalMarks,
-            universityId: uniKey,
-            startTime,
-            endTime,
-            initialAnswers: Array(questions.length).fill(null),
-            initialFlagged: Array(questions.length).fill(false),
-            initialIndex: 0,
-          };
-
-          try {
-            localStorage.setItem(
-              'boardly_university_test_session',
-              JSON.stringify({
-                ...sessionState,
-                userAnswers: sessionState.initialAnswers,
-                flagged: sessionState.initialFlagged,
-                currentIndex: 0,
-              })
-            );
-          } catch {}
-
-          setActiveTest(sessionState);
-          setCompletedResult(null);
         }}
         onGoHome={() => {
           setCompletedResult(null);
-          setActiveTab('overview');
+          handleNavigate('/dashboard');
         }}
         onAskBoardyAboutQuestion={handleAskBoardyAboutQuestion}
       />
     );
   }
 
-  const isBoardyActive = activeTab === 'boardy' && !activeTest && !completedResult;
+  // Determine current active sub-view
+  const normalizedPath = currentPath.toLowerCase();
+
+  const renderActiveView = () => {
+    // 1. Overview (/dashboard or /app)
+    if (normalizedPath === '/dashboard' || normalizedPath === '/app' || normalizedPath === '') {
+      return (
+        <OverviewView
+          onNavigate={handleNavigate}
+          onStartSprint={handleStartSprint}
+          onStartMock={(uniId) => {
+            const uni = UNIVERSITIES.find((u) => u.id === uniId) || UNIVERSITIES[0];
+            handleStartUniversityPaper(uni);
+          }}
+          onAskBoardy={(prompt) => {
+            setBoardyPrompt(prompt);
+            handleNavigate('/dashboard/ai-tutor');
+          }}
+        />
+      );
+    }
+
+    // 2. Practice Vault (/dashboard/practice or /practice or /app/practice)
+    if (
+      normalizedPath === '/dashboard/practice' ||
+      normalizedPath.startsWith('/dashboard/practice/') ||
+      normalizedPath === '/practice' ||
+      normalizedPath.startsWith('/practice/') ||
+      normalizedPath === '/app/practice'
+    ) {
+      return <PracticeVaultView onStartDrillSession={handleStartDrillSession} />;
+    }
+
+    // 3. Chapter Map (/dashboard/chapter-map or /app/chapter-map)
+    if (
+      normalizedPath === '/dashboard/chapter-map' ||
+      normalizedPath.startsWith('/dashboard/chapter-map/') ||
+      normalizedPath === '/app/chapter-map'
+    ) {
+      return (
+        <ChapterMapView
+          onStartChapterDrill={(subj, chap) =>
+            handleStartDrillSession({
+              subject: subj,
+              chapter: chap,
+              questionCount: 20,
+              durationMinutes: 20,
+            })
+          }
+        />
+      );
+    }
+
+    // 4. Formula Vault (/dashboard/formula-vault or /app/formula-vault)
+    if (
+      normalizedPath === '/dashboard/formula-vault' ||
+      normalizedPath.startsWith('/dashboard/formula-vault/') ||
+      normalizedPath === '/app/formula-vault'
+    ) {
+      return (
+        <FormulaVaultView
+          onAskBoardyDerivation={(formulaName, latex) => {
+            setBoardyPrompt(
+              `Please explain the complete step-by-step derivation and high-yield entrance test problem applications for the following formula:\n\n**${formulaName}**:\n$$${latex}$$\n\nGive 2 entrance exam shortcut tricks.`
+            );
+            handleNavigate('/dashboard/ai-tutor');
+          }}
+        />
+      );
+    }
+
+    // 5. Test History (/dashboard/history or /app/history)
+    if (
+      normalizedPath === '/dashboard/history' ||
+      normalizedPath.startsWith('/dashboard/history/') ||
+      normalizedPath === '/app/history'
+    ) {
+      return (
+        <TestHistoryView
+          onReviewAttempt={(attemptId) => {
+            console.log('Review attempt:', attemptId);
+          }}
+        />
+      );
+    }
+
+    // 6. Merit Meter (/dashboard/merit-meter or /app/merit-meter)
+    if (
+      normalizedPath === '/dashboard/merit-meter' ||
+      normalizedPath.startsWith('/dashboard/merit-meter/') ||
+      normalizedPath === '/app/merit-meter'
+    ) {
+      return (
+        <MeritMeterView
+          onNavigateToPractice={() => handleNavigate('/dashboard/practice')}
+        />
+      );
+    }
+
+    // 7. University Directory (/dashboard/universities or /app/universities)
+    if (
+      normalizedPath === '/dashboard/universities' ||
+      normalizedPath.startsWith('/dashboard/universities/') ||
+      normalizedPath === '/app/universities'
+    ) {
+      return (
+        <UniversityExplorerView
+          onStartUniversityMock={(uniKey) => {
+            const uni = UNIVERSITIES.find((u) => u.id === uniKey) || UNIVERSITIES[0];
+            handleStartUniversityPaper(uni);
+          }}
+          onOpenMeritCalculator={(uniKey) => {
+            handleNavigate(`/dashboard/merit-meter?uni=${encodeURIComponent(uniKey)}`);
+          }}
+        />
+      );
+    }
+
+    // 8. Events & Arena (/dashboard/events or /app/events)
+    if (
+      normalizedPath === '/dashboard/events' ||
+      normalizedPath.startsWith('/dashboard/events/') ||
+      normalizedPath === '/app/events'
+    ) {
+      return (
+        <EventsArenaView
+          onEnterLiveSession={(sessionId) => {
+            console.log('Enter live session:', sessionId);
+          }}
+        />
+      );
+    }
+
+    // 9. Study Circles (/dashboard/study-circles or /app/study-circles)
+    if (
+      normalizedPath === '/dashboard/study-circles' ||
+      normalizedPath.startsWith('/dashboard/study-circles/') ||
+      normalizedPath === '/app/study-circles'
+    ) {
+      return (
+        <StudyCirclesView
+          onLaunchSquadSession={(sessionDocId) => {
+            console.log('Launch squad session:', sessionDocId);
+          }}
+        />
+      );
+    }
+
+    // 10. Boardy AI Tutor (/dashboard/ai-tutor or /boardy or /app/boardy)
+    if (
+      normalizedPath === '/dashboard/ai-tutor' ||
+      normalizedPath.startsWith('/dashboard/ai-tutor/') ||
+      normalizedPath === '/boardy' ||
+      normalizedPath.startsWith('/boardy/') ||
+      normalizedPath === '/app/boardy'
+    ) {
+      return (
+        <BoardyAiTutorView
+          initialPrompt={boardyPrompt}
+          onNavigateToPlans={() => handleNavigate('/dashboard/plans')}
+        />
+      );
+    }
+
+    // 11. Growth & Smart Planner (/dashboard/growth or /app/growth)
+    if (
+      normalizedPath === '/dashboard/growth' ||
+      normalizedPath.startsWith('/dashboard/growth/') ||
+      normalizedPath === '/app/growth'
+    ) {
+      return (
+        <SmartPlannerGrowthView
+          onStartDailyGoal={() => handleNavigate('/dashboard/practice')}
+        />
+      );
+    }
+
+    // 12. Plans & Usage (/dashboard/plans or /app/plans or /app/limits)
+    if (
+      normalizedPath === '/dashboard/plans' ||
+      normalizedPath.startsWith('/dashboard/plans/') ||
+      normalizedPath === '/app/plans' ||
+      normalizedPath === '/app/limits'
+    ) {
+      return (
+        <PlansUsageView
+          onUpgradeSuccess={() => {
+            handleNavigate('/dashboard');
+          }}
+        />
+      );
+    }
+
+    // 13. Reviews (/dashboard/reviews or /app/reviews)
+    if (
+      normalizedPath === '/dashboard/reviews' ||
+      normalizedPath.startsWith('/dashboard/reviews/') ||
+      normalizedPath === '/app/reviews'
+    ) {
+      return <StudentReviewsView />;
+    }
+
+    // 14. Profile & Settings (/dashboard/profile or /dashboard/settings or /app/profile)
+    if (
+      normalizedPath === '/dashboard/profile' ||
+      normalizedPath.startsWith('/dashboard/profile/') ||
+      normalizedPath === '/dashboard/settings' ||
+      normalizedPath === '/app/profile' ||
+      normalizedPath === '/profile'
+    ) {
+      return <StudentSettingsView />;
+    }
+
+    // Default fallback to Overview
+    return (
+      <OverviewView
+        onNavigate={handleNavigate}
+        onStartSprint={handleStartSprint}
+        onStartMock={(uniId) => {
+          const uni = UNIVERSITIES.find((u) => u.id === uniId) || UNIVERSITIES[0];
+          handleStartUniversityPaper(uni);
+        }}
+        onAskBoardy={(prompt) => {
+          setBoardyPrompt(prompt);
+          handleNavigate('/dashboard/ai-tutor');
+        }}
+      />
+    );
+  };
 
   return (
-    <>
-      {/* Toast Notice when redirected from revoked Crew access */}
-      {revokeNotice && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[100] max-w-md w-full px-4 animate-fade-in pointer-events-auto">
-          <div className="p-4 rounded-2xl bg-slate-900 text-white text-xs font-bold shadow-2xl border border-rose-500/50 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2.5">
-              <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse shrink-0" />
-              <span>{revokeNotice}</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setRevokeNotice(null)}
-              className="px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-black text-xs cursor-pointer transition-colors"
-            >
-              Dismiss
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Full-Screen Boardy AI tab with smooth transition */}
-      <AnimatePresence mode="wait">
-        {isBoardyActive ? (
-          <motion.div
-            key="boardy-full"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: shouldReduceMotion ? 0.05 : 0.25, ease: [0.22, 1, 0.36, 1] }}
-          >
-            <StudentBoardyChatTab
-              initialPrompt={boardyPrompt}
-              onOpenUsage={() => setShowUsageModal(true)}
-              onUpgrade={() => {
-                setUpgradeFromBlocked(true);
-                setShowUpgradeModal(true);
-              }}
-              onBackToDashboard={handleBackFromBoardy}
-              isFullScreen={true}
-            />
-          </motion.div>
-        ) : null}
-      </AnimatePresence>
-
-      {!isBoardyActive && (
-        <AppShell
-          role="student"
-          title={
-            activeTab === 'overview'
-              ? 'Dashboard'
-              : activeTab === 'practice'
-              ? 'Practice Question Bank'
-              : activeTab === 'events'
-              ? 'Events & Blitz'
-              : activeTab === 'history'
-              ? 'Test History'
-              : activeTab === 'limits'
-              ? 'Daily Limits'
-              : activeTab === 'universities'
-              ? 'University Explorer'
-              : activeTab === 'merit-meter'
-              ? 'Merit Meter'
-              : activeTab === 'predictor'
-              ? 'Admission Predictor'
-              : activeTab === 'profile'
-              ? 'Student Profile'
-              : 'Student Portal'
-          }
-          subtitle="FSC & University Test Prep Portal"
-          activeNav={activeTab}
-          onSelectNav={handleSelectTab}
-          onNavigateUpgrade={() => {
-            setUpgradeFromBlocked(false);
-            setShowUpgradeModal(true);
-          }}
-          onNavigateProfile={() => handleSelectTab('profile')}
-          onNavigateBilling={() => {
-            handleSelectTab('profile');
-            setTimeout(() => {
-              const el = document.getElementById('current-plan-card');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
-            }, 100);
-          }}
-          onLogout={logOut}
-          onOpenMore={() => setShowMoreSheet(true)}
-          isInputFocused={isBoardyFocused}
-          isInTestSession={Boolean(activeTest)}
-        >
-          {/* Tab Switcher with smooth page transitions */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, y: shouldReduceMotion ? 0 : 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: shouldReduceMotion ? 0 : -8 }}
-              transition={{
-                duration: shouldReduceMotion ? 0.05 : 0.22,
-                ease: [0.22, 1, 0.36, 1],
-              }}
-            >
-              {activeTab === 'overview' && (
-            <StudentOverviewTab
-              attempts={attempts}
-              onStartSprint={handleStartSprint}
-              onGoToPractice={() => handleSelectTab('practice')}
-              onGoToEvents={() => handleSelectTab('events')}
-              onWriteReview={() => setShowReviewModal(true)}
-              onSelectUniversity={() => setShowUniModal(true)}
-              onUpgrade={() => {
-                setUpgradeFromBlocked(true);
-                setShowUpgradeModal(true);
-              }}
-            />
-          )}
-
-          {activeTab === 'practice' && (
-            <StudentPracticeTab
-              onStartSprint={handleStartSprint}
-              onStartUniversityPaper={handleStartUniversityPaper}
-              onOpenUsage={() => setShowUsageModal(true)}
-              onUpgrade={() => setShowUpgradeModal(true)}
-            />
-          )}
-
-          {activeTab === 'events' && (
-            <StudentEventsTab onStartEventTest={handleStartEventTest} />
-          )}
-
-          {activeTab === 'history' && (
-            <StudentHistoryTab
-              attempts={attempts}
-              onStartTest={() => setActiveTab('practice')}
-            />
-          )}
-
-      {activeTab === 'profile' && (
-        <ErrorBoundary onReset={() => setActiveTab('overview')}>
-          <div className="max-w-2xl mx-auto animate-in fade-in pb-12">
-            <StudentProfileView
-              user={user}
-              profile={profile}
-              isAdmin={Boolean(isAdmin)}
-              onRefreshProfile={() => {
-                // Handled via AuthContext
-              }}
-              onNavigateHome={() => setActiveTab('overview')}
-              onOpenUpgrade={(target) => {
-                if (target) setUpgradeTargetPlan(target);
-                setShowUpgradeModal(true);
-              }}
-              onStartPractice={() => setActiveTab('practice')}
-              onSignOut={logOut}
-            />
-          </div>
-        </ErrorBoundary>
-      )}
-
-      {/* Requirement 3: More sheet destination tabs & unbuilt tiles */}
-      {activeTab === 'limits' && (
-        <ErrorBoundary onReset={() => setActiveTab('overview')}>
-          <DailyLimitsView
-            onOpenUpgradeModal={() => setShowUpgradeModal(true)}
-            onNavigatePractice={() => setActiveTab('practice')}
-            onNavigateBoardy={() => setActiveTab('boardy')}
-          />
-        </ErrorBoundary>
-      )}
-
-      {activeTab === 'universities' && (
-        <ErrorBoundary onReset={() => setActiveTab('overview')}>
-          <UniversityExplorer
-            onNavigateMeritMeter={(uniId) => {
-              setActiveTab('merit-meter');
-              if (typeof window !== 'undefined') {
-                window.history.pushState({}, '', `/app/merit-meter?uni=${encodeURIComponent(uniId)}`);
-              }
-            }}
-            onNavigatePredictor={() => setActiveTab('predictor')}
-          />
-        </ErrorBoundary>
-      )}
-
-      {activeTab === 'merit-meter' && (
-        <ErrorBoundary onReset={() => setActiveTab('overview')}>
-          <MeritMeter
-            onStartPractice={() => setActiveTab('practice')}
-            onExploreMore={() => setActiveTab('universities')}
-          />
-        </ErrorBoundary>
-      )}
-
-      {activeTab === 'predictor' && (
-        <ErrorBoundary onReset={() => setActiveTab('overview')}>
-          <AdmissionPredictor
-            onNavigateMeritMeter={() => setActiveTab('merit-meter')}
-            onNavigateUniversities={() => setActiveTab('universities')}
-          />
-        </ErrorBoundary>
-      )}
-
-      {activeTab === 'arena' && (
-        <ErrorBoundary onReset={() => setActiveTab('overview')}>
-          <ComingSoon
-            title="Boardly Arena"
-            icon={<Swords className="w-8 h-8 text-indigo-600" />}
-            text="Real-time head-to-head multiplayer MCQ showdowns with synchronized timing and negative marking calibration."
-            onBack={() => setActiveTab('overview')}
-          />
-        </ErrorBoundary>
-      )}
-
-      {activeTab === 'chapter-map' && (
-        <ErrorBoundary onReset={() => setActiveTab('overview')}>
-          <ComingSoon
-            title="Chapter Map"
-            icon={<Layers className="w-8 h-8 text-indigo-600" />}
-            text="Interactive conceptual dependency graph mapping prerequisite concepts across Physics, Math, Chemistry, and Biology."
-            onBack={() => setActiveTab('overview')}
-          />
-        </ErrorBoundary>
-      )}
-
-      {activeTab === 'formula-vault' && (
-        <ErrorBoundary onReset={() => setActiveTab('overview')}>
-          <FormulaVaultScreen
-            onBack={() => setActiveTab('overview')}
-            onOpenUpgrade={(target) => {
-              if (target) setUpgradeTargetPlan(target);
-              setShowUpgradeModal(true);
-            }}
-          />
-        </ErrorBoundary>
-      )}
-
-      {activeTab === 'paper-vault' && (
-        <ErrorBoundary onReset={() => setActiveTab('overview')}>
-          <ComingSoon
-            title="Paper Vault (Beta)"
-            icon={<FileText className="w-8 h-8 text-blue-600" />}
-            text="Official board past papers from FBISE, BISE Lahore, and university entrance exams with full solution keys."
-            onBack={() => setActiveTab('overview')}
-          />
-        </ErrorBoundary>
-      )}
-
-      {activeTab === 'growth' && (
-        <ErrorBoundary onReset={() => setActiveTab('overview')}>
-          <ComingSoon
-            title="Growth & Analytics"
-            icon={<BarChart2 className="w-8 h-8 text-emerald-600" />}
-            text="Deep diagnostic breakdown of accuracy trends, subject percentiles, and speed bottlenecks across test attempts."
-            onBack={() => setActiveTab('overview')}
-          />
-        </ErrorBoundary>
-      )}
-
-      {activeTab === 'smart-planner' && (
-        <ErrorBoundary onReset={() => setActiveTab('overview')}>
-          <ComingSoon
-            title="Smart Planner (Beta)"
-            icon={<Calendar className="w-8 h-8 text-purple-600" />}
-            text="Algorithmic daily revision schedule calibrated to your target university test date and weakest topic areas."
-            onBack={() => setActiveTab('overview')}
-          />
-        </ErrorBoundary>
-      )}
-            </motion.div>
-          </AnimatePresence>
-
-      {activeTab !== 'profile' && <TrustFooter className="mt-12" />}
-
-      {/* Requirement 3: "More" Bottom Sheet */}
-      <MoreBottomSheet
-        isOpen={showMoreSheet}
-        onClose={() => setShowMoreSheet(false)}
-        onNavigateTab={(tab) => {
-          setActiveTab(tab);
-          if (typeof window !== 'undefined') {
-            if (tab === 'profile') window.history.pushState({}, '', '/app/profile');
-            else if (tab === 'universities') window.history.pushState({}, '', '/app/universities');
-            else if (tab === 'merit-meter') window.history.pushState({}, '', '/app/merit-meter');
-            else if (tab === 'predictor') window.history.pushState({}, '', '/app/predictor');
-            else if (tab === 'limits') window.history.pushState({}, '', '/app/limits');
-          }
-        }}
-        onNavigateUrl={(url) => {
-          if (typeof window !== 'undefined') {
-            window.history.pushState({}, '', url);
-            window.dispatchEvent(new PopStateEvent('popstate'));
-          }
-        }}
-      />
-
-      {/* Merit Meter Modal */}
-      {showMeritMeterModal && (
-        <MeritMeterModal
-          isOpen={showMeritMeterModal}
-          onClose={() => setShowMeritMeterModal(false)}
-        />
-      )}
-
-      {/* Usage Modal */}
-      {showUsageModal && (
-        <StudentUsageModal
-          isOpen={showUsageModal}
-          onClose={() => setShowUsageModal(false)}
-          onStartTest={() => {
-            setShowUsageModal(false);
-            setActiveTab('practice');
-          }}
-          onAskBoardy={() => {
-            setShowUsageModal(false);
-            setActiveTab('boardy');
-          }}
-          onViewPlans={() => {
-            setShowUsageModal(false);
-            setShowUpgradeModal(true);
-          }}
-        />
-      )}
-
-      {/* Write a Review Modal */}
-      {showReviewModal && (
-        <Modal
-          isOpen={showReviewModal}
-          onClose={() => setShowReviewModal(false)}
-          title="Share your Boardly Review"
-          subtitle="Your honest feedback helps improve practice tests for all aspirants."
-        >
-          {reviewSubmitted ? (
-            <div className="py-8 text-center space-y-3">
-              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-                <Star className="w-6 h-6 fill-emerald-600" />
-              </div>
-              <h4 className="font-extrabold text-base text-slate-900">
-                Thank you for your review!
-              </h4>
-              <p className="text-xs text-slate-500">
-                Your review has been submitted for moderation and will appear on the wall shortly.
-              </p>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmitReview} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Rating
-                </label>
-                <div className="flex items-center gap-2">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                      key={star}
-                      type="button"
-                      onClick={() => setReviewRating(star)}
-                      className="p-1 text-amber-400 hover:scale-110 transition-transform cursor-pointer"
-                    >
-                      <Star
-                        className={`w-6 h-6 ${
-                          star <= reviewRating ? 'fill-amber-400' : 'text-slate-300'
-                        }`}
-                      />
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Your Review
-                </label>
-                <textarea
-                  rows={4}
-                  value={reviewText}
-                  onChange={(e) => setReviewText(e.target.value)}
-                  placeholder="Tell other students how Boardly helped your test preparation..."
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  required
-                />
-              </div>
-
-              <div className="flex justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowReviewModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={reviewText.length < 10}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md disabled:opacity-50 cursor-pointer"
-                >
-                  Submit Review
-                </button>
-              </div>
-            </form>
-          )}
-        </Modal>
-      )}
-
-        </AppShell>
-      )}
-
-      {/* Redesigned Pricing & Checkout Experience */}
-      <PricingModal
-        isOpen={showUpgradeModal}
-        onClose={() => {
-          setShowUpgradeModal(false);
-          setUpgradeFromBlocked(false);
-        }}
-        fromBlocked={upgradeFromBlocked}
-        currentPlan={profile?.plan}
-        initialTargetPlan={upgradeTargetPlan}
-        onSubmitUpgradeRequest={handlePricingUpgradeRequest}
-      />
-
-      {/* Target University Selector Modal */}
-      <TargetUniversityModal
-        isOpen={showUniModal}
-        onClose={() => setShowUniModal(false)}
-        currentUser={user as any}
-        userProfile={profile as any}
-        onUniversityUpdated={(updated) => {
-          const chosen = updated.dream_university || updated.target_university || '';
-          updateProfileData({
-            targetUniversity: chosen,
-            targetUniversityId: chosen,
-            university: chosen,
-          });
-        }}
-      />
-    </>
+    <StudentLayout currentPath={normalizedPath} onNavigate={handleNavigate}>
+      {renderActiveView()}
+    </StudentLayout>
   );
 };
