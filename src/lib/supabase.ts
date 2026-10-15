@@ -1,44 +1,41 @@
-export interface SupabaseUser {
-  id: string;
-  email?: string;
-  user_metadata?: Record<string, any>;
-  app_metadata?: Record<string, any>;
-  identities?: any[];
-}
+import { createClient, User as SupabaseUser } from '@supabase/supabase-js';
+export type { SupabaseUser };
 import { HistoryItem, TestResult, BoardClass, ResourceCategory, ResourceItem } from '../types';
 import { auth } from './firebase';
 export const normalizePackageTrack = (val: string): string => String(val || '').toLowerCase().trim();
 export const findDuplicatePaymentGroups = (_requests: any[]): any[] => [];
 import { deriveTrackDetailsFromAssignableClass } from '../data/portalMasterTracks';
 
-export const isSupabaseConfigured = false;
+const supabaseUrl =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
+  'https://wbvzbbnapowwmrjecdyt.supabase.co';
 
-// Lightweight client shim to safely decouple legacy screens without crashing
-export const supabase: any = {
-  auth: {
-    getUser: async () => ({ data: { user: null }, error: null }),
-    getSession: async () => ({ data: { session: null }, error: null }),
-    signInWithPassword: async () => ({ data: { user: null }, error: new Error('Supabase migrated to Firebase Auth') }),
-    signOut: async () => ({ error: null }),
-    onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
-  },
-  from: () => ({
-    select: () => ({
-      eq: () => ({
-        single: async () => ({ data: null, error: null }),
-        order: async () => ({ data: [], error: null }),
-        limit: async () => ({ data: [], error: null }),
-      }),
-      order: () => ({ data: [], error: null }),
-    }),
-    insert: async () => ({ data: null, error: null }),
-    update: async () => ({ data: null, error: null }),
-    delete: async () => ({ data: null, error: null }),
-  }),
-};
+const supabaseAnonKey =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) ||
+  '';
+
+export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+
+export const supabase = createClient(
+  supabaseUrl,
+  supabaseAnonKey || 'placeholder-anon-key',
+  {
+    auth: {
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
+  }
+);
 
 export const ADMIN_EMAILS = [
   'shsvirtualadmin@gmail.com',
+  'support@boardly.cfd',
 ];
 
 export function isAdminEmail(email?: string | null): boolean {

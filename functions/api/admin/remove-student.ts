@@ -257,7 +257,20 @@ const handleRemoveStudent = async (context: PagesContext) => {
           } catch (aErr: any) {
             console.warn(`Exception deleting auth user by id:`, aErr?.message || String(aErr));
           }
-        }
+      // Step 6: Log admin action to admin_audit_log
+      try {
+        await db.from("admin_audit_log").insert([
+          {
+            admin_email: context.env.ADMIN_EMAIL || "admin",
+            action: "DELETE_STUDENT_ACCOUNT",
+            target_student_id: studentId || null,
+            target_student_email: studentEmail || null,
+            details: { wipedTables: Object.keys(wipedTables), authUserDeleted, timestamp: new Date().toISOString() },
+            created_at: new Date().toISOString(),
+          },
+        ]);
+      } catch (auditErr) {
+        console.warn("[remove-student] audit log note:", auditErr);
       }
 
       return new Response(

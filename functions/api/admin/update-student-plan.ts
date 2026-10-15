@@ -8,9 +8,17 @@ interface PagesContext {
 
 function getSupabaseAdminClient(env: Record<string, string | undefined>) {
   const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL || "https://wbvzbbnapowwmrjecdyt.supabase.co";
-  const serviceKey = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_KEY || env.VITE_SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_ANON_KEY || env.SUPABASE_ANON_KEY || "";
+  const serviceKey =
+    env.SUPABASE_SERVICE_ROLE_KEY ||
+    env.SUPABASE_SERVICE_KEY ||
+    env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
+    env.VITE_SUPABASE_ANON_KEY ||
+    env.SUPABASE_ANON_KEY ||
+    "";
   if (!url || !serviceKey) return null;
-  return createClient(url, serviceKey);
+  return createClient(url, serviceKey, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }
 
 export const onRequestPost = async (context: PagesContext) => {
@@ -18,7 +26,7 @@ export const onRequestPost = async (context: PagesContext) => {
 
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Methods": "POST, PATCH, PUT, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization",
     "Content-Type": "application/json",
   };
@@ -40,6 +48,8 @@ export const onRequestPost = async (context: PagesContext) => {
     const {
       studentId,
       studentEmail,
+      action, // 'extend' | 'cancel' | 'restore' | 'update'
+      extendDays,
       subscribedPlans,
       assignedClasses,
       packageName,
@@ -50,14 +60,13 @@ export const onRequestPost = async (context: PagesContext) => {
       grade: reqGrade,
       stream: reqStream,
       target_university: reqTargetUni,
-      dream_university: reqDreamUni,
     } = body || {};
 
-    if ((!studentId && !studentEmail) || !Array.isArray(subscribedPlans) || !packageName) {
+    if (!studentId && !studentEmail) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Invalid request parameters. Required: studentId or studentEmail, subscribedPlans (array), packageName.",
+          error: "Invalid request parameters: studentId or studentEmail is required.",
         }),
         { status: 400, headers: corsHeaders }
       );
@@ -79,11 +88,19 @@ export const onRequestPost = async (context: PagesContext) => {
     if (searchId) {
       const { data: sById } = await supabaseAdmin.from("students").select("*").eq("id", searchId).maybeSingle();
       if (sById) currentStudent = sById;
+      if (!currentStudent) {
+        const { data: pById } = await supabaseAdmin.from("profiles").select("*").eq("id", searchId).maybeSingle();
+        if (pById) currentStudent = pById;
+      }
     }
 
     if (!currentStudent && searchEmail) {
-      const { data: sByEmail } = await supabaseAdmin.from("students").select("*").eq("email", searchEmail).maybeSingle();
+      const { data: sByEmail } = await supabaseAdmin.from("students").select("*").ilike("email", searchEmail).maybeSingle();
       if (sByEmail) currentStudent = sByEmail;
+      if (!currentStudent) {
+        const { data: pByEmail } = await supabaseAdmin.from("profiles").select("*").ilike("email", searchEmail).maybeSingle();
+        if (pByEmail) currentStudent = pByEmail;
+      }
     }
 
     if (!currentStudent) {
@@ -93,168 +110,164 @@ export const onRequestPost = async (context: PagesContext) => {
       );
     }
 
-    const oldPlan = currentStudent.package_name || (currentStudent.subscribed_plans && currentStudent.subscribed_plans.join(", ")) || "Free Plan";
+    const targetStudentId = currentStudent.id;
+    const targetStudentEmail = currentStudent.email;
+    const now = new Date();
+    const nowIso = now.toISOString();
 
-    const isFree = (subscribedPlans.includes("free") && subscribedPlans.length === 1) || isPro === false;
-    const finalIsPro = typeof isPro === "boolean" ? isPro : !isFree;
-    const finalPaymentStatus = finalIsPro ? "Verified & Paid" : "Free Plan";
-    const finalRequiresPayment = !finalIsPro;
-    const finalPlanStatus = finalIsPro ? "verified_pro" : "trial";
-
-    const expMonths = Number(expirationMonths) || 12;
-    const accessExpiresStr = finalIsPro
-      ? new Date(Date.now() + expMonths * 30 * 24 * 3600 * 1000).toISOString()
-      : new Date().toISOString();
-
-    // Deduce grade, stream, and target university atomically
-    let finalGrade = (reqGrade || "").trim();
-    let finalStream = (reqStream || "").trim();
-    let finalTargetUni = (reqTargetUni || reqDreamUni || "").trim();
-
-    const topClassRaw = Array.isArray(assignedClasses) && assignedClasses.length > 0 ? String(assignedClasses[0]).trim() : "";
-    const topClassUpper = topClassRaw.toUpperCase();
-
-    if (!finalStream) {
-      if (topClassUpper.includes("FAST")) finalStream = "CS & Engineering Stream";
-      else if (topClassUpper.includes("PRE-ENGINEERING") || topClassUpper.includes("ENGINEERING")) finalStream = "Pre-Engineering Stream";
-      else if (topClassUpper.includes("PRE-MEDICAL") || topClassUpper.includes("MEDICAL")) finalStream = "Pre-Medical Stream";
-      else if (topClassUpper.includes("ICS") || topClassUpper.includes("COMPUTER")) finalStream = "ICS Stream";
-    }
-
-    if (!finalGrade) {
-      if (topClassUpper.includes("NET") || topClassUpper.includes("NUST")) finalGrade = "NET";
-      else if (topClassUpper.includes("MDCAT")) finalGrade = "MDCAT";
-      else if (topClassUpper.includes("TCAT")) finalGrade = "TCAT";
-      else if (topClassUpper.includes("FAST")) finalGrade = "FAST";
-      else if (topClassUpper.includes("11")) finalGrade = "Class 11";
-      else if (topClassUpper.includes("12")) finalGrade = "Class 12";
-      else finalGrade = currentStudent.grade || "Class 11";
-    }
-
-    if (!finalStream) {
-      if (finalGrade === "FAST") finalStream = "CS & Engineering Stream";
-      else if (finalGrade === "NET" || finalGrade === "TCAT" || finalGrade === "ECAT") finalStream = "Pre-Engineering Stream";
-      else if (finalGrade === "MDCAT" || finalGrade === "NUMS") finalStream = "Pre-Medical Stream";
-      else finalStream = currentStudent.stream || "Pre-Engineering Stream";
-    }
-
-    if (!finalTargetUni || finalTargetUni === "HEC / Board Standard") {
-      const gUpper = (finalGrade || topClassUpper).toUpperCase();
-      if (gUpper.includes("FAST")) finalTargetUni = "FAST-NUCES";
-      else if (gUpper.includes("NET") || gUpper.includes("NUST")) finalTargetUni = "NUST Islamabad";
-      else if (gUpper.includes("MDCAT")) finalTargetUni = "King Edward / UHS / PMDC";
-      else if (gUpper.includes("TCAT")) finalTargetUni = "UET Taxila";
-      else if (gUpper.includes("ECAT")) finalTargetUni = "UET Lahore";
-      else finalTargetUni = currentStudent.target_university || currentStudent.dream_university || "FBISE Board Examinations";
-    }
-
-    let finalAssignedClasses: string[] = Array.isArray(assignedClasses) && assignedClasses.length > 0 ? [...assignedClasses] : [];
-    if (finalAssignedClasses.length === 0 && finalGrade) {
-      finalAssignedClasses = [`${finalGrade}${finalStream ? " • " + finalStream : ""}`];
-    }
-
-    const planData = {
-      subscription_tier: finalIsPro ? "pro" : "free",
-      pro_expires_at: finalIsPro ? accessExpiresStr : null,
-      registration_completed: true,
-      enrolled_track_id: finalGrade,
-      enrolled_stream_id: finalStream,
-      enrolled_university_id: finalTargetUni,
-      free_tests_used_this_month: finalIsPro ? 0 : Number(currentStudent.free_tests_used_this_month ?? currentStudent.tests_used_this_month ?? 0),
-      subscribed_plans: finalIsPro ? subscribedPlans : ["free"],
-      is_pro: finalIsPro,
-      package_name: finalIsPro ? packageName : "Free Plan",
-      payment_status: finalPaymentStatus,
-      plan_status: finalPlanStatus,
-      requires_payment: finalRequiresPayment,
-      access_expires: accessExpiresStr,
-      grade: finalGrade,
-      stream: finalStream,
-      target_university: finalTargetUni,
-      dream_university: finalTargetUni,
-      assigned_classes: finalAssignedClasses,
-      status: "active",
-      updated_at: new Date().toISOString(),
+    let dbUpdatePayload: Record<string, any> = {
+      updated_at: nowIso,
     };
+    let auditAction = "UPDATE_STUDENT_PLAN";
+    let auditDetails: Record<string, any> = {};
 
-    let updatedStudent = { ...currentStudent, ...planData };
+    // Handle Subscription Extension (+N Days)
+    if (action === "extend" || (extendDays && Number(extendDays) > 0)) {
+      const days = Number(extendDays) || 30;
+      let baseTime = now.getTime();
+      const existingExpires = currentStudent.access_expires || currentStudent.pro_expires_at;
+      if (existingExpires) {
+        const parsed = new Date(existingExpires).getTime();
+        if (parsed > baseTime) {
+          baseTime = parsed;
+        }
+      }
+      const newExpiry = new Date(baseTime + days * 24 * 60 * 60 * 1000).toISOString();
 
-    const dbUpdatePayload: any = {
-      subscription_tier: finalIsPro ? "pro" : "free",
-      pro_expires_at: finalIsPro ? accessExpiresStr : null,
-      registration_completed: true,
-      enrolled_track_id: finalGrade,
-      enrolled_stream_id: finalStream,
-      enrolled_university_id: finalTargetUni,
-      free_tests_used_this_month: finalIsPro ? 0 : Number(currentStudent.free_tests_used_this_month ?? currentStudent.tests_used_this_month ?? 0),
-      subscribed_plans: finalIsPro ? subscribedPlans : ["free"],
-      is_pro: finalIsPro,
-      plan_tier: finalIsPro ? "pro" : "free",
-      package_name: finalIsPro ? packageName : "Free Plan",
-      payment_status: finalPaymentStatus,
-      plan_status: finalPlanStatus,
-      requires_payment: finalRequiresPayment,
-      access_expires: accessExpiresStr,
-      grade: finalGrade,
-      stream: finalStream,
-      target_university: finalTargetUni,
-      dream_university: finalTargetUni,
-      assigned_classes: finalAssignedClasses,
-      status: "active",
-      updated_at: new Date().toISOString(),
-    };
+      dbUpdatePayload = {
+        subscription_tier: "pro",
+        plan_tier: "pro",
+        is_pro: true,
+        package_name: currentStudent.package_name && currentStudent.package_name !== "Free Plan" ? currentStudent.package_name : "Pro Extended",
+        access_expires: newExpiry,
+        pro_expires_at: newExpiry,
+        payment_status: "Verified & Paid",
+        status: "active",
+        updated_at: nowIso,
+      };
 
-    if (finalIsPro) {
-      dbUpdatePayload.tests_used_this_month = 0;
-      dbUpdatePayload.ai_messages_used_today = 0;
+      auditAction = "EXTEND_SUBSCRIPTION";
+      auditDetails = { daysAdded: days, newExpiry, previousExpiry: existingExpires };
+    }
+    // Handle Subscription Cancellation / Removal
+    else if (action === "cancel" || action === "remove") {
+      dbUpdatePayload = {
+        subscription_tier: "free",
+        plan_tier: "free",
+        is_pro: false,
+        package_name: "Free Plan",
+        subscribed_plans: ["free"],
+        access_expires: nowIso,
+        pro_expires_at: nowIso,
+        plan_status: "cancelled",
+        payment_status: "Free Plan",
+        updated_at: nowIso,
+      };
+
+      auditAction = "CANCEL_SUBSCRIPTION";
+      auditDetails = { previousPlan: currentStudent.package_name || currentStudent.subscription_tier };
+    }
+    // Handle Subscription Restoration
+    else if (action === "restore") {
+      const restoredExpiry = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      dbUpdatePayload = {
+        subscription_tier: "pro",
+        plan_tier: "pro",
+        is_pro: true,
+        package_name: packageName || "Pro Restored",
+        subscribed_plans: ["pro"],
+        access_expires: restoredExpiry,
+        pro_expires_at: restoredExpiry,
+        plan_status: "verified_pro",
+        payment_status: "Verified & Paid",
+        status: "active",
+        updated_at: nowIso,
+      };
+
+      auditAction = "RESTORE_SUBSCRIPTION";
+      auditDetails = { restoredExpiry, plan: dbUpdatePayload.package_name };
+    }
+    // Standard Plan Override
+    else {
+      const finalIsPro = typeof isPro === "boolean" ? isPro : packageName !== "Free Plan";
+      const expMonths = Number(expirationMonths) || 12;
+      const accessExpiresStr = finalIsPro
+        ? new Date(Date.now() + expMonths * 30 * 24 * 3600 * 1000).toISOString()
+        : nowIso;
+
+      dbUpdatePayload = {
+        subscription_tier: finalIsPro ? "pro" : "free",
+        plan_tier: finalIsPro ? "pro" : "free",
+        pro_expires_at: finalIsPro ? accessExpiresStr : null,
+        access_expires: accessExpiresStr,
+        is_pro: finalIsPro,
+        package_name: packageName || (finalIsPro ? "Pro Plan" : "Free Plan"),
+        payment_status: finalIsPro ? paymentStatus : "Free Plan",
+        plan_status: finalIsPro ? "verified_pro" : "trial",
+        requires_payment: !finalIsPro,
+        status: "active",
+        updated_at: nowIso,
+      };
+
+      if (subscribedPlans) dbUpdatePayload.subscribed_plans = subscribedPlans;
+      if (assignedClasses) dbUpdatePayload.assigned_classes = assignedClasses;
+      if (reqGrade) dbUpdatePayload.grade = reqGrade;
+      if (reqStream) dbUpdatePayload.stream = reqStream;
+      if (reqTargetUni) dbUpdatePayload.target_university = reqTargetUni;
+
+      auditAction = "UPDATE_STUDENT_PLAN";
+      auditDetails = {
+        newPlan: dbUpdatePayload.package_name,
+        isPro: finalIsPro,
+        accessExpires: accessExpiresStr,
+        note: adminNote,
+      };
     }
 
-    const { data: updatedStudentData, error: updateErr } = await supabaseAdmin
+    // Persist to students table
+    const { data: updatedData, error: updateErr } = await supabaseAdmin
       .from("students")
       .update(dbUpdatePayload)
-      .eq("id", currentStudent.id)
-      .select();
+      .eq("id", targetStudentId)
+      .select()
+      .maybeSingle();
 
     if (updateErr) {
-      console.error("[update-student-plan] Database Update Error:", updateErr);
+      console.error("[update-student-plan] Update error:", updateErr);
       return new Response(
-        JSON.stringify({
-          success: false,
-          error: updateErr.message || "Failed to persist plan update in database.",
-        }),
+        JSON.stringify({ success: false, error: updateErr.message }),
         { status: 500, headers: corsHeaders }
       );
     }
 
-    if (updatedStudentData && updatedStudentData[0]) {
-      updatedStudent = { ...updatedStudentData[0], ...planData, access_expires: accessExpiresStr };
+    // Mirror to profiles table
+    try {
+      await supabaseAdmin.from("profiles").update(dbUpdatePayload).eq("id", targetStudentId);
+    } catch (profErr) {
+      console.warn("[update-student-plan] Mirroring to profiles failed:", profErr);
     }
 
-    // Log admin activity
-    const logRecord = {
-      id: "log_" + Date.now() + "_" + Math.random().toString(36).substring(2, 7),
-      admin_email: requestedByEmail || "shsvirtualadmin@gmail.com",
-      target_student_id: currentStudent.id,
-      target_student_name: currentStudent.name || "Student",
-      target_student_email: currentStudent.email,
-      action_type: "manual_plan_change",
-      old_plan: oldPlan,
-      new_plan: packageName,
-      note: adminNote || "Manual subscription plan override by administrator",
-      created_at: new Date().toISOString(),
-    };
-
+    // Log to admin_audit_log table
     try {
-      await supabaseAdmin.from("admin_activity_logs").insert([logRecord]);
-    } catch (logErr) {
-      console.warn("Notice: admin_activity_logs insert skipped:", logErr);
+      await supabaseAdmin.from("admin_audit_log").insert([
+        {
+          admin_email: requestedByEmail,
+          action: auditAction,
+          target_student_id: targetStudentId,
+          target_student_email: targetStudentEmail,
+          details: auditDetails,
+          created_at: nowIso,
+        },
+      ]);
+    } catch (auditErr) {
+      console.warn("[update-student-plan] audit log insert skipped:", auditErr);
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: `Plan successfully updated to "${packageName}" for ${currentStudent.name || "Student"}!`,
-        profile: updatedStudent,
+        message: `Plan update successfully executed for ${currentStudent.name || currentStudent.email}!`,
+        profile: updatedData || { ...currentStudent, ...dbUpdatePayload },
       }),
       { status: 200, headers: corsHeaders }
     );

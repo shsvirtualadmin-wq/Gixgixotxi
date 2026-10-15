@@ -28,6 +28,7 @@ import {
   deleteField,
 } from 'firebase/firestore';
 import { auth, db } from '../lib/firebase';
+import { supabase, isAdminEmail, apiFetch } from '../lib/supabase';
 import { StatCard } from './ui/StatCard';
 import { DataTable } from './ui/DataTable';
 import { Badge } from './ui/Badge';
@@ -99,17 +100,20 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     } catch {}
   };
 
-  // Students state with live Firestore connection
-  const [students, setStudents] = useState<StudentUserProfile[]>([]);
+  // Students state with live Supabase Realtime + Functions connection
+  const [students, setStudents] = useState<any[]>([]);
   const [totalStudentCount, setTotalStudentCount] = useState<number>(0);
   const [activeSubscriptionCount, setActiveSubscriptionCount] = useState<number>(0);
   const [suspendedUsersCount, setSuspendedUsersCount] = useState<number>(0);
   const [aiQueriesLoggedCount, setAiQueriesLoggedCount] = useState<number>(0);
   const [loadingStudents, setLoadingStudents] = useState<boolean>(true);
   const [studentsError, setStudentsError] = useState<string | null>(null);
+  const [realtimeConnected, setRealtimeConnected] = useState<boolean>(false);
+  const [studentStatusFilter, setStudentStatusFilter] = useState<'all' | 'active' | 'suspended' | 'expired' | 'pending'>('all');
+  const [studentSearchTerm, setStudentSearchTerm] = useState<string>('');
 
   // Selected student for drawer
-  const [selectedStudent, setSelectedStudent] = useState<StudentUserProfile | null>(null);
+  const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
   const [showStudentDrawer, setShowStudentDrawer] = useState<boolean>(false);
   const [drawerPlan, setDrawerPlan] = useState<'free' | 'pro' | 'premium'>('free');
   const [drawerExpiry, setDrawerExpiry] = useState<string>('');
@@ -217,9 +221,43 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   const hasPlanData = useMemo(() => realPlanDistribution.some((p) => p.value > 0), [realPlanDistribution]);
 
   const filteredStudents = useMemo(() => {
-    if (studentPlanFilter === 'all') return students;
-    return students.filter((s) => (s.plan || 'free') === studentPlanFilter);
-  }, [students, studentPlanFilter]);
+    let list = students;
+
+    // Status Filter (active / suspended / expired / pending)
+    if (studentStatusFilter !== 'all') {
+      list = list.filter((s: any) => {
+        const sStatus = (s.status || '').toLowerCase();
+        const isSusp = Boolean(s.suspended || sStatus === 'suspended');
+        const isExp = Boolean(s.accessExpires && new Date(s.accessExpires).getTime() < Date.now());
+        const isPend = Boolean((s.paymentStatus || '').toLowerCase().includes('pending') || sStatus === 'pending');
+
+        if (studentStatusFilter === 'active') return !isSusp && !isExp && sStatus !== 'deleted';
+        if (studentStatusFilter === 'suspended') return isSusp;
+        if (studentStatusFilter === 'expired') return isExp;
+        if (studentStatusFilter === 'pending') return isPend;
+        return true;
+      });
+    }
+
+    // Plan Filter (all / free / pro / premium)
+    if (studentPlanFilter !== 'all') {
+      list = list.filter((s) => (s.plan || 'free').toLowerCase() === studentPlanFilter);
+    }
+
+    // Search Query (name, email, class/grade, university)
+    if (studentSearchTerm.trim()) {
+      const q = studentSearchTerm.toLowerCase();
+      list = list.filter((s: any) =>
+        (s.name || '').toLowerCase().includes(q) ||
+        (s.email || '').toLowerCase().includes(q) ||
+        (s.grade || s.class || '').toLowerCase().includes(q) ||
+        (s.targetUniversity || s.university || '').toLowerCase().includes(q) ||
+        (s.plan || '').toLowerCase().includes(q)
+      );
+    }
+
+    return list;
+  }, [students, studentStatusFilter, studentPlanFilter, studentSearchTerm]);
 
   const loadBoardyLimits = useCallback(async () => {
     try {
@@ -251,12 +289,14 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     }
   };
 
-  // 1. Fetch Students, Count, & Live Metrics from Named Firestore
-  const loadStudents = useCallback(async () => {
-    setLoadingStudents(true);
+  // 1. Fetch Students, Count, & Live Metrics from Cloudflare Pages Function + Supabase
+  const loadStudents = useCallback(async (showLoadingSpinner: boolean = true) => {
+    if (showLoadingSpinner) {
+      setLoadingStudents(true);
+    }
     setStudentsError(null);
     try {
-      // 1. Wait for onAuthStateChanged if auth is still resolving
+      // 1. Verify caller holds authenticated admin privileges
       let currentAuth = auth.currentUser;
       if (!currentAuth) {
         currentAuth = await new Promise<any>((resolve) => {
@@ -272,55 +312,105 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
       }
 
       const activeEmail = (currentAuth?.email || '').trim().toLowerCase();
-      if (!currentAuth || activeEmail !== 'shsvirtualadmin@gmail.com') {
-        setStudentsError('Access restricted: Only the superadmin (shsvirtualadmin@gmail.com) is permitted to access the admin portal.');
+      if (!currentAuth || (!isAdminEmail(activeEmail) && user?.role !== 'admin')) {
+        setStudentsError('Access restricted: Only authorized administrators (shsvirtualadmin@gmail.com) are permitted.');
         setLoadingStudents(false);
         return;
       }
 
-      // 2. Query the "users" collection from the named Firestore
-      const usersCol = collection(db, 'users');
-      let snap;
-      try {
-        const qOrdered = query(usersCol, orderBy('createdAt', 'desc'));
-        snap = await getDocs(qOrdered);
-      } catch (orderErr: any) {
-        console.warn('[Admin] Ordered query failed or missing field, querying collection directly:', orderErr);
-        snap = await getDocs(usersCol);
-      }
+      // 2. Fetch from Cloudflare Pages Function (using runtime SUPABASE_SERVICE_ROLE_KEY)
+      let studentsData: any[] = [];
+      let fetchSuccess = false;
 
-      const fetchedList: StudentUserProfile[] = snap.docs.map((d) => {
-        const data = d.data();
-        let createdDateStr = '—';
-        if (data.createdAt) {
-          if (typeof data.createdAt?.toDate === 'function') {
-            createdDateStr = data.createdAt.toDate().toISOString();
-          } else if (typeof data.createdAt === 'string') {
-            createdDateStr = data.createdAt;
+      try {
+        const resp = await apiFetch('/api/admin/all-students');
+        if (resp.ok) {
+          const json = await resp.json();
+          if (json.success && Array.isArray(json.students)) {
+            studentsData = json.students;
+            fetchSuccess = true;
           }
         }
+      } catch (apiErr) {
+        console.warn('[Admin] /api/admin/all-students fetch exception:', apiErr);
+      }
 
-        const isSuspended = Boolean(data.suspended === true || data.status === 'suspended' || data.isSuspended === true);
+      // Fallback: direct Supabase query if Pages Function is not yet bound
+      if (!fetchSuccess) {
+        try {
+          const { data: sRows, error: sErr } = await supabase
+            .from('students')
+            .select('*')
+            .order('created_at', { ascending: false });
+          if (!sErr && Array.isArray(sRows) && sRows.length > 0) {
+            studentsData = sRows;
+            fetchSuccess = true;
+          } else {
+            const { data: pRows } = await supabase
+              .from('profiles')
+              .select('*')
+              .order('created_at', { ascending: false });
+            if (Array.isArray(pRows)) {
+              studentsData = pRows;
+              fetchSuccess = true;
+            }
+          }
+        } catch (sbErr) {
+          console.warn('[Admin] Supabase direct fallback query exception:', sbErr);
+        }
+      }
+
+      // Normalization of student records for live display
+      const fetchedList: any[] = studentsData.map((d: any) => {
+        const isSuspended = Boolean(d.suspended === true || d.status === 'suspended' || d.is_suspended === true);
+        const isDeleted = Boolean(d.status === 'deleted' || d.is_deleted === true);
+        const expiry = d.accessExpires || d.access_expires || d.pro_expires_at || d.premiumExpiresAt || null;
+        const isExpired = Boolean(expiry && new Date(expiry).getTime() < Date.now());
+
+        let computedStatus = 'active';
+        if (isDeleted) computedStatus = 'deleted';
+        else if (isSuspended) computedStatus = 'suspended';
+        else if (isExpired) computedStatus = 'expired';
+        else if (
+          (d.paymentStatus || d.payment_status || '').toLowerCase().includes('pending') ||
+          d.status === 'pending'
+        ) {
+          computedStatus = 'pending';
+        }
+
+        const grade = d.grade || d.class || d.enrolled_track_id || 'Class 11';
+        const stream = d.stream || d.enrolled_stream_id || 'Pre-Engineering';
+        const plan = d.subscriptionTier || d.plan || (d.is_pro || d.isPro ? 'pro' : 'free');
 
         return {
-          ...data,
-          uid: d.id,
-          name: data.displayName || data.name || (data.email ? data.email.split('@')[0] : 'Student'),
-          displayName: data.displayName || data.name || (data.email ? data.email.split('@')[0] : 'Student'),
-          email: data.email || '',
-          plan: data.plan || 'free',
-          university: data.targetUniversity || data.university || data.dream_university || '—',
-          targetUniversity: data.targetUniversity || data.university || data.dream_university || '—',
-          testDate: data.targetTestDate || data.targetExamDate || data.examDate || '—',
-          targetTestDate: data.targetTestDate || data.targetExamDate || data.examDate || '—',
-          createdAt: createdDateStr,
+          ...d,
+          id: d.id || d.uid,
+          uid: d.id || d.uid,
+          name: d.name || d.displayName || d.display_name || (d.email ? d.email.split('@')[0] : 'Student'),
+          displayName: d.displayName || d.name || d.display_name || (d.email ? d.email.split('@')[0] : 'Student'),
+          email: d.email || '',
+          grade,
+          class: grade,
+          stream,
+          university: d.targetUniversity || d.university || d.dream_university || '—',
+          targetUniversity: d.targetUniversity || d.university || d.dream_university || '—',
+          subscriptionTier: plan,
+          plan,
+          packageName: d.packageName || d.package_name || (plan === 'pro' ? 'Pro Plan' : 'Free Plan'),
+          isPro: Boolean(plan === 'pro' || plan === 'premium' || d.is_pro || d.isPro),
+          accessExpires: expiry,
+          expiryDate: expiry,
+          paymentStatus: d.paymentStatus || d.payment_status || (plan === 'pro' ? 'Verified & Paid' : 'Free'),
+          attendanceSummary: d.attendanceSummary || (d.attendance_count ? `${d.attendance_count} sessions` : '0 sessions'),
+          lastActive: d.lastActive || d.last_active_at || d.updated_at || d.created_at || '—',
+          createdAt: d.createdAt || d.created_at || '—',
+          status: computedStatus,
           suspended: isSuspended,
-          status: isSuspended ? 'suspended' : 'active',
-          role: data.role || 'student',
-        } as StudentUserProfile;
+          role: d.role || 'student',
+        };
       });
 
-      // Sort in-memory by date descending
+      // Sort by date descending
       fetchedList.sort((a, b) => {
         const timeA = a.createdAt && a.createdAt !== '—' ? new Date(a.createdAt).getTime() : 0;
         const timeB = b.createdAt && b.createdAt !== '—' ? new Date(b.createdAt).getTime() : 0;
@@ -329,21 +419,23 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
 
       setStudents(fetchedList);
       setTotalStudentCount(fetchedList.length);
-      setActiveSubscriptionCount(fetchedList.filter((s) => s.plan === 'pro' || s.plan === 'premium').length);
+      setActiveSubscriptionCount(fetchedList.filter((s) => s.isPro || s.plan === 'pro' || s.plan === 'premium').length);
       setSuspendedUsersCount(fetchedList.filter((s) => s.suspended || s.status === 'suspended').length);
 
       const queriesCount = fetchedList.reduce(
-        (acc, s) => acc + (s.boardyQuestionsUsedToday || 0),
+        (acc, s) => acc + (s.boardyQuestionsUsedToday || s.ai_messages_used_today || 0),
         0
       );
       setAiQueriesLoggedCount(queriesCount > 0 ? queriesCount : 142);
     } catch (err: any) {
       console.error('[Admin] loadStudents error:', err);
-      setStudentsError(err?.message || 'Failed to connect to Named Firestore.');
+      setStudentsError(err?.message || 'Failed to load live students data.');
     } finally {
-      setLoadingStudents(false);
+      if (showLoadingSpinner) {
+        setLoadingStudents(false);
+      }
     }
-  }, []);
+  }, [user]);
 
   // 2. Fetch Payment Requests
   const loadPaymentRequests = useCallback(async () => {
@@ -375,15 +467,40 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     }
   }, []);
 
-  // 4. Fetch Audit Logs
+  // 4. Fetch Live Audit Logs from admin_audit_log via Pages Function
   const loadAuditLogs = useCallback(async () => {
+    try {
+      const resp = await apiFetch('/api/admin/audit-log');
+      if (resp.ok) {
+        const json = await resp.json();
+        if (json.success && Array.isArray(json.logs)) {
+          setAuditLogs(
+            json.logs.map((l: any) => ({
+              id: l.id,
+              action: l.action,
+              adminEmail: l.admin_email,
+              adminId: l.admin_email,
+              targetId: l.target_student_id || l.target_student_email || '',
+              targetType: 'student',
+              details: typeof l.details === 'object' ? JSON.stringify(l.details) : String(l.details || ''),
+              createdAt: l.created_at,
+            }))
+          );
+          return;
+        }
+      }
+    } catch (logErr) {
+      console.warn('[Admin] Live audit-log fetch fallback:', logErr);
+    }
+
+    // Fallback: Firestore auditLogs collection
     try {
       const q = query(collection(db, 'auditLogs'), orderBy('createdAt', 'desc'), limit(50));
       const snap = await getDocs(q);
       const list: StoredAuditLog[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
       setAuditLogs(list);
     } catch (err) {
-      console.warn('[Admin] loadAuditLogs warning:', err);
+      console.warn('[Admin] loadAuditLogs Firestore fallback warning:', err);
     }
   }, []);
 
@@ -394,7 +511,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
       const logsCol = collection(db, 'auditLogs');
       const q = query(logsCol, orderBy('createdAt', 'desc'), limit(30));
       const snap = await getDocs(q);
-      setChatLogs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setChatLogs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
     } catch (err) {
       console.warn('[Admin] loadAiChatLogs warning:', err);
     } finally {
@@ -402,7 +519,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     }
   }, []);
 
-  // 6. Fetch Pending Crew & Captain Applications Count (for red badge)
+  // 6. Fetch Pending Crew & Captain Applications Count
   const [pendingCrewCount, setPendingCrewCount] = useState<number>(0);
   const loadCrewApplicationsCount = useCallback(async () => {
     try {
@@ -418,35 +535,107 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     }
   }, []);
 
+  // Supabase Realtime Subscription + 15-second Polling Fallback
   useEffect(() => {
-    loadStudents();
+    loadStudents(true);
     loadPaymentRequests();
     loadReviews();
     loadAuditLogs();
     loadAiChatLogs();
     loadCrewApplicationsCount();
+
+    let isMounted = true;
+    let channel: any = null;
+
+    try {
+      channel = supabase
+        .channel('admin-students-live')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'students' },
+          (payload: any) => {
+            console.log('[Supabase Realtime] students change event:', payload);
+            if (isMounted) {
+              loadStudents(false);
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'profiles' },
+          (payload: any) => {
+            console.log('[Supabase Realtime] profiles change event:', payload);
+            if (isMounted) {
+              loadStudents(false);
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'payment_proofs' },
+          (payload: any) => {
+            console.log('[Supabase Realtime] payment_proofs event:', payload);
+            if (isMounted) {
+              loadStudents(false);
+              loadPaymentRequests();
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'admin_audit_log' },
+          (payload: any) => {
+            console.log('[Supabase Realtime] admin_audit_log event:', payload);
+            if (isMounted) {
+              loadAuditLogs();
+            }
+          }
+        )
+        .subscribe((status: string) => {
+          console.log('[Supabase Realtime] status:', status);
+          if (isMounted) {
+            setRealtimeConnected(status === 'SUBSCRIBED');
+          }
+        });
+    } catch (rtErr) {
+      console.warn('[Admin] Supabase Realtime channel setup exception:', rtErr);
+    }
+
+    // 15-second polling fallback if disconnected or as guaranteed background sync
+    const pollInterval = setInterval(() => {
+      if (isMounted) {
+        loadStudents(false);
+        loadAuditLogs();
+      }
+    }, 15000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+      if (channel) {
+        supabase.removeChannel(channel).catch(() => {});
+      }
+    };
   }, [loadStudents, loadPaymentRequests, loadReviews, loadAuditLogs, loadAiChatLogs, loadCrewApplicationsCount]);
 
-  // LIVE ACTION: Approve / Activate Student
-  const handleActivateStudent = async (student: StudentUserProfile) => {
+  // LIVE ACTION: Approve / Activate / Unsuspend Student
+  const handleActivateStudent = async (student: any) => {
     try {
-      await updateDoc(doc(db, 'users', student.uid), {
-        suspended: false,
-        status: 'active',
-        isSuspended: false,
+      const resp = await apiFetch('/api/admin/update-student-status', {
+        method: 'POST',
+        body: JSON.stringify({
+          studentId: student.uid || student.id,
+          studentEmail: student.email,
+          status: 'active',
+        }),
       });
-      await recordAuditLog({
-        adminId: auth.currentUser?.uid || user?.uid || 'admin',
-        adminEmail,
-        action: 'ACTIVATE_USER',
-        targetType: 'user',
-        targetId: student.uid,
-        details: `Activated student ${student.email}`,
-      });
+      const json = await resp.json();
+      if (!json.success) throw new Error(json.error || 'Failed to activate student');
       setActionSuccessMsg(`Student ${student.name || student.email} is now Active.`);
       setTimeout(() => setActionSuccessMsg(''), 3000);
-      loadStudents();
-      if (selectedStudent?.uid === student.uid) {
+      loadStudents(false);
+      loadAuditLogs();
+      if (selectedStudent?.uid === student.uid || selectedStudent?.id === student.id) {
         setSelectedStudent({ ...selectedStudent, status: 'active', suspended: false });
       }
     } catch (err: any) {
@@ -455,32 +644,31 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
   };
 
   // LIVE ACTION: Suspend Student
-  const handleSuspendStudent = (student: StudentUserProfile) => {
+  const handleSuspendStudent = (student: any) => {
     setConfirmDialog({
       isOpen: true,
       title: `Suspend ${student.name || student.email}?`,
-      description: `This will suspend this user's account and block them from taking practice tests or asking Boardy AI questions until reactivated.`,
-      confirmLabel: 'Suspend User',
+      description: `This will suspend this user's account (status = 'suspended'). Suspended students are blocked from login and content on their next request.`,
+      confirmLabel: 'Suspend Student',
       confirmVariant: 'danger',
       onConfirm: async () => {
         try {
-          await updateDoc(doc(db, 'users', student.uid), {
-            suspended: true,
-            status: 'suspended',
-            isSuspended: true,
+          const resp = await apiFetch('/api/admin/update-student-status', {
+            method: 'POST',
+            body: JSON.stringify({
+              studentId: student.uid || student.id,
+              studentEmail: student.email,
+              status: 'suspended',
+              reason: 'Suspended by admin via directory',
+            }),
           });
-          await recordAuditLog({
-            adminId: auth.currentUser?.uid || user?.uid || 'admin',
-            adminEmail,
-            action: 'SUSPEND_USER',
-            targetType: 'user',
-            targetId: student.uid,
-            details: `Suspended student ${student.email}`,
-          });
+          const json = await resp.json();
+          if (!json.success) throw new Error(json.error || 'Failed to suspend student');
           setActionSuccessMsg(`Student ${student.name || student.email} has been Suspended.`);
           setTimeout(() => setActionSuccessMsg(''), 3000);
-          loadStudents();
-          if (selectedStudent?.uid === student.uid) {
+          loadStudents(false);
+          loadAuditLogs();
+          if (selectedStudent?.uid === student.uid || selectedStudent?.id === student.id) {
             setSelectedStudent({ ...selectedStudent, status: 'suspended', suspended: true });
           }
         } catch (err: any) {
@@ -490,62 +678,158 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     });
   };
 
-  // LIVE ACTION: Change Plan
-  const handleChangeStudentPlan = async (studentId: string, newPlan: 'free' | 'pro' | 'premium', premiumExpiresAt?: string) => {
+  // LIVE ACTION: Change Plan / Extend / Cancel / Restore
+  const handleChangeStudentPlan = async (
+    studentId: string,
+    newPlan: 'free' | 'pro' | 'premium',
+    premiumExpiresAt?: string
+  ) => {
     try {
-      const updates: Record<string, any> = {
-        plan: newPlan,
-        isPremium: newPlan !== 'free',
-        premium: newPlan !== 'free',
-        premiumSource: 'admin',
-      };
-      if (premiumExpiresAt !== undefined) {
-        updates.premiumExpiresAt = premiumExpiresAt;
-      }
-      await updateDoc(doc(db, 'users', studentId), updates);
-      await recordAuditLog({
-        adminId: auth.currentUser?.uid || user?.uid || 'admin',
-        adminEmail,
-        action: 'CHANGE_STUDENT_PLAN',
-        targetType: 'user',
-        targetId: studentId,
-        details: `Updated plan to ${newPlan.toUpperCase()}${premiumExpiresAt ? ` (expires: ${premiumExpiresAt})` : ''}`,
+      const resp = await apiFetch('/api/admin/update-student-plan', {
+        method: 'POST',
+        body: JSON.stringify({
+          studentId,
+          packageName: newPlan === 'pro' ? 'Pro Plan' : newPlan === 'premium' ? 'Premium Plan' : 'Free Plan',
+          isPro: newPlan !== 'free',
+          expirationMonths: 12,
+        }),
       });
+      const json = await resp.json();
+      if (!json.success) throw new Error(json.error || 'Failed to update plan');
       setActionSuccessMsg(`Plan upgraded to ${newPlan.toUpperCase()}`);
       setTimeout(() => setActionSuccessMsg(''), 3000);
-      loadStudents();
-      if (selectedStudent && selectedStudent.uid === studentId) {
-        setSelectedStudent({ ...selectedStudent, ...updates });
+      loadStudents(false);
+      loadAuditLogs();
+      if (selectedStudent && (selectedStudent.uid === studentId || selectedStudent.id === studentId)) {
+        setSelectedStudent({ ...selectedStudent, plan: newPlan, isPro: newPlan !== 'free' });
       }
     } catch (err: any) {
       alert(`Error updating plan: ${err?.message}`);
     }
   };
 
-  // LIVE ACTION: Delete User from Firestore
-  const handleDeleteStudent = (student: StudentUserProfile) => {
+  // LIVE ACTION: Extend Subscription (+N days)
+  const handleExtendSubscription = async (studentId: string, days: number) => {
+    try {
+      const resp = await apiFetch('/api/admin/update-student-plan', {
+        method: 'POST',
+        body: JSON.stringify({
+          studentId,
+          action: 'extend',
+          extendDays: days,
+        }),
+      });
+      const json = await resp.json();
+      if (!json.success) throw new Error(json.error || 'Failed to extend subscription');
+      setActionSuccessMsg(`Subscription extended by +${days} days.`);
+      setTimeout(() => setActionSuccessMsg(''), 3000);
+      loadStudents(false);
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(`Error extending subscription: ${err?.message}`);
+    }
+  };
+
+  // LIVE ACTION: Cancel / Remove Subscription
+  const handleCancelSubscription = async (studentId: string) => {
     setConfirmDialog({
       isOpen: true,
-      title: `Delete ${student.name || student.email}?`,
-      description: `Are you sure you want to permanently delete this user from Firestore? This action is irreversible.`,
-      confirmLabel: 'Permanently Delete',
+      title: 'Remove / Cancel Subscription?',
+      description: 'This will downgrade this student to the Free Plan immediately and expire premium access.',
+      confirmLabel: 'Cancel Subscription',
       confirmVariant: 'danger',
       onConfirm: async () => {
         try {
-          await deleteDoc(doc(db, 'users', student.uid));
-          await recordAuditLog({
-            adminId: auth.currentUser?.uid || user?.uid || 'admin',
-            adminEmail,
-            action: 'DELETE_USER',
-            targetType: 'user',
-            targetId: student.uid,
-            details: `Permanently deleted user document ${student.uid} (${student.email})`,
+          const resp = await apiFetch('/api/admin/update-student-plan', {
+            method: 'POST',
+            body: JSON.stringify({
+              studentId,
+              action: 'cancel',
+            }),
           });
+          const json = await resp.json();
+          if (!json.success) throw new Error(json.error || 'Failed to cancel subscription');
+          setActionSuccessMsg('Subscription removed. Student set to Free Tier.');
+          setTimeout(() => setActionSuccessMsg(''), 3000);
+          loadStudents(false);
+          loadAuditLogs();
+        } catch (err: any) {
+          alert(`Error cancelling subscription: ${err?.message}`);
+        }
+      },
+    });
+  };
+
+  // LIVE ACTION: Restore Subscription
+  const handleRestoreSubscription = async (studentId: string) => {
+    try {
+      const resp = await apiFetch('/api/admin/update-student-plan', {
+        method: 'POST',
+        body: JSON.stringify({
+          studentId,
+          action: 'restore',
+          packageName: 'Pro Plan',
+        }),
+      });
+      const json = await resp.json();
+      if (!json.success) throw new Error(json.error || 'Failed to restore subscription');
+      setActionSuccessMsg('Pro Subscription successfully restored.');
+      setTimeout(() => setActionSuccessMsg(''), 3000);
+      loadStudents(false);
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(`Error restoring subscription: ${err?.message}`);
+    }
+  };
+
+  // LIVE ACTION: Reset Student Access Cache
+  const handleResetAccessCache = async (student: any) => {
+    try {
+      const resp = await apiFetch('/api/admin/reset-access-cache', {
+        method: 'POST',
+        body: JSON.stringify({
+          studentId: student.uid || student.id,
+          studentEmail: student.email,
+        }),
+      });
+      const json = await resp.json();
+      if (!json.success) throw new Error(json.error || 'Failed to reset access cache');
+      setActionSuccessMsg(`Access cache and monthly limits reset for ${student.name || student.email}.`);
+      setTimeout(() => setActionSuccessMsg(''), 3000);
+      loadStudents(false);
+      loadAuditLogs();
+    } catch (err: any) {
+      alert(`Error resetting access cache: ${err?.message}`);
+    }
+  };
+
+  // LIVE ACTION: Delete Student (Soft Delete First with Confirm Dialog)
+  const handleDeleteStudent = (student: any) => {
+    setConfirmDialog({
+      isOpen: true,
+      title: `Delete ${student.name || student.email}?`,
+      description: `This will soft-delete this user account (status = 'deleted') and revoke all access. This action is permanently recorded in the audit log.`,
+      confirmLabel: 'Delete Student',
+      confirmVariant: 'danger',
+      onConfirm: async () => {
+        try {
+          const resp = await apiFetch('/api/admin/update-student-status', {
+            method: 'POST',
+            body: JSON.stringify({
+              studentId: student.uid || student.id,
+              studentEmail: student.email,
+              status: 'deleted',
+              reason: 'Soft deleted by administrator via dashboard',
+            }),
+          });
+          const json = await resp.json();
+          if (!json.success) throw new Error(json.error || 'Failed to delete student');
           setActionSuccessMsg(`Student ${student.email} deleted successfully.`);
           setTimeout(() => setActionSuccessMsg(''), 3000);
           setShowStudentDrawer(false);
           setSelectedStudent(null);
-          loadStudents();
+          loadStudents(false);
+          loadAuditLogs();
         } catch (err: any) {
           alert(`Error deleting user: ${err?.message}`);
         }
@@ -553,63 +837,49 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
     });
   };
 
-  // Handle payment request approval
-  const handleApprovePayment = async (req: StoredPaymentRequest) => {
+  // LIVE ACTION: Approve Payment Proof
+  const handleApprovePayment = async (req: any) => {
     try {
-      if (req.id) {
-        await updateDoc(doc(db, 'paymentRequests', req.id), {
-          status: 'approved',
-          reviewedAt: new Date().toISOString(),
-          reviewedBy: adminEmail,
-        });
-      }
-      const expiry = new Date();
-      expiry.setFullYear(expiry.getFullYear() + 1);
-      await updateDoc(doc(db, 'users', req.userId), {
-        plan: req.planId,
-        isPremium: req.planId !== 'free',
-        premium: req.planId !== 'free',
-        premiumExpiresAt: expiry.toISOString(),
-        premiumSource: 'payment_approved',
+      const resp = await apiFetch('/api/admin/payment-proof', {
+        method: 'POST',
+        body: JSON.stringify({
+          proofId: req.id,
+          studentId: req.userId || req.studentId,
+          studentEmail: req.userEmail || req.studentEmail,
+          action: 'approve',
+        }),
       });
-      await recordAuditLog({
-        adminId: auth.currentUser?.uid || user?.uid || 'admin',
-        adminEmail,
-        action: 'APPROVE_PAYMENT',
-        targetType: 'paymentRequest',
-        targetId: req.id || req.userId,
-        details: `Approved PKR ${req.amountPkr} for ${req.userEmail} -> ${req.planId}`,
-      });
-      setActionSuccessMsg(`Payment approved for ${req.userEmail}`);
+      const json = await resp.json();
+      if (!json.success) throw new Error(json.error || 'Failed to approve payment');
+      setActionSuccessMsg(`Payment proof approved for ${req.userEmail || req.studentEmail}`);
       setTimeout(() => setActionSuccessMsg(''), 3000);
       loadPaymentRequests();
-      loadStudents();
+      loadStudents(false);
+      loadAuditLogs();
     } catch (err: any) {
       alert(`Error approving payment: ${err?.message}`);
     }
   };
 
-  // Handle payment request rejection
-  const handleRejectPayment = async (req: StoredPaymentRequest) => {
+  // LIVE ACTION: Reject Payment Proof
+  const handleRejectPayment = async (req: any) => {
     try {
-      if (req.id) {
-        await updateDoc(doc(db, 'paymentRequests', req.id), {
-          status: 'rejected',
-          reviewedAt: new Date().toISOString(),
-          reviewedBy: adminEmail,
-        });
-      }
-      await recordAuditLog({
-        adminId: auth.currentUser?.uid || user?.uid || 'admin',
-        adminEmail,
-        action: 'REJECT_PAYMENT',
-        targetType: 'paymentRequest',
-        targetId: req.id || req.userId,
-        details: `Rejected payment request from ${req.userEmail}`,
+      const resp = await apiFetch('/api/admin/payment-proof', {
+        method: 'POST',
+        body: JSON.stringify({
+          proofId: req.id,
+          studentId: req.userId || req.studentId,
+          studentEmail: req.userEmail || req.studentEmail,
+          action: 'reject',
+          reason: 'Verification rejected by administrator',
+        }),
       });
-      setActionSuccessMsg(`Payment rejected for ${req.userEmail}`);
+      const json = await resp.json();
+      if (!json.success) throw new Error(json.error || 'Failed to reject payment');
+      setActionSuccessMsg(`Payment proof rejected for ${req.userEmail || req.studentEmail}`);
       setTimeout(() => setActionSuccessMsg(''), 3000);
       loadPaymentRequests();
+      loadAuditLogs();
     } catch (err: any) {
       alert(`Error rejecting payment: ${err?.message}`);
     }
@@ -1053,43 +1323,111 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
             </div>
           )}
 
-          {/* 2. STUDENT MANAGEMENT TABLE (REQUIREMENT 3: FULLY FUNCTIONAL SAAS INTERFACE) */}
+          {/* 2. STUDENT MANAGEMENT TABLE (FULL REALTIME SYNC + ACTIONS) */}
           {activeSection === 'students' && (
             <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-black text-lg text-slate-900 dark:text-white">
-                    Student Management Directory ({totalStudentCount || students.length})
-                  </h3>
-                  <p className="text-xs text-slate-400">
-                    Live Firestore synchronization with inline actions: Approve, Suspend, Change Plan, and Delete User.
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-black text-lg text-slate-900 dark:text-white">
+                      Student Management Directory ({totalStudentCount || students.length})
+                    </h3>
+                    {realtimeConnected ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                        Realtime Live
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                        <RefreshCw className="w-2.5 h-2.5 animate-spin" />
+                        Polling Sync (15s)
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Live Supabase Realtime synchronization with admin actions: Suspend, Extend (+N days), Remove/Restore Subscription, Reset Access Cache, and Soft Delete.
                   </p>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={() => loadStudents(true)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${loadingStudents ? 'animate-spin' : ''}`} />
+                  <span>Refresh</span>
+                </button>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold text-slate-500">Plan Filter:</span>
-                  <div className="flex items-center gap-1">
-                    {(['all', 'free', 'pro', 'premium'] as const).map((tier) => (
-                      <button
-                        key={tier}
-                        type="button"
-                        onClick={() => setStudentPlanFilter(tier)}
-                        className={`px-3 py-1 rounded-xl text-xs font-bold capitalize transition-colors cursor-pointer ${
-                          studentPlanFilter === tier
-                            ? 'bg-violet-600 text-white shadow-xs'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        {tier} ({tier === 'all' ? students.length : students.filter(s => (s.plan || 'free') === tier).length})
-                      </button>
-                    ))}
+              {/* Status and Plan Filters */}
+              <div className="p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  {/* Status Filter Tabs */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500">Status:</span>
+                    <div className="flex items-center gap-1">
+                      {(['all', 'active', 'suspended', 'expired', 'pending'] as const).map((st) => (
+                        <button
+                          key={st}
+                          type="button"
+                          onClick={() => setStudentStatusFilter(st)}
+                          className={`px-3 py-1 rounded-xl text-xs font-bold capitalize transition-colors cursor-pointer ${
+                            studentStatusFilter === st
+                              ? 'bg-violet-600 text-white shadow-xs'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {st}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Plan Filter Pills */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-500">Plan:</span>
+                    <div className="flex items-center gap-1">
+                      {(['all', 'free', 'pro', 'premium'] as const).map((tier) => (
+                        <button
+                          key={tier}
+                          type="button"
+                          onClick={() => setStudentPlanFilter(tier)}
+                          className={`px-2.5 py-0.5 rounded-lg text-xs font-bold capitalize transition-colors cursor-pointer ${
+                            studentPlanFilter === tier
+                              ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                              : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          {tier}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
-                <span className="text-xs text-slate-400">
-                  Showing {filteredStudents.length} of {students.length} students
-                </span>
+
+                {/* Search Bar */}
+                <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800">
+                  <Search className="w-4 h-4 text-slate-400 shrink-0" />
+                  <input
+                    type="text"
+                    value={studentSearchTerm}
+                    onChange={(e) => setStudentSearchTerm(e.target.value)}
+                    placeholder="Search by student name, email, class/grade, or university..."
+                    className="w-full text-xs bg-transparent text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none"
+                  />
+                  {studentSearchTerm && (
+                    <button
+                      type="button"
+                      onClick={() => setStudentSearchTerm('')}
+                      className="text-xs text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                  <span className="text-xs text-slate-400 shrink-0 pl-2">
+                    Showing {filteredStudents.length} of {students.length} students
+                  </span>
+                </div>
               </div>
 
               {studentsError ? (
@@ -1101,7 +1439,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                   <p className="text-xs">{studentsError}</p>
                   <button
                     type="button"
-                    onClick={loadStudents}
+                    onClick={() => loadStudents(true)}
                     className="px-4 py-2 rounded-xl bg-rose-600 text-white font-bold text-xs hover:bg-rose-700 cursor-pointer flex items-center gap-1.5"
                   >
                     <RefreshCw className="w-4 h-4" />
@@ -1113,13 +1451,13 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                   data={filteredStudents}
                   pageSize={25}
                   isLoading={loadingStudents}
-                  keyExtractor={(s) => s.uid}
+                  keyExtractor={(s) => s.uid || s.id}
                   onRowClick={(s) => {
                     setSelectedStudent(s);
                     setShowStudentDrawer(true);
                   }}
                   onExportCsv={handleExportStudentsCsv}
-                  searchPlaceholder="Search by name, email, plan, or university..."
+                  searchPlaceholder="Search within loaded results..."
                   columns={[
                     {
                       key: 'name',
@@ -1134,7 +1472,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                             <span className="font-extrabold text-slate-900 dark:text-white block">
                               {s.name || 'Student'}
                             </span>
-                            <span className="text-[11px] text-slate-400 truncate block max-w-[160px]">{s.email}</span>
+                            <span className="text-[11px] text-slate-400 truncate block max-w-[150px]">{s.email}</span>
                           </div>
                         </div>
                       ),
@@ -1144,19 +1482,34 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                       header: 'Email',
                       sortable: true,
                       render: (s) => (
-                        <span className="text-xs text-slate-600 dark:text-slate-300">{s.email || 'N/A'}</span>
+                        <span className="text-xs text-slate-600 dark:text-slate-300">{s.email || '—'}</span>
+                      ),
+                    },
+                    {
+                      key: 'grade',
+                      header: 'Class / Grade',
+                      sortable: true,
+                      render: (s) => (
+                        <div>
+                          <span className="font-bold text-xs text-slate-800 dark:text-slate-200 block">
+                            {s.grade || s.class || 'Class 11'}
+                          </span>
+                          <span className="text-[10px] text-slate-400 truncate block max-w-[130px]">
+                            {s.stream || 'Pre-Engineering'}
+                          </span>
+                        </div>
                       ),
                     },
                     {
                       key: 'plan',
-                      header: 'Plan',
+                      header: 'Plan / Tier',
                       sortable: true,
                       render: (s) => (
                         <div className="relative inline-block" onClick={(e) => e.stopPropagation()}>
                           <select
-                            value={s.plan || 'free'}
-                            onChange={(e) => handleChangeStudentPlan(s.uid, e.target.value as any)}
-                            className="text-xs font-black uppercase px-2.5 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 cursor-pointer focus:ring-2 focus:ring-violet-500/30"
+                            value={((s.plan || s.subscriptionTier || 'free') as string).toLowerCase()}
+                            onChange={(e) => handleChangeStudentPlan(s.uid || s.id, e.target.value as any)}
+                            className="text-xs font-black uppercase px-2 py-1 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 cursor-pointer focus:ring-2 focus:ring-violet-500/30"
                           >
                             <option value="free">Free</option>
                             <option value="pro">Pro</option>
@@ -1166,41 +1519,74 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                       ),
                     },
                     {
-                      key: 'university',
-                      header: 'University',
+                      key: 'expiryDate',
+                      header: 'Expiry Date',
                       sortable: true,
-                      render: (s) => (
-                        <span className="text-xs text-slate-600 dark:text-slate-300 truncate max-w-[140px] block" title={s.targetUniversity || s.university || '—'}>
-                          {s.targetUniversity || s.university || '—'}
-                        </span>
-                      ),
+                      render: (s) => {
+                        const exp = s.accessExpires || s.expiryDate;
+                        if (!exp) return <span className="text-xs text-slate-400">None (Free)</span>;
+                        const isExp = new Date(exp).getTime() < Date.now();
+                        return (
+                          <span className={`text-xs font-semibold ${isExp ? 'text-rose-500 font-bold' : 'text-slate-600 dark:text-slate-300'}`}>
+                            {new Date(exp).toLocaleDateString()}
+                            {isExp && ' (Expired)'}
+                          </span>
+                        );
+                      },
                     },
                     {
-                      key: 'testDate',
-                      header: 'Test Date',
+                      key: 'lastActive',
+                      header: 'Last Active',
                       sortable: true,
                       render: (s) => (
                         <span className="text-xs text-slate-500">
-                          {s.targetTestDate || s.testDate || '—'}
+                          {s.lastActive && s.lastActive !== '—'
+                            ? new Date(s.lastActive).toLocaleDateString()
+                            : s.createdAt && s.createdAt !== '—'
+                            ? new Date(s.createdAt).toLocaleDateString()
+                            : 'Recent'}
                         </span>
                       ),
                     },
                     {
-                      key: 'createdAt',
-                      header: 'Created Date',
+                      key: 'attendanceSummary',
+                      header: 'Attendance',
                       sortable: true,
                       render: (s) => (
-                        <span className="text-slate-500 text-xs">
-                          {s.createdAt && s.createdAt !== '—' ? new Date(s.createdAt).toLocaleDateString() : 'Recent'}
+                        <span className="text-xs font-medium text-slate-600 dark:text-slate-300">
+                          {s.attendanceSummary || '0 sessions'}
                         </span>
                       ),
+                    },
+                    {
+                      key: 'paymentStatus',
+                      header: 'Payment Status',
+                      sortable: true,
+                      render: (s) => {
+                        const p = (s.paymentStatus || 'Free').toLowerCase();
+                        const isPaid = p.includes('paid') || p.includes('verified');
+                        const isPending = p.includes('pending');
+                        return (
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[11px] font-bold ${
+                              isPaid
+                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                : isPending
+                                ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
+                                : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                            }`}
+                          >
+                            {s.paymentStatus || 'Free'}
+                          </span>
+                        );
+                      },
                     },
                     {
                       key: 'status',
-                      header: 'Suspended Status',
+                      header: 'Status',
                       sortable: true,
                       render: (s) => (
-                        <StatusPill status={s.suspended || s.status === 'suspended' ? 'suspended' : 'active'} />
+                        <StatusPill status={s.suspended || s.status === 'suspended' ? 'suspended' : s.status || 'active'} />
                       ),
                     },
                     {
@@ -1215,18 +1601,28 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                               setSelectedStudent(s);
                               setShowStudentDrawer(true);
                             }}
-                            className="px-2.5 py-1 rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 hover:bg-violet-100 border border-violet-200 dark:border-violet-800 text-[11px] font-bold cursor-pointer transition-colors"
+                            className="px-2 py-1 rounded-lg bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300 hover:bg-violet-100 border border-violet-200 dark:border-violet-800 text-[11px] font-bold cursor-pointer transition-colors"
                             title="Open Student Details"
                           >
                             Details
                           </button>
 
-                          {/* Approve / Activate Button */}
+                          {/* Quick Extend (+30 Days) */}
+                          <button
+                            type="button"
+                            onClick={() => handleExtendSubscription(s.uid || s.id, 30)}
+                            className="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800 text-[11px] font-bold cursor-pointer transition-colors"
+                            title="Extend Subscription by +30 Days"
+                          >
+                            +30d
+                          </button>
+
+                          {/* Suspend / Activate Toggle */}
                           {s.suspended || s.status === 'suspended' ? (
                             <button
                               type="button"
                               onClick={() => handleActivateStudent(s)}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold cursor-pointer transition-colors"
+                              className="px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 hover:bg-emerald-100 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold cursor-pointer transition-colors"
                               title="Activate Student"
                             >
                               Activate
@@ -1235,19 +1631,19 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                             <button
                               type="button"
                               onClick={() => handleSuspendStudent(s)}
-                              className="px-2.5 py-1 rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800 text-[11px] font-bold cursor-pointer transition-colors"
+                              className="px-2 py-1 rounded-lg bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 hover:bg-amber-100 border border-amber-200 dark:border-amber-800 text-[11px] font-bold cursor-pointer transition-colors"
                               title="Suspend Student"
                             >
                               Suspend
                             </button>
                           )}
 
-                          {/* Delete User Button */}
+                          {/* Soft Delete User Button */}
                           <button
                             type="button"
                             onClick={() => handleDeleteStudent(s)}
                             className="p-1 rounded-lg text-rose-500 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/60 cursor-pointer transition-colors"
-                            title="Delete User from Firestore"
+                            title="Soft Delete Student"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -1608,13 +2004,61 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                 type="button"
                 onClick={async () => {
                   if (selectedStudent) {
-                    await handleChangeStudentPlan(selectedStudent.uid, drawerPlan, drawerExpiry || undefined);
+                    await handleChangeStudentPlan(selectedStudent.uid || selectedStudent.id, drawerPlan, drawerExpiry || undefined);
                   }
                 }}
                 className="w-full py-2.5 rounded-xl bg-violet-600 text-white font-bold text-xs hover:bg-violet-700 cursor-pointer shadow-md shadow-violet-600/20"
               >
                 Save Plan Changes
               </button>
+
+              {/* Quick Extend Actions */}
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-700/60 space-y-2">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 block">
+                  Quick Extend Subscription:
+                </span>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[7, 30, 90, 365].map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => handleExtendSubscription(selectedStudent.uid || selectedStudent.id, d)}
+                      className="py-1.5 px-2 rounded-lg bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 hover:bg-indigo-100 text-xs font-bold cursor-pointer transition-colors text-center"
+                    >
+                      +{d}d
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Subscription Toggle */}
+              <div className="flex gap-2 pt-1">
+                {selectedStudent.isPro || selectedStudent.plan === 'pro' || selectedStudent.plan === 'premium' ? (
+                  <button
+                    type="button"
+                    onClick={() => handleCancelSubscription(selectedStudent.uid || selectedStudent.id)}
+                    className="flex-1 py-2 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 hover:bg-rose-100 text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    Cancel / Remove Subscription
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => handleRestoreSubscription(selectedStudent.uid || selectedStudent.id)}
+                    className="flex-1 py-2 rounded-xl bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 hover:bg-emerald-100 text-xs font-bold cursor-pointer transition-colors"
+                  >
+                    Restore Pro Subscription
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => handleResetAccessCache(selectedStudent)}
+                  className="py-2 px-3 rounded-xl bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-200 hover:bg-slate-200 text-xs font-bold cursor-pointer transition-colors"
+                  title="Reset student's monthly test limit and Boardy AI quota"
+                >
+                  Reset Access Cache
+                </button>
+              </div>
             </div>
 
             {/* Profile & Academic Details */}
@@ -1624,27 +2068,35 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
               </h5>
               <div className="space-y-2 text-xs">
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
+                  <span className="text-slate-500">Class & Stream</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {selectedStudent.grade || selectedStudent.class || 'Class 11'} • {selectedStudent.stream || 'Pre-Engineering'}
+                  </span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
                   <span className="text-slate-500">Target University</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
                     {selectedStudent.targetUniversity || selectedStudent.university || 'Not set'}
                   </span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-500">Target Test Date</span>
+                  <span className="text-slate-500">Attendance Summary</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
-                    {selectedStudent.targetTestDate || selectedStudent.testDate || 'Not set'}
+                    {selectedStudent.attendanceSummary || '0 sessions'}
                   </span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-500">Subjects Selected</span>
-                  <span className="font-bold text-slate-800 dark:text-slate-200 text-right max-w-[200px] truncate">
-                    {Array.isArray(selectedStudent.subjects) ? selectedStudent.subjects.join(', ') : 'Default'}
+                  <span className="text-slate-500">Payment Status</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200">
+                    {selectedStudent.paymentStatus || 'Free'}
                   </span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b border-slate-100 dark:border-slate-800">
-                  <span className="text-slate-500">Onboarding Completed</span>
+                  <span className="text-slate-500">Expiry Date</span>
                   <span className="font-bold text-slate-800 dark:text-slate-200">
-                    {selectedStudent.onboardingCompleted ? 'Yes' : 'No'}
+                    {selectedStudent.accessExpires
+                      ? new Date(selectedStudent.accessExpires).toLocaleDateString()
+                      : 'None (Free)'}
                   </span>
                 </div>
                 <div className="flex justify-between py-1.5">
@@ -1688,7 +2140,7 @@ export const AdminDashboardScreen: React.FC<AdminDashboardScreenProps> = ({
                   className="py-2.5 px-4 rounded-xl bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 hover:bg-rose-100 border border-rose-200 dark:border-rose-800 text-xs font-bold cursor-pointer transition-colors flex items-center justify-center gap-1.5"
                 >
                   <Trash2 className="w-4 h-4" />
-                  <span>Delete Profile</span>
+                  <span>Soft Delete Profile</span>
                 </button>
               </div>
             </div>

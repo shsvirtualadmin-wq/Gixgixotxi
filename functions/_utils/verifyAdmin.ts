@@ -112,6 +112,34 @@ export async function requireAdmin(
   }
 
   if (!isAdminEmail(verifiedEmail)) {
+    // Check if role = 'admin' in Supabase profiles or students table
+    try {
+      const url = env.VITE_SUPABASE_URL || env.SUPABASE_URL || "https://wbvzbbnapowwmrjecdyt.supabase.co";
+      const serviceKey =
+        env.SUPABASE_SERVICE_ROLE_KEY ||
+        env.SUPABASE_SERVICE_KEY ||
+        env.VITE_SUPABASE_SERVICE_ROLE_KEY ||
+        env.VITE_SUPABASE_ANON_KEY ||
+        env.SUPABASE_ANON_KEY ||
+        "";
+      if (url && serviceKey) {
+        const { createClient } = await import("./supabaseStub.js");
+        const client = createClient(url, serviceKey);
+        if (client) {
+          const { data: p } = await client.from("profiles").select("role").ilike("email", verifiedEmail).maybeSingle();
+          if (p?.role === "admin") {
+            return verifiedEmail;
+          }
+          const { data: s } = await client.from("students").select("role").ilike("email", verifiedEmail).maybeSingle();
+          if (s?.role === "admin") {
+            return verifiedEmail;
+          }
+        }
+      }
+    } catch (checkErr) {
+      console.warn("[verifyAdmin] Database admin role lookup exception:", checkErr);
+    }
+
     throw new Response(
       JSON.stringify({
         success: false,
