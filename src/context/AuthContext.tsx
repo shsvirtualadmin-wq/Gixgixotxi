@@ -45,9 +45,13 @@ export type AuthStatus = 'loading' | 'signedOut' | 'signedIn';
 export interface AuthContextType {
   user: User | null;
   profile: StudentUserProfile | null;
+  role: UserRole;
+  loading: boolean;
+  error: { code: string; message: string } | null;
+  refreshProfile: () => Promise<void>;
+  signOut: () => Promise<void>;
   documentExists: boolean;
   isAdmin: boolean;
-  loading: boolean;
   authLoading: boolean;
   profileLoading: boolean;
   authError: { code: string; message: string } | null;
@@ -967,14 +971,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [syncProfile]);
 
+  const effectiveRole: UserRole = useMemo(() => {
+    if (user?.email?.toLowerCase() === 'shsvirtualadmin@gmail.com') return 'admin';
+    return (profile?.role as UserRole) || activeRole || 'student';
+  }, [user, profile, activeRole]);
+
   return (
     <AuthContext.Provider
       value={{
         user,
         profile,
+        role: effectiveRole,
+        loading,
+        error: authError,
+        refreshProfile,
+        signOut: logOut,
         documentExists,
         isAdmin,
-        loading,
         authLoading,
         profileLoading,
         authError,
@@ -996,7 +1009,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         reloadUserStatus,
         updateProfileData,
         completeOnboarding,
-        refreshProfile,
         friendlyErrorMessage: friendlyAuthError,
       }}
     >

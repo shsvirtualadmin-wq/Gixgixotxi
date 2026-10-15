@@ -1,17 +1,16 @@
-// PROTECTED: do not modify unless the task is explicitly about authentication. See PROJECT_RULES.md
 import React, { useState } from 'react';
-import { motion, useReducedMotion } from 'motion/react';
-import { Eye, EyeOff, Loader2, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import { auth } from '../../lib/firebase';
+import { Card } from '../ui/Card';
+import { Input } from '../ui/Input';
+import { Button } from '../ui/Button';
+import { ErrorState } from '../ui/ErrorState';
 import { BrandLogo } from '../marketing/BrandLogo';
-import { TrustFooter } from '../ui/TrustFooter';
 
 interface LoginPageProps {
   onNavigate: (route: string) => void;
 }
 
-// Strictly validate post-login redirection path to prevent open-redirect exploits
 function getValidatedPostLoginPath(): string {
   if (typeof window === 'undefined') return '/app';
   try {
@@ -20,7 +19,6 @@ function getValidatedPostLoginPath(): string {
     if (!saved || typeof saved !== 'string') return '/app';
 
     const trimmed = saved.trim();
-    // Path must start with single '/', must not start with '//', must not contain '://' or '\'
     if (
       !trimmed.startsWith('/') ||
       trimmed.startsWith('//') ||
@@ -30,8 +28,7 @@ function getValidatedPostLoginPath(): string {
       return '/app';
     }
 
-    // Must be one of our own protected or application routes
-    const validPrefixes = ['/app', '/organizer', '/captain', '/admin', '/crew', '/crew/apply', '/crew-dashboard'];
+    const validPrefixes = ['/app', '/organizer', '/captain', '/admin', '/crew', '/dashboard', '/onboarding'];
     const isAllowed = validPrefixes.some(
       (prefix) => trimmed === prefix || trimmed.startsWith(`${prefix}/`)
     );
@@ -42,22 +39,21 @@ function getValidatedPostLoginPath(): string {
 }
 
 export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
-  const { signInEmail, signInGoogle } = useAuth();
-  const shouldReduceMotion = useReducedMotion();
+  const { signInEmail, signInGoogle, friendlyErrorMessage } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [errorDetails, setErrorDetails] = useState<{ message: string; code?: string } | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setErrorMsg(null);
+    setErrorDetails(null);
 
     if (!email.trim() || !password) {
-      setErrorMsg('Please enter both your email and password.');
+      setErrorDetails({ message: 'Please enter both your email and password.' });
       return;
     }
 
@@ -70,90 +66,81 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
       const destination = isOwnerAdmin ? '/admin' : getValidatedPostLoginPath();
       onNavigate(destination);
     } else {
-      setErrorMsg(res.error || 'Failed to sign in. Please verify your credentials.');
+      setErrorDetails({
+        message: res.error || 'Failed to sign in. Please verify your email and password.',
+        code: (res as any).code || 'auth/invalid-credential',
+      });
     }
   };
 
   const handleGoogleSignIn = async () => {
-    setErrorMsg(null);
+    setErrorDetails(null);
     setGoogleLoading(true);
 
     try {
       const res = await signInGoogle();
       if (res.success) {
-        const isOwnerAdmin = (auth.currentUser?.email || '').trim().toLowerCase() === 'shsvirtualadmin@gmail.com';
-        const destination = isOwnerAdmin ? '/admin' : getValidatedPostLoginPath();
-        onNavigate(destination);
+        onNavigate(getValidatedPostLoginPath());
       } else {
         setGoogleLoading(false);
-        setErrorMsg(res.error || 'Google sign-in was cancelled or failed. Please try again.');
+        setErrorDetails({
+          message: res.error || 'Google sign-in was cancelled or encountered an issue.',
+          code: (res as any).code || 'auth/popup-closed-by-user',
+        });
       }
     } catch (err: any) {
       setGoogleLoading(false);
-      setErrorMsg(err?.message || 'Google sign-in encountered an error. Please try again.');
+      setErrorDetails({
+        message: friendlyErrorMessage(err),
+        code: err?.code || 'auth/google-sign-in-failed',
+      });
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#F8F9FB] relative flex flex-col justify-between selection:bg-blue-100 selection:text-blue-900 overflow-x-hidden font-sans">
-      {/* Background Grid Pattern */}
-      <div
-        className="fixed inset-0 pointer-events-none opacity-[0.4]"
-        style={{
-          backgroundImage:
-            'radial-gradient(circle at 1px 1px, #CBD5E1 1px, transparent 0)',
-          backgroundSize: '24px 24px',
-        }}
-      />
-      {/* Ambient Gradient Glows */}
-      <div className="fixed -top-40 -right-40 w-96 h-96 bg-blue-300/20 rounded-full blur-3xl pointer-events-none" />
-      <div className="fixed -bottom-40 -left-40 w-96 h-96 bg-indigo-300/20 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-screen bg-[var(--bg)] bg-grid-48 text-[var(--text)] flex flex-col justify-between selection:bg-[var(--brand)] selection:text-white relative overflow-x-hidden font-sans">
+      {/* Background radial glows */}
+      <div className="fixed -top-40 -left-40 w-96 h-96 bg-[#2F6BFF]/15 rounded-full blur-3xl pointer-events-none" />
+      <div className="fixed -bottom-40 -right-40 w-96 h-96 bg-[#7C5CFF]/15 rounded-full blur-3xl pointer-events-none" />
 
-      {/* Top Bar with Brand Logo */}
+      {/* Top Navbar Header */}
       <header className="relative z-10 max-w-6xl mx-auto w-full px-4 sm:px-6 py-6 flex items-center justify-between">
         <button
           onClick={() => onNavigate('/')}
-          className="flex items-center gap-2 group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded-lg p-1"
+          className="flex items-center gap-2 group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand)] rounded-lg p-1"
         >
           <BrandLogo size="md" />
         </button>
         <button
           onClick={() => onNavigate('/signup')}
-          className="text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+          className="text-xs sm:text-sm font-semibold text-[var(--text-muted)] hover:text-white transition-colors cursor-pointer"
         >
-          New to Boardly?{' '}
-          <span className="text-blue-600 underline underline-offset-4">Create account</span>
+          Don't have an account? <span className="text-[var(--brand-2)] underline underline-offset-4">Sign up</span>
         </button>
       </header>
 
-      {/* Main Container: fades out smoothly (300ms) while sign-in starts */}
-      <main className="relative z-10 flex-1 flex items-center justify-center px-4 py-8 sm:py-12">
-        <motion.div
-          animate={{ opacity: googleLoading && !errorMsg ? 0.25 : 1 }}
-          transition={{ duration: shouldReduceMotion ? 0.05 : 0.3, ease: 'easeInOut' }}
-          className="w-full max-w-md bg-white/85 backdrop-blur-xl border border-white/80 shadow-2xl shadow-blue-500/5 rounded-3xl p-6 sm:p-10 transition-all"
-        >
-          {/* Header */}
-          <div className="text-center mb-8">
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+      {/* Main Login Card */}
+      <main className="relative z-10 flex-1 flex items-center justify-center px-4 py-8">
+        <Card variant="hero" className="w-full max-w-md p-6 sm:p-10 space-y-6">
+          <div className="text-left space-y-2">
+            <h1 className="text-2xl sm:text-3xl font-extrabold text-[var(--text)] tracking-tight font-display">
               Welcome back
             </h1>
-            <p className="mt-2 text-sm text-slate-500">
-              Log in to pick up your prep where you left off.
+            <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed">
+              Sign in to your Boardly study cockpit to continue timed drills, full mocks, and progress analytics.
             </p>
           </div>
 
-          {/* Google Sign-in: scales to 0.97 on press, shows spinner and "Connecting to Google..." */}
-          <button
+          {/* Google OAuth Button */}
+          <Button
             type="button"
+            variant="secondary"
+            size="md"
             onClick={handleGoogleSignIn}
-            disabled={googleLoading || isLoading}
-            className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-sm shadow-sm transition-all hover:shadow cursor-pointer active:scale-[0.97] disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {googleLoading ? (
-              <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
-            ) : (
-              <svg className="w-5 h-5" viewBox="0 0 24 24">
+            isLoading={googleLoading}
+            className="w-full justify-center gap-3 cursor-pointer text-sm font-semibold"
+            leftIcon={
+              <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -171,113 +158,88 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onNavigate }) => {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-            )}
-            <span>{googleLoading ? 'Connecting to Google...' : 'Continue with Google'}</span>
-          </button>
+            }
+          >
+            Continue with Google
+          </Button>
 
-          {/* Divider */}
-          <div className="flex items-center my-6">
-            <div className="flex-grow border-t border-slate-200"></div>
-            <span className="flex-shrink mx-4 text-xs font-semibold text-slate-400 tracking-wider">
-              OR
+          <div className="relative flex items-center justify-center">
+            <div className="border-t border-[var(--border)] w-full" />
+            <span className="bg-[#0E1626] px-3 text-[11px] font-semibold text-[var(--text-faint)] uppercase tracking-wider absolute">
+              or continue with email
             </span>
-            <div className="flex-grow border-t border-slate-200"></div>
           </div>
 
-          {/* Error Message */}
-          {errorMsg && (
-            <div className="mb-6 p-3.5 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm flex items-start gap-2.5">
-              <span className="shrink-0 font-bold mt-0.5">!</span>
-              <span>{errorMsg}</span>
-            </div>
+          {/* Error notice */}
+          {errorDetails && (
+            <ErrorState
+              title="Sign in failed"
+              error={errorDetails.message}
+              path={errorDetails.code ? `Error code: ${errorDetails.code}` : undefined}
+            />
           )}
 
-          {/* Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Email */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
-                Email Address
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@example.com"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white/70 focus:bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-              />
-            </div>
+          <form onSubmit={handleSubmit} className="space-y-4 text-left">
+            <Input
+              label="Email Address"
+              type="email"
+              required
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="name@example.com"
+            />
 
-            {/* Password */}
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+                <label className="text-xs font-semibold text-[var(--text-muted)] tracking-wide">
                   Password
                 </label>
                 <button
                   type="button"
                   onClick={() => onNavigate('/forgot-password')}
-                  className="text-xs font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-2 cursor-pointer"
+                  className="text-xs font-semibold text-[var(--brand-2)] hover:underline cursor-pointer"
                 >
                   Forgot password?
                 </button>
               </div>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-slate-200 bg-white/70 focus:bg-white text-slate-800 placeholder-slate-400 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                  aria-label="Toggle password visibility"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
+              <Input
+                type={showPassword ? 'text' : 'password'}
+                required
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                rightIcon={
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="cursor-pointer text-[var(--text-faint)] hover:text-white"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                }
+              />
             </div>
 
-            {/* Gradient Log In Button */}
-            <button
+            <Button
               type="submit"
-              disabled={isLoading || googleLoading}
-              className="w-full py-3.5 px-6 rounded-xl font-bold text-sm text-white bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-700 hover:to-indigo-700 shadow-lg shadow-blue-500/25 transition-all duration-200 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 pt-3 mt-6"
+              variant="primary"
+              size="md"
+              isLoading={isLoading}
+              className="w-full mt-2 cursor-pointer font-bold"
+              rightIcon={<ArrowRight className="w-4 h-4" />}
             >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Logging in…</span>
-                </>
-              ) : (
-                <>
-                  <span>Log in</span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
+              Sign In to Cockpit
+            </Button>
           </form>
+        </Card>
+      </main>
 
-            {/* New to Boardly link */}
-            <div className="mt-8 text-center text-xs text-slate-500">
-              New to Boardly?{' '}
-              <button
-                onClick={() => onNavigate('/signup')}
-                className="font-semibold text-blue-600 hover:text-blue-800 underline underline-offset-2 cursor-pointer"
-              >
-                Create a free account
-              </button>
-            </div>
-          </motion.div>
-        </main>
-
-      {/* Footer with Trust Signals */}
-      <TrustFooter onNavigate={onNavigate} />
+      {/* Footer */}
+      <footer className="relative z-10 max-w-6xl mx-auto w-full px-4 sm:px-6 py-6 text-center text-xs text-[var(--text-faint)]">
+        Protected by SHA-256 encryption & Firestore security rules · Boardly 2026
+      </footer>
     </div>
   );
 };

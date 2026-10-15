@@ -63,6 +63,8 @@ import {
   isValidHostname,
   cleanEnvVar,
   TARGET_FIRESTORE_DATABASE_ID,
+  waitForAuthReady,
+  logFirestoreError,
 } from './firebaseConfig';
 
 export {
@@ -78,6 +80,8 @@ export {
   testAuthHandlerEndpoint,
   isValidHostname,
   cleanEnvVar,
+  waitForAuthReady,
+  logFirestoreError,
 };
 
 
@@ -847,6 +851,35 @@ export async function saveUserProfile(uid: string, fields: Partial<StudentUserPr
       cleanFields.onboardingComplete = isDone;
       cleanFields.registrationComplete = isDone;
     }
+
+    // Strip forbidden keys for non-admin users to guarantee rule compliance
+    const isMasterAdmin = (auth.currentUser?.email || '').trim().toLowerCase() === 'shsvirtualadmin@gmail.com';
+    if (!isMasterAdmin) {
+      const forbiddenKeys = [
+        'role',
+        'roles',
+        'plan',
+        'isPremium',
+        'premium',
+        'premiumExpiresAt',
+        'premiumSource',
+        'previousPlan',
+        'isCrewMember',
+        'crewStatus',
+        'crewStartDate',
+        'crewReferralCode',
+        'crewRevokedAt',
+        'crewRevokeReason',
+        'isPaidInternshipEligible',
+        'ambassador',
+        'admin',
+        'isAdmin',
+        'suspended',
+        'isSuspended',
+      ];
+      forbiddenKeys.forEach((k) => delete cleanFields[k]);
+    }
+
     // Remove any undefined properties
     Object.keys(cleanFields).forEach((key) => {
       if (cleanFields[key] === undefined) {

@@ -206,18 +206,18 @@ export const BoardlyAppRouter: React.FC = () => {
     const displayCode = authError?.code || 'timeout';
     const displayMsg = authError?.message || 'We had trouble loading your account profile. You can retry.';
     return (
-      <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4 text-center">
-        <div className="w-14 h-14 rounded-3xl bg-amber-50 dark:bg-amber-950/60 flex items-center justify-center text-amber-600 border border-amber-200 dark:border-amber-800">
+      <div className="min-h-screen bg-[var(--bg)] bg-grid-48 text-[var(--text)] flex flex-col items-center justify-center p-6 space-y-4 text-center">
+        <div className="w-14 h-14 rounded-3xl bg-amber-500/10 flex items-center justify-center text-amber-400 border border-amber-500/20">
           <AlertCircle className="w-7 h-7" />
         </div>
         <div className="space-y-1 max-w-sm">
-          <h3 className="text-base font-black text-slate-900 dark:text-white">
+          <h3 className="text-base font-bold text-[var(--text)] font-display">
             Connection took longer than expected
           </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+          <p className="text-xs text-[var(--text-muted)]">
             {displayMsg}
           </p>
-          <p className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
+          <p className="text-[11px] font-mono text-[var(--brand-2)]">
             [Code: {displayCode}]
           </p>
         </div>
@@ -232,7 +232,7 @@ export const BoardlyAppRouter: React.FC = () => {
                 window.location.reload();
               }
             }}
-            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 cursor-pointer"
+            className="px-4 py-2.5 rounded-xl bg-[var(--brand)] hover:bg-[var(--brand)]/90 text-white font-bold text-xs shadow-md shadow-blue-600/20 cursor-pointer"
           >
             Retry
           </button>
@@ -242,7 +242,7 @@ export const BoardlyAppRouter: React.FC = () => {
               setLoadingTimedOut(false);
               navigate('/login', true);
             }}
-            className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
+            className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs cursor-pointer border border-white/10"
           >
             Back to Login
           </button>
@@ -251,19 +251,19 @@ export const BoardlyAppRouter: React.FC = () => {
     );
   }
 
-  // Requirement 2: Single full-screen loading component with Boardly logo matching initial HTML loader (zero flash)
+  // Single full-screen loading component with Boardly logo matching initial HTML loader (zero flash)
   if (loading || authLoading || profileLoading || !initialAuthChecked) {
     return (
-      <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4">
-        <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900 flex items-center justify-center shadow-lg border border-slate-200/80 dark:border-slate-800 animate-pulse">
+      <div className="min-h-screen bg-[#070B14] flex flex-col items-center justify-center p-6 space-y-4">
+        <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center shadow-lg border border-white/10 animate-pulse">
           <img
             src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000e98c8211a04e8f3473512ef4.png"
             alt="Boardly Logo"
             className="w-12 h-12 object-contain rounded-xl"
           />
         </div>
-        <div className="h-4 w-36 bg-slate-200 dark:bg-slate-800 rounded-full animate-pulse" />
-        <div className="h-3 w-56 bg-slate-100 dark:bg-slate-900 rounded-full animate-pulse" />
+        <div className="h-4 w-36 bg-white/10 rounded-full animate-pulse" />
+        <div className="h-3 w-56 bg-white/5 rounded-full animate-pulse" />
       </div>
     );
   }

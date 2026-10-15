@@ -214,6 +214,37 @@ try {
     );
   } catch {
     firestoreDb = getFirestore(app, TARGET_FIRESTORE_DATABASE_ID);
-  }
-}
 export const db = firestoreDb;
+
+// Wait for onAuthStateChanged to resolve before executing queries
+let authReadyPromise: Promise<any> | null = null;
+export function waitForAuthReady(): Promise<any> {
+  if (!authReadyPromise) {
+    authReadyPromise = new Promise((resolve) => {
+      const unsubscribe = auth.onAuthStateChanged(
+        (user) => {
+          unsubscribe();
+          resolve(user);
+        },
+        (err) => {
+          console.warn('[Boardly Auth] onAuthStateChanged error in waitForAuthReady:', err);
+          unsubscribe();
+          resolve(null);
+        }
+      );
+    });
+  }
+  return authReadyPromise;
+}
+
+// Centralized Firestore error logger helper that logs exact path and full FirebaseError
+export function logFirestoreError(path: string | null, error: unknown, context?: string): void {
+  const code = (error as any)?.code || 'unknown';
+  const message = (error as any)?.message || String(error);
+  const user = auth.currentUser;
+  console.error(
+    `[Boardly Firestore Error] Path: "${path ?? 'unknown'}" | Context: "${context ?? 'operation'}" | Code: ${code} | Message: ${message} | User: ${user?.uid ?? 'unauthenticated'}`,
+    error
+  );
+}
+

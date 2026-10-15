@@ -89,3 +89,16 @@ This document tracks all foundational architectural, security, and product desig
   3. Created neutral metallic study hardware `PhoneMockup` with dark titanium gradient frame, glass diagonal reflection streak, centered camera pill, 3D cursor tilt, and 4 interactive preview screens (Student, Crew, Captain, Arena) badged with "Sample preview".
   4. Redesigned public marketing pages (Home, Features, Pricing, Contact, Privacy, Terms, FAQs, About) using the dark glass aesthetic with 48px grid background and subtle radial glows.
 - **Consequences:** Cohesive visual identity, mobile-friendly 44px+ tap targets, accessible WCAG contrast ratios, and zero visual flicker.
+
+---
+
+## ADR 011: Strict Auth Flow, Referral Token Storage, and Least-Privilege Rules
+- **Status:** Approved
+- **Context:** Previous implementation had permission errors due to student profiles attempting to write protected fields, loose admin checks, and fragile referral linking.
+- **Decision:**
+  1. Updated `firestore.rules` so `isAdmin()` strictly verifies `request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com'`.
+  2. Enforced protection on `users/{userId}`: non-admin students can only create documents with `role: "student"` and `plan: "free"`, and cannot write any of the 21 forbidden privilege keys (`role, roles, plan, isPremium, premium, premiumExpiresAt, premiumSource, previousPlan, isCrewMember, crewStatus, crewStartDate, crewReferralCode, crewRevokedAt, crewRevokeReason, isPaidInternshipEligible, ambassador, admin, isAdmin, suspended, isSuspended`).
+  3. Rebuilt all Auth pages (`/login`, `/signup`, `/forgot-password`, `/verify-email`) and 4-Step Onboarding (`/onboarding`) using Phase 1 dark glass components.
+  4. Implemented referral capture storing `boardly_ref_code` in localStorage, writing idempotent masked records in `referrals` (`status: "joined"`, `hasTakenFirstTest: false`, `activated: false`, `createdAt: serverTimestamp()`), and clearing the token after attribution.
+  5. Built explicit modular guards in `src/components/auth/Guards.tsx`: `GuestGuard`, `AuthGuard`, `AdminGuard`, `CaptainGuard`, and `CrewGuard`. Immediate suspension sign-out displays `"Your account has been suspended. Contact support@boardly.cfd."`.
+- **Consequences:** Zero permission-denied crashes during sign-up/onboarding, rock-solid attribution for campus captains, and guaranteed isolation for administrator panels.

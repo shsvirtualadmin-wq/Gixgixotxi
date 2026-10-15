@@ -1,6 +1,7 @@
 import { doc, setDoc, getDocs, collection, query, where, limit, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { db } from './firebase';
 
+const PRIMARY_STORAGE_KEY = 'boardly_ref_code';
 const REFERRAL_STORAGE_KEY = 'boardly_referral_tracking';
 const LEGACY_STORAGE_KEY = 'boardly_referral_code';
 const SESSION_KEY = 'referralCode';
@@ -81,12 +82,13 @@ export function initReferralTracker(): string | null {
         timestamp: Date.now(),
       };
 
-      // Persist in BOTH localStorage and sessionStorage
+      // Persist in localStorage under boardly_ref_code
       try {
+        localStorage.setItem(PRIMARY_STORAGE_KEY, normalized);
         localStorage.setItem(REFERRAL_STORAGE_KEY, JSON.stringify(payload));
         localStorage.setItem(LEGACY_STORAGE_KEY, normalized);
         sessionStorage.setItem(SESSION_KEY, normalized);
-        sessionStorage.setItem(LEGACY_STORAGE_KEY, normalized);
+        sessionStorage.setItem(PRIMARY_STORAGE_KEY, normalized);
       } catch (storageErr) {
         console.warn('[Referral:Capture] Storage quota or security error:', storageErr);
       }
@@ -110,7 +112,13 @@ export function getStoredReferralCode(): string | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    // 1. Check structured localStorage
+    // 1. Check primary boardly_ref_code key
+    const primary = localStorage.getItem(PRIMARY_STORAGE_KEY);
+    if (primary && primary.trim()) {
+      return primary.trim().toUpperCase();
+    }
+
+    // 2. Check structured localStorage
     const raw = localStorage.getItem(REFERRAL_STORAGE_KEY);
     if (raw) {
       try {
@@ -122,24 +130,24 @@ export function getStoredReferralCode(): string | null {
           } else {
             console.log('[Referral:Capture] Stored referral code expired (> 30 days). Clearing.');
             localStorage.removeItem(REFERRAL_STORAGE_KEY);
+            localStorage.removeItem(PRIMARY_STORAGE_KEY);
           }
         }
       } catch {
-        // Fallback if not JSON
         if (typeof raw === 'string' && raw.trim()) {
           return raw.trim().toUpperCase();
         }
       }
     }
 
-    // 2. Check legacy localStorage key
+    // 3. Check legacy localStorage key
     const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
     if (legacy && legacy.trim()) {
       return legacy.trim().toUpperCase();
     }
 
-    // 3. Check sessionStorage keys
-    const sessionCode = sessionStorage.getItem(SESSION_KEY) || sessionStorage.getItem(LEGACY_STORAGE_KEY);
+    // 4. Check sessionStorage keys
+    const sessionCode = sessionStorage.getItem(PRIMARY_STORAGE_KEY) || sessionStorage.getItem(SESSION_KEY) || sessionStorage.getItem(LEGACY_STORAGE_KEY);
     if (sessionCode && sessionCode.trim()) {
       return sessionCode.trim().toUpperCase();
     }
@@ -156,8 +164,10 @@ export function getStoredReferralCode(): string | null {
 export function clearStoredReferralCode(): void {
   if (typeof window === 'undefined') return;
   try {
+    localStorage.removeItem(PRIMARY_STORAGE_KEY);
     localStorage.removeItem(REFERRAL_STORAGE_KEY);
     localStorage.removeItem(LEGACY_STORAGE_KEY);
+    sessionStorage.removeItem(PRIMARY_STORAGE_KEY);
     sessionStorage.removeItem(SESSION_KEY);
     sessionStorage.removeItem(LEGACY_STORAGE_KEY);
     console.log('[Referral:Capture] Cleared stored referral code after completed signup attribution.');
@@ -262,10 +272,25 @@ export async function recordSignupReferral(params: {
     return { success: false, reason: 'self_referral' };
   }
 
-  // Extract first name for display
+  // Helper: Mask email (al***@gmail.com)
+  const maskEmail = (email: string): string => {
+    if (!email || !email.includes('@')) return 'st***@gmail.com';
+    const [usr, domain] = email.split('@');
+    if (usr.length <= 2) return `${usr}***@${domain}`;
+    return `${usr.slice(0, 2)}***@${domain}`;
+  };
+
+  // Helper: Mask name (Ali K.)
+  const maskName = (name: string): string => {
+    if (!name) return 'Student';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 1) return parts[0];
+    return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+  };
+
   const rawName = params.referredUserName || 'Student';
-  const firstName = rawName.split(' ')[0] || 'Student';
-  const nowIso = new Date().toISOString();
+  const maskedEmail = maskEmail(params.referredUserEmail || '');
+  const maskedDisplayName = maskName(rawName);
 
   // 1. Write attribution to new user's doc (users/{referredUserId})
   try {
@@ -275,14 +300,12 @@ export async function recordSignupReferral(params: {
       {
         referredBy: ambassadorUid || null,
         referralCode: code,
-        referredAt: nowIso,
-        referredAtTimestamp: Date.now(),
       },
       { merge: true }
     );
-    console.log(`[Referral:Attribution] Successfully wrote referredBy (${ambassadorUid || 'unknown'}) and referralCode (${code}) to users/${params.referredUserId}`);
+    console.log(`[Referral:Attribution] Successfully wrote referralCode (${code}) to users/${params.referredUserId}`);
   } catch (userWriteErr) {
-    console.warn('[Referral:Attribution] Note writing to users document:', userWriteErr);
+    console.warn('[Referral:Attribution] Note writing referral attribution to users document:', userWriteErr);
   }
 
   // 2. Write referral document to `referrals` collection
@@ -292,25 +315,26 @@ export async function recordSignupReferral(params: {
     await setDoc(
       referralDocRef,
       {
+        id: `ref-${code}-${params.referredUserId.slice(0, 8)}`,
         referralId: params.referredUserId,
-        referredUserId: params.referredUserId,
-        referredUserName: firstName,
-        referredUserFullName: rawName,
-        referredUserEmail: params.referredUserEmail || '',
-        captainId: ambassadorUid || code, // Used for rules and queries
-        ambassadorUid: ambassadorUid || '',
+        captainId: ambassadorUid || code,
+        ambassadorUid: ambassadorUid || code,
         referralCode: code,
-        captainCode: code,
-        referredAt: nowIso,
-        createdAt: nowIso,
-        timestamp: Date.now(),
-        status: 'active',
+        referredUserId: params.referredUserId,
+        referredUid: params.referredUserId,
+        referredUserEmail: maskedEmail,
+        referredUserName: maskedDisplayName,
+        status: 'joined',
+        activated: false,
+        hasTakenFirstTest: false,
+        createdAt: serverTimestamp(),
+        activatedAt: null,
       },
       { merge: true }
     );
-    console.log(`[Referral:Counting] Successfully created referrals/${params.referredUserId} record (captainId: ${ambassadorUid || code})`);
+    console.log(`[Referral:Counting] Successfully created referrals/${params.referredUserId} matching audited schema`);
   } catch (fsErr) {
-    console.error('[Referral:Counting] Error writing referrals document:', fsErr);
+    console.warn('[Referral:Counting] Notice writing referrals document (non-blocking):', fsErr);
   }
 
   // 3. Synchronize with server endpoint for backup / file counter

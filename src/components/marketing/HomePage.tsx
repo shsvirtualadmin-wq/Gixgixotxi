@@ -216,7 +216,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate, onGetStarted }) 
               </p>
             </div>
             <div className="mt-6 p-3 rounded-xl bg-white/5 border border-white/8 text-xs font-mono text-[#22D3EE]">
-              \[ \int_0^{\pi/2} \sin^2(x) dx = \frac{\pi}{4} \]
+              {"\\[ \\int_0^{\\pi/2} \\sin^2(x) dx = \\frac{\\pi}{4} \\]"}
             </div>
           </Card>
 
