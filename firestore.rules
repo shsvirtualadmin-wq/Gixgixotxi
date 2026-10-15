@@ -64,12 +64,27 @@ service cloud.firestore {
 
     // Users collection:
     // Owners can read and update their own document without changing protected admin/plan fields.
+    // Authenticated users can read/query their own profile matching their verified token email.
     // Admins can list and write any user record.
     match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin();
+      allow get: if isOwner(userId)
+        || isAdmin()
+        || (isAuthenticated() && request.auth.token.email != null && (
+          resource.data.email == request.auth.token.email ||
+          resource.data.email == request.auth.token.email.lower()
+        ));
+      allow list: if isAdmin()
+        || (isAuthenticated() && request.auth.token.email != null && (
+          resource.data.email == request.auth.token.email ||
+          resource.data.email == request.auth.token.email.lower()
+        ));
       allow create: if isOwner(userId) || isAdmin();
-      allow update: if (isOwner(userId) && (isAdmin() || userDoesNotChangeProtectedFields())) || isAdmin();
+      allow update: if (isOwner(userId) && (isAdmin() || userDoesNotChangeProtectedFields()))
+        || (isAuthenticated() && request.auth.token.email != null && (
+          resource.data.email == request.auth.token.email ||
+          resource.data.email == request.auth.token.email.lower()
+        ) && userDoesNotChangeProtectedFields())
+        || isAdmin();
       allow delete: if isAdmin();
 
       match /{allSubcollections=**} {

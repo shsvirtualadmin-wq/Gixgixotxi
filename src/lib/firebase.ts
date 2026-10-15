@@ -197,6 +197,15 @@ export interface StudentUserProfile {
   premiumExpiresAt?: string;
   pendingPremium?: boolean;
   pendingPremiumEmail?: string;
+  grade?: string;
+  class?: string;
+  board?: string;
+  stream?: string;
+  registrationComplete?: boolean;
+  legacy_supabase_uid?: string;
+  firebase_auth_linked?: boolean;
+  linked?: boolean;
+  linked_at?: string;
 }
 
 export interface UserNotification {
@@ -304,155 +313,319 @@ export interface StoredAppConfig {
 }
 
 /**
- * Reads users/{uid} safely from Named Firestore.
- * Normalizes legacy plans ('starter' -> 'free', 'all_access' -> 'premium').
- * Never decides "user needs registration" from null/undefined or from a cached result.
- * Checks snapshot.metadata.fromCache: if doc doesn't exist and fromCache is true,
- * fetches the server result (getDocFromServer) before deciding.
+ * Reads user profile safely from Named Firestore using 3-tier cascade:
+ * (a) users/{firebase uid}
+ * (b) query on email == signed-in email (lowercased and trimmed)
+ * (c) query on legacy_supabase_uid (if known)
+ *
+ * If matched by (b) or (c), immediately links by setting Firebase UID on the doc / copying to users/{uid}.
+ * Does NOT swallow errors: rethrows them so callers never misinterpret network/permission issues as "new user".
+ * Logs temporary console messages for the matching step.
  */
-export async function fetchUserProfile(uid: string): Promise<StudentUserProfile | null> {
+export async function fetchUserProfile(
+  uid: string,
+  userEmail?: string | null,
+  legacyUid?: string | null
+): Promise<StudentUserProfile | null> {
   const userPath = `users/${uid}`;
+  const rawEmail = (userEmail || auth.currentUser?.email || '').trim();
+  const normalizedEmail = rawEmail.toLowerCase();
+  const effectiveLegacyUid = legacyUid || (typeof window !== 'undefined' ? localStorage.getItem('boardly_legacy_supabase_uid') : null);
+
+  let matchedRawData: DocumentData | null = null;
+  let matchedDocId: string | null = null;
+  let matchStep: 'uid' | 'email' | 'legacy uid' | 'none' = 'none';
+
+  // ----------------------------------------------------
+  // Step a: users/{firebase uid}
+  // ----------------------------------------------------
   try {
     const userRef = doc(db, 'users', uid);
     let snap: DocumentSnapshot<DocumentData> = await getDoc(userRef);
 
-    // If doc doesn't exist according to local cache, do NOT assume it doesn't exist on server!
-    // Fetch directly from server before deciding whether the user needs registration.
+    // If doc doesn't exist according to local cache, do NOT assume it doesn't exist on server
     const isFromCache = Boolean((snap as any)?.metadata?.fromCache);
     if (!snap.exists() && isFromCache) {
       try {
         snap = await getDocFromServer(userRef);
       } catch (serverErr: any) {
-        console.error(`[Boardly Firebase] getDocFromServer failed for ${userPath}: [code: ${serverErr?.code || 'UNKNOWN'}] [message: ${serverErr?.message || serverErr}]`, serverErr);
+        console.warn(`[Boardly Firebase] getDocFromServer failed for ${userPath}: [code: ${serverErr?.code || 'UNKNOWN'}] [message: ${serverErr?.message || serverErr}]`, serverErr);
       }
     }
 
-    if (!snap.exists()) {
-      // If snapshot is still from cache (e.g. offline), check local storage backup before declaring non-existent
-      const stillFromCache = Boolean((snap as any)?.metadata?.fromCache);
-      if (stillFromCache) {
-        try {
-          const cached = localStorage.getItem(`boardly_cached_profile_${uid}`);
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (parsed && parsed.uid === uid) return parsed;
-          }
-        } catch {}
-      }
-      return null;
+    if (snap.exists()) {
+      matchedRawData = snap.data();
+      matchedDocId = snap.id;
+      matchStep = 'uid';
     }
-
-    const rawData = snap.data();
-    const isRegistered = Boolean(rawData.onboardingComplete || rawData.onboardingCompleted);
-    const normalizedPlan = normalizePlanId(rawData.plan);
-    const plan = (rawData.plan || 'starter') as PlanType;
-    const normalizedRole = (rawData.role || 'student') as UserRole;
-    const roles: UserRole[] = Array.isArray(rawData.roles) && rawData.roles.length > 0
-      ? rawData.roles
-      : [normalizedRole];
-
-    // Check if user has an active or pending Boardly Crew ambassador 30-day Premium grant
-    const userEmailNorm = (rawData.email || '').trim().toLowerCase();
-    let pendingCrewConfig: any = null;
-
-    if (userEmailNorm) {
-      try {
-        const emailKey = userEmailNorm.replace(/[^a-z0-9]/g, '_');
-        const configSnap = await getDoc(doc(db, 'config', `crew_pending_${emailKey}`));
-        if (configSnap.exists()) {
-          const cfg = configSnap.data();
-          if (cfg?.pendingPremium) {
-            pendingCrewConfig = cfg;
-          }
-        }
-      } catch (e) {
-        // Safe read failure notice
-      }
-    }
-
-    const hasPendingPremium = Boolean(rawData.pendingPremium || pendingCrewConfig?.pendingPremium);
-    const premiumExpiryFromConfig = pendingCrewConfig?.expiryDate || (hasPendingPremium ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : undefined);
-    const effectivePremiumExpiresAt = rawData.premiumExpiresAt || premiumExpiryFromConfig;
-
-    const isPremiumExpired = Boolean(
-      effectivePremiumExpiresAt &&
-      new Date(effectivePremiumExpiresAt).getTime() < Date.now()
-    );
-
-    const isActivatedPremium = hasPendingPremium && !isPremiumExpired;
-    const effectivePlan: PlanType = isActivatedPremium ? 'premium' : (isPremiumExpired ? 'starter' : plan);
-    const effectiveIsPremium: boolean = isActivatedPremium ? true : (isPremiumExpired ? false : Boolean(rawData.isPremium));
-    const effectiveIsCrewMember: boolean = isActivatedPremium ? true : Boolean(rawData.isCrewMember);
-    const effectiveCrewStatus = isActivatedPremium ? 'active' : (rawData.crewStatus || (effectiveIsCrewMember ? 'active' : undefined));
-    const effectiveCrewCode = rawData.crewReferralCode || pendingCrewConfig?.referralCode;
-    const effectiveCrewInstitution = rawData.crewInstitution || pendingCrewConfig?.institution;
-
-    if (pendingCrewConfig && effectiveCrewCode) {
-      try {
-        setDoc(
-          doc(db, 'captains', uid),
-          {
-            userId: uid,
-            studentName: rawData.name || pendingCrewConfig.fullName || 'Ambassador',
-            email: userEmailNorm,
-            institution: effectiveCrewInstitution || '',
-            referralCode: effectiveCrewCode,
-            referralCount: 0,
-            activeUsersCount: 0,
-            points: 0,
-            status: 'active',
-            type: 'crew_ambassador',
-            createdAt: new Date().toISOString(),
-            expiresAt: effectivePremiumExpiresAt,
-          },
-          { merge: true }
-        ).catch(console.warn);
-      } catch (capErr) {
-        // Safe notice
-      }
-    }
-
-    const profile: StudentUserProfile = {
-      ...rawData,
-      uid,
-      plan: effectivePlan,
-      isPremium: effectiveIsPremium,
-      premiumExpiresAt: effectivePremiumExpiresAt,
-      isCrewMember: effectiveIsCrewMember,
-      crewStatus: effectiveCrewStatus,
-      crewReferralCode: effectiveCrewCode,
-      crewInstitution: effectiveCrewInstitution,
-      role: normalizedRole,
-      roles,
-      streak: typeof rawData.streak === 'number' ? rawData.streak : (typeof rawData.streakDays === 'number' ? rawData.streakDays : 0),
-      streakDays: typeof rawData.streak === 'number' ? rawData.streak : (typeof rawData.streakDays === 'number' ? rawData.streakDays : 0),
-      testHistory: Array.isArray(rawData.testHistory) ? rawData.testHistory : [],
-      testsUsedToday: typeof rawData.testsUsedToday === 'number' ? rawData.testsUsedToday : 0,
-      boardyQuestionsUsedToday: typeof rawData.boardyQuestionsUsedToday === 'number' ? rawData.boardyQuestionsUsedToday : 0,
-      name: rawData.name || 'Student',
-      email: rawData.email || '',
-      onboardingCompleted: isRegistered,
-      onboardingComplete: isRegistered,
-      createdAt: rawData.createdAt || new Date().toISOString(),
-    };
-
-    try {
-      localStorage.setItem(`boardly_cached_profile_${uid}`, JSON.stringify(profile));
-    } catch {}
-
-    return profile;
   } catch (err: any) {
-    console.error(`[Boardly Firebase] fetchUserProfile error for ${userPath}: [code: ${err?.code || 'UNKNOWN'}] [message: ${err?.message || err}]`, err);
+    console.error(`[Boardly Firebase] fetchUserProfile error on step (a) users/${uid}: [code: ${err?.code || 'UNKNOWN'}] [message: ${err?.message || err}]`, err);
+    throw err;
+  }
+
+  // ----------------------------------------------------
+  // Step b: query on email == signed-in email (lowercased and trimmed)
+  // ----------------------------------------------------
+  if (!matchedRawData && normalizedEmail) {
     try {
-      const cached = localStorage.getItem(`boardly_cached_profile_${uid}`);
-      if (cached) return JSON.parse(cached);
-    } catch {}
+      const q = query(
+        collection(db, 'users'),
+        where('email', '==', normalizedEmail),
+        limit(1)
+      );
+      const emailSnap = await getDocs(q);
+
+      if (!emailSnap.empty) {
+        const docMatch = emailSnap.docs[0];
+        matchedRawData = docMatch.data();
+        matchedDocId = docMatch.id;
+        matchStep = 'email';
+      } else if (rawEmail && rawEmail !== normalizedEmail) {
+        // Fallback: check raw unnormalized casing if different
+        const qRaw = query(
+          collection(db, 'users'),
+          where('email', '==', rawEmail),
+          limit(1)
+        );
+        const rawSnap = await getDocs(qRaw);
+        if (!rawSnap.empty) {
+          const docMatch = rawSnap.docs[0];
+          matchedRawData = docMatch.data();
+          matchedDocId = docMatch.id;
+          matchStep = 'email';
+        }
+      }
+    } catch (err: any) {
+      console.error(`[Boardly Firebase] fetchUserProfile error on step (b) query email == ${normalizedEmail}: [code: ${err?.code || 'UNKNOWN'}] [message: ${err?.message || err}]`, err);
+      throw err;
+    }
+  }
+
+  // ----------------------------------------------------
+  // Step c: query on legacy_supabase_uid (if known)
+  // ----------------------------------------------------
+  if (!matchedRawData && effectiveLegacyUid) {
+    try {
+      // Check direct document paths first
+      const directRef1 = doc(db, 'users', `legacy_${effectiveLegacyUid}`);
+      const directSnap1 = await getDoc(directRef1);
+      if (directSnap1.exists()) {
+        matchedRawData = directSnap1.data();
+        matchedDocId = directSnap1.id;
+        matchStep = 'legacy uid';
+      } else {
+        const directRef2 = doc(db, 'users', effectiveLegacyUid);
+        const directSnap2 = await getDoc(directRef2);
+        if (directSnap2.exists()) {
+          matchedRawData = directSnap2.data();
+          matchedDocId = directSnap2.id;
+          matchStep = 'legacy uid';
+        }
+      }
+
+      if (!matchedRawData) {
+        // Run query for legacy_supabase_uid
+        const legacyQuery = query(
+          collection(db, 'users'),
+          where('legacy_supabase_uid', '==', effectiveLegacyUid),
+          limit(1)
+        );
+        const legacySnap = await getDocs(legacyQuery);
+        if (!legacySnap.empty) {
+          const docMatch = legacySnap.docs[0];
+          matchedRawData = docMatch.data();
+          matchedDocId = docMatch.id;
+          matchStep = 'legacy uid';
+        }
+      }
+    } catch (err: any) {
+      console.error(`[Boardly Firebase] fetchUserProfile error on step (c) query legacy_supabase_uid == ${effectiveLegacyUid}: [code: ${err?.code || 'UNKNOWN'}] [message: ${err?.message || err}]`, err);
+      throw err;
+    }
+  }
+
+  // Log which step found the profile (Requirement 7)
+  console.log(`[Boardly Auth] Profile found via: ${matchStep}`);
+
+  // If all three lookups succeed and return nothing, user is genuinely new
+  if (!matchedRawData) {
     return null;
   }
+
+  // ----------------------------------------------------
+  // Link immediately if matched via (b) or (c)
+  // ----------------------------------------------------
+  if (matchStep === 'email' || matchStep === 'legacy uid') {
+    const linkedDocData = {
+      ...matchedRawData,
+      uid,
+      email: normalizedEmail || (matchedRawData.email || '').trim().toLowerCase(),
+      firebase_auth_linked: true,
+      firebase_uid: uid,
+      linked: true,
+      linked_at: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // If academic fields exist, mark onboarding completed immediately
+    const hasAcademic = Boolean(
+      (linkedDocData.class || linkedDocData.grade || linkedDocData.board || linkedDocData.stream || linkedDocData.testTrack || linkedDocData.targetUniversity || linkedDocData.targetExam) &&
+      (linkedDocData.name || linkedDocData.fullName) &&
+      linkedDocData.email
+    );
+    if (hasAcademic || linkedDocData.role === 'admin' || normalizedEmail === 'shsvirtualadmin@gmail.com') {
+      linkedDocData.onboardingCompleted = true;
+      linkedDocData.onboardingComplete = true;
+      linkedDocData.registrationComplete = true;
+    }
+
+    // Copy to users/{uid}
+    try {
+      await setDoc(doc(db, 'users', uid), linkedDocData, { merge: true });
+    } catch (linkErr: any) {
+      console.warn(`[Boardly Firebase] Linking profile to users/${uid} notice:`, linkErr);
+    }
+
+    // Also update original document if matchedDocId differs
+    if (matchedDocId && matchedDocId !== uid) {
+      try {
+        await updateDoc(doc(db, 'users', matchedDocId), {
+          firebase_auth_linked: true,
+          firebase_uid: uid,
+          linked: true,
+          linked_at: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+      } catch (origErr) {
+        console.warn(`[Boardly Firebase] Marking original document ${matchedDocId} as linked notice:`, origErr);
+      }
+    }
+
+    matchedRawData = linkedDocData;
+    matchedDocId = uid;
+  }
+
+  const rawData = matchedRawData;
+
+  // Academic completion heuristic (Requirement 5)
+  const hasAcademicFields = Boolean(
+    (rawData.class || rawData.grade || rawData.board || rawData.stream || rawData.testTrack || rawData.targetUniversity || rawData.targetExam) &&
+    (rawData.name || rawData.fullName) &&
+    rawData.email
+  );
+
+  const isRegistered = Boolean(
+    rawData.onboardingComplete === true ||
+    rawData.onboardingCompleted === true ||
+    rawData.registrationComplete === true ||
+    rawData.isRegistered === true ||
+    hasAcademicFields ||
+    (rawData.role === 'admin' || normalizedEmail === 'shsvirtualadmin@gmail.com')
+  );
+
+  const normalizedPlan = normalizePlanId(rawData.plan);
+  const plan = (rawData.plan || 'starter') as PlanType;
+  const normalizedRole = (rawData.role || 'student') as UserRole;
+  const roles: UserRole[] = Array.isArray(rawData.roles) && rawData.roles.length > 0
+    ? rawData.roles
+    : [normalizedRole];
+
+  // Check if user has an active or pending Boardly Crew ambassador 30-day Premium grant
+  const userEmailNorm = (rawData.email || normalizedEmail || '').trim().toLowerCase();
+  let pendingCrewConfig: any = null;
+
+  if (userEmailNorm) {
+    try {
+      const emailKey = userEmailNorm.replace(/[^a-z0-9]/g, '_');
+      const configSnap = await getDoc(doc(db, 'config', `crew_pending_${emailKey}`));
+      if (configSnap.exists()) {
+        const cfg = configSnap.data();
+        if (cfg?.pendingPremium) {
+          pendingCrewConfig = cfg;
+        }
+      }
+    } catch (e) {
+      // Safe read failure notice
+    }
+  }
+
+  const hasPendingPremium = Boolean(rawData.pendingPremium || pendingCrewConfig?.pendingPremium);
+  const premiumExpiryFromConfig = pendingCrewConfig?.expiryDate || (hasPendingPremium ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : undefined);
+  const effectivePremiumExpiresAt = rawData.premiumExpiresAt || premiumExpiryFromConfig;
+
+  const isPremiumExpired = Boolean(
+    effectivePremiumExpiresAt &&
+    new Date(effectivePremiumExpiresAt).getTime() < Date.now()
+  );
+
+  const isActivatedPremium = hasPendingPremium && !isPremiumExpired;
+  const effectivePlan: PlanType = isActivatedPremium ? 'premium' : (isPremiumExpired ? 'starter' : plan);
+  const effectiveIsPremium: boolean = isActivatedPremium ? true : (isPremiumExpired ? false : Boolean(rawData.isPremium));
+  const effectiveIsCrewMember: boolean = isActivatedPremium ? true : Boolean(rawData.isCrewMember);
+  const effectiveCrewStatus = isActivatedPremium ? 'active' : (rawData.crewStatus || (effectiveIsCrewMember ? 'active' : undefined));
+  const effectiveCrewCode = rawData.crewReferralCode || pendingCrewConfig?.referralCode;
+  const effectiveCrewInstitution = rawData.crewInstitution || pendingCrewConfig?.institution;
+
+  if (pendingCrewConfig && effectiveCrewCode) {
+    try {
+      setDoc(
+        doc(db, 'captains', uid),
+        {
+          userId: uid,
+          studentName: rawData.name || rawData.fullName || pendingCrewConfig.fullName || 'Ambassador',
+          email: userEmailNorm,
+          institution: effectiveCrewInstitution || '',
+          referralCode: effectiveCrewCode,
+          referralCount: 0,
+          activeUsersCount: 0,
+          points: 0,
+          status: 'active',
+          type: 'crew_ambassador',
+          createdAt: new Date().toISOString(),
+          expiresAt: effectivePremiumExpiresAt,
+        },
+        { merge: true }
+      ).catch(console.warn);
+    } catch (capErr) {
+      // Safe notice
+    }
+  }
+
+  const profile: StudentUserProfile = {
+    ...rawData,
+    uid,
+    plan: effectivePlan,
+    isPremium: effectiveIsPremium,
+    premiumExpiresAt: effectivePremiumExpiresAt,
+    isCrewMember: effectiveIsCrewMember,
+    crewStatus: effectiveCrewStatus,
+    crewReferralCode: effectiveCrewCode,
+    crewInstitution: effectiveCrewInstitution,
+    role: normalizedRole,
+    roles,
+    streak: typeof rawData.streak === 'number' ? rawData.streak : (typeof rawData.streakDays === 'number' ? rawData.streakDays : 0),
+    streakDays: typeof rawData.streak === 'number' ? rawData.streak : (typeof rawData.streakDays === 'number' ? rawData.streakDays : 0),
+    testHistory: Array.isArray(rawData.testHistory) ? rawData.testHistory : [],
+    testsUsedToday: typeof rawData.testsUsedToday === 'number' ? rawData.testsUsedToday : 0,
+    boardyQuestionsUsedToday: typeof rawData.boardyQuestionsUsedToday === 'number' ? rawData.boardyQuestionsUsedToday : 0,
+    name: rawData.name || rawData.fullName || 'Student',
+    email: userEmailNorm,
+    onboardingCompleted: isRegistered,
+    onboardingComplete: isRegistered,
+    registrationComplete: isRegistered,
+    createdAt: rawData.createdAt || new Date().toISOString(),
+  };
+
+  try {
+    localStorage.setItem(`boardly_cached_profile_${uid}`, JSON.stringify(profile));
+  } catch {}
+
+  return profile;
 }
 
 /**
  * Creates user profile document ONCE with merge so a returning user is never overwritten.
+ * Re-checks that no document exists for that UID or email before creating.
  */
 export async function createInitialUserDoc(
   uid: string,
@@ -460,14 +633,87 @@ export async function createInitialUserDoc(
 ): Promise<StudentUserProfile> {
   const userRef = doc(db, 'users', uid);
   const nowStr = new Date().toISOString();
+  const normalizedEmail = (initialData.email || '').trim().toLowerCase();
   const role = initialData.role || 'student';
   const plan = (initialData.plan || 'starter') as PlanType;
-  const isRegisteredInit = Boolean(initialData.onboardingComplete || initialData.onboardingCompleted);
+  const isRegisteredInit = Boolean(initialData.onboardingComplete || initialData.onboardingCompleted || initialData.registrationComplete);
 
+  // 1. Re-check users/{uid}
+  try {
+    const existingSnap = await getDoc(userRef);
+    if (existingSnap.exists()) {
+      const existingData = existingSnap.data();
+      const isRegisteredExisting = Boolean(
+        existingData.onboardingComplete ||
+        existingData.onboardingCompleted ||
+        existingData.registrationComplete ||
+        ((existingData.class || existingData.grade || existingData.board || existingData.stream) && existingData.name && existingData.email)
+      );
+      const existingProfile = {
+        ...existingData,
+        uid,
+        email: (existingData.email || normalizedEmail).trim().toLowerCase(),
+        plan: normalizePlanId(existingData.plan),
+        role: (existingData.role || 'student') as UserRole,
+        roles: existingData.roles || [(existingData.role || 'student') as UserRole],
+        onboardingComplete: isRegisteredExisting,
+        onboardingCompleted: isRegisteredExisting,
+        registrationComplete: isRegisteredExisting,
+      } as StudentUserProfile;
+      try {
+        localStorage.setItem(`boardly_cached_profile_${uid}`, JSON.stringify(existingProfile));
+      } catch {}
+      return existingProfile;
+    }
+  } catch (checkErr: any) {
+    console.warn('[Boardly Firebase] Pre-create UID check failed:', checkErr);
+  }
+
+  // 2. Re-check if document exists for that email
+  if (normalizedEmail) {
+    try {
+      const emailQ = query(
+        collection(db, 'users'),
+        where('email', '==', normalizedEmail),
+        limit(1)
+      );
+      const emailSnap = await getDocs(emailQ);
+      if (!emailSnap.empty) {
+        const foundDoc = emailSnap.docs[0];
+        const existingData = foundDoc.data();
+        const isRegisteredExisting = Boolean(
+          existingData.onboardingComplete ||
+          existingData.onboardingCompleted ||
+          existingData.registrationComplete ||
+          ((existingData.class || existingData.grade || existingData.board || existingData.stream) && existingData.name && existingData.email)
+        );
+        const linkedProfile = {
+          ...existingData,
+          uid,
+          email: normalizedEmail,
+          firebase_auth_linked: true,
+          firebase_uid: uid,
+          onboardingComplete: isRegisteredExisting,
+          onboardingCompleted: isRegisteredExisting,
+          registrationComplete: isRegisteredExisting,
+        } as StudentUserProfile;
+
+        await setDoc(userRef, linkedProfile, { merge: true });
+        try {
+          localStorage.setItem(`boardly_cached_profile_${uid}`, JSON.stringify(linkedProfile));
+        } catch {}
+        return linkedProfile;
+      }
+    } catch (emailErr: any) {
+      console.warn('[Boardly Firebase] Pre-create email check failed:', emailErr);
+    }
+  }
+
+  // 3. Brand-new student starter doc
   const fallbackProfile: StudentUserProfile = {
     uid,
     name: initialData.name || 'Student',
-    email: initialData.email || '',
+    email: normalizedEmail,
     phone: initialData.phone || '',
     plan,
     role,
@@ -477,6 +723,7 @@ export async function createInitialUserDoc(
     termsVersion: '2026.1',
     onboardingCompleted: isRegisteredInit,
     onboardingComplete: isRegisteredInit,
+    registrationComplete: isRegisteredInit,
     testsUsedToday: 0,
     boardyQuestionsUsedToday: 0,
     lastUsageDate: nowStr.slice(0, 10),
@@ -494,15 +741,22 @@ export async function createInitialUserDoc(
       const docSnap = await transaction.get(userRef);
       if (docSnap.exists()) {
         const existingData = docSnap.data();
-        const isRegisteredExisting = Boolean(existingData.onboardingComplete || existingData.onboardingCompleted);
+        const isRegisteredExisting = Boolean(
+          existingData.onboardingComplete ||
+          existingData.onboardingCompleted ||
+          existingData.registrationComplete ||
+          ((existingData.class || existingData.grade || existingData.board || existingData.stream) && existingData.name && existingData.email)
+        );
         resultProfile = {
           ...existingData,
           uid,
+          email: (existingData.email || normalizedEmail).trim().toLowerCase(),
           plan: normalizePlanId(existingData.plan),
           role: (existingData.role || 'student') as UserRole,
           roles: existingData.roles || [(existingData.role || 'student') as UserRole],
           onboardingComplete: isRegisteredExisting,
           onboardingCompleted: isRegisteredExisting,
+          registrationComplete: isRegisteredExisting,
         } as StudentUserProfile;
       } else {
         transaction.set(userRef, fallbackProfile, { merge: true });
@@ -535,7 +789,8 @@ export async function createInitialUserDoc(
 }
 
 /**
- * Updates user profile in Firestore
+ * Updates user profile in Firestore.
+ * Always trims and lowercases email on writes.
  */
 export async function saveUserProfile(uid: string, fields: Partial<StudentUserProfile>): Promise<void> {
   const userRef = doc(db, 'users', uid);
@@ -546,10 +801,14 @@ export async function saveUserProfile(uid: string, fields: Partial<StudentUserPr
       uid,
       updatedAt: new Date().toISOString(),
     };
-    if (fields.onboardingCompleted !== undefined || fields.onboardingComplete !== undefined) {
-      const isDone = Boolean(fields.onboardingCompleted || fields.onboardingComplete);
+    if (typeof cleanFields.email === 'string') {
+      cleanFields.email = cleanFields.email.trim().toLowerCase();
+    }
+    if (fields.onboardingCompleted !== undefined || fields.onboardingComplete !== undefined || fields.registrationComplete !== undefined) {
+      const isDone = Boolean(fields.onboardingCompleted || fields.onboardingComplete || fields.registrationComplete);
       cleanFields.onboardingCompleted = isDone;
       cleanFields.onboardingComplete = isDone;
+      cleanFields.registrationComplete = isDone;
     }
     // Remove any undefined properties
     Object.keys(cleanFields).forEach((key) => {

@@ -50,6 +50,8 @@ export interface AuthContextType {
   loading: boolean;
   authLoading: boolean;
   profileLoading: boolean;
+  authError: { code: string; message: string } | null;
+  retryAuth: () => Promise<void>;
   isRegistered: boolean;
   initialAuthChecked: boolean;
   status: AuthStatus;
@@ -140,6 +142,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [status, setStatus] = useState<AuthStatus>('loading');
   const [activeRole, setActiveRole] = useState<UserRole>('student');
   const [sessionExpired, setSessionExpired] = useState<boolean>(false);
+  const [authError, setAuthError] = useState<{ code: string; message: string } | null>(null);
 
   const lastKnownUserRef = useRef<User | null>(null);
   const isExplicitLoggingOutRef = useRef<boolean>(false);
@@ -188,11 +191,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     normalizedEmail === 'shsvirtualadmin@gmail.com'
   );
 
-  // Single source of truth for "is registered": true if admin or onboarding is complete
+  // Single source of truth for "is registered": true if admin, onboarding is complete, or academic profile exists
   const isRegistered = useMemo(() => {
     if (!user) return false;
     if (isAdmin) return true;
-    return Boolean(profile?.onboardingComplete === true || profile?.onboardingCompleted === true);
+    if (!profile) return false;
+    if (profile.onboardingComplete === true || profile.onboardingCompleted === true || profile.registrationComplete === true) {
+      return true;
+    }
+    const hasAcademic = Boolean(
+      (profile.class || profile.grade || profile.board || profile.stream || profile.testTrack || profile.targetUniversity || profile.targetExam) &&
+      (profile.name || profile.fullName) &&
+      profile.email
+    );
+    return hasAcademic;
   }, [user, isAdmin, profile]);
 
   const availableRoles = useMemo<UserRole[]>(() => {
@@ -227,8 +239,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const isMasterAdmin = email === 'shsvirtualadmin@gmail.com';
     const todayStr = getKarachiTodayString();
 
-    // 1. Fetch user profile from Firestore (handles cache & getDocFromServer fail-safes)
-    let existingProfile = await fetchUserProfile(firebaseUser.uid);
+    // 1. Fetch user profile from Firestore using 3-step lookup (users/{uid}, email query, legacy query)
+    let existingProfile = await fetchUserProfile(firebaseUser.uid, firebaseUser.email);
 
     if (existingProfile) {
       if (!isMasterAdmin && (existingProfile.suspended === true || existingProfile.status === 'suspended' || (existingProfile as any).isSuspended === true)) {
@@ -258,6 +270,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         delete existingProfile.crewInstitution;
         existingProfile.onboardingCompleted = true;
         existingProfile.onboardingComplete = true;
+        existingProfile.registrationComplete = true;
         existingProfile.roles = ['admin', 'student'];
         saveUserProfile(firebaseUser.uid, {
           role: 'admin',
@@ -267,8 +280,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           roles: ['admin', 'student'],
           onboardingCompleted: true,
           onboardingComplete: true,
+          registrationComplete: true,
         }).catch(console.warn);
       } else {
+        // If profile has academic info, ensure onboardingComplete is marked true
+        const hasAcademic = Boolean(
+          (existingProfile.class || existingProfile.grade || existingProfile.board || existingProfile.stream || existingProfile.testTrack || existingProfile.targetUniversity || existingProfile.targetExam) &&
+          (existingProfile.name || existingProfile.fullName) &&
+          existingProfile.email
+        );
+        if (hasAcademic && (!existingProfile.onboardingComplete || !existingProfile.onboardingCompleted || !existingProfile.registrationComplete)) {
+          existingProfile.onboardingCompleted = true;
+          existingProfile.onboardingComplete = true;
+          existingProfile.registrationComplete = true;
+          saveUserProfile(firebaseUser.uid, {
+            onboardingCompleted: true,
+            onboardingComplete: true,
+            registrationComplete: true,
+          }).catch(console.warn);
+        }
+
         // Daily allowance reset at Pakistan midnight
         if (existingProfile.lastUsageDate !== todayStr) {
           existingProfile.testsUsedToday = 0;
@@ -284,6 +315,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setProfile(existingProfile);
       setDocumentExists(true);
+      setAuthError(null);
 
       const highest = getHighestRole(existingProfile.roles || [existingProfile.role]);
       const savedRole = localStorage.getItem('boardly_active_role') as UserRole;
@@ -387,6 +419,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               if (isMounted) {
                 setProfile(loadedProfile);
                 setDocumentExists(true);
+                setAuthError(null);
                 setStatus('signedIn');
                 try {
                   localStorage.setItem(`boardly_cached_profile_${currentUser.uid}`, JSON.stringify(loadedProfile));
@@ -407,7 +440,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               if (cachedProfile && isMounted) {
                 setProfile(cachedProfile);
                 setDocumentExists(true);
+                setAuthError(null);
                 setStatus('signedIn');
+              } else if (isMounted) {
+                // Requirement 3: If any lookup throws, do NOT show registration. Show retry screen.
+                setAuthError({
+                  code: syncErr?.code || 'profile-load-error',
+                  message: syncErr?.message || 'We had trouble loading your account profile. Please check your connection and retry.',
+                });
               }
             } finally {
               if (isMounted) {
@@ -423,6 +463,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setUser(null);
                 setProfile(null);
                 setDocumentExists(false);
+                setAuthError(null);
                 setStatus('signedOut');
                 lastKnownUserRef.current = null;
                 setProfileLoading(false);
@@ -859,6 +900,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const retryAuth = useCallback(async (): Promise<void> => {
+    setAuthError(null);
+    setProfileLoading(true);
+    if (auth.currentUser) {
+      try {
+        const loaded = await syncProfile(auth.currentUser);
+        setProfile(loaded);
+        setDocumentExists(true);
+        setAuthError(null);
+        setStatus('signedIn');
+      } catch (e: any) {
+        console.error('[AuthContext] retryAuth failed:', e);
+        setAuthError({
+          code: e?.code || 'retry-failed',
+          message: e?.message || 'Connection retry failed. Please try again.',
+        });
+      } finally {
+        setProfileLoading(false);
+      }
+    } else {
+      setProfileLoading(false);
+    }
+  }, [syncProfile]);
+
   return (
     <AuthContext.Provider
       value={{
@@ -869,6 +934,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loading,
         authLoading,
         profileLoading,
+        authError,
+        retryAuth,
         isRegistered,
         initialAuthChecked,
         status,

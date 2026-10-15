@@ -43,6 +43,8 @@ export const BoardlyAppRouter: React.FC = () => {
     loading,
     authLoading,
     profileLoading,
+    authError,
+    retryAuth,
     isRegistered,
     initialAuthChecked,
     status,
@@ -92,9 +94,9 @@ export const BoardlyAppRouter: React.FC = () => {
 
   const lastRedirectRef = useRef<string | null>(null);
 
-  // SESSIONS & AUTH GUARDS: Never redirect before both auth and profile are resolved
+  // SESSIONS & AUTH GUARDS: Never redirect before both auth and profile are resolved, and NEVER on auth error
   useEffect(() => {
-    if (loading || authLoading || profileLoading || !initialAuthChecked) return;
+    if (loading || authLoading || profileLoading || !initialAuthChecked || authError) return;
 
     // 1. Authenticated users guard
     if (user) {
@@ -169,7 +171,7 @@ export const BoardlyAppRouter: React.FC = () => {
         }
       }
     }
-  }, [loading, authLoading, profileLoading, initialAuthChecked, user, isRegistered, currentPath, getHighestRolePath, navigate]);
+  }, [loading, authLoading, profileLoading, initialAuthChecked, authError, user, isRegistered, currentPath, getHighestRolePath, navigate]);
 
   const [loadingTimedOut, setLoadingTimedOut] = useState<boolean>(false);
 
@@ -184,6 +186,54 @@ export const BoardlyAppRouter: React.FC = () => {
     }, 8000);
     return () => clearTimeout(timer);
   }, [loading, authLoading, profileLoading, initialAuthChecked]);
+
+  // Requirement 3: If any lookup throws (permission-denied, offline, timeout), do NOT show registration. Show retry screen.
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4 text-center">
+        <div className="w-14 h-14 rounded-3xl bg-amber-50 dark:bg-amber-950/60 flex items-center justify-center text-amber-600 border border-amber-200 dark:border-amber-800">
+          <AlertCircle className="w-7 h-7" />
+        </div>
+        <div className="space-y-1 max-w-sm">
+          <h3 className="text-base font-black text-slate-900 dark:text-white">
+            Connection took longer than expected
+          </h3>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {authError.message || 'We had trouble loading your account profile. You can retry.'}
+          </p>
+          {authError.code && (
+            <p className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
+              [Code: {authError.code}]
+            </p>
+          )}
+        </div>
+        <div className="flex items-center gap-2 pt-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (retryAuth) {
+                retryAuth();
+              } else if (typeof window !== 'undefined') {
+                window.location.reload();
+              }
+            }}
+            className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 cursor-pointer"
+          >
+            Retry
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              navigate('/login', true);
+            }}
+            className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
+          >
+            Back to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // Loading skeleton state: Show loading until BOTH authLoading and profileLoading are resolved
   if (loading || authLoading || profileLoading || !initialAuthChecked) {
