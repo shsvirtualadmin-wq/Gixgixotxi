@@ -2,6 +2,16 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ADMIN OVERRIDE: full access for verified admin emails only
+    match /{document=**} {
+      allow read, write: if request.auth != null
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in [
+          'shsvirtualadmin@gmail.com',
+          'support@boardly.cfd'
+        ];
+    }
+
     function isAuthenticated() {
       return request.auth != null;
     }
