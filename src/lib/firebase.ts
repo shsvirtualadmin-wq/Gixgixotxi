@@ -320,9 +320,28 @@ export interface StoredAppConfig {
  *
  * If matched by (b) or (c), immediately links by setting Firebase UID on the doc / copying to users/{uid}.
  * Does NOT swallow errors: rethrows them so callers never misinterpret network/permission issues as "new user".
- * Logs temporary console messages for the matching step.
+ * Uses a strict 4-second timeout to guarantee the promise always settles.
  */
 export async function fetchUserProfile(
+  uid: string,
+  userEmail?: string | null,
+  legacyUid?: string | null
+): Promise<StudentUserProfile | null> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    const timer = setTimeout(() => {
+      const err = new Error('Profile lookup timed out after 4 seconds');
+      (err as any).code = 'timeout';
+      reject(err);
+    }, 4000);
+  });
+
+  return Promise.race([
+    executeFetchUserProfile(uid, userEmail, legacyUid),
+    timeoutPromise,
+  ]);
+}
+
+async function executeFetchUserProfile(
   uid: string,
   userEmail?: string | null,
   legacyUid?: string | null
@@ -341,17 +360,10 @@ export async function fetchUserProfile(
   // ----------------------------------------------------
   try {
     const userRef = doc(db, 'users', uid);
-    let snap: DocumentSnapshot<DocumentData> = await getDoc(userRef);
-
-    // If doc doesn't exist according to local cache, do NOT assume it doesn't exist on server
-    const isFromCache = Boolean((snap as any)?.metadata?.fromCache);
-    if (!snap.exists() && isFromCache) {
-      try {
-        snap = await getDocFromServer(userRef);
-      } catch (serverErr: any) {
-        console.warn(`[Boardly Firebase] getDocFromServer failed for ${userPath}: [code: ${serverErr?.code || 'UNKNOWN'}] [message: ${serverErr?.message || serverErr}]`, serverErr);
-      }
-    }
+    console.log(`[fetchUserProfile] step_a_start (users/${uid}):`, new Date().toISOString());
+    const t0 = performance.now();
+    const snap: DocumentSnapshot<DocumentData> = await getDoc(userRef);
+    console.log(`[fetchUserProfile] step_a_end (${(performance.now() - t0).toFixed(1)}ms, exists: ${snap.exists()}):`, new Date().toISOString());
 
     if (snap.exists()) {
       matchedRawData = snap.data();
@@ -372,7 +384,10 @@ export async function fetchUserProfile(
         collection(db, 'users'),
         where('email', '==', normalizedEmail)
       );
+      console.log(`[fetchUserProfile] step_b_start (query email == ${normalizedEmail}):`, new Date().toISOString());
+      const tb0 = performance.now();
       const emailSnap = await getDocs(q);
+      console.log(`[fetchUserProfile] step_b_end (${(performance.now() - tb0).toFixed(1)}ms, docs: ${emailSnap.docs.length}):`, new Date().toISOString());
 
       if (!emailSnap.empty) {
         if (emailSnap.docs.length > 1) {
@@ -380,7 +395,7 @@ export async function fetchUserProfile(
             `[Boardly Auth] Multiple (${emailSnap.docs.length}) profile documents found for email ${normalizedEmail}:`,
             emailSnap.docs.map((d) => d.id)
           );
-          // Pick the document with the most complete data (Requirement 7)
+          // Pick the document with the most complete data
           let bestDoc = emailSnap.docs[0];
           let bestScore = -1;
           for (const d of emailSnap.docs) {
@@ -424,6 +439,8 @@ export async function fetchUserProfile(
   // ----------------------------------------------------
   if (!matchedRawData && effectiveLegacyUid) {
     try {
+      console.log(`[fetchUserProfile] step_c_start (legacy uid ${effectiveLegacyUid}):`, new Date().toISOString());
+      const tc0 = performance.now();
       // Check direct document paths first
       const directRef1 = doc(db, 'users', `legacy_${effectiveLegacyUid}`);
       const directSnap1 = await getDoc(directRef1);
@@ -456,6 +473,7 @@ export async function fetchUserProfile(
           matchStep = 'legacy uid';
         }
       }
+      console.log(`[fetchUserProfile] step_c_end (${(performance.now() - tc0).toFixed(1)}ms):`, new Date().toISOString());
     } catch (err: any) {
       console.error(`[Boardly Firebase] fetchUserProfile error on step (c) query legacy_supabase_uid == ${effectiveLegacyUid}: [code: ${err?.code || 'UNKNOWN'}] [message: ${err?.message || err}]`, err);
       throw err;
@@ -499,7 +517,9 @@ export async function fetchUserProfile(
 
     // Copy to users/{uid}
     try {
+      console.log(`[fetchUserProfile] link_setDoc_start:`, new Date().toISOString());
       await setDoc(doc(db, 'users', uid), linkedDocData, { merge: true });
+      console.log(`[fetchUserProfile] link_setDoc_end:`, new Date().toISOString());
     } catch (linkErr: any) {
       console.warn(`[Boardly Firebase] Linking profile to users/${uid} notice:`, linkErr);
     }
@@ -507,6 +527,7 @@ export async function fetchUserProfile(
     // Also update original document if matchedDocId differs
     if (matchedDocId && matchedDocId !== uid) {
       try {
+        console.log(`[fetchUserProfile] link_updateDoc_start:`, new Date().toISOString());
         await updateDoc(doc(db, 'users', matchedDocId), {
           firebase_auth_linked: true,
           firebase_uid: uid,
@@ -514,6 +535,7 @@ export async function fetchUserProfile(
           linked_at: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });
+        console.log(`[fetchUserProfile] link_updateDoc_end:`, new Date().toISOString());
       } catch (origErr) {
         console.warn(`[Boardly Firebase] Marking original document ${matchedDocId} as linked notice:`, origErr);
       }

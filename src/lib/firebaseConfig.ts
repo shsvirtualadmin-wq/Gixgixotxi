@@ -16,6 +16,8 @@ import {
 } from 'firebase/auth';
 import {
   initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   getFirestore,
   doc,
   getDoc,
@@ -192,15 +194,26 @@ export async function performGoogleSignIn(): Promise<any> {
   }
 }
 
-// Initialize Firestore Database with named database instance and experimentalAutoDetectLongPolling (Requirement 5)
+// Initialize Firestore Database with named database instance, experimentalForceLongPolling, and persistentLocalCache (Requirements 5 & 6)
 let firestoreDb: any;
 try {
   firestoreDb = initializeFirestore(
     app,
-    { experimentalAutoDetectLongPolling: true },
+    {
+      experimentalForceLongPolling: true,
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    },
     TARGET_FIRESTORE_DATABASE_ID
   );
 } catch {
-  firestoreDb = getFirestore(app, TARGET_FIRESTORE_DATABASE_ID);
+  try {
+    firestoreDb = initializeFirestore(
+      app,
+      { experimentalForceLongPolling: true },
+      TARGET_FIRESTORE_DATABASE_ID
+    );
+  } catch {
+    firestoreDb = getFirestore(app, TARGET_FIRESTORE_DATABASE_ID);
+  }
 }
 export const db = firestoreDb;

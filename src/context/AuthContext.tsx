@@ -146,6 +146,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const lastKnownUserRef = useRef<User | null>(null);
   const isExplicitLoggingOutRef = useRef<boolean>(false);
+  const isSyncingProfileRef = useRef<boolean>(false);
 
   // Combined loading state: true until BOTH auth identity and profile document are resolved
   const loading = authLoading || profileLoading || !initialAuthChecked;
@@ -235,53 +236,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
    * Never overwrites existing returning users.
    */
   const syncProfile = useCallback(async (firebaseUser: User): Promise<StudentUserProfile> => {
-    const email = (firebaseUser.email || '').trim().toLowerCase();
-    const isMasterAdmin = email === 'shsvirtualadmin@gmail.com';
-    const todayStr = getKarachiTodayString();
+    if (isSyncingProfileRef.current) {
+      console.warn('[AuthContext] syncProfile already running, skipping duplicate invocation');
+      if (profile) return profile;
+    }
+    isSyncingProfileRef.current = true;
 
-    // 1. Fetch user profile from Firestore using 3-step lookup with 15s timeout and automatic retry (Requirement 6 & 7)
-    const fetchWith15sTimeoutAndRetry = async (): Promise<StudentUserProfile | null> => {
-      const executeOneAttempt = (attemptNum: number): Promise<StudentUserProfile | null> => {
-        return new Promise<StudentUserProfile | null>((resolve, reject) => {
-          const timer = setTimeout(() => {
-            const timeoutError = new Error(`Profile lookup timed out after 15 seconds (attempt ${attemptNum}).`);
-            (timeoutError as any).code = 'timeout';
-            reject(timeoutError);
-          }, 15000);
+    try {
+      const email = (firebaseUser.email || '').trim().toLowerCase();
+      const isMasterAdmin = email === 'shsvirtualadmin@gmail.com';
+      const todayStr = getKarachiTodayString();
 
-          fetchUserProfile(firebaseUser.uid, firebaseUser.email)
-            .then((res) => {
-              clearTimeout(timer);
-              resolve(res);
-            })
-            .catch((err) => {
-              clearTimeout(timer);
-              reject(err);
-            });
-        });
-      };
+      const pageOpen = (typeof window !== 'undefined' && (window as any).__boardlyPageOpenTime) || 0;
+      console.log(`[Startup:ProfileLookupStart] timestamp: ${new Date().toISOString()} (+${(performance.now() - pageOpen).toFixed(1)}ms) for uid: ${firebaseUser.uid}`);
+      const t0 = performance.now();
 
-      try {
-        return await executeOneAttempt(1);
-      } catch (firstErr: any) {
-        console.warn(`[AuthContext] Initial profile lookup attempt 1 failed [code: ${firstErr?.code || 'UNKNOWN'}]. Performing one automatic retry...`, firstErr);
-        try {
-          return await executeOneAttempt(2);
-        } catch (retryErr: any) {
-          console.error(`[AuthContext] Automatic retry attempt 2 also failed [code: ${retryErr?.code || 'UNKNOWN'}]:`, retryErr);
-          throw retryErr;
-        }
-      }
-    };
+      // 1. Fetch user profile from Firestore using 3-step lookup (4-second timeout guarantee)
+      const existingProfile = await fetchUserProfile(firebaseUser.uid, firebaseUser.email);
+      console.log(`[Startup:ProfileLookupEnd] timestamp: ${new Date().toISOString()} (+${(performance.now() - pageOpen).toFixed(1)}ms, took: ${(performance.now() - t0).toFixed(1)}ms)`);
 
-    let existingProfile = await fetchWith15sTimeoutAndRetry();
-
-    if (existingProfile) {
-      if (!isMasterAdmin && (existingProfile.suspended === true || existingProfile.status === 'suspended' || (existingProfile as any).isSuspended === true)) {
-        console.warn(`[Boardly Auth] Student ${firebaseUser.uid} (${firebaseUser.email}) is suspended. Enforcing sign out.`);
-        try {
-          localStorage.removeItem(`boardly_cached_profile_${firebaseUser.uid}`);
-          localStorage.removeItem('boardly_active_role');
+      if (existingProfile) {
+        if (!isMasterAdmin && (existingProfile.suspended === true || existingProfile.status === 'suspended' || (existingProfile as any).isSuspended === true)) {
+          console.warn(`[Boardly Auth] Student ${firebaseUser.uid} (${firebaseUser.email}) is suspended. Enforcing sign out.`);
+          try {
+            localStorage.removeItem(`boardly_cached_profile_${firebaseUser.uid}`);
+            localStorage.removeItem('boardly_active_role');
         } catch {}
         await signOut(auth);
         setUser(null);
@@ -403,6 +382,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return created;
+    } finally {
+      isSyncingProfileRef.current = false;
+    }
   }, []);
 
   useEffect(() => {
@@ -421,13 +403,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       async (currentUser) => {
         if (!isMounted) return;
 
+        const pageOpen = (typeof window !== 'undefined' && (window as any).__boardlyPageOpenTime) || 0;
+        console.log(`[Startup:AuthReady] timestamp: ${new Date().toISOString()} (+${(performance.now() - pageOpen).toFixed(1)}ms), user: ${currentUser?.uid || 'none'}`);
+
         try {
           if (currentUser) {
             lastKnownUserRef.current = currentUser;
             setUser(currentUser);
 
-            // 1. Immediately hydrate from cache so the user is never blocked by slow Firestore reads
-            let hasCachedProfile = false;
+            // 1. Immediately hydrate from cache so the returning student routes to dashboard immediately (Requirement 5)
             try {
               const cachedStr = localStorage.getItem(`boardly_cached_profile_${currentUser.uid}`);
               if (cachedStr) {
@@ -439,14 +423,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   setAuthLoading(false);
                   setInitialAuthChecked(true);
                   setStatus('signedIn');
-                  hasCachedProfile = true;
+
+                  const highest = getHighestRole(parsed.roles || [parsed.role]);
+                  const savedRole = localStorage.getItem('boardly_active_role') as UserRole;
+                  if (savedRole && (parsed.roles?.includes(savedRole) || (savedRole === 'admin' && parsed.email === 'shsvirtualadmin@gmail.com'))) {
+                    setActiveRole(savedRole);
+                  } else {
+                    setActiveRole(highest);
+                  }
+
+                  console.log(`[AuthContext] Fast cache hit for ${currentUser.uid}. Routing immediately to dashboard, refreshing in background...`);
+
+                  // Background refresh from Firestore without blocking the UI
+                  syncProfile(currentUser).then((fresh) => {
+                    if (isMounted && fresh) {
+                      setProfile(fresh);
+                      try {
+                        localStorage.setItem(`boardly_cached_profile_${currentUser.uid}`, JSON.stringify(fresh));
+                      } catch {}
+                    }
+                  }).catch((bgErr) => {
+                    console.warn('[AuthContext] Background profile refresh notice (cached profile active):', bgErr);
+                  });
+                  return;
                 }
               }
             } catch {}
 
-            if (!hasCachedProfile) {
-              setProfileLoading(true);
-            }
+            // 2. No cached profile on device: run synchronous lookup capped by 4s timeout behind single loader
+            setProfileLoading(true);
 
             try {
               const loadedProfile = await syncProfile(currentUser);
@@ -477,9 +482,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 setAuthError(null);
                 setStatus('signedIn');
               } else if (isMounted) {
-                // Requirement 3: If any lookup throws, do NOT show registration. Show retry screen.
+                // Requirement 7: If any lookup throws, do NOT show registration. Show retry screen.
                 setAuthError({
-                  code: syncErr?.code || 'profile-load-error',
+                  code: syncErr?.code || 'timeout',
                   message: syncErr?.message || 'We had trouble loading your account profile. Please check your connection and retry.',
                 });
               }
@@ -555,15 +560,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
-    // 32-Second Safety Timeout Fallback:
-    // Ensures loading is NEVER stuck indefinitely on network drops while allowing 15s lookup + retry.
+    // 5-Second Safety Timeout Fallback (Requirement 4):
+    // Ensures loading is NEVER stuck indefinitely on network drops and respects the 5-second maximum limit.
     const safetyTimeout = setTimeout(() => {
       if (isMounted) {
+        setAuthError((prev) => prev || {
+          code: 'timeout',
+          message: 'Connection took longer than expected. We had trouble loading your account profile.',
+        });
         setAuthLoading(false);
         setProfileLoading(false);
         setInitialAuthChecked(true);
       }
-    }, 32000);
+    }, 5000);
 
     return () => {
       isMounted = false;

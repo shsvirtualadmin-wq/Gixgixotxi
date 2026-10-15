@@ -35,6 +35,11 @@ import { ScrollProgress } from './marketing/design-system/ScrollProgress';
 import { ErrorBoundary } from './ErrorBoundary';
 import { AlertCircle, X } from 'lucide-react';
 
+if (typeof window !== 'undefined') {
+  (window as any).__boardlyPageOpenTime = (window as any).__boardlyPageOpenTime || performance.now();
+  console.log(`[Startup:PageOpen] timestamp: ${new Date().toISOString()} (0ms)`);
+}
+
 export const BoardlyAppRouter: React.FC = () => {
   const {
     user,
@@ -107,12 +112,16 @@ export const BoardlyAppRouter: React.FC = () => {
         if (savedPostLogin) {
           sessionStorage.removeItem('postLoginPath');
           lastRedirectRef.current = savedPostLogin;
+          const pageOpen = (typeof window !== 'undefined' && (window as any).__boardlyPageOpenTime) || 0;
+          console.log(`[Startup:RouteChosen] timestamp: ${new Date().toISOString()} (+${(performance.now() - pageOpen).toFixed(1)}ms) -> ${savedPostLogin}`);
           navigate(savedPostLogin, true);
           return;
         }
         const targetDashboard = isRegistered ? getHighestRolePath() : '/onboarding';
         if (lastRedirectRef.current !== targetDashboard) {
           lastRedirectRef.current = targetDashboard;
+          const pageOpen = (typeof window !== 'undefined' && (window as any).__boardlyPageOpenTime) || 0;
+          console.log(`[Startup:RouteChosen] timestamp: ${new Date().toISOString()} (+${(performance.now() - pageOpen).toFixed(1)}ms) -> ${targetDashboard}`);
           navigate(targetDashboard, true);
         }
         return;
@@ -123,6 +132,8 @@ export const BoardlyAppRouter: React.FC = () => {
         const targetDashboard = getHighestRolePath();
         if (lastRedirectRef.current !== targetDashboard) {
           lastRedirectRef.current = targetDashboard;
+          const pageOpen = (typeof window !== 'undefined' && (window as any).__boardlyPageOpenTime) || 0;
+          console.log(`[Startup:RouteChosen] timestamp: ${new Date().toISOString()} (+${(performance.now() - pageOpen).toFixed(1)}ms) -> ${targetDashboard}`);
           navigate(targetDashboard, true);
         }
         return;
@@ -137,6 +148,8 @@ export const BoardlyAppRouter: React.FC = () => {
         if (isStudentRoute && currentPath !== '/onboarding') {
           if (lastRedirectRef.current !== '/onboarding') {
             lastRedirectRef.current = '/onboarding';
+            const pageOpen = (typeof window !== 'undefined' && (window as any).__boardlyPageOpenTime) || 0;
+            console.log(`[Startup:RouteChosen] timestamp: ${new Date().toISOString()} (+${(performance.now() - pageOpen).toFixed(1)}ms) -> /onboarding`);
             navigate('/onboarding', true);
           }
         }
@@ -184,12 +197,14 @@ export const BoardlyAppRouter: React.FC = () => {
     }
     const timer = setTimeout(() => {
       setLoadingTimedOut(true);
-    }, 32000);
+    }, 5000); // 5-second maximum limit (Requirement 4)
     return () => clearTimeout(timer);
   }, [loading, authLoading, profileLoading, initialAuthChecked]);
 
-  // Requirement 3: If any lookup throws (permission-denied, offline, timeout), do NOT show registration. Show retry screen.
-  if (authError) {
+  // Requirement 4 & 7: If loading times out or any lookup throws, stop loader and show Retry & Back to Login screen with real error code
+  if (authError || (loadingTimedOut && (loading || authLoading || profileLoading || !initialAuthChecked))) {
+    const displayCode = authError?.code || 'timeout';
+    const displayMsg = authError?.message || 'We had trouble loading your account profile. You can retry.';
     return (
       <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4 text-center">
         <div className="w-14 h-14 rounded-3xl bg-amber-50 dark:bg-amber-950/60 flex items-center justify-center text-amber-600 border border-amber-200 dark:border-amber-800">
@@ -200,18 +215,17 @@ export const BoardlyAppRouter: React.FC = () => {
             Connection took longer than expected
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            {authError.message || 'We had trouble loading your account profile. You can retry.'}
+            {displayMsg}
           </p>
-          {authError.code && (
-            <p className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
-              [Code: {authError.code}]
-            </p>
-          )}
+          <p className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
+            [Code: {displayCode}]
+          </p>
         </div>
         <div className="flex items-center gap-2 pt-2">
           <button
             type="button"
             onClick={() => {
+              setLoadingTimedOut(false);
               if (retryAuth) {
                 retryAuth();
               } else if (typeof window !== 'undefined') {
@@ -225,6 +239,7 @@ export const BoardlyAppRouter: React.FC = () => {
           <button
             type="button"
             onClick={() => {
+              setLoadingTimedOut(false);
               navigate('/login', true);
             }}
             className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
@@ -236,52 +251,16 @@ export const BoardlyAppRouter: React.FC = () => {
     );
   }
 
-  // Loading skeleton state: Show loading until BOTH authLoading and profileLoading are resolved
+  // Requirement 2: Single full-screen loading component with Boardly logo matching initial HTML loader (zero flash)
   if (loading || authLoading || profileLoading || !initialAuthChecked) {
-    if (loadingTimedOut) {
-      return (
-        <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4 text-center">
-          <div className="w-14 h-14 rounded-3xl bg-amber-50 dark:bg-amber-950/60 flex items-center justify-center text-amber-600 border border-amber-200 dark:border-amber-800">
-            <AlertCircle className="w-7 h-7" />
-          </div>
-          <div className="space-y-1 max-w-sm">
-            <h3 className="text-base font-black text-slate-900 dark:text-white">
-              Connection took longer than expected
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              We had trouble loading your account profile. You can retry or head directly to the student dashboard.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => {
-                setLoadingTimedOut(false);
-                if (typeof window !== 'undefined') window.location.reload();
-              }}
-              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-md shadow-indigo-600/20 cursor-pointer"
-            >
-              Retry
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setLoadingTimedOut(false);
-                navigate('/app', true);
-              }}
-              className="px-4 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 text-slate-700 dark:text-slate-200 font-bold text-xs cursor-pointer"
-            >
-              Continue to App
-            </button>
-          </div>
-        </div>
-      );
-    }
-
     return (
       <div className="min-h-screen bg-[#F8F9FB] dark:bg-slate-950 flex flex-col items-center justify-center p-6 space-y-4">
-        <div className="w-14 h-14 rounded-3xl bg-indigo-100 dark:bg-violet-950/60 animate-pulse flex items-center justify-center">
-          <div className="w-8 h-8 rounded-2xl bg-indigo-600/30" />
+        <div className="w-16 h-16 rounded-2xl bg-white dark:bg-slate-900 flex items-center justify-center shadow-lg border border-slate-200/80 dark:border-slate-800 animate-pulse">
+          <img
+            src="https://pub-51ccade1f191417389ac7df61830c670.r2.dev/file_00000000e98c8211a04e8f3473512ef4.png"
+            alt="Boardly Logo"
+            className="w-12 h-12 object-contain rounded-xl"
+          />
         </div>
         <div className="h-4 w-36 bg-slate-200 dark:bg-slate-800 rounded-full animate-pulse" />
         <div className="h-3 w-56 bg-slate-100 dark:bg-slate-900 rounded-full animate-pulse" />
