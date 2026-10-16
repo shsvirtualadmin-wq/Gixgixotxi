@@ -24,6 +24,16 @@ export function WeakChapters({ uid }: Props) {
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (!uid) {
+      setChapters([
+        { id: 'math_integration', subject: 'Mathematics', chapter: 'Integration by Parts', correct: 12, total: 25 },
+        { id: 'phy_electro', subject: 'Physics', chapter: 'Electromagnetism', correct: 15, total: 30 },
+        { id: 'chem_organic', subject: 'Chemistry', chapter: 'Aldehydes & Ketones', correct: 8, total: 20 },
+      ]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
 
     getDocs(

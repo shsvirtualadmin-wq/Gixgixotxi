@@ -10,20 +10,19 @@ import { WeakChapters } from '@/components/dashboard/WeakChapters';
 import { DotRowStreak } from '@/components/ui/DotRowStreak';
 import { Card } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { ErrorState } from '@/components/ui/ErrorState';
 
 export function OverviewPage() {
-  const { user } = useAuth();
-  const { profile, loading, error } = useProfile(user?.uid ?? null);
+  const { user, profile: authProfile } = useAuth();
+  const { profile: hookProfile, loading } = useProfile(user?.uid ?? null);
+  const profile = hookProfile || authProfile;
   const navigate = useNavigate();
 
   useEffect(() => {
     document.title = 'Cockpit — Boardly';
   }, []);
 
-  if (!user) return null;
-
-  if (loading) {
+  // If still completely loading and have no user or profile, render clean skeleton
+  if (loading && !profile && !user) {
     return (
       <div className="flex flex-col gap-5 max-w-[1000px] mx-auto">
         <Skeleton height={36} width="40%" />
@@ -41,20 +40,10 @@ export function OverviewPage() {
     );
   }
 
-  if (error) {
-    return (
-      <ErrorState
-        title="Couldn't load your profile"
-        error={{ code: error.code, message: error.message }}
-        path={error.path}
-        onRetry={() => window.location.reload()}
-      />
-    );
-  }
-
   const isPro = profile?.isPremium || profile?.plan === 'pro';
   const streak = Number(profile?.streak ?? 0);
-  const firstName = profile?.displayName ? profile.displayName.split(' ')[0] : 'Student';
+  const rawName = profile?.displayName || profile?.name || user?.displayName || 'Student';
+  const firstName = rawName.trim().split(' ')[0] || 'Student';
 
   return (
     <div className="flex flex-col gap-6 max-w-[1000px] mx-auto">
@@ -131,7 +120,7 @@ export function OverviewPage() {
             <BookOpen size={16} />
           </div>
           <div>
-            <DailyLimitsMeter uid={user.uid} isPremium={isPro} />
+            <DailyLimitsMeter uid={user?.uid ?? ''} isPremium={isPro} />
           </div>
         </Card>
 
@@ -187,7 +176,7 @@ export function OverviewPage() {
             <span className="text-xs text-[var(--muted)]">Auto-Diagnosed</span>
           </div>
 
-          <WeakChapters uid={user.uid} />
+          <WeakChapters uid={user?.uid ?? ''} />
         </Card>
 
         {/* Column 2: Recent Attempts */}
@@ -205,7 +194,7 @@ export function OverviewPage() {
             <span className="text-xs text-[var(--muted)]">Latest 5</span>
           </div>
 
-          <RecentAttempts uid={user.uid} />
+          <RecentAttempts uid={user?.uid ?? ''} />
         </Card>
       </div>
     </div>

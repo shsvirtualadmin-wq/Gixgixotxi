@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore } from 'firebase/firestore';
+import { initializeFirestore, memoryLocalCache } from 'firebase/firestore';
 
 // Resolve authDomain:
 // Uses VITE_FIREBASE_AUTH_DOMAIN if provided.
@@ -31,8 +31,17 @@ const DATABASE_ID: string | undefined =
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 
-// experimentalAutoDetectLongPolling: true → Pakistani ISP/firewall fallback
+// Force long-polling & in-memory cache so mobile networks, Cloudflare proxies, and IndexedDB locks never hang Firestore requests
 export const db = DATABASE_ID
-  ? initializeFirestore(app, { experimentalAutoDetectLongPolling: true }, DATABASE_ID)
-  : initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
-
+  ? initializeFirestore(
+      app,
+      {
+        experimentalForceLongPolling: true,
+        localCache: memoryLocalCache(),
+      },
+      DATABASE_ID
+    )
+  : initializeFirestore(app, {
+      experimentalForceLongPolling: true,
+      localCache: memoryLocalCache(),
+    });

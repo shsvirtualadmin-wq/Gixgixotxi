@@ -28,6 +28,11 @@ export function DailyLimitsMeter({ uid, isPremium }: Props) {
   const dateKey = getPKTDateKey();
 
   useEffect(() => {
+    if (!uid) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
 
     const unsubscribe = onSnapshot(

@@ -244,6 +244,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // ── Hard 3-second timeout on initial profileLoading to prevent stuck states ─
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setProfileLoading(false);
+    }, 3000);
+    return () => clearTimeout(timer);
+  }, []);
+
   // ── Auth state listener ──────────────────────────────────────────────────
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {

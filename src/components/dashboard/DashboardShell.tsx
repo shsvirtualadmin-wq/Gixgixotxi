@@ -3,20 +3,29 @@ import { useAuth } from '@/contexts/AuthContext';
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
 import { DashboardSidebar } from './DashboardSidebar';
 import { DashboardBottomNav } from './DashboardBottomNav';
-import { useEffect } from 'react';
+import { DashboardErrorBoundary } from './DashboardErrorBoundary';
+import { useEffect, useState } from 'react';
 
 export function DashboardShell() {
   const { user, profileLoading } = useAuth();
   const navigate = useNavigate();
+  const [authGraceFinished, setAuthGraceFinished] = useState(false);
 
   useEffect(() => {
-    if (!profileLoading && !user) {
+    // 2.5s grace period so Firebase Auth restores without flashing empty/redirect
+    const t = setTimeout(() => {
+      setAuthGraceFinished(true);
+    }, 2500);
+    return () => clearTimeout(t);
+  }, []);
+
+  useEffect(() => {
+    if (authGraceFinished && !profileLoading && !user) {
       navigate('/login', { replace: true });
     }
-  }, [user, profileLoading, navigate]);
+  }, [user, profileLoading, authGraceFinished, navigate]);
 
-  if (!user) return null;
-
+  // NEVER return null or blank screen — always render shell and bottom nav immediately
   return (
     <div
       className="min-h-screen flex flex-col"
@@ -28,11 +37,13 @@ export function DashboardShell() {
         {/* Desktop Sidebar: exactly 240px width */}
         <DashboardSidebar />
 
-        {/* Main Content Area — No top navigation/header controls on student views */}
+        {/* Main Content Area */}
         <div className="flex-1 flex flex-col min-w-0">
           <main className="flex-1 p-4 sm:p-6 pb-28 md:pb-12 overflow-y-auto">
             <div className="max-w-[1200px] w-full mx-auto">
-              <Outlet />
+              <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
+                <Outlet />
+              </DashboardErrorBoundary>
             </div>
           </main>
         </div>

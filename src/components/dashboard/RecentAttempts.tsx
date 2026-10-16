@@ -26,6 +26,11 @@ export function RecentAttempts({ uid }: Props) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!uid) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
 
     // Try both userId and uid queries

@@ -13,7 +13,10 @@ service cloud.firestore {
     // Superadmin authorization: shsvirtualadmin@gmail.com OR user doc has role == 'admin'
     function isSuperAdmin() {
       return isAuthenticated() && (
-        (request.auth.token.email != null && request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com') ||
+        (request.auth.token.email != null && (
+          request.auth.token.email == 'shsvirtualadmin@gmail.com' ||
+          request.auth.token.email.matches('(?i)shsvirtualadmin@gmail\\.com')
+        )) ||
         (request.auth.token.role == 'admin') ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
