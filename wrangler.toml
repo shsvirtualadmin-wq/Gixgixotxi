@@ -1,3 +1,7 @@
 name = "boardly"
 compatibility_date = "2024-04-01"
 pages_build_output_dir = "dist"
+
+[build.environment]
+YARN_VERSION = "1.22.22"
+NODE_VERSION = "22"
