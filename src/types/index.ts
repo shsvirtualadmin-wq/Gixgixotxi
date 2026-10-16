@@ -51,3 +51,24 @@ export interface Question {
   needsMathFix?: boolean;
   mathChecked?: boolean;
 }
+
+export interface OnboardingData {
+  targetUniversity: string;
+  targetTestDate: string;
+  academicTrack: string;
+  subjects: string[];
+  weakChapters: string[];
+  onboardingCompleted: true;
+}
+
+export interface ReferralDoc {
+  referrerCode: string;
+  referrerUid?: string;
+  referredUserId: string;
+  referredEmail: string;
+  status: 'pending' | 'activated';
+  activated: boolean;
+  signedUpAt: import('firebase/firestore').FieldValue;
+  emailVerified: boolean;
+  firstTestCompleted: boolean;
+}
