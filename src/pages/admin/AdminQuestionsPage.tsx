@@ -1,29 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Search,
-  Filter,
   Plus,
   Edit2,
   Trash2,
-  Database,
-  Sparkles,
   RefreshCw,
-  Eye,
   X,
-  Check,
-  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/Button';
 import { MathText } from '@/components/ui/MathText';
-import { Skeleton } from '@/components/ui/Skeleton';
-import { EmptyState } from '@/components/ui/EmptyState';
 import {
   fetchQuestions,
   saveQuestion,
   deleteQuestion,
-  seedBalancedMCQPool,
+  CORE_SUBJECTS,
 } from '@/services/adminService';
 import type { Question } from '@/types';
 
@@ -35,18 +25,13 @@ export function AdminQuestionsPage() {
   // Filters
   const [search, setSearch] = useState('');
   const [subjectFilter, setSubjectFilter] = useState('all');
-  const [univFilter, setUnivFilter] = useState('all');
-  const [diffFilter, setDiffFilter] = useState('all');
+  const [difficultyFilter, setDifficultyFilter] = useState('all');
 
   // Modal states
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [questionToDelete, setQuestionToDelete] = useState<Question | null>(null);
   const [saving, setSaving] = useState(false);
-
-  // Seeder progress
-  const [seeding, setSeeding] = useState(false);
-  const [seedProgress, setSeedProgress] = useState<{ done: number; total: number } | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -54,9 +39,8 @@ export function AdminQuestionsPage() {
       const data = await fetchQuestions({
         search,
         subject: subjectFilter,
-        university: univFilter,
-        difficulty: diffFilter,
-        limitCount: 100,
+        difficulty: difficultyFilter,
+        limitCount: 80,
       });
       setQuestions(data);
     } catch (err) {
@@ -64,12 +48,12 @@ export function AdminQuestionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, subjectFilter, univFilter, diffFilter]);
+  }, [search, subjectFilter, difficultyFilter]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       loadData();
-    }, 250);
+    }, 200);
     return () => clearTimeout(timer);
   }, [loadData]);
 
@@ -88,18 +72,17 @@ export function AdminQuestionsPage() {
       correct: 0,
       explanation: '',
       explain: '',
-      mathChecked: true,
-      needsMathFix: false,
     });
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (q: Question) => {
+    const rawOpts = q.options && q.options.length >= 4 ? q.options : ['', '', '', ''];
     setEditingQuestion({
       ...q,
       question: q.question || q.q || '',
-      options: (q.options && q.options.length >= 4 ? q.options : ['', '', '', '']) as [string, string, string, string],
-      correctAnswer: q.correctAnswer ?? q.correct ?? 0,
+      options: [rawOpts[0] || '', rawOpts[1] || '', rawOpts[2] || '', rawOpts[3] || ''],
+      correctAnswer: typeof q.correctAnswer === 'number' ? q.correctAnswer : (q.correct ?? 0),
       explanation: q.explanation || q.explain || '',
     });
     setIsModalOpen(true);
@@ -122,514 +105,278 @@ export function AdminQuestionsPage() {
     }
   };
 
-  const handleDeleteConfirm = async () => {
-    if (!deletingId || !user?.email) return;
+  const handleConfirmDelete = async () => {
+    if (!questionToDelete || !user?.email) return;
     try {
-      await deleteQuestion(user.email, deletingId);
-      setDeletingId(null);
+      await deleteQuestion(user.email, questionToDelete.id);
+      setQuestionToDelete(null);
       await loadData();
     } catch (err) {
       console.error('Failed to delete question:', err);
     }
   };
 
-  const handleSeed = async () => {
-    if (!user?.email) return;
-    setSeeding(true);
-    setSeedProgress({ done: 0, total: 500 });
-    try {
-      await seedBalancedMCQPool(user.email, (done, total) => {
-        setSeedProgress({ done, total });
-      });
-      await loadData();
-    } catch (err) {
-      console.error('Seeding error:', err);
-    } finally {
-      setSeeding(false);
-      setSeedProgress(null);
-    }
-  };
-
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* ── Page Header ──────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 16,
-        }}
-      >
+    <div className="flex flex-col gap-6 w-full max-w-full">
+      {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Database size={20} style={{ color: '#10B981' }} />
-            <h1
-              className="font-display"
-              style={{
-                fontSize: 24,
-                fontWeight: 800,
-                color: 'var(--text)',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              Question Bank Management
-            </h1>
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            Inspect, author, and preview KaTeX formulas across the Pakistani university entrance test pool.
+          <h1 className="font-dot text-[24px] sm:text-[28px] font-extrabold text-[var(--text)] tracking-tight">
+            Question bank
+          </h1>
+          <p className="font-heading text-[13px] text-[var(--muted)] mt-1">
+            Browse, inspect KaTeX formulas, add new MCQs, or edit existing questions.
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={handleSeed}
-            loading={seeding}
-            style={{
-              borderColor: 'rgba(16,185,129,0.3)',
-              color: '#34D399',
-            }}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleOpenAdd}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold hover:opacity-90 transition-opacity"
           >
-            <Sparkles size={14} /> Ensure 500+ Pool
-          </Button>
-          <Button variant="primary" size="sm" onClick={handleOpenAdd}>
-            <Plus size={14} /> Add Question
-          </Button>
+            <Plus size={15} />
+            <span>Add question</span>
+          </button>
+          <button
+            type="button"
+            onClick={loadData}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            <span className="hidden sm:inline">Refresh</span>
+          </button>
         </div>
       </div>
 
-      {/* Seeding Progress Bar */}
-      {seedProgress && (
-        <GlassCard style={{ padding: 16, border: '1px solid rgba(16,185,129,0.3)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
-            <span style={{ color: 'var(--text)' }}>Writing 500+ balanced questions to Firestore...</span>
-            <span style={{ color: '#34D399', fontWeight: 700 }}>
-              {seedProgress.done} / {seedProgress.total}
-            </span>
-          </div>
-          <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden' }}>
-            <div
-              style={{
-                height: '100%',
-                width: `${(seedProgress.done / seedProgress.total) * 100}%`,
-                background: 'linear-gradient(90deg, #10B981, #34D399)',
-                transition: 'width 200ms ease',
-              }}
-            />
-          </div>
-        </GlassCard>
-      )}
-
-      {/* ── Toolbar & Filters ────────────────────────────────────────── */}
-      <GlassCard style={{ padding: 16 }}>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'center' }}>
-          <div
-            style={{
-              flex: 1,
-              minWidth: 240,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--r-input)',
-              padding: '0 12px',
-            }}
-          >
-            <Search size={16} style={{ color: 'var(--text-faint)' }} />
-            <input
-              type="text"
-              placeholder="Search question stems, chapters, or IDs..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              style={{
-                width: '100%',
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text)',
-                fontSize: 13,
-                padding: '10px 0',
-                outline: 'none',
-              }}
-            />
-          </div>
-
-          {/* Subject Filter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-            <Filter size={14} style={{ color: 'var(--text-faint)' }} />
-            <select
-              value={subjectFilter}
-              onChange={(e) => setSubjectFilter(e.target.value)}
-              style={{
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
-                color: 'var(--text)',
-                borderRadius: 'var(--r-input)',
-                padding: '8px 12px',
-                fontSize: 13,
-                outline: 'none',
-              }}
-            >
-              <option value="all">All Subjects</option>
-              <option value="Mathematics">Mathematics</option>
-              <option value="Physics">Physics</option>
-              <option value="Chemistry">Chemistry</option>
-              <option value="Computer Science">Computer Science</option>
-              <option value="English">English</option>
-              <option value="Analytical">Analytical / IQ</option>
-            </select>
-          </div>
-
-          {/* University Filter */}
-          <select
-            value={univFilter}
-            onChange={(e) => setUnivFilter(e.target.value)}
-            style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              color: 'var(--text)',
-              borderRadius: 'var(--r-input)',
-              padding: '8px 12px',
-              fontSize: 13,
-              outline: 'none',
-            }}
-          >
-            <option value="all">All Universities</option>
-            <option value="FAST-NUCES">FAST-NUCES</option>
-            <option value="NUST NET">NUST NET</option>
-            <option value="GIKI">GIKI</option>
-            <option value="LUMS">LUMS</option>
-            <option value="NED/UET/COMSATS">NED/UET/COMSATS</option>
-          </select>
-
-          {/* Difficulty Filter */}
-          <select
-            value={diffFilter}
-            onChange={(e) => setDiffFilter(e.target.value)}
-            style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              color: 'var(--text)',
-              borderRadius: 'var(--r-input)',
-              padding: '8px 12px',
-              fontSize: 13,
-              outline: 'none',
-            }}
-          >
-            <option value="all">All Difficulties</option>
-            <option value="Easy">Easy</option>
-            <option value="Medium">Medium</option>
-            <option value="Hard">Hard</option>
-          </select>
-
-          <Button variant="ghost" size="sm" onClick={loadData}>
-            <RefreshCw size={14} />
-          </Button>
-        </div>
-      </GlassCard>
-
-      {/* ── Question List ────────────────────────────────────────────── */}
-      {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {Array.from({ length: 4 }).map((_, i) => (
-            <GlassCard key={i}>
-              <Skeleton height={20} width="30%" />
-              <div style={{ marginTop: 12 }}><Skeleton height={16} count={2} /></div>
-            </GlassCard>
-          ))}
-        </div>
-      ) : questions.length === 0 ? (
-        <GlassCard>
-          <EmptyState
-            title="No questions found"
-            description="Try adjusting your search criteria or click 'Ensure 500+ Pool' to seed the balanced entrance exam question bank."
+      {/* ─── SEARCH & FILTER TOOLBAR ────────────────────────────────────────── */}
+      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3.5">
+        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)]">
+          <Search size={16} className="text-[var(--muted)] shrink-0" />
+          <input
+            type="text"
+            placeholder="Search by question stem, chapter, or question ID..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full bg-transparent border-none text-[13px] font-heading text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
           />
-        </GlassCard>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {questions.map((q) => {
-            const stem = q.question || q.q || '';
-            const opts = q.options || [];
-            const correctIdx = q.correctAnswer ?? q.correct ?? 0;
-            const explanation = q.explanation || q.explain || '';
+        </div>
+
+        {/* Filter chips (wrap cleanly, no sideways scroll) */}
+        <div className="flex flex-col gap-2 pt-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
+              Subject:
+            </span>
+            <button
+              type="button"
+              onClick={() => setSubjectFilter('all')}
+              className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
+                subjectFilter === 'all'
+                  ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                  : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+              }`}
+            >
+              All subjects
+            </button>
+            {CORE_SUBJECTS.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSubjectFilter(s)}
+                className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
+                  subjectFilter === s
+                    ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
+              Difficulty:
+            </span>
+            {['all', 'Easy', 'Medium', 'Hard'].map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDifficultyFilter(d)}
+                className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
+                  difficultyFilter === d
+                    ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                {d === 'all' ? 'All levels' : d}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ─── QUESTIONS CARDS FEED ────────────────────────────────────────────── */}
+      <div className="space-y-3">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-3"
+            >
+              <div className="h-4 bg-[var(--card-2)] rounded w-1/3" />
+              <div className="h-5 bg-[var(--card-2)] rounded w-3/4" />
+              <div className="h-10 bg-[var(--card-2)] rounded w-full" />
+            </div>
+          ))
+        ) : questions.length === 0 ? (
+          <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
+            <p className="font-heading text-[14px] text-[var(--muted)]">
+              No questions found matching your filter criteria.
+            </p>
+          </div>
+        ) : (
+          questions.map((q) => {
+            const stem = q.question || q.q || 'Untitled question';
+            const options = q.options || [];
+            const correctIdx = typeof q.correctAnswer === 'number' ? q.correctAnswer : (q.correct ?? 0);
 
             return (
-              <GlassCard key={q.id} style={{ padding: '20px' }}>
-                {/* Meta row */}
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    flexWrap: 'wrap',
-                    gap: 8,
-                    marginBottom: 12,
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                    <code style={{ fontSize: 11, color: 'var(--text-faint)', background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: 4 }}>
-                      {q.id}
-                    </code>
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                        background: 'rgba(47,107,255,0.15)',
-                        color: '#60A5FA',
-                      }}
-                    >
-                      {q.subject}
+              <div
+                key={q.id}
+                className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3.5"
+              >
+                {/* Header row: pills + actions */}
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[11px] font-heading px-2.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--text)] font-medium">
+                      {q.subject || 'General'}
                     </span>
                     {q.chapter && (
-                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                        • {q.chapter}
+                      <span className="text-[11px] font-heading px-2.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] truncate max-w-[200px]">
+                        {q.chapter}
                       </span>
                     )}
+                    <span className="text-[11px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
+                      {q.difficulty || 'Medium'}
+                    </span>
                     {q.university && (
-                      <span style={{ fontSize: 11, color: 'var(--text-faint)', border: '1px solid var(--border)', padding: '1px 6px', borderRadius: 4 }}>
+                      <span className="text-[11px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
                         {q.university}
                       </span>
                     )}
-                    <span
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 600,
-                        color: q.difficulty === 'Hard' ? 'var(--danger)' : q.difficulty === 'Medium' ? 'var(--warning)' : 'var(--success)',
-                      }}
-                    >
-                      {q.difficulty}
-                    </span>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(q)}>
-                      <Edit2 size={13} /> Edit
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setDeletingId(q.id)}
-                      style={{ color: 'var(--danger)' }}
+                  <div className="flex items-center gap-1 shrink-0 ml-auto">
+                    <button
+                      type="button"
+                      onClick={() => handleOpenEdit(q)}
+                      className="p-1.5 rounded-[8px] text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors"
+                      title="Edit question"
                     >
-                      <Trash2 size={13} />
-                    </Button>
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQuestionToDelete(q)}
+                      className="p-1.5 rounded-[8px] text-[var(--muted)] hover:text-[var(--red)] hover:bg-[var(--surface-hover)] transition-colors"
+                      title="Delete question"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </div>
 
                 {/* Question Stem with KaTeX */}
-                <div style={{ fontSize: 15, fontWeight: 500, color: 'var(--text)', marginBottom: 14 }}>
-                  <MathText>{stem}</MathText>
+                <div className="text-[14px] text-[var(--text)] font-heading leading-relaxed">
+                  <MathText text={stem} />
                 </div>
 
-                {/* Options Grid */}
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                    gap: 8,
-                    marginBottom: 12,
-                  }}
-                >
-                  {opts.map((opt, idx) => {
+                {/* Options List */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                  {options.map((opt, idx) => {
                     const isCorrect = idx === correctIdx;
                     return (
                       <div
                         key={idx}
-                        style={{
-                          padding: '8px 12px',
-                          borderRadius: 'var(--r-input)',
-                          fontSize: 13,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          background: isCorrect ? 'rgba(52,211,153,0.12)' : 'var(--surface)',
-                          border: isCorrect ? '1px solid rgba(52,211,153,0.3)' : '1px solid var(--border)',
-                          color: isCorrect ? '#34D399' : 'var(--text-muted)',
-                        }}
+                        className={`p-2.5 rounded-[12px] border text-[13px] font-heading flex items-start gap-2 ${
+                          isCorrect
+                            ? 'border-[var(--text)] bg-[var(--card-2)] text-[var(--text)] font-medium'
+                            : 'border-[var(--border)] bg-transparent text-[var(--muted)]'
+                        }`}
                       >
-                        <span style={{ fontWeight: 700, fontSize: 11, width: 16 }}>
+                        <span className="font-heading font-semibold text-[11px] mt-0.5 shrink-0 opacity-70">
                           {String.fromCharCode(65 + idx)}.
                         </span>
-                        <div style={{ flex: 1 }}>
-                          <MathText>{String(opt)}</MathText>
+                        <div className="min-w-0 flex-1">
+                          <MathText text={opt} />
                         </div>
-                        {isCorrect && <Check size={14} style={{ color: '#34D399' }} />}
                       </div>
                     );
                   })}
                 </div>
 
-                {/* Explanation */}
-                {explanation && (
-                  <div
-                    style={{
-                      padding: '10px 14px',
-                      borderRadius: 'var(--r-input)',
-                      background: 'rgba(255,255,255,0.03)',
-                      border: '1px solid rgba(255,255,255,0.06)',
-                      fontSize: 12,
-                      color: 'var(--text-muted)',
-                    }}
-                  >
-                    <strong style={{ color: 'var(--text)' }}>Derivation: </strong>
-                    <MathText>{explanation}</MathText>
+                {/* Explanation if present */}
+                {(q.explanation || q.explain) && (
+                  <div className="p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[12px] font-heading text-[var(--muted)]">
+                    <span className="font-semibold text-[var(--text)] block mb-1">Explanation:</span>
+                    <MathText text={q.explanation || q.explain || ''} />
                   </div>
                 )}
-              </GlassCard>
+              </div>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
 
-      {/* ── Add / Edit Question Modal with Live KaTeX Preview ────────── */}
+      {/* ─── ADD / EDIT QUESTION MODAL ───────────────────────────────────────── */}
       {isModalOpen && editingQuestion && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 110,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-          }}
-        >
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(0,0,0,0.7)',
-              backdropFilter: 'blur(6px)',
-            }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
             onClick={() => setIsModalOpen(false)}
           />
-
-          <div
-            className="glass"
-            style={{
-              position: 'relative',
-              width: '100%',
-              maxWidth: 720,
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              borderRadius: 'var(--r-card)',
-              background: 'var(--bg-2)',
-              border: '1px solid var(--border)',
-              padding: 24,
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 16,
-              zIndex: 111,
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>
-                {editingQuestion.id.startsWith('q_custom_') ? 'Author New Question' : 'Edit Question'}
-              </h3>
+          <div className="relative w-full max-w-[620px] max-h-[90vh] bg-[var(--card)] border border-[var(--border)] rounded-[24px] p-5 sm:p-6 flex flex-col z-10 overflow-hidden shadow-2xl">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)] shrink-0">
+              <h2 className="font-heading font-bold text-[16px] text-[var(--text)]">
+                {editingQuestion.id?.startsWith('q_custom') ? 'Add question' : 'Edit question'}
+              </h2>
               <button
+                type="button"
                 onClick={() => setIsModalOpen(false)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)]"
               >
-                <X size={20} />
+                <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              {/* Row 1: Subject, Chapter, University, Difficulty */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
+            <form onSubmit={handleSave} className="flex-1 overflow-y-auto space-y-4 py-4 pr-1">
+              {/* Subject & Difficulty row */}
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
+                  <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
                     Subject
                   </label>
                   <select
                     value={editingQuestion.subject}
                     onChange={(e) => setEditingQuestion({ ...editingQuestion, subject: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: 8,
-                      borderRadius: 8,
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text)',
-                      marginTop: 4,
-                    }}
+                    className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
                   >
-                    <option value="Mathematics">Mathematics</option>
-                    <option value="Physics">Physics</option>
-                    <option value="Chemistry">Chemistry</option>
-                    <option value="Computer Science">Computer Science</option>
-                    <option value="English">English</option>
-                    <option value="Analytical">Analytical / IQ</option>
+                    {CORE_SUBJECTS.map((s) => (
+                      <option key={s} value={s}>{s}</option>
+                    ))}
                   </select>
                 </div>
-
                 <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                    Chapter
-                  </label>
-                  <input
-                    type="text"
-                    value={editingQuestion.chapter || ''}
-                    onChange={(e) => setEditingQuestion({ ...editingQuestion, chapter: e.target.value })}
-                    placeholder="e.g. Differentiation"
-                    style={{
-                      width: '100%',
-                      padding: 8,
-                      borderRadius: 8,
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text)',
-                      marginTop: 4,
-                    }}
-                  />
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                    University
-                  </label>
-                  <select
-                    value={editingQuestion.university || 'FAST-NUCES'}
-                    onChange={(e) => setEditingQuestion({ ...editingQuestion, university: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: 8,
-                      borderRadius: 8,
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text)',
-                      marginTop: 4,
-                    }}
-                  >
-                    <option value="FAST-NUCES">FAST-NUCES</option>
-                    <option value="NUST NET">NUST NET</option>
-                    <option value="GIKI">GIKI</option>
-                    <option value="LUMS">LUMS</option>
-                    <option value="NED/UET/COMSATS">NED/UET/COMSATS</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
+                  <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
                     Difficulty
                   </label>
                   <select
                     value={editingQuestion.difficulty}
                     onChange={(e) => setEditingQuestion({ ...editingQuestion, difficulty: e.target.value })}
-                    style={{
-                      width: '100%',
-                      padding: 8,
-                      borderRadius: 8,
-                      background: 'var(--surface)',
-                      border: '1px solid var(--border)',
-                      color: 'var(--text)',
-                      marginTop: 4,
-                    }}
+                    className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
                   >
                     <option value="Easy">Easy</option>
                     <option value="Medium">Medium</option>
@@ -638,183 +385,148 @@ export function AdminQuestionsPage() {
                 </div>
               </div>
 
+              {/* Chapter & University */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                    Chapter / Topic
+                  </label>
+                  <input
+                    type="text"
+                    value={editingQuestion.chapter || ''}
+                    onChange={(e) => setEditingQuestion({ ...editingQuestion, chapter: e.target.value })}
+                    placeholder="e.g. Vectors & Equilibrium"
+                    className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                    Target university
+                  </label>
+                  <input
+                    type="text"
+                    value={editingQuestion.university || ''}
+                    onChange={(e) => setEditingQuestion({ ...editingQuestion, university: e.target.value })}
+                    placeholder="e.g. FAST-NUCES, NUST"
+                    className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                  />
+                </div>
+              </div>
+
               {/* Question Stem */}
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                  Question Stem (supports KaTeX $...$)
+                <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                  Question text (KaTeX supported with $...$ or $$...$$)
                 </label>
                 <textarea
                   rows={3}
+                  required
                   value={editingQuestion.question || ''}
                   onChange={(e) => setEditingQuestion({ ...editingQuestion, question: e.target.value, q: e.target.value })}
-                  placeholder="e.g. Evaluate $\int_0^{\pi/2} \sin(x) dx$"
-                  required
-                  style={{
-                    width: '100%',
-                    padding: 10,
-                    borderRadius: 8,
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text)',
-                    marginTop: 4,
-                    fontSize: 14,
-                    fontFamily: 'monospace',
-                  }}
+                  placeholder="Enter MCQ stem..."
+                  className="w-full p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
                 />
               </div>
 
-              {/* Real-time KaTeX preview of Stem */}
-              {editingQuestion.question && (
-                <div style={{ padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 8, border: '1px dashed var(--border)' }}>
-                  <div style={{ fontSize: 10, color: '#34D399', fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <Eye size={12} /> Live Rendered Preview
-                  </div>
-                  <MathText>{editingQuestion.question}</MathText>
-                </div>
-              )}
-
-              {/* Options A..D */}
-              <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase', marginBottom: 6, display: 'block' }}>
-                  Options (Select the correct radio button)
+              {/* 4 Options */}
+              <div className="space-y-2">
+                <label className="block text-[11px] font-heading text-[var(--muted)]">
+                  Answer options & correct choice
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-                  {[0, 1, 2, 3].map((idx) => {
-                    const optVal = editingQuestion.options[idx] || '';
-                    const isCorrect = (editingQuestion.correctAnswer ?? 0) === idx;
-
-                    return (
-                      <div
-                        key={idx}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 8,
-                          padding: 8,
-                          borderRadius: 8,
-                          background: isCorrect ? 'rgba(52,211,153,0.1)' : 'var(--surface)',
-                          border: isCorrect ? '1px solid #34D399' : '1px solid var(--border)',
-                        }}
-                      >
-                        <input
-                          type="radio"
-                          name="correctOpt"
-                          checked={isCorrect}
-                          onChange={() => setEditingQuestion({ ...editingQuestion, correctAnswer: idx as 0 | 1 | 2 | 3, correct: idx })}
-                        />
-                        <span style={{ fontWeight: 700, fontSize: 12 }}>{String.fromCharCode(65 + idx)}.</span>
-                        <input
-                          type="text"
-                          value={optVal}
-                          onChange={(e) => {
-                            const newOpts = [...editingQuestion.options] as [string, string, string, string];
-                            newOpts[idx] = e.target.value;
-                            setEditingQuestion({ ...editingQuestion, options: newOpts });
-                          }}
-                          placeholder={`Option ${String.fromCharCode(65 + idx)}`}
-                          required
-                          style={{
-                            flex: 1,
-                            background: 'transparent',
-                            border: 'none',
-                            color: 'var(--text)',
-                            fontSize: 13,
-                            outline: 'none',
-                          }}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+                {(editingQuestion.options || ['', '', '', '']).map((opt, idx) => (
+                  <div key={idx} className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setEditingQuestion({ ...editingQuestion, correctAnswer: idx, correct: idx })}
+                      className={`w-7 h-7 rounded-full border text-[11px] font-heading font-bold shrink-0 flex items-center justify-center transition-colors ${
+                        (editingQuestion.correctAnswer ?? editingQuestion.correct) === idx
+                          ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)]'
+                          : 'border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      {String.fromCharCode(65 + idx)}
+                    </button>
+                    <input
+                      type="text"
+                      required
+                      value={opt}
+                      onChange={(e) => {
+                        const next = [...(editingQuestion.options || ['', '', '', ''])];
+                        next[idx] = e.target.value;
+                        setEditingQuestion({ ...editingQuestion, options: next as [string, string, string, string] });
+                      }}
+                      placeholder={`Option ${String.fromCharCode(65 + idx)}`}
+                      className="flex-1 px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                    />
+                  </div>
+                ))}
               </div>
 
               {/* Explanation */}
               <div>
-                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                  Step-by-step Solution / Explanation
+                <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                  Explanation / derivation shortcut
                 </label>
                 <textarea
                   rows={2}
                   value={editingQuestion.explanation || ''}
                   onChange={(e) => setEditingQuestion({ ...editingQuestion, explanation: e.target.value, explain: e.target.value })}
-                  placeholder="Derivation steps with KaTeX formulas..."
-                  style={{
-                    width: '100%',
-                    padding: 8,
-                    borderRadius: 8,
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    color: 'var(--text)',
-                    marginTop: 4,
-                    fontSize: 13,
-                    fontFamily: 'monospace',
-                  }}
+                  placeholder="Step-by-step formula or shortcut..."
+                  className="w-full p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
                 />
               </div>
 
-              {/* Actions */}
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
-                <Button variant="secondary" size="md" type="button" onClick={() => setIsModalOpen(false)}>
+              {/* Modal footer */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border)]">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)]"
+                >
                   Cancel
-                </Button>
-                <Button variant="primary" size="md" type="submit" loading={saving}>
-                  Save Question
-                </Button>
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-5 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold hover:opacity-90 disabled:opacity-50"
+                >
+                  {saving ? 'Saving...' : 'Save question'}
+                </button>
               </div>
             </form>
           </div>
         </div>
       )}
 
-      {/* ── Delete Confirmation Dialog ───────────────────────────────── */}
-      {deletingId && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 120,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-          }}
-        >
+      {/* ─── CONFIRM DELETE QUESTION MODAL ───────────────────────────────────── */}
+      {questionToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
-            style={{
-              position: 'absolute',
-              inset: 0,
-              background: 'rgba(0,0,0,0.7)',
-            }}
-            onClick={() => setDeletingId(null)}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setQuestionToDelete(null)}
           />
-          <div
-            className="glass"
-            style={{
-              position: 'relative',
-              maxWidth: 400,
-              width: '100%',
-              padding: 24,
-              borderRadius: 'var(--r-card)',
-              background: 'var(--bg-2)',
-              border: '1px solid rgba(248,113,113,0.3)',
-              textAlign: 'center',
-              zIndex: 121,
-            }}
-          >
-            <AlertTriangle size={36} style={{ color: 'var(--danger)', margin: '0 auto 12px' }} />
-            <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', marginBottom: 8 }}>
-              Delete Question?
+          <div className="relative w-full max-w-[400px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
+            <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+              Delete question?
             </h3>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 20 }}>
-              Are you sure you want to permanently delete document <code style={{ color: 'var(--danger)' }}>{deletingId}</code>? This action will be recorded in audit logs.
+            <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+              Are you sure you want to remove this question from the active entrance test pool?
             </p>
-            <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
-              <Button variant="secondary" size="md" onClick={() => setDeletingId(null)}>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setQuestionToDelete(null)}
+                className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)]"
+              >
                 Cancel
-              </Button>
-              <Button variant="danger" size="md" onClick={handleDeleteConfirm}>
-                Confirm Delete
-              </Button>
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                className="px-4 py-2 rounded-[12px] border border-[var(--red)] bg-[var(--red)] text-white text-[13px] font-heading font-semibold"
+              >
+                Delete permanently
+              </button>
             </div>
           </div>
         </div>
@@ -822,3 +534,5 @@ export function AdminQuestionsPage() {
     </div>
   );
 }
+
+export default AdminQuestionsPage;

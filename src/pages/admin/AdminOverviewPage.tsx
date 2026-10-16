@@ -6,24 +6,34 @@ import {
   Award,
   CreditCard,
   FileCheck2,
-  Sparkles,
+  Activity,
   ArrowRight,
   RefreshCw,
   CheckCircle2,
-  Shield,
-  Activity,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
 import {
   fetchAdminStats,
   seedBalancedMCQPool,
   fetchAuditLogs,
   type AdminStats,
+  CORE_SUBJECTS,
 } from '@/services/adminService';
 import type { AuditLog } from '@/types';
+
+const SUBJECT_TARGET_PILLS = [
+  '125 Mathematics',
+  '125 Physics',
+  '125 Chemistry / CS',
+  '125 English / Analytical',
+  '100 FAST',
+  '100 NUST',
+  '100 GIKI',
+  '100 LUMS',
+  '100 NED / UET',
+];
 
 export function AdminOverviewPage() {
   const { user } = useAuth();
@@ -31,10 +41,12 @@ export function AdminOverviewPage() {
   const [loading, setLoading] = useState(true);
   const [recentLogs, setRecentLogs] = useState<AuditLog[]>([]);
 
-  // Seeder progress state
+  // Seeder state & confirmation dialog
+  const [isConfirmSeedOpen, setIsConfirmSeedOpen] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [seedProgress, setSeedProgress] = useState<{ done: number; total: number } | null>(null);
   const [seedSuccess, setSeedSuccess] = useState<string | null>(null);
+  const [seedError, setSeedError] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -56,368 +68,391 @@ export function AdminOverviewPage() {
     loadData();
   }, []);
 
-  const handleSeedPool = async () => {
+  const handleConfirmSeed = async () => {
+    setIsConfirmSeedOpen(false);
     if (!user?.email) return;
     setSeeding(true);
     setSeedSuccess(null);
+    setSeedError(null);
     setSeedProgress({ done: 0, total: 500 });
 
     try {
       const res = await seedBalancedMCQPool(user.email, (done, total) => {
         setSeedProgress({ done, total });
       });
-      setSeedSuccess(`Successfully verified & seeded all ${res.seeded} balanced questions!`);
-      // Refresh stats
+      setSeedSuccess(`Added or verified all ${res.seeded} questions successfully.`);
       await loadData();
     } catch (err: unknown) {
       console.error('Seeding error:', err);
+      setSeedError('Failed to complete question pool seeding. Check network connection.');
     } finally {
       setSeeding(false);
     }
   };
 
+  const formatLogTime = (log: AuditLog): string => {
+    if (!log.timestamp) return 'Just now';
+    try {
+      if ('toDate' in log.timestamp && typeof log.timestamp.toDate === 'function') {
+        const d = log.timestamp.toDate();
+        return d.toLocaleDateString([], {
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+      }
+    } catch {
+      // ignore
+    }
+    return 'Recently';
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* ── Page Header ──────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 16,
-        }}
-      >
+    <div className="flex flex-col gap-6 w-full max-w-full">
+      {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Shield size={20} style={{ color: '#10B981' }} />
-            <h1
-              className="font-display"
-              style={{
-                fontSize: 26,
-                fontWeight: 800,
-                color: 'var(--text)',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              Administrator God-Mode Cockpit
-            </h1>
-          </div>
-          <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-            Superpower control center for Boardly Pakistan entrance test platform.
+          <h1 className="font-dot text-[24px] sm:text-[28px] font-extrabold text-[var(--text)] tracking-tight">
+            Admin overview
+          </h1>
+          <p className="font-heading text-[13px] text-[var(--muted)] mt-1">
+            System metrics, question bank management, and pending queues.
           </p>
         </div>
 
-        <Button
-          variant="secondary"
-          size="sm"
+        <button
+          type="button"
           onClick={loadData}
-          loading={loading}
+          disabled={loading}
+          className="flex items-center gap-2 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
         >
-          <RefreshCw size={14} /> Refresh Data
-        </Button>
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <span>Refresh</span>
+        </button>
       </div>
 
-      {/* ── Metric Cards Grid ────────────────────────────────────────── */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: 16,
-        }}
-      >
-        {loading ? (
-          Array.from({ length: 6 }).map((_, i) => (
-            <GlassCard key={i}>
-              <Skeleton height={20} width="40%" />
-              <div style={{ marginTop: 12 }}>
-                <Skeleton height={32} width="60%" />
-              </div>
-            </GlassCard>
-          ))
-        ) : (
-          <>
-            {/* Total Students */}
-            <GlassCard hover>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                  Registered Users
-                </span>
-                <Users size={18} style={{ color: '#3B82F6' }} />
-              </div>
-              <p style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
-                {(stats?.totalUsers ?? 0).toLocaleString()}
-              </p>
-              <Link to="/admin/users" style={{ fontSize: 12, color: 'var(--brand)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
-                Manage users <ArrowRight size={12} />
-              </Link>
-            </GlassCard>
-
-            {/* Questions Bank */}
-            <GlassCard hover>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                  Questions in Pool
-                </span>
-                <Database size={18} style={{ color: '#10B981' }} />
-              </div>
-              <p style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
-                {(stats?.totalQuestions ?? 0).toLocaleString()}
-              </p>
-              <Link to="/admin/questions" style={{ fontSize: 12, color: '#10B981', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
-                Inspect questions <ArrowRight size={12} />
-              </Link>
-            </GlassCard>
-
-            {/* Test Attempts */}
-            <GlassCard hover>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                  Test Attempts
-                </span>
-                <Activity size={18} style={{ color: '#8B5CF6' }} />
-              </div>
-              <p style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', fontVariantNumeric: 'tabular-nums' }}>
-                {(stats?.totalAttempts ?? 0).toLocaleString()}
-              </p>
-              <span style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 8, display: 'block' }}>
-                Real attempts recorded
-              </span>
-            </GlassCard>
-
-            {/* Pending Applications */}
-            <GlassCard hover>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                  Pending Applications
-                </span>
-                <Award size={18} style={{ color: '#F59E0B' }} />
-              </div>
-              <p style={{ fontSize: 28, fontWeight: 800, color: '#F59E0B', fontVariantNumeric: 'tabular-nums' }}>
-                {((stats?.pendingCaptains ?? 0) + (stats?.pendingCrew ?? 0)).toLocaleString()}
-              </p>
-              <Link to="/admin/applications" style={{ fontSize: 12, color: '#F59E0B', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
-                Review queue ({stats?.pendingCaptains ?? 0} Captains, {stats?.pendingCrew ?? 0} Crew) <ArrowRight size={12} />
-              </Link>
-            </GlassCard>
-
-            {/* Pending Payments */}
-            <GlassCard hover>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                  Pending Payments
-                </span>
-                <CreditCard size={18} style={{ color: '#EC4899' }} />
-              </div>
-              <p style={{ fontSize: 28, fontWeight: 800, color: '#EC4899', fontVariantNumeric: 'tabular-nums' }}>
-                {(stats?.pendingPayments ?? 0).toLocaleString()}
-              </p>
-              <Link to="/admin/payments" style={{ fontSize: 12, color: '#EC4899', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
-                Verify transactions <ArrowRight size={12} />
-              </Link>
-            </GlassCard>
-
-            {/* Pending Reviews */}
-            <GlassCard hover>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                  Pending Reviews
-                </span>
-                <FileCheck2 size={18} style={{ color: '#06B6D4' }} />
-              </div>
-              <p style={{ fontSize: 28, fontWeight: 800, color: '#06B6D4', fontVariantNumeric: 'tabular-nums' }}>
-                {(stats?.pendingReviews ?? 0).toLocaleString()}
-              </p>
-              <Link to="/admin/reviews" style={{ fontSize: 12, color: '#06B6D4', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4, marginTop: 8 }}>
-                Moderate student reviews <ArrowRight size={12} />
-              </Link>
-            </GlassCard>
-          </>
-        )}
-      </div>
-
-      {/* ── 1-Click "Ensure 500+ Balanced MCQ Pool" Section ────────────── */}
-      <GlassCard
-        style={{
-          border: '1px solid rgba(16,185,129,0.3)',
-          background: 'linear-gradient(135deg, rgba(6,78,59,0.15) 0%, rgba(14,22,38,0.7) 100%)',
-          padding: '24px',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 16,
-          }}
-        >
-          <div style={{ maxWidth: 640 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <Sparkles size={18} style={{ color: '#34D399' }} />
-              <h2 style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>
-                1-Click "Ensure 500+ Balanced MCQ Pool" Tool
-              </h2>
-            </div>
-            <p style={{ fontSize: 14, color: 'var(--text-muted)', lineHeight: 1.6, marginBottom: 12 }}>
-              Guarantee that at least 500 verified, KaTeX-formatted entrance test questions exist in Firestore with an exact balance across:
+      {/* ─── 6 STAT CARDS (2 cols mobile, 4 cols desktop) ───────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+        {/* 1. Registered users */}
+        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-heading text-[13px] text-[var(--muted)]">
+              Registered users
+            </span>
+            <Users size={16} className="text-[var(--text)] shrink-0" />
+          </div>
+          {loading ? (
+            <Skeleton height={40} width="60%" />
+          ) : (
+            <p className="font-dot text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {(stats?.totalUsers ?? 0).toLocaleString()}
             </p>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-              {[
-                '125 Mathematics',
-                '125 Physics',
-                '125 Chemistry / CS',
-                '125 English / Analytical',
-                '100 FAST',
-                '100 NUST',
-                '100 GIKI',
-                '100 LUMS',
-                '100 NED/UET',
-              ].map((chip) => (
+          )}
+          <Link
+            to="/admin/users"
+            className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
+          >
+            <span>Manage users</span>
+            <ArrowRight size={12} />
+          </Link>
+        </div>
+
+        {/* 2. Questions in pool */}
+        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-heading text-[13px] text-[var(--muted)]">
+              Questions in pool
+            </span>
+            <Database size={16} className="text-[var(--text)] shrink-0" />
+          </div>
+          {loading ? (
+            <Skeleton height={40} width="60%" />
+          ) : (
+            <p className="font-dot text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {(stats?.totalQuestions ?? 0).toLocaleString()}
+            </p>
+          )}
+          <Link
+            to="/admin/questions"
+            className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
+          >
+            <span>Inspect questions</span>
+            <ArrowRight size={12} />
+          </Link>
+        </div>
+
+        {/* 3. Test attempts */}
+        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-heading text-[13px] text-[var(--muted)]">
+              Test attempts
+            </span>
+            <Activity size={16} className="text-[var(--text)] shrink-0" />
+          </div>
+          {loading ? (
+            <Skeleton height={40} width="60%" />
+          ) : (
+            <p className="font-dot text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {(stats?.totalAttempts ?? 0).toLocaleString()}
+            </p>
+          )}
+          <span className="font-heading text-[12px] text-[var(--muted)] mt-auto pt-1">
+            Student submissions
+          </span>
+        </div>
+
+        {/* 4. Pending applications */}
+        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-heading text-[13px] text-[var(--muted)]">
+              Pending applications
+            </span>
+            <Award size={16} className="text-[var(--text)] shrink-0" />
+          </div>
+          {loading ? (
+            <Skeleton height={40} width="60%" />
+          ) : (
+            <p className="font-dot text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {((stats?.pendingCaptains ?? 0) + (stats?.pendingCrew ?? 0)).toLocaleString()}
+            </p>
+          )}
+          <Link
+            to="/admin/applications"
+            className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
+          >
+            <span>Review queue</span>
+            <ArrowRight size={12} />
+          </Link>
+        </div>
+
+        {/* 5. Pending payments */}
+        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-heading text-[13px] text-[var(--muted)]">
+              Pending payments
+            </span>
+            <CreditCard size={16} className="text-[var(--text)] shrink-0" />
+          </div>
+          {loading ? (
+            <Skeleton height={40} width="60%" />
+          ) : (
+            <p className="font-dot text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {(stats?.pendingPayments ?? 0).toLocaleString()}
+            </p>
+          )}
+          <Link
+            to="/admin/payments"
+            className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
+          >
+            <span>Verify payments</span>
+            <ArrowRight size={12} />
+          </Link>
+        </div>
+
+        {/* 6. Pending reviews */}
+        <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between min-h-[140px]">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-heading text-[13px] text-[var(--muted)]">
+              Pending reviews
+            </span>
+            <FileCheck2 size={16} className="text-[var(--text)] shrink-0" />
+          </div>
+          {loading ? (
+            <Skeleton height={40} width="60%" />
+          ) : (
+            <p className="font-dot text-[36px] sm:text-[40px] font-extrabold text-[var(--text)] leading-none my-2">
+              {(stats?.pendingReviews ?? 0).toLocaleString()}
+            </p>
+          )}
+          <Link
+            to="/admin/reviews"
+            className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1 mt-auto pt-1"
+          >
+            <span>Moderate reviews</span>
+            <ArrowRight size={12} />
+          </Link>
+        </div>
+      </div>
+
+      {/* ─── QUESTIONS PER SUBJECT BREAKDOWN ─────────────────────────────────── */}
+      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
+            Questions by subject
+          </h2>
+          <span className="font-heading text-[12px] text-[var(--muted)]">
+            Live counts in collection
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
+          {CORE_SUBJECTS.map((subj) => {
+            const count = stats?.subjectCounts?.[subj] ?? 0;
+            return (
+              <div
+                key={subj}
+                className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between"
+              >
+                <span className="font-heading text-[12px] text-[var(--muted)] truncate">
+                  {subj}
+                </span>
+                <span className="font-dot text-[22px] font-bold text-[var(--text)] mt-2">
+                  {loading ? '...' : count.toLocaleString()}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* ─── SEED BALANCED QUESTION POOL TOOL ────────────────────────────────── */}
+      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div className="max-w-[680px]">
+            <h2 className="font-heading font-semibold text-[16px] text-[var(--text)] mb-1">
+              Seed balanced question pool
+            </h2>
+            <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed mb-3">
+              Adds missing questions so every subject has 125 or more. Existing questions are never changed or deleted.
+            </p>
+
+            {/* Outlined grey pills */}
+            <div className="flex flex-wrap gap-1.5">
+              {SUBJECT_TARGET_PILLS.map((pill) => (
                 <span
-                  key={chip}
-                  style={{
-                    padding: '3px 8px',
-                    borderRadius: 999,
-                    fontSize: 11,
-                    fontWeight: 600,
-                    background: 'rgba(16,185,129,0.15)',
-                    border: '1px solid rgba(16,185,129,0.3)',
-                    color: '#A7F3D0',
-                  }}
+                  key={pill}
+                  className="font-heading text-[11px] px-2.5 py-1 rounded-full border border-[var(--border)] text-[var(--muted)] bg-[var(--card-2)]"
                 >
-                  {chip}
+                  {pill}
                 </span>
               ))}
             </div>
-            <p style={{ fontSize: 12, color: 'var(--text-faint)' }}>
-              Uses deterministic document IDs (<code style={{ color: '#34D399' }}>seed_balanced_001</code> .. <code style={{ color: '#34D399' }}>seed_balanced_500</code>) and <code style={{ color: '#34D399' }}>setDoc(..., &#123; merge: true &#125;)</code>. It is 100% idempotent and will never delete, modify, or overwrite any of the existing ~17,000 authentic question documents.
-            </p>
           </div>
 
-          <div style={{ minWidth: 220 }}>
-            <Button
-              variant="primary"
-              size="lg"
-              onClick={handleSeedPool}
-              loading={seeding}
-              style={{
-                width: '100%',
-                background: 'linear-gradient(135deg, #10B981, #059669)',
-                boxShadow: '0 4px 20px rgba(16,185,129,0.3)',
-              }}
+          <div className="shrink-0 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setIsConfirmSeedOpen(true)}
+              disabled={seeding}
+              className="w-full sm:w-auto px-4 py-2.5 rounded-[12px] border border-[var(--border)] bg-transparent hover:bg-[var(--surface-hover)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors disabled:opacity-50"
             >
-              <Sparkles size={16} /> Seed Balanced Pool
-            </Button>
+              {seeding ? 'Seeding in progress...' : 'Seed balanced question pool'}
+            </button>
           </div>
         </div>
 
-        {/* Live Progress Bar */}
+        {/* Seeding Progress Bar */}
         {seedProgress && (
-          <div style={{ marginTop: 20 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>
-              <span>Writing questions to Firestore...</span>
-              <span style={{ fontWeight: 700, color: '#34D399' }}>
+          <div className="pt-2 border-t border-[var(--border)] space-y-2">
+            <div className="flex items-center justify-between text-[12px] font-heading text-[var(--muted)]">
+              <span>Writing questions to pool...</span>
+              <span className="font-dot text-[13px] font-bold text-[var(--text)]">
                 {seedProgress.done} / {seedProgress.total} ({Math.round((seedProgress.done / seedProgress.total) * 100)}%)
               </span>
             </div>
-            <div style={{ height: 6, background: 'rgba(255,255,255,0.08)', borderRadius: 3, overflow: 'hidden' }}>
+            <div className="h-2 w-full bg-[var(--card-2)] rounded-full overflow-hidden border border-[var(--border)]">
               <div
-                style={{
-                  height: '100%',
-                  width: `${(seedProgress.done / seedProgress.total) * 100}%`,
-                  background: 'linear-gradient(90deg, #10B981, #34D399)',
-                  transition: 'width 200ms ease',
-                }}
+                className="h-full bg-[var(--text)] transition-all duration-150"
+                style={{ width: `${(seedProgress.done / seedProgress.total) * 100}%` }}
               />
             </div>
           </div>
         )}
 
         {seedSuccess && (
-          <div
-            style={{
-              marginTop: 16,
-              padding: '10px 14px',
-              borderRadius: 'var(--r-input)',
-              background: 'rgba(16,185,129,0.15)',
-              border: '1px solid rgba(16,185,129,0.3)',
-              color: '#34D399',
-              fontSize: 13,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-            }}
-          >
+          <div className="flex items-center gap-2 p-3 rounded-[12px] border border-[var(--border)] bg-[var(--card-2)] text-[var(--text)] text-[13px] font-heading">
             <CheckCircle2 size={16} />
             <span>{seedSuccess}</span>
           </div>
         )}
-      </GlassCard>
 
-      {/* ── Recent Audit Activity ────────────────────────────────────── */}
-      <GlassCard>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Shield size={18} style={{ color: '#10B981' }} />
-            <h2 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>
-              Recent Super-Admin Audit Trail
-            </h2>
+        {seedError && (
+          <div className="flex items-center gap-2 p-3 rounded-[12px] border border-[var(--red)]/40 bg-[var(--card-2)] text-[var(--red)] text-[13px] font-heading">
+            <AlertTriangle size={16} />
+            <span>{seedError}</span>
           </div>
-          <Link to="/admin/audit-logs" style={{ fontSize: 13, color: 'var(--brand)', textDecoration: 'none' }}>
-            View all logs &rarr;
+        )}
+      </div>
+
+      {/* ─── AUDIT TRAIL CARD ─────────────────────────────────────────────────── */}
+      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
+            Recent audit trail
+          </h2>
+          <Link
+            to="/admin/audit-logs"
+            className="font-heading text-[12px] text-[var(--text)] hover:underline flex items-center gap-1"
+          >
+            <span>View all logs</span>
+            <ArrowRight size={12} />
           </Link>
         </div>
 
         {recentLogs.length === 0 ? (
-          <p style={{ fontSize: 13, color: 'var(--text-faint)', fontStyle: 'italic' }}>
-            No recent admin actions recorded.
+          <p className="font-heading text-[13px] text-[var(--muted)] py-4 text-center">
+            No admin actions yet
           </p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div className="space-y-2">
             {recentLogs.map((log, i) => (
               <div
                 key={log.id || i}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '10px 12px',
-                  borderRadius: 'var(--r-input)',
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  fontSize: 13,
-                  gap: 12,
-                }}
+                className="p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 text-[13px] font-heading"
               >
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <span
-                    style={{
-                      padding: '2px 8px',
-                      borderRadius: 999,
-                      fontSize: 11,
-                      fontWeight: 600,
-                      background: 'rgba(16,185,129,0.15)',
-                      color: '#34D399',
-                    }}
-                  >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="text-[11px] px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--text)] shrink-0">
                     {log.action}
                   </span>
-                  <span style={{ color: 'var(--text)' }}>
+                  <span className="text-[var(--text)] truncate">
                     {log.targetEmail || log.targetUid || log.adminEmail}
                   </span>
                 </div>
-                <span style={{ fontSize: 11, color: 'var(--text-faint)', fontVariantNumeric: 'tabular-nums' }}>
-                  {log.timestamp && 'toDate' in log.timestamp
-                    ? log.timestamp.toDate().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' })
-                    : 'Just now'}
+                <span className="text-[12px] text-[var(--muted)] shrink-0">
+                  {formatLogTime(log)}
                 </span>
               </div>
             ))}
           </div>
         )}
-      </GlassCard>
+      </div>
+
+      {/* ─── CONFIRMATION DIALOG FOR SEEDING ─────────────────────────────────── */}
+      {isConfirmSeedOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setIsConfirmSeedOpen(false)}
+          />
+          <div className="relative w-full max-w-[420px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-none">
+            <h3 className="font-heading font-bold text-[17px] text-[var(--text)]">
+              Seed balanced question pool?
+            </h3>
+            <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+              This will add missing standard entrance test questions so every subject has at least 125 MCQs. Existing questions are never modified or overwritten.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsConfirmSeedOpen(false)}
+                className="px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSeed}
+                className="px-4 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold hover:opacity-90"
+              >
+                Confirm and seed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+export default AdminOverviewPage;

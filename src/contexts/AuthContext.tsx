@@ -17,6 +17,7 @@ import {
   signOut as firebaseSignOut,
   sendEmailVerification,
   sendPasswordResetEmail,
+  updateProfile,
   type User,
 } from 'firebase/auth';
 import {
@@ -121,13 +122,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        // Ensure displayName is populated and never Unnamed Student
+        if (!data.displayName || data.displayName === 'Unnamed Student') {
+          const fallbackName =
+            firebaseUser.displayName?.trim() ||
+            (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'Student');
+          data.displayName = fallbackName;
+          setDoc(docRef, { displayName: fallbackName }, { merge: true }).catch(() => {});
+        }
+
         setProfile(data);
       } else {
-        // Safe fields only on first user creation
+        // Safe fields only on first user creation (e.g. Google sign-in)
+        const fallbackName =
+          firebaseUser.displayName?.trim() ||
+          (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'Student');
         const newProfile: Partial<UserProfile> = {
           uid: firebaseUser.uid,
           email: (firebaseUser.email ?? '').toLowerCase(),
-          displayName: firebaseUser.displayName || 'Student',
+          displayName: fallbackName,
           role: 'student',
           plan: 'free',
           onboardingCompleted: false,
@@ -192,11 +205,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       const { user: newUser } = credential;
 
+      // Resolve and save displayName immediately
+      const resolvedName =
+        displayName?.trim() ||
+        (email.includes('@') ? email.split('@')[0] : 'Student');
+
+      try {
+        await updateProfile(newUser, { displayName: resolvedName });
+      } catch (err) {
+        console.warn('Could not update Firebase Auth profile displayName:', err);
+      }
+
       // Create profile doc immediately with ONLY safe fields
       await setDoc(doc(db, 'users', newUser.uid), {
         uid: newUser.uid,
         email: email.toLowerCase(),
-        displayName,
+        displayName: resolvedName,
         role: 'student',
         plan: 'free',
         onboardingCompleted: false,

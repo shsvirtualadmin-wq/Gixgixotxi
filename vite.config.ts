@@ -135,7 +135,7 @@ export default defineConfig({
       process.env.VITE_FIREBASE_APP_ID ?? '1:423201171551:web:219bb34b-b7b4-4c85-bd1f-8efd086df9c2'
     ),
     'import.meta.env.VITE_FIREBASE_DATABASE_ID': JSON.stringify(
-      process.env.VITE_FIREBASE_DATABASE_ID ?? 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712'
+      process.env.VITE_FIREBASE_DATABASE_ID ?? '(default)'
     ),
   },
   build: {

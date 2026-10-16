@@ -16,10 +16,20 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
+    // Superadmin authorization rule: strictly shsvirtualadmin@gmail.com only
+    function isSuperAdmin() {
+      return isAuthenticated() && request.auth.token.email != null && request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com';
+    }
+
     // Admin authorization rule:
-    // Strictly verified: auth email lowercased === "shsvirtualadmin@gmail.com" is the ONLY admin.
     function isAdmin() {
-      return isAuthenticated() && request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com';
+      return isSuperAdmin() || (
+        isAuthenticated() && (
+          request.auth.token.role == 'admin' ||
+          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+        )
+      );
     }
 
     // Role helpers
@@ -98,7 +108,7 @@ service cloud.firestore {
     // Users collection:
     // Owners can read and update their own document without changing protected admin/plan fields.
     // Authenticated users can read their own profile matching their verified token email.
-    // Super admin can list and write any user record.
+    // Super admin can list and write any user record; only Superadmin (shsvirtualadmin@gmail.com) can change roles or delete users.
     match /users/{userId} {
       allow get: if isOwner(userId)
         || isAdmin()
@@ -107,14 +117,15 @@ service cloud.firestore {
           resource.data.email == request.auth.token.email.lower()
         ));
       allow list: if isAdmin();
-      allow create: if isAdmin() || studentCreateAllowed(userId);
-      allow update: if isAdmin()
+      allow create: if isSuperAdmin() || isAdmin() || studentCreateAllowed(userId);
+      allow update: if isSuperAdmin()
+        || (isAdmin() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'roles']))
         || (isOwner(userId) && userDoesNotChangeProtectedFields())
         || (isAuthenticated() && request.auth.token.email != null && (
           resource.data.email == request.auth.token.email ||
           resource.data.email == request.auth.token.email.lower()
         ) && userDoesNotChangeProtectedFields());
-      allow delete: if isAdmin();
+      allow delete: if isSuperAdmin();
 
       match /{allSubcollections=**} {
         allow read, write: if isOwner(userId) || isAdmin();
@@ -335,7 +346,7 @@ service cloud.firestore {
 
     // Content: questions, sheets, universities, formulas
     match /questions/{qId} {
-      allow read: if isAuthenticated() || isAdmin();
+      allow read: if true;
       allow write: if isAdmin();
     }
 

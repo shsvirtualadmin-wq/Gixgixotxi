@@ -1,18 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  CreditCard,
-  CheckCircle2,
-  XCircle,
   RefreshCw,
   ExternalLink,
-  AlertCircle,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { Skeleton } from '@/components/ui/Skeleton';
-import { EmptyState } from '@/components/ui/EmptyState';
 import {
   fetchPaymentRequests,
   approvePaymentRequest,
@@ -26,6 +18,12 @@ export function AdminPaymentsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('all');
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+
+  // Reject modal dialog
+  const [rejectTarget, setRejectTarget] = useState<PaymentRequest | null>(null);
+  const [rejectReason, setRejectReason] = useState(
+    'Transaction ID could not be verified on Easypaisa or JazzCash portal.'
+  );
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -56,17 +54,23 @@ export function AdminPaymentsPage() {
     }
   };
 
-  const handleReject = async (req: PaymentRequest) => {
-    if (!user?.email) return;
-    const reason = window.prompt(
-      'Optional rejection reason:',
-      'Transaction ID could not be verified on Easypaisa/JazzCash portal.'
-    );
-    if (reason === null) return;
+  const handleOpenReject = (req: PaymentRequest) => {
+    setRejectTarget(req);
+    setRejectReason('Transaction ID could not be verified on Easypaisa or JazzCash portal.');
+  };
 
-    setActionInProgress(req.id);
+  const handleConfirmReject = async () => {
+    if (!rejectTarget || !user?.email) return;
+    setActionInProgress(rejectTarget.id);
     try {
-      await rejectPaymentRequest(user.email, req.id, req.userId, req.userEmail || '', reason);
+      await rejectPaymentRequest(
+        user.email,
+        rejectTarget.id,
+        rejectTarget.userId,
+        rejectTarget.userEmail || '',
+        rejectReason
+      );
+      setRejectTarget(null);
       await loadData();
     } catch (err) {
       console.error('Failed to reject payment:', err);
@@ -76,201 +80,222 @@ export function AdminPaymentsPage() {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* ── Page Header ──────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 16,
-        }}
-      >
+    <div className="flex flex-col gap-6 w-full max-w-full">
+      {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <CreditCard size={20} style={{ color: '#EC4899' }} />
-            <h1
-              className="font-display"
-              style={{
-                fontSize: 24,
-                fontWeight: 800,
-                color: 'var(--text)',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              Manual Payment Receipts & Pro Upgrades
-            </h1>
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            Verify Easypaisa, JazzCash, SadaPay, and Nayapay transaction IDs and grant 30-day Pro access.
+          <h1 className="font-dot text-[24px] sm:text-[28px] font-extrabold text-[var(--text)] tracking-tight">
+            Payments
+          </h1>
+          <p className="font-heading text-[13px] text-[var(--muted)] mt-1">
+            Manual Easypaisa, JazzCash, and bank transfer verification for Pro upgrades.
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              color: 'var(--text)',
-              borderRadius: 'var(--r-input)',
-              padding: '6px 12px',
-              fontSize: 13,
-              outline: 'none',
-            }}
-          >
-            <option value="all">All Statuses</option>
-            <option value="pending">Pending Verification</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-          </select>
+        <button
+          type="button"
+          onClick={loadData}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <span>Refresh</span>
+        </button>
+      </div>
 
-          <Button variant="secondary" size="sm" onClick={loadData} loading={loading}>
-            <RefreshCw size={14} /> Refresh
-          </Button>
+      {/* ─── STATUS FILTER BAR ──────────────────────────────────────────────── */}
+      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
+            Status:
+          </span>
+          {[
+            { id: 'all', label: 'All payments' },
+            { id: 'pending', label: 'Pending review' },
+            { id: 'approved', label: 'Approved' },
+            { id: 'rejected', label: 'Rejected' },
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setStatusFilter(id)}
+              className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
+                statusFilter === id
+                  ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                  : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* ── Payment Requests List ────────────────────────────────────── */}
-      {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {Array.from({ length: 3 }).map((_, i) => (
-            <GlassCard key={i}>
-              <Skeleton height={20} width="40%" />
-              <div style={{ marginTop: 12 }}><Skeleton height={14} count={3} /></div>
-            </GlassCard>
-          ))}
-        </div>
-      ) : requests.length === 0 ? (
-        <GlassCard>
-          <EmptyState
-            title="No payment upgrade requests found"
-            description="When students submit payment proof via Easypaisa or JazzCash on /dashboard/plans, they appear here."
-          />
-        </GlassCard>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {requests.map((req) => (
-            <GlassCard key={req.id} style={{ padding: '20px' }}>
+      {/* ─── PAYMENT CARDS FEED ─────────────────────────────────────────────── */}
+      <div className="space-y-3">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-3"
+            >
+              <div className="h-4 bg-[var(--card-2)] rounded w-1/3" />
+              <div className="h-4 bg-[var(--card-2)] rounded w-1/2" />
+            </div>
+          ))
+        ) : requests.length === 0 ? (
+          <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
+            <p className="font-heading text-[14px] text-[var(--muted)]">
+              No payment upgrade requests found.
+            </p>
+          </div>
+        ) : (
+          requests.map((req) => {
+            const isPending = req.status === 'pending';
+            const isApproved = req.status === 'approved';
+            const isRejected = req.status === 'rejected';
+
+            return (
               <div
-                style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'flex-start',
-                  flexWrap: 'wrap',
-                  gap: 16,
-                  marginBottom: 12,
-                }}
+                key={req.id}
+                className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4"
               >
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <span style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-                      PKR {req.amount.toLocaleString()}
-                    </span>
-                    <Badge
-                      color={req.status === 'approved' ? 'success' : req.status === 'rejected' ? 'danger' : 'warning'}
-                    >
-                      {req.status}
-                    </Badge>
-                    <span
-                      style={{
-                        padding: '2px 8px',
-                        borderRadius: 4,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        textTransform: 'uppercase',
-                        background: 'rgba(236,72,153,0.15)',
-                        color: '#F472B6',
-                      }}
-                    >
-                      {req.method}
-                    </span>
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-heading font-semibold text-[15px] text-[var(--text)]">
+                        {req.userEmail || req.userId}
+                      </span>
+                      <span className="text-[11px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
+                        Plan: {req.plan || 'Pro'}
+                      </span>
+                    </div>
+
+                    {/* Transaction details in Space Grotesk, NO monospace */}
+                    <p className="font-heading text-[12px] text-[var(--muted)] mt-1.5">
+                      Transaction ID:{' '}
+                      <span className="text-[var(--text)] font-medium">
+                        {req.transactionId || 'None provided'}
+                      </span>
+                      {req.method && ` • Via ${req.method}`}
+                      {req.amount && ` • PKR ${req.amount.toLocaleString()}`}
+                    </p>
                   </div>
 
-                  <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                    Student: <strong style={{ color: 'var(--text)' }}>{req.displayName || req.userEmail || req.userId}</strong>
-                    {req.userEmail && <span style={{ marginLeft: 8, color: 'var(--text-faint)' }}>({req.userEmail})</span>}
-                  </p>
-                </div>
-
-                {req.status === 'pending' && (
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleApprove(req)}
-                      loading={actionInProgress === req.id}
-                      style={{ background: 'linear-gradient(135deg, #10B981, #059669)' }}
-                    >
-                      <CheckCircle2 size={14} /> Verify & Grant Pro
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleReject(req)}
-                      style={{ color: 'var(--danger)' }}
-                    >
-                      <XCircle size={14} /> Reject
-                    </Button>
-                  </div>
-                )}
-              </div>
-
-              {/* Transaction details card */}
-              <div
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 'var(--r-input)',
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  flexWrap: 'wrap',
-                  gap: 12,
-                  fontSize: 13,
-                }}
-              >
-                <div>
-                  <span style={{ fontSize: 11, color: 'var(--text-faint)', textTransform: 'uppercase', display: 'block' }}>
-                    Transaction / Ref ID
-                  </span>
-                  <code style={{ fontSize: 14, fontWeight: 700, color: '#34D399', letterSpacing: '0.04em' }}>
-                    {req.transactionId}
-                  </code>
-                </div>
-
-                {req.screenshotUrl && (
-                  <a
-                    href={req.screenshotUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 4,
-                      fontSize: 12,
-                      color: 'var(--brand)',
-                      textDecoration: 'none',
-                    }}
+                  {/* Status Pill */}
+                  <span
+                    className={`text-[11px] font-heading px-2.5 py-0.5 rounded-full border shrink-0 capitalize ${
+                      isApproved
+                        ? 'border-[var(--text)] text-[var(--text)]'
+                        : isRejected
+                          ? 'border-[var(--red)] text-[var(--red)]'
+                          : 'border-[var(--border)] text-[var(--muted)]'
+                    }`}
                   >
-                    <ExternalLink size={13} /> View Attached Screenshot
-                  </a>
+                    {req.status}
+                  </span>
+                </div>
+
+                {/* Proof screenshot link if available */}
+                {req.screenshotUrl && (
+                  <div className="pt-1">
+                    <a
+                      href={req.screenshotUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 text-[12px] font-heading text-[var(--text)] hover:underline"
+                    >
+                      <ExternalLink size={13} />
+                      <span>View payment receipt screenshot</span>
+                    </a>
+                  </div>
                 )}
 
-                {req.rejectionReason && (
-                  <div style={{ width: '100%', color: 'var(--danger)', fontSize: 12, marginTop: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <AlertCircle size={13} />
-                    <span>Rejection reason: {req.rejectionReason}</span>
+                {/* Actions for Pending */}
+                {isPending && (
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+                    <button
+                      type="button"
+                      disabled={actionInProgress === req.id}
+                      onClick={() => handleOpenReject(req)}
+                      className="px-3.5 py-2 rounded-[12px] border border-[var(--red)]/40 text-[var(--red)] hover:bg-[var(--card-2)] text-[12px] font-heading font-medium transition-colors disabled:opacity-50"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      type="button"
+                      disabled={actionInProgress === req.id}
+                      onClick={() => handleApprove(req)}
+                      className="px-4 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[12px] font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+                    >
+                      {actionInProgress === req.id ? 'Approving...' : 'Approve & activate Pro'}
+                    </button>
                   </div>
                 )}
               </div>
-            </GlassCard>
-          ))}
+            );
+          })
+        )}
+      </div>
+
+      {/* ─── REJECT PAYMENT MODAL (No window.prompt!) ──────────────────────── */}
+      {rejectTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setRejectTarget(null)}
+          />
+          <div className="relative w-full max-w-[420px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+              <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+                Reject payment request
+              </h3>
+              <button
+                type="button"
+                onClick={() => setRejectTarget(null)}
+                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+              Rejecting payment for <strong className="text-[var(--text)]">{rejectTarget.userEmail}</strong>. Provide an explanation:
+            </p>
+
+            <div>
+              <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                Reason
+              </label>
+              <textarea
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="w-full p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+              <button
+                type="button"
+                onClick={() => setRejectTarget(null)}
+                className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReject}
+                className="px-4 py-2 rounded-[12px] border border-[var(--red)] bg-[var(--red)] text-white text-[13px] font-heading font-semibold"
+              >
+                Confirm rejection
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
+
+export default AdminPaymentsPage;

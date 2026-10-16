@@ -1,23 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  FileCheck2,
-  Award,
-  Users,
-  CheckCircle,
-  XCircle,
   RefreshCw,
   Phone,
   Mail,
   Building,
   MapPin,
-  ExternalLink,
+  X,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { Skeleton } from '@/components/ui/Skeleton';
-import { EmptyState } from '@/components/ui/EmptyState';
 import {
   fetchCaptainApplications,
   fetchCrewApplications,
@@ -35,6 +25,16 @@ export function AdminApplicationsPage() {
   const [crew, setCrew] = useState<CrewApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
+
+  // Reject modal dialog state
+  const [rejectTarget, setRejectTarget] = useState<{
+    type: 'captain' | 'crew';
+    appId: string;
+    uid: string;
+    email: string;
+    name: string;
+  } | null>(null);
+  const [rejectReason, setRejectReason] = useState('Criteria not met at this time.');
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -83,14 +83,30 @@ export function AdminApplicationsPage() {
     }
   };
 
-  const handleReject = async (type: 'captain' | 'crew', appId: string, uid: string, email: string) => {
-    if (!user?.email) return;
-    const reason = window.prompt('Optional rejection reason for student notification:', 'Criteria not met at this time.');
-    if (reason === null) return;
+  const handleOpenReject = (
+    type: 'captain' | 'crew',
+    appId: string,
+    uid: string,
+    email: string,
+    name: string
+  ) => {
+    setRejectTarget({ type, appId, uid, email, name });
+    setRejectReason('Criteria not met at this time.');
+  };
 
-    setActionInProgress(appId);
+  const handleConfirmReject = async () => {
+    if (!rejectTarget || !user?.email) return;
+    setActionInProgress(rejectTarget.appId);
     try {
-      await rejectApplication(user.email, type, appId, uid, email, reason);
+      await rejectApplication(
+        user.email,
+        rejectTarget.type,
+        rejectTarget.appId,
+        rejectTarget.uid,
+        rejectTarget.email,
+        rejectReason
+      );
+      setRejectTarget(null);
       await loadData();
     } catch (err) {
       console.error('Reject application error:', err);
@@ -99,297 +115,270 @@ export function AdminApplicationsPage() {
     }
   };
 
+  const currentList = activeTab === 'captain' ? captains : crew;
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* ── Page Header ──────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 16,
-        }}
-      >
+    <div className="flex flex-col gap-6 w-full max-w-full">
+      {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <FileCheck2 size={20} style={{ color: '#F59E0B' }} />
-            <h1
-              className="font-display"
-              style={{
-                fontSize: 24,
-                fontWeight: 800,
-                color: 'var(--text)',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              Application Moderation Hub
-            </h1>
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            Review, approve, or reject student candidates for Campus Captains and Boardly Crew Ambassadors.
+          <h1 className="font-dot text-[24px] sm:text-[28px] font-extrabold text-[var(--text)] tracking-tight">
+            Applications
+          </h1>
+          <p className="font-heading text-[13px] text-[var(--muted)] mt-1">
+            Review and moderate Campus Captain and Study Crew candidate submissions.
           </p>
         </div>
 
-        <Button variant="secondary" size="sm" onClick={loadData} loading={loading}>
-          <RefreshCw size={14} /> Refresh
-        </Button>
+        <button
+          type="button"
+          onClick={loadData}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <span>Refresh</span>
+        </button>
       </div>
 
-      {/* ── Tabs & Filter ────────────────────────────────────────────── */}
-      <GlassCard style={{ padding: 12 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
-          {/* Main Program Tabs */}
-          <div style={{ display: 'flex', gap: 6 }}>
-            <button
-              onClick={() => setActiveTab('captain')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 16px',
-                borderRadius: 'var(--r-input)',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-                background: activeTab === 'captain' ? 'rgba(245,158,11,0.15)' : 'transparent',
-                border: activeTab === 'captain' ? '1px solid #F59E0B' : '1px solid transparent',
-                color: activeTab === 'captain' ? '#FBBF24' : 'var(--text-muted)',
-                transition: 'all 160ms',
-              }}
-            >
-              <Award size={15} /> Campus Captains
-            </button>
-
-            <button
-              onClick={() => setActiveTab('crew')}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-                padding: '8px 16px',
-                borderRadius: 'var(--r-input)',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: 'pointer',
-                background: activeTab === 'crew' ? 'rgba(124,92,255,0.15)' : 'transparent',
-                border: activeTab === 'crew' ? '1px solid #7C5CFF' : '1px solid transparent',
-                color: activeTab === 'crew' ? '#C084FC' : 'var(--text-muted)',
-                transition: 'all 160ms',
-              }}
-            >
-              <Users size={15} /> Crew Ambassadors
-            </button>
-          </div>
-
-          {/* Status Filter */}
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              color: 'var(--text)',
-              borderRadius: 'var(--r-input)',
-              padding: '6px 12px',
-              fontSize: 13,
-              outline: 'none',
-            }}
+      {/* ─── TAB SWITCHER & FILTER CHIPS ────────────────────────────────────── */}
+      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        {/* Segmented Switcher */}
+        <div className="flex items-center p-1 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)]">
+          <button
+            type="button"
+            onClick={() => setActiveTab('captain')}
+            className={`px-4 py-1.5 rounded-[12px] text-[13px] font-heading font-medium transition-colors ${
+              activeTab === 'captain'
+                ? 'bg-[var(--text)] text-[var(--bg)] font-semibold'
+                : 'text-[var(--muted)] hover:text-[var(--text)]'
+            }`}
           >
-            <option value="all">All Statuses</option>
-            <option value="pending">Pending Review</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-          </select>
+            Campus Captains
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('crew')}
+            className={`px-4 py-1.5 rounded-[12px] text-[13px] font-heading font-medium transition-colors ${
+              activeTab === 'crew'
+                ? 'bg-[var(--text)] text-[var(--bg)] font-semibold'
+                : 'text-[var(--muted)] hover:text-[var(--text)]'
+            }`}
+          >
+            Study Crew
+          </button>
         </div>
-      </GlassCard>
 
-      {/* ── Applications List ────────────────────────────────────────── */}
-      {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {Array.from({ length: 3 }).map((_, i) => (
-            <GlassCard key={i}>
-              <Skeleton height={20} width="40%" />
-              <div style={{ marginTop: 12 }}><Skeleton height={14} count={3} /></div>
-            </GlassCard>
+        {/* Status Filter Chips */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] font-heading text-[var(--muted)] mr-1 shrink-0">
+            Status:
+          </span>
+          {[
+            { id: 'all', label: 'All' },
+            { id: 'pending', label: 'Pending' },
+            { id: 'approved', label: 'Approved' },
+            { id: 'rejected', label: 'Rejected' },
+          ].map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setStatusFilter(id)}
+              className={`text-[12px] font-heading px-2.5 py-1 rounded-full border transition-colors ${
+                statusFilter === id
+                  ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)] font-semibold'
+                  : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+              }`}
+            >
+              {label}
+            </button>
           ))}
         </div>
-      ) : activeTab === 'captain' ? (
-        captains.length === 0 ? (
-          <GlassCard>
-            <EmptyState
-              title="No Captain applications found"
-              description="No applications currently match the selected status filter."
-            />
-          </GlassCard>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {captains.map((app) => (
-              <GlassCard key={app.id} style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                      <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-                        {app.name}
-                      </h3>
-                      <Badge
-                        color={app.status === 'approved' ? 'success' : app.status === 'rejected' ? 'danger' : 'warning'}
-                      >
-                        {app.status}
-                      </Badge>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-muted)' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Mail size={13} /> {app.email}
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Phone size={13} /> {app.phone}
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <Building size={13} /> {app.university}
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                        <MapPin size={13} /> {app.city}
-                      </span>
-                    </div>
-                  </div>
+      </div>
 
-                  {app.status === 'pending' && (
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => handleApproveCaptain(app)}
-                        loading={actionInProgress === app.id}
-                        style={{ background: 'linear-gradient(135deg, #10B981, #059669)' }}
-                      >
-                        <CheckCircle size={14} /> Approve Captain
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => handleReject('captain', app.id, app.userId, app.email)}
-                        style={{ color: 'var(--danger)' }}
-                      >
-                        <XCircle size={14} /> Reject
-                      </Button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Motivation statement */}
-                <div
-                  style={{
-                    padding: '12px 14px',
-                    borderRadius: 'var(--r-input)',
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    fontSize: 13,
-                    color: 'var(--text-muted)',
-                    lineHeight: 1.6,
-                  }}
-                >
-                  <p style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 4, fontSize: 12 }}>
-                    Candidate Motivation & Reach:
-                  </p>
-                  <p>{app.motivation}</p>
-                  {app.expectedReach && (
-                    <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 6 }}>
-                      Target audience: {app.expectedReach}
-                    </p>
-                  )}
-                </div>
-              </GlassCard>
-            ))}
+      {/* ─── APPLICATIONS LIST ──────────────────────────────────────────────── */}
+      <div className="space-y-3">
+        {loading ? (
+          Array.from({ length: 4 }).map((_, i) => (
+            <div
+              key={i}
+              className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-3"
+            >
+              <div className="h-4 bg-[var(--card-2)] rounded w-1/3" />
+              <div className="h-4 bg-[var(--card-2)] rounded w-1/2" />
+              <div className="h-10 bg-[var(--card-2)] rounded w-full" />
+            </div>
+          ))
+        ) : currentList.length === 0 ? (
+          <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
+            <p className="font-heading text-[14px] text-[var(--muted)]">
+              No applications match this filter.
+            </p>
           </div>
-        )
-      ) : crew.length === 0 ? (
-        <GlassCard>
-          <EmptyState
-            title="No Crew applications found"
-            description="No applications currently match the selected status filter."
-          />
-        </GlassCard>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          {crew.map((app) => (
-            <GlassCard key={app.id} style={{ padding: '20px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12, marginBottom: 12 }}>
-                <div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                    <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
+        ) : (
+          currentList.map((app) => {
+            const isCaptain = activeTab === 'captain';
+            const capApp = app as CaptainApplication;
+            const crewApp = app as CrewApplication;
+            const isPending = app.status === 'pending';
+            const isApproved = app.status === 'approved';
+            const isRejected = app.status === 'rejected';
+
+            return (
+              <div
+                key={app.id}
+                className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-4"
+              >
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
                       {app.name}
-                    </h3>
-                    <Badge
-                      color={app.status === 'approved' ? 'success' : app.status === 'rejected' ? 'danger' : 'warning'}
-                    >
-                      {app.status}
-                    </Badge>
+                    </h2>
+                    <div className="flex items-center gap-3 text-[12px] font-heading text-[var(--muted)] mt-1 flex-wrap">
+                      <span className="flex items-center gap-1">
+                        <Mail size={12} />
+                        <span>{app.email}</span>
+                      </span>
+                      {app.phone && (
+                        <span className="flex items-center gap-1">
+                          <Phone size={12} />
+                          <span>{app.phone}</span>
+                        </span>
+                      )}
+                      {isCaptain && capApp.university && (
+                        <span className="flex items-center gap-1">
+                          <Building size={12} />
+                          <span>{capApp.university}</span>
+                        </span>
+                      )}
+                      {app.city && (
+                        <span className="flex items-center gap-1">
+                          <MapPin size={12} />
+                          <span>{app.city}</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', fontSize: 12, color: 'var(--text-muted)' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <Mail size={13} /> {app.email}
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <Phone size={13} /> {app.phone}
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <Building size={13} /> {app.college}
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <MapPin size={13} /> {app.city}
-                    </span>
-                  </div>
+
+                  {/* Status Pill */}
+                  <span
+                    className={`text-[11px] font-heading px-2.5 py-0.5 rounded-full border shrink-0 capitalize ${
+                      isApproved
+                        ? 'border-[var(--text)] text-[var(--text)]'
+                        : isRejected
+                          ? 'border-[var(--red)] text-[var(--red)]'
+                          : 'border-[var(--border)] text-[var(--muted)]'
+                    }`}
+                  >
+                    {app.status}
+                  </span>
                 </div>
 
-                {app.status === 'pending' && (
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => handleApproveCrew(app)}
-                      loading={actionInProgress === app.id}
-                      style={{ background: 'linear-gradient(135deg, #7C5CFF, #E879F9)' }}
+                {/* Statement / Pitch */}
+                {(isCaptain ? capApp.motivation : crewApp.whyCrew) && (
+                  <div className="p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[12px] font-heading text-[var(--muted)] leading-relaxed">
+                    <p className="text-[var(--text)] mb-1 font-medium">Candidate statement:</p>
+                    <p>{isCaptain ? capApp.motivation : crewApp.whyCrew}</p>
+                  </div>
+                )}
+
+                {/* Action Buttons if Pending */}
+                {isPending && (
+                  <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+                    <button
+                      type="button"
+                      disabled={actionInProgress === app.id}
+                      onClick={() =>
+                        handleOpenReject(
+                          activeTab,
+                          app.id,
+                          app.userId,
+                          app.email,
+                          app.name
+                        )
+                      }
+                      className="px-3.5 py-2 rounded-[12px] border border-[var(--red)]/40 text-[var(--red)] hover:bg-[var(--card-2)] text-[12px] font-heading font-medium transition-colors disabled:opacity-50"
                     >
-                      <CheckCircle size={14} /> Approve Crew
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => handleReject('crew', app.id, app.userId, app.email)}
-                      style={{ color: 'var(--danger)' }}
+                      Reject
+                    </button>
+                    <button
+                      type="button"
+                      disabled={actionInProgress === app.id}
+                      onClick={() =>
+                        isCaptain
+                          ? handleApproveCaptain(capApp)
+                          : handleApproveCrew(crewApp)
+                      }
+                      className="px-4 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[12px] font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
                     >
-                      <XCircle size={14} /> Reject
-                    </Button>
+                      {actionInProgress === app.id ? 'Approving...' : 'Approve & grant role'}
+                    </button>
                   </div>
                 )}
               </div>
+            );
+          })
+        )}
+      </div>
 
-              <div
-                style={{
-                  padding: '12px 14px',
-                  borderRadius: 'var(--r-input)',
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  fontSize: 13,
-                  color: 'var(--text-muted)',
-                  lineHeight: 1.6,
-                }}
+      {/* ─── REJECT APPLICATION DIALOG MODAL (No window.prompt!) ────────────── */}
+      {rejectTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
+            onClick={() => setRejectTarget(null)}
+          />
+          <div className="relative w-full max-w-[420px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+              <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+                Reject application
+              </h3>
+              <button
+                type="button"
+                onClick={() => setRejectTarget(null)}
+                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)]"
               >
-                <p style={{ fontWeight: 600, color: 'var(--text)', marginBottom: 4, fontSize: 12 }}>
-                  Why they want to join Boardly Crew:
-                </p>
-                <p>{app.whyCrew}</p>
-                {app.instagram && (
-                  <p style={{ fontSize: 11, color: '#C084FC', marginTop: 6, display: 'flex', alignItems: 'center', gap: 4 }}>
-                    <ExternalLink size={12} /> Instagram: {app.instagram}
-                  </p>
-                )}
-              </div>
-            </GlassCard>
-          ))}
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+              Rejecting application for <strong className="text-[var(--text)]">{rejectTarget.name}</strong>. Provide an optional message to include in their notification.
+            </p>
+
+            <div>
+              <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                Reason / Note
+              </label>
+              <textarea
+                rows={3}
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="w-full p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+              <button
+                type="button"
+                onClick={() => setRejectTarget(null)}
+                className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReject}
+                className="px-4 py-2 rounded-[12px] border border-[var(--red)] bg-[var(--red)] text-white text-[13px] font-heading font-semibold"
+              >
+                Confirm rejection
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
+
+export default AdminApplicationsPage;

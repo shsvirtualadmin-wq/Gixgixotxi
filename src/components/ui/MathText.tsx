@@ -70,13 +70,15 @@ function parseAndRenderMath(text: string): string {
 }
 
 interface MathTextProps {
-  children: string;
+  children?: string;
+  text?: string;
   className?: string;
   block?: boolean;
 }
 
-export function MathText({ children, className = '', block = false }: MathTextProps) {
-  const html = useMemo(() => parseAndRenderMath(children), [children]);
+export function MathText({ children, text, className = '', block = false }: MathTextProps) {
+  const content = text ?? children ?? '';
+  const html = useMemo(() => parseAndRenderMath(content), [content]);
 
   if (block) {
     return (

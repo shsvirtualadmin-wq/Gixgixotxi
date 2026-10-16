@@ -179,8 +179,7 @@
 
 .font-heading {
   font-family: var(--font-heading);
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+  letter-spacing: -0.01em;
 }
 
 /* ===== SHARED CONTAINER ===== */

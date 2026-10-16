@@ -1,10 +1,26 @@
 import { useState, useEffect } from 'react';
-import { X, ShieldAlert, Check, Sparkles, AlertTriangle, Key } from 'lucide-react';
+import {
+  X,
+  AlertTriangle,
+  Clock,
+  Trash2,
+} from 'lucide-react';
 import type { UserProfile, UserRole, UserPlan } from '@/types';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { updateUserOverride } from '@/services/adminService';
+import {
+  updateUserOverride,
+  deleteUserAccount,
+  fetchUserRecentAttempts,
+  getUserDisplayName,
+} from '@/services/adminService';
 import { Timestamp } from 'firebase/firestore';
+
+interface RecentAttemptItem {
+  id: string;
+  subject?: string;
+  title?: string;
+  score?: number;
+  totalQuestions?: number;
+}
 
 interface UserOverrideDrawerProps {
   user: UserProfile | null;
@@ -19,14 +35,25 @@ export function UserOverrideDrawer({
   onClose,
   onSuccess,
 }: UserOverrideDrawerProps) {
+  const isSuperAdmin = adminEmail.toLowerCase() === 'shsvirtualadmin@gmail.com';
+
   const [role, setRole] = useState<UserRole>('student');
   const [plan, setPlan] = useState<UserPlan>('free');
   const [isSuspended, setIsSuspended] = useState<boolean>(false);
-  const [proDurationDays, setProDurationDays] = useState<number>(30);
   const [targetUniversity, setTargetUniversity] = useState<string>('');
   const [targetTestDate, setTargetTestDate] = useState<string>('');
+  const [recentAttempts, setRecentAttempts] = useState<RecentAttemptItem[]>([]);
+  const [loadingAttempts, setLoadingAttempts] = useState(false);
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Destructive action confirmation dialogs
+  const [confirmAction, setConfirmAction] = useState<
+    'role' | 'suspend' | 'delete' | null
+  >(null);
+  const [pendingRole, setPendingRole] = useState<UserRole | null>(null);
+  const [deleteInProgress, setDeleteInProgress] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -36,12 +63,23 @@ export function UserOverrideDrawer({
       setTargetUniversity(user.targetUniversity || '');
       setTargetTestDate(user.targetTestDate || '');
       setError(null);
+      setConfirmAction(null);
+
+      // Load recent test attempts
+      setLoadingAttempts(true);
+      fetchUserRecentAttempts(user.uid, 5)
+        .then((attempts) => setRecentAttempts(attempts))
+        .catch(() => setRecentAttempts([]))
+        .finally(() => setLoadingAttempts(false));
     }
   }, [user]);
 
   if (!user) return null;
 
-  const handleSave = async () => {
+  const displayName = getUserDisplayName(user);
+  const userInitial = displayName[0].toUpperCase();
+
+  const handleApplyOverrides = async () => {
     setSaving(true);
     setError(null);
 
@@ -58,10 +96,8 @@ export function UserOverrideDrawer({
       if (plan === 'pro') {
         updates.isPremium = true;
         updates.premiumSource = 'admin_override';
-        const ms = proDurationDays === 9999
-          ? Date.now() + 100 * 365 * 24 * 60 * 60 * 1000 // lifetime
-          : Date.now() + proDurationDays * 24 * 60 * 60 * 1000;
-        updates.premiumExpiresAt = Timestamp.fromMillis(ms);
+        // 1 year grant by default
+        updates.premiumExpiresAt = Timestamp.fromMillis(Date.now() + 365 * 24 * 60 * 60 * 1000);
       } else {
         updates.isPremium = false;
         updates.premiumSource = null;
@@ -88,169 +124,186 @@ export function UserOverrideDrawer({
     }
   };
 
+  const handleInitiateRoleChange = (newRole: UserRole) => {
+    if (!isSuperAdmin) {
+      setError('Only Superadmin (shsvirtualadmin@gmail.com) can change user roles.');
+      return;
+    }
+    setPendingRole(newRole);
+    setConfirmAction('role');
+  };
+
+  const handleConfirmRoleChange = () => {
+    if (pendingRole) {
+      setRole(pendingRole);
+    }
+    setConfirmAction(null);
+    setPendingRole(null);
+  };
+
+  const handleInitiateSuspend = () => {
+    setConfirmAction('suspend');
+  };
+
+  const handleConfirmSuspend = () => {
+    setIsSuspended((prev) => !prev);
+    setConfirmAction(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!isSuperAdmin) return;
+    setDeleteInProgress(true);
+    setError(null);
+    try {
+      await deleteUserAccount(adminEmail, user.uid, user.email);
+      setConfirmAction(null);
+      onSuccess();
+      onClose();
+    } catch (err: unknown) {
+      setError((err as Error).message || 'Failed to delete user');
+    } finally {
+      setDeleteInProgress(false);
+    }
+  };
+
   return (
-    <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 100,
-        display: 'flex',
-        justifyContent: 'flex-end',
-      }}
-    >
+    <div className="fixed inset-0 z-50 flex items-end md:items-stretch md:justify-end">
       {/* Backdrop */}
       <div
-        style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(4px)',
-        }}
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Drawer Container */}
-      <div
-        className="glass"
-        style={{
-          position: 'relative',
-          width: '100%',
-          maxWidth: 480,
-          height: '100%',
-          background: 'var(--bg-2)',
-          borderLeft: '1px solid var(--border)',
-          display: 'flex',
-          flexDirection: 'column',
-          boxShadow: '-8px 0 32px rgba(0,0,0,0.5)',
-          overflowY: 'auto',
-          zIndex: 101,
-        }}
-      >
-        {/* Drawer Header */}
-        <div
-          style={{
-            padding: '20px 24px',
-            borderBottom: '1px solid var(--border)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-          }}
-        >
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <Key size={16} style={{ color: '#10B981' }} />
-              <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--text)' }}>
-                User Overrides & God-Mode
-              </h3>
-            </div>
-            <p style={{ fontSize: 12, color: 'var(--text-faint)', fontFamily: 'monospace' }}>
-              UID: {user.uid}
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              padding: 4,
-            }}
-          >
-            <X size={20} />
-          </button>
-        </div>
+      {/* Drawer / Bottom sheet container */}
+      <div className="relative w-full md:w-[460px] max-h-[90vh] md:max-h-full h-auto md:h-full bg-[var(--card)] border-t md:border-t-0 md:border-l border-[var(--border)] rounded-t-[24px] md:rounded-t-0 flex flex-col z-10 overflow-hidden shadow-2xl">
+        {/* Mobile grab handle */}
+        <div className="md:hidden w-10 h-1 bg-[var(--border)] rounded-full mx-auto mt-3" />
 
-        {/* User Profile Summary */}
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div
-            style={{
-              padding: '16px',
-              borderRadius: 'var(--r-card)',
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14,
-            }}
-          >
-            <div
-              style={{
-                width: 44,
-                height: 44,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, var(--brand), var(--brand-2))',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 16,
-                fontWeight: 700,
-                color: 'white',
-                flexShrink: 0,
-              }}
-            >
-              {(user.displayName || user.email || 'U')[0].toUpperCase()}
+        {/* Header */}
+        <div className="p-5 border-b border-[var(--border)] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[15px] text-[var(--text)] shrink-0">
+              {userInitial}
             </div>
-            <div style={{ minWidth: 0, flex: 1 }}>
-              <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {user.displayName || 'Unnamed Student'}
-              </p>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div className="min-w-0">
+              <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] truncate">
+                {displayName}
+              </h2>
+              <p className="font-heading text-[12px] text-[var(--muted)] truncate">
                 {user.email}
               </p>
             </div>
-            <div>
-              {isSuspended ? (
-                <Badge color="danger">Suspended</Badge>
-              ) : (
-                <Badge color="success">Active</Badge>
-              )}
-            </div>
           </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-full text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors"
+          >
+            <X size={18} />
+          </button>
+        </div>
 
+        {/* Scrollable Body */}
+        <div className="flex-1 p-5 space-y-5 overflow-y-auto">
           {error && (
-            <div
-              style={{
-                padding: '10px 14px',
-                borderRadius: 'var(--r-input)',
-                background: 'rgba(248,113,113,0.15)',
-                border: '1px solid rgba(248,113,113,0.3)',
-                color: 'var(--danger)',
-                fontSize: 13,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8,
-              }}
-            >
-              <AlertTriangle size={16} />
+            <div className="p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-[12px] font-heading flex items-start gap-2">
+              <AlertTriangle size={15} className="shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
           )}
 
-          {/* Form Controls */}
-          {/* 1. Role Selection */}
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-              Account Role
+          {/* User Profile Information */}
+          <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] space-y-2.5 text-[12px] font-heading">
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--muted)]">User ID</span>
+              <span className="text-[var(--text)] truncate max-w-[220px]">
+                {user.uid}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--muted)]">Target campus</span>
+              <span className="text-[var(--text)]">
+                {user.targetUniversity || 'Not set'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--muted)]">Target exam date</span>
+              <span className="text-[var(--text)]">
+                {user.targetTestDate || 'Not set'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--muted)]">Account status</span>
+              <span
+                className={`px-2 py-0.5 rounded-full border text-[11px] font-medium ${
+                  isSuspended
+                    ? 'border-[var(--red)] text-[var(--red)]'
+                    : 'border-[var(--border)] text-[var(--muted)]'
+                }`}
+              >
+                {isSuspended ? 'Suspended' : 'Active'}
+              </span>
+            </div>
+          </div>
+
+          {/* Plan Selection */}
+          <div className="space-y-2">
+            <label className="block text-[12px] font-heading text-[var(--muted)]">
+              Subscription plan
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setPlan('free')}
+                className={`py-2 px-3 rounded-[12px] border text-[13px] font-heading font-medium transition-colors ${
+                  plan === 'free'
+                    ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)]'
+                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                Free tier
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlan('pro')}
+                className={`py-2 px-3 rounded-[12px] border text-[13px] font-heading font-medium transition-colors ${
+                  plan === 'pro'
+                    ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)]'
+                    : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                }`}
+              >
+                Pro tier (1 year)
+              </button>
+            </div>
+          </div>
+
+          {/* Role Selection (Guarded to Superadmin) */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="block text-[12px] font-heading text-[var(--muted)]">
+                System role
+              </label>
+              {!isSuperAdmin && (
+                <span className="text-[11px] font-heading text-[var(--red)]">
+                  Superadmin only
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
               {(['student', 'crew', 'captain', 'admin'] as UserRole[]).map((r) => (
                 <button
                   key={r}
                   type="button"
-                  onClick={() => setRole(r)}
-                  style={{
-                    padding: '10px',
-                    borderRadius: 'var(--r-input)',
-                    fontSize: 13,
-                    fontWeight: 600,
-                    textTransform: 'capitalize',
-                    cursor: 'pointer',
-                    transition: 'all 160ms',
-                    background: role === r ? 'rgba(16,185,129,0.15)' : 'var(--surface)',
-                    border: role === r ? '1px solid #10B981' : '1px solid var(--border)',
-                    color: role === r ? '#34D399' : 'var(--text-muted)',
-                  }}
+                  disabled={!isSuperAdmin}
+                  onClick={() => handleInitiateRoleChange(r)}
+                  className={`py-2 px-3 rounded-[12px] border text-[13px] font-heading font-medium capitalize transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                    role === r
+                      ? r === 'admin'
+                        ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)]'
+                        : 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)]'
+                      : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                  }`}
                 >
                   {r}
                 </button>
@@ -258,196 +311,194 @@ export function UserOverrideDrawer({
             </div>
           </div>
 
-          {/* 2. Plan & Pro Privileges */}
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-              Plan & Pro Access
+          {/* Recent Test Attempts */}
+          <div className="space-y-2">
+            <label className="block text-[12px] font-heading text-[var(--muted)]">
+              Recent test attempts
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
-              <button
-                type="button"
-                onClick={() => setPlan('free')}
-                style={{
-                  padding: '10px',
-                  borderRadius: 'var(--r-input)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  background: plan === 'free' ? 'rgba(255,255,255,0.1)' : 'var(--surface)',
-                  border: plan === 'free' ? '1px solid var(--text)' : '1px solid var(--border)',
-                  color: plan === 'free' ? 'var(--text)' : 'var(--text-muted)',
-                }}
-              >
-                Free Tier
-              </button>
-              <button
-                type="button"
-                onClick={() => setPlan('pro')}
-                style={{
-                  padding: '10px',
-                  borderRadius: 'var(--r-input)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  background: plan === 'pro' ? 'rgba(47,107,255,0.2)' : 'var(--surface)',
-                  border: plan === 'pro' ? '1px solid var(--brand)' : '1px solid var(--border)',
-                  color: plan === 'pro' ? '#60A5FA' : 'var(--text-muted)',
-                }}
-              >
-                <Sparkles size={14} /> Pro Tier
-              </button>
-            </div>
-
-            {plan === 'pro' && (
-              <div
-                style={{
-                  padding: 12,
-                  borderRadius: 'var(--r-input)',
-                  background: 'rgba(47,107,255,0.08)',
-                  border: '1px solid rgba(47,107,255,0.2)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 8,
-                }}
-              >
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Grant Duration:</span>
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {[
-                    { label: '30 Days', days: 30 },
-                    { label: '90 Days', days: 90 },
-                    { label: '1 Year', days: 365 },
-                    { label: 'Lifetime', days: 9999 },
-                  ].map((d) => (
-                    <button
-                      key={d.days}
-                      type="button"
-                      onClick={() => setProDurationDays(d.days)}
-                      style={{
-                        padding: '4px 10px',
-                        borderRadius: 999,
-                        fontSize: 11,
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        background: proDurationDays === d.days ? 'var(--brand)' : 'var(--surface)',
-                        color: proDurationDays === d.days ? 'white' : 'var(--text-muted)',
-                        border: 'none',
-                      }}
-                    >
-                      {d.label}
-                    </button>
-                  ))}
-                </div>
+            {loadingAttempts ? (
+              <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] space-y-2">
+                <div className="h-4 bg-[var(--border)] rounded w-3/4 animate-pulse" />
+                <div className="h-4 bg-[var(--border)] rounded w-1/2 animate-pulse" />
+              </div>
+            ) : recentAttempts.length === 0 ? (
+              <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] text-center text-[12px] font-heading text-[var(--muted)]">
+                No recorded test attempts
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {recentAttempts.map((att, idx) => (
+                  <div
+                    key={att.id || idx}
+                    className="p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between text-[12px] font-heading"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Clock size={13} className="text-[var(--muted)]" />
+                      <span className="text-[var(--text)] font-medium">
+                        {att.subject || att.title || 'Practice test'}
+                      </span>
+                    </div>
+                    <span className="text-[var(--muted)]">
+                      {typeof att.score === 'number'
+                        ? `${att.score}/${att.totalQuestions || 20}`
+                        : 'Completed'}
+                    </span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
 
-          {/* 3. Account Suspension Toggle */}
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-              Account Security Status
+          {/* Account Actions */}
+          <div className="pt-2 border-t border-[var(--border)] space-y-2">
+            <label className="block text-[12px] font-heading text-[var(--muted)]">
+              Account actions
             </label>
-            <div
-              style={{
-                padding: 14,
-                borderRadius: 'var(--r-input)',
-                background: isSuspended ? 'rgba(248,113,113,0.1)' : 'var(--surface)',
-                border: isSuspended ? '1px solid rgba(248,113,113,0.3)' : '1px solid var(--border)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <ShieldAlert size={18} style={{ color: isSuspended ? 'var(--danger)' : 'var(--text-faint)' }} />
-                <div>
-                  <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                    {isSuspended ? 'Account is Suspended' : 'Account is Active'}
-                  </p>
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    {isSuspended ? 'Student is prevented from logging in' : 'Student has standard login access'}
-                  </p>
-                </div>
-              </div>
-              <Button
-                variant={isSuspended ? 'ghost' : 'danger'}
-                size="sm"
-                onClick={() => setIsSuspended(!isSuspended)}
-              >
-                {isSuspended ? 'Unsuspend' : 'Suspend'}
-              </Button>
-            </div>
-          </div>
 
-          {/* 4. Target Exam Information */}
-          <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-              Target University & Test Date
-            </label>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <input
-                type="text"
-                value={targetUniversity}
-                onChange={(e) => setTargetUniversity(e.target.value)}
-                placeholder="e.g. FAST-NUCES, NUST NET"
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: 'var(--r-input)',
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text)',
-                  fontSize: 13,
-                }}
-              />
-              <input
-                type="date"
-                value={targetTestDate}
-                onChange={(e) => setTargetTestDate(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px 14px',
-                  borderRadius: 'var(--r-input)',
-                  background: 'var(--surface)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text)',
-                  fontSize: 13,
-                }}
-              />
-            </div>
+            {/* Suspend / Unsuspend */}
+            <button
+              type="button"
+              onClick={handleInitiateSuspend}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-[12px] border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[13px] font-heading text-[var(--text)] transition-colors"
+            >
+              <span>{isSuspended ? 'Unsuspend account' : 'Suspend account'}</span>
+            </button>
+
+            {/* Delete Account (Superadmin only) */}
+            {isSuperAdmin && (
+              <button
+                type="button"
+                onClick={() => setConfirmAction('delete')}
+                className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-[12px] border border-[var(--red)]/40 text-[var(--red)] hover:bg-[var(--card-2)] text-[13px] font-heading transition-colors"
+              >
+                <Trash2 size={14} />
+                <span>Delete account permanently</span>
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Drawer Actions */}
-        <div
-          style={{
-            marginTop: 'auto',
-            padding: '20px 24px',
-            borderTop: '1px solid var(--border)',
-            display: 'flex',
-            gap: 12,
-          }}
-        >
-          <Button variant="secondary" size="md" onClick={onClose} style={{ flex: 1 }}>
-            Cancel
-          </Button>
-          <Button
-            variant="primary"
-            size="md"
-            onClick={handleSave}
-            loading={saving}
-            style={{
-              flex: 1,
-              background: 'linear-gradient(135deg, #10B981, #14B8A6)',
-            }}
+        {/* Footer actions */}
+        <div className="p-4 border-t border-[var(--border)] bg-[var(--card)] flex items-center justify-end gap-2 shrink-0">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] transition-colors"
           >
-            <Check size={16} /> Save Changes
-          </Button>
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleApplyOverrides}
+            disabled={saving}
+            className="px-5 py-2.5 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {saving ? 'Saving...' : 'Apply changes'}
+          </button>
         </div>
       </div>
+
+      {/* ─── CONFIRMATION MODALS FOR DESTRUCTIVE ACTIONS ─────────────────────── */}
+      {confirmAction && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm"
+            onClick={() => setConfirmAction(null)}
+          />
+          <div className="relative w-full max-w-[380px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-5 space-y-4 shadow-2xl">
+            {confirmAction === 'role' && (
+              <>
+                <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+                  Change role to {pendingRole}?
+                </h3>
+                <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+                  You are about to assign the role <strong className="text-[var(--text)] capitalize">{pendingRole}</strong> to {displayName}. This modifies user access privileges.
+                </p>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmAction(null)}
+                    className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmRoleChange}
+                    className="px-3.5 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold"
+                  >
+                    Confirm change
+                  </button>
+                </div>
+              </>
+            )}
+
+            {confirmAction === 'suspend' && (
+              <>
+                <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+                  {isSuspended ? 'Unsuspend account?' : 'Suspend account?'}
+                </h3>
+                <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+                  {isSuspended
+                    ? `This will restore student cockpit access for ${displayName}.`
+                    : `This will immediately block ${displayName} from signing into the Boardly student cockpit.`}
+                </p>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmAction(null)}
+                    className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmSuspend}
+                    className={`px-3.5 py-2 rounded-[12px] border text-[13px] font-heading font-semibold ${
+                      isSuspended
+                        ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)]'
+                        : 'border-[var(--red)] bg-[var(--red)] text-white'
+                    }`}
+                  >
+                    {isSuspended ? 'Confirm unsuspend' : 'Confirm suspend'}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {confirmAction === 'delete' && (
+              <>
+                <h3 className="font-heading font-bold text-[16px] text-[var(--red)]">
+                  Delete user account permanently?
+                </h3>
+                <p className="font-heading text-[13px] text-[var(--muted)] leading-relaxed">
+                  This action is irreversible. All profile data and permissions for <strong className="text-[var(--text)]">{displayName}</strong> will be erased from Firestore.
+                </p>
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmAction(null)}
+                    disabled={deleteInProgress}
+                    className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDelete}
+                    disabled={deleteInProgress}
+                    className="px-3.5 py-2 rounded-[12px] border border-[var(--red)] bg-[var(--red)] text-white text-[13px] font-heading font-semibold disabled:opacity-50"
+                  >
+                    {deleteInProgress ? 'Deleting...' : 'Delete permanently'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+export default UserOverrideDrawer;

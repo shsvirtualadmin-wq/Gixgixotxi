@@ -1,17 +1,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Terminal,
   Search,
   RefreshCw,
-  Clock,
-  User,
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/Button';
-import { Skeleton } from '@/components/ui/Skeleton';
-import { EmptyState } from '@/components/ui/EmptyState';
 import { fetchAuditLogs } from '@/services/adminService';
 import type { AuditLog } from '@/types';
 
@@ -24,7 +17,7 @@ export function AdminAuditLogsPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchAuditLogs(100);
+      const data = await fetchAuditLogs(120);
       setLogs(data);
     } catch (err) {
       console.error('Failed to load audit logs:', err);
@@ -48,176 +41,147 @@ export function AdminAuditLogsPage() {
     );
   });
 
+  const formatLogTime = (log: AuditLog): string => {
+    if (!log.timestamp) return 'Just now';
+    try {
+      if ('toDate' in log.timestamp && typeof log.timestamp.toDate === 'function') {
+        const d = log.timestamp.toDate();
+        return d.toLocaleDateString([], {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+      }
+    } catch {
+      // ignore
+    }
+    return 'Recently';
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* ── Page Header ──────────────────────────────────────────────── */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          flexWrap: 'wrap',
-          gap: 16,
-        }}
-      >
+    <div className="flex flex-col gap-6 w-full max-w-full">
+      {/* ─── PAGE HEADER ────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-            <Terminal size={20} style={{ color: '#10B981' }} />
-            <h1
-              className="font-display"
-              style={{
-                fontSize: 24,
-                fontWeight: 800,
-                color: 'var(--text)',
-                letterSpacing: '-0.02em',
-              }}
-            >
-              Immutable Audit Logs
-            </h1>
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            Append-only security log recording every administrative action, user override, and approval.
+          <h1 className="font-dot text-[24px] sm:text-[28px] font-extrabold text-[var(--text)] tracking-tight">
+            Audit log
+          </h1>
+          <p className="font-heading text-[13px] text-[var(--muted)] mt-1">
+            Immutable system logs of administrative actions, user overrides, and moderation.
           </p>
         </div>
 
-        <Button variant="secondary" size="sm" onClick={loadData} loading={loading}>
-          <RefreshCw size={14} /> Refresh
-        </Button>
+        <button
+          type="button"
+          onClick={loadData}
+          disabled={loading}
+          className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
+        >
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+          <span>Refresh</span>
+        </button>
       </div>
 
-      {/* ── Search Toolbar ───────────────────────────────────────────── */}
-      <GlassCard style={{ padding: 16 }}>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--r-input)',
-            padding: '0 12px',
-          }}
-        >
-          <Search size={16} style={{ color: 'var(--text-faint)' }} />
+      {/* ─── SEARCH TOOLBAR ─────────────────────────────────────────────────── */}
+      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)]">
+        <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)]">
+          <Search size={16} className="text-[var(--muted)] shrink-0" />
           <input
             type="text"
-            placeholder="Search logs by action, admin, target UID, or email..."
+            placeholder="Search logs by action, admin, or target student email..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            style={{
-              width: '100%',
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text)',
-              fontSize: 13,
-              padding: '10px 0',
-              outline: 'none',
-            }}
+            className="w-full bg-transparent border-none text-[13px] font-heading text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
           />
         </div>
-      </GlassCard>
+      </div>
 
-      {/* ── Logs Feed ────────────────────────────────────────────────── */}
-      {loading ? (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {Array.from({ length: 5 }).map((_, i) => (
-            <GlassCard key={i}>
-              <Skeleton height={20} width="60%" />
-            </GlassCard>
-          ))}
-        </div>
-      ) : filteredLogs.length === 0 ? (
-        <GlassCard>
-          <EmptyState
-            title="No audit logs found"
-            description="All privileged actions executed by shsvirtualadmin@gmail.com will be recorded here."
-          />
-        </GlassCard>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {filteredLogs.map((log, i) => {
-            const id = log.id || `log_${i}`;
-            const isExpanded = expandedId === id;
-            let timeStr = 'Unknown time';
-            if (log.timestamp && 'toDate' in log.timestamp) {
-              timeStr = log.timestamp.toDate().toLocaleString('en-PK', { timeZone: 'Asia/Karachi' });
-            }
+      {/* ─── LOGS LIST ──────────────────────────────────────────────────────── */}
+      <div className="space-y-3">
+        {loading ? (
+          Array.from({ length: 5 }).map((_, i) => (
+            <div
+              key={i}
+              className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-2"
+            >
+              <div className="h-4 bg-[var(--card-2)] rounded w-1/4" />
+              <div className="h-4 bg-[var(--card-2)] rounded w-1/2" />
+            </div>
+          ))
+        ) : filteredLogs.length === 0 ? (
+          <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
+            <p className="font-heading text-[14px] text-[var(--muted)]">
+              No audit logs match your search.
+            </p>
+          </div>
+        ) : (
+          filteredLogs.map((log) => {
+            const isExpanded = expandedId === log.id;
+            const hasDetails = log.details && Object.keys(log.details).length > 0;
 
             return (
-              <GlassCard
-                key={id}
-                style={{
-                  padding: '14px 18px',
-                  cursor: 'pointer',
-                  border: isExpanded ? '1px solid rgba(16,185,129,0.3)' : '1px solid var(--border)',
-                  background: isExpanded ? 'rgba(16,185,129,0.04)' : 'var(--surface)',
-                }}
-                onClick={() => setExpandedId(isExpanded ? null : id)}
+              <div
+                key={log.id}
+                className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3"
               >
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    <span
-                      style={{
-                        padding: '3px 8px',
-                        borderRadius: 999,
-                        fontSize: 11,
-                        fontWeight: 700,
-                        background: 'rgba(16,185,129,0.15)',
-                        border: '1px solid rgba(16,185,129,0.25)',
-                        color: '#34D399',
-                      }}
-                    >
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-[11px] font-heading px-2.5 py-0.5 rounded-full border border-[var(--border)] text-[var(--text)] font-semibold">
                       {log.action}
                     </span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                      {log.targetEmail || log.targetUid || log.adminEmail}
+                    <span className="font-heading text-[13px] text-[var(--text)]">
+                      Admin:{' '}
+                      <strong className="font-medium text-[var(--text)]">{log.adminEmail}</strong>
                     </span>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, color: 'var(--text-faint)' }}>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <User size={12} /> {log.adminEmail}
-                    </span>
-                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <Clock size={12} /> {timeStr}
-                    </span>
-                  </div>
+                  <span className="font-heading text-[12px] text-[var(--muted)] shrink-0">
+                    {formatLogTime(log)}
+                  </span>
                 </div>
 
-                {isExpanded && (
-                  <div
-                    style={{
-                      marginTop: 12,
-                      paddingTop: 12,
-                      borderTop: '1px solid var(--border)',
-                    }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase', marginBottom: 6 }}>
-                      Event Payload & Details:
-                    </p>
-                    <pre
-                      style={{
-                        background: 'rgba(0,0,0,0.4)',
-                        padding: '12px',
-                        borderRadius: 8,
-                        fontSize: 12,
-                        color: '#A7F3D0',
-                        fontFamily: 'monospace',
-                        overflowX: 'auto',
-                        whiteSpace: 'pre-wrap',
-                      }}
+                {(log.targetEmail || log.targetUid) && (
+                  <p className="font-heading text-[12px] text-[var(--muted)]">
+                    Target:{' '}
+                    <span className="text-[var(--text)] font-medium">
+                      {log.targetEmail || log.targetUid}
+                    </span>
+                  </p>
+                )}
+
+                {/* Collapsible Details in Space Grotesk (NO monospace!) */}
+                {hasDetails && (
+                  <div className="pt-2 border-t border-[var(--border)]">
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId(isExpanded ? null : (log.id || ''))}
+                      className="flex items-center gap-1.5 text-[12px] font-heading text-[var(--muted)] hover:text-[var(--text)] transition-colors"
                     >
-                      {JSON.stringify(log.details, null, 2)}
-                    </pre>
+                      {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                      <span>{isExpanded ? 'Hide payload parameters' : 'View payload parameters'}</span>
+                    </button>
+
+                    {isExpanded && (
+                      <div className="mt-2 p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[12px] font-heading text-[var(--text)] overflow-x-auto">
+                        <pre className="font-heading whitespace-pre-wrap break-words leading-relaxed text-[12px]">
+                          {typeof log.details === 'string'
+                            ? log.details
+                            : JSON.stringify(log.details, null, 2)}
+                        </pre>
+                      </div>
+                    )}
                   </div>
                 )}
-              </GlassCard>
+              </div>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
     </div>
   );
 }
+
+export default AdminAuditLogsPage;

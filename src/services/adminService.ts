@@ -49,6 +49,28 @@ export async function logAdminAction(
   }
 }
 
+// ─── USER DISPLAY NAME HELPER ───────────────────────────────────────────────
+export function getUserDisplayName(
+  profile?: Partial<UserProfile> | null,
+  fallbackAuthUser?: { displayName?: string | null; email?: string | null } | null
+): string {
+  if (profile?.displayName && profile.displayName.trim() && profile.displayName !== 'Unnamed Student') {
+    return profile.displayName.trim();
+  }
+  if (profile?.name && profile.name.trim() && profile.name !== 'Unnamed Student') {
+    return profile.name.trim();
+  }
+  if (fallbackAuthUser?.displayName && fallbackAuthUser.displayName.trim()) {
+    return fallbackAuthUser.displayName.trim();
+  }
+  const email = profile?.email || fallbackAuthUser?.email;
+  if (email && email.includes('@')) {
+    const prefix = email.split('@')[0];
+    return prefix.replace(/[._-]/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return 'Student';
+}
+
 // ─── ADMIN OVERVIEW STATS ────────────────────────────────────────────────────
 export interface AdminStats {
   totalUsers: number;
@@ -58,10 +80,25 @@ export interface AdminStats {
   pendingCrew: number;
   pendingPayments: number;
   pendingReviews: number;
+  subjectCounts: Record<string, number>;
 }
+
+export const CORE_SUBJECTS = [
+  'Mathematics',
+  'Physics',
+  'Chemistry',
+  'Computer Science',
+  'English',
+  'Biology',
+  'Analytical Reasoning',
+] as const;
 
 export async function fetchAdminStats(): Promise<AdminStats> {
   try {
+    const questionsCol = collection(db, 'questions');
+    const usersCol = collection(db, 'users');
+    const attemptsCol = collection(db, 'attempts');
+
     const [
       usersCount,
       questionsCount,
@@ -71,23 +108,46 @@ export async function fetchAdminStats(): Promise<AdminStats> {
       pendingPaymentsSnap,
       pendingReviewsSnap,
     ] = await Promise.all([
-      getCountFromServer(collection(db, 'users')).catch(() => ({ data: () => ({ count: 0 }) })),
-      getCountFromServer(collection(db, 'questions')).catch(() => ({ data: () => ({ count: 0 }) })),
-      getCountFromServer(collection(db, 'attempts')).catch(() => ({ data: () => ({ count: 0 }) })),
+      getCountFromServer(usersCol).catch(() => ({ data: () => ({ count: 0 }) })),
+      getCountFromServer(questionsCol).catch((err) => {
+        console.warn('[AdminService] questions count error:', err);
+        return { data: () => ({ count: 0 }) };
+      }),
+      getCountFromServer(attemptsCol).catch(() => ({ data: () => ({ count: 0 }) })),
       getDocs(query(collection(db, 'captainApplications'), where('status', '==', 'pending'), limit(100))).catch(() => ({ size: 0 })),
       getDocs(query(collection(db, 'crewApplications'), where('status', '==', 'pending'), limit(100))).catch(() => ({ size: 0 })),
       getDocs(query(collection(db, 'paymentRequests'), where('status', '==', 'pending'), limit(100))).catch(() => ({ size: 0 })),
       getDocs(query(collection(db, 'reviews'), where('status', '==', 'pending'), limit(100))).catch(() => ({ size: 0 })),
     ]);
 
+    // Query subject counts in parallel
+    const subjectCounts: Record<string, number> = {};
+    await Promise.all(
+      CORE_SUBJECTS.map(async (subj) => {
+        try {
+          const snap = await getCountFromServer(query(questionsCol, where('subject', '==', subj)));
+          subjectCounts[subj] = snap.data().count;
+        } catch {
+          subjectCounts[subj] = 0;
+        }
+      })
+    );
+
+    let totalQ = questionsCount.data().count;
+    const subjectSum = Object.values(subjectCounts).reduce((a, b) => a + b, 0);
+    if (totalQ === 0 && subjectSum > 0) {
+      totalQ = subjectSum;
+    }
+
     return {
       totalUsers: usersCount.data().count,
-      totalQuestions: questionsCount.data().count,
+      totalQuestions: totalQ,
       totalAttempts: attemptsCount.data().count,
       pendingCaptains: pendingCaptainsSnap.size,
       pendingCrew: pendingCrewSnap.size,
       pendingPayments: pendingPaymentsSnap.size,
       pendingReviews: pendingReviewsSnap.size,
+      subjectCounts,
     };
   } catch (err) {
     console.error('[AdminService] Error loading admin stats:', err);
@@ -99,6 +159,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
       pendingCrew: 0,
       pendingPayments: 0,
       pendingReviews: 0,
+      subjectCounts: {},
     };
   }
 }
@@ -146,23 +207,50 @@ export async function fetchUsers(
 ): Promise<UserProfile[]> {
   try {
     const ref = collection(db, 'users');
-    let q = query(ref, limit(limitCount));
+    let users: UserProfile[] = [];
 
-    if (roleFilter && roleFilter !== 'all') {
-      q = query(ref, where('role', '==', roleFilter), limit(limitCount));
-    } else if (planFilter && planFilter !== 'all') {
-      q = query(ref, where('plan', '==', planFilter), limit(limitCount));
+    if (roleFilter === 'admin') {
+      // Fetch all users with role == 'admin' AND query superadmin specifically so both are listed
+      const adminQ = query(ref, where('role', '==', 'admin'), limit(limitCount));
+      const superQ = query(ref, where('email', '==', 'shsvirtualadmin@gmail.com'), limit(5));
+      const [adminSnap, superSnap] = await Promise.all([
+        getDocs(adminQ).catch(() => null),
+        getDocs(superQ).catch(() => null),
+      ]);
+      const map = new Map<string, UserProfile>();
+      adminSnap?.docs.forEach((d) => map.set(d.id, { uid: d.id, ...d.data() } as UserProfile));
+      superSnap?.docs.forEach((d) => map.set(d.id, { uid: d.id, ...d.data() } as UserProfile));
+      users = Array.from(map.values());
+    } else {
+      let q = query(ref, limit(limitCount));
+
+      if (roleFilter && roleFilter !== 'all') {
+        if (roleFilter === 'superadmin') {
+          q = query(ref, limit(limitCount));
+        } else {
+          q = query(ref, where('role', '==', roleFilter), limit(limitCount));
+        }
+      } else if (planFilter && planFilter !== 'all') {
+        q = query(ref, where('plan', '==', planFilter), limit(limitCount));
+      }
+
+      const snap = await getDocs(q);
+      users = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+
+      if (roleFilter === 'superadmin') {
+        users = users.filter(
+          (u) => u.email && u.email.toLowerCase() === 'shsvirtualadmin@gmail.com'
+        );
+      }
     }
-
-    const snap = await getDocs(q);
-    let users = snap.docs.map(d => ({ uid: d.id, ...d.data() } as UserProfile));
 
     if (searchTerm && searchTerm.trim()) {
       const st = searchTerm.toLowerCase().trim();
-      users = users.filter(u =>
-        u.email?.toLowerCase().includes(st) ||
-        u.displayName?.toLowerCase().includes(st) ||
-        u.uid.toLowerCase().includes(st)
+      users = users.filter(
+        (u) =>
+          u.email?.toLowerCase().includes(st) ||
+          u.displayName?.toLowerCase().includes(st) ||
+          u.uid.toLowerCase().includes(st)
       );
     }
 
@@ -190,6 +278,70 @@ export async function updateUserOverride(
     targetUid,
     targetEmail
   );
+}
+
+export async function deleteUserAccount(
+  adminEmail: string,
+  targetUid: string,
+  targetEmail: string
+): Promise<void> {
+  if (adminEmail.toLowerCase() !== 'shsvirtualadmin@gmail.com') {
+    throw new Error('Only Superadmin (shsvirtualadmin@gmail.com) can delete users.');
+  }
+  await deleteDoc(doc(db, 'users', targetUid));
+  await logAdminAction(adminEmail, 'delete_user_account', { targetUid, targetEmail }, targetUid, targetEmail);
+}
+
+export async function backfillMissingDisplayNames(
+  adminEmail: string,
+  onProgress?: (done: number, total: number) => void
+): Promise<{ updated: number; total: number }> {
+  const usersRef = collection(db, 'users');
+  const snap = await getDocs(query(usersRef, limit(300)));
+  const toUpdate: { uid: string; displayName: string }[] = [];
+
+  for (const d of snap.docs) {
+    const data = d.data() as UserProfile;
+    const currentName = data.displayName?.trim();
+    if (!currentName || currentName === 'Unnamed Student') {
+      const derived = getUserDisplayName(data);
+      toUpdate.push({ uid: d.id, displayName: derived });
+    }
+  }
+
+  const batchSize = 50;
+  let done = 0;
+  for (let i = 0; i < toUpdate.length; i += batchSize) {
+    const chunk = toUpdate.slice(i, i + batchSize);
+    const batch = writeBatch(db);
+    for (const item of chunk) {
+      batch.update(doc(db, 'users', item.uid), { displayName: item.displayName });
+    }
+    await batch.commit();
+    done += chunk.length;
+    if (onProgress) onProgress(done, toUpdate.length);
+  }
+
+  await logAdminAction(adminEmail, 'backfill_missing_display_names', { updatedCount: done });
+  return { updated: done, total: toUpdate.length };
+}
+
+export async function fetchUserRecentAttempts(
+  userId: string,
+  limitCount = 5
+): Promise<Array<{ id: string; subject?: string; score?: number; totalQuestions?: number; percentage?: number; createdAt?: Timestamp | { seconds: number } | string | null }>> {
+  try {
+    const q = query(
+      collection(db, 'attempts'),
+      where('userId', '==', userId),
+      limit(limitCount)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.warn('[AdminService] fetchUserRecentAttempts error:', err);
+    return [];
+  }
 }
 
 // ─── QUESTION BANK CRUD ──────────────────────────────────────────────────────
@@ -542,14 +694,6 @@ export async function fetchAuditLogs(limitCount = 100): Promise<AuditLog[]> {
   }
 }
 
-export async function deleteUserAccount(
-  adminEmail: string,
-  targetUid: string,
-  targetEmail?: string
-): Promise<void> {
-  await deleteDoc(doc(db, 'users', targetUid));
-  await logAdminAction(adminEmail, 'delete_user_account', { targetUid }, targetUid, targetEmail);
-}
 
 export async function fetchUserAttempts(targetUid: string): Promise<Record<string, unknown>[]> {
   try {
