@@ -57,7 +57,14 @@ export function DashboardSidebar({ collapsed, onToggle }: Props) {
           whiteSpace: 'nowrap',
         }}
       >
-        <img src="/logo.svg" alt="Boardly" style={{ width: 32, height: 32, flexShrink: 0 }} />
+        <img
+          src="/favicon.svg"
+          alt="Boardly"
+          width={32}
+          height={32}
+          className="h-8 w-8 shrink-0 object-contain"
+          style={{ width: 32, height: 32, maxWidth: 32, maxHeight: 32 }}
+        />
         {!collapsed && (
           <span
             className="font-display"

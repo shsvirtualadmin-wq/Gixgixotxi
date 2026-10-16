@@ -36,12 +36,13 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
     >
       {/* Left side: hamburger on mobile is handled by BottomNav */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {/* On mobile, show logo since sidebar is hidden */}
         <img
-          src="/logo.svg"
+          src="/favicon.svg"
           alt="Boardly"
-          style={{ width: 28, height: 28, display: 'none' }}
-          className="mobile-logo"
+          width={28}
+          height={28}
+          className="mobile-logo h-7 w-7 shrink-0 object-contain"
+          style={{ width: 28, height: 28, maxWidth: 28, maxHeight: 28, display: 'none' }}
         />
       </div>
 

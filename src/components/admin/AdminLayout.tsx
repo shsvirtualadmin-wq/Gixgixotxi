@@ -110,7 +110,14 @@ export function AdminLayout() {
               textDecoration: 'none',
             }}
           >
-            <img src="/logo.svg" alt="Boardly" style={{ width: 28, height: 28 }} />
+            <img
+              src="/favicon.svg"
+              alt="Boardly"
+              width={28}
+              height={28}
+              className="h-7 w-7 shrink-0 object-contain"
+              style={{ width: 28, height: 28, maxWidth: 28, maxHeight: 28 }}
+            />
             <span
               className="font-display"
               style={{

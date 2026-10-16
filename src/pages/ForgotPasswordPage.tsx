@@ -37,8 +37,15 @@ export function ForgotPasswordPage() {
     <div className="page-enter" style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
       <div style={{ width: '100%', maxWidth: 400 }}>
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
-          <img src="/assets/boardly-logo.svg" alt="Boardly" style={{ height: 36, margin: '0 auto 16px' }}
-            onError={(e) => { (e.target as HTMLImageElement).src = '/boardly-logo.png'; }} />
+          <img
+            src="/assets/boardly-logo.svg"
+            alt="Boardly"
+            width={120}
+            height={36}
+            className="h-9 w-auto max-w-[140px] shrink-0 object-contain mx-auto"
+            style={{ height: 36, width: 'auto', maxWidth: 140, margin: '0 auto 16px' }}
+            onError={(e) => { (e.target as HTMLImageElement).src = '/boardly-logo.png'; }}
+          />
           <h1 className="font-display" style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 6 }}>Reset Password</h1>
           <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>We'll email you a reset link</p>
         </div>

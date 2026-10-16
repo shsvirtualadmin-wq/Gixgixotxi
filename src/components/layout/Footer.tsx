@@ -8,7 +8,14 @@ export function Footer() {
           {/* Brand info */}
           <div className="md:col-span-1">
             <Link to="/" className="flex items-center gap-2 mb-4">
-              <img src="/favicon.svg" alt="Boardly" className="w-8 h-8 rounded-lg" />
+              <img
+                src="/favicon.svg"
+                alt="Boardly"
+                width={36}
+                height={36}
+                className="h-9 w-9 shrink-0 object-contain rounded-lg"
+                style={{ width: 36, height: 36, maxWidth: 36, maxHeight: 36 }}
+              />
               <span className="font-display text-xl font-bold text-[var(--text)]">Boardly</span>
             </Link>
             <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-4">

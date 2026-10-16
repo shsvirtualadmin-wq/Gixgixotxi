@@ -98,7 +98,10 @@ export function LoginPage() {
           <img
             src="/assets/boardly-logo.svg"
             alt="Boardly"
-            style={{ height: 36, margin: '0 auto 16px' }}
+            width={120}
+            height={36}
+            className="h-9 w-auto max-w-[140px] shrink-0 object-contain mx-auto"
+            style={{ height: 36, width: 'auto', maxWidth: 140, margin: '0 auto 16px' }}
             onError={(e) => { (e.target as HTMLImageElement).src = '/boardly-logo.png'; }}
           />
           <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 6 }}>

@@ -44,7 +44,10 @@ export function Navbar() {
           <img
             src="/favicon.svg"
             alt="Boardly Logo"
-            className="w-8 h-8 rounded-lg transition-transform duration-200 group-hover:scale-105"
+            width={36}
+            height={36}
+            className="h-9 w-9 shrink-0 object-contain rounded-lg transition-transform duration-200 group-hover:scale-105"
+            style={{ width: 36, height: 36, maxWidth: 36, maxHeight: 36 }}
           />
           <span className="font-display text-xl font-bold tracking-tight text-[var(--text)]">
             Boardly
