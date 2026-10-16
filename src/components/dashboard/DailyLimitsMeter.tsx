@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { ErrorState } from '@/components/ui/ErrorState';
 
 interface UsageData {
   practiceAttempts?: number;
@@ -25,15 +24,11 @@ interface Props {
 export function DailyLimitsMeter({ uid, isPremium }: Props) {
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ code?: string; message: string; path: string } | null>(null);
-  const [retry, setRetry] = useState(0);
 
   const dateKey = getPKTDateKey();
-  const path = `users/${uid}/usage/${dateKey}`;
 
   useEffect(() => {
     setLoading(true);
-    setError(null);
 
     const unsubscribe = onSnapshot(
       doc(db, 'users', uid, 'usage', dateKey),
@@ -41,83 +36,53 @@ export function DailyLimitsMeter({ uid, isPremium }: Props) {
         setUsage(snap.exists() ? (snap.data() as UsageData) : {});
         setLoading(false);
       },
-      (err) => {
-        console.error(`[DailyLimitsMeter] Failed to read ${path}:`, err.code, err.message);
-        setError({ code: err.code, message: err.message, path });
+      () => {
         setLoading(false);
       }
     );
 
     return unsubscribe;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [uid, dateKey, retry]);
+  }, [uid, dateKey]);
 
-  if (loading) return <Skeleton height={80} />;
-  if (error) return <ErrorState error={error} path={error.path} onRetry={() => setRetry(r => r + 1)} title="Couldn't load daily usage" />;
+  if (loading) return <Skeleton height={70} />;
 
   if (isPremium) {
     return (
-      <div
-        style={{
-          padding: '12px 16px',
-          borderRadius: 'var(--r-input)',
-          background: 'rgba(52,211,153,0.1)',
-          border: '1px solid rgba(52,211,153,0.3)',
-          fontSize: 13,
-          color: 'var(--success)',
-          fontWeight: 600,
-        }}
-      >
-        ✦ Pro — Unlimited daily practice
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-full border-2 border-[var(--red)] flex items-center justify-center font-doto text-xs font-bold text-[#FFFFFF]">
+          ∞
+        </div>
+        <div>
+          <div className="text-xs font-semibold text-[var(--text)]">Unlimited Access</div>
+          <div className="text-[11px] text-[var(--muted)]">Pro quota active</div>
+        </div>
       </div>
     );
   }
 
-  const bars = [
-    { label: 'Practice', used: usage?.practiceAttempts ?? 0, max: FREE_LIMITS.practiceAttempts },
-    { label: 'Arena', used: usage?.arenaSessions ?? 0, max: FREE_LIMITS.arenaSessions },
-    { label: 'AI Tutor', used: usage?.aiTutorTokens ?? 0, max: FREE_LIMITS.aiTutorTokens },
-  ];
+  const used = usage?.practiceAttempts ?? 0;
+  const max = FREE_LIMITS.practiceAttempts;
+  const pct = Math.min(Math.round((used / max) * 100), 100);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-      <p style={{ fontSize: 13, color: 'var(--text-muted)', fontWeight: 600, marginBottom: 2 }}>
-        Today's Usage · {dateKey}
-      </p>
-      {bars.map(({ label, used, max }) => {
-        const pct = Math.min((used / max) * 100, 100);
-        const isOverLimit = used >= max;
-        return (
-          <div key={label}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 4 }}>
-              <span style={{ color: 'var(--text-muted)' }}>{label}</span>
-              <span style={{ color: isOverLimit ? 'var(--danger)' : 'var(--text-faint)', fontVariantNumeric: 'tabular-nums' }}>
-                {used}/{max}
-              </span>
-            </div>
-            <div
-              style={{
-                height: 6,
-                borderRadius: 999,
-                background: 'var(--surface-hover)',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  height: '100%',
-                  width: `${pct}%`,
-                  borderRadius: 999,
-                  background: isOverLimit
-                    ? 'var(--danger)'
-                    : 'linear-gradient(90deg, var(--brand), var(--brand-2))',
-                  transition: 'width 900ms cubic-bezier(0.22,1,0.36,1)',
-                }}
-              />
-            </div>
-          </div>
-        );
-      })}
+    <div className="flex items-center gap-3.5">
+      {/* Daily Limit Ring */}
+      <div className="relative w-12 h-12 rounded-full border-2 border-[var(--red)] border-t-[#2A2A2A] flex flex-col items-center justify-center shrink-0">
+        <span className="font-doto text-xs font-bold text-[#FFFFFF] leading-none">
+          {used}
+        </span>
+        <span className="text-[8px] text-[var(--muted)] font-doto">/{max}</span>
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center justify-between text-xs mb-1">
+          <span className="font-semibold text-[var(--text)]">Daily Practice Ring</span>
+          <span className="font-doto text-[var(--muted)]">{pct}%</span>
+        </div>
+        <div className="text-[11px] text-[var(--muted)]">
+          Resets at midnight PKT
+        </div>
+      </div>
     </div>
   );
 }

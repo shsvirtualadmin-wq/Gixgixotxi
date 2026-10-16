@@ -23,13 +23,15 @@ export function HeroSection() {
               <Badge color="muted">FAST · NUST · GIKI · MDCAT</Badge>
             </div>
 
-            {/* H1 Heading */}
+            {/* H1 Heading in Doto Font */}
             <h1
-              className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-[var(--text)] mb-6"
+              className="font-dot text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[var(--text)] mb-6"
               style={{
-                fontFamily: 'var(--font-heading)',
-                letterSpacing: '-0.02em',
-                lineHeight: 1.1,
+                fontFamily: 'var(--font-dot)',
+                letterSpacing: '0.01em',
+                fontWeight: 900,
+                lineHeight: 1.15,
+                fontSize: 'clamp(28px, 6.5vw, 56px)',
               }}
             >
               Crush Your Entrance Test.{' '}

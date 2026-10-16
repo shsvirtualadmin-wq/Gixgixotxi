@@ -11,6 +11,8 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
   sendEmailVerification,
@@ -44,6 +46,7 @@ interface AuthContextValue {
   sendVerificationEmail: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   retryProfile: () => void;
+  getRoleRedirectUrl: (customRole?: string) => string;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -58,6 +61,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = !!(user?.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL);
 
+  // ── Helper to determine target dashboard URL by role ─────────────────────
+  const getRoleRedirectUrl = useCallback(
+    (customRole?: string) => {
+      if (isAdmin) return '/admin';
+      const role = customRole || profile?.role || 'student';
+      if (role === 'crew') return '/crew';
+      if (role === 'captain') return '/captain';
+      return '/dashboard';
+    },
+    [isAdmin, profile]
+  );
+
   // ── Create referral document after first signup ──────────────────────────
   const createReferralDoc = useCallback(async (uid: string, email: string) => {
     const refCode = localStorage.getItem(REFERRAL_LS_KEY);
@@ -65,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const refDocRef = doc(db, 'referrals', uid);
       const existing = await getDoc(refDocRef);
-      if (existing.exists()) return; // Already created — idempotent
+      if (existing.exists()) return;
       await setDoc(refDocRef, {
         referrerCode: refCode,
         referredUserId: uid,
@@ -77,9 +92,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         emailVerified: false,
         firstTestCompleted: false,
       });
-      // Don't clear the ref code yet — needed until activation
     } catch (err) {
-      // Non-fatal: log but don't block auth
       console.warn('[Boardly] Referral doc creation failed:', err);
     }
   }, []);
@@ -96,27 +109,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (snap.exists()) {
         const data = snap.data() as UserProfile;
 
-        // ── Suspension check ────────────────────────────────────────────────
+        // Suspension check
         if (data.suspended === true || data.isSuspended === true) {
           await firebaseSignOut(auth);
           setUser(null);
           setProfile(null);
           setProfileLoading(false);
           setProfileError({
-            message:
-              'Your account has been suspended. Contact support@boardly.cfd.',
+            message: 'Your account has been suspended. Contact support@boardly.cfd.',
           });
           return;
         }
 
         setProfile(data);
       } else {
-        // Profile does not exist yet — first login after signup
-        // (createUserWithEmailAndPassword flow creates it; Google flow may not)
+        // Safe fields only on first user creation
         const newProfile: Partial<UserProfile> = {
           uid: firebaseUser.uid,
           email: (firebaseUser.email ?? '').toLowerCase(),
-          displayName: firebaseUser.displayName,
+          displayName: firebaseUser.displayName || 'Student',
           role: 'student',
           plan: 'free',
           onboardingCompleted: false,
@@ -127,7 +138,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         });
         setProfile(newProfile as UserProfile);
 
-        // Attempt referral doc creation for Google sign-in
         await createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '');
       }
     } catch (err: unknown) {
@@ -142,6 +152,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfileLoading(false);
     }
   }, [createReferralDoc]);
+
+  // Handle mobile redirect auth result if any
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then(async (credential) => {
+        if (credential?.user) {
+          setUser(credential.user);
+          await loadProfile(credential.user);
+        }
+      })
+      .catch((err) => {
+        console.warn('[Boardly] Redirect auth result:', err);
+      });
+  }, [loadProfile]);
 
   // ── Auth state listener ──────────────────────────────────────────────────
   useEffect(() => {
@@ -161,7 +185,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // ── Auth actions ─────────────────────────────────────────────────────────
   const signIn = useCallback(async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);
-    // Profile load happens via onAuthStateChanged
   }, []);
 
   const signUp = useCallback(
@@ -181,9 +204,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       // Send email verification
-      await sendEmailVerification(newUser);
+      try {
+        await sendEmailVerification(newUser);
+      } catch (e) {
+        console.warn('Verification email send issue:', e);
+      }
 
-      // Create referral doc if came via referral link
       await createReferralDoc(newUser.uid, email);
     },
     [createReferralDoc]
@@ -192,8 +218,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signInWithGoogle = useCallback(async () => {
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    await signInWithPopup(auth, provider);
-    // Profile load + referral creation handled in onAuthStateChanged → loadProfile
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (popupErr: unknown) {
+      const fe = popupErr as { code?: string };
+      // Fallback to signInWithRedirect when popup is blocked on mobile browsers
+      if (
+        fe.code === 'auth/popup-blocked' ||
+        fe.code === 'auth/cancelled-popup-request' ||
+        fe.code === 'auth/popup-closed-by-user'
+      ) {
+        await signInWithRedirect(auth, provider);
+      } else {
+        throw popupErr;
+      }
+    }
   }, []);
 
   const signOutUser = useCallback(async () => {
@@ -227,6 +266,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sendVerificationEmail,
         resetPassword,
         retryProfile,
+        getRoleRedirectUrl,
       }}
     >
       {children}

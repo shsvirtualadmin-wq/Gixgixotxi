@@ -1,13 +1,11 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
-import { BackgroundCanvas } from './components/BackgroundCanvas';
-import { Navbar } from './components/layout/Navbar';
-import { Footer } from './components/layout/Footer';
 import { AuthProvider } from './contexts/AuthContext';
 import { useReferralCapture } from './hooks/useReferral';
 import { Skeleton } from './components/ui/Skeleton';
 import { AdminGuard } from './components/admin/AdminGuard';
 import { AdminLayout } from './components/admin/AdminLayout';
+import { PublicLayout } from './components/layout/PublicLayout';
 
 // Public pages (lazy)
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -19,13 +17,14 @@ const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
 const TermsPage = lazy(() => import('./pages/TermsPage'));
 const ContactPage = lazy(() => import('./pages/ContactPage'));
 
-// Auth pages (lazy)
+// Auth pages (lazy) — use AuthLayout ONLY, NO public Navbar or Footer
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const SignupPage = lazy(() => import('./pages/SignupPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 
-// Dashboard (Phase 3)
+// Dashboard (Student Portal) — uses DashboardShell ONLY, NO public Navbar or Footer
 const DashboardShell = lazy(() =>
   import('./components/dashboard/DashboardShell').then(m => ({ default: m.DashboardShell }))
 );
@@ -39,7 +38,7 @@ const PlaceholderPage = lazy(() =>
   import('./pages/dashboard/PlaceholderPage').then(m => ({ default: m.PlaceholderPage }))
 );
 
-// Test engine (Phase 4)
+// Test engine — full-screen distraction-free, NO Navbar or Footer
 const TestRunnerPage = lazy(() =>
   import('./pages/test/TestRunnerPage').then(m => ({ default: m.TestRunnerPage }))
 );
@@ -47,7 +46,7 @@ const TestResultPage = lazy(() =>
   import('./pages/test/TestResultPage').then(m => ({ default: m.TestResultPage }))
 );
 
-// Phase 5: AI Tutor, Crew, Captain
+// AI Tutor, Crew, Captain
 const AiTutorPage = lazy(() =>
   import('./pages/dashboard/AiTutorPage').then(m => ({ default: m.AiTutorPage }))
 );
@@ -67,7 +66,7 @@ const CaptainLeaderboardPage = lazy(() =>
   import('./pages/captain/CaptainLeaderboardPage').then(m => ({ default: m.CaptainLeaderboardPage }))
 );
 
-// Phase 6: Admin Superpower Portal
+// Super-Admin Portal — strictly guarded with AdminGuard + AdminLayout
 const AdminOverviewPage = lazy(() =>
   import('./pages/admin/AdminOverviewPage').then(m => ({ default: m.AdminOverviewPage }))
 );
@@ -112,7 +111,7 @@ function AppInner() {
         <Route path="/test/:attemptId/result" element={<TestResultPage />} />
         <Route path="/test/:attemptId" element={<TestRunnerPage />} />
 
-        {/* Phase 6: Super-Admin Portal — strictly guarded for shsvirtualadmin@gmail.com */}
+        {/* Super-Admin Portal — strictly guarded for admin, no public Navbar/Footer */}
         <Route
           path="/admin"
           element={
@@ -131,7 +130,7 @@ function AppInner() {
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>
 
-        {/* Dashboard shell — no Navbar/Footer */}
+        {/* Dashboard shell (Student Portal) — no public Navbar/Footer */}
         <Route path="/dashboard" element={<DashboardShell />}>
           <Route index element={<OverviewPage />} />
           <Route path="practice" element={<PracticePage />} />
@@ -146,41 +145,33 @@ function AppInner() {
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
 
-        {/* Public routes (with Navbar + Footer) */}
-        <Route
-          element={
-            <div className="relative min-h-screen flex flex-col" style={{ color: 'var(--text)' }}>
-              <BackgroundCanvas />
-              <Navbar />
-              <Suspense fallback={<PageLoader />}>
-                <Routes>
-                  <Route path="/" element={<LandingPage />} />
-                  <Route path="/features" element={<FeaturesPage />} />
-                  <Route path="/arena" element={<ArenaPage />} />
-                  <Route path="/pricing" element={<PricingPage />} />
-                  <Route path="/reviews" element={<ReviewsPage />} />
-                  <Route path="/privacy" element={<PrivacyPage />} />
-                  <Route path="/terms" element={<TermsPage />} />
-                  <Route path="/contact" element={<ContactPage />} />
-                  {/* Auth */}
-                  <Route path="/login" element={<LoginPage />} />
-                  <Route path="/signup" element={<SignupPage />} />
-                  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-                  {/* Onboarding */}
-                  <Route path="/onboarding" element={<OnboardingPage />} />
-                  {/* Crew & Captain Portals */}
-                  <Route path="/crew" element={<CrewDashboardPage />} />
-                  <Route path="/crew/apply" element={<CrewApplyPage />} />
-                  <Route path="/captain" element={<CaptainDashboardPage />} />
-                  <Route path="/captain/apply" element={<CaptainApplyPage />} />
-                  <Route path="/captain/leaderboard" element={<CaptainLeaderboardPage />} />
-                </Routes>
-              </Suspense>
-              <Footer />
-            </div>
-          }
-          path="/*"
-        />
+        {/* Public Marketing routes ONLY (wrapped by PublicLayout with Navbar + Footer) */}
+        <Route element={<PublicLayout />}>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/arena" element={<ArenaPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/reviews" element={<ReviewsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+        </Route>
+
+        {/* Auth routes ONLY (use AuthLayout ONLY, NO public Navbar or Footer) */}
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/signup" element={<SignupPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/verify-email" element={<VerifyEmailPage />} />
+
+        {/* Onboarding — uses OnboardingShell */}
+        <Route path="/onboarding" element={<OnboardingPage />} />
+
+        {/* Crew & Captain Portals — independent shells, NO public Navbar or Footer */}
+        <Route path="/crew" element={<CrewDashboardPage />} />
+        <Route path="/crew/apply" element={<CrewApplyPage />} />
+        <Route path="/captain" element={<CaptainDashboardPage />} />
+        <Route path="/captain/apply" element={<CaptainApplyPage />} />
+        <Route path="/captain/leaderboard" element={<CaptainLeaderboardPage />} />
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,65 +1,50 @@
-import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
 import { DashboardSidebar } from './DashboardSidebar';
 import { DashboardTopBar } from './DashboardTopBar';
 import { DashboardBottomNav } from './DashboardBottomNav';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
 export function DashboardShell() {
-  const { user } = useAuth();
+  const { user, profileLoading } = useAuth();
   const navigate = useNavigate();
-  const location = useLocation();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
-    if (!user) {
+    if (!profileLoading && !user) {
       navigate('/login', { replace: true });
     }
-  }, [user, navigate]);
+  }, [user, profileLoading, navigate]);
 
   if (!user) return null;
 
   return (
-    <div style={{ display: 'flex', minHeight: '100dvh', flexDirection: 'column' }}>
-      {/* Verification banner spans full width */}
+    <div
+      className="min-h-screen flex flex-col"
+      style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
+    >
       <VerificationBanner />
 
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-        {/* Sidebar — desktop only (hidden on mobile via CSS) */}
-        <DashboardSidebar
-          collapsed={sidebarCollapsed}
-          onToggle={() => setSidebarCollapsed(c => !c)}
-          currentPath={location.pathname}
-        />
+      <div className="flex flex-1 min-h-0">
+        {/* Desktop Sidebar: exactly 240px width */}
+        <DashboardSidebar />
 
-        {/* Main content area */}
-        <div
-          style={{
-            flex: 1,
-            display: 'flex',
-            flexDirection: 'column',
-            minWidth: 0,
-            overflow: 'auto',
-          }}
-        >
-          <DashboardTopBar sidebarCollapsed={sidebarCollapsed} />
+        {/* Main Content Area */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <DashboardTopBar />
 
-          <main
-            className="page-enter"
-            style={{
-              flex: 1,
-              padding: '1.5rem',
-              paddingBottom: '5rem', // space for mobile bottom nav
-            }}
-          >
-            <Outlet />
+          <main className="flex-1 p-4 sm:p-6 pb-24 md:pb-12 overflow-y-auto">
+            <div className="max-w-[1200px] w-full mx-auto">
+              <Outlet />
+            </div>
           </main>
         </div>
       </div>
 
-      {/* Bottom nav — mobile only */}
-      <DashboardBottomNav currentPath={location.pathname} />
+      {/* Mobile Bottom Nav */}
+      <DashboardBottomNav />
     </div>
   );
 }
+
+export default DashboardShell;

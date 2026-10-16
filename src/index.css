@@ -9,10 +9,11 @@
   font-display: swap;
 }
 
-/* ===== DESIGN TOKENS (NOTHING OS STYLE - BOARDLY) ===== */
+/* ===== DESIGN TOKENS (NOTHING OS) ===== */
 :root {
-  /* Dark (Default) */
+  /* Dark Mode Default */
   --bg: #000000;
+  --fg: #F2F2F2;
   --card: #111111;
   --card-2: #1A1A1A;
   --border: #2A2A2A;
@@ -22,7 +23,7 @@
   /* ONE Accent: Nothing Red */
   --red: #D71921;
 
-  /* Aliases strictly mapping to tokens (no blues, greens, or purples) */
+  /* Aliases strictly mapping to tokens */
   --bg-2: #0A0A0A;
   --surface: #111111;
   --surface-hover: #1A1A1A;
@@ -58,8 +59,8 @@
   --space-96: 96px;
 
   /* Fonts */
+  --font-dot: 'Doto', monospace;
   --font-heading: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-dot: 'Doto', 'Space Mono', monospace;
   --font-body: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 
   /* Transitions */
@@ -70,6 +71,7 @@
 /* ===== LIGHT THEME ===== */
 [data-theme="light"] {
   --bg: #F2F2F2;
+  --fg: #000000;
   --card: #FFFFFF;
   --card-2: #E9E9E9;
   --border: #D2D2D2;
@@ -131,36 +133,57 @@
     flex-direction: column;
   }
 
-  /* Headings, nav, buttons, tags and labels use Space Grotesk */
-  h1, h2, h3, h4, h5, h6,
+  /* DOTTED HEADINGS: Every heading of 22px and above uses Doto (weight 800-900, letter-spacing 0.01em) */
+  h1, h2, .font-dot, .heading-dot {
+    font-family: var(--font-dot);
+    font-weight: 800;
+    letter-spacing: 0.01em;
+    line-height: 1.15;
+    word-break: normal;
+    overflow-wrap: break-word;
+  }
+
+  h1 {
+    font-size: clamp(28px, 6vw, 54px);
+  }
+
+  h2 {
+    font-size: clamp(22px, 5vw, 42px);
+  }
+
+  /* Nav, buttons, form inputs, labels, and small text (<22px) use Space Grotesk */
   nav,
   button,
   input,
   textarea,
-  select {
+  select,
+  .font-heading {
     font-family: var(--font-heading);
     letter-spacing: -0.02em;
   }
 }
 
 /* ===== TYPOGRAPHY HELPERS ===== */
-.font-heading {
-  font-family: var(--font-heading);
-  letter-spacing: -0.02em;
-  line-height: 1.1;
+.font-dot {
+  font-family: var(--font-dot) !important;
+  font-weight: 800;
+  letter-spacing: 0.01em;
 }
 
-/* Doto dot font is ONLY for numbers: timers, streaks, scores, ranks, prices and 01/02/03 */
 .font-doto,
-.font-dot,
 .font-mono-dot,
 .tabular-nums {
   font-family: var(--font-dot);
   font-variant-numeric: tabular-nums;
 }
 
+.font-heading {
+  font-family: var(--font-heading);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
 /* ===== SHARED CONTAINER ===== */
-/* Width 100%, max-width 1200px, margin-inline auto, padding-inline 20px (24px tablet, 32px desktop) */
 .boardly-container {
   width: 100%;
   max-width: 1200px;
@@ -178,8 +201,7 @@
   }
 }
 
-/* ===== SHARED SECTION ===== */
-/* Padding-block 64px on mobile, 96px on desktop; scroll-margin-top nav height + 24px */
+/* ===== SECTION SPACING ===== */
 .landing-section {
   padding-block: 64px;
   scroll-margin-top: calc(var(--nav-h) + 24px);
@@ -202,12 +224,15 @@
 }
 
 .section-header h2 {
-  font-size: clamp(30px, 6vw, 52px);
-  font-weight: 600;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
+  font-family: var(--font-dot);
+  font-size: clamp(24px, 5.5vw, 44px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: 0.01em;
   color: var(--text);
   margin: 0;
+  word-break: normal;
+  overflow-wrap: break-word;
 }
 
 .section-header p {
@@ -218,7 +243,6 @@
 }
 
 /* ===== SHARED CARD COMPONENT STYLES ===== */
-/* Padding 24px (20px under 400px wide), radius 24px, 1px border #2A2A2A, solid background #111, display flex, flex-direction column, gap 12px. NO fixed height or min-height */
 .boardly-card {
   padding: 24px;
   border-radius: 24px;
@@ -263,7 +287,6 @@
 }
 
 /* ===== BUTTONS (NOTHING OS) ===== */
-/* Full width inside cards, 52px tall, margin-top 20px, 20px clear space above them */
 .btn-red {
   display: inline-flex;
   align-items: center;
@@ -297,7 +320,7 @@
   height: var(--btn-h);
   padding: 14px 24px;
   background-color: transparent;
-  color: var(--text);
+  color: var(--fg);
   border: 1px solid var(--border);
   border-radius: var(--r-pill);
   font-family: var(--font-heading);
@@ -305,25 +328,23 @@
   font-weight: 600;
   line-height: 1.1;
   letter-spacing: -0.02em;
-  transition: background-color var(--dur-hover) var(--ease-out), border-color var(--dur-hover) var(--ease-out);
+  transition: all var(--dur-hover) var(--ease-out);
   cursor: pointer;
   text-align: center;
   box-shadow: none;
 }
 .btn-outline:hover {
+  border-color: var(--fg);
   background-color: var(--card-2);
-  border-color: var(--muted);
 }
 
-/* Pinned button inside card with 20px space above */
-.card-btn {
+.btn-pinned {
   margin-top: auto;
   padding-top: 20px;
   width: 100%;
 }
 
 /* ===== PILLS AND BADGES ===== */
-/* Padding 6px 14px, 13px text, clear space from card edges */
 .badge-pill {
   display: inline-flex;
   align-items: center;

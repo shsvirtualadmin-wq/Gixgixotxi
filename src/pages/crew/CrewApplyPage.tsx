@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Button } from '@/components/ui/Button';
-import { ErrorState } from '@/components/ui/ErrorState';
-import { Sparkles, CheckCircle, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, ArrowLeft } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Card } from '@/components/ui/Card';
 
 export function CrewApplyPage() {
   const { user } = useAuth();
@@ -21,7 +20,7 @@ export function CrewApplyPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState<{ code?: string; message: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,129 +28,100 @@ export function CrewApplyPage() {
     setSubmitting(true);
     setError(null);
 
+    const payload = {
+      type: 'crew',
+      program: 'crew',
+      userId: user.uid,
+      fullName: fullName.trim(),
+      email: email.trim().toLowerCase(),
+      phone: phone.trim(),
+      institution: institution.trim(),
+      city: city.trim(),
+      academicLevel,
+      promotionPlan: promotionPlan.trim(),
+      status: 'pending',
+      createdAt: serverTimestamp(),
+      submittedAt: serverTimestamp(),
+    };
+
     try {
-      await addDoc(collection(db, 'crewApplications'), {
-        program: 'crew',
-        userId: user.uid,
-        isGuest: false,
-        fullName: fullName.trim(),
-        email: email.trim().toLowerCase(),
-        phone: phone.trim(),
-        institution: institution.trim(),
-        city: city.trim(),
-        academicLevel,
-        promotionPlan: promotionPlan.trim(),
-        answers: promotionPlan.trim(),
-        status: 'pending',
-        submittedAt: serverTimestamp(),
-      });
+      // Save to unified applications collection and crewApplications
+      await Promise.all([
+        addDoc(collection(db, 'applications'), payload),
+        addDoc(collection(db, 'crewApplications'), payload),
+      ]);
       setSubmitted(true);
     } catch (err: unknown) {
-      const e = err as { code?: string; message?: string };
+      const e = err as { message?: string };
       console.error('[CrewApply] Submit error:', err);
-      setError({
-        code: e.code,
-        message: e.message ?? 'Failed to submit application',
-      });
+      setError(e.message ?? 'Failed to submit application. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div style={{ maxWidth: 680, margin: '2rem auto', padding: '1rem 1.25rem 5rem' }}>
+    <div className="max-w-[640px] mx-auto py-8 px-4 sm:px-6">
       <Link
-        to="/crew"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          color: 'var(--text-muted)',
-          fontSize: 13,
-          textDecoration: 'none',
-          marginBottom: 16,
-        }}
+        to="/dashboard"
+        className="inline-flex items-center gap-2 text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--text)] transition-colors mb-6"
+        style={{ fontFamily: 'var(--font-heading)' }}
       >
-        <ArrowLeft size={15} />
-        Back to Crew Portal
+        <ArrowLeft size={16} />
+        Back to Dashboard
       </Link>
 
       {submitted ? (
-        <div
-          className="glass glass-animated-border"
-          style={{
-            borderRadius: 'var(--r-card)',
-            padding: '3rem 2rem',
-            textAlign: 'center',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 16,
-          }}
-        >
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: '50%',
-              background: 'rgba(52, 211, 153, 0.15)',
-              border: '1px solid var(--success)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--success)',
-            }}
-          >
-            <CheckCircle size={32} />
+        <Card className="text-center items-center py-12 px-6">
+          <div className="w-14 h-14 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-[var(--red)] mb-2">
+            <CheckCircle2 size={28} />
           </div>
 
-          <h1 className="font-display" style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)' }}>
-            Application Submitted!
-          </h1>
+          <h2
+            className="text-2xl font-bold text-[var(--text)] tracking-tight"
+            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+          >
+            Application Submitted
+          </h2>
 
-          <p style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 440, lineHeight: 1.6 }}>
-            Thank you for applying to join the <strong>Boardly Crew</strong>. Our community team reviews ambassador applications within 24–48 hours. You will receive an email and in-app notification once approved.
+          <p className="text-sm text-[var(--muted)] max-w-md mt-2 leading-relaxed">
+            Thank you, <strong className="text-[var(--text)]">{fullName}</strong>. Our student ambassador team reviews applications within 24 hours. Once approved by the administrator, your Crew dashboard will unlock automatically.
           </p>
 
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => navigate('/dashboard')}
-            style={{ marginTop: 12, background: 'linear-gradient(135deg, var(--crew-from), var(--crew-to))' }}
-          >
-            Return to Dashboard
-          </Button>
-        </div>
-      ) : (
-        <div className="glass" style={{ borderRadius: 'var(--r-card)', padding: '2rem', display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, var(--crew-from), var(--crew-to))',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-              }}
+          <div className="pt-4 w-full max-w-xs">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="btn-red w-full cursor-pointer"
+              style={{ height: '52px' }}
             >
-              <Sparkles size={18} />
-            </div>
-            <div>
-              <h1 className="font-display" style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>
-                Apply for Boardly Crew
-              </h1>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                Represent Boardly at your academy or college
-              </p>
-            </div>
+              Return to Student Dashboard
+            </button>
+          </div>
+        </Card>
+      ) : (
+        <Card className="p-6 sm:p-8">
+          <div>
+            <span className="badge-pill mb-3">Ambassador Program</span>
+            <h1
+              className="text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight"
+              style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+            >
+              Apply for Boardly Crew
+            </h1>
+            <p className="text-xs sm:text-sm text-[var(--muted)] mt-1.5 leading-relaxed">
+              Represent Boardly in your academy or college wing, earn rewards for every enrolled peer, and access the ambassador cockpit.
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+          {error && (
+            <div className="p-3 rounded-xl bg-[#1A1A1A] border border-[var(--red)] text-xs text-[#FFFFFF]">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2">
+            <div className="flex flex-col gap-1.5 text-left">
+              <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
                 Full Name
               </label>
               <input
@@ -159,134 +129,119 @@ export function CrewApplyPage() {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                style={inputStyle}
-                placeholder="e.g. Bilal Ahmed"
+                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                style={{ height: '52px' }}
               />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Email Address
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5 text-left">
+                <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
+                  Email
                 </label>
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  style={inputStyle}
+                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  style={{ height: '52px' }}
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  WhatsApp Phone
+              <div className="flex flex-col gap-1.5 text-left">
+                <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
+                  WhatsApp / Phone
                 </label>
                 <input
                   type="tel"
                   required
+                  placeholder="0300 1234567"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="0300 1234567"
-                  style={inputStyle}
+                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  style={{ height: '52px' }}
                 />
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  College / Academy
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5 text-left">
+                <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
+                  College / Institution
                 </label>
                 <input
                   type="text"
                   required
+                  placeholder="e.g. Punjab Group of Colleges"
                   value={institution}
                   onChange={(e) => setInstitution(e.target.value)}
-                  placeholder="e.g. Punjab College, KIPS, Army Public"
-                  style={inputStyle}
+                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  style={{ height: '52px' }}
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              <div className="flex flex-col gap-1.5 text-left">
+                <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
                   City
                 </label>
                 <input
                   type="text"
                   required
+                  placeholder="e.g. Lahore / Islamabad"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  placeholder="e.g. Lahore, Islamabad, Karachi"
-                  style={inputStyle}
+                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  style={{ height: '52px' }}
                 />
               </div>
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Academic Track
+            <div className="flex flex-col gap-1.5 text-left">
+              <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
+                Academic Level
               </label>
               <select
                 value={academicLevel}
                 onChange={(e) => setAcademicLevel(e.target.value)}
-                style={inputStyle}
+                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--red)]"
+                style={{ height: '52px' }}
               >
                 <option value="FSc Pre-Engineering">FSc Pre-Engineering</option>
-                <option value="FSc Pre-Medical">FSc Pre-Medical</option>
                 <option value="ICS Computer Science">ICS Computer Science</option>
+                <option value="FSc Pre-Medical">FSc Pre-Medical</option>
                 <option value="A-Levels">A-Levels</option>
+                <option value="University Undergraduate">University Undergraduate</option>
               </select>
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                How do you plan to promote Boardly to classmates?
+            <div className="flex flex-col gap-1.5 text-left">
+              <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
+                How do you plan to introduce Boardly to fellow students?
               </label>
               <textarea
                 required
-                rows={4}
+                rows={3}
+                placeholder="Share your outreach plan, student groups, or academy study circles..."
                 value={promotionPlan}
                 onChange={(e) => setPromotionPlan(e.target.value)}
-                placeholder="Describe your student network, college WhatsApp groups, or study circles..."
-                style={{ ...inputStyle, resize: 'vertical' }}
+                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] p-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
               />
             </div>
 
-            {error && (
-              <ErrorState
-                title="Submission error"
-                error={error}
-              />
-            )}
-
-            <Button
+            <button
               type="submit"
-              variant="primary"
-              size="lg"
-              loading={submitting}
-              style={{
-                marginTop: 8,
-                background: 'linear-gradient(135deg, var(--crew-from), var(--crew-to))',
-              }}
+              disabled={submitting}
+              className="btn-red w-full mt-2 cursor-pointer disabled:opacity-50"
+              style={{ height: '52px' }}
             >
-              Submit Ambassador Application
-            </Button>
+              {submitting ? 'Submitting Application...' : 'Submit Crew Application'}
+            </button>
           </form>
-        </div>
+        </Card>
       )}
     </div>
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  background: 'var(--surface)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--r-input)',
-  color: 'var(--text)',
-  fontSize: 14,
-  padding: '12px 14px',
-  outline: 'none',
-  fontFamily: 'inherit',
-};
+export default CrewApplyPage;

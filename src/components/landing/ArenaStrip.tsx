@@ -26,10 +26,15 @@ export function ArenaStrip() {
                 National Competitive Arena
               </Badge>
 
-              {/* Heading */}
+              {/* Heading in Doto font */}
               <h2
-                className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[var(--text)] tracking-tight leading-tight"
-                style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+                className="font-dot text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[var(--text)] tracking-tight leading-tight"
+                style={{
+                  fontFamily: 'var(--font-dot)',
+                  letterSpacing: '0.01em',
+                  fontWeight: 900,
+                  fontSize: 'clamp(24px, 5.5vw, 40px)',
+                }}
               >
                 Boardly Blitz: <span>Sunday 8:00 PM PKT</span>
               </h2>

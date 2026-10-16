@@ -1,148 +1,240 @@
-import { LogOut, Zap } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { User, CreditCard, LogOut, Sun, Moon, Shield, Award } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import { useProfile } from '@/hooks/useProfile';
 
 interface Props {
-  sidebarCollapsed: boolean;
+  sidebarCollapsed?: boolean;
 }
 
 export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) {
-  const { user, signOutUser, isAdmin } = useAuth();
+  const { user, profile: authProfile, signOutUser, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const { profile } = useProfile(user?.uid ?? null);
+  const { profile: hookProfile } = useProfile(user?.uid ?? null);
+  const profile = authProfile || hookProfile;
+
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem('boardly-theme') : 'dark';
+    return stored === 'light' ? 'light' : 'dark';
+  });
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('boardly-theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(t => (t === 'dark' ? 'light' : 'dark'));
+  };
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSignOut = async () => {
+    setMenuOpen(false);
     await signOutUser();
     navigate('/login');
   };
 
-  const isPremium = profile?.isPremium || profile?.plan === 'pro';
+  const isPro = profile?.isPremium || profile?.plan === 'pro';
+  const role = profile?.role || 'student';
 
   return (
     <header
-      style={{
-        height: 64,
-        borderBottom: '1px solid var(--border)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 1.5rem',
-        background: 'var(--surface)',
-        backdropFilter: 'blur(20px)',
-        flexShrink: 0,
-        gap: 12,
-      }}
+      className="h-16 w-full border-b border-[var(--border)] px-4 sm:px-8 flex items-center justify-between shrink-0 sticky top-0 z-[50]"
+      style={{ backgroundColor: 'var(--card)' }}
     >
-      {/* Left side: hamburger on mobile is handled by BottomNav */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <img
-          src="/favicon.svg"
-          alt="Boardly"
-          width={28}
-          height={28}
-          className="mobile-logo h-7 w-7 shrink-0 object-contain"
-          style={{ width: 28, height: 28, maxWidth: 28, maxHeight: 28, display: 'none' }}
-        />
+      {/* Left side: Mobile brand logo */}
+      <div className="flex items-center gap-3">
+        <Link to="/dashboard" className="flex items-center gap-2.5 md:hidden">
+          <div
+            className="w-7 h-7 rounded-lg bg-[#FFFFFF] flex items-center justify-center shrink-0"
+            aria-hidden="true"
+          >
+            <span
+              className="font-bold text-sm text-[#000000] leading-none"
+              style={{ fontFamily: 'var(--font-heading)' }}
+            >
+              B
+            </span>
+          </div>
+          <span
+            className="text-lg font-bold tracking-tight text-[var(--text)]"
+            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+          >
+            Boardly
+          </span>
+        </Link>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        {/* God Mode shortcut for super-admin */}
+      {/* Right side: theme toggle, upgrade button, and Avatar Menu */}
+      <div className="flex items-center gap-3 ml-auto">
+        {/* Superadmin button */}
         {isAdmin && (
           <button
             onClick={() => navigate('/admin')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 14px',
-              borderRadius: 'var(--r-pill)',
-              background: 'linear-gradient(135deg, #10B981, #059669)',
-              border: 'none',
-              color: 'white',
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: 'pointer',
-              boxShadow: '0 0 12px rgba(16,185,129,0.4)',
-            }}
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[#1A1A1A] border border-[var(--red)] text-[var(--red)] hover:bg-[var(--red)] hover:text-[#FFFFFF] transition-colors cursor-pointer"
+            style={{ fontFamily: 'var(--font-heading)' }}
           >
-            ⚡ God Mode
+            <Shield size={13} />
+            <span>Admin Portal</span>
           </button>
         )}
 
-        {/* Upgrade pill for free users */}
-        {!isPremium && !isAdmin && (
-          <button
-            onClick={() => navigate('/dashboard/plans')}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 6,
-              padding: '6px 14px',
-              borderRadius: 'var(--r-pill)',
-              background: 'linear-gradient(135deg, var(--brand), var(--brand-2))',
-              border: 'none',
-              color: 'white',
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: 'pointer',
-            }}
+        {/* Upgrade pill for free students */}
+        {!isPro && !isAdmin && (
+          <Link
+            to="/pricing"
+            className="btn-red text-xs py-1.5 px-3.5 rounded-full"
+            style={{ height: '36px', fontSize: '13px' }}
           >
-            <Zap size={13} />
             Upgrade to Pro
-          </button>
+          </Link>
         )}
 
-        {/* User avatar */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {user?.photoURL ? (
-            <img
-              src={user.photoURL}
-              alt={user.displayName ?? 'User'}
-              style={{ width: 32, height: 32, borderRadius: '50%', objectFit: 'cover' }}
-            />
-          ) : (
+        {/* Theme Toggle */}
+        <button
+          onClick={toggleTheme}
+          aria-label="Toggle theme"
+          className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)] transition-colors cursor-pointer border border-[var(--border)]"
+        >
+          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+        </button>
+
+        {/* Avatar Menu Container */}
+        <div className="relative" ref={menuRef}>
+          <button
+            onClick={() => setMenuOpen(!menuOpen)}
+            aria-label="User profile menu"
+            className="w-10 h-10 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-[var(--text)] font-semibold hover:border-[var(--red)] transition-colors cursor-pointer text-sm"
+            style={{ fontFamily: 'var(--font-heading)' }}
+          >
+            {user?.photoURL ? (
+              <img
+                src={user.photoURL}
+                alt="Profile"
+                className="w-full h-full rounded-full object-cover"
+              />
+            ) : (
+              (user?.displayName?.[0] || user?.email?.[0] || 'S').toUpperCase()
+            )}
+          </button>
+
+          {/* Avatar Dropdown Menu */}
+          {menuOpen && (
             <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, var(--brand), var(--brand-2))',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 13,
-                fontWeight: 700,
-                color: 'white',
-              }}
+              className="absolute right-0 mt-2 w-64 rounded-2xl bg-[#111111] border border-[var(--border)] p-2 shadow-xl z-50 flex flex-col gap-1"
+              style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}
             >
-              {(user?.displayName ?? user?.email ?? 'U')[0].toUpperCase()}
+              {/* User summary header */}
+              <div className="p-3 border-b border-[var(--border)]">
+                <div
+                  className="font-bold text-sm text-[var(--text)] truncate"
+                  style={{ fontFamily: 'var(--font-heading)' }}
+                >
+                  {user?.displayName || 'Student Aspirant'}
+                </div>
+                <div className="text-xs text-[var(--muted)] truncate mt-0.5">
+                  {user?.email}
+                </div>
+                <div className="mt-2 flex items-center gap-1.5">
+                  <span
+                    className={`badge-pill text-[11px] px-2 py-0.5 ${
+                      isPro ? 'badge-pill-red' : ''
+                    }`}
+                  >
+                    {isPro ? 'Pro Member' : 'Free Starter'}
+                  </span>
+                  {role !== 'student' && (
+                    <span className="badge-pill text-[11px] px-2 py-0.5 capitalize">
+                      {role}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Menu items */}
+              <Link
+                to="/onboarding"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)] transition-colors"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                <User size={16} />
+                <span>Target Exam &amp; Profile</span>
+              </Link>
+
+              <Link
+                to="/pricing"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)] transition-colors"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                <CreditCard size={16} />
+                <span>Plans &amp; Upgrade</span>
+              </Link>
+
+              {role === 'crew' && (
+                <Link
+                  to="/crew"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)] transition-colors"
+                  style={{ fontFamily: 'var(--font-heading)' }}
+                >
+                  <Award size={16} />
+                  <span>Crew Dashboard</span>
+                </Link>
+              )}
+
+              {role === 'captain' && (
+                <Link
+                  to="/captain"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)] transition-colors"
+                  style={{ fontFamily: 'var(--font-heading)' }}
+                >
+                  <Award size={16} />
+                  <span>Captain Dashboard</span>
+                </Link>
+              )}
+
+              {isAdmin && (
+                <Link
+                  to="/admin"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-[var(--red)] hover:bg-[var(--card-2)] transition-colors"
+                  style={{ fontFamily: 'var(--font-heading)' }}
+                >
+                  <Shield size={16} />
+                  <span>Superadmin Portal</span>
+                </Link>
+              )}
+
+              <div className="border-t border-[var(--border)] my-1" />
+
+              <button
+                onClick={handleSignOut}
+                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--red)] hover:bg-[var(--card-2)] transition-colors cursor-pointer text-left"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                <LogOut size={16} />
+                <span>Sign Out</span>
+              </button>
             </div>
           )}
-          <span style={{ fontSize: 13, color: 'var(--text-muted)', display: 'none' }} className="topbar-name">
-            {user?.displayName ?? user?.email?.split('@')[0]}
-          </span>
         </div>
-
-        {/* Sign out */}
-        <button
-          onClick={handleSignOut}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            padding: '6px 10px',
-            borderRadius: 'var(--r-input)',
-            border: '1px solid var(--border)',
-            background: 'transparent',
-            color: 'var(--text-muted)',
-            fontSize: 13,
-            cursor: 'pointer',
-          }}
-          title="Sign out"
-        >
-          <LogOut size={15} />
-        </button>
       </div>
     </header>
   );

@@ -17,17 +17,9 @@ export function CountdownTimer({ targetTestDate, targetUniversity }: Props) {
 
   if (!targetTestDate) {
     return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          color: 'var(--text-faint)',
-          fontSize: 13,
-        }}
-      >
-        <Calendar size={16} />
-        <span>No test date set — <a href="/dashboard/settings" style={{ color: 'var(--brand)', textDecoration: 'none' }}>update profile</a></span>
+      <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+        <Calendar size={15} />
+        <span>No test date set</span>
       </div>
     );
   }
@@ -36,36 +28,19 @@ export function CountdownTimer({ targetTestDate, targetUniversity }: Props) {
   const isToday = daysLeft === 0;
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'baseline',
-        gap: 8,
-        flexWrap: 'wrap',
-      }}
-    >
+    <div className="flex items-baseline gap-2 flex-wrap">
       <span
-        className="tabular-nums font-display"
-        style={{
-          fontSize: 48,
-          fontWeight: 800,
-          lineHeight: 1,
-          background: isPast
-            ? 'var(--danger)'
-            : 'linear-gradient(135deg, var(--brand), var(--brand-2))',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          backgroundClip: 'text',
-        }}
+        className="font-doto text-4xl font-bold leading-none tracking-tight"
+        style={{ color: isPast ? 'var(--red)' : '#FFFFFF' }}
       >
         {isToday ? '0' : Math.abs(daysLeft ?? 0)}
       </span>
       <div>
-        <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
-          {isPast ? 'days since' : isToday ? 'Test day is TODAY!' : 'days to'}
+        <p className="text-xs font-semibold text-[var(--text)]">
+          {isPast ? 'days passed' : isToday ? 'Test day TODAY' : 'days left'}
         </p>
         {targetUniversity && !isToday && (
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{targetUniversity} test</p>
+          <p className="text-[11px] text-[var(--muted)]">{targetUniversity}</p>
         )}
       </div>
     </div>

@@ -1,10 +1,10 @@
-import { collection, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { collection, query, where, limit, getDocs } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ErrorState } from '@/components/ui/ErrorState';
 import { BookOpen } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface Attempt {
   id: string;
@@ -12,7 +12,8 @@ interface Attempt {
   university?: string;
   score?: number;
   totalQuestions?: number;
-  createdAt?: { seconds: number };
+  total?: number;
+  createdAt?: { seconds: number } | string;
   status?: string;
 }
 
@@ -23,89 +24,74 @@ interface Props {
 export function RecentAttempts({ uid }: Props) {
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ code?: string; message: string; path: string } | null>(null);
-  const [retry, setRetry] = useState(0);
 
   useEffect(() => {
     setLoading(true);
-    setError(null);
-    const path = `attempts (uid=${uid})`;
 
-    getDocs(
-      query(
-        collection(db, 'attempts'),
-        where('uid', '==', uid),
-        orderBy('createdAt', 'desc'),
-        limit(5)
-      )
-    )
-      .then((snap) => {
-        setAttempts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Attempt)));
+    // Try both userId and uid queries
+    Promise.all([
+      getDocs(query(collection(db, 'attempts'), where('userId', '==', uid), limit(5))),
+      getDocs(query(collection(db, 'attempts'), where('uid', '==', uid), limit(5))),
+    ])
+      .then(([snapA, snapB]) => {
+        const map = new Map<string, Attempt>();
+        snapA.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() } as Attempt));
+        snapB.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() } as Attempt));
+        const list = Array.from(map.values());
+        setAttempts(list.slice(0, 5));
         setLoading(false);
       })
-      .catch((err: { code?: string; message: string }) => {
-        console.error(`[RecentAttempts] Failed to read ${path}:`, err.code, err.message);
-        setError({ code: err.code, message: err.message, path });
+      .catch(() => {
         setLoading(false);
       });
-  }, [uid, retry]);
+  }, [uid]);
 
-  if (loading) return <><Skeleton height={60} /><Skeleton height={60} className="" /></>;
-  if (error) return <ErrorState error={error} path={error.path} onRetry={() => setRetry(r => r + 1)} title="Couldn't load recent attempts" />;
+  if (loading) return <div className="space-y-2"><Skeleton height={50} count={3} /></div>;
+
   if (attempts.length === 0) {
     return (
       <EmptyState
-        icon={<BookOpen size={36} />}
+        icon={<BookOpen size={32} />}
         title="No attempts yet"
-        description="Start a practice session to see your recent attempts here."
+        description="Launch a practice test or sprint to record your first score."
       />
     );
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+    <div className="flex flex-col gap-2.5">
       {attempts.map((a) => {
         const score = a.score ?? 0;
-        const total = a.totalQuestions ?? 0;
+        const total = a.totalQuestions ?? a.total ?? 10;
         const pct = total > 0 ? Math.round((score / total) * 100) : 0;
-        const date = a.createdAt ? new Date(a.createdAt.seconds * 1000).toLocaleDateString('en-PK') : '—';
 
         return (
-          <div
+          <Link
             key={a.id}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '12px 16px',
-              borderRadius: 'var(--r-input)',
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              gap: 12,
-            }}
+            to={`/test/${a.id}/result`}
+            className="p-3.5 rounded-2xl bg-[#0A0A0A] border border-[var(--border)] hover:border-[var(--muted)] flex items-center justify-between gap-3 transition-colors"
           >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {a.subject ?? 'Practice'} {a.university ? `· ${a.university}` : ''}
-              </p>
-              <p style={{ fontSize: 12, color: 'var(--text-faint)' }}>{date}</p>
-            </div>
-            <div style={{ textAlign: 'right', flexShrink: 0 }}>
-              <p
-                className="tabular-nums"
-                style={{
-                  fontSize: 16,
-                  fontWeight: 700,
-                  color: pct >= 70 ? 'var(--success)' : pct >= 40 ? 'var(--warning)' : 'var(--danger)',
-                }}
+            <div className="flex-1 min-w-0">
+              <div
+                className="text-xs sm:text-sm font-semibold text-[var(--text)] truncate"
+                style={{ fontFamily: 'var(--font-heading)' }}
               >
-                {total > 0 ? `${pct}%` : a.status ?? '—'}
-              </p>
-              {total > 0 && (
-                <p style={{ fontSize: 11, color: 'var(--text-faint)' }}>{score}/{total}</p>
-              )}
+                {a.subject || 'Practice Sprint'} {a.university ? `· ${a.university}` : ''}
+              </div>
+              <div className="text-[11px] text-[var(--muted)] mt-0.5">
+                Status: {a.status || 'Completed'}
+              </div>
             </div>
-          </div>
+
+            <div className="text-right shrink-0">
+              <div className="font-doto font-bold text-sm text-[#FFFFFF]">
+                {score} / {total}
+              </div>
+              <div className="font-doto text-[11px] text-[var(--muted)]">
+                {pct}%
+              </div>
+            </div>
+          </Link>
         );
       })}
     </div>

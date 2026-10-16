@@ -1,4 +1,6 @@
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Flame, Target, BookOpen, Sparkles, ArrowRight } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
 import { CountdownTimer } from '@/components/dashboard/CountdownTimer';
@@ -6,12 +8,9 @@ import { DailyLimitsMeter } from '@/components/dashboard/DailyLimitsMeter';
 import { RecentAttempts } from '@/components/dashboard/RecentAttempts';
 import { WeakChapters } from '@/components/dashboard/WeakChapters';
 import { DotRowStreak } from '@/components/ui/DotRowStreak';
-import { GlassCard } from '@/components/ui/GlassCard';
+import { Card } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/ErrorState';
-import { Button } from '@/components/ui/Button';
-import { Flame, Zap, ArrowRight, BookOpen, Target, Sparkles } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 
 export function OverviewPage() {
   const { user } = useAuth();
@@ -19,17 +18,25 @@ export function OverviewPage() {
   const navigate = useNavigate();
 
   useEffect(() => {
-    document.title = 'Overview — Boardly';
+    document.title = 'Cockpit — Boardly';
   }, []);
 
   if (!user) return null;
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 20, maxWidth: 960, margin: '0 auto' }}>
-        <Skeleton height={40} width="40%" />
-        <Skeleton height={140} />
-        <Skeleton height={240} />
+      <div className="flex flex-col gap-5 max-w-[1000px] mx-auto">
+        <Skeleton height={36} width="40%" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Skeleton height={130} />
+          <Skeleton height={130} />
+          <Skeleton height={130} />
+          <Skeleton height={130} />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <Skeleton height={240} />
+          <Skeleton height={240} />
+        </div>
       </div>
     );
   }
@@ -45,203 +52,161 @@ export function OverviewPage() {
     );
   }
 
-  const isPremium = profile?.isPremium || profile?.plan === 'pro';
+  const isPro = profile?.isPremium || profile?.plan === 'pro';
   const streak = Number(profile?.streak ?? 0);
   const firstName = profile?.displayName ? profile.displayName.split(' ')[0] : 'Student';
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div className="flex flex-col gap-6 max-w-[1000px] mx-auto">
       {/* ── Greeting Header ────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
+          <span className="badge-pill mb-2">Student Cockpit</span>
           <h1
-            className="font-display"
-            style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.03em', lineHeight: 1.1 }}
+            className="text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text)]"
+            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
           >
             Salam, {firstName}!
           </h1>
-          <p style={{ fontSize: 14, color: 'var(--text-muted)', marginTop: 4 }}>
-            {profile?.targetUniversity ? `Target: ${profile.targetUniversity}` : 'Entrance Test Command Center'}
+          <p className="text-xs sm:text-sm text-[var(--muted)] mt-1">
+            {profile?.targetUniversity
+              ? `Target: ${profile.targetUniversity} Admissions 2026`
+              : 'Pakistan Entrance Test Command Center'}
           </p>
         </div>
 
-        <Button variant="primary" size="md" onClick={() => navigate('/dashboard/practice')}>
-          <Zap size={15} /> Start Practice Test
-        </Button>
+        <button
+          onClick={() => navigate('/dashboard/practice')}
+          className="btn-red group cursor-pointer"
+          style={{ height: '48px', padding: '12px 22px' }}
+        >
+          <span>Start Practice Sprint</span>
+          <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+        </button>
       </div>
 
-      {/* ── 4-Card Cockpit Grid ───────────────────────────────────── */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-          gap: 16,
-        }}
-      >
-        {/* Card 1: Today's Streak */}
-        <GlassCard
-          style={{
-            padding: '20px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            gap: 12,
-            borderLeft: streak > 0 ? '4px solid #D71921' : '1px solid var(--border)',
-          }}
-          onClick={() => navigate('/dashboard/streaks')}
-          hover
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
-              Current Streak
-            </span>
-            <Flame size={18} style={{ color: streak > 0 ? '#D71921' : 'var(--text-faint)' }} />
-          </div>
-
-          <div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-              <span className="font-display tabular-nums" style={{ fontSize: 36, fontWeight: 900, color: streak > 0 ? '#D71921' : 'var(--text-muted)' }}>
-                {streak}
-              </span>
-              <span style={{ fontSize: 12, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-                Days
-              </span>
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <DotRowStreak days={7} activeDays={streak} todayActive={streak > 0} />
-            </div>
-          </div>
-        </GlassCard>
-
-        {/* Card 2: Countdown to Test Date */}
-        <GlassCard
-          style={{
-            padding: '20px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}
-          onClick={() => navigate('/dashboard/settings')}
-          hover
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
+      {/* ── 4-Card Cockpit Metric Row ───────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Metric 1: Target Exam Countdown in Dot Font */}
+        <Card className="justify-between">
+          <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">
               Exam Countdown
             </span>
-            <Target size={18} style={{ color: 'var(--text-faint)' }} />
+            <Target size={16} />
           </div>
-
           <div>
             <CountdownTimer
               targetTestDate={profile?.targetTestDate}
               targetUniversity={profile?.targetUniversity}
             />
           </div>
-        </GlassCard>
+        </Card>
 
-        {/* Card 3: Daily Limit Meter */}
-        <GlassCard
-          style={{
-            padding: '20px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
-              Daily Practice Limit
+        {/* Metric 2: Streak Dots for the Week */}
+        <Card className="justify-between">
+          <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">
+              7-Day Streak
             </span>
-            <BookOpen size={18} style={{ color: 'var(--text-faint)' }} />
+            <Flame size={16} className={streak > 0 ? 'text-[var(--red)]' : ''} />
           </div>
-
           <div>
-            <DailyLimitsMeter uid={user.uid} isPremium={isPremium} />
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="font-doto text-3xl font-bold text-[#FFFFFF]">
+                {streak}
+              </span>
+              <span className="text-xs text-[var(--muted)]">Days</span>
+            </div>
+            <DotRowStreak days={7} activeDays={streak} todayActive={streak > 0} />
           </div>
-        </GlassCard>
+        </Card>
 
-        {/* Card 4: Current Plan */}
-        <GlassCard
-          style={{
-            padding: '20px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            gap: 12,
-            borderLeft: isPremium ? '4px solid #D71921' : '1px solid var(--border)',
-          }}
-          onClick={() => navigate('/dashboard/plans')}
-          hover
-        >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
-              Subscription
+        {/* Metric 3: Daily Limit Ring */}
+        <Card className="justify-between">
+          <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">
+              Daily Limit
             </span>
-            <Sparkles size={18} style={{ color: isPremium ? '#D71921' : 'var(--text-faint)' }} />
+            <BookOpen size={16} />
           </div>
-
           <div>
-            <span className="font-display" style={{ fontSize: 20, fontWeight: 800, color: isPremium ? '#D71921' : 'var(--text)' }}>
-              {isPremium ? 'PRO MEMBER' : 'FREE TIER'}
+            <DailyLimitsMeter uid={user.uid} isPremium={isPro} />
+          </div>
+        </Card>
+
+        {/* Metric 4: Current Plan Card with Upgrade */}
+        <Card
+          variant={isPro ? 'red' : 'default'}
+          className="justify-between cursor-pointer"
+          onClick={() => navigate('/pricing')}
+        >
+          <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+            <span className="font-semibold uppercase tracking-wider text-[10px]">
+              Current Plan
             </span>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-              {isPremium
-                ? 'Unlimited MCQs & AI Tutor'
-                : 'Upgrade for PKR 199/mo'}
+            <Sparkles size={16} className={isPro ? 'text-[var(--red)]' : ''} />
+          </div>
+          <div>
+            <div className="flex items-baseline justify-between">
+              <span
+                className="font-bold text-base text-[var(--text)]"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                {isPro ? 'Pro Member' : 'Free Starter'}
+              </span>
+              {!isPro && (
+                <span className="text-[11px] text-[var(--red)] font-semibold">
+                  Upgrade →
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-[var(--muted)] mt-1">
+              {isPro
+                ? 'Unlimited sprints & past papers unlocked'
+                : 'PKR 199/month for unlimited access'}
             </p>
           </div>
-        </GlassCard>
+        </Card>
       </div>
 
-      {/* ── Main 2-Column Section: Weak Chapters & Recent Attempts ───── */}
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
-          gap: 20,
-        }}
-      >
-        {/* Top 3 Weak Chapters */}
-        <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Target size={18} style={{ color: '#D71921' }} />
-              <h3 className="font-display" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-                Top Weak Chapters
-              </h3>
+      {/* ── Main 2-Column Section: 3 Priority Chapters & Recent Attempts */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+        {/* Column 1: 3 Priority Chapters with Accuracy & Practice Button */}
+        <Card>
+          <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
+              <h2
+                className="text-base font-bold text-[var(--text)] tracking-tight"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                Priority Weak Chapters
+              </h2>
             </div>
-            <button
-              onClick={() => navigate('/dashboard/weak-chapters')}
-              style={{ fontSize: 12, color: '#D71921', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-            >
-              Diagnostic View <ArrowRight size={12} />
-            </button>
+            <span className="text-xs text-[var(--muted)]">Auto-Diagnosed</span>
           </div>
 
           <WeakChapters uid={user.uid} />
-        </GlassCard>
+        </Card>
 
-        {/* Recent Attempts */}
-        <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <BookOpen size={18} style={{ color: '#D71921' }} />
-              <h3 className="font-display" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
+        {/* Column 2: Recent Attempts */}
+        <Card>
+          <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
+              <h2
+                className="text-base font-bold text-[var(--text)] tracking-tight"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
                 Recent Attempts
-              </h3>
+              </h2>
             </div>
-            <button
-              onClick={() => navigate('/dashboard/results')}
-              style={{ fontSize: 12, color: '#D71921', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
-            >
-              All Results <ArrowRight size={12} />
-            </button>
+            <span className="text-xs text-[var(--muted)]">Latest 5</span>
           </div>
 
           <RecentAttempts uid={user.uid} />
-        </GlassCard>
+        </Card>
       </div>
     </div>
   );

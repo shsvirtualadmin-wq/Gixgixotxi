@@ -22,6 +22,23 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com';
     }
 
+    // Role helpers
+    function isCrew() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        request.auth.token.role == 'crew' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'crew'
+      );
+    }
+
+    function isCaptain() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        request.auth.token.role == 'captain' ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'captain'
+      );
+    }
+
     // Forbidden student keys on creation or modification
     function studentCreateAllowed(userId) {
       let forbiddenKeys = [
@@ -104,6 +121,26 @@ service cloud.firestore {
       }
     }
 
+    // Unified applications collection (for Crew & Captain role applications)
+    match /applications/{appId} {
+      allow read: if (isAuthenticated() && (resource.data.userId == request.auth.uid || appId == request.auth.uid)) || isAdmin();
+      allow create: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || appId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // Legacy applications collections
+    match /captainApplications/{appId} {
+      allow read: if (isAuthenticated() && (resource.data.userId == request.auth.uid || appId == request.auth.uid)) || isAdmin();
+      allow create: if isAuthenticated() && (appId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /crewApplications/{appId} {
+      allow read: if (isAuthenticated() && (resource.data.userId == request.auth.uid || appId == request.auth.uid)) || isAdmin();
+      allow create: if isAuthenticated() && (appId == request.auth.uid || request.resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
     // In-App Notifications: Users read and mark read their own notifications; authenticated users/admins can create
     match /notifications/{notifId} {
       allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
@@ -161,7 +198,6 @@ service cloud.firestore {
     }
 
     // Boardly Crew Events:
-    // Public read for events. Organizers can manage their own events; admins have full access.
     match /crewEvents/{eventId} {
       allow read: if true;
       allow create: if isAuthenticated() || isAdmin();
@@ -170,7 +206,6 @@ service cloud.firestore {
     }
 
     // Boardly Crew Event Attempts:
-    // Public read for leaderboard. Authenticated users submit their own attempt.
     match /crewEventAttempts/{attemptId} {
       allow read: if true;
       allow create: if (isAuthenticated() && request.resource.data.userId == request.auth.uid) || isAdmin();
@@ -202,8 +237,6 @@ service cloud.firestore {
     }
 
     // MCQ Test Engine Attempts:
-    // Owner can read their own attempt. Create allowed only with status 'preparing'.
-    // Update allowed only before completion and within timer window (endsAt + 5s).
     match /attempts/{attemptId} {
       allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
       allow create: if (isAuthenticated() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'preparing') || isAdmin();
@@ -225,7 +258,6 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Organizer applications & management
     match /organizerApplications/{appId} {
       allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
       allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
@@ -237,19 +269,6 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Campus Captains & Boardly Crew Ambassador Applications:
-    match /captainApplications/{appId} {
-      allow read: if (isAuthenticated() && (resource.data.userId == request.auth.uid || appId == request.auth.uid)) || isAdmin();
-      allow create: if isAuthenticated() && (appId == request.auth.uid || request.resource.data.userId == request.auth.uid);
-      allow update, delete: if isAdmin();
-    }
-
-    match /crewApplications/{appId} {
-      allow read: if (isAuthenticated() && (resource.data.userId == request.auth.uid || appId == request.auth.uid)) || isAdmin();
-      allow create: if isAuthenticated() && (appId == request.auth.uid || request.resource.data.userId == request.auth.uid);
-      allow update, delete: if isAdmin();
-    }
-
     // Boardly Study Crews (Squads / Circles)
     match /crews/{crewId} {
       allow read: if isAuthenticated() || isAdmin();
@@ -259,8 +278,6 @@ service cloud.firestore {
     }
 
     // Captains / Ambassadors collection:
-    // Authenticated users can read captains so registering students can look up the matching ambassador by referral code.
-    // Captains can update their own profile; admins can write everything.
     match /captains/{captainId} {
       allow read: if isAuthenticated() || isAdmin();
       allow create: if isAdmin() || (isAuthenticated() && (captainId == request.auth.uid || request.resource.data.userId == request.auth.uid));

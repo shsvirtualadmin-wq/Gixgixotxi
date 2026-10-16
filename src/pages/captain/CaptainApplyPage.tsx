@@ -2,10 +2,9 @@ import { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { Button } from '@/components/ui/Button';
-import { ErrorState } from '@/components/ui/ErrorState';
-import { Compass, CheckCircle, ArrowLeft } from 'lucide-react';
+import { CheckCircle2, ArrowLeft } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+import { Card } from '@/components/ui/Card';
 
 export function CaptainApplyPage() {
   const { user } = useAuth();
@@ -21,7 +20,7 @@ export function CaptainApplyPage() {
 
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [error, setError] = useState<{ code?: string; message: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,259 +28,221 @@ export function CaptainApplyPage() {
     setSubmitting(true);
     setError(null);
 
+    const payload = {
+      type: 'captain',
+      program: 'captain',
+      userId: user.uid,
+      studentName: studentName.trim(),
+      fullName: studentName.trim(),
+      email: email.trim().toLowerCase(),
+      phone: phone.trim(),
+      institution: institution.trim(),
+      university: institution.trim(),
+      grade: grade.trim(),
+      city: city.trim(),
+      statement: statement.trim(),
+      status: 'pending',
+      createdAt: serverTimestamp(),
+      appliedAt: serverTimestamp(),
+    };
+
     try {
-      await addDoc(collection(db, 'captainApplications'), {
-        studentName: studentName.trim(),
-        email: email.trim().toLowerCase(),
-        phone: phone.trim(),
-        institution: institution.trim(),
-        grade: grade.trim(),
-        city: city.trim(),
-        statement: statement.trim(),
-        status: 'pending',
-        appliedAt: serverTimestamp(),
-        userId: user.uid,
-      });
+      await Promise.all([
+        addDoc(collection(db, 'applications'), payload),
+        addDoc(collection(db, 'captainApplications'), payload),
+      ]);
       setSubmitted(true);
     } catch (err: unknown) {
-      const e = err as { code?: string; message?: string };
+      const e = err as { message?: string };
       console.error('[CaptainApply] Submit error:', err);
-      setError({
-        code: e.code,
-        message: e.message ?? 'Failed to submit application',
-      });
+      setError(e.message ?? 'Failed to submit application. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div style={{ maxWidth: 680, margin: '2rem auto', padding: '1rem 1.25rem 5rem' }}>
+    <div className="max-w-[640px] mx-auto py-8 px-4 sm:px-6">
       <Link
-        to="/captain"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          color: 'var(--text-muted)',
-          fontSize: 13,
-          textDecoration: 'none',
-          marginBottom: 16,
-        }}
+        to="/dashboard"
+        className="inline-flex items-center gap-2 text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--text)] transition-colors mb-6"
+        style={{ fontFamily: 'var(--font-heading)' }}
       >
-        <ArrowLeft size={15} />
-        Back to Captain Cockpit
+        <ArrowLeft size={16} />
+        Back to Dashboard
       </Link>
 
       {submitted ? (
-        <div
-          className="glass glass-animated-border"
-          style={{
-            borderRadius: 'var(--r-card)',
-            padding: '3rem 2rem',
-            textAlign: 'center',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 16,
-          }}
-        >
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: '50%',
-              background: 'rgba(52, 211, 153, 0.15)',
-              border: '1px solid var(--success)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--success)',
-            }}
-          >
-            <CheckCircle size={32} />
+        <Card className="text-center items-center py-12 px-6">
+          <div className="w-14 h-14 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-[var(--red)] mb-2">
+            <CheckCircle2 size={28} />
           </div>
 
-          <h1 className="font-display" style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)' }}>
-            Application Received!
-          </h1>
+          <h2
+            className="text-2xl font-bold text-[var(--text)] tracking-tight"
+            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+          >
+            Application Submitted
+          </h2>
 
-          <p style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 460, lineHeight: 1.6 }}>
-            Your application for <strong>Campus Captain</strong> has been recorded. Our campus community leads review applications and interview candidates to allocate official university territories.
+          <p className="text-sm text-[var(--muted)] max-w-md mt-2 leading-relaxed">
+            Thank you, <strong className="text-[var(--text)]">{studentName}</strong>. Your Campus Captain nomination for <strong className="text-[var(--text)]">{institution}</strong> has been received. Our leadership panel will review your statement and contact you via WhatsApp/Email.
           </p>
 
-          <Button
-            variant="primary"
-            size="md"
-            onClick={() => navigate('/dashboard')}
-            style={{ marginTop: 12, background: 'linear-gradient(135deg, var(--captain-from), var(--captain-to))' }}
-          >
-            Return to Dashboard
-          </Button>
-        </div>
-      ) : (
-        <div className="glass" style={{ borderRadius: 'var(--r-card)', padding: '2rem', display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, var(--captain-from), var(--captain-to))',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'white',
-              }}
+          <div className="pt-4 w-full max-w-xs">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="btn-red w-full cursor-pointer"
+              style={{ height: '52px' }}
             >
-              <Compass size={18} />
-            </div>
-            <div>
-              <h1 className="font-display" style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)' }}>
-                Apply for Campus Captain
-              </h1>
-              <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-                Lead university entrance test preparation for your campus
-              </p>
-            </div>
+              Return to Student Dashboard
+            </button>
+          </div>
+        </Card>
+      ) : (
+        <Card className="p-6 sm:p-8">
+          <div>
+            <span className="badge-pill mb-3">Campus Leadership</span>
+            <h1
+              className="text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight"
+              style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+            >
+              Apply as Campus Captain
+            </h1>
+            <p className="text-xs sm:text-sm text-[var(--muted)] mt-1.5 leading-relaxed">
+              Lead your college wing, organize mock sessions, distribute mock passes, and earn leadership recognition.
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Student Name
+          {error && (
+            <div className="p-3 rounded-xl bg-[#1A1A1A] border border-[var(--red)] text-xs text-[#FFFFFF]">
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4 mt-2">
+            <div className="flex flex-col gap-1.5 text-left">
+              <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
+                Full Name
               </label>
               <input
                 type="text"
                 required
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
-                style={inputStyle}
-                placeholder="e.g. Hamza Tariq"
+                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                style={{ height: '52px' }}
               />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Email Address
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5 text-left">
+                <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
+                  Email
                 </label>
                 <input
                   type="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  style={inputStyle}
+                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  style={{ height: '52px' }}
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Phone / WhatsApp
+              <div className="flex flex-col gap-1.5 text-left">
+                <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
+                  WhatsApp / Phone
                 </label>
                 <input
                   type="tel"
                   required
+                  placeholder="0300 1234567"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="0300 1234567"
-                  style={inputStyle}
+                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  style={{ height: '52px' }}
                 />
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                  Campus / University
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-1.5 text-left">
+                <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
+                  College / University
                 </label>
                 <input
                   type="text"
                   required
+                  placeholder="e.g. Government College University"
                   value={institution}
                   onChange={(e) => setInstitution(e.target.value)}
-                  placeholder="e.g. NUST H-12, FAST Islamabad, GIKI, LUMS"
-                  style={inputStyle}
+                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  style={{ height: '52px' }}
                 />
               </div>
 
-              <div>
-                <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+              <div className="flex flex-col gap-1.5 text-left">
+                <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
                   City
                 </label>
                 <input
                   type="text"
                   required
+                  placeholder="e.g. Lahore / Rawalpindi"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  placeholder="e.g. Islamabad, Lahore, Karachi"
-                  style={inputStyle}
+                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  style={{ height: '52px' }}
                 />
               </div>
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Academic Grade / Program
+            <div className="flex flex-col gap-1.5 text-left">
+              <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
+                Current Class / Year
               </label>
-              <input
-                type="text"
-                required
+              <select
                 value={grade}
                 onChange={(e) => setGrade(e.target.value)}
-                placeholder="e.g. HSSC-II Pre-Engineering, BS CS 1st Year"
-                style={inputStyle}
-              />
+                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--red)]"
+                style={{ height: '52px' }}
+              >
+                <option value="HSSC-I (11th Class)">HSSC-I (11th Class)</option>
+                <option value="HSSC-II (12th Class)">HSSC-II (12th Class)</option>
+                <option value="A-Levels (Year 2)">A-Levels (Year 2)</option>
+                <option value="Repeater / Improver">Repeater / Improver</option>
+                <option value="University Undergraduate">University Undergraduate</option>
+              </select>
             </div>
 
-            <div>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-faint)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Statement of Leadership & Promotion Strategy
+            <div className="flex flex-col gap-1.5 text-left">
+              <label className="text-xs font-semibold text-[var(--text)]" style={{ fontFamily: 'var(--font-heading)' }}>
+                Why do you want to represent your campus as Captain?
               </label>
               <textarea
                 required
-                rows={4}
+                rows={3}
+                placeholder="Share your extracurricular experience, student reach, or vision for your college..."
                 value={statement}
                 onChange={(e) => setStatement(e.target.value)}
-                placeholder="Why do you want to lead Boardly at your campus? How will you organize peer mocks and test study circles?"
-                style={{ ...inputStyle, resize: 'vertical' }}
+                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] p-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
               />
             </div>
 
-            {error && (
-              <ErrorState
-                title="Submission error"
-                error={error}
-              />
-            )}
-
-            <Button
+            <button
               type="submit"
-              variant="primary"
-              size="lg"
-              loading={submitting}
-              style={{
-                marginTop: 8,
-                background: 'linear-gradient(135deg, var(--captain-from), var(--captain-to))',
-              }}
+              disabled={submitting}
+              className="btn-red w-full mt-2 cursor-pointer disabled:opacity-50"
+              style={{ height: '52px' }}
             >
-              Submit Campus Captain Application
-            </Button>
+              {submitting ? 'Submitting Application...' : 'Submit Captain Application'}
+            </button>
           </form>
-        </div>
+        </Card>
       )}
     </div>
   );
 }
 
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  background: 'var(--surface)',
-  border: '1px solid var(--border)',
-  borderRadius: 'var(--r-input)',
-  color: 'var(--text)',
-  fontSize: 14,
-  padding: '12px 14px',
-  outline: 'none',
-  fontFamily: 'inherit',
-};
+export default CaptainApplyPage;
