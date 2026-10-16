@@ -1,115 +1,132 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
-import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, type QueryDocumentSnapshot, type DocumentData } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { EmptyState } from '@/components/ui/EmptyState';
 import {
   Compass,
   Trophy,
   Copy,
   Check,
-  Target,
+  Users,
+  Award,
+  Sparkles,
   ArrowRight,
   TrendingUp,
-  Award,
+  Share2,
+  CheckCircle,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
-interface MissionItem {
+interface ReferredStudent {
   id: string;
-  title: string;
-  description: string;
-  targetCount: number;
-  rewardPoints: number;
-  category?: string;
-  icon?: string;
-  isActive?: boolean;
+  referredEmail: string;
+  referredUserName?: string;
+  hasTakenFirstTest?: boolean;
+  isPro?: boolean;
+  signedUpAt?: { seconds: number; nanoseconds?: number } | null;
 }
 
-interface CaptainData {
+interface CaptainRankItem {
   id: string;
-  studentName?: string;
-  institution?: string;
-  city?: string;
-  referralCode?: string;
-  referralCount?: number;
-  activeUsersCount?: number;
-  points?: number;
-  tier?: string;
-  rank?: number;
-  status?: string;
+  name: string;
+  university: string;
+  referralCount: number;
+  points: number;
+  tier: string;
 }
 
 export function CaptainDashboardPage() {
   const { user } = useAuth();
   const { profile, loading: profileLoading } = useProfile(user?.uid ?? null);
 
-  const [captain, setCaptain] = useState<CaptainData | null>(null);
-  const [missions, setMissions] = useState<MissionItem[]>([]);
+  const [referredStudents, setReferredStudents] = useState<ReferredStudent[]>([]);
+  const [crewsLedCount, setCrewsLedCount] = useState(0);
+  const [captainRankings, setCaptainRankings] = useState<CaptainRankItem[]>([]);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const [loading, setLoading] = useState(true);
+
+  // Captain code derived from user
+  const captainCode =
+    profile?.crewReferralCode ||
+    `CAP-${(profile?.targetUniversity || 'CAMPUS').slice(0, 4).toUpperCase()}-${user?.uid.slice(0, 4).toUpperCase()}`;
+
+  const referralLink = `${window.location.origin}/signup?ref=${captainCode}`;
 
   useEffect(() => {
     if (!user) return;
     setLoading(true);
 
-    async function loadCaptainData() {
+    async function loadCaptainStats() {
       try {
-        // 1. Fetch captain profile document from captains/{uid}
-        const capSnap = await getDoc(doc(db, 'captains', user!.uid));
-        if (capSnap.exists()) {
-          setCaptain({ id: capSnap.id, ...capSnap.data() } as CaptainData);
+        // 1. Fetch referred students matching this captain's code or uid
+        const refQ = query(
+          collection(db, 'referrals'),
+          where('referrerCode', '==', captainCode)
+        );
+        const refSnap = await getDocs(refQ);
+        let refs: ReferredStudent[] = refSnap.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+        } as ReferredStudent));
+
+        // If empty by code, fallback query by referrerUid
+        if (refs.length === 0) {
+          const refQ2 = query(
+            collection(db, 'referrals'),
+            where('referrerUid', '==', user!.uid)
+          );
+          const refSnap2 = await getDocs(refQ2);
+          refs = refSnap2.docs.map((d) => ({
+            id: d.id,
+            ...d.data(),
+          } as ReferredStudent));
         }
 
-        // 2. Fetch active missions
-        const misSnap = await getDocs(collection(db, 'missions'));
-        if (!misSnap.empty) {
-          setMissions(misSnap.docs.map((d) => ({ id: d.id, ...d.data() } as MissionItem)));
+        setReferredStudents(refs);
+
+        // 2. Fetch crews led by this captain
+        const crewQ = query(collection(db, 'crews'), where('leaderId', '==', user!.uid));
+        const crewSnap = await getDocs(crewQ);
+        setCrewsLedCount(crewSnap.size);
+
+        // 3. Fetch captain rankings from real Firestore 'captains' collection
+        const capQ = query(collection(db, 'captains'), orderBy('referralCount', 'desc'), limit(10));
+        const capSnap = await getDocs(capQ).catch(() => ({ docs: [] as QueryDocumentSnapshot<DocumentData>[] }));
+        if (capSnap.docs.length > 0) {
+          setCaptainRankings(capSnap.docs.map((d) => ({ id: d.id, ...d.data() } as CaptainRankItem)));
         } else {
-          // Default missions if collection not yet seeded
-          setMissions([
-            {
-              id: 'msn-1',
-              title: 'Weekly Squad Recruitment',
-              description: 'Onboard 5 students from your campus batch who complete their first diagnostic test.',
-              targetCount: 5,
-              rewardPoints: 250,
-            },
-            {
-              id: 'msn-2',
-              title: 'Host a Campus Mock Sprint',
-              description: 'Organize a timed peer drill for your class using the Boardly Practice Vault.',
-              targetCount: 1,
-              rewardPoints: 500,
-            },
-            {
-              id: 'msn-3',
-              title: 'Reach 50 Campus Activations',
-              description: 'Surpass 50 active students on your campus leaderboard to unlock Captain Gold status.',
-              targetCount: 50,
-              rewardPoints: 1000,
-            },
+          // Fallback if captains collection hasn't been populated yet
+          setCaptainRankings([
+            { id: user!.uid, name: profile?.displayName || 'You', university: profile?.targetUniversity || 'Campus', referralCount: refs.length, points: refs.length * 50, tier: 'Bronze' },
           ]);
         }
       } catch (err) {
-        console.warn('[CaptainDashboard] Data fetch note:', err);
+        console.warn('[CaptainDashboard] Fetch error:', err);
       } finally {
         setLoading(false);
       }
     }
 
-    loadCaptainData();
-  }, [user]);
-
-  const captainCode = captain?.referralCode || `CAP-${profile?.targetUniversity?.substring(0, 4) || 'NUST'}-26`;
+    loadCaptainStats();
+  }, [user, captainCode, profile]);
 
   const handleCopyCode = () => {
     navigator.clipboard.writeText(captainCode);
     setCopiedCode(true);
     setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleCopyLink = () => {
+    navigator.clipboard.writeText(referralLink);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
   };
 
   if (profileLoading || loading) {
@@ -122,14 +139,13 @@ export function CaptainDashboardPage() {
     );
   }
 
-  const isCaptain = Boolean(captain?.status === 'active' || profile?.role === 'captain');
+  const isCaptain = profile?.role === 'captain' || profile?.role === 'admin';
 
-  // If user is not yet a Campus Captain, render the invitation and apply CTA
+  // If not yet a captain, offer application
   if (!isCaptain) {
     return (
       <div style={{ maxWidth: 840, margin: '2rem auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <div
-          className="glass glass-animated-border"
+        <GlassCard
           style={{
             borderRadius: 'var(--r-hero)',
             padding: '3rem 2rem',
@@ -142,241 +158,298 @@ export function CaptainDashboardPage() {
         >
           <div
             style={{
-              width: 56,
-              height: 56,
+              width: 72,
+              height: 72,
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, var(--captain-from), var(--captain-to))',
+              background: 'rgba(215, 25, 33, 0.1)',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: 'white',
-              boxShadow: '0 0 24px rgba(245, 158, 11, 0.5)',
+              color: '#D71921',
             }}
           >
-            <Compass size={28} />
+            <Compass size={36} />
           </div>
 
           <div>
-            <h1 className="font-display" style={{ fontSize: 'clamp(28px, 5vw, 42px)', fontWeight: 800, color: 'var(--text)' }}>
-              Become a <span style={{ color: 'var(--captain-from)' }}>Campus Captain</span>
+            <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)' }}>
+              Become a Boardly Campus Captain
             </h1>
-            <p style={{ fontSize: 16, color: 'var(--text-muted)', maxWidth: 540, marginTop: 8, lineHeight: 1.6 }}>
-              Lead entrance test preparation at your university or college campus. Host campus sprints, guide batchmates through NUST NET / FAST-NUCES mocks, and earn official leadership recommendations.
+            <p style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 520, margin: '8px auto 0', lineHeight: 1.6 }}>
+              Lead entrance test prep at your university campus or college. Get your own official ambassador referral code, earn monthly stipends, and mentor future engineers and doctors.
             </p>
           </div>
 
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: 16,
-              width: '100%',
-              maxWidth: 680,
-              textAlign: 'left',
-              marginTop: 12,
-            }}
-          >
-            <div className="glass" style={{ padding: '16px', borderRadius: 'var(--r-input)' }}>
-              <Trophy size={20} style={{ color: 'var(--captain-from)', marginBottom: 8 }} />
-              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>National Leaderboard</p>
-              <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
-                Compete against captains across NUST, FAST, GIKI, and LUMS for top campus ranks.
-              </p>
-            </div>
-
-            <div className="glass" style={{ padding: '16px', borderRadius: 'var(--r-input)' }}>
-              <Target size={20} style={{ color: 'var(--brand)', marginBottom: 8 }} />
-              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Weekly Missions</p>
-              <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
-                Complete structured campus challenges to unlock higher rewards and tiers.
-              </p>
-            </div>
-
-            <div className="glass" style={{ padding: '16px', borderRadius: 'var(--r-input)' }}>
-              <Award size={20} style={{ color: 'var(--success)', marginBottom: 8 }} />
-              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Direct Team Access</p>
-              <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
-                Exclusive monthly syncs with Boardly engineering and product leadership.
-              </p>
-            </div>
+          <div style={{ display: 'flex', gap: 12 }}>
+            <Link to="/captain/apply">
+              <Button variant="primary" size="lg">
+                Apply for Campus Captaincy <ArrowRight size={16} />
+              </Button>
+            </Link>
           </div>
-
-          <Link to="/captain/apply" style={{ marginTop: 12 }}>
-            <Button
-              variant="primary"
-              size="lg"
-              style={{
-                gap: 8,
-                background: 'linear-gradient(135deg, var(--captain-from), var(--captain-to))',
-              }}
-            >
-              <span>Apply for Campus Captain</span>
-              <ArrowRight size={18} />
-            </Button>
-          </Link>
-        </div>
+        </GlassCard>
       </div>
     );
   }
 
-  // Approved Campus Captain View
-  const activeStudents = captain?.activeUsersCount ?? 0;
-  const captainPoints = captain?.points ?? activeStudents * 50;
-  const campusRank = captain?.rank ? `#${captain.rank}` : '#2';
-  const campusName = captain?.institution || profile?.targetUniversity || 'FAST-NUCES';
-  const tier = captain?.tier || (activeStudents > 25 ? 'Platinum' : activeStudents > 10 ? 'Gold' : 'Silver');
+  // Calculate stats
+  const now = Date.now();
+  const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+  const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+  const totalJoined = referredStudents.length;
+
+  const joinedThisWeek = referredStudents.filter((s) => {
+    const sec = s.signedUpAt?.seconds;
+    const t = sec ? sec * 1000 : now;
+    return now - t <= ONE_WEEK_MS;
+  }).length;
+
+  const joinedThisMonth = referredStudents.filter((s) => {
+    const sec = s.signedUpAt?.seconds;
+    const t = sec ? sec * 1000 : now;
+    return now - t <= ONE_MONTH_MS;
+  }).length;
+
+  const proConversions = referredStudents.filter((s) => s.isPro).length;
+
+  // Reward tier
+  let tier = 'Bronze';
+  if (totalJoined >= 50) tier = 'Platinum';
+  else if (totalJoined >= 25) tier = 'Gold';
+  else if (totalJoined >= 10) tier = 'Silver';
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', padding: '2rem 1.25rem 5rem', display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* Top Banner */}
-      <div
-        className="glass"
-        style={{
-          borderRadius: 'var(--r-hero)',
-          padding: '2rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 20,
-          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08), rgba(251, 146, 60, 0.04))',
-          border: '1px solid rgba(245, 158, 11, 0.25)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--captain-from)' }}>
-                Campus Captain Cockpit
-              </span>
-              <Badge color="warning">{tier} Tier</Badge>
-            </div>
-            <h1 className="font-display" style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', marginTop: 4 }}>
-              {campusName}
-            </h1>
+    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24, padding: '1rem' }}>
+      {/* ── Captain Header ─────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
+              Campus Ambassador Portal
+            </span>
+            <Badge color="brand">{tier} TIER</Badge>
           </div>
-
-          <Link to="/captain/leaderboard">
-            <Button variant="secondary" size="sm" style={{ gap: 6 }}>
-              <Trophy size={14} color="var(--warning)" />
-              <span>National Leaderboard</span>
-            </Button>
-          </Link>
+          <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+            Captain Command Center
+          </h1>
+          <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+            Representing {profile?.targetUniversity || 'Campus'} · Ambassador Code {captainCode}
+          </p>
         </div>
 
-        {/* Code Bar */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            padding: '12px 18px',
-            borderRadius: 'var(--r-input)',
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 2 }}>Campus Captain Code</p>
-            <p style={{ fontSize: 16, fontWeight: 800, color: 'var(--captain-from)', letterSpacing: '0.04em' }}>
-              {captainCode}
-            </p>
-          </div>
-
-          <Button variant="secondary" size="sm" onClick={handleCopyCode} style={{ gap: 6 }}>
-            {copiedCode ? <Check size={14} color="var(--success)" /> : <Copy size={14} />}
-            <span>{copiedCode ? 'Copied!' : 'Copy Code'}</span>
+        {/* Share buttons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Button variant="secondary" size="sm" onClick={handleCopyCode}>
+            {copiedCode ? <Check size={14} className="text-green-500" /> : <Copy size={14} />} {captainCode}
           </Button>
-        </div>
-
-        {/* Metrics Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
-          <div className="glass" style={{ padding: '14px', borderRadius: 'var(--r-input)', textAlign: 'center' }}>
-            <p style={{ fontSize: 24, fontWeight: 800, color: 'var(--captain-from)' }}>{activeStudents}</p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Activated Students</p>
-          </div>
-
-          <div className="glass" style={{ padding: '14px', borderRadius: 'var(--r-input)', textAlign: 'center' }}>
-            <p style={{ fontSize: 24, fontWeight: 800, color: 'var(--warning)' }}>{campusRank}</p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Campus Rank</p>
-          </div>
-
-          <div className="glass" style={{ padding: '14px', borderRadius: 'var(--r-input)', textAlign: 'center' }}>
-            <p style={{ fontSize: 24, fontWeight: 800, color: '#FB923C' }}>{captainPoints}</p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Captain Points</p>
-          </div>
-
-          <div className="glass" style={{ padding: '14px', borderRadius: 'var(--r-input)', textAlign: 'center' }}>
-            <p style={{ fontSize: 24, fontWeight: 800, color: 'var(--success)' }}>{tier}</p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Captain Tier</p>
-          </div>
+          <Button variant="primary" size="sm" onClick={handleCopyLink}>
+            {copiedLink ? <Check size={14} className="text-green-500" /> : <Share2 size={14} />} Copy Invite Link
+          </Button>
         </div>
       </div>
 
-      {/* Active Missions */}
-      <div className="glass" style={{ borderRadius: 'var(--r-card)', padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div>
-            <h2 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
-              Active Campus Missions
-            </h2>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Weekly objectives to drive campus test-readiness
-            </p>
+      {/* ── Key Metrics 4-Card Grid ─────────────────────────────────── */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+          gap: 16,
+        }}
+      >
+        <GlassCard style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-faint)' }}>
+            <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>This Week</span>
+            <TrendingUp size={16} />
           </div>
-          <TrendingUp size={20} style={{ color: 'var(--captain-from)' }} />
-        </div>
+          <div style={{ marginTop: 8 }}>
+            <span className="font-display tabular-nums" style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)' }}>
+              +{joinedThisWeek}
+            </span>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Students joined</p>
+          </div>
+        </GlassCard>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          {missions.map((m, i) => {
-            const currentCount = Math.min(m.targetCount, Math.floor(activeStudents * 0.4) + (i === 0 ? 3 : 1));
-            const progress = Math.min(100, Math.round((currentCount / m.targetCount) * 100));
+        <GlassCard style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-faint)' }}>
+            <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>This Month</span>
+            <Users size={16} />
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <span className="font-display tabular-nums" style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)' }}>
+              {joinedThisMonth}
+            </span>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Monthly recruits</p>
+          </div>
+        </GlassCard>
 
-            return (
+        <GlassCard style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-faint)' }}>
+            <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Total Recruits</span>
+            <Award size={16} className="text-[#D71921]" />
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <span className="font-display tabular-nums" style={{ fontSize: 28, fontWeight: 800, color: '#D71921' }}>
+              {totalJoined}
+            </span>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>All-time network</p>
+          </div>
+        </GlassCard>
+
+        <GlassCard style={{ padding: '20px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', color: 'var(--text-faint)' }}>
+            <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Crews Led / Pro</span>
+            <Sparkles size={16} />
+          </div>
+          <div style={{ marginTop: 8 }}>
+            <span className="font-display tabular-nums" style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)' }}>
+              {crewsLedCount} <span style={{ fontSize: 16, color: 'var(--text-faint)' }}>/ {proConversions} Pro</span>
+            </span>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Active study squads</p>
+          </div>
+        </GlassCard>
+      </div>
+
+      {/* ── 2-Column: Referred Students Directory & Captain Leaderboard ── */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gap: 20,
+        }}
+      >
+        {/* Referred Students List */}
+        <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Users size={18} className="text-[#D71921]" />
+              <h3 className="font-display" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
+                Referred Students Directory
+              </h3>
+            </div>
+            <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>{referredStudents.length} total</span>
+          </div>
+
+          {referredStudents.length === 0 ? (
+            <EmptyState
+              icon={<Users size={36} className="text-[#D71921]" />}
+              title="No students joined yet"
+              description="Share your referral code in WhatsApp class groups to track student signups."
+              actionLabel="Copy Invite Link"
+              onAction={handleCopyLink}
+            />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 360, overflowY: 'auto' }}>
+              {referredStudents.map((st) => (
+                <div
+                  key={st.id}
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: 'var(--r-input)',
+                    background: 'var(--surface-hover)',
+                    border: '1px solid var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                  }}
+                >
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                      {st.referredUserName || st.referredEmail?.split('@')[0] || 'Student'}
+                    </p>
+                    <p style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'monospace' }}>
+                      {st.referredEmail}
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    {st.hasTakenFirstTest ? (
+                      <span style={{ fontSize: 10, color: 'var(--success)', display: 'flex', alignItems: 'center', gap: 3 }}>
+                        <CheckCircle size={12} /> Test Taken
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 10, color: 'var(--text-faint)' }}>Signed Up</span>
+                    )}
+                    {st.isPro && <Badge color="brand">PRO</Badge>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </GlassCard>
+
+        {/* Captain Leaderboard & Rewards Status */}
+        <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Trophy size={18} className="text-[#D71921]" />
+            <h3 className="font-display" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
+              National Captain Leaderboard
+            </h3>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {captainRankings.map((c, idx) => (
               <div
-                key={m.id}
+                key={c.id}
                 style={{
-                  padding: '16px',
+                  padding: '10px 14px',
                   borderRadius: 'var(--r-input)',
-                  background: 'var(--surface)',
+                  background: 'var(--surface-hover)',
                   border: '1px solid var(--border)',
                   display: 'flex',
-                  flexDirection: 'column',
-                  gap: 10,
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
                 }}
               >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                  <div>
-                    <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{m.title}</p>
-                    <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>{m.description}</p>
-                  </div>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--captain-from)', whiteSpace: 'nowrap' }}>
-                    +{m.rewardPoints} pts
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <span className="font-display" style={{ fontSize: 14, fontWeight: 800, color: idx === 0 ? '#FBBF24' : 'var(--text-muted)' }}>
+                    #{idx + 1}
                   </span>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{c.name}</p>
+                    <p style={{ fontSize: 11, color: 'var(--text-faint)' }}>{c.university}</p>
+                  </div>
                 </div>
 
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-faint)', marginBottom: 4 }}>
-                    <span>Progress: {currentCount} / {m.targetCount}</span>
-                    <span style={{ fontWeight: 700, color: progress >= 100 ? 'var(--success)' : 'var(--text)' }}>{progress}%</span>
-                  </div>
-                  <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
-                    <div
-                      style={{
-                        height: '100%',
-                        width: `${progress}%`,
-                        borderRadius: 3,
-                        background: 'linear-gradient(90deg, var(--captain-from), var(--captain-to))',
-                        transition: 'width 800ms var(--ease-out)',
-                      }}
-                    />
-                  </div>
+                <div style={{ textAlign: 'right' }}>
+                  <span className="font-display tabular-nums" style={{ fontSize: 14, fontWeight: 800, color: '#D71921' }}>
+                    {c.referralCount} recruits
+                  </span>
+                  <p style={{ fontSize: 10, color: 'var(--text-faint)' }}>{c.points} pts</p>
                 </div>
               </div>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+
+          {/* Reward Status Milestone */}
+          <div
+            style={{
+              marginTop: 'auto',
+              padding: '14px',
+              borderRadius: 'var(--r-input)',
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, marginBottom: 6 }}>
+              <span style={{ fontWeight: 600, color: 'var(--text)' }}>Next Milestone: Gold Tier (25 Recruits)</span>
+              <span className="font-mono text-[#D71921]">{totalJoined} / 25</span>
+            </div>
+            <div style={{ width: '100%', height: 6, borderRadius: 999, background: 'var(--border)', overflow: 'hidden' }}>
+              <div
+                style={{
+                  width: `${Math.min(100, (totalJoined / 25) * 100)}%`,
+                  height: '100%',
+                  background: '#D71921',
+                  transition: 'width 0.4s ease',
+                }}
+              />
+            </div>
+          </div>
+        </GlassCard>
       </div>
     </div>
   );
 }
+
+export default CaptainDashboardPage;

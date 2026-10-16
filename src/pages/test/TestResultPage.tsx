@@ -14,8 +14,11 @@ import {
   Check,
   X,
   Bookmark,
+  Bot,
+  Sparkles,
+  RotateCcw,
 } from 'lucide-react';
-import type { AttemptDoc } from '@/types/index';
+import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
 type ReviewFilter = 'all' | 'mistakes' | 'flagged';
 
@@ -27,6 +30,40 @@ export function TestResultPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ code?: string; message: string } | null>(null);
   const [filter, setFilter] = useState<ReviewFilter>('all');
+  const [aiExplaining, setAiExplaining] = useState<Record<number, boolean>>({});
+  const [aiExplanations, setAiExplanations] = useState<Record<number, string>>({});
+
+  const handleRequestAiExplanation = async (
+    questionIndex: number,
+    question: AttemptQuestion,
+    userAns?: number
+  ) => {
+    setAiExplaining((prev) => ({ ...prev, [questionIndex]: true }));
+    try {
+      const prompt = `Explain why the correct answer is "${question.options[question.correct]}" and why the choice "${
+        userAns !== undefined ? question.options[userAns] : 'Skipped'
+      }" is wrong. Provide a clear derivation with KaTeX math formulas and entrance test speed shortcuts.\n\nQuestion: ${
+        question.q
+      }\nOptions:\n${question.options.map((o, i) => `${['A', 'B', 'C', 'D'][i]}: ${o}`).join('\n')}`;
+
+      const res = await fetch('/api/ai-tutor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: prompt }),
+      });
+
+      if (res.ok) {
+        const data = (await res.json()) as { reply?: string };
+        if (data.reply) {
+          setAiExplanations((prev) => ({ ...prev, [questionIndex]: data.reply! }));
+        }
+      }
+    } catch (err) {
+      console.warn('[TestResultPage] AI explain error:', err);
+    } finally {
+      setAiExplaining((prev) => ({ ...prev, [questionIndex]: false }));
+    }
+  };
 
   useEffect(() => {
     if (!attemptId) return;
@@ -438,19 +475,93 @@ export function TestResultPage() {
                     style={{
                       padding: '12px 16px',
                       borderRadius: 'var(--r-input)',
-                      background: 'rgba(47, 107, 255, 0.08)',
-                      border: '1px solid rgba(47, 107, 255, 0.2)',
+                      background: 'var(--surface-hover)',
+                      border: '1px solid var(--border)',
                       fontSize: 13,
                       lineHeight: 1.6,
                       color: 'var(--text)',
                     }}
                   >
-                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--brand-2)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
-                      Explanation & Solution Step
+                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                      Standard Solution
                     </p>
                     <MathText block>{q.explain}</MathText>
                   </div>
                 )}
+
+                {/* AI Tutor "Explain This" Button & Box */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {!aiExplanations[idx] ? (
+                    <button
+                      onClick={() => handleRequestAiExplanation(idx, q, userAns)}
+                      disabled={aiExplaining[idx]}
+                      style={{
+                        alignSelf: 'flex-start',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 8,
+                        padding: '8px 14px',
+                        borderRadius: 'var(--r-pill)',
+                        border: '1px solid #D71921',
+                        background: 'transparent',
+                        color: 'var(--text)',
+                        fontSize: 12,
+                        fontWeight: 600,
+                        cursor: aiExplaining[idx] ? 'wait' : 'pointer',
+                        transition: 'all 160ms',
+                      }}
+                      className="hover:bg-[#D71921] hover:text-white"
+                    >
+                      {aiExplaining[idx] ? (
+                        <>
+                          <Sparkles size={13} className="animate-spin text-[#D71921]" />
+                          <span>Boardy is deriving solution...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Bot size={14} className="text-[#D71921]" />
+                          <span>Explain this with Boardy AI</span>
+                        </>
+                      )}
+                    </button>
+                  ) : (
+                    <div
+                      style={{
+                        padding: '16px',
+                        borderRadius: 'var(--r-card)',
+                        background: 'var(--surface)',
+                        border: '1px solid #D71921',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8,
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#D71921', fontSize: 12, fontWeight: 700 }}>
+                          <Bot size={15} />
+                          <span>Boardy AI Step-by-Step Derivation</span>
+                        </div>
+                        <button
+                          onClick={() => handleRequestAiExplanation(idx, q, userAns)}
+                          disabled={aiExplaining[idx]}
+                          style={{
+                            fontSize: 11,
+                            color: 'var(--text-faint)',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 4,
+                          }}
+                        >
+                          <RotateCcw size={11} /> Re-derive
+                        </button>
+                      </div>
+                      <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text)' }}>
+                        <MathText block>{aiExplanations[idx]}</MathText>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}

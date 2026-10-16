@@ -1,6 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
-import { GlassCard } from '../ui/GlassCard';
+import { Plus, Minus } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 
 const FAQS = [
@@ -22,7 +21,7 @@ const FAQS = [
   },
   {
     q: 'Can I study effectively on my smartphone?',
-    a: 'Absolutely. Boardly is engineered mobile-first with a high-contrast dark glass cockpit, 48px touch targets, sticky timers, and responsive KaTeX math rendering that requires zero zooming.',
+    a: 'Absolutely. Boardly is engineered mobile-first with a high-contrast dark cockpit, 48px touch targets, sticky timers, and responsive KaTeX math rendering that requires zero zooming.',
   },
   {
     q: 'What is the Boardly Ambassador & Captain program?',
@@ -38,47 +37,61 @@ export function FaqSection() {
   };
 
   return (
-    <section id="faq" className="py-24 relative">
-      <div className="site-container">
+    <section id="faq" className="landing-section relative">
+      <div className="boardly-container">
+        {/* Centered section header block */}
         <div className="section-header">
-          <Badge color="brand">Got Questions?</Badge>
-          <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold text-white">
-            Frequently Asked Questions
-          </h2>
-          <p className="text-[var(--text-muted)] text-base max-w-xl">
+          <Badge color="muted">Got Questions?</Badge>
+          <h2>Frequently Asked Questions</h2>
+          <p>
             Everything you need to know about preparing with Boardly.
           </p>
         </div>
 
-        <div className="max-w-[800px] mx-auto space-y-4">
+        {/* FAQ list: centered at max-width 800px, 12px gap between rows */}
+        <div className="max-w-[800px] mx-auto flex flex-col gap-3">
           {FAQS.map((faq, idx) => {
             const isOpen = openIndex === idx;
             return (
-              <GlassCard
+              <div
                 key={faq.q}
-                hover
                 onClick={() => toggle(idx)}
-                className="cursor-pointer transition-all duration-200"
+                className="rounded-[16px] bg-[#111111] border border-[#2A2A2A] cursor-pointer transition-colors hover:bg-[#1A1A1A]"
+                style={{
+                  padding: '20px',
+                  backgroundColor: 'var(--card)',
+                  borderColor: 'var(--border)',
+                }}
               >
+                {/* Question row: Space Grotesk 16px, + / - toggle icon */}
                 <div className="flex items-center justify-between gap-4">
-                  <h3 className="text-base font-semibold text-white">{faq.q}</h3>
-                  <ChevronDown
-                    size={18}
-                    className={`text-[var(--text-muted)] shrink-0 transition-transform duration-200 ${
-                      isOpen ? 'rotate-180 text-blue-400' : ''
-                    }`}
-                  />
+                  <h3
+                    className="text-[16px] font-semibold text-[var(--text)] leading-snug"
+                    style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+                  >
+                    {faq.q}
+                  </h3>
+                  <div className="text-[var(--muted)] shrink-0 w-6 h-6 flex items-center justify-center">
+                    {isOpen ? <Minus size={18} /> : <Plus size={18} />}
+                  </div>
                 </div>
 
+                {/* Answer text: Space Grotesk 14px, #9A9A9A, 12px space below question when open */}
                 {isOpen && (
-                  <div className="mt-4 pt-4 border-t border-[var(--border)] text-sm text-[var(--text-muted)] leading-relaxed animate-[page-enter_0.2s_ease-out]">
+                  <div
+                    className="mt-3 pt-3 border-t border-[var(--border)] text-[14px] text-[#9A9A9A] leading-relaxed"
+                    style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.01em' }}
+                  >
                     {faq.a}
                   </div>
                 )}
-              </GlassCard>
+              </div>
             );
           })}
         </div>
+
+        {/* Thin dotted divider between sections */}
+        <div className="divider-dotted mt-16 sm:mt-24" />
       </div>
     </section>
   );

@@ -1,121 +1,135 @@
 import { Link } from 'react-router-dom';
-import { Trophy, Shield, ArrowRight } from 'lucide-react';
-import { GlassCard } from '../ui/GlassCard';
+import { ArrowRight } from 'lucide-react';
 import { Badge } from '../ui/Badge';
-import { Button } from '../ui/Button';
 
 const LEADERBOARD_PREVIEW = [
-  { rank: 1, name: 'Zaid K.', city: 'Lahore', target: 'FAST CS', score: 98, percentile: '99.8%' },
-  { rank: 2, name: 'Ayesha M.', city: 'Islamabad', target: 'NUST SEECS', score: 96, percentile: '99.4%' },
-  { rank: 3, name: 'Bilal H.', city: 'Karachi', target: 'NED CS', score: 94, percentile: '98.9%' },
-  { rank: 4, name: 'Maryam N.', city: 'Peshawar', target: 'GIKI Eng', score: 92, percentile: '98.1%' },
+  { rank: '01', name: 'Zaid K.', city: 'Lahore', target: 'FAST CS', score: '98', percentile: '99.8%' },
+  { rank: '02', name: 'Ayesha M.', city: 'Islamabad', target: 'NUST SEECS', score: '96', percentile: '99.4%' },
+  { rank: '03', name: 'Bilal H.', city: 'Karachi', target: 'NED CS', score: '94', percentile: '98.9%' },
+  { rank: '04', name: 'Maryam N.', city: 'Peshawar', target: 'GIKI Eng', score: '92', percentile: '98.1%' },
 ];
 
 export function ArenaStrip() {
   return (
-    <section id="arena" className="py-20 md:py-28 relative">
-      <div className="site-container">
-        <GlassCard animated className="relative overflow-hidden" style={{ padding: '32px' }}>
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
-            {/* Left Col: Event info */}
-            <div className="lg:col-span-6 space-y-5 text-center lg:text-left">
-              <div className="inline-flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping" />
-                <Badge color="danger">National Competitive Arena</Badge>
-              </div>
+    <section id="arena" className="landing-section relative">
+      <div className="boardly-container">
+        {/* Blitz Banner Card: padding 24px, 1px red border, radius 24px, solid #111 */}
+        <div
+          className="p-6 sm:p-8 rounded-[24px] bg-[var(--card)] border border-[var(--red)] relative"
+          style={{ boxShadow: 'none' }}
+        >
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-center">
+            {/* Left Column: Event info */}
+            <div className="flex flex-col items-start text-left gap-4">
+              {/* Badge: normal in-flow pill inside card (outlined red, red text, 13px) with red dot inside */}
+              <Badge color="red-outline" dot>
+                National Competitive Arena
+              </Badge>
 
-              <h2 className="font-display text-3xl sm:text-4xl font-bold text-white">
-                Boardly Blitz: <span className="text-gradient">Sunday 8:00 PM PKT</span>
+              {/* Heading */}
+              <h2
+                className="text-2xl sm:text-3xl lg:text-4xl font-bold text-[var(--text)] tracking-tight leading-tight"
+                style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+              >
+                Boardly Blitz: <span>Sunday 8:00 PM PKT</span>
               </h2>
 
-              <p className="text-sm sm:text-base text-[var(--text-muted)] leading-relaxed">
+              {/* Paragraph */}
+              <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed">
                 Compete against thousands of students across Karachi, Lahore, Islamabad, and beyond under strictly synchronized exam timers. See where your aggregate stands before test day.
               </p>
 
-              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-5 text-xs text-[var(--text-faint)]">
-                <div className="flex items-center gap-1.5">
-                  <Shield size={16} className="text-blue-400 shrink-0" />
-                  Anti-cheat auto-submit timer
+              {/* Feature items: red dot INSIDE, 12px before text, stacked vertically on mobile */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 text-xs text-[var(--muted)] w-full">
+                <div className="flex items-center gap-3">
+                  <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
+                  <span>Anti-cheat auto-submit timer</span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <Trophy size={16} className="text-amber-400 shrink-0" />
-                  Campus bragging rights
+                <div className="flex items-center gap-3">
+                  <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
+                  <span>Campus bragging rights</span>
                 </div>
               </div>
 
-              <div className="pt-2 flex justify-center lg:justify-start">
-                <Link to="/signup" className="w-full sm:w-auto">
-                  <Button
-                    variant="primary"
-                    className="w-full sm:w-auto group shadow-lg shadow-blue-500/25"
-                    style={{ padding: '14px 24px', borderRadius: 12, fontSize: '1rem', fontWeight: 600 }}
-                  >
-                    Register for Next Blitz
-                    <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
-                  </Button>
+              {/* Button: full width on mobile, 16px gap */}
+              <div className="pt-1 w-full sm:w-auto">
+                <Link to="/signup" className="btn-red w-full sm:w-auto group">
+                  <span>Register for Next Blitz</span>
+                  <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
                 </Link>
               </div>
             </div>
 
-            {/* Right Col: Live leaderboard mock */}
-            <div className="lg:col-span-6 w-full">
-              <div className="glass p-6 rounded-2xl bg-black/40 border border-white/10 space-y-4">
-                <div className="flex items-center justify-between text-xs sm:text-sm pb-3 border-b border-white/10 gap-3">
-                  <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2">
-                    <Trophy size={16} className="text-amber-400 shrink-0" /> Last Week&apos;s Honor Roll
+            {/* Right Column: Honor roll inner card with 16px padding, 24px space on all sides */}
+            <div>
+              <div className="p-4 rounded-[20px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col gap-3">
+                {/* Fixed header: sentence case, 520+ candidates in Space Grotesk 13px #9A9A9A */}
+                <div className="flex items-center justify-between text-xs pb-3 border-b border-[var(--border)]">
+                  <span
+                    className="font-semibold text-[var(--text)] flex items-center gap-2"
+                    style={{ fontFamily: 'var(--font-heading)' }}
+                  >
+                    <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
+                    Last week&apos;s honor roll
                   </span>
-                  <span className="text-xs text-[var(--text-faint)] font-medium shrink-0">
-                    520+ Candidates
+                  <span
+                    className="text-[#9A9A9A] text-[13px]"
+                    style={{ fontFamily: 'var(--font-heading)' }}
+                  >
+                    520+ candidates
                   </span>
                 </div>
 
-                <div className="space-y-2.5">
+                {/* Rows: row padding 14px 16px, gap 8px between rows */}
+                <div className="flex flex-col gap-2">
                   {LEADERBOARD_PREVIEW.map(student => (
                     <div
                       key={student.name}
-                      className="p-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] transition-colors flex items-center justify-between text-sm min-h-[48px]"
+                      className="px-4 py-3.5 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-between text-xs"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span
-                          className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
-                            student.rank === 1
-                              ? 'bg-amber-400 text-black'
-                              : student.rank === 2
-                              ? 'bg-slate-300 text-black'
-                              : student.rank === 3
-                              ? 'bg-amber-700 text-white'
-                              : 'bg-white/10 text-white'
-                          }`}
-                        >
+                      {/* Left: Rank in dot font (#F2F2F2, not faint) + Name and school */}
+                      <div className="flex items-center gap-3">
+                        <span className="font-doto font-bold text-sm text-[#F2F2F2] w-6 text-left shrink-0">
                           {student.rank}
                         </span>
-                        <div className="truncate">
-                          <div className="font-semibold text-white leading-tight">{student.name}</div>
-                          <div className="text-xs text-[var(--text-faint)] leading-tight mt-0.5">
+                        <div>
+                          <div
+                            className="font-semibold text-[var(--text)]"
+                            style={{ fontFamily: 'var(--font-heading)' }}
+                          >
+                            {student.name}
+                          </div>
+                          <div className="text-[11px] text-[var(--muted)] mt-0.5">
                             {student.city} · {student.target}
                           </div>
                         </div>
                       </div>
 
-                      <div className="text-right shrink-0 pl-3">
-                        <div className="font-bold text-cyan-400 tabular-nums text-sm">
+                      {/* Right: Score right-aligned, score in dot font white, percentile in Space Grotesk 13px #9A9A9A */}
+                      <div className="text-right shrink-0">
+                        <div className="font-doto font-bold text-sm text-[#FFFFFF]">
                           {student.score}/100
                         </div>
-                        <div className="text-xs text-emerald-400 font-medium">{student.percentile}</div>
+                        <div
+                          className="text-[13px] text-[#9A9A9A]"
+                          style={{ fontFamily: 'var(--font-heading)' }}
+                        >
+                          {student.percentile}
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
 
                 <div className="pt-1 text-center">
-                  <span className="text-[11px] text-[var(--text-faint)]">
+                  <span className="text-[11px] text-[var(--muted)]">
                     Participant privacy protected via masked initials.
                   </span>
                 </div>
               </div>
             </div>
           </div>
-        </GlassCard>
+        </div>
       </div>
     </section>
   );

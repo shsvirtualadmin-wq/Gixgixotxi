@@ -541,3 +541,27 @@ export async function fetchAuditLogs(limitCount = 100): Promise<AuditLog[]> {
     return snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
   }
 }
+
+export async function deleteUserAccount(
+  adminEmail: string,
+  targetUid: string,
+  targetEmail?: string
+): Promise<void> {
+  await deleteDoc(doc(db, 'users', targetUid));
+  await logAdminAction(adminEmail, 'delete_user_account', { targetUid }, targetUid, targetEmail);
+}
+
+export async function fetchUserAttempts(targetUid: string): Promise<Record<string, unknown>[]> {
+  try {
+    const q = query(
+      collection(db, 'attempts'),
+      where('userId', '==', targetUid),
+      limit(20)
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (err) {
+    console.warn('[AdminService] fetchUserAttempts error:', err);
+    return [];
+  }
+}

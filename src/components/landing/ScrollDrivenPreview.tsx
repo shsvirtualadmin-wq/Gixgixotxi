@@ -38,21 +38,20 @@ export function ScrollDrivenPreview() {
   const [activeScreen, setActiveScreen] = useState<0 | 1 | 2 | 3>(0);
 
   return (
-    <section className="py-20 md:py-28 relative">
-      <div className="site-container">
+    <section className="landing-section relative">
+      <div className="boardly-container">
+        {/* Centered section header */}
         <div className="section-header">
-          <Badge color="violet">Interactive Experience</Badge>
-          <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold text-white">
-            Designed for <span className="text-gradient">Every Aspiring Leader</span>
-          </h2>
-          <p className="text-[var(--text-muted)] text-base max-w-xl">
+          <Badge color="muted">Interactive Experience</Badge>
+          <h2>Designed for Every Aspiring Leader</h2>
+          <p>
             Whether you&apos;re an ambitious student, a study squad captain, or a campus ambassador, Boardly equips you with dedicated tools.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-12 items-center">
           {/* Left Column: Selector list */}
-          <div className="lg:col-span-7 space-y-3">
+          <div className="space-y-3">
             {PREVIEWS.map(p => {
               const Icon = p.icon;
               const isSelected = activeScreen === p.screen;
@@ -60,28 +59,33 @@ export function ScrollDrivenPreview() {
                 <div
                   key={p.title}
                   onClick={() => setActiveScreen(p.screen)}
-                  className={`p-5 rounded-2xl cursor-pointer transition-all duration-200 border ${
+                  className={`p-5 rounded-[20px] cursor-pointer transition-colors duration-150 border ${
                     isSelected
-                      ? 'glass bg-white/[0.08] border-blue-500/40 shadow-lg shadow-blue-500/10'
-                      : 'border-white/5 hover:border-white/10 hover:bg-white/[0.03]'
+                      ? 'bg-[var(--card-2)] border-[var(--red)]'
+                      : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--card-2)]'
                   }`}
                 >
                   <div className="flex items-start gap-4">
                     <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
                         isSelected
-                          ? 'bg-gradient-to-r from-blue-500 to-cyan-400 text-white'
-                          : 'bg-white/10 text-[var(--text-muted)]'
+                          ? 'bg-[var(--red)] text-[#FFFFFF] border-[var(--red)]'
+                          : 'bg-[#1A1A1A] text-[var(--muted)] border-[var(--border)]'
                       }`}
                     >
-                      <Icon size={20} />
+                      <Icon size={18} />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="text-base font-bold text-white">{p.title}</h3>
-                        <span className="text-xs text-[var(--text-faint)]">· {p.subtitle}</span>
+                        <h3
+                          className="text-base font-bold text-[var(--text)]"
+                          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+                        >
+                          {p.title}
+                        </h3>
+                        <span className="text-xs text-[var(--muted)]">· {p.subtitle}</span>
                       </div>
-                      <p className="text-sm text-[var(--text-muted)] mt-1 leading-relaxed">
+                      <p className="text-sm text-[var(--muted)] mt-1 leading-relaxed">
                         {p.desc}
                       </p>
                     </div>
@@ -92,7 +96,7 @@ export function ScrollDrivenPreview() {
           </div>
 
           {/* Right Column: Controlled PhoneMockup */}
-          <div className="lg:col-span-5 flex justify-center">
+          <div className="flex justify-center items-center">
             <PhoneMockup screen={activeScreen} onScreenChange={setActiveScreen} />
           </div>
         </div>

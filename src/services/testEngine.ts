@@ -28,14 +28,31 @@ export async function getAttempt(attemptId: string): Promise<AttemptDoc> {
   return { id: snap.id, ...snap.data() } as AttemptDoc;
 }
 
+import { normalizeMath } from '@/lib/math';
+
+/**
+ * Filter and convert math to proper KaTeX syntax before displaying.
+ * Logs and safely falls back if parsing/conversion encounters issues.
+ */
+function prefilterAndConvertMath(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  try {
+    return normalizeMath(text);
+  } catch (err) {
+    console.warn('[MathFilter] Failed to normalize math, using safe fallback:', err, text);
+    return text;
+  }
+}
+
 /**
  * Normalizes question document from Firestore into a consistent AttemptQuestion format.
  */
 function normalizeQuestionDoc(id: string, data: Partial<Question>): AttemptQuestion {
-  const qText = data.q ?? data.question ?? 'Untitled Question';
+  const rawQ = data.q ?? data.question ?? 'Untitled Question';
+  const qText = prefilterAndConvertMath(rawQ);
   const rawOpts = data.options ?? [];
   const options = Array.isArray(rawOpts) && rawOpts.length >= 2
-    ? rawOpts.map(String)
+    ? rawOpts.map((opt) => prefilterAndConvertMath(String(opt)))
     : ['Option A', 'Option B', 'Option C', 'Option D'];
 
   let correctIdx = 0;
@@ -45,12 +62,14 @@ function normalizeQuestionDoc(id: string, data: Partial<Question>): AttemptQuest
     correctIdx = data.correctAnswer;
   }
 
+  const rawExplain = data.explain ?? data.explanation ?? '';
+
   return {
     id,
     q: qText,
     options,
     correct: Math.min(Math.max(0, correctIdx), options.length - 1),
-    explain: data.explain ?? data.explanation ?? '',
+    explain: prefilterAndConvertMath(rawExplain),
     subject: data.subject ?? 'General',
     chapter: data.chapter ?? data.topic ?? '',
     difficulty: data.difficulty ?? 'Medium',
@@ -342,6 +361,69 @@ export async function submitAttempt(
     }
   } catch (err) {
     console.warn('[testEngine] Referral activation update note:', err);
+  }
+
+  // 4. Update user streak in PKT timezone
+  let currentStreak = 1;
+  try {
+    const userDocRef = doc(db, 'users', uid);
+    const userSnap = await getDoc(userDocRef);
+    if (userSnap.exists()) {
+      const udata = userSnap.data();
+      const lastActive = udata.lastActiveDate as string | undefined;
+      const prevStreak = Number(udata.streak ?? 0);
+      const pktDateKey = getPKTDateKey();
+
+      if (lastActive === pktDateKey) {
+        currentStreak = Math.max(1, prevStreak);
+      } else if (lastActive) {
+        const today = new Date(pktDateKey);
+        const last = new Date(lastActive);
+        const diffDays = Math.round((today.getTime() - last.getTime()) / (1000 * 3600 * 24));
+        if (diffDays === 1) {
+          currentStreak = prevStreak + 1;
+        } else {
+          currentStreak = 1;
+        }
+      } else {
+        currentStreak = 1;
+      }
+
+      await setDoc(
+        userDocRef,
+        {
+          streak: currentStreak,
+          lastActiveDate: getPKTDateKey(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    }
+  } catch (err) {
+    console.warn('[testEngine] Failed to update user streak:', err);
+  }
+
+  // 5. Update global leaderboard
+  try {
+    const lbRef = doc(db, 'leaderboard', uid);
+    const userSnap = await getDoc(doc(db, 'users', uid));
+    const udata = userSnap.exists() ? userSnap.data() : {};
+    await setDoc(
+      lbRef,
+      {
+        uid,
+        displayName: udata.displayName || (udata.email ? udata.email.split('@')[0] : 'Student'),
+        university: attempt.university || udata.targetUniversity || 'General',
+        score: increment(score),
+        testsCompleted: increment(1),
+        accuracy: percentage,
+        streak: currentStreak,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('[testEngine] Failed to update leaderboard entry:', err);
   }
 
   return {

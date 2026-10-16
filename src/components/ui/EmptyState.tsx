@@ -6,6 +6,8 @@ interface EmptyStateProps {
   description?: string;
   icon?: ReactNode;
   action?: ReactNode;
+  actionLabel?: string;
+  onAction?: () => void;
 }
 
 export function EmptyState({
@@ -13,6 +15,8 @@ export function EmptyState({
   description = 'No data to display.',
   icon,
   action,
+  actionLabel,
+  onAction,
 }: EmptyStateProps) {
   return (
     <div
@@ -35,6 +39,24 @@ export function EmptyState({
         <p style={{ fontSize: 14 }}>{description}</p>
       </div>
       {action && <div>{action}</div>}
+      {!action && actionLabel && onAction && (
+        <button
+          type="button"
+          onClick={onAction}
+          style={{
+            padding: '8px 16px',
+            borderRadius: 'var(--r-input)',
+            background: 'var(--surface)',
+            border: '1px solid var(--border)',
+            color: 'var(--text)',
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: 'pointer',
+          }}
+        >
+          {actionLabel}
+        </button>
+      )}
     </div>
   );
 }

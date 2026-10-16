@@ -3,7 +3,7 @@ import { Badge } from '../components/ui/Badge';
 
 export function PrivacyPage() {
   return (
-    <div className="site-container pt-28 pb-20 max-w-4xl page-enter space-y-8">
+    <div className="pt-28 pb-20 max-w-4xl mx-auto px-6 page-enter space-y-8">
       <div className="space-y-3">
         <Badge color="brand">Legal</Badge>
         <h1 className="font-display text-3xl sm:text-4xl font-bold text-white">

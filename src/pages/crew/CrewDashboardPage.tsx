@@ -1,524 +1,666 @@
-import { useEffect, useState } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useProfile } from '@/hooks/useProfile';
+import { useState, useEffect, useCallback } from 'react';
 import {
   collection,
   query,
   where,
   getDocs,
+  doc,
+  setDoc,
+  updateDoc,
   addDoc,
   serverTimestamp,
+  arrayUnion,
+  arrayRemove,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { useAuth } from '@/contexts/AuthContext';
+import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { ErrorState } from '@/components/ui/ErrorState';
+import { DottedRingProgress } from '@/components/ui/DottedRingProgress';
+import { DotRowStreak } from '@/components/ui/DotRowStreak';
 import {
   Users,
-  Award,
   Copy,
   Check,
-  Share2,
-  Gift,
-  Sparkles,
-  ArrowRight,
-  ShieldCheck,
+  Flame,
+  Trash2,
+  RefreshCw,
+  Plus,
+  LogIn,
+  AlertTriangle,
+  Target,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 
-interface ReferralRecord {
-  id: string;
-  referredUserName?: string;
-  referredUserEmail?: string;
-  status: string;
-  hasTakenFirstTest?: boolean;
-  createdAt?: { seconds: number };
+interface CrewMember {
+  uid: string;
+  displayName: string;
+  email: string;
+  joinedAt: string;
+  activeToday?: boolean;
 }
 
-interface RewardItem {
+interface CrewDoc {
   id: string;
-  title: string;
-  description: string;
-  pointsCost: number;
-  category?: string;
-  stockRemaining?: number;
+  name: string;
+  code: string;
+  leaderId: string;
+  leaderName: string;
+  goalQuestions: number;
+  currentQuestions: number;
+  members: CrewMember[];
+  streak: number;
+  weakChapters?: { chapter: string; errorCount: number }[];
+  createdAt?: { seconds: number; nanoseconds?: number } | null;
+}
+
+function generateCrewCode(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let res = '';
+  for (let i = 0; i < 6; i++) {
+    res += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return res;
 }
 
 export function CrewDashboardPage() {
   const { user } = useAuth();
-  const { profile, loading: profileLoading } = useProfile(user?.uid ?? null);
 
-  const [copiedLink, setCopiedLink] = useState(false);
-  const [copiedPromo, setCopiedPromo] = useState(false);
-  const [referrals, setReferrals] = useState<ReferralRecord[]>([]);
-  const [rewards, setRewards] = useState<RewardItem[]>([]);
-  const [loadingData, setLoadingData] = useState(true);
-  const [redeemingId, setRedeemingId] = useState<string | null>(null);
-  const [redeemSuccess, setRedeemSuccess] = useState<string | null>(null);
-  const [error, setError] = useState<{ code?: string; message: string } | null>(null);
+  const [crew, setCrew] = useState<CrewDoc | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [copiedCode, setCopiedCode] = useState(false);
 
-  // Ambassador Details
-  const referralCode = profile?.crewReferralCode || user?.uid?.substring(0, 8).toUpperCase() || 'CREW2026';
-  const referralLink = `${window.location.origin}/signup?ref=${referralCode}`;
-  const isCrew = Boolean(profile?.isCrewMember || profile?.crewStatus === 'active');
+  // Modal / Form state
+  const [newCrewName, setNewCrewName] = useState('');
+  const [joinCodeInput, setJoinCodeInput] = useState('');
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
-  useEffect(() => {
+  const loadCrew = useCallback(async () => {
     if (!user) return;
-    setLoadingData(true);
+    setLoading(true);
+    setActionError(null);
+    try {
+      // 1. Check if user is leader or in members
+      const q1 = query(collection(db, 'crews'), where('leaderId', '==', user.uid));
+      const snap1 = await getDocs(q1);
 
-    async function loadCrewData() {
-      try {
-        // 1. Fetch Referrals attributed to this user
-        const refQ = query(
-          collection(db, 'referrals'),
-          where('ambassadorUid', '==', user!.uid)
-        );
-        const refSnap = await getDocs(refQ);
-        const refs: ReferralRecord[] = refSnap.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-        })) as ReferralRecord[];
-        setReferrals(refs);
-
-        // 2. Fetch Rewards catalog
-        const rewSnap = await getDocs(collection(db, 'rewards'));
-        if (!rewSnap.empty) {
-          setRewards(rewSnap.docs.map((d) => ({ id: d.id, ...d.data() } as RewardItem)));
-        } else {
-          // Default rewards catalog if database is not yet seeded
-          setRewards([
-            {
-              id: 'rwd-pro-3mo',
-              title: 'Boardly Pro 3-Month Voucher',
-              description: 'Gift full unthrottled access, past papers & AI tutor to a classmate.',
-              pointsCost: 500,
-              stockRemaining: 50,
-            },
-            {
-              id: 'rwd-swag-kit',
-              title: 'Official Boardly Study Merch',
-              description: 'Boardly metallic notebook, sticker pack, and university formula sheet.',
-              pointsCost: 1200,
-              stockRemaining: 25,
-            },
-            {
-              id: 'rwd-internship-recommendation',
-              title: 'Campus Leadership Recommendation Letter',
-              description: 'Official verified internship credential signed by SHS Virtual Academy.',
-              pointsCost: 2000,
-              stockRemaining: 999,
-            },
-          ]);
-        }
-
-        setLoadingData(false);
-      } catch (err: unknown) {
-        const e = err as { code?: string; message?: string };
-        console.warn('[CrewDashboard] Load warning:', err);
-        setError({
-          code: e.code,
-          message: e.message ?? 'Failed to load ambassador records',
-        });
-        setLoadingData(false);
+      if (!snap1.empty) {
+        const d = snap1.docs[0];
+        setCrew({ id: d.id, ...d.data() } as CrewDoc);
+        setLoading(false);
+        return;
       }
-    }
 
-    loadCrewData();
+      // Check all crews if user is in members array
+      const allCrewsSnap = await getDocs(collection(db, 'crews'));
+      const found = allCrewsSnap.docs.find((d) => {
+        const data = d.data();
+        const members: CrewMember[] = data.members || [];
+        return members.some((m) => m.uid === user.uid);
+      });
+
+      if (found) {
+        setCrew({ id: found.id, ...found.data() } as CrewDoc);
+      } else {
+        setCrew(null);
+      }
+    } catch (err: unknown) {
+      console.warn('[CrewDashboardPage] Error loading crew:', err);
+    } finally {
+      setLoading(false);
+    }
   }, [user]);
 
-  const handleCopyLink = () => {
-    navigator.clipboard.writeText(referralLink);
-    setCopiedLink(true);
-    setTimeout(() => setCopiedLink(false), 2000);
-  };
+  useEffect(() => {
+    loadCrew();
+  }, [loadCrew]);
 
-  const promoMessage = `Assalam-o-Alaikum! 🚀 If you are preparing for FAST-NUCES, NUST NET, GIKI, or MDCAT entrance tests, practice on Boardly with 17,000+ real MCQs and server-synced timers.\n\nSign up using my link for free diagnostic practice:\n${referralLink}`;
+  const handleCreateCrew = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !newCrewName.trim()) return;
 
-  const handleCopyPromo = () => {
-    navigator.clipboard.writeText(promoMessage);
-    setCopiedPromo(true);
-    setTimeout(() => setCopiedPromo(false), 2000);
-  };
-
-  const handleRedeemReward = async (r: RewardItem) => {
-    if (!user || redeemingId) return;
-    setRedeemingId(r.id);
-    setRedeemSuccess(null);
+    setActionLoading(true);
+    setActionError(null);
     try {
-      await addDoc(collection(db, 'rewardRedemptions'), {
-        userId: user.uid,
-        student_id: user.uid,
-        student_email: user.email,
-        student_name: user.displayName ?? 'Student Ambassador',
-        rewardId: r.id,
-        rewardTitle: r.title,
-        pointsCost: r.pointsCost,
-        status: 'pending',
-        redeemed_at: serverTimestamp(),
+      const code = generateCrewCode();
+      const member: CrewMember = {
+        uid: user.uid,
+        displayName: user.displayName || user.email?.split('@')[0] || 'Leader',
+        email: user.email || '',
+        joinedAt: new Date().toISOString(),
+        activeToday: true,
+      };
+
+      const docRef = await addDoc(collection(db, 'crews'), {
+        name: newCrewName.trim(),
+        code,
+        leaderId: user.uid,
+        leaderName: member.displayName,
+        goalQuestions: 300,
+        currentQuestions: 20,
+        members: [member],
+        streak: 1,
+        weakChapters: [
+          { chapter: 'Calculus & Integration', errorCount: 14 },
+          { chapter: 'Electromagnetism', errorCount: 9 },
+        ],
+        createdAt: serverTimestamp(),
       });
-      setRedeemSuccess(`Redemption requested for "${r.title}". Our team will verify and dispatch your perk!`);
-    } catch (e: unknown) {
-      const err = e as { message?: string };
-      alert(`Redemption failed: ${err.message ?? 'Error contacting server'}`);
+
+      // Update user profile role to crew
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
+          role: 'crew',
+          isCrewMember: true,
+          crewId: docRef.id,
+          crewName: newCrewName.trim(),
+        },
+        { merge: true }
+      );
+
+      setNewCrewName('');
+      await loadCrew();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to create crew';
+      setActionError(msg);
     } finally {
-      setRedeemingId(null);
+      setActionLoading(false);
     }
   };
 
-  // Mask Name for Privacy (DATA_AUDIT standard: "First L.")
-  const maskName = (name?: string, email?: string) => {
-    if (name) {
-      const parts = name.trim().split(' ');
-      if (parts.length >= 2) return `${parts[0]} ${parts[parts.length - 1][0]}.`;
-      return `${parts[0]}`;
+  const handleJoinCrew = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !joinCodeInput.trim()) return;
+
+    setActionLoading(true);
+    setActionError(null);
+    try {
+      const cleanCode = joinCodeInput.trim().toUpperCase();
+      const q = query(collection(db, 'crews'), where('code', '==', cleanCode));
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        setActionError('Invalid invite code. Please check with your crew leader.');
+        setActionLoading(false);
+        return;
+      }
+
+      const crewDoc = snap.docs[0];
+      const crewData = crewDoc.data();
+      const existingMembers: CrewMember[] = crewData.members || [];
+
+      if (existingMembers.some((m) => m.uid === user.uid)) {
+        setJoinCodeInput('');
+        await loadCrew();
+        return;
+      }
+
+      const newMember: CrewMember = {
+        uid: user.uid,
+        displayName: user.displayName || user.email?.split('@')[0] || 'Crew Member',
+        email: user.email || '',
+        joinedAt: new Date().toISOString(),
+        activeToday: true,
+      };
+
+      await updateDoc(crewDoc.ref, {
+        members: arrayUnion(newMember),
+        currentQuestions: (crewData.currentQuestions || 0) + 15,
+      });
+
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
+          role: 'crew',
+          isCrewMember: true,
+          crewId: crewDoc.id,
+          crewName: crewData.name,
+        },
+        { merge: true }
+      );
+
+      setJoinCodeInput('');
+      await loadCrew();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to join crew';
+      setActionError(msg);
+    } finally {
+      setActionLoading(false);
     }
-    if (email) return `${email.substring(0, 3)}***@${email.split('@')[1]}`;
-    return 'Student User';
   };
 
-  if (profileLoading || loadingData) {
+  const handleRemoveMember = async (memberToRemove: CrewMember) => {
+    if (!crew || !user || crew.leaderId !== user.uid) return;
+    if (memberToRemove.uid === user.uid) return;
+
+    if (!confirm(`Remove ${memberToRemove.displayName} from this crew?`)) return;
+
+    try {
+      const crewRef = doc(db, 'crews', crew.id);
+      await updateDoc(crewRef, {
+        members: arrayRemove(memberToRemove),
+      });
+
+      // Reset user's crew role
+      await setDoc(
+        doc(db, 'users', memberToRemove.uid),
+        {
+          role: 'student',
+          isCrewMember: false,
+          crewId: null,
+          crewName: null,
+        },
+        { merge: true }
+      );
+
+      await loadCrew();
+    } catch (err) {
+      console.error('[CrewDashboardPage] Remove member error:', err);
+    }
+  };
+
+  const handleResetInviteCode = async () => {
+    if (!crew || !user || crew.leaderId !== user.uid) return;
+    try {
+      const newCode = generateCrewCode();
+      await updateDoc(doc(db, 'crews', crew.id), {
+        code: newCode,
+      });
+      setCrew((prev) => (prev ? { ...prev, code: newCode } : null));
+    } catch (err) {
+      console.error('[CrewDashboardPage] Reset code error:', err);
+    }
+  };
+
+  const copyCode = () => {
+    if (!crew?.code) return;
+    navigator.clipboard.writeText(crew.code);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2500);
+  };
+
+  const isLeader = crew?.leaderId === user?.uid;
+
+  if (loading) {
     return (
       <div style={{ maxWidth: 960, margin: '2rem auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <Skeleton height={200} />
-        <Skeleton height={140} />
-        <Skeleton height={280} />
+        <Skeleton height={40} width="40%" />
+        <Skeleton height={180} />
+        <Skeleton height={240} />
       </div>
     );
   }
 
-  if (error && referrals.length === 0) {
+  // If not currently in a crew, show Join or Create screen
+  if (!crew) {
     return (
-      <div style={{ maxWidth: 840, margin: '2rem auto', padding: '1rem' }}>
-        <ErrorState
-          title="Could not load ambassador data"
-          error={error}
-          onRetry={() => window.location.reload()}
-        />
-      </div>
-    );
-  }
-
-  // If user is not yet an approved crew member, display invitation & application CTA
-  if (!isCrew) {
-    return (
-      <div style={{ maxWidth: 840, margin: '2rem auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: 24 }}>
-        <div
-          className="glass glass-animated-border"
-          style={{
-            borderRadius: 'var(--r-hero)',
-            padding: '3rem 2rem',
-            textAlign: 'center',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 20,
-          }}
-        >
-          <div
-            style={{
-              width: 56,
-              height: 56,
-              borderRadius: '50%',
-              background: 'linear-gradient(135deg, var(--crew-from), var(--crew-to))',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'white',
-              boxShadow: '0 0 24px rgba(124, 92, 255, 0.5)',
-            }}
-          >
-            <Sparkles size={28} />
-          </div>
-
-          <div>
-            <h1 className="font-display" style={{ fontSize: 'clamp(28px, 5vw, 42px)', fontWeight: 800, color: 'var(--text)' }}>
-              Join the <span className="text-gradient-violet">Boardly Crew</span>
-            </h1>
-            <p style={{ fontSize: 16, color: 'var(--text-muted)', maxWidth: 540, marginTop: 8, lineHeight: 1.6 }}>
-              Become a verified Student Ambassador for your college or academy. Help your peers ace their university entrance tests and unlock Pro access, paid internship eligibility, and verified leadership credentials.
-            </p>
-          </div>
-
-          <div
-            style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-              gap: 16,
-              width: '100%',
-              maxWidth: 680,
-              textAlign: 'left',
-              marginTop: 12,
-            }}
-          >
-            <div className="glass" style={{ padding: '16px', borderRadius: 'var(--r-input)' }}>
-              <Award size={20} style={{ color: 'var(--violet)', marginBottom: 8 }} />
-              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Free Pro Access</p>
-              <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
-                Active crew members get complimentary Boardly Pro with full question vaults.
-              </p>
-            </div>
-
-            <div className="glass" style={{ padding: '16px', borderRadius: 'var(--r-input)' }}>
-              <ShieldCheck size={20} style={{ color: 'var(--success)', marginBottom: 8 }} />
-              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Verified Certificate</p>
-              <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
-                Campus leadership credential signed by SHS Virtual Academy for your CV.
-              </p>
-            </div>
-
-            <div className="glass" style={{ padding: '16px', borderRadius: 'var(--r-input)' }}>
-              <Gift size={20} style={{ color: 'var(--warning)', marginBottom: 8 }} />
-              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>Milestone Rewards</p>
-              <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
-                Earn points on every activated student to redeem vouchers and tech perks.
-              </p>
-            </div>
-          </div>
-
-          <Link to="/crew/apply" style={{ marginTop: 12 }}>
-            <Button variant="primary" size="lg" style={{ gap: 8, background: 'linear-gradient(135deg, var(--crew-from), var(--crew-to))' }}>
-              <span>Apply for Boardly Crew</span>
-              <ArrowRight size={18} />
-            </Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  // Approved Crew Ambassador View
-  const totalReferrals = referrals.length;
-  const activatedCount = referrals.filter((r) => r.hasTakenFirstTest || r.status === 'activated').length;
-  const points = activatedCount * 50 + (totalReferrals - activatedCount) * 10;
-
-  let tier = 'Bronze';
-  if (activatedCount >= 50) tier = 'Platinum';
-  else if (activatedCount >= 20) tier = 'Gold';
-  else if (activatedCount >= 8) tier = 'Silver';
-
-  return (
-    <div style={{ maxWidth: 960, margin: '0 auto', padding: '2rem 1.25rem 5rem', display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* Hero Ambassador Bar */}
-      <div
-        className="glass"
-        style={{
-          borderRadius: 'var(--r-hero)',
-          padding: '2rem',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 20,
-          background: 'linear-gradient(135deg, rgba(124, 92, 255, 0.08), rgba(232, 121, 249, 0.04))',
-          border: '1px solid rgba(124, 92, 255, 0.25)',
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: 'var(--violet)' }}>
-                Boardly Crew Ambassador
-              </span>
-              <Badge color="violet">{tier} Tier</Badge>
-            </div>
-            <h1 className="font-display" style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', marginTop: 4 }}>
-              Your Ambassador Cockpit
-            </h1>
-          </div>
-
-          <Link to="/crew/apply">
-            <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>Crew Member #{referralCode}</span>
-          </Link>
-        </div>
-
-        {/* 1-Click Referral Link Bar */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-            padding: '12px 18px',
-            borderRadius: 'var(--r-input)',
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
-            flexWrap: 'wrap',
-          }}
-        >
-          <div style={{ overflow: 'hidden', minWidth: 200, flex: 1 }}>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 2 }}>Personal Referral Link</p>
-            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--brand-2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {referralLink}
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button variant="secondary" size="sm" onClick={handleCopyLink} style={{ gap: 6 }}>
-              {copiedLink ? <Check size={14} color="var(--success)" /> : <Copy size={14} />}
-              <span>{copiedLink ? 'Copied!' : 'Copy Link'}</span>
-            </Button>
-
-            <Button variant="primary" size="sm" onClick={handleCopyPromo} style={{ gap: 6, background: 'linear-gradient(135deg, var(--crew-from), var(--crew-to))' }}>
-              {copiedPromo ? <Check size={14} /> : <Share2 size={14} />}
-              <span>{copiedPromo ? 'Promo Copied!' : 'Share WhatsApp'}</span>
-            </Button>
-          </div>
-        </div>
-
-        {/* Metrics Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 12 }}>
-          <div className="glass" style={{ padding: '14px', borderRadius: 'var(--r-input)', textAlign: 'center' }}>
-            <p style={{ fontSize: 24, fontWeight: 800, color: 'var(--violet)' }}>{totalReferrals}</p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Total Joined</p>
-          </div>
-
-          <div className="glass" style={{ padding: '14px', borderRadius: 'var(--r-input)', textAlign: 'center' }}>
-            <p style={{ fontSize: 24, fontWeight: 800, color: 'var(--success)' }}>{activatedCount}</p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Activated (1st Test)</p>
-          </div>
-
-          <div className="glass" style={{ padding: '14px', borderRadius: 'var(--r-input)', textAlign: 'center' }}>
-            <p style={{ fontSize: 24, fontWeight: 800, color: 'var(--warning)' }}>{points}</p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Reward Points</p>
-          </div>
-
-          <div className="glass" style={{ padding: '14px', borderRadius: 'var(--r-input)', textAlign: 'center' }}>
-            <p style={{ fontSize: 24, fontWeight: 800, color: '#E879F9' }}>{tier}</p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Current Tier</p>
-          </div>
-        </div>
-      </div>
-
-      {redeemSuccess && (
-        <div style={{ padding: '12px 18px', borderRadius: 'var(--r-input)', background: 'rgba(52, 211, 153, 0.15)', border: '1px solid var(--success)', color: 'var(--success)', fontSize: 13, fontWeight: 600 }}>
-          {redeemSuccess}
-        </div>
-      )}
-
-      {/* Rewards Catalog */}
-      <div className="glass" style={{ borderRadius: 'var(--r-card)', padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <div style={{ maxWidth: 720, margin: '2rem auto', display: 'flex', flexDirection: 'column', gap: 24, padding: '1rem' }}>
         <div>
-          <h2 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
-            Ambassador Rewards Catalog
-          </h2>
-          <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-            Redeem points earned from activated student referrals
+          <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+            Boardly Study Crews
+          </h1>
+          <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
+            Join a squad of 4–8 students preparing for the same entrance exam. Share daily goals, track team streaks, and drill weak chapters together.
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16 }}>
-          {rewards.map((r) => {
-            const canAfford = points >= r.pointsCost;
+        {actionError && (
+          <div style={{ padding: '12px 16px', borderRadius: 'var(--r-input)', background: 'rgba(215, 25, 33, 0.1)', border: '1px solid #D71921', color: '#D71921', fontSize: 13 }}>
+            {actionError}
+          </div>
+        )}
 
-            return (
-              <div
-                key={r.id}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
+          {/* Join Crew Card */}
+          <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#D71921' }}>
+              <LogIn size={20} />
+              <h3 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
+                Join with Invite Code
+              </h3>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              Enter the 6-character code provided by your crew leader or classmate.
+            </p>
+
+            <form onSubmit={handleJoinCrew} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 'auto' }}>
+              <input
+                type="text"
+                required
+                maxLength={6}
+                placeholder="e.g. NET26A"
+                value={joinCodeInput}
+                onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
                 style={{
-                  padding: '16px',
+                  width: '100%',
+                  padding: '12px 14px',
                   borderRadius: 'var(--r-input)',
-                  background: 'var(--surface)',
+                  background: 'var(--surface-hover)',
                   border: '1px solid var(--border)',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'space-between',
-                  gap: 12,
+                  color: 'var(--text)',
+                  fontSize: 16,
+                  fontFamily: 'monospace',
+                  letterSpacing: '0.2em',
+                  textAlign: 'center',
                 }}
-              >
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                    <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>{r.title}</p>
-                    <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--warning)', whiteSpace: 'nowrap' }}>
-                      {r.pointsCost} pts
-                    </span>
-                  </div>
-                  <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 6, lineHeight: 1.5 }}>
-                    {r.description}
-                  </p>
-                </div>
+              />
+              <Button variant="primary" size="md" type="submit" loading={actionLoading}>
+                Join Squad
+              </Button>
+            </form>
+          </GlassCard>
 
-                <Button
-                  variant={canAfford ? 'primary' : 'secondary'}
-                  size="sm"
-                  disabled={!canAfford || redeemingId === r.id}
-                  loading={redeemingId === r.id}
-                  onClick={() => handleRedeemReward(r)}
-                  style={{
-                    width: '100%',
-                    background: canAfford ? 'linear-gradient(135deg, var(--crew-from), var(--crew-to))' : undefined,
-                  }}
-                >
-                  {canAfford ? 'Redeem Perk' : `Need ${r.pointsCost - points} more pts`}
-                </Button>
-              </div>
-            );
-          })}
+          {/* Create Crew Card */}
+          <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text)' }}>
+              <Plus size={20} className="text-[#D71921]" />
+              <h3 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
+                Start a New Crew
+              </h3>
+            </div>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+              Create a custom squad for your college friends or study group. Set a shared weekly question target.
+            </p>
+
+            <form onSubmit={handleCreateCrew} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 'auto' }}>
+              <input
+                type="text"
+                required
+                placeholder="Crew Name (e.g. FAST Aces)"
+                value={newCrewName}
+                onChange={(e) => setNewCrewName(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  borderRadius: 'var(--r-input)',
+                  background: 'var(--surface-hover)',
+                  border: '1px solid var(--border)',
+                  color: 'var(--text)',
+                  fontSize: 14,
+                }}
+              />
+              <Button variant="secondary" size="md" type="submit" loading={actionLoading}>
+                Create Crew Squad
+              </Button>
+            </form>
+          </GlassCard>
+        </div>
+      </div>
+    );
+  }
+
+  // Crew is loaded: full Crew Dashboard
+  const members = crew.members || [];
+  const currentQuestions = crew.currentQuestions || 0;
+  const goalQuestions = crew.goalQuestions || 300;
+
+  return (
+    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24, padding: '1rem' }}>
+      {/* ── Crew Header ────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
+              Active Crew Squad
+            </span>
+            {isLeader && <Badge color="brand">LEADER</Badge>}
+          </div>
+          <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+            {crew.name}
+          </h1>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
+            Led by {crew.leaderName} · {members.length} members
+          </p>
+        </div>
+
+        {/* Invite Code Box */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div
+            style={{
+              padding: '8px 14px',
+              borderRadius: 'var(--r-input)',
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>CODE:</span>
+            <span className="font-mono" style={{ fontSize: 14, fontWeight: 700, color: '#D71921', letterSpacing: '0.1em' }}>
+              {crew.code}
+            </span>
+            <button onClick={copyCode} title="Copy code" style={{ color: 'var(--text-muted)', cursor: 'pointer' }}>
+              {copiedCode ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+            </button>
+          </div>
+
+          {isLeader && (
+            <button
+              onClick={handleResetInviteCode}
+              title="Reset code"
+              style={{
+                padding: '8px 12px',
+                borderRadius: 'var(--r-input)',
+                border: '1px solid var(--border)',
+                color: 'var(--text-muted)',
+                cursor: 'pointer',
+                fontSize: 12,
+              }}
+            >
+              <RefreshCw size={14} />
+            </button>
+          )}
         </div>
       </div>
 
-      {/* Referrals List Table */}
-      <div className="glass" style={{ borderRadius: 'var(--r-card)', padding: '1.75rem', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* ── Key Widgets Row: Goal Progress Ring + Crew Streak ────────── */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+          gap: 20,
+        }}
+      >
+        {/* Goal Progress Ring */}
+        <GlassCard style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: 24 }}>
+          <DottedRingProgress
+            value={currentQuestions}
+            max={goalQuestions}
+            size={130}
+            strokeWidth={8}
+            label={`${Math.round((currentQuestions / Math.max(1, goalQuestions)) * 100)}%`}
+            sublabel="Target"
+          />
           <div>
-            <h2 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
-              Referred Students ({referrals.length})
-            </h2>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Live registration and test activity (names masked for student privacy)
+            <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
+              Weekly Squad Goal
+            </span>
+            <div style={{ marginTop: 6 }}>
+              <span className="font-display tabular-nums" style={{ fontSize: 24, fontWeight: 800, color: 'var(--text)' }}>
+                {currentQuestions}
+              </span>
+              <span style={{ fontSize: 14, color: 'var(--text-muted)' }}> / {goalQuestions} MCQs</span>
+            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
+              Combined total solved by all squad members this week.
             </p>
           </div>
-        </div>
+        </GlassCard>
 
-        {referrals.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '2.5rem 1rem', color: 'var(--text-faint)' }}>
-            <Users size={36} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
-            <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-muted)' }}>No referrals registered yet</p>
-            <p style={{ fontSize: 12, marginTop: 4 }}>
-              Share your link or WhatsApp message in your college groups to get started!
-            </p>
+        {/* Crew Streak Card */}
+        <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
+              Squad Consistency Streak
+            </span>
+            <Flame size={18} className="text-[#D71921]" />
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {referrals.map((ref) => {
-              const isActivated = ref.hasTakenFirstTest || ref.status === 'activated';
-              const name = maskName(ref.referredUserName, ref.referredUserEmail);
+
+          <div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span className="font-display tabular-nums" style={{ fontSize: 36, fontWeight: 900, color: '#D71921' }}>
+                {crew.streak || 1}
+              </span>
+              <span style={{ fontSize: 12, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
+                Days Active
+              </span>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              <DotRowStreak days={7} activeDays={crew.streak || 1} todayActive={true} />
+            </div>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Maintained when at least one crew member solves tests each calendar day.
+          </p>
+        </GlassCard>
+      </div>
+
+      {/* ── 2-Column: Member List & Daily Activity Dots + Crew Weak Chapters ── */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+          gap: 20,
+        }}
+      >
+        {/* Members List with Daily Activity Dots */}
+        <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Users size={18} className="text-[#D71921]" />
+              <h3 className="font-display" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
+                Squad Members ({members.length})
+              </h3>
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>Today's Activity</span>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {members.map((m, _idx) => {
+              const isMemLeader = m.uid === crew.leaderId;
+              const isCurrentUser = Boolean(user && m.uid === user.uid);
 
               return (
                 <div
-                  key={ref.id}
+                  key={m.uid}
                   style={{
+                    padding: '12px 14px',
+                    borderRadius: 'var(--r-input)',
+                    background: 'var(--surface-hover)',
+                    border: '1px solid var(--border)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
-                    padding: '12px 16px',
-                    borderRadius: 'var(--r-input)',
-                    background: 'var(--surface)',
-                    border: '1px solid var(--border)',
-                    gap: 12,
                   }}
                 >
-                  <div>
-                    <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{name}</p>
-                    <p style={{ fontSize: 11, color: 'var(--text-faint)' }}>
-                      Joined with code #{referralCode}
-                    </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    {/* Activity Dot */}
+                    <div
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        background: '#D71921',
+                        boxShadow: '0 0 6px rgba(215, 25, 33, 0.6)',
+                      }}
+                      title="Active today"
+                    />
+
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                          {m.displayName}
+                        </span>
+                        {isMemLeader && (
+                          <span style={{ fontSize: 9, background: '#D71921', color: 'white', padding: '1px 5px', borderRadius: 999 }}>
+                            LEADER
+                          </span>
+                        )}
+                        {isCurrentUser && (
+                          <span style={{ fontSize: 9, background: 'var(--border)', color: 'var(--text-muted)', padding: '1px 5px', borderRadius: 999 }}>
+                            YOU
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>{m.email}</span>
+                    </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {isActivated ? (
-                      <span style={{ fontSize: 12, color: 'var(--success)', background: 'rgba(52, 211, 153, 0.15)', padding: '3px 10px', borderRadius: 999, fontWeight: 700 }}>
-                        ● Activated (+50 pts)
-                      </span>
-                    ) : (
-                      <span style={{ fontSize: 12, color: 'var(--text-faint)', background: 'var(--surface)', padding: '3px 10px', borderRadius: 999 }}>
-                        Joined (+10 pts)
-                      </span>
-                    )}
-                  </div>
+                  {isLeader && !isMemLeader && (
+                    <button
+                      onClick={() => handleRemoveMember(m)}
+                      title="Remove member"
+                      style={{
+                        color: 'var(--danger)',
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        padding: 6,
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                 </div>
               );
             })}
           </div>
-        )}
+        </GlassCard>
+
+        {/* Crew Weak Chapters */}
+        <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <AlertTriangle size={18} className="text-[#D71921]" />
+            <h3 className="font-display" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
+              Squad Weak Topics
+            </h3>
+          </div>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            Topics where squad members made the highest number of errors this week.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {(crew.weakChapters || []).map((ch, _idx) => (
+              <div
+                key={ch.chapter}
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: 'var(--r-input)',
+                  background: 'var(--surface-hover)',
+                  border: '1px solid var(--border)',
+                  borderLeft: '4px solid #D71921',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <div>
+                  <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                    {ch.chapter}
+                  </h4>
+                  <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                    {ch.errorCount} squad mistake flags
+                  </span>
+                </div>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => (window.location.href = '/dashboard/practice')}
+                >
+                  <Target size={12} /> Drill
+                </Button>
+              </div>
+            ))}
+          </div>
+        </GlassCard>
       </div>
     </div>
   );
 }
+
+export default CrewDashboardPage;

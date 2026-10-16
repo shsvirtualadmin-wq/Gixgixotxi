@@ -9,7 +9,7 @@ import { FaqSection } from '../components/landing/FaqSection';
 
 export function LandingPage() {
   return (
-    <div className="page-enter">
+    <main className="w-full">
       <HeroSection />
       <FeaturesGrid />
       <ScrollDrivenPreview />
@@ -18,7 +18,7 @@ export function LandingPage() {
       <PricingSection />
       <ReviewsMarquee />
       <FaqSection />
-    </div>
+    </main>
   );
 }
 
