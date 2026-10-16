@@ -45,6 +45,26 @@ const TestResultPage = lazy(() =>
   import('./pages/test/TestResultPage').then(m => ({ default: m.TestResultPage }))
 );
 
+// Phase 5: AI Tutor, Crew, Captain
+const AiTutorPage = lazy(() =>
+  import('./pages/dashboard/AiTutorPage').then(m => ({ default: m.AiTutorPage }))
+);
+const CrewDashboardPage = lazy(() =>
+  import('./pages/crew/CrewDashboardPage').then(m => ({ default: m.CrewDashboardPage }))
+);
+const CrewApplyPage = lazy(() =>
+  import('./pages/crew/CrewApplyPage').then(m => ({ default: m.CrewApplyPage }))
+);
+const CaptainDashboardPage = lazy(() =>
+  import('./pages/captain/CaptainDashboardPage').then(m => ({ default: m.CaptainDashboardPage }))
+);
+const CaptainApplyPage = lazy(() =>
+  import('./pages/captain/CaptainApplyPage').then(m => ({ default: m.CaptainApplyPage }))
+);
+const CaptainLeaderboardPage = lazy(() =>
+  import('./pages/captain/CaptainLeaderboardPage').then(m => ({ default: m.CaptainLeaderboardPage }))
+);
+
 function PageLoader() {
   return (
     <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -89,6 +109,12 @@ function AppInner() {
                   <Route path="/forgot-password" element={<ForgotPasswordPage />} />
                   {/* Onboarding */}
                   <Route path="/onboarding" element={<OnboardingPage />} />
+                  {/* Crew & Captain Portals */}
+                  <Route path="/crew" element={<CrewDashboardPage />} />
+                  <Route path="/crew/apply" element={<CrewApplyPage />} />
+                  <Route path="/captain" element={<CaptainDashboardPage />} />
+                  <Route path="/captain/apply" element={<CaptainApplyPage />} />
+                  <Route path="/captain/leaderboard" element={<CaptainLeaderboardPage />} />
                 </Routes>
               </Suspense>
               <Footer />
@@ -103,7 +129,7 @@ function AppInner() {
           <Route path="practice" element={<PracticePage />} />
           <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
           <Route path="arena" element={<PlaceholderPage title="Arena" />} />
-          <Route path="ai-tutor" element={<PlaceholderPage title="AI Tutor" />} />
+          <Route path="ai-tutor" element={<AiTutorPage />} />
           <Route path="merit-meter" element={<PlaceholderPage title="Merit Meter" />} />
           <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
           <Route path="reviews" element={<PlaceholderPage title="Reviews" />} />
