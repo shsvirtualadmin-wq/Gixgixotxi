@@ -13,6 +13,10 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     signIn,
     signUp,
     signInWithGoogle,
+    signInWithGoogleRedirect,
+    authError,
+    clearAuthError,
+    redirectResolving,
     sendVerificationEmail,
     user,
     profile,
@@ -45,7 +49,8 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     setMode(initialMode);
     setFieldErrors({});
     setGeneralError('');
-  }, [initialMode]);
+    clearAuthError();
+  }, [initialMode, clearAuthError]);
 
   // Navigate after successful auth once profile is ready
   useEffect(() => {
@@ -70,14 +75,24 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
 
   const handleGoogleSignIn = async () => {
     setGeneralError('');
+    clearAuthError();
     setFieldErrors({});
     setGoogleLoading(true);
     try {
       await signInWithGoogle();
     } catch (err: unknown) {
       const fe = err as { code?: string; message?: string };
-      if (fe.code !== 'auth/popup-closed-by-user') {
-        setGeneralError('Google sign-in could not be completed. Please try again or use email.');
+      if (
+        fe.code === 'auth/popup-closed-by-user' ||
+        fe.code === 'auth/cancelled-popup-request'
+      ) {
+        return;
+      }
+      if (fe.code === 'auth/popup-blocked') {
+        setGeneralError('Sign-in popup was blocked by your browser. Please tap "Continue with Google" again and allow popups for boardly.cfd.');
+      } else {
+        const prefix = fe.code ? `[${fe.code}] ` : '';
+        setGeneralError(`${prefix}${fe.message || 'Google sign-in could not be completed.'}`);
       }
     } finally {
       setGoogleLoading(false);
@@ -217,6 +232,35 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     );
   }
 
+  // ── Redirect Resolving State (Mobile OAuth return) ──────────────────────
+  if (redirectResolving) {
+    return (
+      <div
+        className="w-full rounded-[28px] border border-[var(--border)] p-8 sm:p-10 flex flex-col items-center text-center gap-5"
+        style={{ backgroundColor: 'var(--card)' }}
+      >
+        <div className="w-14 h-14 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-[var(--red)]">
+          <span
+            className="w-6 h-6 border-2 border-[var(--red)] border-t-transparent rounded-full animate-spin"
+            aria-hidden="true"
+          />
+        </div>
+
+        <div>
+          <h2
+            className="text-xl font-bold text-[var(--text)] tracking-tight"
+            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+          >
+            Completing sign-in...
+          </h2>
+          <p className="text-xs text-[var(--muted)] mt-1.5 leading-relaxed">
+            Verifying your Google authentication credentials with Boardly.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // ── Main Sign In / Sign Up Card ───────────────────────────────────────────
   return (
     <div
@@ -273,11 +317,40 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         </p>
       </div>
 
-      {/* General Error Banner */}
-      {generalError && (
-        <div className="p-3 rounded-xl bg-[#1A1A1A] border border-[var(--red)] flex items-start gap-2.5 text-xs text-[#FFFFFF]">
-          <AlertCircle size={16} className="text-[var(--red)] shrink-0 mt-0.5" />
-          <span>{generalError}</span>
+      {/* General / Auth Error Banner */}
+      {(generalError || authError) && (
+        <div className="p-3.5 rounded-xl bg-[#1A1A1A] border border-[var(--red)] flex flex-col gap-2 text-xs text-[#FFFFFF]">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle size={16} className="text-[var(--red)] shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-1">
+              {authError?.code && (
+                <span className="font-mono text-[11px] font-semibold text-[var(--red)] block">
+                  [{authError.code}]
+                </span>
+              )}
+              <p className="text-[#E0E0E0] leading-relaxed">
+                {generalError || authError?.message}
+              </p>
+            </div>
+          </div>
+          {authError?.code === 'auth/popup-blocked' && (
+            <button
+              type="button"
+              onClick={() => signInWithGoogleRedirect()}
+              className="mt-1 text-xs text-[var(--red)] underline font-medium hover:text-[#FFFFFF] text-left cursor-pointer"
+            >
+              Try redirect sign-in instead &rarr;
+            </button>
+          )}
+          {authError?.code === 'auth/redirect-state-lost' && (
+            <button
+              type="button"
+              onClick={handleGoogleSignIn}
+              className="mt-1 text-xs text-[var(--red)] underline font-medium hover:text-[#FFFFFF] text-left cursor-pointer"
+            >
+              Tap to retry with popup sign-in &rarr;
+            </button>
+          )}
         </div>
       )}
 

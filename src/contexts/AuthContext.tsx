@@ -32,6 +32,7 @@ import type { UserProfile } from '@/types';
 // ─── Constants ──────────────────────────────────────────────────────────────
 const SUPER_ADMIN_EMAIL = 'shsvirtualadmin@gmail.com';
 const REFERRAL_LS_KEY = 'boardly_ref_code';
+const REDIRECT_PENDING_KEY = 'boardly_auth_redirect_pending';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface AuthContextValue {
@@ -39,10 +40,14 @@ interface AuthContextValue {
   profile: UserProfile | null;
   profileLoading: boolean;
   profileError: { code?: string; message: string; path?: string } | null;
+  authError: { code?: string; message: string } | null;
+  clearAuthError: () => void;
+  redirectResolving: boolean;
   isAdmin: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (options?: { useRedirect?: boolean }) => Promise<void>;
+  signInWithGoogleRedirect: () => Promise<void>;
   signOutUser: () => Promise<void>;
   sendVerificationEmail: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -58,6 +63,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<{ code?: string; message: string; path?: string } | null>(null);
+  const [authError, setAuthError] = useState<{ code?: string; message: string } | null>(null);
+  const [redirectResolving, setRedirectResolving] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return !!sessionStorage.getItem(REDIRECT_PENDING_KEY);
+  });
   const [retryCount, setRetryCount] = useState(0);
 
   const isAdmin = !!(user?.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL);
@@ -168,16 +178,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // Handle mobile redirect auth result if any
   useEffect(() => {
+    let isMounted = true;
+    const wasRedirectPending =
+      typeof window !== 'undefined'
+        ? sessionStorage.getItem(REDIRECT_PENDING_KEY)
+        : null;
+
     getRedirectResult(auth)
       .then(async (credential) => {
+        if (!isMounted) return;
         if (credential?.user) {
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+          }
           setUser(credential.user);
           await loadProfile(credential.user);
+        } else if (wasRedirectPending) {
+          // A redirect was initiated, but the browser returned to /login with credential: null!
+          // This occurs on mobile browsers because authDomain differs from the app domain
+          // (cross-origin iframe session storage partitioning / Safari ITP blocks the token).
+          if (typeof window !== 'undefined') {
+            sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+          }
+          console.error(
+            '[Boardly Auth] Redirect returned null credential. Cross-domain session storage blocked by mobile browser.'
+          );
+          setAuthError({
+            code: 'auth/redirect-state-lost',
+            message:
+              'Mobile browser blocked cross-origin redirect state (ITP / storage partitioning). Please use the popup window or sign in with email.',
+          });
         }
       })
-      .catch((err) => {
-        console.warn('[Boardly] Redirect auth result:', err);
+      .catch((err: unknown) => {
+        if (!isMounted) return;
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+        }
+        const fe = err as { code?: string; message?: string };
+        console.error('[Boardly Auth] Redirect auth result error:', fe);
+        setAuthError({
+          code: fe.code || 'auth/redirect-error',
+          message: fe.message || 'Failed to complete Google redirect authentication.',
+        });
+      })
+      .finally(() => {
+        if (isMounted) {
+          setRedirectResolving(false);
+        }
       });
+
+    return () => {
+      isMounted = false;
+    };
   }, [loadProfile]);
 
   // ── Auth state listener ──────────────────────────────────────────────────
@@ -185,6 +238,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem(REDIRECT_PENDING_KEY);
+        }
         await loadProfile(firebaseUser);
       } else {
         setProfile(null);
@@ -197,11 +253,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Auth actions ─────────────────────────────────────────────────────────
   const signIn = useCallback(async (email: string, password: string) => {
+    setAuthError(null);
     await signInWithEmailAndPassword(auth, email, password);
   }, []);
 
   const signUp = useCallback(
     async (email: string, password: string, displayName: string) => {
+      setAuthError(null);
       const credential = await createUserWithEmailAndPassword(auth, email, password);
       const { user: newUser } = credential;
 
@@ -239,27 +297,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [createReferralDoc]
   );
 
-  const signInWithGoogle = useCallback(async () => {
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-    try {
-      await signInWithPopup(auth, provider);
-    } catch (popupErr: unknown) {
-      const fe = popupErr as { code?: string };
-      // Fallback to signInWithRedirect when popup is blocked on mobile browsers
-      if (
-        fe.code === 'auth/popup-blocked' ||
-        fe.code === 'auth/cancelled-popup-request' ||
-        fe.code === 'auth/popup-closed-by-user'
-      ) {
+  const signInWithGoogle = useCallback(
+    async (options?: { useRedirect?: boolean }) => {
+      setAuthError(null);
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+
+      // If user or environment explicitly requests redirect
+      if (options?.useRedirect) {
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem(REDIRECT_PENDING_KEY, 'google');
+        }
         await signInWithRedirect(auth, provider);
-      } else {
+        return;
+      }
+
+      // Default: signInWithPopup.
+      // Modern mobile Safari (iOS 13+) and Chrome for Android support popups triggered directly from user touch/click.
+      // Popups open in a direct window context and avoid cross-origin iframe storage partitioning / 3P cookie blocking.
+      try {
+        const credential = await signInWithPopup(auth, provider);
+        if (credential.user) {
+          setUser(credential.user);
+          await loadProfile(credential.user);
+        }
+      } catch (popupErr: unknown) {
+        const fe = popupErr as { code?: string; message?: string };
+
+        // 1. User intentionally closed or cancelled popup window: DO NOT fallback to redirect loop!
+        if (
+          fe.code === 'auth/popup-closed-by-user' ||
+          fe.code === 'auth/cancelled-popup-request'
+        ) {
+          return;
+        }
+
+        // 2. Popup was blocked by browser
+        if (fe.code === 'auth/popup-blocked') {
+          const errPayload = {
+            code: 'auth/popup-blocked',
+            message:
+              'The sign-in popup was blocked by your browser. Please allow popups for boardly.cfd, or try redirect sign-in.',
+          };
+          setAuthError(errPayload);
+          throw popupErr;
+        }
+
+        // 3. Other Firebase auth error (e.g. auth/unauthorized-domain, auth/network-request-failed)
+        const errPayload = {
+          code: fe.code || 'auth/popup-failed',
+          message: fe.message || 'Google sign-in could not be completed.',
+        };
+        setAuthError(errPayload);
         throw popupErr;
       }
-    }
-  }, []);
+    },
+    [loadProfile]
+  );
+
+  const signInWithGoogleRedirect = useCallback(async () => {
+    return signInWithGoogle({ useRedirect: true });
+  }, [signInWithGoogle]);
 
   const signOutUser = useCallback(async () => {
+    setAuthError(null);
     await firebaseSignOut(auth);
   }, []);
 
@@ -268,11 +369,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user]);
 
   const resetPassword = useCallback(async (email: string) => {
+    setAuthError(null);
     await sendPasswordResetEmail(auth, email);
   }, []);
 
   const retryProfile = useCallback(() => {
     setRetryCount((c) => c + 1);
+  }, []);
+
+  const clearAuthError = useCallback(() => {
+    setAuthError(null);
   }, []);
 
   return (
@@ -282,10 +388,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profile,
         profileLoading,
         profileError,
+        authError,
+        clearAuthError,
+        redirectResolving,
         isAdmin,
         signIn,
         signUp,
         signInWithGoogle,
+        signInWithGoogleRedirect,
         signOutUser,
         sendVerificationEmail,
         resetPassword,

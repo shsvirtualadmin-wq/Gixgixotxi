@@ -2,9 +2,19 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { initializeFirestore } from 'firebase/firestore';
 
-const firebaseConfig = {
+// Resolve authDomain:
+// Uses VITE_FIREBASE_AUTH_DOMAIN if provided.
+// If same-origin proxy is set up for /__/auth/* on boardly.cfd, setting VITE_FIREBASE_AUTH_DOMAIN=boardly.cfd
+// eliminates cross-domain ITP / storage partitioning issues entirely.
+const resolveAuthDomain = (): string => {
+  const envDomain = (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined)?.trim();
+  if (envDomain) return envDomain;
+  return 'auth.boardly.cfd';
+};
+
+export const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY as string,
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string,
+  authDomain: resolveAuthDomain(),
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID as string,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string,
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string,

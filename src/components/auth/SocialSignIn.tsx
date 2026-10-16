@@ -17,7 +17,16 @@ export function SocialSignIn({ onSuccess, onError }: SocialSignInProps) {
       await signInWithGoogle();
       onSuccess?.();
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Google sign-in failed';
+      const fe = err as { code?: string; message?: string };
+      if (
+        fe.code === 'auth/popup-closed-by-user' ||
+        fe.code === 'auth/cancelled-popup-request'
+      ) {
+        return;
+      }
+      const msg = fe.message
+        ? `${fe.code ? `[${fe.code}] ` : ''}${fe.message}`
+        : (err instanceof Error ? err.message : 'Google sign-in failed');
       onError?.(msg);
     } finally {
       setLoading(false);
