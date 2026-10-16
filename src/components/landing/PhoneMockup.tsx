@@ -6,14 +6,20 @@ interface PhoneMockupProps {
   screen?: 0 | 1 | 2 | 3;
   onScreenChange?: (screen: 0 | 1 | 2 | 3) => void;
   interactive?: boolean;
+  /** Reduce phone height for compact/embedded display */
+  compact?: boolean;
+  /** Start the internal carousel on a given screen index */
+  initialScreen?: 0 | 1 | 2 | 3;
 }
 
 export function PhoneMockup({
   screen: externalScreen,
   onScreenChange,
   interactive = true,
+  compact = false,
+  initialScreen = 0,
 }: PhoneMockupProps) {
-  const [internalScreen, setInternalScreen] = useState<0 | 1 | 2 | 3>(0);
+  const [internalScreen, setInternalScreen] = useState<0 | 1 | 2 | 3>(initialScreen);
   const activeScreen = externalScreen !== undefined ? externalScreen : internalScreen;
 
   const [tilt, setTilt] = useState({ x: 0, y: 0 });
@@ -71,7 +77,7 @@ export function PhoneMockup({
       >
         {/* Outer Phone Shell */}
         <div
-          className="relative w-[300px] sm:w-[330px] h-[610px] rounded-[44px] p-3 shadow-2xl border border-white/20"
+          className={`relative w-[300px] sm:w-[330px] rounded-[44px] p-3 shadow-2xl border border-white/20 ${compact ? 'h-[480px]' : 'h-[610px]'}`}
           style={{
             background: 'linear-gradient(135deg, #2a2a3e 0%, #151928 50%, #2a2a3e 100%)',
             boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7), inset 0 1px 2px rgba(255, 255, 255, 0.3)',

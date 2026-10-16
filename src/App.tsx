@@ -23,8 +23,19 @@ const SignupPage = lazy(() => import('./pages/SignupPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 
-// Dashboard stub (lazy)
-const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+// Dashboard (Phase 3)
+const DashboardShell = lazy(() =>
+  import('./components/dashboard/DashboardShell').then(m => ({ default: m.DashboardShell }))
+);
+const OverviewPage = lazy(() =>
+  import('./pages/dashboard/OverviewPage').then(m => ({ default: m.OverviewPage }))
+);
+const PracticePage = lazy(() =>
+  import('./pages/dashboard/PracticePage').then(m => ({ default: m.PracticePage }))
+);
+const PlaceholderPage = lazy(() =>
+  import('./pages/dashboard/PlaceholderPage').then(m => ({ default: m.PlaceholderPage }))
+);
 
 function PageLoader() {
   return (
@@ -42,39 +53,57 @@ function AppInner() {
   useReferralCapture();
 
   return (
-    <div className="relative min-h-screen flex flex-col" style={{ color: 'var(--text)' }}>
-      <BackgroundCanvas />
-      <Navbar />
-      <Suspense fallback={<PageLoader />}>
-        <Routes>
-          {/* Public */}
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/features" element={<FeaturesPage />} />
-          <Route path="/arena" element={<ArenaPage />} />
-          <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/reviews" element={<ReviewsPage />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/terms" element={<TermsPage />} />
-          <Route path="/contact" element={<ContactPage />} />
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        {/* Public routes (with Navbar + Footer) */}
+        <Route
+          element={
+            <div className="relative min-h-screen flex flex-col" style={{ color: 'var(--text)' }}>
+              <BackgroundCanvas />
+              <Navbar />
+              <Suspense fallback={<PageLoader />}>
+                <Routes>
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/features" element={<FeaturesPage />} />
+                  <Route path="/arena" element={<ArenaPage />} />
+                  <Route path="/pricing" element={<PricingPage />} />
+                  <Route path="/reviews" element={<ReviewsPage />} />
+                  <Route path="/privacy" element={<PrivacyPage />} />
+                  <Route path="/terms" element={<TermsPage />} />
+                  <Route path="/contact" element={<ContactPage />} />
+                  {/* Auth */}
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/signup" element={<SignupPage />} />
+                  <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                  {/* Onboarding */}
+                  <Route path="/onboarding" element={<OnboardingPage />} />
+                </Routes>
+              </Suspense>
+              <Footer />
+            </div>
+          }
+          path="/*"
+        />
 
-          {/* Auth */}
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        {/* Dashboard shell — no Navbar/Footer */}
+        <Route path="/dashboard" element={<DashboardShell />}>
+          <Route index element={<OverviewPage />} />
+          <Route path="practice" element={<PracticePage />} />
+          <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
+          <Route path="arena" element={<PlaceholderPage title="Arena" />} />
+          <Route path="ai-tutor" element={<PlaceholderPage title="AI Tutor" />} />
+          <Route path="merit-meter" element={<PlaceholderPage title="Merit Meter" />} />
+          <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
+          <Route path="reviews" element={<PlaceholderPage title="Reviews" />} />
+          <Route path="plans" element={<PlaceholderPage title="Plans" />} />
+          <Route path="settings" element={<PlaceholderPage title="Settings" />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Route>
 
-          {/* Onboarding */}
-          <Route path="/onboarding" element={<OnboardingPage />} />
-
-          {/* Dashboard (stub — Phase 3 will expand) */}
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/dashboard/*" element={<DashboardPage />} />
-
-          {/* Fallback */}
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
-      <Footer />
-    </div>
+        {/* Fallback */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 
