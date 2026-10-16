@@ -75,9 +75,9 @@ export async function generateTestBatch(params: {
           hasMore: Boolean(data.hasMore),
         };
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (params.signal?.aborted) throw err;
-      lastError = err;
+      lastError = err instanceof Error ? err : new Error(String(err));
       if (attempt < 2) {
         await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
       }

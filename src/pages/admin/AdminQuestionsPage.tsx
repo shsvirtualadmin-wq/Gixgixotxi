@@ -52,14 +52,15 @@ export function AdminQuestionsPage() {
       setQuestions(res.questions);
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load questions:', err);
+      const e = err as Partial<AdminDiagnosticError>;
       setError({
-        code: err?.code || 'QUESTIONS_FETCH_FAILED',
-        message: err?.message || 'Failed to load questions from database. Please verify Firestore permissions.',
-        collection: err?.collection || 'questions',
-        projectId: err?.projectId || 'boardly-8c0cd',
-        operation: err?.operation || 'fetchQuestionsPaginated',
+        code: e?.code || 'QUESTIONS_FETCH_FAILED',
+        message: e?.message || 'Failed to load questions from database. Please verify Firestore permissions.',
+        collection: e?.collection || 'questions',
+        projectId: e?.projectId || 'boardly-8c0cd',
+        operation: e?.operation || 'fetchQuestionsPaginated',
       });
     } finally {
       setLoading(false);
@@ -80,11 +81,12 @@ export function AdminQuestionsPage() {
       setQuestions((prev) => [...prev, ...res.questions]);
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load more questions:', err);
+      const e = err as Partial<AdminDiagnosticError>;
       setError({
-        code: err?.code || 'QUESTIONS_LOAD_MORE_FAILED',
-        message: err?.message || 'Failed to load additional questions from database.',
+        code: e?.code || 'QUESTIONS_LOAD_MORE_FAILED',
+        message: e?.message || 'Failed to load additional questions from database.',
         collection: 'questions',
         projectId: 'boardly-8c0cd',
         operation: 'handleLoadMore',

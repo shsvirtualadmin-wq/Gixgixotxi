@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, RefreshCw, UserCheck, AlertCircle } from 'lucide-react';
+import { Search, RefreshCw, UserCheck } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserOverrideDrawer } from '@/components/admin/UserOverrideDrawer';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
@@ -35,14 +35,15 @@ export function AdminUsersPage() {
     try {
       const data = await fetchUsers();
       setAllUsers(data);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load users:', err);
+      const e = err as Partial<AdminDiagnosticError>;
       setError({
-        code: err?.code || 'USERS_FETCH_FAILED',
-        message: err?.message || 'Failed to load users from database. Please verify Firestore permissions.',
-        collection: err?.collection || 'users',
-        projectId: err?.projectId || 'boardly-8c0cd',
-        operation: err?.operation || 'fetchUsers',
+        code: e?.code || 'USERS_FETCH_FAILED',
+        message: e?.message || 'Failed to load users from database. Please verify Firestore permissions.',
+        collection: e?.collection || 'users',
+        projectId: e?.projectId || 'boardly-8c0cd',
+        operation: e?.operation || 'fetchUsers',
       });
     } finally {
       setLoading(false);

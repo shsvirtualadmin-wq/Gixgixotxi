@@ -15,7 +15,7 @@ import {
   getCountFromServer,
   addDoc,
   startAfter,
-  type CollectionReference,
+  type QueryConstraint,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
@@ -126,10 +126,11 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   try {
     const snap = await getCountFromServer(usersCol);
     usersTotal = snap.data().count;
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const e = err as { message?: string; code?: string };
     throw new AdminFirestoreError(
-      err?.message || 'Failed to fetch user count from Firestore collection "users".',
-      err?.code || 'users-count-error',
+      e?.message || 'Failed to fetch user count from Firestore collection "users".',
+      e?.code || 'users-count-error',
       'users',
       'getCountFromServer(users)'
     );
@@ -138,10 +139,11 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   try {
     const snap = await getCountFromServer(questionsCol);
     questionsTotal = snap.data().count;
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const e = err as { message?: string; code?: string };
     throw new AdminFirestoreError(
-      err?.message || 'Failed to fetch question count from Firestore collection "questions".',
-      err?.code || 'questions-count-error',
+      e?.message || 'Failed to fetch question count from Firestore collection "questions".',
+      e?.code || 'questions-count-error',
       'questions',
       'getCountFromServer(questions)'
     );
@@ -150,7 +152,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   try {
     const snap = await getCountFromServer(attemptsCol);
     attemptsTotal = snap.data().count;
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.warn('[AdminService] Attempts count warning:', err);
     attemptsTotal = 0;
   }
@@ -187,7 +189,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
       try {
         const snap = await getCountFromServer(query(questionsCol, where('subject', '==', subj)));
         subjectCounts[subj] = snap.data().count;
-      } catch (err: any) {
+      } catch (err: unknown) {
         console.warn(`[AdminService] Subject count query for ${subj}:`, err);
         subjectCounts[subj] = 0;
       }
@@ -252,10 +254,11 @@ export async function fetchUsers(): Promise<UserProfile[]> {
   try {
     const snap = await getDocs(query(ref, limit(200)));
     return snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const e = err as { message?: string; code?: string };
     throw new AdminFirestoreError(
-      err?.message || 'Failed to fetch users from collection "users". Check Firestore permissions.',
-      err?.code || 'users-fetch-error',
+      e?.message || 'Failed to fetch users from collection "users". Check Firestore permissions.',
+      e?.code || 'users-fetch-error',
       'users',
       'getDocs(users)'
     );
@@ -363,7 +366,7 @@ export async function fetchQuestionsPaginated(filters: {
   const count = filters.limitCount ?? 50;
 
   // IMPORTANT: Do NOT combine where('subject', ...) with orderBy(...) to prevent missing composite index failures.
-  const queryConstraints: any[] = [];
+  const queryConstraints: QueryConstraint[] = [];
   if (filters.subject && filters.subject !== 'all') {
     queryConstraints.push(where('subject', '==', filters.subject));
   } else if (filters.university && filters.university !== 'all') {
@@ -400,10 +403,11 @@ export async function fetchQuestionsPaginated(filters: {
       lastDoc: last,
       hasMore,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const e = err as { message?: string; code?: string };
     throw new AdminFirestoreError(
-      err?.message || 'Failed to fetch questions from Firestore collection "questions". Check permissions and indexes.',
-      err?.code || 'questions-fetch-error',
+      e?.message || 'Failed to fetch questions from Firestore collection "questions". Check permissions and indexes.',
+      e?.code || 'questions-fetch-error',
       'questions',
       'fetchQuestionsPaginated'
     );

@@ -60,14 +60,15 @@ export function AdminOverviewPage() {
       ]);
       setStats(s);
       setRecentLogs(logs);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load admin stats:', err);
+      const e = err as Partial<AdminDiagnosticError>;
       setError({
-        code: err?.code || 'FETCH_STATS_FAILED',
-        message: err?.message || 'Failed to fetch overview metrics. Check Firestore rules or collection names.',
-        collection: err?.collection || 'questions/users',
-        projectId: err?.projectId || 'boardly-8c0cd',
-        operation: err?.operation || 'fetchAdminStats',
+        code: e?.code || 'FETCH_STATS_FAILED',
+        message: e?.message || 'Failed to fetch overview metrics. Check Firestore rules or collection names.',
+        collection: e?.collection || 'questions/users',
+        projectId: e?.projectId || 'boardly-8c0cd',
+        operation: e?.operation || 'fetchAdminStats',
       });
     } finally {
       setLoading(false);
