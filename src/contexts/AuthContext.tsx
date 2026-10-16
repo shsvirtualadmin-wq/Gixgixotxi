@@ -387,6 +387,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
   }, []);
 
+  const clearProfileError = useCallback(() => {
+    setProfileError(null);
+  }, []);
+
   const updateLocalProfile = useCallback((updates: Partial<UserProfile>) => {
     setProfile((prev) => (prev ? { ...prev, ...updates } : ({ ...updates } as UserProfile)));
   }, []);
