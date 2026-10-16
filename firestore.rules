@@ -10,9 +10,14 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Superadmin authorization: shsvirtualadmin@gmail.com OR user doc has role == 'admin'
+    // Superadmin authorization:
+    // 1. Direct unforgeable UID check for shsvirtualadmin@gmail.com (UID: A5YMRimdHRcmeDWutxtUGt2e4hf2)
+    // 2. Email checks (exact string match and case-insensitive regex)
+    // 3. Custom claim role check
+    // 4. Firestore user document role check
     function isSuperAdmin() {
       return isAuthenticated() && (
+        request.auth.uid == 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
         (request.auth.token.email != null && (
           request.auth.token.email == 'shsvirtualadmin@gmail.com' ||
           request.auth.token.email.matches('(?i)shsvirtualadmin@gmail\\.com')
@@ -33,7 +38,7 @@ service cloud.firestore {
     }
 
     // Users collection:
-    // Authenticated users have full read/write for their own user document
+    // Authenticated users have full read/write for their own user document and subcollections (usage, chapterStats, etc.)
     // Superadmins have full read/write/list for all user documents
     match /users/{userId} {
       allow read, write: if isOwner(userId) || isAdmin();
@@ -42,6 +47,42 @@ service cloud.firestore {
       match /{allSubcollections=**} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
+    }
+
+    // Leaderboard collection (MCQ rankings, test scores, Arena streaks):
+    match /leaderboard/{uid} {
+      allow read: if true;
+      allow create, update: if isAdmin() || (isAuthenticated() && (
+        uid == request.auth.uid ||
+        request.resource.data.uid == request.auth.uid
+      ));
+      allow delete: if isAdmin();
+    }
+
+    // MCQ Test Engine Attempts:
+    match /attempts/{attemptId} {
+      allow read: if (isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.uid == request.auth.uid
+      )) || isAdmin();
+
+      allow create: if (isAuthenticated() && (
+        (request.resource.data.userId == request.auth.uid || request.resource.data.uid == request.auth.uid) &&
+        (request.resource.data.status == 'preparing' || request.resource.data.status == 'in_progress')
+      )) || isAdmin();
+
+      allow update: if isAdmin() || (
+        isAuthenticated()
+        && (resource.data.userId == request.auth.uid || resource.data.uid == request.auth.uid)
+        && resource.data.status != 'completed'
+        && (
+          !('endsAt' in resource.data)
+          || !(resource.data.endsAt is timestamp)
+          || request.time <= resource.data.endsAt + duration.value(120, 's')
+        )
+      );
+
+      allow delete: if isAdmin();
     }
 
     // Unified applications collection (for Crew & Captain role applications)
@@ -161,26 +202,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    // MCQ Test Engine Attempts:
-    match /attempts/{attemptId} {
-      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
-      allow create: if (isAuthenticated() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'preparing') || isAdmin();
-      allow update: if isAdmin() || (
-        isAuthenticated()
-        && resource.data.userId == request.auth.uid
-        && resource.data.status != 'completed'
-        && (
-          !('endsAt' in resource.data)
-          || !(resource.data.endsAt is timestamp)
-          || request.time <= resource.data.endsAt + duration.value(5, 's')
-        )
-      );
-      allow delete: if isAdmin();
-    }
-
     match /certificates/{certId} {
-      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
-      allow write: if isAdmin();
+      allow read: if (isAuthenticated() && (
+        resource.data.userId == request.auth.uid ||
+        resource.data.uid == request.auth.uid
+      )) || isAdmin();
+      allow create: if (isAuthenticated() && (
+        request.resource.data.userId == request.auth.uid ||
+        request.resource.data.uid == request.auth.uid
+      )) || isAdmin();
+      allow update, delete: if isAdmin();
     }
 
     match /organizerApplications/{appId} {

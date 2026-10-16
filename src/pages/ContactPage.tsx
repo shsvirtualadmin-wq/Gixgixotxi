@@ -47,7 +47,7 @@ export function ContactPage() {
       });
 
       const responseText = await response.text();
-      let responseData: any = {};
+      let responseData: { success?: boolean; error?: string; code?: string } = {};
       try {
         responseData = JSON.parse(responseText);
       } catch {

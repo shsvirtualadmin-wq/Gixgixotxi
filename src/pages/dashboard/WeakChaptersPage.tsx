@@ -64,8 +64,12 @@ export function WeakChaptersPage() {
   }, [loadStats]);
 
   const handleDrillChapter = async (item: ChapterStat) => {
-    if (!user) return;
+    if (!user) {
+      setError({ message: 'Please sign in to start a chapter drill.' });
+      return;
+    }
     setLaunchingChapter(item.chapter);
+    setError(null);
     try {
       const durationSeconds = 15 * 60; // 15 mins
       const endsAt = new Date(Date.now() + durationSeconds * 1000);
@@ -83,8 +87,10 @@ export function WeakChaptersPage() {
         createdAt: serverTimestamp(),
       });
       navigate(`/test/${ref.id}`);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('[WeakChaptersPage] Launch drill error:', err);
+      const msg = err instanceof Error ? err.message : 'Failed to launch drill';
+      setError({ message: `Failed to launch test session: ${msg}` });
       setLaunchingChapter(null);
     }
   };

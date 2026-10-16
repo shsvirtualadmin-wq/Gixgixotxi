@@ -38,6 +38,7 @@ export function PracticePage() {
   );
   const [selectedUniversity, setSelectedUniversity] = useState('FAST-NUCES');
   const [launching, setLaunching] = useState(false);
+  const [launchError, setLaunchError] = useState<string | null>(null);
   const [todayAttempts, setTodayAttempts] = useState(0);
 
   const isPro = profile?.plan === 'pro' || profile?.isPremium;
@@ -94,8 +95,13 @@ export function PracticePage() {
   }, [selectedSubject]);
 
   const launchTest = async (type: 'sprint' | 'full' | 'drill', customChapter?: string) => {
-    if (!user || launching) return;
+    if (!user) {
+      setLaunchError('Please sign in to start a practice test session.');
+      return;
+    }
+    if (launching) return;
     setLaunching(true);
+    setLaunchError(null);
 
     let count = 10;
     let duration = 600; // 10 mins
@@ -132,8 +138,10 @@ export function PracticePage() {
 
       const docRef = await addDoc(collection(db, 'attempts'), attemptPayload);
       navigate(`/test/${docRef.id}`);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to launch test:', err);
+      const msg = err instanceof Error ? err.message : String(err);
+      setLaunchError(`Failed to start test session: ${msg}`);
       setLaunching(false);
     }
   };
@@ -180,6 +188,18 @@ export function PracticePage() {
           </div>
         </div>
       </Card>
+      {launchError && (
+        <div className="p-4 rounded-2xl bg-red-950/40 border border-[var(--red)] text-red-200 text-xs sm:text-sm flex items-center justify-between gap-3">
+          <span>{launchError}</span>
+          <button
+            type="button"
+            onClick={() => setLaunchError(null)}
+            className="text-xs font-semibold underline hover:text-white shrink-0 cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* ── Three Big Start Cards ────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
