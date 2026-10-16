@@ -7,21 +7,24 @@ import { Button } from '../ui/Button';
 export function PricingSection() {
   return (
     <section id="pricing" className="py-20 md:py-28 relative">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center max-w-2xl mx-auto mb-16 space-y-4">
+      <div className="site-container">
+        <div className="section-header">
           <Badge color="success">Affordable Test Prep</Badge>
           <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold text-white">
             Transparent Pricing.{' '}
             <span className="text-gradient">Made for Students.</span>
           </h2>
-          <p className="text-[var(--text-muted)] text-base">
+          <p className="text-[var(--text-muted)] text-base max-w-xl">
             No expensive PKR 50,000 academy fees. High-yield preparation designed to be accessible to every student in Pakistan.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto items-stretch">
+        <div
+          className="grid grid-cols-1 md:grid-cols-2 items-stretch w-full"
+          style={{ maxWidth: '880px', margin: '0 auto', gap: '24px' }}
+        >
           {/* Free Tier */}
-          <GlassCard hover className="flex flex-col justify-between p-8">
+          <GlassCard hover className="flex flex-col justify-between p-8 h-full">
             <div className="space-y-6">
               <div>
                 <Badge color="muted" className="mb-3">
@@ -52,7 +55,7 @@ export function PricingSection() {
               </div>
             </div>
 
-            <div className="pt-8">
+            <div className="mt-auto pt-8">
               <Link to="/signup" className="w-full block">
                 <Button variant="secondary" size="lg" fullWidth>
                   Get Started Free
@@ -62,7 +65,7 @@ export function PricingSection() {
           </GlassCard>
 
           {/* Pro Tier */}
-          <GlassCard animated className="flex flex-col justify-between p-8 relative">
+          <GlassCard animated className="flex flex-col justify-between p-8 h-full relative">
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <Badge color="brand" pulse>
@@ -101,7 +104,7 @@ export function PricingSection() {
               </div>
             </div>
 
-            <div className="pt-8 space-y-3">
+            <div className="mt-auto pt-8 space-y-3">
               <Link to="/signup" className="w-full block">
                 <Button variant="primary" size="lg" fullWidth>
                   Upgrade to Pro

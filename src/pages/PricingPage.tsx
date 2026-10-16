@@ -19,11 +19,11 @@ const COMPARISON_ROWS = [
 
 export function PricingPage() {
   return (
-    <div className="pt-28 pb-20 max-w-6xl mx-auto px-6 page-enter space-y-16">
+    <div className="pt-24 pb-20 page-enter space-y-16">
       <PricingSection />
 
       {/* Feature Comparison Table */}
-      <div className="space-y-6">
+      <div className="site-container space-y-6">
         <div className="text-center space-y-2">
           <Badge color="brand">Detailed Comparison</Badge>
           <h2 className="font-display text-2xl sm:text-3xl font-bold text-white">

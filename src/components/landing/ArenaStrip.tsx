@@ -13,9 +13,9 @@ const LEADERBOARD_PREVIEW = [
 
 export function ArenaStrip() {
   return (
-    <section id="arena" className="py-20 relative">
-      <div className="max-w-6xl mx-auto px-6">
-        <GlassCard animated className="relative overflow-hidden p-8 md:p-12">
+    <section id="arena" className="py-20 md:py-28 relative">
+      <div className="site-container">
+        <GlassCard animated className="relative overflow-hidden" style={{ padding: '32px' }}>
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
             {/* Left Col: Event info */}
             <div className="lg:col-span-6 space-y-5 text-center lg:text-left">
@@ -32,46 +32,52 @@ export function ArenaStrip() {
                 Compete against thousands of students across Karachi, Lahore, Islamabad, and beyond under strictly synchronized exam timers. See where your aggregate stands before test day.
               </p>
 
-              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-4 text-xs text-[var(--text-faint)]">
+              <div className="flex flex-wrap items-center justify-center lg:justify-start gap-5 text-xs text-[var(--text-faint)]">
                 <div className="flex items-center gap-1.5">
-                  <Shield size={16} className="text-blue-400" />
+                  <Shield size={16} className="text-blue-400 shrink-0" />
                   Anti-cheat auto-submit timer
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <Trophy size={16} className="text-amber-400" />
+                  <Trophy size={16} className="text-amber-400 shrink-0" />
                   Campus bragging rights
                 </div>
               </div>
 
-              <div className="pt-2">
-                <Link to="/signup">
-                  <Button variant="primary" size="md" className="group">
+              <div className="pt-2 flex justify-center lg:justify-start">
+                <Link to="/signup" className="w-full sm:w-auto">
+                  <Button
+                    variant="primary"
+                    className="w-full sm:w-auto group shadow-lg shadow-blue-500/25"
+                    style={{ padding: '14px 24px', borderRadius: 12, fontSize: '1rem', fontWeight: 600 }}
+                  >
                     Register for Next Blitz
-                    <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
+                    <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
                   </Button>
                 </Link>
               </div>
             </div>
 
             {/* Right Col: Live leaderboard mock */}
-            <div className="lg:col-span-6">
-              <div className="glass p-5 rounded-2xl bg-black/40 border border-white/10 space-y-3">
-                <div className="flex items-center justify-between text-xs pb-3 border-b border-white/10">
-                  <span className="font-semibold text-white uppercase tracking-wider flex items-center gap-1.5">
-                    <Trophy size={14} className="text-amber-400" /> Last Week&apos;s Honor Roll
+            <div className="lg:col-span-6 w-full">
+              <div className="glass p-6 rounded-2xl bg-black/40 border border-white/10 space-y-4">
+                <div className="flex items-center justify-between text-xs sm:text-sm pb-3 border-b border-white/10 gap-3">
+                  <span className="font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <Trophy size={16} className="text-amber-400 shrink-0" /> Last Week&apos;s Honor Roll
                   </span>
-                  <span className="text-[var(--text-faint)]">520+ Candidates</span>
+                  <span className="text-xs text-[var(--text-faint)] font-medium shrink-0">
+                    520+ Candidates
+                  </span>
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2.5">
                   {LEADERBOARD_PREVIEW.map(student => (
                     <div
                       key={student.name}
-                      className="p-2.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] transition-colors flex items-center justify-between text-xs"
+                      className="p-3 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] transition-colors flex items-center justify-between text-sm min-h-[48px]"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0">
                         <span
-                          className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[11px] ${
+                          className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
                             student.rank === 1
                               ? 'bg-amber-400 text-black'
                               : student.rank === 2
@@ -83,25 +89,25 @@ export function ArenaStrip() {
                         >
                           {student.rank}
                         </span>
-                        <div>
-                          <div className="font-semibold text-white">{student.name}</div>
-                          <div className="text-[10px] text-[var(--text-faint)]">
+                        <div className="truncate">
+                          <div className="font-semibold text-white leading-tight">{student.name}</div>
+                          <div className="text-xs text-[var(--text-faint)] leading-tight mt-0.5">
                             {student.city} · {student.target}
                           </div>
                         </div>
                       </div>
 
-                      <div className="text-right">
-                        <div className="font-bold text-cyan-400 tabular-nums">
+                      <div className="text-right shrink-0 pl-3">
+                        <div className="font-bold text-cyan-400 tabular-nums text-sm">
                           {student.score}/100
                         </div>
-                        <div className="text-[10px] text-emerald-400">{student.percentile}</div>
+                        <div className="text-xs text-emerald-400 font-medium">{student.percentile}</div>
                       </div>
                     </div>
                   ))}
                 </div>
 
-                <div className="pt-2 text-center">
+                <div className="pt-1 text-center">
                   <span className="text-[11px] text-[var(--text-faint)]">
                     Participant privacy protected via masked initials.
                   </span>

@@ -25,7 +25,7 @@ export function ReviewsPage() {
   }, [selectedUni, selectedRating]);
 
   return (
-    <div className="pt-28 pb-20 max-w-6xl mx-auto px-6 page-enter space-y-12">
+    <div className="site-container pt-28 pb-20 page-enter space-y-12">
       {/* Header */}
       <div className="text-center max-w-3xl mx-auto space-y-4">
         <Badge color="violet">Student Feedback Wall</Badge>

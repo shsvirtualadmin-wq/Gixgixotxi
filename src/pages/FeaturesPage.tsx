@@ -6,21 +6,24 @@ import { Button } from '../components/ui/Button';
 
 export function FeaturesPage() {
   return (
-    <div className="pt-28 pb-20 max-w-6xl mx-auto px-6 page-enter space-y-16">
-      <div className="text-center max-w-3xl mx-auto space-y-4">
-        <Badge color="brand">Deep Dive</Badge>
-        <h1 className="font-display text-4xl sm:text-5xl font-extrabold text-white">
-          The Boardly Test-Prep Engine
-        </h1>
-        <p className="text-base sm:text-lg text-[var(--text-muted)] leading-relaxed">
-          Engineered from scratch to replace chaotic WhatsApp groups and poorly formatted PDFs with a clean, high-performance study workflow.
-        </p>
+    <div className="pt-24 pb-20 page-enter space-y-16">
+      <div className="site-container">
+        <div className="section-header">
+          <Badge color="brand">Deep Dive</Badge>
+          <h1 className="font-display text-4xl sm:text-5xl font-extrabold text-white">
+            The Boardly Test-Prep Engine
+          </h1>
+          <p className="text-base sm:text-lg text-[var(--text-muted)] leading-relaxed max-w-2xl">
+            Engineered from scratch to replace chaotic WhatsApp groups and poorly formatted PDFs with a clean, high-performance study workflow.
+          </p>
+        </div>
       </div>
 
       <FeaturesGrid />
       <HowItWorks />
 
-      <div className="glass p-8 sm:p-12 rounded-3xl text-center space-y-6 max-w-3xl mx-auto">
+      <div className="site-container">
+        <div className="glass p-8 sm:p-12 rounded-3xl text-center space-y-6 max-w-3xl mx-auto">
         <h2 className="text-2xl sm:text-3xl font-bold text-white">
           Ready to experience the study cockpit?
         </h2>
@@ -41,6 +44,7 @@ export function FeaturesPage() {
         </div>
       </div>
     </div>
+  </div>
   );
 }
 

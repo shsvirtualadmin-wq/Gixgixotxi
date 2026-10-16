@@ -38,19 +38,19 @@ export function FaqSection() {
   };
 
   return (
-    <section className="py-20 md:py-28 relative">
-      <div className="max-w-4xl mx-auto px-6">
-        <div className="text-center mb-16 space-y-4">
+    <section id="faq" className="py-24 relative">
+      <div className="site-container">
+        <div className="section-header">
           <Badge color="brand">Got Questions?</Badge>
           <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold text-white">
             Frequently Asked Questions
           </h2>
-          <p className="text-[var(--text-muted)] text-base">
+          <p className="text-[var(--text-muted)] text-base max-w-xl">
             Everything you need to know about preparing with Boardly.
           </p>
         </div>
 
-        <div className="space-y-4">
+        <div className="max-w-[800px] mx-auto space-y-4">
           {FAQS.map((faq, idx) => {
             const isOpen = openIndex === idx;
             return (

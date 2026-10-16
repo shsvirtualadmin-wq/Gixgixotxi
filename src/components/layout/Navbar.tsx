@@ -34,11 +34,15 @@ export function Navbar() {
   }, [location.pathname, location.hash]);
 
   return (
-    <header className="fixed top-4 left-0 right-0 z-50 px-4 max-w-6xl mx-auto">
-      <nav
-        aria-label="Main Navigation"
-        className="glass flex items-center justify-between px-5 py-3 rounded-full transition-all duration-200"
-      >
+    <header
+      className="fixed top-0 left-0 right-0 z-[1000] w-full border-b border-white/[0.08]"
+      style={{
+        background: 'rgba(10, 14, 28, 0.78)',
+        backdropFilter: 'blur(16px) saturate(140%)',
+        WebkitBackdropFilter: 'blur(16px) saturate(140%)',
+      }}
+    >
+      <div className="site-container h-16 flex items-center justify-between">
         {/* Brand */}
         <Link to="/" className="flex items-center gap-2.5 group">
           <img
@@ -55,7 +59,7 @@ export function Navbar() {
         </Link>
 
         {/* Desktop Nav Links */}
-        <div className="hidden md:flex items-center gap-7">
+        <nav aria-label="Main Navigation" className="hidden md:flex items-center gap-7">
           {NAV_LINKS.map(link => (
             <Link
               key={link.label}
@@ -65,7 +69,7 @@ export function Navbar() {
               {link.label}
             </Link>
           ))}
-        </div>
+        </nav>
 
         {/* Right Actions */}
         <div className="hidden md:flex items-center gap-3">
@@ -107,37 +111,39 @@ export function Navbar() {
             {mobileOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
         </div>
-      </nav>
+      </div>
 
       {/* Mobile Menu Dropdown */}
       {mobileOpen && (
-        <div className="md:hidden mt-2 glass rounded-2xl p-5 flex flex-col gap-4 animate-[page-enter_0.2s_ease-out]">
-          <div className="flex flex-col gap-3">
-            {NAV_LINKS.map(link => (
-              <Link
-                key={link.label}
-                to={link.to}
-                onClick={() => setMobileOpen(false)}
-                className="text-base font-medium text-[var(--text-muted)] hover:text-[var(--text)] py-1.5 transition-colors"
-              >
-                {link.label}
+        <div className="md:hidden border-t border-white/[0.08] bg-[rgba(10,14,28,0.95)] backdrop-blur-xl">
+          <div className="site-container py-5 flex flex-col gap-4 animate-[page-enter_0.2s_ease-out]">
+            <div className="flex flex-col gap-3">
+              {NAV_LINKS.map(link => (
+                <Link
+                  key={link.label}
+                  to={link.to}
+                  onClick={() => setMobileOpen(false)}
+                  className="text-base font-medium text-[var(--text-muted)] hover:text-[var(--text)] py-1.5 transition-colors"
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+
+            <hr className="border-[var(--border)] my-1" />
+
+            <div className="flex flex-col gap-2.5">
+              <Link to="/login" onClick={() => setMobileOpen(false)} className="w-full">
+                <Button variant="secondary" size="md" fullWidth>
+                  Sign In
+                </Button>
               </Link>
-            ))}
-          </div>
-
-          <hr className="border-[var(--border)] my-1" />
-
-          <div className="flex flex-col gap-2.5">
-            <Link to="/login" onClick={() => setMobileOpen(false)} className="w-full">
-              <Button variant="secondary" size="md" fullWidth>
-                Sign In
-              </Button>
-            </Link>
-            <Link to="/signup" onClick={() => setMobileOpen(false)} className="w-full">
-              <Button variant="primary" size="md" fullWidth>
-                Get Started
-              </Button>
-            </Link>
+              <Link to="/signup" onClick={() => setMobileOpen(false)} className="w-full">
+                <Button variant="primary" size="md" fullWidth>
+                  Get Started
+                </Button>
+              </Link>
+            </div>
           </div>
         </div>
       )}

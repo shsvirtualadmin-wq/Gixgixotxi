@@ -6,14 +6,14 @@ import { MathText } from '../ui/MathText';
 export function FeaturesGrid() {
   return (
     <section id="features" className="py-20 md:py-28 relative">
-      <div className="max-w-6xl mx-auto px-6">
+      <div className="site-container">
         {/* Section Header */}
-        <div className="text-center max-w-2xl mx-auto mb-16 space-y-4">
+        <div className="section-header">
           <Badge color="brand">Platform Capabilities</Badge>
           <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold text-[var(--text)]">
             Engineered for <span className="text-gradient">Entrance Excellence</span>
           </h2>
-          <p className="text-[var(--text-muted)] text-base">
+          <p className="text-[var(--text-muted)] text-base max-w-xl">
             Every feature is calibrated around the real challenges of Pakistani entrance tests — negative marking, speed calculation, and dense formulas.
           </p>
         </div>

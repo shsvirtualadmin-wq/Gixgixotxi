@@ -32,29 +32,34 @@ const STEPS = [
 export function HowItWorks() {
   return (
     <section className="py-20 md:py-28 relative">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center max-w-2xl mx-auto mb-16 space-y-4">
+      <div className="site-container">
+        <div className="section-header">
           <Badge color="violet">Simple 3-Step Strategy</Badge>
           <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold text-white">
             How Boardly Works
           </h2>
-          <p className="text-[var(--text-muted)] text-base">
+          <p className="text-[var(--text-muted)] text-base max-w-xl">
             No endless unorganized PDF drives. A structured study pipeline engineered to maximize your marks in minimum time.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 relative">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-stretch">
           {STEPS.map((item, idx) => {
             const Icon = item.icon;
             return (
-              <GlassCard key={item.step} hover className="relative p-8 flex flex-col justify-between">
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="font-display text-3xl font-extrabold text-[var(--text-faint)]/40 tabular-nums">
+              <GlassCard
+                key={item.step}
+                hover
+                className="relative flex flex-col justify-between h-full"
+                style={{ padding: '28px' }}
+              >
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-display text-4xl sm:text-5xl font-extrabold text-[var(--text-faint)]/40 tabular-nums">
                       {item.step}
                     </span>
                     <div
-                      className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${item.accent} p-0.5 flex items-center justify-center`}
+                      className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${item.accent} p-0.5 flex items-center justify-center shrink-0`}
                     >
                       <div className="w-full h-full bg-[#070B14] rounded-[14px] flex items-center justify-center text-white">
                         <Icon size={22} />
@@ -68,7 +73,7 @@ export function HowItWorks() {
                   </p>
                 </div>
 
-                <div className="mt-6 pt-4 border-t border-[var(--border)] text-xs text-[var(--text-faint)]">
+                <div className="mt-auto pt-4 border-t border-[var(--border)] text-xs font-medium text-[var(--text-faint)]">
                   Step {idx + 1} of 3
                 </div>
               </GlassCard>

@@ -39,13 +39,13 @@ export function ScrollDrivenPreview() {
 
   return (
     <section className="py-20 md:py-28 relative">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center max-w-2xl mx-auto mb-16 space-y-4">
+      <div className="site-container">
+        <div className="section-header">
           <Badge color="violet">Interactive Experience</Badge>
           <h2 className="font-display text-3xl sm:text-4xl md:text-5xl font-bold text-white">
             Designed for <span className="text-gradient">Every Aspiring Leader</span>
           </h2>
-          <p className="text-[var(--text-muted)] text-base">
+          <p className="text-[var(--text-muted)] text-base max-w-xl">
             Whether you&apos;re an ambitious student, a study squad captain, or a campus ambassador, Boardly equips you with dedicated tools.
           </p>
         </div>

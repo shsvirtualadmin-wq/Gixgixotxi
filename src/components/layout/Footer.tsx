@@ -2,12 +2,16 @@ import { Link } from 'react-router-dom';
 
 export function Footer() {
   return (
-    <footer className="w-full border-t border-[var(--border)] bg-[var(--bg-2)]/60 backdrop-blur-xl mt-auto">
-      <div className="max-w-6xl mx-auto px-6 py-12 md:py-16">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-12">
+    <footer className="w-full border-t border-[var(--border)] bg-[var(--bg-2)]/80 backdrop-blur-xl mt-auto">
+      <div className="site-container pb-12" style={{ paddingTop: '48px' }}>
+        {/* 4-column grid (brand + 3 link columns) with gap: 32px */}
+        <div
+          className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4"
+          style={{ gap: '32px' }}
+        >
           {/* Brand info */}
-          <div className="md:col-span-1">
-            <Link to="/" className="flex items-center gap-2 mb-4">
+          <div className="space-y-4">
+            <Link to="/" className="flex items-center gap-2">
               <img
                 src="/favicon.svg"
                 alt="Boardly"
@@ -18,7 +22,7 @@ export function Footer() {
               />
               <span className="font-display text-xl font-bold text-[var(--text)]">Boardly</span>
             </Link>
-            <p className="text-sm text-[var(--text-muted)] leading-relaxed mb-4">
+            <p className="text-sm text-[var(--text-muted)] leading-relaxed">
               Pakistan&apos;s premier MCQ test-prep platform for FAST-NUCES, NUST NET, GIKI, LUMS, NED, MDCAT, ECAT, and intermediate boards.
             </p>
             <div className="text-xs text-[var(--text-faint)]">
@@ -65,7 +69,11 @@ export function Footer() {
           </div>
         </div>
 
-        <div className="pt-8 border-t border-[var(--border)] flex flex-col md:flex-row items-center justify-between gap-4 text-xs text-[var(--text-faint)]">
+        {/* Bottom row: copyright and dark-glass note on one row with justify-between and margin-top: 32px */}
+        <div
+          className="border-t border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-[var(--text-faint)]"
+          style={{ marginTop: '32px', paddingTop: '24px' }}
+        >
           <div>
             &copy; {new Date().getFullYear()} Boardly Technologies. All rights reserved.
           </div>

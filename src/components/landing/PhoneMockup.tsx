@@ -77,14 +77,16 @@ export function PhoneMockup({
       >
         {/* Outer Phone Shell */}
         <div
-          className={`relative w-[300px] sm:w-[330px] rounded-[44px] p-3 shadow-2xl border border-white/20 ${compact ? 'h-[480px]' : 'h-[610px]'}`}
+          className={`relative rounded-[40px] p-2.5 shadow-2xl border border-white/20 will-change-transform ${compact ? 'w-[240px] h-[480px]' : 'w-[265px] sm:w-[280px] h-[550px]'}`}
           style={{
+            maxHeight: '560px',
+            aspectRatio: '9 / 19',
             background: 'linear-gradient(135deg, #2a2a3e 0%, #151928 50%, #2a2a3e 100%)',
             boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7), inset 0 1px 2px rgba(255, 255, 255, 0.3)',
           }}
         >
           {/* Inner Screen */}
-          <div className="relative w-full h-full rounded-[34px] overflow-hidden bg-[#070B14] flex flex-col border border-white/10">
+          <div className="relative w-full h-full rounded-[32px] overflow-hidden bg-[#070B14] flex flex-col border border-white/10">
             {/* Dynamic Island / Speaker Pill */}
             <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-28 h-5 bg-black rounded-full z-30 flex items-center justify-between px-3">
               <span className="w-2.5 h-2.5 rounded-full bg-blue-500/40 animate-pulse" />
@@ -199,9 +201,32 @@ export function PhoneMockup({
                     <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
                       <div className="h-full bg-gradient-to-r from-purple-500 to-pink-500 w-[93%]" />
                     </div>
-                    <div className="text-[10px] text-[var(--text-faint)] mt-2">
+                    <div className="text-[10px] text-[var(--text-faint)] mt-1.5">
                       2 more active referrals to unlock Stipend Tier.
                     </div>
+                  </div>
+
+                  {/* Recent referrals list */}
+                  <div className="space-y-1.5 pt-0.5">
+                    <div className="flex items-center justify-between text-[10px] text-[var(--text-faint)] font-semibold uppercase tracking-wider">
+                      <span>Recent Aspirants</span>
+                      <span className="text-emerald-400">Live</span>
+                    </div>
+                    {[
+                      { name: 'Hamza S.', campus: 'FAST CS', status: 'Active Mock' },
+                      { name: 'Ayesha K.', campus: 'NUST SEECS', status: 'Verified' },
+                      { name: 'Zainab R.', campus: 'GIKI Eng', status: 'Active Sprint' },
+                    ].map(ref => (
+                      <div key={ref.name} className="glass p-2 rounded-xl flex items-center justify-between text-[11px]">
+                        <div>
+                          <div className="text-white font-medium">{ref.name}</div>
+                          <div className="text-[9px] text-[var(--text-faint)]">{ref.campus}</div>
+                        </div>
+                        <span className="text-[9px] font-semibold px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                          {ref.status}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -319,15 +344,17 @@ export function PhoneMockup({
       </div>
 
       {/* Screen Selection Tabs below phone */}
-      <div className="flex items-center justify-center gap-2 mt-5 p-1 glass rounded-full max-w-sm">
+      <div className="flex items-center justify-between gap-1 mt-4 p-1.5 bg-black/60 backdrop-blur-md border border-white/10 rounded-full w-full max-w-[290px]">
         {(['Cockpit', 'Crew', 'Captain', 'Arena'] as const).map((tab, idx) => (
           <button
             key={tab}
+            type="button"
             onClick={() => setScreen(idx as 0 | 1 | 2 | 3)}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-full transition-all duration-150 ${
+            aria-pressed={activeScreen === idx}
+            className={`flex-1 py-1.5 px-2 text-xs font-semibold rounded-full transition-all duration-200 cursor-pointer text-center ${
               activeScreen === idx
-                ? 'bg-gradient-to-r from-blue-500 to-cyan-400 text-white shadow-md'
-                : 'text-[var(--text-muted)] hover:text-white'
+                ? 'bg-gradient-to-r from-blue-500 to-cyan-400 text-white font-bold shadow-md shadow-blue-500/25'
+                : 'text-[var(--text-muted)] hover:text-white hover:bg-white/[0.06]'
             }`}
           >
             {tab}

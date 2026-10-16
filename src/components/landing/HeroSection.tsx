@@ -6,11 +6,11 @@ import { PhoneMockup } from './PhoneMockup';
 
 export function HeroSection() {
   return (
-    <section className="relative pt-32 pb-20 md:pt-40 md:pb-28 overflow-hidden">
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+    <section className="relative pt-[104px] pb-20 md:pb-28 overflow-hidden">
+      <div className="site-container">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-12 items-center">
           {/* Left Column: Hero Content */}
-          <div className="lg:col-span-7 space-y-6 text-center lg:text-left">
+          <div className="space-y-6 text-center lg:text-left">
             <div className="inline-flex items-center gap-2">
               <Badge color="brand" pulse>
                 2026 Admissions Cohort Open
@@ -28,40 +28,48 @@ export function HeroSection() {
             </p>
 
             {/* CTAs */}
-            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3.5 pt-2">
+            <div className="flex flex-col sm:flex-row items-center justify-center lg:justify-start gap-3 pt-2">
               <Link to="/signup" className="w-full sm:w-auto">
-                <Button variant="primary" size="lg" fullWidth className="group">
+                <Button
+                  variant="primary"
+                  className="w-full sm:w-auto group shadow-lg shadow-blue-500/25"
+                  style={{ padding: '14px 24px', borderRadius: 12, fontSize: '1rem', fontWeight: 600 }}
+                >
                   Start Practicing Free
                   <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
                 </Button>
               </Link>
 
               <Link to="/#arena" className="w-full sm:w-auto">
-                <Button variant="secondary" size="lg" fullWidth>
+                <Button
+                  variant="secondary"
+                  className="w-full sm:w-auto border border-white/10 hover:border-white/20"
+                  style={{ padding: '14px 24px', borderRadius: 12, fontSize: '1rem', fontWeight: 600 }}
+                >
                   Explore Live Arena
                 </Button>
               </Link>
             </div>
 
-            {/* Trust Chips */}
-            <div className="pt-6 border-t border-[var(--border)] grid grid-cols-2 sm:grid-cols-3 gap-3 text-left">
+            {/* Trust Chips Row */}
+            <div className="mt-6 pt-6 border-t border-[var(--border)] flex flex-wrap items-center justify-center lg:justify-start gap-5 text-xs text-[var(--text-muted)]">
               <div className="flex items-center gap-2">
                 <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                <span className="text-xs text-[var(--text-muted)]">Authentic Past Papers</span>
+                <span>Authentic Past Papers</span>
               </div>
               <div className="flex items-center gap-2">
                 <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                <span className="text-xs text-[var(--text-muted)]">Step-by-step KaTeX</span>
+                <span>Step-by-step KaTeX</span>
               </div>
-              <div className="flex items-center gap-2 col-span-2 sm:col-span-1">
+              <div className="flex items-center gap-2">
                 <CheckCircle2 size={16} className="text-emerald-400 shrink-0" />
-                <span className="text-xs text-[var(--text-muted)]">PKT Midnight Resets</span>
+                <span>PKT Midnight Resets</span>
               </div>
             </div>
           </div>
 
           {/* Right Column: Phone Mockup */}
-          <div className="lg:col-span-5 flex justify-center">
+          <div className="flex justify-center lg:justify-end">
             <PhoneMockup />
           </div>
         </div>

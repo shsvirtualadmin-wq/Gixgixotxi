@@ -20,13 +20,13 @@ export function ContactPage() {
   };
 
   return (
-    <div className="pt-28 pb-20 max-w-5xl mx-auto px-6 page-enter space-y-12">
-      <div className="text-center max-w-2xl mx-auto space-y-4">
+    <div className="site-container pt-28 pb-20 page-enter space-y-12">
+      <div className="section-header">
         <Badge color="brand">Helpdesk</Badge>
         <h1 className="font-display text-4xl sm:text-5xl font-extrabold text-white">
           Contact Boardly
         </h1>
-        <p className="text-base text-[var(--text-muted)] leading-relaxed">
+        <p className="text-base text-[var(--text-muted)] leading-relaxed max-w-xl">
           Need help with your plan activation, reporting a math formula error, or campus captain partnership? Reach out to our Karachi team.
         </p>
       </div>
