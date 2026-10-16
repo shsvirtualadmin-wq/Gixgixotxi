@@ -1,19 +1,23 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, RefreshCw, UserCheck } from 'lucide-react';
+import { Search, RefreshCw, UserCheck, Loader2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserOverrideDrawer } from '@/components/admin/UserOverrideDrawer';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import {
-  fetchUsers,
+  fetchUsersPaginated,
   backfillMissingDisplayNames,
   getUserDisplayName,
 } from '@/services/adminService';
 import type { UserProfile } from '@/types';
+import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 
 export function AdminUsersPage() {
   const { user } = useAuth();
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
 
   // Filters
@@ -33,8 +37,14 @@ export function AdminUsersPage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchUsers();
-      setAllUsers(data);
+      const res = await fetchUsersPaginated({
+        limitCount: 50,
+        role: roleFilter,
+        plan: planFilter,
+      });
+      setAllUsers(res.users);
+      setLastDoc(res.lastDoc);
+      setHasMore(res.hasMore);
     } catch (err: unknown) {
       console.error('Failed to load users:', err);
       const e = err as Partial<AdminDiagnosticError>;
@@ -43,12 +53,40 @@ export function AdminUsersPage() {
         message: e?.message || 'Failed to load users from database. Please verify Firestore permissions.',
         collection: e?.collection || 'users',
         projectId: e?.projectId || 'boardly-8c0cd',
-        operation: e?.operation || 'fetchUsers',
+        operation: e?.operation || 'fetchUsersPaginated',
       });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [roleFilter, planFilter]);
+
+  const handleLoadMore = async () => {
+    if (!lastDoc || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetchUsersPaginated({
+        limitCount: 50,
+        role: roleFilter,
+        plan: planFilter,
+        startAfterDoc: lastDoc,
+      });
+      setAllUsers((prev) => [...prev, ...res.users]);
+      setLastDoc(res.lastDoc);
+      setHasMore(res.hasMore);
+    } catch (err: unknown) {
+      console.error('Failed to load more users:', err);
+      const e = err as Partial<AdminDiagnosticError>;
+      setError({
+        code: e?.code || 'USERS_LOAD_MORE_FAILED',
+        message: e?.message || 'Failed to load additional users from database.',
+        collection: 'users',
+        projectId: 'boardly-8c0cd',
+        operation: 'handleLoadMore',
+      });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     loadUsers();
@@ -490,6 +528,26 @@ export function AdminUsersPage() {
           </tbody>
         </table>
       </div>
+
+      {hasMore && (
+        <div className="flex justify-center pt-2 pb-4">
+          <button
+            type="button"
+            onClick={handleLoadMore}
+            disabled={loadingMore}
+            className="flex items-center gap-2 px-5 py-2.5 rounded-[14px] border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors disabled:opacity-50"
+          >
+            {loadingMore ? (
+              <>
+                <Loader2 size={16} className="animate-spin text-[var(--muted)]" />
+                <span>Loading more users...</span>
+              </>
+            ) : (
+              <span>Load More Users</span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* ─── USER OVERRIDE DRAWER (Side Drawer on Desktop / Bottom Sheet on Mobile) ─── */}
       {selectedUser && (

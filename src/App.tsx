@@ -6,104 +6,136 @@ import { Skeleton } from './components/ui/Skeleton';
 import { AdminGuard } from './components/admin/AdminGuard';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { PublicLayout } from './components/layout/PublicLayout';
+import { DashboardShell } from './components/dashboard/DashboardShell';
+import { DashboardErrorBoundary } from './components/dashboard/DashboardErrorBoundary';
 
-// Public pages (lazy)
-const LandingPage = lazy(() => import('./pages/LandingPage'));
-const FeaturesPage = lazy(() => import('./pages/FeaturesPage'));
-const ArenaPage = lazy(() => import('./pages/ArenaPage'));
-const PricingPage = lazy(() => import('./pages/PricingPage'));
-const ReviewsPage = lazy(() => import('./pages/ReviewsPage'));
-const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
-const TermsPage = lazy(() => import('./pages/TermsPage'));
-const ContactPage = lazy(() => import('./pages/ContactPage'));
+/**
+ * Robust chunk import with 2 retries and single guarded reload
+ */
+function lazyWithRetry<T extends React.ComponentType<any>>(
+  factory: () => Promise<{ default: T }>,
+  retries = 2
+): React.LazyExoticComponent<T> {
+  return lazy(() => {
+    return new Promise<{ default: T }>((resolve, reject) => {
+      const attempt = (remaining: number) => {
+        factory()
+          .then(resolve)
+          .catch((error) => {
+            if (remaining > 0) {
+              setTimeout(() => attempt(remaining - 1), 600);
+            } else {
+              const reloadKey = 'boardly_chunk_retry_reloaded';
+              const hasReloaded = sessionStorage.getItem(reloadKey);
+              if (!hasReloaded) {
+                sessionStorage.setItem(reloadKey, 'true');
+                window.location.reload();
+              } else {
+                sessionStorage.removeItem(reloadKey);
+                reject(error);
+              }
+            }
+          });
+      };
+      attempt(retries);
+    });
+  });
+}
 
-// Auth pages (lazy) — use AuthLayout ONLY, NO public Navbar or Footer
-const LoginPage = lazy(() => import('./pages/LoginPage'));
-const SignupPage = lazy(() => import('./pages/SignupPage'));
-const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
-const VerifyEmailPage = lazy(() => import('./pages/VerifyEmailPage'));
-const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
+// Public pages (lazy with retry)
+const LandingPage = lazyWithRetry(() => import('./pages/LandingPage'));
+const FeaturesPage = lazyWithRetry(() => import('./pages/FeaturesPage'));
+const ArenaPage = lazyWithRetry(() => import('./pages/ArenaPage'));
+const PricingPage = lazyWithRetry(() => import('./pages/PricingPage'));
+const ReviewsPage = lazyWithRetry(() => import('./pages/ReviewsPage'));
+const PrivacyPage = lazyWithRetry(() => import('./pages/PrivacyPage'));
+const TermsPage = lazyWithRetry(() => import('./pages/TermsPage'));
+const ContactPage = lazyWithRetry(() => import('./pages/ContactPage'));
 
-// Dashboard (Student Portal) — uses DashboardShell ONLY, NO public Navbar or Footer
-const DashboardShell = lazy(() =>
-  import('./components/dashboard/DashboardShell').then(m => ({ default: m.DashboardShell }))
-);
-const OverviewPage = lazy(() =>
+// Auth pages (lazy with retry) — use AuthLayout ONLY, NO public Navbar or Footer
+const LoginPage = lazyWithRetry(() => import('./pages/LoginPage'));
+const SignupPage = lazyWithRetry(() => import('./pages/SignupPage'));
+const ForgotPasswordPage = lazyWithRetry(() => import('./pages/ForgotPasswordPage'));
+const VerifyEmailPage = lazyWithRetry(() => import('./pages/VerifyEmailPage'));
+const OnboardingPage = lazyWithRetry(() => import('./pages/OnboardingPage'));
+
+// Dashboard (Student Portal) — DashboardShell is NON-LAZY to prevent unmounting between tabs
+const OverviewPage = lazyWithRetry(() =>
   import('./pages/dashboard/OverviewPage').then(m => ({ default: m.OverviewPage }))
 );
-const PracticePage = lazy(() =>
+const PracticePage = lazyWithRetry(() =>
   import('./pages/dashboard/PracticePage').then(m => ({ default: m.PracticePage }))
 );
-const PlansBillingPage = lazy(() =>
+const PlansBillingPage = lazyWithRetry(() =>
   import('./pages/dashboard/PlansBillingPage').then(m => ({ default: m.PlansBillingPage }))
 );
-const ArenaDashboardPage = lazy(() =>
+const ArenaDashboardPage = lazyWithRetry(() =>
   import('./pages/dashboard/ArenaDashboardPage').then(m => ({ default: m.ArenaDashboardPage }))
 );
-const WeakChaptersPage = lazy(() =>
+const WeakChaptersPage = lazyWithRetry(() =>
   import('./pages/dashboard/WeakChaptersPage').then(m => ({ default: m.WeakChaptersPage }))
 );
-const StreaksPage = lazy(() =>
+const StreaksPage = lazyWithRetry(() =>
   import('./pages/dashboard/StreaksPage').then(m => ({ default: m.StreaksPage }))
 );
-const SettingsPage = lazy(() =>
+const SettingsPage = lazyWithRetry(() =>
   import('./pages/dashboard/SettingsPage').then(m => ({ default: m.SettingsPage }))
 );
-const ResultsListPage = lazy(() =>
+const ResultsListPage = lazyWithRetry(() =>
   import('./pages/dashboard/ResultsListPage').then(m => ({ default: m.ResultsListPage }))
 );
-const PlaceholderPage = lazy(() =>
+const PlaceholderPage = lazyWithRetry(() =>
   import('./pages/dashboard/PlaceholderPage').then(m => ({ default: m.PlaceholderPage }))
 );
 
 // Test engine — full-screen distraction-free, NO Navbar or Footer
-const TestRunnerPage = lazy(() =>
+const TestRunnerPage = lazyWithRetry(() =>
   import('./pages/test/TestRunnerPage').then(m => ({ default: m.TestRunnerPage }))
 );
-const TestResultPage = lazy(() =>
+const TestResultPage = lazyWithRetry(() =>
   import('./pages/test/TestResultPage').then(m => ({ default: m.TestResultPage }))
 );
 
 // AI Tutor, Crew, Captain
-const AiTutorPage = lazy(() =>
+const AiTutorPage = lazyWithRetry(() =>
   import('./pages/dashboard/AiTutorPage').then(m => ({ default: m.AiTutorPage }))
 );
-const CrewDashboardPage = lazy(() =>
+const CrewDashboardPage = lazyWithRetry(() =>
   import('./pages/crew/CrewDashboardPage').then(m => ({ default: m.CrewDashboardPage }))
 );
-const CrewApplyPage = lazy(() =>
+const CrewApplyPage = lazyWithRetry(() =>
   import('./pages/crew/CrewApplyPage').then(m => ({ default: m.CrewApplyPage }))
 );
-const CaptainDashboardPage = lazy(() =>
+const CaptainDashboardPage = lazyWithRetry(() =>
   import('./pages/captain/CaptainDashboardPage').then(m => ({ default: m.CaptainDashboardPage }))
 );
-const CaptainApplyPage = lazy(() =>
+const CaptainApplyPage = lazyWithRetry(() =>
   import('./pages/captain/CaptainApplyPage').then(m => ({ default: m.CaptainApplyPage }))
 );
-const CaptainLeaderboardPage = lazy(() =>
+const CaptainLeaderboardPage = lazyWithRetry(() =>
   import('./pages/captain/CaptainLeaderboardPage').then(m => ({ default: m.CaptainLeaderboardPage }))
 );
 
 // Super-Admin Portal — strictly guarded with AdminGuard + AdminLayout
-const AdminOverviewPage = lazy(() =>
+const AdminOverviewPage = lazyWithRetry(() =>
   import('./pages/admin/AdminOverviewPage').then(m => ({ default: m.AdminOverviewPage }))
 );
-const AdminUsersPage = lazy(() =>
+const AdminUsersPage = lazyWithRetry(() =>
   import('./pages/admin/AdminUsersPage').then(m => ({ default: m.AdminUsersPage }))
 );
-const AdminQuestionsPage = lazy(() =>
+const AdminQuestionsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminQuestionsPage').then(m => ({ default: m.AdminQuestionsPage }))
 );
-const AdminApplicationsPage = lazy(() =>
+const AdminApplicationsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminApplicationsPage').then(m => ({ default: m.AdminApplicationsPage }))
 );
-const AdminPaymentsPage = lazy(() =>
+const AdminPaymentsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminPaymentsPage').then(m => ({ default: m.AdminPaymentsPage }))
 );
-const AdminReviewsPage = lazy(() =>
+const AdminReviewsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminReviewsPage').then(m => ({ default: m.AdminReviewsPage }))
 );
-const AdminAuditLogsPage = lazy(() =>
+const AdminAuditLogsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminAuditLogsPage').then(m => ({ default: m.AdminAuditLogsPage }))
 );
 
@@ -123,7 +155,8 @@ function AppInner() {
   useReferralCapture();
 
   return (
-    <Suspense fallback={<PageLoader />}>
+    <DashboardErrorBoundary fallbackTitle="Boardly encountered an issue">
+      <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* Test Engine — full-screen distraction-free, no Navbar/Footer */}
         <Route path="/test/:attemptId/result" element={<TestResultPage />} />
@@ -202,6 +235,7 @@ function AppInner() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
+    </DashboardErrorBoundary>
   );
 }
 

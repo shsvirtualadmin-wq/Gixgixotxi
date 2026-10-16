@@ -384,7 +384,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const resetPassword = useCallback(async (email: string) => {
     setAuthError(null);
-    await sendPasswordResetEmail(auth, email);
+    const actionCodeSettings = {
+      url: 'https://boardly.cfd/login',
+      handleCodeInApp: false,
+    };
+    await withTimeout(
+      sendPasswordResetEmail(auth, email, actionCodeSettings),
+      15000,
+      'Password reset request timed out after 15 seconds.'
+    );
   }, []);
 
   const retryProfile = useCallback(() => {

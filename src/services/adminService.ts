@@ -249,20 +249,57 @@ export async function seedBalancedMCQPool(
 }
 
 // ─── USER MANAGEMENT & OVERRIDES ─────────────────────────────────────────────
-export async function fetchUsers(): Promise<UserProfile[]> {
+export interface PaginatedUsersResult {
+  users: UserProfile[];
+  lastDoc: QueryDocumentSnapshot<DocumentData> | null;
+  hasMore: boolean;
+}
+
+export async function fetchUsersPaginated(options?: {
+  limitCount?: number;
+  startAfterDoc?: QueryDocumentSnapshot<DocumentData> | null;
+  role?: string;
+  plan?: string;
+}): Promise<PaginatedUsersResult> {
   const ref = collection(db, 'users');
+  const count = options?.limitCount ?? 50;
+  const queryConstraints: QueryConstraint[] = [];
+
+  // Note: Never combine where() with orderBy() to prevent missing composite index failures. Sort client-side.
+  if (options?.role && options.role !== 'all') {
+    queryConstraints.push(where('role', '==', options.role));
+  } else if (options?.plan && options.plan !== 'all') {
+    queryConstraints.push(where('plan', '==', options.plan));
+  }
+
+  if (options?.startAfterDoc) {
+    queryConstraints.push(startAfter(options.startAfterDoc));
+  }
+
+  queryConstraints.push(limit(count));
+
   try {
-    const snap = await getDocs(query(ref, limit(200)));
-    return snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+    const q = query(ref, ...queryConstraints);
+    const snap = await getDocs(q);
+    const users = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+    const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
+    const hasMore = snap.docs.length >= count;
+
+    return { users, lastDoc, hasMore };
   } catch (err: unknown) {
     const e = err as { message?: string; code?: string };
     throw new AdminFirestoreError(
       e?.message || 'Failed to fetch users from collection "users". Check Firestore permissions.',
       e?.code || 'users-fetch-error',
       'users',
-      'getDocs(users)'
+      'fetchUsersPaginated'
     );
   }
+}
+
+export async function fetchUsers(): Promise<UserProfile[]> {
+  const res = await fetchUsersPaginated({ limitCount: 50 });
+  return res.users;
 }
 
 export async function updateUserOverride(

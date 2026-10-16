@@ -8,14 +8,22 @@ export function ForgotPasswordPage() {
   const { resetPassword } = useAuth();
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
-  const [error, setError] = useState('');
+  const [errorDetails, setErrorDetails] = useState<{
+    code?: string;
+    message: string;
+    url?: string;
+  } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError('');
+    setErrorDetails(null);
     if (!email.trim()) {
-      setError('Please enter your email address.');
+      setErrorDetails({
+        code: 'validation/missing-email',
+        message: 'Please enter your email address.',
+        url: 'client/form-validation',
+      });
       return;
     }
     setLoading(true);
@@ -24,11 +32,11 @@ export function ForgotPasswordPage() {
       setSent(true);
     } catch (err: unknown) {
       const fe = err as { code?: string; message?: string };
-      if (fe.code === 'auth/user-not-found') {
-        setSent(true);
-      } else {
-        setError(fe.message ?? 'Failed to send reset email. Please try again.');
-      }
+      setErrorDetails({
+        code: fe.code || 'auth/reset-failed',
+        message: fe.message ?? 'Failed to send reset email. Please try again.',
+        url: 'https://auth.boardly.cfd (sendPasswordResetEmail)',
+      });
     } finally {
       setLoading(false);
     }
@@ -69,10 +77,24 @@ export function ForgotPasswordPage() {
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            {error && (
-              <div className="p-3 rounded-xl bg-[#1A1A1A] border border-[var(--red)] flex items-start gap-2.5 text-xs text-[#FFFFFF]">
-                <AlertCircle size={16} className="text-[var(--red)] shrink-0 mt-0.5" />
-                <span>{error}</span>
+            {errorDetails && (
+              <div
+                role="alert"
+                className="p-4 rounded-2xl bg-red-950/80 border-2 border-red-500 text-red-100 text-xs shadow-lg space-y-1.5"
+              >
+                <div className="flex items-center gap-2 font-bold text-white">
+                  <AlertCircle size={16} className="text-red-400 shrink-0" />
+                  <span>Password Reset Failed</span>
+                  {errorDetails.code && (
+                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-red-600/40 border border-red-500">
+                      {errorDetails.code}
+                    </span>
+                  )}
+                </div>
+                <p className="text-red-200 font-medium">{errorDetails.message}</p>
+                {errorDetails.url && (
+                  <p className="font-mono text-[10px] text-red-300">Target: {errorDetails.url}</p>
+                )}
               </div>
             )}
 

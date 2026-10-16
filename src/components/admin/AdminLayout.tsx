@@ -19,6 +19,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
+import { getApp } from '@/lib/firebase';
 
 interface AdminNavItem {
   to: string;
@@ -233,7 +234,13 @@ export function AdminLayout() {
             </div>
           </div>
         ) : (
-          <Outlet />
+          <>
+            <Outlet />
+            <footer className="mt-8 pt-4 pb-12 border-t border-[var(--border)] flex items-center justify-between flex-wrap gap-2 text-[11px] font-mono text-[var(--muted)]">
+              <span>Firebase Active Project ID: <strong className="text-[var(--text)]">{getApp().options.projectId || 'unknown'}</strong></span>
+              <span>Auth Domain: <strong className="text-[var(--text)]">{getApp().options.authDomain || 'unknown'}</strong></span>
+            </footer>
+          </>
         )}
       </main>
 

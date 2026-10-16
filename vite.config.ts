@@ -120,6 +120,63 @@ function aiTutorPlugin() {
         res.end(JSON.stringify({ error: 'Method not allowed' }));
       });
 
+      // ─── CONTACT FORM API ─────────────────────────────────────────────────
+      server.middlewares.use('/api/contact', async (req: any, res: any) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          });
+          res.end();
+          return;
+        }
+
+        if (req.method === 'POST') {
+          let rawBody = '';
+          req.on('data', (chunk: any) => {
+            rawBody += chunk;
+          });
+          req.on('end', async () => {
+            try {
+              const body = JSON.parse(rawBody || '{}');
+              const name = (body.name || '').trim();
+              const email = (body.email || '').trim().toLowerCase();
+              const message = (body.message || '').trim();
+
+              if (!name || name.length < 2) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Please enter a valid name (at least 2 characters).', code: 'INVALID_NAME' }));
+                return;
+              }
+
+              const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+              if (!email || !emailRegex.test(email)) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Please enter a valid email address.', code: 'INVALID_EMAIL' }));
+                return;
+              }
+
+              if (!message || message.length < 10) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Message must be at least 10 characters long.', code: 'MESSAGE_TOO_SHORT' }));
+                return;
+              }
+
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: true, message: 'Message sent successfully!' }));
+            } catch (err: any) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: err?.message || 'Server error processing contact message' }));
+            }
+          });
+          return;
+        }
+
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Method not allowed' }));
+      });
+
       // ─── AI TUTOR API ─────────────────────────────────────────────────────
       server.middlewares.use('/api/ai-tutor', async (req: any, res: any) => {
         if (req.method === 'OPTIONS') {
