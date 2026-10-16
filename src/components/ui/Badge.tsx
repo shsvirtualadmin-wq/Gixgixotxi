@@ -1,68 +1,44 @@
-import React from 'react';
+import type { ReactNode } from 'react';
 
-export interface BadgeProps {
-  children: React.ReactNode;
-  variant?:
-    | 'brand'
-    | 'student'
-    | 'crew'
-    | 'captain'
-    | 'admin'
-    | 'success'
-    | 'warning'
-    | 'danger'
-    | 'neutral'
-    | 'indigo'
-    | 'violet'
-    | 'teal'
-    | 'amber'
-    | 'emerald'
-    | 'rose'
-    | 'slate';
-  size?: 'sm' | 'md';
-  icon?: React.ReactNode;
+type BadgeColor = 'brand' | 'violet' | 'success' | 'warning' | 'danger' | 'muted';
+
+interface BadgeProps {
+  children: ReactNode;
+  color?: BadgeColor;
   className?: string;
+  pulse?: boolean;
 }
 
-export const Badge: React.FC<BadgeProps> = ({
-  children,
-  variant = 'brand',
-  size = 'md',
-  icon,
-  className = '',
-}) => {
-  const sizeClasses = {
-    sm: 'h-7 px-2.5 text-[11px] gap-1',
-    md: 'h-8 px-3.5 text-xs gap-1.5', // 32px height
-  };
+const COLOR_STYLES: Record<BadgeColor, string> = {
+  brand: 'bg-[rgba(47,107,255,0.2)] text-[#2F6BFF] border border-[rgba(47,107,255,0.3)]',
+  violet: 'bg-[rgba(124,92,255,0.2)] text-[#7C5CFF] border border-[rgba(124,92,255,0.3)]',
+  success: 'bg-[rgba(52,211,153,0.2)] text-[#34D399] border border-[rgba(52,211,153,0.3)]',
+  warning: 'bg-[rgba(251,191,36,0.2)] text-[#FBBF24] border border-[rgba(251,191,36,0.3)]',
+  danger: 'bg-[rgba(248,113,113,0.2)] text-[#F87171] border border-[rgba(248,113,113,0.3)]',
+  muted: 'bg-[var(--surface)] text-[var(--text-muted)] border border-[var(--border)]',
+};
 
-  const variantClasses: Record<string, string> = {
-    brand: 'bg-[#2F6BFF]/12 text-[#22D3EE] border-[#2F6BFF]/30',
-    student: 'bg-[#2F6BFF]/12 text-[#22D3EE] border-[#2F6BFF]/30',
-    crew: 'bg-[#7C5CFF]/12 text-[#E879F9] border-[#7C5CFF]/30',
-    captain: 'bg-[#F59E0B]/12 text-[#FB923C] border-[#F59E0B]/30',
-    admin: 'bg-[#10B981]/12 text-[#34D399] border-[#10B981]/30',
-    success: 'bg-[#34D399]/12 text-[#34D399] border-[#34D399]/30',
-    warning: 'bg-[#FBBF24]/12 text-[#FBBF24] border-[#FBBF24]/30',
-    danger: 'bg-[#F87171]/12 text-[#F87171] border-[#F87171]/30',
-    neutral: 'bg-white/8 text-[#A3B0CC] border-white/12',
-    indigo: 'bg-[#2F6BFF]/12 text-[#22D3EE] border-[#2F6BFF]/30',
-    violet: 'bg-[#7C5CFF]/12 text-[#E879F9] border-[#7C5CFF]/30',
-    teal: 'bg-[#22D3EE]/12 text-[#22D3EE] border-[#22D3EE]/30',
-    amber: 'bg-[#F59E0B]/12 text-[#FB923C] border-[#F59E0B]/30',
-    emerald: 'bg-[#10B981]/12 text-[#34D399] border-[#10B981]/30',
-    rose: 'bg-[#F87171]/12 text-[#F87171] border-[#F87171]/30',
-    slate: 'bg-white/8 text-[#A3B0CC] border-white/12',
-  };
-
+export function Badge({ children, color = 'muted', className = '', pulse = false }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center justify-center font-semibold rounded-full border backdrop-blur-md select-none shrink-0 ${sizeClasses[size]} ${
-        variantClasses[variant] || variantClasses.neutral
-      } ${className}`}
+      className={`
+        inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium
+        rounded-[var(--r-pill)] ${COLOR_STYLES[color]} ${className}
+      `}
     >
-      {icon && <span className="shrink-0">{icon}</span>}
-      <span>{children}</span>
+      {pulse && (
+        <span
+          style={{
+            width: 6,
+            height: 6,
+            borderRadius: '50%',
+            background: 'currentColor',
+            animation: 'pulse-glow 1.5s ease-in-out infinite',
+            flexShrink: 0,
+          }}
+        />
+      )}
+      {children}
     </span>
   );
-};
+}

@@ -1,37 +1,34 @@
-import React from 'react';
-
-export interface SkeletonProps extends React.HTMLAttributes<HTMLDivElement> {
-  variant?: 'text' | 'circular' | 'rectangular' | 'card';
+interface SkeletonProps {
   width?: string | number;
   height?: string | number;
+  className?: string;
+  count?: number;
 }
 
-export const Skeleton: React.FC<SkeletonProps> = ({
-  variant = 'rectangular',
-  width,
-  height,
-  className = '',
-  style,
-  ...props
-}) => {
-  const variantClasses = {
-    text: 'h-4 rounded-md w-full',
-    circular: 'rounded-full shrink-0',
-    rectangular: 'rounded-xl',
-    card: 'rounded-[20px] p-6 h-48',
-  };
+export function Skeleton({ width = '100%', height = 16, className = '', count = 1 }: SkeletonProps) {
+  return (
+    <>
+      {Array.from({ length: count }).map((_, i) => (
+        <div
+          key={i}
+          className={`skeleton ${className}`}
+          style={{ width, height, marginBottom: count > 1 ? 8 : 0 }}
+        />
+      ))}
+    </>
+  );
+}
 
+export function SkeletonCard({ className = '' }: { className?: string }) {
   return (
     <div
-      className={`relative overflow-hidden bg-white/6 border border-white/6 ${variantClasses[variant]} ${className}`}
-      style={{
-        width: typeof width === 'number' ? `${width}px` : width,
-        height: typeof height === 'number' ? `${height}px` : height,
-        ...style,
-      }}
-      {...props}
+      className={`glass ${className}`}
+      style={{ borderRadius: 'var(--r-card)', padding: '1.5rem' }}
     >
-      <div className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/10 to-transparent animate-[shimmer_1.4s_infinite]" />
+      <Skeleton height={20} width="60%" />
+      <div style={{ marginTop: 12 }}>
+        <Skeleton height={14} count={3} />
+      </div>
     </div>
   );
-};
+}

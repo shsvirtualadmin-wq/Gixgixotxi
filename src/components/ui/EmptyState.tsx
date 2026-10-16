@@ -1,52 +1,40 @@
-import React from 'react';
-import { Sparkles } from 'lucide-react';
-import { Button } from './Button';
+import { Inbox } from 'lucide-react';
+import type { ReactNode } from 'react';
 
-export interface EmptyStateProps {
-  title: string;
+interface EmptyStateProps {
+  title?: string;
   description?: string;
-  icon?: React.ReactNode;
-  action?: {
-    label: string;
-    onClick: () => void;
-  };
-  className?: string;
+  icon?: ReactNode;
+  action?: ReactNode;
 }
 
-export const EmptyState: React.FC<EmptyStateProps> = ({
-  title,
-  description,
+export function EmptyState({
+  title = 'Nothing here yet',
+  description = 'No data to display.',
   icon,
   action,
-  className = '',
-}) => {
+}: EmptyStateProps) {
   return (
     <div
-      className={`p-8 sm:p-12 text-center rounded-[24px] bg-white/[0.04] backdrop-blur-xl border border-dashed border-white/12 flex flex-col items-center justify-center space-y-4 ${className}`}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 16,
+        padding: '3rem 2rem',
+        textAlign: 'center',
+        color: 'var(--text-muted)',
+      }}
     >
-      <div className="w-14 h-14 rounded-2xl bg-white/6 border border-white/10 text-[#22D3EE] flex items-center justify-center shadow-[0_0_20px_-4px_rgba(34,211,238,0.3)]">
-        {icon || <Sparkles className="w-6 h-6" />}
+      <div style={{ color: 'var(--text-faint)', opacity: 0.6 }}>
+        {icon ?? <Inbox size={40} />}
       </div>
-      <div className="space-y-1.5 max-w-sm">
-        <h4 className="font-bold text-base sm:text-lg text-[#EAF0FF] tracking-tight">
-          {title}
-        </h4>
-        {description && (
-          <p className="text-xs sm:text-sm text-[#A3B0CC] leading-relaxed">
-            {description}
-          </p>
-        )}
+      <div>
+        <p style={{ fontSize: 16, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>{title}</p>
+        <p style={{ fontSize: 14 }}>{description}</p>
       </div>
-      {action && (
-        <Button
-          variant="primary"
-          size="sm"
-          onClick={action.onClick}
-          className="mt-2"
-        >
-          {action.label}
-        </Button>
-      )}
+      {action && <div>{action}</div>}
     </div>
   );
-};
+}

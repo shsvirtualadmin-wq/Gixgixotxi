@@ -1,1 +1,0 @@
-export { UniversityLogoBadge } from '../UniversityLogoBadge';
