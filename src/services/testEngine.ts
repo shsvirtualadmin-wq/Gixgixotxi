@@ -15,6 +15,7 @@ import {
 import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import type { AttemptDoc, AttemptQuestion, Question } from '@/types/index';
+import { BALANCED_500_QUESTIONS } from '@/data/seedBalancedPool';
 
 /**
  * Loads an existing attempt document by ID.
@@ -26,6 +27,74 @@ export async function getAttempt(attemptId: string): Promise<AttemptDoc> {
     throw new Error(`Attempt ${attemptId} not found`);
   }
   return { id: snap.id, ...snap.data() } as AttemptDoc;
+}
+
+/**
+ * Generates a batch of questions via server API route /api/tests/generate with retries
+ * and automatic fallback to client-side balanced question pool.
+ */
+export async function generateTestBatch(params: {
+  university?: string;
+  subject?: string;
+  chapter?: string;
+  batchIndex: number;
+  count: number;
+  excludeIds?: string[];
+  signal?: AbortSignal;
+}): Promise<{ questions: AttemptQuestion[]; hasMore: boolean }> {
+  const count = params.count || 5;
+  const excludeIds = params.excludeIds || [];
+
+  // Try API route with retry logic (up to 2 retries)
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= 2; attempt++) {
+    try {
+      const response = await fetch('/api/tests/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          university: params.university,
+          subject: params.subject,
+          chapter: params.chapter,
+          batchIndex: params.batchIndex,
+          count,
+          excludeIds,
+        }),
+        signal: params.signal,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.error || `Server responded with ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data?.questions && Array.isArray(data.questions)) {
+        return {
+          questions: data.questions,
+          hasMore: Boolean(data.hasMore),
+        };
+      }
+    } catch (err: any) {
+      if (params.signal?.aborted) throw err;
+      lastError = err;
+      if (attempt < 2) {
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
+      }
+    }
+  }
+
+  // Graceful fallback from client-side BALANCED_500_QUESTIONS if API route failed
+  console.warn('[testEngine] generateTestBatch falling back to client pool:', lastError);
+  const excludeSet = new Set(excludeIds);
+  const available = BALANCED_500_QUESTIONS.filter((q) => !excludeSet.has(q.id));
+  const pool = available.length >= count ? available : BALANCED_500_QUESTIONS;
+  const shuffled = [...pool].sort(() => 0.5 - Math.random()).slice(0, count);
+
+  return {
+    questions: shuffled.map((q) => normalizeQuestionDoc(q.id, q)),
+    hasMore: pool.length > count,
+  };
 }
 
 import { normalizeMath } from '@/lib/math';
@@ -123,66 +192,27 @@ export async function fetchQuestionsForAttempt(attempt: AttemptDoc): Promise<Att
     }
   }
 
-  // 3. Fallback KaTeX questions if database returned 0 (e.g. offline or empty sandbox)
-  if (questionsMap.size === 0) {
-    const backupQuestions: AttemptQuestion[] = [
-      {
-        id: 'fallback-q-1',
-        q: 'Evaluate the limit: $$\\lim_{x \\to 0} \\frac{\\sin(3x)}{x}$$',
-        options: ['0', '1', '3', 'Does not exist'],
-        correct: 2,
-        explain: 'Using the standard formula $\\lim_{u \\to 0} \\frac{\\sin(u)}{u} = 1$, we multiply and divide by 3: $$\\lim_{x \\to 0} 3 \\cdot \\frac{\\sin(3x)}{3x} = 3(1) = 3$$.',
-        subject: 'Mathematics',
-        chapter: 'Limits and Continuity',
-        difficulty: 'Easy',
-      },
-      {
-        id: 'fallback-q-2',
-        q: 'A projectile is launched with velocity $$v_0$$ at angle $$\\theta$$ to the horizontal. The maximum horizontal range is achieved when $$\\theta$$ equals:',
-        options: ['30°', '45°', '60°', '90°'],
-        correct: 1,
-        explain: 'The range formula is $$R = \\frac{v_0^2 \\sin(2\\theta)}{g}$$. The sine function attains its maximum value of 1 when $2\\theta = 90^\\circ \\implies \\theta = 45^\\circ$.',
-        subject: 'Physics',
-        chapter: 'Motion and Force',
-        difficulty: 'Easy',
-      },
-      {
-        id: 'fallback-q-3',
-        q: 'What is the derivative of $$f(x) = e^{2x} \\cos(x)$$ with respect to $$x$$?',
-        options: [
-          '$$e^{2x}(2\\cos(x) - \\sin(x))$$',
-          '$$e^{2x}(\\cos(x) - 2\\sin(x))$$',
-          '$$2e^{2x}\\cos(x)$$',
-          '$$-e^{2x}\\sin(x)$$',
-        ],
-        correct: 0,
-        explain: 'By the product rule $$(uv)\' = u\'v + uv\'$$: $$f\'(x) = (2e^{2x})\\cos(x) + e^{2x}(-\\sin(x)) = e^{2x}(2\\cos(x) - \\sin(x))$$.',
-        subject: 'Mathematics',
-        chapter: 'Differentiation',
-        difficulty: 'Medium',
-      },
-      {
-        id: 'fallback-q-4',
-        q: 'The SI unit of magnetic flux density $$\\vec{B}$$ is the Tesla (T), which is equivalent to:',
-        options: ['$$\\text{N}\\cdot\\text{A}^{-1}\\cdot\\text{m}^{-1}$$', '$$\\text{N}\\cdot\\text{A}\\cdot\\text{m}$$', '$$\\text{J}\\cdot\\text{s}$$', '$$\\text{Wb}\\cdot\\text{m}^2$$'],
-        correct: 0,
-        explain: 'From the Lorentz force formula $$F = I L B \\implies B = \\frac{F}{IL}$$, the unit is $$\\frac{\\text{N}}{\\text{A}\\cdot\\text{m}} = \\text{N}\\cdot\\text{A}^{-1}\\cdot\\text{m}^{-1}$$.',
-        subject: 'Physics',
-        chapter: 'Electromagnetism',
-        difficulty: 'Medium',
-      },
-      {
-        id: 'fallback-q-5',
-        q: 'In the set of complex numbers $$\\mathbb{C}$$, the multiplicative inverse of $$z = 3 + 4i$$ is:',
-        options: ['$$\\frac{3}{25} - \\frac{4}{25}i$$', '$$\\frac{3}{7} - \\frac{4}{7}i$$', '$$3 - 4i$$', '$$-3 - 4i$$'],
-        correct: 0,
-        explain: '$$z^{-1} = \\frac{\\bar{z}}{|z|^2} = \\frac{3 - 4i}{3^2 + 4^2} = \\frac{3 - 4i}{25} = \\frac{3}{25} - \\frac{4}{25}i$$.',
-        subject: 'Mathematics',
-        chapter: 'Number Systems',
-        difficulty: 'Medium',
-      },
-    ];
-    backupQuestions.forEach((q) => questionsMap.set(q.id, q));
+  // 3. Fallback from balanced pool if database returned fewer than needed
+  if (questionsMap.size < needed) {
+    const matchingSubject =
+      attempt.subject && attempt.subject !== 'Any' && attempt.subject !== 'General'
+        ? BALANCED_500_QUESTIONS.filter(
+            (q) => q.subject?.toLowerCase() === attempt.subject?.toLowerCase()
+          )
+        : BALANCED_500_QUESTIONS;
+
+    const pool =
+      matchingSubject.length >= needed - questionsMap.size
+        ? matchingSubject
+        : BALANCED_500_QUESTIONS;
+    const shuffledPool = shuffle(pool);
+
+    for (const q of shuffledPool) {
+      if (questionsMap.size >= needed) break;
+      if (!questionsMap.has(q.id)) {
+        questionsMap.set(q.id, normalizeQuestionDoc(q.id, q));
+      }
+    }
   }
 
   const all = Array.from(questionsMap.values());

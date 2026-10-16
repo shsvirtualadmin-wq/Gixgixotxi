@@ -1,12 +1,126 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
 import { defineConfig } from 'vite';
 
 function aiTutorPlugin() {
   return {
     name: 'ai-tutor-api',
     configureServer(server: any) {
+      // ─── TEST GENERATION API ──────────────────────────────────────────────
+      server.middlewares.use('/api/tests/generate', async (req: any, res: any) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          });
+          res.end();
+          return;
+        }
+
+        if (req.method === 'POST') {
+          let rawBody = '';
+          req.on('data', (chunk: any) => {
+            rawBody += chunk;
+          });
+          req.on('end', async () => {
+            try {
+              const body = JSON.parse(rawBody || '{}');
+              const count = Math.min(Math.max(Number(body.count) || 5, 1), 20);
+              const subject = (body.subject || 'All').trim();
+              const chapter = (body.chapter || '').trim();
+              const university = (body.university || '').trim();
+              const excludeIds = new Set(Array.isArray(body.excludeIds) ? body.excludeIds : []);
+
+              const questionsPath = path.resolve(__dirname, './data/questions.cleaned.json');
+              let pool: any[] = [];
+              if (fs.existsSync(questionsPath)) {
+                try {
+                  const raw = fs.readFileSync(questionsPath, 'utf-8');
+                  pool = JSON.parse(raw);
+                } catch (e) {
+                  console.warn('Failed to parse questions.cleaned.json', e);
+                }
+              }
+
+              // Priority 1: Exact match on subject and chapter/topic (excluding already used)
+              let candidates = pool.filter((q: any) => {
+                if (excludeIds.has(q.id)) return false;
+                if (subject && subject !== 'All' && subject !== 'General') {
+                  if (q.subject && !q.subject.toLowerCase().includes(subject.toLowerCase())) return false;
+                }
+                if (chapter && chapter !== 'All') {
+                  const cLower = chapter.toLowerCase();
+                  const qChapter = (q.chapter || '').toLowerCase();
+                  const qTopic = (q.topic || '').toLowerCase();
+                  if (!qChapter.includes(cLower) && !qTopic.includes(cLower)) return false;
+                }
+                return true;
+              });
+
+              // Priority 2: If not enough questions, loosen chapter filter to subject match
+              if (candidates.length < count && subject && subject !== 'All' && subject !== 'General') {
+                const subjectPool = pool.filter((q: any) => {
+                  if (excludeIds.has(q.id)) return false;
+                  return q.subject && q.subject.toLowerCase().includes(subject.toLowerCase());
+                });
+                candidates = [...candidates, ...subjectPool];
+              }
+
+              // Priority 3: Fall back to general pool
+              if (candidates.length < count) {
+                const generalPool = pool.filter((q: any) => !excludeIds.has(q.id));
+                candidates = [...candidates, ...generalPool];
+              }
+
+              // Deduplicate candidates by ID
+              const uniqueMap = new Map<string, any>();
+              for (const c of candidates) {
+                if (!uniqueMap.has(c.id)) uniqueMap.set(c.id, c);
+              }
+              const uniqueList = Array.from(uniqueMap.values());
+
+              // Randomize order
+              const shuffled = uniqueList.sort(() => 0.5 - Math.random());
+              const selectedRaw = shuffled.slice(0, count);
+
+              const selected = selectedRaw.map((q: any) => ({
+                id: q.id,
+                q: q.q || q.question || '',
+                options: Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['A', 'B', 'C', 'D'],
+                correct: typeof q.correct === 'number' ? q.correct : (q.correctAnswer ?? 0),
+                explain: q.explain || q.explanation || '',
+                subject: q.subject || subject || 'General',
+                chapter: q.chapter || q.topic || chapter || '',
+                difficulty: q.difficulty || 'Medium',
+                university: q.university || university || 'FAST-NUCES',
+              }));
+
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  success: true,
+                  questions: selected,
+                  count: selected.length,
+                  batchIndex: Number(body.batchIndex) || 0,
+                  hasMore: uniqueList.length > count,
+                })
+              );
+            } catch (err: any) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: err?.message || 'Server error generating test batch' }));
+            }
+          });
+          return;
+        }
+
+        res.writeHead(405, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Method not allowed' }));
+      });
+
+      // ─── AI TUTOR API ─────────────────────────────────────────────────────
       server.middlewares.use('/api/ai-tutor', async (req: any, res: any) => {
         if (req.method === 'OPTIONS') {
           res.writeHead(204, {

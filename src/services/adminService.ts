@@ -14,11 +14,12 @@ import {
   Timestamp,
   getCountFromServer,
   addDoc,
+  startAfter,
   type CollectionReference,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, firebaseConfig } from '@/lib/firebase';
 import type {
   UserProfile,
   Question,
@@ -29,6 +30,23 @@ import type {
   CrewApplication,
 } from '@/types';
 import { BALANCED_500_QUESTIONS } from '@/data/seedBalancedPool';
+
+// ─── DIAGNOSTIC FIRESTORE ERROR ──────────────────────────────────────────────
+export class AdminFirestoreError extends Error {
+  code: string;
+  collection: string;
+  projectId: string;
+  operation: string;
+
+  constructor(message: string, code: string, collection: string, operation: string) {
+    super(message);
+    this.name = 'AdminFirestoreError';
+    this.code = code;
+    this.collection = collection;
+    this.projectId = firebaseConfig.projectId || 'boardly-8c0cd';
+    this.operation = operation;
+  }
+}
 
 // ─── AUDIT LOGGING HELPER ────────────────────────────────────────────────────
 export async function logAdminAction(
@@ -101,37 +119,52 @@ export async function fetchAdminStats(): Promise<AdminStats> {
   const usersCol = collection(db, 'users');
   const attemptsCol = collection(db, 'attempts');
 
-  // Count helper with getDocs fallback
-  const countOrGet = async (col: CollectionReference<DocumentData>): Promise<number> => {
-    try {
-      const snap = await getCountFromServer(col);
-      return snap.data().count;
-    } catch {
-      try {
-        const snap = await getDocs(col);
-        return snap.size;
-      } catch {
-        return 0;
-      }
-    }
-  };
+  let usersTotal = 0;
+  let questionsTotal = 0;
+  let attemptsTotal = 0;
+
+  try {
+    const snap = await getCountFromServer(usersCol);
+    usersTotal = snap.data().count;
+  } catch (err: any) {
+    throw new AdminFirestoreError(
+      err?.message || 'Failed to fetch user count from Firestore collection "users".',
+      err?.code || 'users-count-error',
+      'users',
+      'getCountFromServer(users)'
+    );
+  }
+
+  try {
+    const snap = await getCountFromServer(questionsCol);
+    questionsTotal = snap.data().count;
+  } catch (err: any) {
+    throw new AdminFirestoreError(
+      err?.message || 'Failed to fetch question count from Firestore collection "questions".',
+      err?.code || 'questions-count-error',
+      'questions',
+      'getCountFromServer(questions)'
+    );
+  }
+
+  try {
+    const snap = await getCountFromServer(attemptsCol);
+    attemptsTotal = snap.data().count;
+  } catch (err: any) {
+    console.warn('[AdminService] Attempts count warning:', err);
+    attemptsTotal = 0;
+  }
 
   const [
-    usersTotal,
-    questionsTotal,
-    attemptsTotal,
     pendingCaptainsSnap,
     pendingCrewSnap,
     pendingPaymentsSnap,
     pendingReviewsSnap,
   ] = await Promise.all([
-    countOrGet(usersCol),
-    countOrGet(questionsCol),
-    countOrGet(attemptsCol),
-    getDocs(collection(db, 'captainApplications')).catch(() => ({ docs: [], size: 0 })),
-    getDocs(collection(db, 'crewApplications')).catch(() => ({ docs: [], size: 0 })),
-    getDocs(collection(db, 'paymentRequests')).catch(() => ({ docs: [], size: 0 })),
-    getDocs(collection(db, 'reviews')).catch(() => ({ docs: [], size: 0 })),
+    getDocs(query(collection(db, 'captainApplications'), limit(100))).catch(() => ({ docs: [], size: 0 })),
+    getDocs(query(collection(db, 'crewApplications'), limit(100))).catch(() => ({ docs: [], size: 0 })),
+    getDocs(query(collection(db, 'paymentRequests'), limit(100))).catch(() => ({ docs: [], size: 0 })),
+    getDocs(query(collection(db, 'reviews'), limit(100))).catch(() => ({ docs: [], size: 0 })),
   ]);
 
   const pendingCaptainsCount = pendingCaptainsSnap.docs
@@ -147,14 +180,15 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     ? pendingReviewsSnap.docs.filter((d: QueryDocumentSnapshot<DocumentData>) => d.data()?.status === 'pending').length
     : pendingReviewsSnap.size;
 
-  // Query subject counts in parallel
+  // Query subject counts in parallel using getCountFromServer per subject
   const subjectCounts: Record<string, number> = {};
   await Promise.all(
     CORE_SUBJECTS.map(async (subj) => {
       try {
         const snap = await getCountFromServer(query(questionsCol, where('subject', '==', subj)));
         subjectCounts[subj] = snap.data().count;
-      } catch {
+      } catch (err: any) {
+        console.warn(`[AdminService] Subject count query for ${subj}:`, err);
         subjectCounts[subj] = 0;
       }
     })
@@ -213,11 +247,19 @@ export async function seedBalancedMCQPool(
 }
 
 // ─── USER MANAGEMENT & OVERRIDES ─────────────────────────────────────────────
-// Simple, direct fetch with getDocs(collection(db, 'users')) without complex composite index queries
 export async function fetchUsers(): Promise<UserProfile[]> {
   const ref = collection(db, 'users');
-  const snap = await getDocs(ref);
-  return snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+  try {
+    const snap = await getDocs(query(ref, limit(200)));
+    return snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+  } catch (err: any) {
+    throw new AdminFirestoreError(
+      err?.message || 'Failed to fetch users from collection "users". Check Firestore permissions.',
+      err?.code || 'users-fetch-error',
+      'users',
+      'getDocs(users)'
+    );
+  }
 }
 
 export async function updateUserOverride(
@@ -303,26 +345,41 @@ export async function fetchUserRecentAttempts(
   }
 }
 
-// ─── QUESTION BANK CRUD ──────────────────────────────────────────────────────
-export async function fetchQuestions(filters: {
+export interface PaginatedQuestionsResult {
+  questions: Question[];
+  lastDoc: QueryDocumentSnapshot<DocumentData> | null;
+  hasMore: boolean;
+}
+
+export async function fetchQuestionsPaginated(filters: {
   search?: string;
   subject?: string;
   university?: string;
   difficulty?: string;
   limitCount?: number;
-}): Promise<Question[]> {
+  startAfterDoc?: QueryDocumentSnapshot<DocumentData> | null;
+}): Promise<PaginatedQuestionsResult> {
+  const ref = collection(db, 'questions');
+  const count = filters.limitCount ?? 50;
+
+  // IMPORTANT: Do NOT combine where('subject', ...) with orderBy(...) to prevent missing composite index failures.
+  const queryConstraints: any[] = [];
+  if (filters.subject && filters.subject !== 'all') {
+    queryConstraints.push(where('subject', '==', filters.subject));
+  } else if (filters.university && filters.university !== 'all') {
+    queryConstraints.push(where('university', '==', filters.university));
+  } else if (filters.difficulty && filters.difficulty !== 'all') {
+    queryConstraints.push(where('difficulty', '==', filters.difficulty));
+  }
+
+  if (filters.startAfterDoc) {
+    queryConstraints.push(startAfter(filters.startAfterDoc));
+  }
+
+  queryConstraints.push(limit(count));
+
   try {
-    const ref = collection(db, 'questions');
-    let q = query(ref, limit(filters.limitCount ?? 100));
-
-    if (filters.subject && filters.subject !== 'all') {
-      q = query(ref, where('subject', '==', filters.subject), limit(filters.limitCount ?? 100));
-    } else if (filters.university && filters.university !== 'all') {
-      q = query(ref, where('university', '==', filters.university), limit(filters.limitCount ?? 100));
-    } else if (filters.difficulty && filters.difficulty !== 'all') {
-      q = query(ref, where('difficulty', '==', filters.difficulty), limit(filters.limitCount ?? 100));
-    }
-
+    const q = query(ref, ...queryConstraints);
     const snap = await getDocs(q);
     let questions = snap.docs.map(d => ({ id: d.id, ...d.data() } as Question));
 
@@ -335,11 +392,33 @@ export async function fetchQuestions(filters: {
       );
     }
 
-    return questions;
-  } catch (err) {
-    console.error('[AdminService] fetchQuestions error:', err);
-    return [];
+    const last = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
+    const hasMore = snap.docs.length >= count;
+
+    return {
+      questions,
+      lastDoc: last,
+      hasMore,
+    };
+  } catch (err: any) {
+    throw new AdminFirestoreError(
+      err?.message || 'Failed to fetch questions from Firestore collection "questions". Check permissions and indexes.',
+      err?.code || 'questions-fetch-error',
+      'questions',
+      'fetchQuestionsPaginated'
+    );
   }
+}
+
+export async function fetchQuestions(filters: {
+  search?: string;
+  subject?: string;
+  university?: string;
+  difficulty?: string;
+  limitCount?: number;
+}): Promise<Question[]> {
+  const res = await fetchQuestionsPaginated(filters);
+  return res.questions;
 }
 
 export async function saveQuestion(adminEmail: string, question: Question): Promise<void> {

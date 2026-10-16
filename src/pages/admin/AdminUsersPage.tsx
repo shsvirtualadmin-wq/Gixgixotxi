@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Search, RefreshCw, UserCheck, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserOverrideDrawer } from '@/components/admin/UserOverrideDrawer';
+import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import {
   fetchUsers,
   backfillMissingDisplayNames,
@@ -13,7 +14,7 @@ export function AdminUsersPage() {
   const { user } = useAuth();
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
+  const [error, setError] = useState<AdminDiagnosticError | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -34,12 +35,14 @@ export function AdminUsersPage() {
     try {
       const data = await fetchUsers();
       setAllUsers(data);
-    } catch (err: unknown) {
-      const fe = err as { code?: string; message?: string };
+    } catch (err: any) {
       console.error('Failed to load users:', err);
       setError({
-        message: fe.message || 'Failed to load users from database. Please verify Firestore permissions.',
-        code: fe.code,
+        code: err?.code || 'USERS_FETCH_FAILED',
+        message: err?.message || 'Failed to load users from database. Please verify Firestore permissions.',
+        collection: err?.collection || 'users',
+        projectId: err?.projectId || 'boardly-8c0cd',
+        operation: err?.operation || 'fetchUsers',
       });
     } finally {
       setLoading(false);
@@ -149,33 +152,12 @@ export function AdminUsersPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="p-4 rounded-[16px] bg-[rgba(239,68,68,0.08)] border border-[var(--red)]/40 flex items-start justify-between gap-3">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle size={18} className="text-[var(--red)] shrink-0 mt-0.5" />
-            <div>
-              <p className="font-heading font-semibold text-[13px] text-[var(--red)]">
-                Unable to load users
-              </p>
-              <p className="font-heading text-[12px] text-[var(--text)] mt-0.5">
-                {error.message}
-              </p>
-              {error.code && (
-                <code className="inline-block text-[10px] text-[var(--muted)] font-mono mt-1">
-                  Code: {error.code}
-                </code>
-              )}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={loadUsers}
-            className="px-3 py-1.5 rounded-[8px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] font-heading font-medium text-[var(--text)] shrink-0"
-          >
-            Retry
-          </button>
-        </div>
-      )}
+      <AdminDiagnosticBanner
+        error={error}
+        collectionName="users"
+        onRetry={loadUsers}
+        retrying={loading}
+      />
 
       {backfillMessage && (
         <div className="p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] flex items-center justify-between">

@@ -112,6 +112,9 @@ export function PracticePage() {
     }
 
     try {
+      const chapterObj = CHAPTERS_LIST.find(c => c.name === (customChapter || selectedChapter));
+      const subjectToUse = chapterObj ? chapterObj.subject : (selectedSubject !== 'All' ? selectedSubject : 'General');
+
       const attemptPayload = {
         userId: user.uid,
         uid: user.uid,
@@ -119,7 +122,7 @@ export function PracticePage() {
         mode: type,
         title,
         university: selectedUniversity === 'Any' ? 'FAST-NUCES' : selectedUniversity,
-        subject: customChapter ? 'Mathematics' : 'General',
+        subject: subjectToUse,
         chapter: customChapter || selectedChapter,
         totalQuestions: count,
         durationSeconds: duration,

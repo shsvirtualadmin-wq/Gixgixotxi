@@ -11,6 +11,7 @@ export interface UserProfile {
   photoURL?: string | null;
   role: UserRole;
   plan: UserPlan;
+  status?: string;
   isPremium?: boolean;
   premiumExpiresAt?: Timestamp | null;
   premiumSource?: string | null;
@@ -18,6 +19,8 @@ export interface UserProfile {
   targetUniversity?: string;
   targetTestDate?: string;
   academicTrack?: string;
+  subjects?: string[];
+  weakChapters?: string[];
   suspended?: boolean;
   isSuspended?: boolean;
   createdAt?: Timestamp;

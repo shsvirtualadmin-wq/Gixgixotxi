@@ -34,6 +34,24 @@ const OverviewPage = lazy(() =>
 const PracticePage = lazy(() =>
   import('./pages/dashboard/PracticePage').then(m => ({ default: m.PracticePage }))
 );
+const PlansBillingPage = lazy(() =>
+  import('./pages/dashboard/PlansBillingPage').then(m => ({ default: m.PlansBillingPage }))
+);
+const ArenaDashboardPage = lazy(() =>
+  import('./pages/dashboard/ArenaDashboardPage').then(m => ({ default: m.ArenaDashboardPage }))
+);
+const WeakChaptersPage = lazy(() =>
+  import('./pages/dashboard/WeakChaptersPage').then(m => ({ default: m.WeakChaptersPage }))
+);
+const StreaksPage = lazy(() =>
+  import('./pages/dashboard/StreaksPage').then(m => ({ default: m.StreaksPage }))
+);
+const SettingsPage = lazy(() =>
+  import('./pages/dashboard/SettingsPage').then(m => ({ default: m.SettingsPage }))
+);
+const ResultsListPage = lazy(() =>
+  import('./pages/dashboard/ResultsListPage').then(m => ({ default: m.ResultsListPage }))
+);
 const PlaceholderPage = lazy(() =>
   import('./pages/dashboard/PlaceholderPage').then(m => ({ default: m.PlaceholderPage }))
 );
@@ -134,16 +152,23 @@ function AppInner() {
         <Route path="/dashboard" element={<DashboardShell />}>
           <Route index element={<OverviewPage />} />
           <Route path="practice" element={<PracticePage />} />
+          <Route path="weak-chapters" element={<WeakChaptersPage />} />
+          <Route path="streaks" element={<StreaksPage />} />
+          <Route path="history" element={<ResultsListPage />} />
           <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
-          <Route path="arena" element={<PlaceholderPage title="Arena" />} />
+          <Route path="arena" element={<ArenaDashboardPage />} />
           <Route path="ai-tutor" element={<AiTutorPage />} />
           <Route path="merit-meter" element={<PlaceholderPage title="Merit Meter" />} />
           <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
           <Route path="reviews" element={<PlaceholderPage title="Reviews" />} />
-          <Route path="plans" element={<PlaceholderPage title="Plans" />} />
-          <Route path="settings" element={<PlaceholderPage title="Settings" />} />
+          <Route path="plans" element={<PlansBillingPage />} />
+          <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
+
+        {/* Global shortcuts for plans and settings */}
+        <Route path="/plans" element={<Navigate to="/dashboard/plans" replace />} />
+        <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
 
         {/* Public Marketing routes ONLY (wrapped by PublicLayout with Navbar + Footer) */}
         <Route element={<PublicLayout />}>

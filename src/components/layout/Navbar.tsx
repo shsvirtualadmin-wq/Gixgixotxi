@@ -3,10 +3,11 @@ import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Moon, Sun } from 'lucide-react';
 
 const NAV_LINKS = [
-  { to: '/#features', label: 'Features' },
-  { to: '/#arena', label: 'Arena' },
+  { to: '/features', label: 'Features' },
   { to: '/pricing', label: 'Pricing' },
   { to: '/reviews', label: 'Reviews' },
+  { to: '/contact', label: 'Contact' },
+  { to: '/login', label: 'Login' },
 ];
 
 function useTheme() {
@@ -63,24 +64,12 @@ export function Navbar() {
         <div className="boardly-container">
           <nav
             aria-label="Main Navigation"
-            className="w-full h-16 rounded-full px-5 sm:px-6 flex items-center justify-between"
-            style={{
-              backgroundColor: 'var(--card)',
-              border: '1px solid var(--border)',
-              color: 'var(--fg)',
-              boxShadow: 'none',
-              backdropFilter: 'none',
-              WebkitBackdropFilter: 'none',
-            }}
+            className="w-full h-14 sm:h-16 rounded-full px-3.5 sm:px-6 flex items-center justify-between bg-neutral-900/90 backdrop-blur-md border border-white/10 shadow-2xl shadow-black/50"
           >
-            {/* Brand Logo & Name: Logo B box uses theme tokens */}
-            <Link to="/" className="flex items-center gap-3 shrink-0">
+            {/* Brand Logo & Name */}
+            <Link to="/" className="flex items-center gap-2.5 sm:gap-3 shrink-0">
               <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                style={{
-                  backgroundColor: 'var(--fg)',
-                  color: 'var(--bg)',
-                }}
+                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-white text-black"
                 aria-hidden="true"
               >
                 <span
@@ -91,103 +80,69 @@ export function Navbar() {
                 </span>
               </div>
               <span
-                className="text-xl font-bold tracking-tight"
+                className="text-lg sm:text-xl font-bold tracking-tight text-white"
                 style={{
                   fontFamily: 'var(--font-heading)',
                   letterSpacing: '-0.02em',
-                  color: 'var(--fg)',
                 }}
               >
                 Boardly
               </span>
             </Link>
 
-            {/* Desktop Nav Links (Hidden below 1024px) */}
-            <div className="hidden lg:flex items-center gap-8">
+            {/* Desktop Unified Segmented Pill Links (Features, Pricing, Reviews, Contact, Login, Get Started) */}
+            <div className="hidden lg:flex items-center gap-1 bg-white/5 rounded-full p-1 border border-white/10">
               {NAV_LINKS.map(link => {
                 const active = isLinkActive(link.to);
                 return (
                   <Link
                     key={link.label}
                     to={link.to}
-                    className="text-sm font-medium transition-colors"
-                    style={{
-                      fontFamily: 'var(--font-heading)',
-                      letterSpacing: '-0.02em',
-                      color: active ? 'var(--red)' : 'var(--muted)',
-                    }}
+                    className={`text-xs xl:text-sm font-medium px-3.5 py-1.5 rounded-full transition-all duration-200 ${
+                      active
+                        ? 'bg-white text-black font-semibold shadow-sm'
+                        : 'text-neutral-400 hover:text-white'
+                    }`}
                   >
                     {link.label}
                   </Link>
                 );
               })}
-            </div>
-
-            {/* Desktop Right Actions: Flush with container right edge (Hidden below 1024px) */}
-            <div className="hidden lg:flex items-center gap-3">
-              <button
-                onClick={toggle}
-                aria-label="Toggle theme"
-                className="w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer"
-                style={{
-                  color: 'var(--muted)',
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                }}
-              >
-                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-              </button>
-
-              <Link
-                to="/login"
-                className="px-4 py-2 text-sm font-semibold rounded-full transition-colors"
-                style={{
-                  fontFamily: 'var(--font-heading)',
-                  letterSpacing: '-0.02em',
-                  color: 'var(--fg)',
-                }}
-              >
-                Sign In
-              </Link>
 
               <Link
                 to="/signup"
-                className="btn-red"
-                style={{
-                  height: '42px',
-                  padding: '10px 22px',
-                  fontSize: '14px',
-                }}
+                className="text-xs xl:text-sm font-semibold px-4 py-1.5 rounded-full bg-[#D71921] hover:bg-[#b0131a] text-white transition-all shadow-sm ml-1"
               >
                 Get Started
               </Link>
             </div>
 
-            {/* Mobile Controls (Shown below 1024px) */}
+            {/* Desktop Right Actions: Theme Toggle */}
+            <div className="hidden lg:flex items-center gap-2">
+              <button
+                onClick={toggle}
+                aria-label="Toggle theme"
+                className="w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer text-neutral-400 hover:text-white border border-white/10 bg-white/5"
+              >
+                {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+              </button>
+            </div>
+
+            {/* Mobile Controls */}
             <div className="flex lg:hidden items-center gap-2">
               <button
                 onClick={toggle}
                 aria-label="Toggle theme"
-                className="w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer"
-                style={{
-                  color: 'var(--fg)',
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                }}
+                className="w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer text-neutral-300 border border-white/10 bg-white/5"
               >
-                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
               </button>
               <button
                 onClick={() => setMobileOpen(prev => !prev)}
                 aria-label={mobileOpen ? 'Close Menu' : 'Open Menu'}
-                className="w-9 h-9 rounded-full flex items-center justify-center transition-colors cursor-pointer"
-                style={{
-                  color: 'var(--fg)',
-                  border: '1px solid var(--border)',
-                  backgroundColor: 'transparent',
-                }}
+                className="w-8 h-8 rounded-full flex items-center justify-center transition-colors cursor-pointer text-neutral-300 border border-white/10 bg-white/5"
               >
-                {mobileOpen ? <X size={20} /> : <Menu size={20} />}
+                {mobileOpen ? <X size={18} /> : <Menu size={18} />}
               </button>
             </div>
           </nav>

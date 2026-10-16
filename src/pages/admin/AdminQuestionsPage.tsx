@@ -9,18 +9,24 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { MathText } from '@/components/ui/MathText';
+import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import {
-  fetchQuestions,
+  fetchQuestionsPaginated,
   saveQuestion,
   deleteQuestion,
   CORE_SUBJECTS,
 } from '@/services/adminService';
 import type { Question } from '@/types';
+import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 
 export function AdminQuestionsPage() {
   const { user } = useAuth();
   const [questions, setQuestions] = useState<Question[]>([]);
+  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [error, setError] = useState<AdminDiagnosticError | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -35,20 +41,58 @@ export function AdminQuestionsPage() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const data = await fetchQuestions({
+      const res = await fetchQuestionsPaginated({
         search,
         subject: subjectFilter,
         difficulty: difficultyFilter,
-        limitCount: 80,
+        limitCount: 50,
       });
-      setQuestions(data);
-    } catch (err) {
+      setQuestions(res.questions);
+      setLastDoc(res.lastDoc);
+      setHasMore(res.hasMore);
+    } catch (err: any) {
       console.error('Failed to load questions:', err);
+      setError({
+        code: err?.code || 'QUESTIONS_FETCH_FAILED',
+        message: err?.message || 'Failed to load questions from database. Please verify Firestore permissions.',
+        collection: err?.collection || 'questions',
+        projectId: err?.projectId || 'boardly-8c0cd',
+        operation: err?.operation || 'fetchQuestionsPaginated',
+      });
     } finally {
       setLoading(false);
     }
   }, [search, subjectFilter, difficultyFilter]);
+
+  const handleLoadMore = async () => {
+    if (!lastDoc || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const res = await fetchQuestionsPaginated({
+        search,
+        subject: subjectFilter,
+        difficulty: difficultyFilter,
+        limitCount: 50,
+        startAfterDoc: lastDoc,
+      });
+      setQuestions((prev) => [...prev, ...res.questions]);
+      setLastDoc(res.lastDoc);
+      setHasMore(res.hasMore);
+    } catch (err: any) {
+      console.error('Failed to load more questions:', err);
+      setError({
+        code: err?.code || 'QUESTIONS_LOAD_MORE_FAILED',
+        message: err?.message || 'Failed to load additional questions from database.',
+        collection: 'questions',
+        projectId: 'boardly-8c0cd',
+        operation: 'handleLoadMore',
+      });
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -149,6 +193,13 @@ export function AdminQuestionsPage() {
           </button>
         </div>
       </div>
+
+      <AdminDiagnosticBanner
+        error={error}
+        collectionName="questions"
+        onRetry={loadData}
+        retrying={loading}
+      />
 
       {/* ─── SEARCH & FILTER TOOLBAR ────────────────────────────────────────── */}
       <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3.5">
@@ -330,6 +381,27 @@ export function AdminQuestionsPage() {
           })
         )}
       </div>
+
+      {/* ─── LOAD MORE BUTTON ────────────────────────────────────────────────── */}
+      {hasMore && (
+        <div className="flex justify-center pt-2 pb-6">
+          <button
+            type="button"
+            onClick={handleLoadMore}
+            disabled={loadingMore}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-full border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] text-sm font-semibold text-[var(--text)] transition-colors cursor-pointer disabled:opacity-50"
+          >
+            {loadingMore ? (
+              <>
+                <RefreshCw size={14} className="animate-spin" />
+                <span>Loading more questions…</span>
+              </>
+            ) : (
+              <span>Load More Questions (Next 50)</span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* ─── ADD / EDIT QUESTION MODAL ───────────────────────────────────────── */}
       {isModalOpen && editingQuestion && (

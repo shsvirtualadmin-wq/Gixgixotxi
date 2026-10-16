@@ -1,21 +1,22 @@
 import { useState, useEffect } from 'react';
-import { NavLink, Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   BookOpen,
-  Zap,
-  GraduationCap,
-  CreditCard,
   Shield,
+  GraduationCap,
+  Sparkles,
   Sun,
   Moon,
   LogOut,
   X,
   ChevronRight,
-  Sparkles,
   Award,
+  Flame,
+  Target,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { PillNav, type PillNavItem } from '@/components/ui/PillNav';
 
 export function DashboardBottomNav() {
   const { user, profile, isAdmin, signOutUser } = useAuth();
@@ -48,188 +49,78 @@ export function DashboardBottomNav() {
   const displayName = profile?.displayName || user?.displayName || 'Student';
   const initial = (displayName[0] || user?.email?.[0] || 'S').toUpperCase();
 
+  // Unified PillNav items (exact specification: Daily Practice, Cockpit, Weak Chapters, Streaks, Menu)
+  const navItems: PillNavItem[] = [
+    {
+      to: '/dashboard/practice',
+      label: 'Daily Practice',
+      icon: <BookOpen size={18} />,
+    },
+    {
+      to: '/dashboard',
+      label: 'Cockpit',
+      icon: <LayoutDashboard size={18} />,
+      end: true,
+    },
+    {
+      to: '/dashboard/weak-chapters',
+      label: 'Weak Chapters',
+      icon: <Target size={18} />,
+    },
+    {
+      to: '/dashboard/streaks',
+      label: 'Streaks',
+      icon: <Flame size={18} />,
+    },
+    {
+      id: 'menu',
+      label: 'Menu',
+      icon: (
+        <div className="w-5 h-5 rounded-full bg-neutral-800 border border-white/20 flex items-center justify-center text-[10px] font-bold text-white relative">
+          {initial}
+          {isAdmin && (
+            <span
+              className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-600"
+              title="Admin access active"
+            />
+          )}
+        </div>
+      ),
+      onClick: () => setIsMenuOpen(true),
+    },
+  ];
+
   return (
     <>
-      {/* ─── BOTTOM NAVIGATION BAR ─────────────────────────────────────────── */}
-      <nav
-        className="fixed bottom-0 inset-x-0 z-40 border-t border-[var(--border)] bg-[var(--card)] px-2 py-1.5 flex items-center justify-around shadow-none"
-        style={{
-          paddingBottom: 'calc(8px + env(safe-area-inset-bottom, 0px))',
-        }}
+      {/* ─── FIXED UNIFIED PILL BOTTOM NAVIGATION ────────────────────────────── */}
+      <div
+        className="fixed bottom-4 inset-x-0 mx-auto w-[calc(100%-2rem)] max-w-3xl z-50 pointer-events-auto"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         aria-label="Student Navigation Bar"
       >
-        {/* 1. Cockpit */}
-        <NavLink
-          to="/dashboard"
-          end
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-colors ${
-              isActive ? 'text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'
-            }`
-          }
-        >
-          {({ isActive }) => (
-            <>
-              <div
-                className={`w-9 h-7 rounded-full flex items-center justify-center transition-colors ${
-                  isActive ? 'bg-[var(--text)] text-[var(--bg)]' : ''
-                }`}
-              >
-                <LayoutDashboard size={18} />
-              </div>
-              <span className={`text-[10px] mt-0.5 font-heading ${isActive ? 'font-bold' : 'font-medium'}`}>
-                Cockpit
-              </span>
-            </>
-          )}
-        </NavLink>
+        <PillNav
+          items={navItems}
+          layout="stacked-mobile"
+          className="w-full justify-between sm:justify-center px-2 py-1.5 shadow-2xl"
+        />
+      </div>
 
-        {/* 2. Daily Practice */}
-        <NavLink
-          to="/dashboard/practice"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-colors ${
-              isActive ? 'text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'
-            }`
-          }
-        >
-          {({ isActive }) => (
-            <>
-              <div
-                className={`w-9 h-7 rounded-full flex items-center justify-center transition-colors ${
-                  isActive ? 'bg-[var(--text)] text-[var(--bg)]' : ''
-                }`}
-              >
-                <BookOpen size={18} />
-              </div>
-              <span className={`text-[10px] mt-0.5 font-heading ${isActive ? 'font-bold' : 'font-medium'}`}>
-                Practice
-              </span>
-            </>
-          )}
-        </NavLink>
-
-        {/* 3. Arena */}
-        <NavLink
-          to="/dashboard/arena"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-colors ${
-              isActive ? 'text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'
-            }`
-          }
-        >
-          {({ isActive }) => (
-            <>
-              <div
-                className={`w-9 h-7 rounded-full flex items-center justify-center transition-colors ${
-                  isActive ? 'bg-[var(--text)] text-[var(--bg)]' : ''
-                }`}
-              >
-                <Zap size={18} />
-              </div>
-              <span className={`text-[10px] mt-0.5 font-heading ${isActive ? 'font-bold' : 'font-medium'}`}>
-                Arena
-              </span>
-            </>
-          )}
-        </NavLink>
-
-        {/* 4. Target Exam & Profile */}
-        <NavLink
-          to="/onboarding"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-colors ${
-              isActive ? 'text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'
-            }`
-          }
-        >
-          {({ isActive }) => (
-            <>
-              <div
-                className={`w-9 h-7 rounded-full flex items-center justify-center transition-colors ${
-                  isActive ? 'bg-[var(--text)] text-[var(--bg)]' : ''
-                }`}
-              >
-                <GraduationCap size={18} />
-              </div>
-              <span className={`text-[10px] mt-0.5 font-heading ${isActive ? 'font-bold' : 'font-medium'}`}>
-                Exam
-              </span>
-            </>
-          )}
-        </NavLink>
-
-        {/* 5. Plans & Upgrade */}
-        <NavLink
-          to="/pricing"
-          className={({ isActive }) =>
-            `flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-colors ${
-              isActive ? 'text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'
-            }`
-          }
-        >
-          {({ isActive }) => (
-            <>
-              <div
-                className={`w-9 h-7 rounded-full flex items-center justify-center transition-colors ${
-                  isActive ? 'bg-[var(--text)] text-[var(--bg)]' : ''
-                }`}
-              >
-                <CreditCard size={18} />
-              </div>
-              <span className={`text-[10px] mt-0.5 font-heading ${isActive ? 'font-bold' : 'font-medium'}`}>
-                Plans
-              </span>
-            </>
-          )}
-        </NavLink>
-
-        {/* 6. Profile / Menu Drawer Trigger */}
-        <button
-          type="button"
-          onClick={() => setIsMenuOpen(true)}
-          className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-colors ${
-            isMenuOpen ? 'text-[var(--text)]' : 'text-[var(--muted)] hover:text-[var(--text)]'
-          }`}
-          aria-label="Student profile and menu"
-        >
-          <div className="w-7 h-7 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-[12px] font-heading font-bold text-[var(--text)] relative">
-            {user?.photoURL ? (
-              <img
-                src={user.photoURL}
-                alt="Avatar"
-                className="w-full h-full rounded-full object-cover"
-              />
-            ) : (
-              initial
-            )}
-            {isAdmin && (
-              <span
-                className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-[var(--red)] border-2 border-[var(--card)]"
-                title="Superadmin Access"
-              />
-            )}
-          </div>
-          <span className="text-[10px] mt-0.5 font-heading font-medium">Menu</span>
-        </button>
-      </nav>
-
-      {/* ─── BOTTOM MENU DRAWER / SHEET ────────────────────────────────────── */}
+      {/* ─── BOTTOM MENU DRAWER / MODAL ────────────────────────────────────── */}
       {isMenuOpen && (
-        <div className="fixed inset-0 z-50 flex items-end">
+        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
             onClick={() => setIsMenuOpen(false)}
           />
 
-          {/* Drawer content */}
-          <div className="relative w-full max-h-[85vh] bg-[var(--card)] border-t border-[var(--border)] rounded-t-[28px] p-5 pb-8 flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom duration-200">
-            {/* Grab handle */}
-            <div className="w-10 h-1 bg-[var(--border)] rounded-full mx-auto -mt-1 mb-1" />
+          {/* Drawer/Modal content: full-width bottom sheet on mobile; centered modal on md+ */}
+          <div className="relative w-full md:max-w-md bg-[var(--card)] border border-[var(--border)] rounded-t-[28px] md:rounded-2xl p-5 sm:p-6 pb-8 md:pb-6 flex flex-col gap-4 overflow-y-auto max-h-[88vh] md:max-h-[85vh] z-10 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+            {/* Grab handle for mobile */}
+            <div className="md:hidden w-10 h-1 bg-[var(--border)] rounded-full mx-auto -mt-1 mb-1" />
 
             {/* Header: User Summary */}
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+            <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border)]">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-11 h-11 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-[15px] font-heading font-bold text-[var(--text)] shrink-0">
                   {user?.photoURL ? (
@@ -243,10 +134,10 @@ export function DashboardBottomNav() {
                   )}
                 </div>
                 <div className="min-w-0">
-                  <p className="font-heading font-bold text-[15px] text-[var(--text)] truncate">
+                  <p className="font-heading font-bold text-base text-[var(--text)] truncate">
                     {displayName}
                   </p>
-                  <p className="font-heading text-[12px] text-[var(--muted)] truncate">
+                  <p className="font-heading text-xs text-[var(--muted)] truncate">
                     {user?.email}
                   </p>
                   <div className="flex items-center gap-1.5 mt-1">
@@ -271,7 +162,7 @@ export function DashboardBottomNav() {
               <button
                 type="button"
                 onClick={() => setIsMenuOpen(false)}
-                className="w-8 h-8 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] transition-colors"
+                className="w-8 h-8 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
               >
                 <X size={16} />
               </button>
@@ -282,17 +173,17 @@ export function DashboardBottomNav() {
               <Link
                 to="/admin"
                 onClick={() => setIsMenuOpen(false)}
-                className="flex items-center justify-between p-3.5 rounded-[16px] bg-[rgba(239,68,68,0.08)] border border-[var(--red)] text-[var(--red)] transition-all hover:bg-[rgba(239,68,68,0.14)]"
+                className="flex items-center justify-between py-3.5 px-4 rounded-xl bg-[rgba(239,68,68,0.08)] border border-[var(--red)] text-[var(--red)] transition-all hover:bg-[rgba(239,68,68,0.14)]"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-[var(--red)] text-white flex items-center justify-center shrink-0">
                     <Shield size={16} />
                   </div>
                   <div>
-                    <p className="font-heading font-bold text-[14px]">
+                    <p className="font-heading font-bold text-sm sm:text-base">
                       Superadmin Portal
                     </p>
-                    <p className="font-heading text-[11px] text-[var(--muted)]">
+                    <p className="font-heading text-xs text-[var(--muted)]">
                       Manage users, question bank, approvals &amp; audit log
                     </p>
                   </div>
@@ -306,27 +197,27 @@ export function DashboardBottomNav() {
               <Link
                 to="/onboarding"
                 onClick={() => setIsMenuOpen(false)}
-                className="flex items-center justify-between p-3 rounded-[16px] border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[13px] font-heading text-[var(--text)] transition-colors"
+                className="flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <GraduationCap size={16} className="text-[var(--muted)]" />
+                  <GraduationCap size={18} className="text-[var(--muted)]" />
                   <span>Target Exam &amp; Profile Setup</span>
                 </div>
                 <ChevronRight size={14} className="text-[var(--muted)]" />
               </Link>
 
               <Link
-                to="/pricing"
+                to="/dashboard/plans"
                 onClick={() => setIsMenuOpen(false)}
-                className="flex items-center justify-between p-3 rounded-[16px] border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[13px] font-heading text-[var(--text)] transition-colors"
+                className="flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <Sparkles size={16} className="text-[var(--muted)]" />
+                  <Sparkles size={18} className="text-[var(--muted)]" />
                   <span>Plans &amp; Upgrade</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   {!isPro && (
-                    <span className="text-[10px] font-heading px-2 py-0.5 rounded-full bg-[var(--text)] text-[var(--bg)] font-semibold">
+                    <span className="text-xs font-heading px-2 py-0.5 rounded-full bg-[var(--text)] text-[var(--bg)] font-semibold">
                       Upgrade
                     </span>
                   )}
@@ -338,10 +229,10 @@ export function DashboardBottomNav() {
                 <Link
                   to="/crew"
                   onClick={() => setIsMenuOpen(false)}
-                  className="flex items-center justify-between p-3 rounded-[16px] border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[13px] font-heading text-[var(--text)] transition-colors"
+                  className="flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <Award size={16} className="text-[var(--muted)]" />
+                    <Award size={18} className="text-[var(--muted)]" />
                     <span>Crew Ambassador Hub</span>
                   </div>
                   <ChevronRight size={14} className="text-[var(--muted)]" />
@@ -352,10 +243,10 @@ export function DashboardBottomNav() {
                 <Link
                   to="/captain"
                   onClick={() => setIsMenuOpen(false)}
-                  className="flex items-center justify-between p-3 rounded-[16px] border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[13px] font-heading text-[var(--text)] transition-colors"
+                  className="flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors"
                 >
                   <div className="flex items-center gap-3">
-                    <Award size={16} className="text-[var(--muted)]" />
+                    <Award size={18} className="text-[var(--muted)]" />
                     <span>Campus Captain Hub</span>
                   </div>
                   <ChevronRight size={14} className="text-[var(--muted)]" />
@@ -368,17 +259,17 @@ export function DashboardBottomNav() {
               <button
                 type="button"
                 onClick={toggleTheme}
-                className="flex items-center justify-between p-3 rounded-[16px] border border-[var(--border)] hover:bg-[var(--surface-hover)] text-[13px] font-heading text-[var(--text)] transition-colors"
+                className="flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   {theme === 'dark' ? (
-                    <Sun size={16} className="text-[var(--muted)]" />
+                    <Sun size={18} className="text-[var(--muted)]" />
                   ) : (
-                    <Moon size={16} className="text-[var(--muted)]" />
+                    <Moon size={18} className="text-[var(--muted)]" />
                   )}
                   <span>Appearance</span>
                 </div>
-                <span className="text-[12px] font-heading text-[var(--muted)] capitalize">
+                <span className="text-xs font-heading text-[var(--muted)] capitalize">
                   {theme} mode
                 </span>
               </button>
@@ -386,9 +277,9 @@ export function DashboardBottomNav() {
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="w-full flex items-center justify-center gap-2 p-3 rounded-[16px] border border-[var(--red)]/40 text-[var(--red)] hover:bg-[rgba(239,68,68,0.08)] font-heading text-[13px] font-medium transition-colors"
+                className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl border border-[var(--red)]/40 text-[var(--red)] hover:bg-[rgba(239,68,68,0.08)] font-heading text-sm sm:text-base font-medium transition-colors cursor-pointer"
               >
-                <LogOut size={15} />
+                <LogOut size={16} />
                 <span>Sign Out</span>
               </button>
             </div>

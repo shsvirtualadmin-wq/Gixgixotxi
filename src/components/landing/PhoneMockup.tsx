@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { LayoutDashboard, Users, Trophy, Flame } from 'lucide-react';
+import { PillNav } from '@/components/ui/PillNav';
 
 interface PhoneMockupProps {
   screen?: 0 | 1 | 2 | 3;
@@ -302,33 +303,19 @@ export function PhoneMockup({
         </div>
       </div>
 
-      {/* Segmented Control Pill Container:
-          Separate from phone with 20px space (mt-5), 4 equal tabs, 44px height (h-11).
-          Active tab = solid white background with BLACK text.
-          Inactive tab = #9A9A9A text on #111111 */}
-      <div className="w-full max-w-[320px] h-11 p-1 rounded-full bg-[#111111] border border-[var(--border)] grid grid-cols-4 items-center gap-1">
-        {(['Cockpit', 'Crew', 'Captain', 'Arena'] as const).map((label, idx) => {
-          const isActive = activeScreen === idx;
-          return (
-            <button
-              key={label}
-              onClick={() => handleSelectScreen(idx as 0 | 1 | 2 | 3)}
-              className={`h-full w-full rounded-full text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
-                isActive
-                  ? 'bg-[#FFFFFF] text-[#000000]'
-                  : 'bg-[#111111] text-[#9A9A9A] hover:text-[#F2F2F2]'
-              }`}
-              style={{
-                fontFamily: 'var(--font-heading)',
-                letterSpacing: '-0.02em',
-                backgroundColor: isActive ? '#FFFFFF' : '#111111',
-                color: isActive ? '#000000' : '#9A9A9A',
-              }}
-            >
-              {label}
-            </button>
-          );
-        })}
+      {/* Segmented Control Pill Container: using unified PillNav */}
+      <div className="w-full max-w-[340px] mt-4">
+        <PillNav
+          items={[
+            { id: 0, label: 'Cockpit' },
+            { id: 1, label: 'Crew' },
+            { id: 2, label: 'Captain' },
+            { id: 3, label: 'Arena' },
+          ]}
+          activeId={activeScreen}
+          onChange={(id) => handleSelectScreen(id as 0 | 1 | 2 | 3)}
+          className="w-full justify-between"
+        />
       </div>
 
       {/* "Sample preview" pill sits below, centered, 12px under the control */}

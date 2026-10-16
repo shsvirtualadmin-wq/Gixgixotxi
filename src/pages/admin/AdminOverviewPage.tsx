@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import {
   fetchAdminStats,
   seedBalancedMCQPool,
@@ -39,7 +40,7 @@ export function AdminOverviewPage() {
   const { user } = useAuth();
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<AdminDiagnosticError | null>(null);
   const [recentLogs, setRecentLogs] = useState<AuditLog[]>([]);
 
   // Seeder state & confirmation dialog
@@ -59,10 +60,15 @@ export function AdminOverviewPage() {
       ]);
       setStats(s);
       setRecentLogs(logs);
-    } catch (err: unknown) {
-      const fe = err as { message?: string };
+    } catch (err: any) {
       console.error('Failed to load admin stats:', err);
-      setError(fe.message || 'Failed to fetch overview metrics. Please check Firestore security rules or internet connection.');
+      setError({
+        code: err?.code || 'FETCH_STATS_FAILED',
+        message: err?.message || 'Failed to fetch overview metrics. Check Firestore rules or collection names.',
+        collection: err?.collection || 'questions/users',
+        projectId: err?.projectId || 'boardly-8c0cd',
+        operation: err?.operation || 'fetchAdminStats',
+      });
     } finally {
       setLoading(false);
     }
@@ -136,28 +142,12 @@ export function AdminOverviewPage() {
         </button>
       </div>
 
-      {error && (
-        <div className="p-4 rounded-[16px] bg-[rgba(239,68,68,0.08)] border border-[var(--red)]/40 flex items-start justify-between gap-3">
-          <div className="flex items-start gap-2.5">
-            <AlertTriangle size={18} className="text-[var(--red)] shrink-0 mt-0.5" />
-            <div>
-              <p className="font-heading font-semibold text-[13px] text-[var(--red)]">
-                Unable to load overview metrics
-              </p>
-              <p className="font-heading text-[12px] text-[var(--text)] mt-0.5">
-                {error}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={loadData}
-            className="px-3 py-1.5 rounded-[8px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] font-heading font-medium text-[var(--text)] shrink-0"
-          >
-            Retry
-          </button>
-        </div>
-      )}
+      <AdminDiagnosticBanner
+        error={error}
+        collectionName="questions, users, attempts"
+        onRetry={loadData}
+        retrying={loading}
+      />
 
       {/* ─── 6 STAT CARDS (2 cols mobile, 4 cols desktop) ───────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">

@@ -1,7 +1,6 @@
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
-import { DashboardSidebar } from './DashboardSidebar';
 import { DashboardBottomNav } from './DashboardBottomNav';
 import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { useEffect, useState } from 'react';
@@ -28,28 +27,18 @@ export function DashboardShell() {
   // NEVER return null or blank screen — always render shell and bottom nav immediately
   return (
     <div
-      className="min-h-screen flex flex-col"
-      style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
+      className="min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-hidden"
     >
       <VerificationBanner />
 
-      <div className="flex flex-1 min-h-0">
-        {/* Desktop Sidebar: exactly 240px width */}
-        <DashboardSidebar />
+      {/* Main Content Container: max-w-5xl with responsive padding and pb-28 for bottom PillNav */}
+      <main className="flex-1 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-28">
+        <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
+          <Outlet />
+        </DashboardErrorBoundary>
+      </main>
 
-        {/* Main Content Area */}
-        <div className="flex-1 flex flex-col min-w-0">
-          <main className="flex-1 p-4 sm:p-6 pb-28 md:pb-12 overflow-y-auto">
-            <div className="max-w-[1200px] w-full mx-auto">
-              <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
-                <Outlet />
-              </DashboardErrorBoundary>
-            </div>
-          </main>
-        </div>
-      </div>
-
-      {/* Consolidated Student Bottom Navigation Bar */}
+      {/* Unified Student Pill Navigation (Only navigation on mobile and desktop) */}
       <DashboardBottomNav />
     </div>
   );

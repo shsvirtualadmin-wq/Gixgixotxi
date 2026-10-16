@@ -11,59 +11,62 @@ export function OnboardingShell({ step, children }: OnboardingShellProps) {
   const pct = ((step - 1) / (STEPS.length - 1)) * 100;
 
   return (
-    <div
-      className="page-enter"
-      style={{
-        minHeight: '100dvh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'flex-start',
-        padding: '2rem 1.5rem',
-        paddingTop: 'max(2rem, env(safe-area-inset-top))',
-      }}
-    >
-      {/* Logo */}
-      <div style={{ marginBottom: 32 }}>
-        <img src="/assets/boardly-logo.svg" alt="Boardly" style={{ height: 30 }}
-          onError={(e) => { (e.target as HTMLImageElement).src = '/boardly-logo.png'; }} />
-      </div>
+    <div className="min-h-screen w-full flex flex-col items-center justify-center p-4 sm:p-6 bg-black">
+      {/* Centered container with max-w-lg card */}
+      <div className="w-full max-w-lg mx-auto my-auto flex flex-col items-center">
+        {/* Logo */}
+        <div className="mb-6 flex items-center justify-center">
+          <img
+            src="/assets/boardly-logo.svg"
+            alt="Boardly"
+            className="h-8 object-contain"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = '/boardly-logo.png';
+            }}
+          />
+        </div>
 
-      {/* Step indicators */}
-      <div style={{ width: '100%', maxWidth: 520, marginBottom: 32 }}>
-        {/* Label */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Step {step} of {STEPS.length}</span>
-          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--brand)' }}>{STEPS[step - 1]}</span>
-        </div>
-        {/* Progress bar */}
-        <div style={{ height: 4, background: 'var(--border)', borderRadius: 2, overflow: 'hidden' }}>
-          <div style={{
-            height: '100%',
-            width: `${pct}%`,
-            background: 'linear-gradient(90deg, var(--brand), var(--brand-2))',
-            borderRadius: 2,
-            transition: 'width 600ms var(--ease-out)',
-          }} />
-        </div>
-        {/* Step dots */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-          {STEPS.map((s, i) => (
-            <div key={s} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-              <div style={{
-                width: 8, height: 8, borderRadius: '50%',
-                background: i + 1 <= step ? 'var(--brand)' : 'var(--border)',
-                transition: 'background 300ms',
-              }} />
-            </div>
-          ))}
-        </div>
-      </div>
+        {/* Step indicators */}
+        <div className="w-full mb-6">
+          {/* Label */}
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-xs font-bold text-[var(--muted)] uppercase tracking-wider">
+              Step {step} of {STEPS.length}
+            </span>
+            <span className="text-xs font-bold text-[var(--red)]">
+              {STEPS[step - 1]}
+            </span>
+          </div>
 
-      {/* Content */}
-      <div style={{ width: '100%', maxWidth: 520 }}>
-        {children}
+          {/* Progress bar */}
+          <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[var(--red)] rounded-full transition-all duration-300"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+
+          {/* Step dots */}
+          <div className="flex justify-between mt-2 px-1">
+            {STEPS.map((s, i) => (
+              <div key={s} className="flex flex-col items-center">
+                <div
+                  className={`w-2 h-2 rounded-full transition-colors ${
+                    i + 1 <= step ? 'bg-[var(--red)]' : 'bg-neutral-800'
+                  }`}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Card: w-full max-w-lg mx-auto p-6 sm:p-8, readable typography */}
+        <div className="w-full rounded-2xl bg-[#111111] border border-[#2A2A2A] p-6 sm:p-8 shadow-2xl">
+          {children}
+        </div>
       </div>
     </div>
   );
 }
+
+export default OnboardingShell;

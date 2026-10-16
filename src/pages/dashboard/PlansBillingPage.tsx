@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,6 +20,7 @@ interface PaymentRequestItem {
 }
 
 export function PlansBillingPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const { profile, loading: profileLoading } = useProfile(user?.uid ?? null);
 
@@ -330,7 +332,7 @@ export function PlansBillingPage() {
               variant="secondary"
               size="md"
               className="w-full"
-              onClick={() => (window.location.href = '/crew')}
+              onClick={() => navigate('/crew')}
             >
               <Users size={14} /> Open Crew Hub
             </Button>

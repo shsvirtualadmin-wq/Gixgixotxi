@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { NavLink, Outlet, Link, useNavigate, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, Link, useNavigate, useLocation, Navigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
@@ -13,8 +13,12 @@ import {
   ExternalLink,
   X,
   ChevronRight,
+  ShieldAlert,
+  ArrowLeft,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { Button } from '@/components/ui/Button';
 
 interface AdminNavItem {
   to: string;
@@ -42,7 +46,7 @@ const ALL_SIDEBAR_NAV: AdminNavItem[] = [
 ];
 
 export function AdminLayout() {
-  const { user, signOutUser } = useAuth();
+  const { user, profileLoading, isAdmin, signOutUser } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -190,7 +194,47 @@ export function AdminLayout() {
 
       {/* ─── MAIN CONTENT VIEWPORT ─────────────────────────────────────────── */}
       <main className="flex-1 md:ml-[240px] min-w-0 min-h-[calc(100vh-3.5rem)] md:min-h-screen p-4 sm:p-6 md:p-8 pb-24 md:pb-8 max-w-[1400px] w-full mx-auto overflow-x-hidden">
-        <Outlet />
+        {profileLoading ? (
+          <div className="space-y-4 max-w-4xl py-4">
+            <Skeleton height={32} width="40%" />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+              <Skeleton height={120} />
+              <Skeleton height={120} />
+              <Skeleton height={120} />
+              <Skeleton height={120} />
+            </div>
+            <div className="mt-6">
+              <Skeleton height={280} />
+            </div>
+          </div>
+        ) : !user ? (
+          <Navigate to="/login?redirect=/admin" replace />
+        ) : !isAdmin ? (
+          <div className="flex items-center justify-center py-12 px-4">
+            <div className="max-w-[480px] w-full p-6 sm:p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center shadow-none">
+              <div className="w-14 h-14 rounded-full bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] flex items-center justify-center mx-auto mb-5">
+                <ShieldAlert size={28} />
+              </div>
+              <h1 className="font-dot text-[22px] font-bold text-[var(--text)] mb-3">
+                Admin access restricted
+              </h1>
+              <p className="font-heading text-[14px] text-[var(--muted)] leading-relaxed mb-5">
+                This portal is strictly reserved for the Boardly platform super-administrator.
+                Your account (<strong className="text-[var(--text)] font-semibold">{user.email}</strong>) does not have administrator authority.
+              </p>
+              <div className="bg-[var(--card-2)] p-3 rounded-[12px] border border-[var(--border)] text-[12px] font-heading text-[var(--muted)] mb-6">
+                Authorized: shsvirtualadmin@gmail.com
+              </div>
+              <Link to="/dashboard" className="inline-block w-full">
+                <Button variant="secondary" size="md" className="w-full justify-center">
+                  <ArrowLeft size={16} /> Return to student dashboard
+                </Button>
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <Outlet />
+        )}
       </main>
 
       {/* ─── MOBILE BOTTOM NAV (4 Items: Overview, Users, Questions, More) ──── */}
