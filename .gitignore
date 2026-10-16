@@ -9,3 +9,5 @@ coverage/
 .env.*
 !.env.example
 firebase-applet-config.json
+bun.lock
+bun.lockb
