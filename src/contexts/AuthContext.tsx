@@ -15,7 +15,7 @@ import {
   signOut as firebaseSignOut,
   sendEmailVerification,
   sendPasswordResetEmail,
-  updateProfile,
+  updateProfile as firebaseUpdateProfile,
   type User,
 } from 'firebase/auth';
 import {
@@ -67,6 +67,8 @@ interface AuthContextValue {
   resetPassword: (email: string) => Promise<void>;
   retryProfile: () => void;
   getRoleRedirectUrl: (customRole?: string) => string;
+  updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
+  updateLocalProfile: (updates: Partial<UserProfile>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -80,7 +82,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authError, setAuthError] = useState<{ code?: string; message: string } | null>(null);
   const [retryCount, setRetryCount] = useState(0);
 
-  const isAdmin = !!(user?.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL);
+  const isAdmin = !!(
+    (user?.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL) ||
+    profile?.role === 'admin'
+  );
 
   // ── Helper to determine target dashboard URL by role ─────────────────────
   const getRoleRedirectUrl = useCallback(
@@ -159,24 +164,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setProfile(data);
       } else {
-        // Safe fields only on first user creation (e.g. Google sign-in)
+        // Base user document required fields on first creation:
         const fallbackName =
           firebaseUser.displayName?.trim() ||
           (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'Student');
+
+        const baseUserDoc = {
+          uid: firebaseUser.uid,
+          name: fallbackName,
+          displayName: fallbackName,
+          email: (firebaseUser.email ?? '').toLowerCase(),
+          photoURL: firebaseUser.photoURL ?? null,
+          role: 'student',
+          plan: 'free',
+          status: 'active',
+          onboardingCompleted: false,
+          createdAt: serverTimestamp(),
+        };
+
         const newProfile: UserProfile = {
           uid: firebaseUser.uid,
           email: (firebaseUser.email ?? '').toLowerCase(),
           displayName: fallbackName,
+          name: fallbackName,
+          photoURL: firebaseUser.photoURL ?? null,
           role: 'student',
           plan: 'free',
+          status: 'active',
           onboardingCompleted: false,
         };
 
         await withTimeout(
-          setDoc(doc(db, 'users', firebaseUser.uid), {
-            ...newProfile,
-            createdAt: serverTimestamp(),
-          }),
+          setDoc(doc(db, 'users', firebaseUser.uid), baseUserDoc, { merge: true }),
           6000,
           'User record creation timed out. Check Firestore security rules.'
         );
@@ -260,22 +279,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         (email.includes('@') ? email.split('@')[0] : 'Student');
 
       try {
-        await updateProfile(newUser, { displayName: resolvedName });
+        await firebaseUpdateProfile(newUser, { displayName: resolvedName });
       } catch (err) {
         console.warn('Could not update Firebase Auth profile displayName:', err);
       }
 
-      // Create profile doc immediately with ONLY safe fields
+      // Create base user document immediately with all required fields
       await withTimeout(
         setDoc(doc(db, 'users', newUser.uid), {
           uid: newUser.uid,
-          email: email.toLowerCase(),
+          name: resolvedName,
           displayName: resolvedName,
+          email: email.toLowerCase(),
+          photoURL: null,
           role: 'student',
           plan: 'free',
+          status: 'active',
           onboardingCompleted: false,
           createdAt: serverTimestamp(),
-        }),
+        }, { merge: true }),
         6000
       );
 
@@ -365,9 +387,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
   }, []);
 
-  const clearProfileError = useCallback(() => {
-    setProfileError(null);
+  const updateLocalProfile = useCallback((updates: Partial<UserProfile>) => {
+    setProfile((prev) => (prev ? { ...prev, ...updates } : ({ ...updates } as UserProfile)));
   }, []);
+
+  const updateProfile = useCallback(
+    async (updates: Partial<UserProfile>) => {
+      updateLocalProfile(updates);
+      if (user) {
+        try {
+          await withTimeout(
+            setDoc(doc(db, 'users', user.uid), updates, { merge: true }),
+            6000,
+            'Profile update timed out.'
+          );
+        } catch (e) {
+          console.warn('[Boardly] updateProfile error:', e);
+        }
+      }
+    },
+    [user, updateLocalProfile]
+  );
 
   return (
     <AuthContext.Provider
@@ -388,6 +428,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         resetPassword,
         retryProfile,
         getRoleRedirectUrl,
+        updateProfile,
+        updateLocalProfile,
       }}
     >
       {children}

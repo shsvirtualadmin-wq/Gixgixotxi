@@ -2,12 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ADMIN OVERRIDE: full access for verified super admin email only
-    match /{document=**} {
-      allow read, write: if request.auth != null
-        && request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com';
-    }
-
     function isAuthenticated() {
       return request.auth != null;
     }
@@ -16,116 +10,31 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
 
-    // Superadmin authorization rule: strictly shsvirtualadmin@gmail.com only
+    // Superadmin authorization: shsvirtualadmin@gmail.com OR user doc has role == 'admin'
     function isSuperAdmin() {
-      return isAuthenticated() && request.auth.token.email != null && request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com';
+      return isAuthenticated() && (
+        (request.auth.token.email != null && request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com') ||
+        (request.auth.token.role == 'admin') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+      );
     }
 
-    // Admin authorization rule:
     function isAdmin() {
-      return isSuperAdmin() || (
-        isAuthenticated() && (
-          request.auth.token.role == 'admin' ||
-          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-           get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
-        )
-      );
+      return isSuperAdmin();
     }
 
-    // Role helpers
-    function isCrew() {
-      return isAuthenticated() && (
-        isAdmin() ||
-        request.auth.token.role == 'crew' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'crew'
-      );
-    }
-
-    function isCaptain() {
-      return isAuthenticated() && (
-        isAdmin() ||
-        request.auth.token.role == 'captain' ||
-        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'captain'
-      );
-    }
-
-    // Forbidden student keys on creation or modification
-    function studentCreateAllowed(userId) {
-      let forbiddenKeys = [
-        'roles',
-        'isPremium',
-        'premium',
-        'premiumExpiresAt',
-        'premiumSource',
-        'previousPlan',
-        'isCrewMember',
-        'crewStatus',
-        'crewStartDate',
-        'crewReferralCode',
-        'crewRevokedAt',
-        'crewRevokeReason',
-        'isPaidInternshipEligible',
-        'ambassador',
-        'admin',
-        'isAdmin',
-        'suspended',
-        'isSuspended'
-      ];
-      return isOwner(userId)
-        && !request.resource.data.keys().hasAny(forbiddenKeys)
-        && (!('role' in request.resource.data) || request.resource.data.role == 'student')
-        && (!('plan' in request.resource.data) || request.resource.data.plan == 'free' || request.resource.data.plan == 'starter');
-    }
-
-    // Protect critical fields (plan, role, premium, premiumSource, ambassador/crew, admin, suspension)
-    // Owners cannot change these fields on their own document; only super admin can edit them.
-    function userDoesNotChangeProtectedFields() {
-      let protectedKeys = [
-        'plan',
-        'role',
-        'roles',
-        'isPremium',
-        'premium',
-        'premiumExpiresAt',
-        'premiumSource',
-        'previousPlan',
-        'isCrewMember',
-        'crewStatus',
-        'crewStartDate',
-        'crewReferralCode',
-        'crewRevokedAt',
-        'crewRevokeReason',
-        'isPaidInternshipEligible',
-        'ambassador',
-        'admin',
-        'isAdmin',
-        'suspended',
-        'isSuspended'
-      ];
-      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(protectedKeys);
+    // ADMIN OVERRIDE: full read/write for superadmin across all collections
+    match /{document=**} {
+      allow read, write: if isSuperAdmin();
     }
 
     // Users collection:
-    // Owners can read and update their own document without changing protected admin/plan fields.
-    // Authenticated users can read their own profile matching their verified token email.
-    // Super admin can list and write any user record; only Superadmin (shsvirtualadmin@gmail.com) can change roles or delete users.
+    // Authenticated users have full read/write for their own user document
+    // Superadmins have full read/write/list for all user documents
     match /users/{userId} {
-      allow get: if isOwner(userId)
-        || isAdmin()
-        || (isAuthenticated() && request.auth.token.email != null && (
-          resource.data.email == request.auth.token.email ||
-          resource.data.email == request.auth.token.email.lower()
-        ));
+      allow read, write: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isSuperAdmin() || isAdmin() || studentCreateAllowed(userId);
-      allow update: if isSuperAdmin()
-        || (isAdmin() && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'roles']))
-        || (isOwner(userId) && userDoesNotChangeProtectedFields())
-        || (isAuthenticated() && request.auth.token.email != null && (
-          resource.data.email == request.auth.token.email ||
-          resource.data.email == request.auth.token.email.lower()
-        ) && userDoesNotChangeProtectedFields());
-      allow delete: if isSuperAdmin();
 
       match /{allSubcollections=**} {
         allow read, write: if isOwner(userId) || isAdmin();
@@ -134,9 +43,9 @@ service cloud.firestore {
 
     // Unified applications collection (for Crew & Captain role applications)
     match /applications/{appId} {
-      allow read: if (isAuthenticated() && (resource.data.userId == request.auth.uid || appId == request.auth.uid)) || isAdmin();
-      allow create: if isAuthenticated() && (request.resource.data.userId == request.auth.uid || appId == request.auth.uid);
-      allow update, delete: if isAdmin();
+      allow read, write: if isAdmin() || (isAuthenticated() && (
+        resource == null || resource.data.userId == request.auth.uid || appId == request.auth.uid || request.resource.data.userId == request.auth.uid
+      ));
     }
 
     // Legacy applications collections
@@ -193,11 +102,13 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Payment upgrade requests
+    // Payment upgrade requests and payments
     match /paymentRequests/{requestId} {
-      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
+      allow read, write: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid));
+    }
+
+    match /payments/{paymentId} {
+      allow read, write: if isAdmin() || (isAuthenticated() && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid));
     }
 
     // Competitive event sessions (Blitz, Arena, Study Circles)

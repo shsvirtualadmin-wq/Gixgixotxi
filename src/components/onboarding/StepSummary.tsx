@@ -20,18 +20,31 @@ interface StepSummaryProps {
 }
 
 export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
-  const { user } = useAuth();
+  const { user, updateLocalProfile } = useAuth();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<{ code?: string; message: string; path?: string } | null>(null);
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user) {
+      onComplete();
+      return;
+    }
     const path = `users/${user.uid}`;
     setSaving(true);
     setError(null);
+
+    // 1. Immediately update local state/context so the UI reflects completed onboarding
+    updateLocalProfile({
+      targetUniversity: data.targetUniversity,
+      targetTestDate: data.targetTestDate,
+      academicTrack: data.academicTrack,
+      subjects: data.subjects,
+      onboardingCompleted: true,
+    });
+
     try {
-      // ONLY write allowed fields — never write protected fields
-      await setDoc(
+      // 2. Wrap Firestore write with a 6-second timeout fallback
+      const writePromise = setDoc(
         doc(db, 'users', user.uid),
         {
           targetUniversity: data.targetUniversity,
@@ -43,6 +56,15 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
         },
         { merge: true }
       );
+
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('Save operation timed out after 6 seconds. Proceeding to dashboard.')),
+          6000
+        )
+      );
+
+      await Promise.race([writePromise, timeoutPromise]);
       onComplete();
     } catch (err: unknown) {
       const fe = err as { code?: string; message?: string };
@@ -53,6 +75,7 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
         path,
       });
     } finally {
+      // 3. Stop loading spinner in finally block
       setSaving(false);
     }
   };
@@ -108,11 +131,23 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 10 }}>
-        <Button variant="secondary" size="lg" onClick={onBack} disabled={saving} style={{ flex: '0 0 auto' }}>Back</Button>
-        <Button variant="primary" size="lg" fullWidth loading={saving} onClick={handleSave}>
-          {error ? 'Retry Save' : 'Save & Go to Dashboard'}
-        </Button>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <Button variant="secondary" size="lg" onClick={onBack} disabled={saving} style={{ flex: '0 0 auto' }}>Back</Button>
+          <Button variant="primary" size="lg" fullWidth loading={saving} onClick={handleSave}>
+            {error ? 'Retry Save' : 'Save & Go to Dashboard'}
+          </Button>
+        </div>
+        {error && (
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={onComplete}
+            style={{ color: 'var(--text-muted)', fontSize: 13, textDecoration: 'underline' }}
+          >
+            Skip to Dashboard anyway →
+          </Button>
+        )}
       </div>
     </div>
   );

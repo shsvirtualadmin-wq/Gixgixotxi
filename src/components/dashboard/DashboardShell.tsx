@@ -2,7 +2,6 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
 import { DashboardSidebar } from './DashboardSidebar';
-import { DashboardTopBar } from './DashboardTopBar';
 import { DashboardBottomNav } from './DashboardBottomNav';
 import { useEffect } from 'react';
 
@@ -29,11 +28,9 @@ export function DashboardShell() {
         {/* Desktop Sidebar: exactly 240px width */}
         <DashboardSidebar />
 
-        {/* Main Content Area */}
+        {/* Main Content Area — No top navigation/header controls on student views */}
         <div className="flex-1 flex flex-col min-w-0">
-          <DashboardTopBar />
-
-          <main className="flex-1 p-4 sm:p-6 pb-24 md:pb-12 overflow-y-auto">
+          <main className="flex-1 p-4 sm:p-6 pb-28 md:pb-12 overflow-y-auto">
             <div className="max-w-[1200px] w-full mx-auto">
               <Outlet />
             </div>
@@ -41,7 +38,7 @@ export function DashboardShell() {
         </div>
       </div>
 
-      {/* Mobile Bottom Nav */}
+      {/* Consolidated Student Bottom Navigation Bar */}
       <DashboardBottomNav />
     </div>
   );

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, RefreshCw, UserCheck } from 'lucide-react';
+import { Search, RefreshCw, UserCheck, AlertCircle } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserOverrideDrawer } from '@/components/admin/UserOverrideDrawer';
 import {
@@ -11,8 +11,9 @@ import type { UserProfile } from '@/types';
 
 export function AdminUsersPage() {
   const { user } = useAuth();
-  const [users, setUsers] = useState<UserProfile[]>([]);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -29,21 +30,24 @@ export function AdminUsersPage() {
 
   const loadUsers = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
-      const data = await fetchUsers(search, roleFilter, planFilter, 150);
-      setUsers(data);
-    } catch (err) {
+      const data = await fetchUsers();
+      setAllUsers(data);
+    } catch (err: unknown) {
+      const fe = err as { code?: string; message?: string };
       console.error('Failed to load users:', err);
+      setError({
+        message: fe.message || 'Failed to load users from database. Please verify Firestore permissions.',
+        code: fe.code,
+      });
     } finally {
       setLoading(false);
     }
-  }, [search, roleFilter, planFilter]);
+  }, []);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      loadUsers();
-    }, 200);
-    return () => clearTimeout(timer);
+    loadUsers();
   }, [loadUsers]);
 
   const handleBackfillNames = async () => {
@@ -66,14 +70,45 @@ export function AdminUsersPage() {
     }
   };
 
-  // Filter clientside by status as well
-  const filteredUsers = users.filter((u) => {
+  // ── Client-side filtering in memory across all dimensions ──────────────────
+  const filteredUsers = allUsers.filter((u) => {
+    // 1. Role Filter
+    if (roleFilter !== 'all') {
+      const isSuper = u.email?.toLowerCase() === 'shsvirtualadmin@gmail.com';
+      const isAdmin = isSuper || u.role === 'admin';
+      if (roleFilter === 'admin' && !isAdmin) return false;
+      if (roleFilter === 'student' && (isAdmin || (u.role && u.role !== 'student'))) return false;
+      if (roleFilter === 'captain' && u.role !== 'captain') return false;
+      if (roleFilter === 'crew' && u.role !== 'crew') return false;
+    }
+
+    // 2. Plan Filter
+    if (planFilter !== 'all') {
+      const isPro = u.plan === 'pro' || !!u.isPremium;
+      if (planFilter === 'pro' && !isPro) return false;
+      if (planFilter === 'free' && isPro) return false;
+    }
+
+    // 3. Status Filter
     if (statusFilter === 'active') {
-      return !u.suspended && !u.isSuspended;
+      if (u.suspended || u.isSuspended) return false;
     }
     if (statusFilter === 'suspended') {
-      return !!(u.suspended || u.isSuspended);
+      if (!u.suspended && !u.isSuspended) return false;
     }
+
+    // 4. Search Filter
+    if (search.trim()) {
+      const st = search.toLowerCase().trim();
+      const name = getUserDisplayName(u).toLowerCase();
+      const email = (u.email || '').toLowerCase();
+      const uid = (u.uid || '').toLowerCase();
+      const uni = (u.targetUniversity || '').toLowerCase();
+      if (!name.includes(st) && !email.includes(st) && !uid.includes(st) && !uni.includes(st)) {
+        return false;
+      }
+    }
+
     return true;
   });
 
@@ -113,6 +148,34 @@ export function AdminUsersPage() {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="p-4 rounded-[16px] bg-[rgba(239,68,68,0.08)] border border-[var(--red)]/40 flex items-start justify-between gap-3">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle size={18} className="text-[var(--red)] shrink-0 mt-0.5" />
+            <div>
+              <p className="font-heading font-semibold text-[13px] text-[var(--red)]">
+                Unable to load users
+              </p>
+              <p className="font-heading text-[12px] text-[var(--text)] mt-0.5">
+                {error.message}
+              </p>
+              {error.code && (
+                <code className="inline-block text-[10px] text-[var(--muted)] font-mono mt-1">
+                  Code: {error.code}
+                </code>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={loadUsers}
+            className="px-3 py-1.5 rounded-[8px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] font-heading font-medium text-[var(--text)] shrink-0"
+          >
+            Retry
+          </button>
+        </div>
+      )}
 
       {backfillMessage && (
         <div className="p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] flex items-center justify-between">

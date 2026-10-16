@@ -14,6 +14,9 @@ import {
   Timestamp,
   getCountFromServer,
   addDoc,
+  type CollectionReference,
+  type DocumentData,
+  type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import type {
@@ -94,74 +97,85 @@ export const CORE_SUBJECTS = [
 ] as const;
 
 export async function fetchAdminStats(): Promise<AdminStats> {
-  try {
-    const questionsCol = collection(db, 'questions');
-    const usersCol = collection(db, 'users');
-    const attemptsCol = collection(db, 'attempts');
+  const questionsCol = collection(db, 'questions');
+  const usersCol = collection(db, 'users');
+  const attemptsCol = collection(db, 'attempts');
 
-    const [
-      usersCount,
-      questionsCount,
-      attemptsCount,
-      pendingCaptainsSnap,
-      pendingCrewSnap,
-      pendingPaymentsSnap,
-      pendingReviewsSnap,
-    ] = await Promise.all([
-      getCountFromServer(usersCol).catch(() => ({ data: () => ({ count: 0 }) })),
-      getCountFromServer(questionsCol).catch((err) => {
-        console.warn('[AdminService] questions count error:', err);
-        return { data: () => ({ count: 0 }) };
-      }),
-      getCountFromServer(attemptsCol).catch(() => ({ data: () => ({ count: 0 }) })),
-      getDocs(query(collection(db, 'captainApplications'), where('status', '==', 'pending'), limit(100))).catch(() => ({ size: 0 })),
-      getDocs(query(collection(db, 'crewApplications'), where('status', '==', 'pending'), limit(100))).catch(() => ({ size: 0 })),
-      getDocs(query(collection(db, 'paymentRequests'), where('status', '==', 'pending'), limit(100))).catch(() => ({ size: 0 })),
-      getDocs(query(collection(db, 'reviews'), where('status', '==', 'pending'), limit(100))).catch(() => ({ size: 0 })),
-    ]);
-
-    // Query subject counts in parallel
-    const subjectCounts: Record<string, number> = {};
-    await Promise.all(
-      CORE_SUBJECTS.map(async (subj) => {
-        try {
-          const snap = await getCountFromServer(query(questionsCol, where('subject', '==', subj)));
-          subjectCounts[subj] = snap.data().count;
-        } catch {
-          subjectCounts[subj] = 0;
-        }
-      })
-    );
-
-    let totalQ = questionsCount.data().count;
-    const subjectSum = Object.values(subjectCounts).reduce((a, b) => a + b, 0);
-    if (totalQ === 0 && subjectSum > 0) {
-      totalQ = subjectSum;
+  // Count helper with getDocs fallback
+  const countOrGet = async (col: CollectionReference<DocumentData>): Promise<number> => {
+    try {
+      const snap = await getCountFromServer(col);
+      return snap.data().count;
+    } catch {
+      try {
+        const snap = await getDocs(col);
+        return snap.size;
+      } catch {
+        return 0;
+      }
     }
+  };
 
-    return {
-      totalUsers: usersCount.data().count,
-      totalQuestions: totalQ,
-      totalAttempts: attemptsCount.data().count,
-      pendingCaptains: pendingCaptainsSnap.size,
-      pendingCrew: pendingCrewSnap.size,
-      pendingPayments: pendingPaymentsSnap.size,
-      pendingReviews: pendingReviewsSnap.size,
-      subjectCounts,
-    };
-  } catch (err) {
-    console.error('[AdminService] Error loading admin stats:', err);
-    return {
-      totalUsers: 0,
-      totalQuestions: 0,
-      totalAttempts: 0,
-      pendingCaptains: 0,
-      pendingCrew: 0,
-      pendingPayments: 0,
-      pendingReviews: 0,
-      subjectCounts: {},
-    };
+  const [
+    usersTotal,
+    questionsTotal,
+    attemptsTotal,
+    pendingCaptainsSnap,
+    pendingCrewSnap,
+    pendingPaymentsSnap,
+    pendingReviewsSnap,
+  ] = await Promise.all([
+    countOrGet(usersCol),
+    countOrGet(questionsCol),
+    countOrGet(attemptsCol),
+    getDocs(collection(db, 'captainApplications')).catch(() => ({ docs: [], size: 0 })),
+    getDocs(collection(db, 'crewApplications')).catch(() => ({ docs: [], size: 0 })),
+    getDocs(collection(db, 'paymentRequests')).catch(() => ({ docs: [], size: 0 })),
+    getDocs(collection(db, 'reviews')).catch(() => ({ docs: [], size: 0 })),
+  ]);
+
+  const pendingCaptainsCount = pendingCaptainsSnap.docs
+    ? pendingCaptainsSnap.docs.filter((d: QueryDocumentSnapshot<DocumentData>) => d.data()?.status === 'pending').length
+    : pendingCaptainsSnap.size;
+  const pendingCrewCount = pendingCrewSnap.docs
+    ? pendingCrewSnap.docs.filter((d: QueryDocumentSnapshot<DocumentData>) => d.data()?.status === 'pending').length
+    : pendingCrewSnap.size;
+  const pendingPaymentsCount = pendingPaymentsSnap.docs
+    ? pendingPaymentsSnap.docs.filter((d: QueryDocumentSnapshot<DocumentData>) => d.data()?.status === 'pending').length
+    : pendingPaymentsSnap.size;
+  const pendingReviewsCount = pendingReviewsSnap.docs
+    ? pendingReviewsSnap.docs.filter((d: QueryDocumentSnapshot<DocumentData>) => d.data()?.status === 'pending').length
+    : pendingReviewsSnap.size;
+
+  // Query subject counts in parallel
+  const subjectCounts: Record<string, number> = {};
+  await Promise.all(
+    CORE_SUBJECTS.map(async (subj) => {
+      try {
+        const snap = await getCountFromServer(query(questionsCol, where('subject', '==', subj)));
+        subjectCounts[subj] = snap.data().count;
+      } catch {
+        subjectCounts[subj] = 0;
+      }
+    })
+  );
+
+  let totalQ = questionsTotal;
+  const subjectSum = Object.values(subjectCounts).reduce((a, b) => a + b, 0);
+  if (totalQ === 0 && subjectSum > 0) {
+    totalQ = subjectSum;
   }
+
+  return {
+    totalUsers: usersTotal,
+    totalQuestions: totalQ,
+    totalAttempts: attemptsTotal,
+    pendingCaptains: pendingCaptainsCount,
+    pendingCrew: pendingCrewCount,
+    pendingPayments: pendingPaymentsCount,
+    pendingReviews: pendingReviewsCount,
+    subjectCounts,
+  };
 }
 
 // ─── 500+ BALANCED MCQ POOL SEEDER ───────────────────────────────────────────
@@ -199,66 +213,11 @@ export async function seedBalancedMCQPool(
 }
 
 // ─── USER MANAGEMENT & OVERRIDES ─────────────────────────────────────────────
-export async function fetchUsers(
-  searchTerm?: string,
-  roleFilter?: string,
-  planFilter?: string,
-  limitCount = 100
-): Promise<UserProfile[]> {
-  try {
-    const ref = collection(db, 'users');
-    let users: UserProfile[] = [];
-
-    if (roleFilter === 'admin') {
-      // Fetch all users with role == 'admin' AND query superadmin specifically so both are listed
-      const adminQ = query(ref, where('role', '==', 'admin'), limit(limitCount));
-      const superQ = query(ref, where('email', '==', 'shsvirtualadmin@gmail.com'), limit(5));
-      const [adminSnap, superSnap] = await Promise.all([
-        getDocs(adminQ).catch(() => null),
-        getDocs(superQ).catch(() => null),
-      ]);
-      const map = new Map<string, UserProfile>();
-      adminSnap?.docs.forEach((d) => map.set(d.id, { uid: d.id, ...d.data() } as UserProfile));
-      superSnap?.docs.forEach((d) => map.set(d.id, { uid: d.id, ...d.data() } as UserProfile));
-      users = Array.from(map.values());
-    } else {
-      let q = query(ref, limit(limitCount));
-
-      if (roleFilter && roleFilter !== 'all') {
-        if (roleFilter === 'superadmin') {
-          q = query(ref, limit(limitCount));
-        } else {
-          q = query(ref, where('role', '==', roleFilter), limit(limitCount));
-        }
-      } else if (planFilter && planFilter !== 'all') {
-        q = query(ref, where('plan', '==', planFilter), limit(limitCount));
-      }
-
-      const snap = await getDocs(q);
-      users = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
-
-      if (roleFilter === 'superadmin') {
-        users = users.filter(
-          (u) => u.email && u.email.toLowerCase() === 'shsvirtualadmin@gmail.com'
-        );
-      }
-    }
-
-    if (searchTerm && searchTerm.trim()) {
-      const st = searchTerm.toLowerCase().trim();
-      users = users.filter(
-        (u) =>
-          u.email?.toLowerCase().includes(st) ||
-          u.displayName?.toLowerCase().includes(st) ||
-          u.uid.toLowerCase().includes(st)
-      );
-    }
-
-    return users;
-  } catch (err) {
-    console.error('[AdminService] fetchUsers error:', err);
-    return [];
-  }
+// Simple, direct fetch with getDocs(collection(db, 'users')) without complex composite index queries
+export async function fetchUsers(): Promise<UserProfile[]> {
+  const ref = collection(db, 'users');
+  const snap = await getDocs(ref);
+  return snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
 }
 
 export async function updateUserOverride(
