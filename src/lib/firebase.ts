@@ -22,6 +22,8 @@ import {
   getCountFromServer,
   runTransaction,
   serverTimestamp,
+  increment,
+  Timestamp,
   onSnapshot,
   deleteDoc,
   deleteField,
@@ -45,6 +47,9 @@ export {
   limit,
   getDocs,
   onSnapshot,
+  serverTimestamp,
+  increment,
+  Timestamp,
 };
 
 // PROTECTED: do not modify unless the task is explicitly about authentication. See PROJECT_RULES.md
@@ -331,18 +336,7 @@ export async function fetchUserProfile(
   userEmail?: string | null,
   legacyUid?: string | null
 ): Promise<StudentUserProfile | null> {
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    const timer = setTimeout(() => {
-      const err = new Error('Profile lookup timed out after 4 seconds');
-      (err as any).code = 'timeout';
-      reject(err);
-    }, 4000);
-  });
-
-  return Promise.race([
-    executeFetchUserProfile(uid, userEmail, legacyUid),
-    timeoutPromise,
-  ]);
+  return executeFetchUserProfile(uid, userEmail, legacyUid);
 }
 
 async function executeFetchUserProfile(

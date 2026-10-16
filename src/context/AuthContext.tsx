@@ -55,6 +55,7 @@ export interface AuthContextType {
   authLoading: boolean;
   profileLoading: boolean;
   authError: { code: string; message: string } | null;
+  clearAuthError: () => void;
   retryAuth: () => Promise<void>;
   isRegistered: boolean;
   initialAuthChecked: boolean;
@@ -564,23 +565,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     );
 
-    // 5-Second Safety Timeout Fallback (Requirement 4):
-    // Ensures loading is NEVER stuck indefinitely on network drops and respects the 5-second maximum limit.
-    const safetyTimeout = setTimeout(() => {
-      if (isMounted) {
-        setAuthError((prev) => prev || {
-          code: 'timeout',
-          message: 'Connection took longer than expected. We had trouble loading your account profile.',
-        });
-        setAuthLoading(false);
-        setProfileLoading(false);
-        setInitialAuthChecked(true);
-      }
-    }, 5000);
-
     return () => {
       isMounted = false;
-      clearTimeout(safetyTimeout);
       unsubscribe();
     };
   }, [syncProfile]);
@@ -751,6 +737,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  const clearAuthError = useCallback(() => {
+    setAuthError(null);
+  }, []);
+
   const logOut = async () => {
     try {
       isExplicitLoggingOutRef.current = true;
@@ -762,6 +752,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUser(null);
       setProfile(null);
       setDocumentExists(false);
+      setAuthError(null);
+      setAuthLoading(false);
+      setProfileLoading(false);
       setStatus('signedOut');
       lastKnownUserRef.current = null;
     } catch (err) {
@@ -991,6 +984,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         authLoading,
         profileLoading,
         authError,
+        clearAuthError,
         retryAuth,
         isRegistered,
         initialAuthChecked,

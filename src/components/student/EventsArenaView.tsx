@@ -77,6 +77,17 @@ export function maskDisplayName(name?: string, email?: string): string {
   return 'Student';
 }
 
+export function getNextSundayBlitzTime(): Date {
+  const now = new Date();
+  const pktTime = new Date(now.getTime() + (5 * 60 + now.getTimezoneOffset()) * 60000);
+  const day = pktTime.getDay();
+  const daysUntilSunday = (7 - day) % 7;
+  const target = new Date(pktTime);
+  target.setDate(pktTime.getDate() + (daysUntilSunday === 0 && pktTime.getHours() >= 20 ? 7 : daysUntilSunday));
+  target.setHours(20, 0, 0, 0);
+  return new Date(target.getTime() - 5 * 60 * 60000);
+}
+
 export const EventsArenaView: React.FC<EventsArenaViewProps> = ({
   onEnterExam,
 }) => {
@@ -91,6 +102,29 @@ export const EventsArenaView: React.FC<EventsArenaViewProps> = ({
   const [errorInfo, setErrorInfo] = useState<{ message: string; path?: string } | null>(null);
 
   const [activeTab, setActiveTab] = useState<'events' | 'leaderboard'>('events');
+
+  // Next Sunday Blitz countdown ticker
+  const [blitzCountdown, setBlitzCountdown] = useState<{ d: number; h: number; m: number; s: number }>({
+    d: 0,
+    h: 0,
+    m: 0,
+    s: 0,
+  });
+
+  useEffect(() => {
+    const updateCountdown = () => {
+      const target = getNextSundayBlitzTime();
+      const diff = Math.max(0, target.getTime() - Date.now());
+      const d = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const h = Math.floor((diff / (1000 * 60 * 60)) % 24);
+      const m = Math.floor((diff / (1000 * 60)) % 60);
+      const s = Math.floor((diff / 1000) % 60);
+      setBlitzCountdown({ d, h, m, s });
+    };
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   const fetchEventsAndLeaderboard = async () => {
     setIsLoading(true);
@@ -242,6 +276,56 @@ export const EventsArenaView: React.FC<EventsArenaViewProps> = ({
       {/* TAB 1: Events List */}
       {!isLoading && activeTab === 'events' && (
         <div className="space-y-4">
+          {/* Conic Gradient Live Hero Card */}
+          <div className="relative rounded-3xl p-[1.5px] bg-[conic-gradient(at_top_right,_var(--tw-gradient-stops))] from-blue-600 via-cyan-400 to-indigo-600 shadow-2xl mb-6">
+            <div className="rounded-3xl bg-[#0B1220]/95 backdrop-blur-xl p-6 sm:p-8 flex flex-col md:flex-row items-center justify-between gap-6">
+              <div className="space-y-3 text-left">
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-xs font-bold text-[#22D3EE]">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Sunday National Blitz Mock • 8:00 PM PKT</span>
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-white leading-tight">
+                  Next National Entrance Blitz Battle
+                </h2>
+                <p className="text-xs sm:text-sm text-[#A3B0CC] max-w-xl leading-relaxed">
+                  Compete simultaneously against candidates from top colleges across Pakistan. 100 entrance-standard MCQs, synchronized timer, instant percentile ranking, and chapter mastery analytics.
+                </p>
+                <div className="flex flex-wrap items-center gap-3 text-xs text-[#A3B0CC] pt-1">
+                  <span className="flex items-center gap-1 font-semibold text-white">
+                    <Swords className="w-3.5 h-3.5 text-amber-400" /> Negative Marking Active
+                  </span>
+                  <span>•</span>
+                  <span>Free entry for all registered students</span>
+                </div>
+              </div>
+
+              {/* Countdown Ticker */}
+              <div className="shrink-0 flex flex-col items-center gap-3 bg-white/5 p-4 rounded-2xl border border-white/8 min-w-[240px]">
+                <span className="text-xs font-bold text-[#A3B0CC] uppercase tracking-wider">Starts In</span>
+                <div className="flex items-center gap-2 font-mono">
+                  <div className="text-center">
+                    <span className="text-xl sm:text-2xl font-black text-white">{blitzCountdown.d}</span>
+                    <span className="block text-[10px] text-[#A3B0CC]">DAYS</span>
+                  </div>
+                  <span className="text-lg text-white/40">:</span>
+                  <div className="text-center">
+                    <span className="text-xl sm:text-2xl font-black text-white">{String(blitzCountdown.h).padStart(2, '0')}</span>
+                    <span className="block text-[10px] text-[#A3B0CC]">HRS</span>
+                  </div>
+                  <span className="text-lg text-white/40">:</span>
+                  <div className="text-center">
+                    <span className="text-xl sm:text-2xl font-black text-white">{String(blitzCountdown.m).padStart(2, '0')}</span>
+                    <span className="block text-[10px] text-[#A3B0CC]">MIN</span>
+                  </div>
+                  <span className="text-lg text-white/40">:</span>
+                  <div className="text-center">
+                    <span className="text-xl sm:text-2xl font-black text-[#22D3EE]">{String(blitzCountdown.s).padStart(2, '0')}</span>
+                    <span className="block text-[10px] text-[#A3B0CC]">SEC</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
           {events.length === 0 ? (
             <EmptyState
               title="No live Arena sessions right now"

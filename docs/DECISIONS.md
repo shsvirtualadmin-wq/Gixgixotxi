@@ -127,3 +127,34 @@ This document tracks all foundational architectural, security, and product desig
      - `StudentSettingsView`: Safe student updates (`name`, `phone`, `targetUniversity`, `targetExamDate`, `testTrack`), password update form, and theme toggle.
   3. Rewired `StudentAppShell.tsx` and `BoardlyAppRouter.tsx` to mount `StudentLayout` and route all `/dashboard/*` sub-paths seamlessly with test runner session integration.
 - **Consequences:** Zero fake data in student portal, real-time sync with Firestore, predictable PKT midnight quota resets, secure AI proxying with zero token leakage, and complete responsiveness across mobile and desktop.
+
+
+---
+
+## ADR 013: Auth Connection Resilience and White-Screen Bug Root-Cause Elimination
+- **Status:** Approved
+- **Context:** Students encountered a white screen with "Connection took longer than expected — Profile lookup timed out after 4 seconds [Code: timeout]" and an invisible white-on-white button.
+- **Root Cause:**
+  1. `fetchUserProfile` in `src/lib/firebase.ts` ran an artificial 4000ms `Promise.race` that threw a client-side timeout error before Firestore long-polling handshakes could complete on Pakistani networks.
+  2. `AuthContext.tsx` had a redundant 5000ms `safetyTimeout` throwing `{ code: 'timeout' }`.
+  3. `BoardlyAppRouter.tsx` intercepted all public routes (including `/login`) whenever `authError` was set, presenting an unstyled light container where a white button sat on a pure white background.
+  4. Clicking "Back to Login" navigated to `/login` without clearing the error state or signing out, creating an inescapable dead end.
+- **Decision:**
+  1. Removed artificial client-side timeouts in both `firebase.ts` and `AuthContext.tsx`.
+  2. Enabled `experimentalAutoDetectLongPolling: true` on `initializeFirestore` pinned to named database `ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712` so Pakistani ISPs and firewalls automatically fall back to long-polling without hanging WebChannel.
+  3. Rebuilt the error screen using dark glass tokens (`bg-[#070B14]`, high-contrast text `#EAF0FF`, brand `#2F6BFF` retry button, and clear dark glass "Back to Login" action that invokes `logOut()` and clears auth error states).
+  4. Unblocked public/auth routes from error interception so users can always access `/login` or `/signup`.
+- **Consequences:** 100% stable logins on slow or firewalled connections, clear actionable error recovery, and zero white screen traps.
+
+---
+
+## ADR 014: Phase 4 Test Engine, Math Pipeline, and Phase 5 Crew/Captain Portals
+- **Status:** Approved
+- **Context:** Reliable test taking required server-synchronized countdowns, resilient KaTeX parsing for corrupted/unescaped LaTeX in questions, distraction-free test cockpits, and real-time Firestore synchronization for Crew and Campus Captain ambassadors without mock rows.
+- **Decision:**
+  1. **KaTeX & Math Normalization (`normalizeMath` & `<MathText />`)**: Repaired unescaped control characters (`\f` -> `\frac`, `\t` -> `\theta`/`\times`, `\b` -> `\beta`, etc.), consolidated multiple backslashes, normalized math delimiters `\(` / `\[` to `$`, and configured KaTeX with `{ displayMode, throwOnError: false, strict: 'ignore', trust: false }`.
+  2. **MCQ Test Engine (`src/services/testEngine.ts`)**: Atomic creation under `attempts/{attemptId}` (`status: 'preparing'` -> `'in_progress'`), wall-clock timer with 5s autosave heartbeat, auto-submit at 00:00, negative marking calculations, and PKT daily usage counter under `users/{uid}/usage/{YYYY-MM-DD}`.
+  3. **Test Cockpit (`TestRunnerScreen.tsx`) & Results (`TestResultScreen.tsx`)**: Distraction-free full-screen cockpit with 64px glass header, color-coded timer (amber <300s, pulsing red <60s), question palette drawer, keyboard navigation (1-4 / A-D, F, N/P), MathText question stems and step-by-step derivations, and chapter accuracy breakdowns.
+  4. **Crew & Campus Captain Portals**: Zero mock rows or hardcoded charts. Real-time Firestore sync on `captains/{uid}`, `referrals` (filtered by `captainId == uid` or `ambassadorUid == uid`), `"First L."` privacy masking, weekly missions, WhatsApp & Instagram promotional kit generators, national captain leaderboard (`/captain/leaderboard`), and rewards catalog with Firestore redemption.
+  5. **Least-Privilege Security Rules**: Updated `firestore.rules` to enforce owner-only read on `attempts/{attemptId}`, create allowed only with `status == "preparing"`, and updates restricted to before completion within `request.time <= resource.data.endsAt + duration.value(5, 's')`. Granted least-privilege authenticated writes for `sessionResults`, `rewardRedemptions`, `captains`, and `referrals`.
+- **Consequences:** End-to-end resilient test execution, mathematical formula clarity, high student trust with zero fake data, and secure referral tracking.

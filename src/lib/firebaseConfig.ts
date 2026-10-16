@@ -98,7 +98,9 @@ export const TARGET_API_KEY = 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs';
 export const TARGET_APP_ID = '1:423201171551:web:219bb34b-b7b4-4c85-bd1f-8efd086df9c2';
 export const TARGET_MESSAGING_SENDER_ID = '423201171551';
 export const TARGET_STORAGE_BUCKET = 'boardly-8c0cd.firebasestorage.app';
-export const TARGET_FIRESTORE_DATABASE_ID = 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
+export const TARGET_FIRESTORE_DATABASE_ID =
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_DATABASE_ID) ||
+  'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
 
 // Permanent Firebase web configuration for boardly-8c0cd.
 // Hardcoded constants ensure reliable operation across all build targets (Cloudflare Pages, AI Studio, etc.)
@@ -194,26 +196,21 @@ export async function performGoogleSignIn(): Promise<any> {
   }
 }
 
-// Initialize Firestore Database with named database instance, experimentalForceLongPolling, and persistentLocalCache (Requirements 5 & 6)
+// Initialize Firestore Database with named database instance and experimentalAutoDetectLongPolling
 let firestoreDb: any;
 try {
   firestoreDb = initializeFirestore(
     app,
     {
-      experimentalForceLongPolling: true,
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      experimentalAutoDetectLongPolling: true,
     },
     TARGET_FIRESTORE_DATABASE_ID
   );
 } catch {
   try {
-    firestoreDb = initializeFirestore(
-      app,
-      { experimentalForceLongPolling: true },
-      TARGET_FIRESTORE_DATABASE_ID
-    );
-  } catch {
     firestoreDb = getFirestore(app, TARGET_FIRESTORE_DATABASE_ID);
+  } catch {
+    firestoreDb = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
   }
 }
 export const db = firestoreDb;

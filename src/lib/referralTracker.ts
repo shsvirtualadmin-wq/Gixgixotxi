@@ -370,3 +370,57 @@ export async function recordSignupReferral(params: {
     referralCount: liveCount,
   };
 }
+
+/**
+ * Activates a pending referral upon the student's first completed test attempt.
+ * Updates referrals/{uid} to status: 'active', activated: true, hasTakenFirstTest: true.
+ * Also increments the ambassador's active user count and points.
+ */
+export async function activateReferralIfEligible(userId: string): Promise<{ success: boolean; activated: boolean }> {
+  if (!userId) return { success: false, activated: false };
+
+  try {
+    const refDoc = doc(db, 'referrals', userId);
+    const snap = await getDocs(query(collection(db, 'referrals'), where('referredUserId', '==', userId), limit(1)));
+    
+    let targetRef = refDoc;
+    let data: any = null;
+
+    if (!snap.empty) {
+      targetRef = snap.docs[0].ref;
+      data = snap.docs[0].data();
+    }
+
+    if (data && !data.activated) {
+      await updateDoc(targetRef, {
+        activated: true,
+        hasTakenFirstTest: true,
+        status: 'active',
+        activatedAt: serverTimestamp(),
+      });
+
+      // Update captain stats if captainId exists
+      const capId = data.captainId || data.ambassadorUid;
+      if (capId) {
+        try {
+          const capDoc = doc(db, 'captains', capId);
+          await updateDoc(capDoc, {
+            activeUsersCount: (data.activeUsersCount || 0) + 1,
+            points: (data.points || 0) + 50,
+          });
+        } catch (capErr) {
+          console.warn('[Referral:Activation] Captain update notice:', capErr);
+        }
+      }
+
+      console.log(`[Referral:Activation] Successfully activated referral for user ${userId}`);
+      return { success: true, activated: true };
+    }
+
+    return { success: true, activated: false };
+  } catch (err) {
+    console.warn('[Referral:Activation] Activation error:', err);
+    return { success: false, activated: false };
+  }
+}
+

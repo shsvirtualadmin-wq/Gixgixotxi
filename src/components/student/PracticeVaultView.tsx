@@ -83,6 +83,86 @@ const SUBJECT_LIST = [
   'Analytical',
 ];
 
+const CHAPTERS_BY_SUBJECT: Record<string, string[]> = {
+  Mathematics: [
+    'Trigonometry',
+    'Matrices & Determinants',
+    'Conic Sections',
+    'Differentiation',
+    'Integration',
+    'Vectors',
+    'Functions & Limits',
+    'Permutations & Combinations',
+    'Probability',
+    'Sequences & Series',
+  ],
+  Physics: [
+    'Vectors & Equilibrium',
+    'Motion & Force',
+    'Work & Energy',
+    'Circular Motion',
+    'Fluid Dynamics',
+    'Oscillations',
+    'Waves',
+    'Physical Optics',
+    'Thermodynamics',
+    'Electrostatics',
+    'Current Electricity',
+    'Electromagnetism',
+    'Electronics',
+    'Nuclear Physics',
+  ],
+  Chemistry: [
+    'Stoichiometry',
+    'Atomic Structure',
+    'Chemical Bonding',
+    'States of Matter',
+    'Chemical Equilibrium',
+    'Reaction Kinetics',
+    'Thermochemistry',
+    'Electrochemistry',
+    'Organic Hydrocarbons',
+    'Alkyl Halides',
+    'Alcohols & Phenols',
+    'Aldehydes & Ketones',
+  ],
+  Biology: [
+    'Cell Structure',
+    'Biological Molecules',
+    'Enzymes',
+    'Bioenergetics',
+    'Kingdom Animalia',
+    'Kingdom Plantae',
+    'Human Physiology',
+    'Genetics',
+    'Evolution',
+    'Ecology',
+  ],
+  'Computer Science': [
+    'Programming Fundamentals',
+    'OOP Concepts',
+    'Data Structures',
+    'Database Systems',
+    'Computer Networks',
+    'Boolean Algebra',
+    'OS Concepts',
+  ],
+  English: [
+    'Vocabulary',
+    'Sentence Completion',
+    'Grammar & Structure',
+    'Reading Comprehension',
+    'Analogy',
+  ],
+  Analytical: [
+    'Number Series',
+    'Coding-Decoding',
+    'Critical Reasoning',
+    'Direction Sense',
+    'Analytical Puzzles',
+  ],
+};
+
 const DIFFICULTY_LIST = ['All Difficulties', 'Easy', 'Medium', 'Hard', 'Exam Standard'];
 
 export const PracticeVaultView: React.FC<PracticeVaultViewProps> = ({
@@ -90,7 +170,7 @@ export const PracticeVaultView: React.FC<PracticeVaultViewProps> = ({
 }) => {
   const { user, profile } = useAuth();
 
-  const [activeTab, setActiveTab] = useState<'questions' | 'pastPapers'>('questions');
+  const [activeTab, setActiveTab] = useState<'configurator' | 'questions' | 'pastPapers'>('configurator');
   const [selectedSubject, setSelectedSubject] = useState<string>('All Subjects');
   const [selectedDifficulty, setSelectedDifficulty] = useState<string>('All Difficulties');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -107,15 +187,41 @@ export const PracticeVaultView: React.FC<PracticeVaultViewProps> = ({
   const [isSheetsLoading, setIsSheetsLoading] = useState<boolean>(false);
   const [sheetsError, setSheetsError] = useState<{ message: string; path?: string } | null>(null);
 
-  // Configurator Modal state
+  // Configurator state
   const [showConfigModal, setShowConfigModal] = useState<boolean>(false);
   const [drillSubject, setDrillSubject] = useState<string>('Mathematics');
+  const [selectedChapter, setSelectedChapter] = useState<string>('');
   const [drillTopic, setDrillTopic] = useState<string>('');
   const [drillCount, setDrillCount] = useState<number>(20);
   const [drillDuration, setDrillDuration] = useState<number>(20);
   const [drillDifficulty, setDrillDifficulty] = useState<string>('Exam Standard');
   const [drillIsPastPaper, setDrillIsPastPaper] = useState<boolean>(false);
   const [drillUniversityId, setDrillUniversityId] = useState<string>('fast');
+
+  // Chapter Accuracy Map from User's real test history
+  const chapterAccuracyMap = useMemo(() => {
+    const map: Record<string, { total: number; correct: number }> = {};
+    const history = Array.isArray(profile?.testHistory) ? profile.testHistory : [];
+    history.forEach((attempt: any) => {
+      if (Array.isArray(attempt.chapterBreakdown)) {
+        attempt.chapterBreakdown.forEach((cb: any) => {
+          if (cb.chapter) {
+            const key = cb.chapter.toLowerCase().trim();
+            if (!map[key]) map[key] = { total: 0, correct: 0 };
+            map[key].total += cb.total || 0;
+            map[key].correct += cb.correct || 0;
+          }
+        });
+      }
+    });
+    return map;
+  }, [profile?.testHistory]);
+
+  const getChapterAccuracy = (chName: string): number | null => {
+    const stat = chapterAccuracyMap[chName.toLowerCase().trim()];
+    if (!stat || stat.total === 0) return null;
+    return Math.round((stat.correct / stat.total) * 100);
+  };
 
   // Load Questions with Cursor Pagination
   const fetchQuestions = useCallback(async (isLoadMore = false) => {
@@ -260,6 +366,18 @@ export const PracticeVaultView: React.FC<PracticeVaultViewProps> = ({
       <div className="flex items-center gap-2 border-b border-white/8 pb-3">
         <button
           type="button"
+          onClick={() => setActiveTab('configurator')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+            activeTab === 'configurator'
+              ? 'bg-[var(--brand)] text-white shadow-md shadow-blue-600/20'
+              : 'bg-white/5 text-[var(--text-muted)] hover:text-white hover:bg-white/10'
+          }`}
+        >
+          <Zap className="w-3.5 h-3.5" />
+          <span>Timed Drill Configurator</span>
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveTab('questions')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             activeTab === 'questions'
@@ -282,7 +400,206 @@ export const PracticeVaultView: React.FC<PracticeVaultViewProps> = ({
         </button>
       </div>
 
-      {/* Filter Toolbar */}
+      {/* TAB 0: Timed Drill Configurator (8-col + 4-col layout) */}
+      {activeTab === 'configurator' && (
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left 8 Columns: Interactive Configurator */}
+          <div className="lg:col-span-8 space-y-5">
+            {/* Subject Selector */}
+            <Card variant="glass" className="p-5 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-white/8 pb-3">
+                <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  1. Select Target Subject
+                </label>
+                <span className="text-xs text-[var(--brand-2)] font-mono">{drillSubject}</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {Object.keys(CHAPTERS_BY_SUBJECT).map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      setDrillSubject(s);
+                      setSelectedChapter('');
+                    }}
+                    className={`py-2.5 px-3 rounded-xl text-xs font-bold border transition-all text-left cursor-pointer ${
+                      drillSubject === s
+                        ? 'bg-[var(--brand)] text-white border-[var(--brand)] shadow-md shadow-blue-600/30'
+                        : 'bg-white/5 text-[var(--text-muted)] border-white/10 hover:border-white/20 hover:text-white'
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </Card>
+
+            {/* Chapter Pills Tinted by Past Accuracy */}
+            <Card variant="glass" className="p-5 sm:p-6 space-y-4">
+              <div className="flex items-center justify-between border-b border-white/8 pb-3">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                    2. Choose Chapter Focus
+                  </label>
+                  <p className="text-[11px] text-[var(--text-faint)]">Pills are tinted by your past accuracy</p>
+                </div>
+                {selectedChapter && (
+                  <button
+                    onClick={() => setSelectedChapter('')}
+                    className="text-[11px] text-[var(--text-muted)] hover:text-white underline cursor-pointer"
+                  >
+                    Clear selection (All chapters)
+                  </button>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {(CHAPTERS_BY_SUBJECT[drillSubject] || []).map((ch) => {
+                  const acc = getChapterAccuracy(ch);
+                  const isSelected = selectedChapter === ch;
+
+                  let tintClass = 'bg-white/5 text-[#A3B0CC] border-white/10 hover:border-white/20';
+                  if (acc !== null) {
+                    if (acc >= 75) tintClass = 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30';
+                    else if (acc >= 50) tintClass = 'bg-[#2F6BFF]/10 text-[#22D3EE] border-[#2F6BFF]/30';
+                    else tintClass = 'bg-rose-500/10 text-rose-400 border-rose-500/30';
+                  }
+
+                  return (
+                    <button
+                      key={ch}
+                      type="button"
+                      onClick={() => setSelectedChapter(isSelected ? '' : ch)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer flex items-center gap-2 ${
+                        isSelected ? 'ring-2 ring-white border-white bg-white/20 text-white font-bold' : tintClass
+                      }`}
+                    >
+                      <span>{ch}</span>
+                      {acc !== null && (
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-black/30 font-bold">
+                          {acc}%
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </Card>
+
+            {/* Questions & Duration */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Card variant="glass" className="p-5 space-y-3">
+                <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  3. Question Count
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[10, 20, 30, 50].map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => {
+                        setDrillCount(c);
+                        setDrillDuration(c);
+                      }}
+                      className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        drillCount === c
+                          ? 'bg-[var(--brand)] text-white border-[var(--brand)] shadow-md'
+                          : 'bg-white/5 text-[var(--text-muted)] border-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      {c} MCQs
+                    </button>
+                  ))}
+                </div>
+              </Card>
+
+              <Card variant="glass" className="p-5 space-y-3">
+                <label className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  4. Time Allowance (Minutes)
+                </label>
+                <div className="grid grid-cols-4 gap-2">
+                  {[10, 20, 30, 45].map((mins) => (
+                    <button
+                      key={mins}
+                      type="button"
+                      onClick={() => setDrillDuration(mins)}
+                      className={`py-2 rounded-xl text-xs font-bold border transition-all cursor-pointer ${
+                        drillDuration === mins
+                          ? 'bg-[var(--brand)] text-white border-[var(--brand)] shadow-md'
+                          : 'bg-white/5 text-[var(--text-muted)] border-white/10 hover:border-white/20'
+                      }`}
+                    >
+                      {mins} min
+                    </button>
+                  ))}
+                </div>
+              </Card>
+            </div>
+          </div>
+
+          {/* Right 4 Columns: Sticky Briefing Card */}
+          <div className="lg:col-span-4 sticky top-24">
+            <Card variant="glass" className="p-6 space-y-5 border border-white/12 shadow-xl bg-gradient-to-b from-[#0F172A] to-[#0B1220]">
+              <div className="flex items-center gap-2 border-b border-white/8 pb-3">
+                <Target className="w-5 h-5 text-[#22D3EE]" />
+                <h3 className="font-bold text-sm text-white">Drill Session Briefing</h3>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div className="flex justify-between items-center py-1 border-b border-white/5">
+                  <span className="text-[var(--text-muted)]">Subject:</span>
+                  <span className="font-bold text-white">{drillSubject}</span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-white/5">
+                  <span className="text-[var(--text-muted)]">Chapter:</span>
+                  <span className="font-bold text-white truncate max-w-[150px]">
+                    {selectedChapter || 'Full Syllabus'}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-white/5">
+                  <span className="text-[var(--text-muted)]">Length:</span>
+                  <span className="font-bold text-white">{drillCount} Questions</span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-white/5">
+                  <span className="text-[var(--text-muted)]">Timer:</span>
+                  <span className="font-bold text-amber-400">{drillDuration} Minutes (Wall-Clock)</span>
+                </div>
+                <div className="flex justify-between items-center py-1 border-b border-white/5">
+                  <span className="text-[var(--text-muted)]">Difficulty:</span>
+                  <span className="font-bold text-[#22D3EE]">{drillDifficulty}</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-[11px] text-[#A3B0CC] space-y-1">
+                <p className="font-bold text-white flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5 text-[#22D3EE]" /> Test Constraints Active
+                </p>
+                <p>Distraction-free environment. Autosaved progress every 5 seconds. Detailed step-by-step math derivations on submission.</p>
+              </div>
+
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={() => {
+                  onStartDrillSession({
+                    subject: drillSubject,
+                    chapter: selectedChapter || undefined,
+                    questionCount: drillCount,
+                    durationMinutes: drillDuration,
+                    difficulty: drillDifficulty,
+                  });
+                }}
+                rightIcon={<ArrowRight className="w-4 h-4" />}
+                className="w-full shadow-lg shadow-blue-500/25 py-3 text-sm font-bold"
+              >
+                Start Timed Drill
+              </Button>
+            </Card>
+          </div>
+        </div>
+      )}
+
+      {/* Filter Toolbar (For questions and past papers) */}
+      {activeTab !== 'configurator' && (
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <select
@@ -321,6 +638,7 @@ export const PracticeVaultView: React.FC<PracticeVaultViewProps> = ({
           />
         </div>
       </div>
+      )}
 
       {/* TAB 1: Chapter Questions View */}
       {activeTab === 'questions' && (

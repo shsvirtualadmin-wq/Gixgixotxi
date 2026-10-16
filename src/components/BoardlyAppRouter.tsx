@@ -22,6 +22,9 @@ import { PublicEventPage } from './public/PublicEventPage';
 import { PublicProgramPage } from './public/PublicProgramPage';
 import { CrewDashboardPage } from './crew/CrewDashboardPage';
 import { CrewLandingPage } from './crew/CrewLandingPage';
+import { CrewPromoKitPage } from './crew/CrewPromoKitPage';
+import { CaptainPromoKitPage } from './captain/CaptainPromoKitPage';
+import { CaptainLeaderboardPage } from './captain/CaptainLeaderboardPage';
 import { ProgramApplicationPage } from './common/ProgramApplicationPage';
 import { ArenaLandingPage } from './arena/ArenaLandingPage';
 import { ArenaRegisterPage } from './arena/ArenaRegisterPage';
@@ -34,6 +37,7 @@ import { Footer } from './marketing/Footer';
 import { ScrollProgress } from './marketing/design-system/ScrollProgress';
 import { ErrorBoundary } from './ErrorBoundary';
 import { AlertCircle, X } from 'lucide-react';
+import { TestRunnerRouteWrapper, TestResultRouteWrapper } from './test/TestRouteWrappers';
 
 if (typeof window !== 'undefined') {
   (window as any).__boardlyPageOpenTime = (window as any).__boardlyPageOpenTime || performance.now();
@@ -50,6 +54,7 @@ export const BoardlyAppRouter: React.FC = () => {
     authLoading,
     profileLoading,
     authError,
+    clearAuthError,
     retryAuth,
     isRegistered,
     initialAuthChecked,
@@ -59,6 +64,7 @@ export const BoardlyAppRouter: React.FC = () => {
     availableRoles,
     sessionExpired,
     dismissSessionExpired,
+    logOut,
   } = useAuth();
 
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -187,9 +193,27 @@ export const BoardlyAppRouter: React.FC = () => {
     }
   }, [loading, authLoading, profileLoading, initialAuthChecked, authError, user, isRegistered, currentPath, getHighestRolePath, navigate]);
 
+  const isAuthOrPublicRoute =
+    currentPath === '/login' ||
+    currentPath === '/signup' ||
+    currentPath === '/forgot-password' ||
+    currentPath === '/reset-password' ||
+    currentPath === '/verify-email' ||
+    currentPath === '/' ||
+    currentPath === '/pricing' ||
+    currentPath === '/features' ||
+    currentPath === '/terms' ||
+    currentPath === '/privacy' ||
+    currentPath === '/about' ||
+    currentPath.startsWith('/r/');
+
   const [loadingTimedOut, setLoadingTimedOut] = useState<boolean>(false);
 
   useEffect(() => {
+    if (isAuthOrPublicRoute) {
+      setLoadingTimedOut(false);
+      return;
+    }
     const isCurrentlyLoading = loading || authLoading || profileLoading || !initialAuthChecked;
     if (!isCurrentlyLoading) {
       setLoadingTimedOut(false);
@@ -197,27 +221,28 @@ export const BoardlyAppRouter: React.FC = () => {
     }
     const timer = setTimeout(() => {
       setLoadingTimedOut(true);
-    }, 5000); // 5-second maximum limit (Requirement 4)
+    }, 8000);
     return () => clearTimeout(timer);
-  }, [loading, authLoading, profileLoading, initialAuthChecked]);
+  }, [loading, authLoading, profileLoading, initialAuthChecked, isAuthOrPublicRoute]);
 
-  // Requirement 4 & 7: If loading times out or any lookup throws, stop loader and show Retry & Back to Login screen with real error code
-  if (authError || (loadingTimedOut && (loading || authLoading || profileLoading || !initialAuthChecked))) {
+  // Requirement 4 & 7: If loading times out or any lookup throws on a protected route, stop loader and show Retry & Back to Login screen with real error code
+  // /login, /signup and public routes are NEVER blocked by authError or timeout
+  if (!isAuthOrPublicRoute && (authError || (loadingTimedOut && (loading || authLoading || profileLoading || !initialAuthChecked)))) {
     const displayCode = authError?.code || 'timeout';
     const displayMsg = authError?.message || 'We had trouble loading your account profile. You can retry.';
     return (
-      <div className="min-h-screen bg-[var(--bg)] bg-grid-48 text-[var(--text)] flex flex-col items-center justify-center p-6 space-y-4 text-center">
+      <div className="min-h-screen bg-[#070B14] bg-grid-48 text-[#EAF0FF] flex flex-col items-center justify-center p-6 space-y-4 text-center">
         <div className="w-14 h-14 rounded-3xl bg-amber-500/10 flex items-center justify-center text-amber-400 border border-amber-500/20">
           <AlertCircle className="w-7 h-7" />
         </div>
         <div className="space-y-1 max-w-sm">
-          <h3 className="text-base font-bold text-[var(--text)] font-display">
+          <h3 className="text-base font-bold text-[#EAF0FF] font-display">
             Connection took longer than expected
           </h3>
-          <p className="text-xs text-[var(--text-muted)]">
+          <p className="text-xs text-[#A3B0CC]">
             {displayMsg}
           </p>
-          <p className="text-[11px] font-mono text-[var(--brand-2)]">
+          <p className="text-[11px] font-mono text-[#22D3EE]">
             [Code: {displayCode}]
           </p>
         </div>
@@ -232,17 +257,21 @@ export const BoardlyAppRouter: React.FC = () => {
                 window.location.reload();
               }
             }}
-            className="px-4 py-2.5 rounded-xl bg-[var(--brand)] hover:bg-[var(--brand)]/90 text-white font-bold text-xs shadow-md shadow-blue-600/20 cursor-pointer"
+            className="px-5 py-2.5 rounded-xl bg-[#2F6BFF] hover:bg-[#2557D6] text-white font-bold text-xs shadow-lg shadow-blue-500/20 cursor-pointer"
           >
             Retry
           </button>
           <button
             type="button"
-            onClick={() => {
+            onClick={async () => {
               setLoadingTimedOut(false);
+              clearAuthError?.();
+              try {
+                await logOut();
+              } catch {}
               navigate('/login', true);
             }}
-            className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs cursor-pointer border border-white/10"
+            className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-[#EAF0FF] font-bold text-xs cursor-pointer border border-white/20"
           >
             Back to Login
           </button>
@@ -252,7 +281,8 @@ export const BoardlyAppRouter: React.FC = () => {
   }
 
   // Single full-screen loading component with Boardly logo matching initial HTML loader (zero flash)
-  if (loading || authLoading || profileLoading || !initialAuthChecked) {
+  // Only shown on protected routes while resolving auth/profile
+  if (!isAuthOrPublicRoute && (loading || authLoading || profileLoading || !initialAuthChecked)) {
     return (
       <div className="min-h-screen bg-[#070B14] flex flex-col items-center justify-center p-6 space-y-4">
         <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center shadow-lg border border-white/10 animate-pulse">
@@ -350,6 +380,36 @@ export const BoardlyAppRouter: React.FC = () => {
               onComplete={(_startTest, _config) => {
                 navigate(getHighestRolePath(), true);
               }}
+            />
+          );
+        }
+
+        // 6a. Distraction-Free Test Runner (/test or /test/:attemptId)
+        if (currentPath === '/test' || currentPath.startsWith('/test/')) {
+          if (!user) {
+            navigate('/login', true);
+            return null;
+          }
+          const attemptId = currentPath.split('/test/')[1] || '';
+          return (
+            <TestRunnerRouteWrapper
+              attemptId={attemptId}
+              onNavigate={(p) => navigate(p)}
+            />
+          );
+        }
+
+        // 6b. Test Results (/results or /results/:attemptId)
+        if (currentPath === '/results' || currentPath.startsWith('/results/')) {
+          if (!user) {
+            navigate('/login', true);
+            return null;
+          }
+          const attemptId = currentPath.split('/results/')[1] || '';
+          return (
+            <TestResultRouteWrapper
+              attemptId={attemptId}
+              onNavigate={(p) => navigate(p)}
             />
           );
         }
@@ -483,37 +543,37 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
-        // 9b. Boardly Captain Landing Page (/captain)
+        // 9b. Campus Captain Leaderboard (/captain/leaderboard)
+        if (currentPath === '/captain/leaderboard') {
+          return (
+            <ErrorBoundary onReset={() => navigate('/captain/dashboard')}>
+              <CaptainLeaderboardPage
+                onBack={() => navigate('/captain/dashboard')}
+                onNavigate={(route) => navigate(route)}
+              />
+            </ErrorBoundary>
+          );
+        }
+
+        // 9c. Campus Captain Outreach Kit (/captain/kit)
+        if (currentPath === '/captain/kit') {
+          return (
+            <ErrorBoundary onReset={() => navigate('/captain/dashboard')}>
+              <CaptainPromoKitPage
+                onBack={() => navigate('/captain/dashboard')}
+                onNavigate={(route) => navigate(route)}
+              />
+            </ErrorBoundary>
+          );
+        }
+
+        // 9d. Boardly Captain Landing Page (/captain)
         if (currentPath === '/captain' || currentPath.startsWith('/captain/')) {
           return (
             <ErrorBoundary onReset={() => navigate('/')}>
               <CaptainLandingPage currentPath={currentPath} onNavigate={(route) => navigate(route)} />
             </ErrorBoundary>
           );
-        }
-
-        // Backward-compatibility Redirects for Captain
-        if (
-          (currentPath === '/crew' && typeof window !== 'undefined' && (window.location.search.includes('ref=') || window.location.search.includes('r='))) ||
-          currentPath === '/crew/portal' ||
-          currentPath === '/crew/leaderboard' ||
-          currentPath === '/crew/ambassador'
-        ) {
-          const search = typeof window !== 'undefined' ? window.location.search : '';
-          navigate(`/captain${search}`, true);
-          return null;
-        }
-        if (currentPath === '/captains/apply' || currentPath === '/programs/captains/apply') {
-          navigate('/captain/apply', true);
-          return null;
-        }
-        if (currentPath === '/captains' || currentPath === '/programs/captains') {
-          navigate('/captain', true);
-          return null;
-        }
-        if (currentPath === '/crew-dashboard') {
-          navigate('/captain/dashboard', true);
-          return null;
         }
 
         // 10. Admin Dashboard (/admin or /admin/*)
@@ -593,14 +653,25 @@ export const BoardlyAppRouter: React.FC = () => {
           );
         }
 
-        // Dedicated Boardly Crew Organizer Dashboard (/crew/dashboard)
+        // Dedicated Boardly Crew Outreach Kit (/crew/kit)
+        if (currentPath === '/crew/kit') {
+          return (
+            <ErrorBoundary onReset={() => navigate('/crew/dashboard')}>
+              <CrewPromoKitPage
+                onBack={() => navigate('/crew/dashboard')}
+                onNavigate={(route) => navigate(route)}
+              />
+            </ErrorBoundary>
+          );
+        }
+
+        // Dedicated Boardly Crew Dashboard (/crew/dashboard)
         if (currentPath === '/crew/dashboard' || currentPath.startsWith('/crew/dashboard/')) {
           return (
             <ErrorBoundary onReset={() => navigate('/')}>
-              <CrewOrganizerDashboard
+              <CrewDashboardPage
                 onBackToApp={() => navigate('/app')}
-                onNavigateApply={() => navigate('/crew/apply')}
-                onOpenPublicEvent={(id) => navigate(`/events/${id}`)}
+                onApply={() => navigate('/crew/apply')}
               />
             </ErrorBoundary>
           );
