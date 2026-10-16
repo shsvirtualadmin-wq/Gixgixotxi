@@ -158,3 +158,11 @@ This document tracks all foundational architectural, security, and product desig
   4. **Crew & Campus Captain Portals**: Zero mock rows or hardcoded charts. Real-time Firestore sync on `captains/{uid}`, `referrals` (filtered by `captainId == uid` or `ambassadorUid == uid`), `"First L."` privacy masking, weekly missions, WhatsApp & Instagram promotional kit generators, national captain leaderboard (`/captain/leaderboard`), and rewards catalog with Firestore redemption.
   5. **Least-Privilege Security Rules**: Updated `firestore.rules` to enforce owner-only read on `attempts/{attemptId}`, create allowed only with `status == "preparing"`, and updates restricted to before completion within `request.time <= resource.data.endsAt + duration.value(5, 's')`. Granted least-privilege authenticated writes for `sessionResults`, `rewardRedemptions`, `captains`, and `referrals`.
 - **Consequences:** End-to-end resilient test execution, mathematical formula clarity, high student trust with zero fake data, and secure referral tracking.
+
+---
+
+## ADR 015: Cloudflare Pages CI/CD Lockfile Standardization (Yarn v1)
+- **Status:** Approved
+- **Context:** Cloudflare Pages build environments use Bun 1.2.15 by default. Local development on newer Bun (v1.4+) generates text `bun.lock` (version 2) or binary `bun.lockb` formats that cause fatal build errors on Cloudflare Pages (`Unknown lockfile version` / `Outdated lockfile version: failed to parse lockfile`).
+- **Decision:** Standardized on `yarn.lock` (Yarn v1 specification) generated via `bun install --yarn`. Cloudflare Pages natively detects `yarn.lock` and executes `yarn install --frozen-lockfile` with Node 22, guaranteeing 100% deterministic, freeze-safe dependency installs in CI/CD while preserving lightning-fast local Bun execution.
+- **Consequences:** Zero lockfile format conflicts between local runtime and Cloudflare Pages CI/CD. Reliable automated git deployments.
