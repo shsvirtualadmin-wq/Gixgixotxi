@@ -11,8 +11,6 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
   GoogleAuthProvider,
   signOut as firebaseSignOut,
   sendEmailVerification,
@@ -32,7 +30,24 @@ import type { UserProfile } from '@/types';
 // ─── Constants ──────────────────────────────────────────────────────────────
 const SUPER_ADMIN_EMAIL = 'shsvirtualadmin@gmail.com';
 const REFERRAL_LS_KEY = 'boardly_ref_code';
-const REDIRECT_PENDING_KEY = 'boardly_auth_redirect_pending';
+
+// ─── Timeout Helper (prevents hanging Firestore calls from freezing auth) ────
+function withTimeout<T>(
+  promise: Promise<T>,
+  ms = 6000,
+  timeoutMsg = 'Database operation timed out. Check Firestore rules or connectivity.'
+): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => {
+        const err = new Error(timeoutMsg);
+        (err as unknown as { code: string }).code = 'firestore/timeout';
+        reject(err);
+      }, ms)
+    ),
+  ]);
+}
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 interface AuthContextValue {
@@ -42,12 +57,11 @@ interface AuthContextValue {
   profileError: { code?: string; message: string; path?: string } | null;
   authError: { code?: string; message: string } | null;
   clearAuthError: () => void;
-  redirectResolving: boolean;
+  clearProfileError: () => void;
   isAdmin: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
-  signInWithGoogle: (options?: { useRedirect?: boolean }) => Promise<void>;
-  signInWithGoogleRedirect: () => Promise<void>;
+  signInWithGoogle: () => Promise<User | null>;
   signOutUser: () => Promise<void>;
   sendVerificationEmail: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
@@ -64,10 +78,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileError, setProfileError] = useState<{ code?: string; message: string; path?: string } | null>(null);
   const [authError, setAuthError] = useState<{ code?: string; message: string } | null>(null);
-  const [redirectResolving, setRedirectResolving] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false;
-    return !!sessionStorage.getItem(REDIRECT_PENDING_KEY);
-  });
   const [retryCount, setRetryCount] = useState(0);
 
   const isAdmin = !!(user?.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL);
@@ -108,14 +118,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // ── Fetch / create user profile ──────────────────────────────────────────
+  // ── Fetch / create user profile (protected with timeout & fallback) ────
   const loadProfile = useCallback(async (firebaseUser: User) => {
     setProfileLoading(true);
     setProfileError(null);
     const path = `users/${firebaseUser.uid}`;
+
     try {
       const docRef = doc(db, 'users', firebaseUser.uid);
-      const snap = await getDoc(docRef);
+      const snap = await withTimeout(
+        getDoc(docRef),
+        6000,
+        'Profile lookup timed out. Check Firestore rules or connectivity.'
+      );
 
       if (snap.exists()) {
         const data = snap.data() as UserProfile;
@@ -127,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setProfile(null);
           setProfileLoading(false);
           setProfileError({
+            code: 'auth/account-suspended',
             message: 'Your account has been suspended. Contact support@boardly.cfd.',
           });
           return;
@@ -138,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             firebaseUser.displayName?.trim() ||
             (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'Student');
           data.displayName = fallbackName;
-          setDoc(docRef, { displayName: fallbackName }, { merge: true }).catch(() => {});
+          withTimeout(setDoc(docRef, { displayName: fallbackName }, { merge: true }), 4000).catch(() => {});
         }
 
         setProfile(data);
@@ -147,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const fallbackName =
           firebaseUser.displayName?.trim() ||
           (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'Student');
-        const newProfile: Partial<UserProfile> = {
+        const newProfile: UserProfile = {
           uid: firebaseUser.uid,
           email: (firebaseUser.email ?? '').toLowerCase(),
           displayName: fallbackName,
@@ -155,93 +171,68 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           plan: 'free',
           onboardingCompleted: false,
         };
-        await setDoc(doc(db, 'users', firebaseUser.uid), {
-          ...newProfile,
-          createdAt: serverTimestamp(),
-        });
-        setProfile(newProfile as UserProfile);
 
-        await createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '');
+        await withTimeout(
+          setDoc(doc(db, 'users', firebaseUser.uid), {
+            ...newProfile,
+            createdAt: serverTimestamp(),
+          }),
+          6000,
+          'User record creation timed out. Check Firestore security rules.'
+        );
+
+        setProfile(newProfile);
+        createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '').catch(() => {});
       }
     } catch (err: unknown) {
       const fe = err as { code?: string; message?: string };
       console.error(`[Boardly] Firestore profile read failed at ${path}:`, err);
+
       setProfileError({
-        code: fe.code,
-        message: fe.message ?? 'Failed to load your profile.',
+        code: fe.code || 'firestore/unavailable',
+        message:
+          fe.message ??
+          'Failed to load user profile from database. Operating with fallback session.',
         path,
+      });
+
+      // Crucial: Fallback in-memory profile so users are NEVER trapped on login screen
+      const fallbackName =
+        firebaseUser.displayName?.trim() ||
+        (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'Student');
+      setProfile({
+        uid: firebaseUser.uid,
+        email: (firebaseUser.email ?? '').toLowerCase(),
+        displayName: fallbackName,
+        role: 'student',
+        plan: 'free',
+        onboardingCompleted: true,
       });
     } finally {
       setProfileLoading(false);
     }
   }, [createReferralDoc]);
 
-  // Handle mobile redirect auth result if any
+  // Clean up any legacy redirect session markers on mount
   useEffect(() => {
-    let isMounted = true;
-    const wasRedirectPending =
-      typeof window !== 'undefined'
-        ? sessionStorage.getItem(REDIRECT_PENDING_KEY)
-        : null;
-
-    getRedirectResult(auth)
-      .then(async (credential) => {
-        if (!isMounted) return;
-        if (credential?.user) {
-          if (typeof window !== 'undefined') {
-            sessionStorage.removeItem(REDIRECT_PENDING_KEY);
-          }
-          setUser(credential.user);
-          await loadProfile(credential.user);
-        } else if (wasRedirectPending) {
-          // A redirect was initiated, but the browser returned to /login with credential: null!
-          // This occurs on mobile browsers because authDomain differs from the app domain
-          // (cross-origin iframe session storage partitioning / Safari ITP blocks the token).
-          if (typeof window !== 'undefined') {
-            sessionStorage.removeItem(REDIRECT_PENDING_KEY);
-          }
-          console.error(
-            '[Boardly Auth] Redirect returned null credential. Cross-domain session storage blocked by mobile browser.'
-          );
-          setAuthError({
-            code: 'auth/redirect-state-lost',
-            message:
-              'Mobile browser blocked cross-origin redirect state (ITP / storage partitioning). Please use the popup window or sign in with email.',
-          });
-        }
-      })
-      .catch((err: unknown) => {
-        if (!isMounted) return;
-        if (typeof window !== 'undefined') {
-          sessionStorage.removeItem(REDIRECT_PENDING_KEY);
-        }
-        const fe = err as { code?: string; message?: string };
-        console.error('[Boardly Auth] Redirect auth result error:', fe);
-        setAuthError({
-          code: fe.code || 'auth/redirect-error',
-          message: fe.message || 'Failed to complete Google redirect authentication.',
-        });
-      })
-      .finally(() => {
-        if (isMounted) {
-          setRedirectResolving(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [loadProfile]);
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.removeItem('boardly_auth_redirect_pending');
+        sessionStorage.removeItem('boardly_redirect_pending');
+      } catch {
+        // Ignore storage access errors
+      }
+    }
+  }, []);
 
   // ── Auth state listener ──────────────────────────────────────────────────
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
-        if (typeof window !== 'undefined') {
-          sessionStorage.removeItem(REDIRECT_PENDING_KEY);
-        }
-        await loadProfile(firebaseUser);
+        loadProfile(firebaseUser).catch((err) => {
+          console.warn('[Boardly Auth] onAuthStateChanged profile load error:', err);
+        });
       } else {
         setProfile(null);
         setProfileLoading(false);
@@ -275,15 +266,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       // Create profile doc immediately with ONLY safe fields
-      await setDoc(doc(db, 'users', newUser.uid), {
-        uid: newUser.uid,
-        email: email.toLowerCase(),
-        displayName: resolvedName,
-        role: 'student',
-        plan: 'free',
-        onboardingCompleted: false,
-        createdAt: serverTimestamp(),
-      });
+      await withTimeout(
+        setDoc(doc(db, 'users', newUser.uid), {
+          uid: newUser.uid,
+          email: email.toLowerCase(),
+          displayName: resolvedName,
+          role: 'student',
+          plan: 'free',
+          onboardingCompleted: false,
+          createdAt: serverTimestamp(),
+        }),
+        6000
+      );
 
       // Send email verification
       try {
@@ -292,72 +286,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn('Verification email send issue:', e);
       }
 
-      await createReferralDoc(newUser.uid, email);
+      createReferralDoc(newUser.uid, email).catch(() => {});
     },
     [createReferralDoc]
   );
 
-  const signInWithGoogle = useCallback(
-    async (options?: { useRedirect?: boolean }) => {
-      setAuthError(null);
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
+  // ── Pure popup-only Google sign-in (no redirects, no device branching) ───
+  const signInWithGoogle = useCallback(async (): Promise<User | null> => {
+    setAuthError(null);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
 
-      // If user or environment explicitly requests redirect
-      if (options?.useRedirect) {
-        if (typeof window !== 'undefined') {
-          sessionStorage.setItem(REDIRECT_PENDING_KEY, 'google');
+    try {
+      // ONLY signInWithPopup - modern mobile browsers support popup on direct user tap
+      const credential = await signInWithPopup(auth, provider);
+      if (credential?.user) {
+        setUser(credential.user);
+        // Load profile with timeout; non-fatal if Firestore rules are slow
+        try {
+          await loadProfile(credential.user);
+        } catch (dbErr) {
+          console.warn('[Boardly Auth] Profile sync issue during Google sign-in:', dbErr);
         }
-        await signInWithRedirect(auth, provider);
-        return;
+        return credential.user;
+      }
+      return null;
+    } catch (popupErr: unknown) {
+      const fe = popupErr as { code?: string; message?: string };
+
+      // 1. User intentionally closed or cancelled popup window
+      if (
+        fe.code === 'auth/popup-closed-by-user' ||
+        fe.code === 'auth/cancelled-popup-request'
+      ) {
+        return null;
       }
 
-      // Default: signInWithPopup.
-      // Modern mobile Safari (iOS 13+) and Chrome for Android support popups triggered directly from user touch/click.
-      // Popups open in a direct window context and avoid cross-origin iframe storage partitioning / 3P cookie blocking.
-      try {
-        const credential = await signInWithPopup(auth, provider);
-        if (credential.user) {
-          setUser(credential.user);
-          await loadProfile(credential.user);
-        }
-      } catch (popupErr: unknown) {
-        const fe = popupErr as { code?: string; message?: string };
-
-        // 1. User intentionally closed or cancelled popup window: DO NOT fallback to redirect loop!
-        if (
-          fe.code === 'auth/popup-closed-by-user' ||
-          fe.code === 'auth/cancelled-popup-request'
-        ) {
-          return;
-        }
-
-        // 2. Popup was blocked by browser
-        if (fe.code === 'auth/popup-blocked') {
-          const errPayload = {
-            code: 'auth/popup-blocked',
-            message:
-              'The sign-in popup was blocked by your browser. Please allow popups for boardly.cfd, or try redirect sign-in.',
-          };
-          setAuthError(errPayload);
-          throw popupErr;
-        }
-
-        // 3. Other Firebase auth error (e.g. auth/unauthorized-domain, auth/network-request-failed)
+      // 2. Popup blocked by browser
+      if (fe.code === 'auth/popup-blocked') {
         const errPayload = {
-          code: fe.code || 'auth/popup-failed',
-          message: fe.message || 'Google sign-in could not be completed.',
+          code: 'auth/popup-blocked',
+          message:
+            'The sign-in popup was blocked by your browser. Please tap "Continue with Google" again and choose "Allow" when prompted.',
         };
         setAuthError(errPayload);
         throw popupErr;
       }
-    },
-    [loadProfile]
-  );
 
-  const signInWithGoogleRedirect = useCallback(async () => {
-    return signInWithGoogle({ useRedirect: true });
-  }, [signInWithGoogle]);
+      // 3. Other Firebase auth error (e.g. auth/unauthorized-domain, auth/network-request-failed)
+      const errPayload = {
+        code: fe.code || 'auth/popup-failed',
+        message: fe.message || 'Google sign-in could not be completed.',
+      };
+      setAuthError(errPayload);
+      throw popupErr;
+    }
+  }, [loadProfile]);
 
   const signOutUser = useCallback(async () => {
     setAuthError(null);
@@ -381,6 +365,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
   }, []);
 
+  const clearProfileError = useCallback(() => {
+    setProfileError(null);
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -390,12 +378,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         profileError,
         authError,
         clearAuthError,
-        redirectResolving,
+        clearProfileError,
         isAdmin,
         signIn,
         signUp,
         signInWithGoogle,
-        signInWithGoogleRedirect,
         signOutUser,
         sendVerificationEmail,
         resetPassword,

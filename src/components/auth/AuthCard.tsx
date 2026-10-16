@@ -13,10 +13,10 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     signIn,
     signUp,
     signInWithGoogle,
-    signInWithGoogleRedirect,
     authError,
     clearAuthError,
-    redirectResolving,
+    profileError,
+    clearProfileError,
     sendVerificationEmail,
     user,
     profile,
@@ -50,16 +50,20 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     setFieldErrors({});
     setGeneralError('');
     clearAuthError();
-  }, [initialMode, clearAuthError]);
+    clearProfileError();
+  }, [initialMode, clearAuthError, clearProfileError]);
 
-  // Navigate after successful auth once profile is ready
+  // Navigate after successful auth (immediate fallback navigation if user is logged in)
   useEffect(() => {
-    if (!profileLoading && user && profile && !signupSuccess) {
-      if (!profile.onboardingCompleted) {
-        navigate('/onboarding', { replace: true });
-      } else {
-        const dest = getRoleRedirectUrl(profile.role);
-        navigate(dest, { replace: true });
+    if (user && !signupSuccess) {
+      // Do not block navigation if Firestore profile sync is slow/offline
+      if (!profileLoading || profile) {
+        if (profile && !profile.onboardingCompleted) {
+          navigate('/onboarding', { replace: true });
+        } else {
+          const dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
+          navigate(dest, { replace: true });
+        }
       }
     }
   }, [user, profile, profileLoading, signupSuccess, navigate, getRoleRedirectUrl]);
@@ -76,10 +80,18 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   const handleGoogleSignIn = async () => {
     setGeneralError('');
     clearAuthError();
+    clearProfileError();
     setFieldErrors({});
     setGoogleLoading(true);
+
     try {
-      await signInWithGoogle();
+      // ONLY signInWithPopup on user click
+      const loggedInUser = await signInWithGoogle();
+      if (loggedInUser) {
+        // Immediate explicit navigation to dashboard
+        const dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
+        navigate(dest, { replace: true });
+      }
     } catch (err: unknown) {
       const fe = err as { code?: string; message?: string };
       if (
@@ -88,13 +100,10 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       ) {
         return;
       }
-      if (fe.code === 'auth/popup-blocked') {
-        setGeneralError('Sign-in popup was blocked by your browser. Please tap "Continue with Google" again and allow popups for boardly.cfd.');
-      } else {
-        const prefix = fe.code ? `[${fe.code}] ` : '';
-        setGeneralError(`${prefix}${fe.message || 'Google sign-in could not be completed.'}`);
-      }
+      const codeStr = fe.code ? `[${fe.code}] ` : '';
+      setGeneralError(`${codeStr}${fe.message || 'Google sign-in could not be completed.'}`);
     } finally {
+      // ALWAYS reset google loading state so button never gets stuck in infinite spinner
       setGoogleLoading(false);
     }
   };
@@ -232,35 +241,6 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     );
   }
 
-  // ── Redirect Resolving State (Mobile OAuth return) ──────────────────────
-  if (redirectResolving) {
-    return (
-      <div
-        className="w-full rounded-[28px] border border-[var(--border)] p-8 sm:p-10 flex flex-col items-center text-center gap-5"
-        style={{ backgroundColor: 'var(--card)' }}
-      >
-        <div className="w-14 h-14 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-[var(--red)]">
-          <span
-            className="w-6 h-6 border-2 border-[var(--red)] border-t-transparent rounded-full animate-spin"
-            aria-hidden="true"
-          />
-        </div>
-
-        <div>
-          <h2
-            className="text-xl font-bold text-[var(--text)] tracking-tight"
-            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-          >
-            Completing sign-in...
-          </h2>
-          <p className="text-xs text-[var(--muted)] mt-1.5 leading-relaxed">
-            Verifying your Google authentication credentials with Boardly.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   // ── Main Sign In / Sign Up Card ───────────────────────────────────────────
   return (
     <div
@@ -317,39 +297,61 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         </p>
       </div>
 
-      {/* General / Auth Error Banner */}
-      {(generalError || authError) && (
-        <div className="p-3.5 rounded-xl bg-[#1A1A1A] border border-[var(--red)] flex flex-col gap-2 text-xs text-[#FFFFFF]">
-          <div className="flex items-start gap-2.5">
-            <AlertCircle size={16} className="text-[var(--red)] shrink-0 mt-0.5" />
-            <div className="flex-1 space-y-1">
-              {authError?.code && (
-                <span className="font-mono text-[11px] font-semibold text-[var(--red)] block">
-                  [{authError.code}]
+      {/* Visible Red Error Alert Box */}
+      {(generalError || authError || profileError) && (
+        <div
+          role="alert"
+          className="p-4 rounded-2xl bg-[#260B0B] border-2 border-[#EF4444] flex flex-col gap-2.5 text-xs text-[#FFFFFF] shadow-lg animate-in fade-in duration-200"
+        >
+          <div className="flex items-start gap-3">
+            <AlertCircle size={18} className="text-[#EF4444] shrink-0 mt-0.5" />
+            <div className="flex-1 space-y-1.5 text-left">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-[#FCA5A5] uppercase tracking-wider text-[11px]">
+                  Sign-In Issue
                 </span>
-              )}
-              <p className="text-[#E0E0E0] leading-relaxed">
-                {generalError || authError?.message}
+                {(authError?.code || profileError?.code) && (
+                  <span className="font-mono text-[11px] font-bold bg-[#EF4444]/20 text-[#FCA5A5] px-2 py-0.5 rounded border border-[#EF4444]/40">
+                    {authError?.code || profileError?.code}
+                  </span>
+                )}
+              </div>
+              <p className="text-[#FEE2E2] leading-relaxed font-medium">
+                {generalError || authError?.message || profileError?.message}
               </p>
+              {profileError?.path && (
+                <p className="text-[11px] text-[#FCA5A5]/80 font-mono">
+                  Path: {profileError.path}
+                </p>
+              )}
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                setGeneralError('');
+                clearAuthError();
+                clearProfileError();
+              }}
+              className="text-[#FCA5A5] hover:text-[#FFFFFF] text-xs font-bold px-1.5 py-0.5 cursor-pointer"
+              aria-label="Dismiss error"
+            >
+              &times;
+            </button>
           </div>
+
           {authError?.code === 'auth/popup-blocked' && (
-            <button
-              type="button"
-              onClick={() => signInWithGoogleRedirect()}
-              className="mt-1 text-xs text-[var(--red)] underline font-medium hover:text-[#FFFFFF] text-left cursor-pointer"
-            >
-              Try redirect sign-in instead &rarr;
-            </button>
-          )}
-          {authError?.code === 'auth/redirect-state-lost' && (
-            <button
-              type="button"
-              onClick={handleGoogleSignIn}
-              className="mt-1 text-xs text-[var(--red)] underline font-medium hover:text-[#FFFFFF] text-left cursor-pointer"
-            >
-              Tap to retry with popup sign-in &rarr;
-            </button>
+            <div className="pt-2 border-t border-[#EF4444]/30 flex flex-col gap-1.5">
+              <p className="text-[11px] text-[#FCA5A5]">
+                Your browser blocked the Google sign-in popup. Allow popups for boardly.cfd and try again:
+              </p>
+              <button
+                type="button"
+                onClick={handleGoogleSignIn}
+                className="w-full py-2 px-3 rounded-xl bg-[#EF4444] text-[#FFFFFF] font-semibold text-xs hover:bg-[#DC2626] transition-colors cursor-pointer text-center"
+              >
+                Retry Google Sign-In
+              </button>
+            </div>
           )}
         </div>
       )}
