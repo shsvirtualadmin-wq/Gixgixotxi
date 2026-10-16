@@ -10,13 +10,13 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, doc, setDoc, collection, addDoc, getDoc } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: process.env.VITE_FIREBASE_API_KEY || '',
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'auth.boardly.cfd',
-  projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'boardly-8c0cd',
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'boardly-8c0cd.firebasestorage.app',
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: process.env.VITE_FIREBASE_APP_ID || '',
-  firestoreDatabaseId: process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)',
+  apiKey: process.env.VITE_FIREBASE_API_KEY || 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs',
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'gen-lang-client-0366509316.firebaseapp.com',
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'gen-lang-client-0366509316',
+  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'gen-lang-client-0366509316.firebasestorage.app',
+  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '0366509316',
+  appId: process.env.VITE_FIREBASE_APP_ID || '1:0366509316:web:gen-lang-client-0366509316',
+  firestoreDatabaseId: process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712',
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];

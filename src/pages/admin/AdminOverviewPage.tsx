@@ -13,7 +13,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getApp } from '@/lib/firebase';
+import { getApp, firebaseConfig } from '@/lib/firebase';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import {
@@ -68,7 +68,7 @@ export function AdminOverviewPage() {
         code: e?.code || 'FETCH_STATS_FAILED',
         message: e?.message || 'Failed to fetch overview metrics. Check Firestore rules or collection names.',
         collection: e?.collection || 'questions/users',
-        projectId: e?.projectId || 'boardly-8c0cd',
+        projectId: e?.projectId || firebaseConfig.projectId || 'gen-lang-client-0366509316',
         operation: e?.operation || 'fetchAdminStats',
       });
     } finally {

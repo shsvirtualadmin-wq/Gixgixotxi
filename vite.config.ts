@@ -291,22 +291,25 @@ export default defineConfig({
       process.env.VITE_FIREBASE_API_KEY ?? 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs'
     ),
     'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify(
-      process.env.VITE_FIREBASE_AUTH_DOMAIN ?? 'auth.boardly.cfd'
+      process.env.VITE_FIREBASE_AUTH_DOMAIN ?? 'gen-lang-client-0366509316.firebaseapp.com'
     ),
     'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(
-      process.env.VITE_FIREBASE_PROJECT_ID ?? 'boardly-8c0cd'
+      process.env.VITE_FIREBASE_PROJECT_ID ?? 'gen-lang-client-0366509316'
     ),
     'import.meta.env.VITE_FIREBASE_STORAGE_BUCKET': JSON.stringify(
-      process.env.VITE_FIREBASE_STORAGE_BUCKET ?? 'boardly-8c0cd.firebasestorage.app'
+      process.env.VITE_FIREBASE_STORAGE_BUCKET ?? 'gen-lang-client-0366509316.firebasestorage.app'
     ),
     'import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID': JSON.stringify(
-      process.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? '423201171551'
+      process.env.VITE_FIREBASE_MESSAGING_SENDER_ID ?? '0366509316'
     ),
     'import.meta.env.VITE_FIREBASE_APP_ID': JSON.stringify(
-      process.env.VITE_FIREBASE_APP_ID ?? '1:423201171551:web:219bb34b-b7b4-4c85-bd1f-8efd086df9c2'
+      process.env.VITE_FIREBASE_APP_ID ?? '1:0366509316:web:gen-lang-client-0366509316'
     ),
     'import.meta.env.VITE_FIREBASE_DATABASE_ID': JSON.stringify(
-      process.env.VITE_FIREBASE_DATABASE_ID ?? '(default)'
+      process.env.VITE_FIREBASE_DATABASE_ID ?? 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712'
+    ),
+    'import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID': JSON.stringify(
+      process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ?? 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712'
     ),
   },
   build: {

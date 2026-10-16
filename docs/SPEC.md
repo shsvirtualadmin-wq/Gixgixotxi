@@ -1,9 +1,9 @@
 # Boardly Technical Specification & System Architecture
 
 **Document Version:** 1.0.0  
-**Target Project:** `boardly-8c0cd`  
-**Named Firestore Database:** `ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712`  
-**Authorized Auth Domain:** `auth.boardly.cfd`  
+**Target Project:** `gen-lang-client-0366509316`  
+**Named Firestore Database:** `ai-studio-25287ca6-33a1-49f8-8867-70061120a712`  
+**Authorized Auth Domain:** `gen-lang-client-0366509316.firebaseapp.com`  
 **Sole Super Admin:** `shsvirtualadmin@gmail.com`  
 
 ---
@@ -148,7 +148,7 @@ The application is engineered as a modern Single Page Application (SPA) deployed
 
 ## 4. Collection Permissions Matrix & Data Model
 
-The database is the **Named Firestore Database** `ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712` in Firebase project `boardly-8c0cd`.
+The database is the **Named Firestore Database** `ai-studio-25287ca6-33a1-49f8-8867-70061120a712` in Firebase project `gen-lang-client-0366509316`.
 
 | # | Collection Path | Primary Document ID | Read Access | Create Access | Update Access | Delete Access |
 |---|---|---|---|---|---|---|

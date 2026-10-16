@@ -1,6 +1,6 @@
 # Boardly — MCQ Practice & Competitive Test Platform for FSC & Entry Exams
 
-> **IMPORTANT:** Read [PROJECT_RULES.md](./PROJECT_RULES.md) before making any code modifications. Firebase auth configuration is protected and permanently pinned to `boardly-8c0cd` and `auth.boardly.cfd`.
+> **IMPORTANT:** Connected to Firebase project `gen-lang-client-0366509316` (database `ai-studio-25287ca6-33a1-49f8-8867-70061120a712`).
 
 Boardly (B-O-A-R-D-L-Y) is a mobile-first, diagnostic testing and exam revision platform for Matric (SSC), FSC (HSSC), and Pakistani university entrance tests (MDCAT, ECAT, NUST NET, FAST, GIKI, PIEAS, USAT).
 

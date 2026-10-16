@@ -30,7 +30,7 @@ export function AdminDiagnosticBanner({
   const errorCode = diagError.code || 'FIRESTORE_ERROR';
   const errorMessage = error.message || 'An unexpected database error occurred.';
   const targetCollection = diagError.collection || collectionName || 'questions';
-  const targetProjectId = diagError.projectId || firebaseConfig.projectId || 'boardly-8c0cd';
+  const targetProjectId = diagError.projectId || firebaseConfig.projectId || 'gen-lang-client-0366509316';
 
   return (
     <div

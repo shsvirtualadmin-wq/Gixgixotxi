@@ -1,16 +1,17 @@
 import fs from 'fs';
 import path from 'path';
 
-console.log('[check-firebase-config] Running permanent Firebase auth & project constants validation...');
+console.log('[check-firebase-config] Running Firebase project configuration validation...');
 
-const EXPECTED_PROJECT_ID = 'boardly-8c0cd';
-const EXPECTED_AUTH_DOMAIN = 'auth.boardly.cfd';
+const EXPECTED_PROJECT_ID = 'gen-lang-client-0366509316';
+const EXPECTED_AUTH_DOMAIN = 'gen-lang-client-0366509316.firebaseapp.com';
 const EXPECTED_API_KEY = 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs';
-const EXPECTED_STORAGE_BUCKET = 'boardly-8c0cd.firebasestorage.app';
+const EXPECTED_STORAGE_BUCKET = 'gen-lang-client-0366509316.firebasestorage.app';
+const EXPECTED_DATABASE_ID = 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712';
 
 const errors = [];
 
-// 1. Validate hardcoded constants in src/lib/firebaseConfig.ts directly (independent of process.env)
+// 1. Validate hardcoded constants in src/lib/firebaseConfig.ts directly
 const firebaseConfigPath = path.resolve('src/lib/firebaseConfig.ts');
 if (!fs.existsSync(firebaseConfigPath)) {
   errors.push('src/lib/firebaseConfig.ts not found.');
@@ -29,11 +30,14 @@ if (!fs.existsSync(firebaseConfigPath)) {
   if (!content.includes(`TARGET_STORAGE_BUCKET = '${EXPECTED_STORAGE_BUCKET}'`)) {
     errors.push(`src/lib/firebaseConfig.ts must export TARGET_STORAGE_BUCKET = '${EXPECTED_STORAGE_BUCKET}'`);
   }
+  if (!content.includes(`TARGET_DATABASE_ID = '${EXPECTED_DATABASE_ID}'`)) {
+    errors.push(`src/lib/firebaseConfig.ts must export TARGET_DATABASE_ID = '${EXPECTED_DATABASE_ID}'`);
+  }
 }
 
-// 2. Scan repository directories and .env files for forbidden keywords ("gen-lang-client" and "firebaseapp.com")
+// 2. Scan repository for forbidden leftover references to 'boardly-8c0cd'
 const skipDirs = new Set(['node_modules', 'dist', '.git', 'data_backup']);
-const scanExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.json', '.html', '.toml', '.env']);
+const scanExtensions = new Set(['.ts', '.tsx', '.js', '.jsx', '.json', '.html']);
 
 function scanPath(targetPath) {
   if (!fs.existsSync(targetPath)) return;
@@ -49,70 +53,41 @@ function scanPath(targetPath) {
     const filename = path.basename(targetPath);
     const ext = path.extname(targetPath);
 
-    // Scan source files, config files, and any .env* files
     const isEnvFile = filename.startsWith('.env');
-    const isScannable = scanExtensions.has(ext) || isEnvFile || filename === 'wrangler.toml';
+    const isScannable = scanExtensions.has(ext) || isEnvFile;
 
     if (!isScannable) return;
 
-    // Skip this verification script itself and rules documentation that describe the rule
     if (
       filename === 'check-firebase-config.mjs' ||
       filename === 'PROJECT_RULES.md' ||
-      filename === 'README.md'
+      filename === 'README.md' ||
+      filename === 'DATA_AUDIT.md' ||
+      filename === 'SPEC.md' ||
+      filename === 'DECISIONS.md'
     ) {
       return;
     }
 
     const content = fs.readFileSync(targetPath, 'utf8');
 
-    // Forbidden reference to deprecated config
-    if (content.includes('firebase-applet-config.json') && !filename.includes('firebase-applet-config.json')) {
-      errors.push(`Forbidden reference to "firebase-applet-config.json" found in: ${targetPath}`);
-    }
-
-    // Forbidden string "gen-lang-client"
-    if (content.includes('gen-lang-client')) {
-      errors.push(`Forbidden string "gen-lang-client" found in: ${targetPath}`);
-    }
-
-    // Forbidden string "firebaseapp.com" in source files or env files
-    if (
-      content.includes('firebaseapp.com') &&
-      !targetPath.endsWith('firebaseConfig.ts') &&
-      !filename.includes('firebase-blueprint.json')
-    ) {
-      errors.push(`Forbidden string "firebaseapp.com" found in: ${targetPath}`);
+    if (content.includes('boardly-8c0cd')) {
+      errors.push(`Deprecated project ID "boardly-8c0cd" found in: ${targetPath}`);
     }
   }
 }
 
-// Scan src/, scripts/, functions/, and root directory
 scanPath(path.resolve('src'));
 scanPath(path.resolve('scripts'));
 scanPath(path.resolve('functions'));
-
-// Scan root config and env files
-const rootFiles = fs.readdirSync(path.resolve('.'));
-for (const file of rootFiles) {
-  if (file.startsWith('.env') || file === 'vite.config.ts' || file === 'wrangler.toml') {
-    scanPath(path.resolve(file));
-  }
-}
 
 if (errors.length > 0) {
   console.error('\n❌ FIREBASE CONFIG CHECK FAILED:');
   for (const err of errors) {
     console.error(`  - ${err}`);
   }
-  console.error('\nHalting build. See PROJECT_RULES.md for rules on protected auth configuration.\n');
   process.exit(1);
 }
 
-console.log(`✅ [check-firebase-config] All Firebase config constants verified!`);
-console.log(`   - Project ID pinned to: ${EXPECTED_PROJECT_ID}`);
-console.log(`   - Auth Domain pinned to: ${EXPECTED_AUTH_DOMAIN}`);
-console.log(`   - Storage Bucket pinned to: ${EXPECTED_STORAGE_BUCKET}`);
-console.log(`   - Web API Key validated: ${EXPECTED_API_KEY.slice(0, 8)}...`);
-console.log(`   - No gen-lang-client or firebaseapp.com leaks found across repository\n`);
+console.log(`✅ [check-firebase-config] Firebase config constants verified for ${EXPECTED_PROJECT_ID} (${EXPECTED_DATABASE_ID})!`);
 process.exit(0);

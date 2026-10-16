@@ -63,6 +63,11 @@
   },
   "firestore": [
     {
+      "database": "ai-studio-25287ca6-33a1-49f8-8867-70061120a712",
+      "rules": "firestore.rules",
+      "indexes": "firestore.indexes.json"
+    },
+    {
       "database": "(default)",
       "rules": "firestore.rules",
       "indexes": "firestore.indexes.json"
