@@ -37,6 +37,14 @@ const PlaceholderPage = lazy(() =>
   import('./pages/dashboard/PlaceholderPage').then(m => ({ default: m.PlaceholderPage }))
 );
 
+// Test engine (Phase 4)
+const TestRunnerPage = lazy(() =>
+  import('./pages/test/TestRunnerPage').then(m => ({ default: m.TestRunnerPage }))
+);
+const TestResultPage = lazy(() =>
+  import('./pages/test/TestResultPage').then(m => ({ default: m.TestResultPage }))
+);
+
 function PageLoader() {
   return (
     <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -55,6 +63,10 @@ function AppInner() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
+        {/* Test Engine — full-screen distraction-free, no Navbar/Footer */}
+        <Route path="/test/:attemptId/result" element={<TestResultPage />} />
+        <Route path="/test/:attemptId" element={<TestRunnerPage />} />
+
         {/* Public routes (with Navbar + Footer) */}
         <Route
           element={

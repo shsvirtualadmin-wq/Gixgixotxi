@@ -36,6 +36,7 @@ export function PracticePage() {
       const endsAt = timed ? new Date(now.getTime() + durationSeconds * 1000) : null;
 
       const ref = await addDoc(collection(db, 'attempts'), {
+        userId: user.uid,
         uid: user.uid,
         university: university === 'Any' ? null : university,
         subject: subject === 'Any' ? null : subject,
@@ -44,7 +45,7 @@ export function PracticePage() {
         timed,
         durationSeconds,
         endsAt,
-        status: 'pending',
+        status: 'preparing',
         createdAt: serverTimestamp(),
       });
       navigate(`/test/${ref.id}`);

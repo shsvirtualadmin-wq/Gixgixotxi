@@ -40,16 +40,58 @@ export interface PlaceholderReview {
 export interface Question {
   id: string;
   subject: string;
-  chapter: string;
-  difficulty: 'Easy' | 'Medium' | 'Hard';
+  chapter?: string;
+  topic?: string;
+  difficulty: 'Easy' | 'Medium' | 'Hard' | string;
   university?: string;
   year?: number;
-  question: string;
-  options: [string, string, string, string];
-  correctAnswer: 0 | 1 | 2 | 3;
+  question?: string;
+  q?: string;
+  options: [string, string, string, string] | string[];
+  correctAnswer?: 0 | 1 | 2 | 3 | number;
+  correct?: 0 | 1 | 2 | 3 | number;
   explanation?: string;
+  explain?: string;
   needsMathFix?: boolean;
   mathChecked?: boolean;
+}
+
+export interface AttemptQuestion {
+  id: string;
+  q: string;
+  options: string[];
+  correct: number;
+  explain?: string;
+  subject?: string;
+  chapter?: string;
+  difficulty?: string;
+  university?: string;
+}
+
+export interface AttemptDoc {
+  id: string;
+  userId: string;
+  uid?: string;
+  university?: string | null;
+  subject?: string | null;
+  difficulty?: string | null;
+  totalQuestions: number;
+  timed: boolean;
+  durationSeconds: number;
+  endsAt?: Timestamp | { seconds: number; nanoseconds?: number } | null;
+  status: 'preparing' | 'in_progress' | 'completed' | 'abandoned';
+  createdAt?: Timestamp | { seconds: number };
+  startedAt?: Timestamp | { seconds: number };
+  submittedAt?: Timestamp | { seconds: number };
+  questions?: AttemptQuestion[];
+  userAnswers?: Record<string, number>;
+  flagged?: number[];
+  score?: number;
+  correctAnswers?: number;
+  wrongAnswers?: number;
+  unanswered?: number;
+  percentage?: number;
+  timeTakenSeconds?: number;
 }
 
 export interface OnboardingData {
