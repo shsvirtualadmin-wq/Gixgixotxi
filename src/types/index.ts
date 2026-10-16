@@ -114,3 +114,83 @@ export interface ReferralDoc {
   emailVerified: boolean;
   firstTestCompleted: boolean;
 }
+
+export interface AuditLog {
+  id?: string;
+  adminEmail: string;
+  action: string;
+  targetUid?: string;
+  targetEmail?: string;
+  details?: Record<string, unknown> | string;
+  timestamp: Timestamp | { seconds: number };
+}
+
+export interface PaymentRequest {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  displayName?: string;
+  amount: number;
+  plan: 'pro';
+  durationMonths?: number;
+  method: 'easypaisa' | 'jazzcash' | 'sadapay' | 'nayapay' | 'bank' | string;
+  transactionId: string;
+  screenshotUrl?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: Timestamp | { seconds: number };
+  approvedAt?: Timestamp | { seconds: number };
+  approvedBy?: string;
+  rejectionReason?: string;
+}
+
+export interface StudentReview {
+  id: string;
+  uid: string;
+  authorName?: string;
+  displayName?: string;
+  email?: string;
+  university?: string;
+  rating: number; // 1..5
+  text: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: Timestamp | { seconds: number };
+  approvedAt?: Timestamp | { seconds: number };
+  approvedBy?: string;
+}
+
+export interface CaptainApplication {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  phone: string;
+  university: string;
+  city: string;
+  semester?: string;
+  socialLink?: string;
+  motivation: string;
+  expectedReach?: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: Timestamp | { seconds: number };
+  approvedAt?: Timestamp | { seconds: number };
+  approvedBy?: string;
+  rejectionReason?: string;
+}
+
+export interface CrewApplication {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  phone: string;
+  college: string;
+  city: string;
+  instagram?: string;
+  whatsapp?: string;
+  whyCrew: string;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: Timestamp | { seconds: number };
+  approvedAt?: Timestamp | { seconds: number };
+  approvedBy?: string;
+  rejectionReason?: string;
+}

@@ -1,8 +1,9 @@
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, BookOpen, FileText, Zap, Bot,
-  BarChart3, Users, Star, CreditCard, ChevronLeft, ChevronRight
+  BarChart3, Users, Star, CreditCard, ChevronLeft, ChevronRight, ShieldCheck
 } from 'lucide-react';
+import { useAuth } from '@/contexts/AuthContext';
 
 const NAV_ITEMS = [
   { to: '/dashboard', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -23,6 +24,8 @@ interface Props {
 }
 
 export function DashboardSidebar({ collapsed, onToggle }: Props) {
+  const { isAdmin } = useAuth();
+
   return (
     <aside
       style={{
@@ -102,6 +105,32 @@ export function DashboardSidebar({ collapsed, onToggle }: Props) {
             )}
           </NavLink>
         ))}
+
+        {isAdmin && (
+          <NavLink
+            to="/admin"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 12,
+              padding: '10px 12px',
+              borderRadius: 'var(--r-input)',
+              textDecoration: 'none',
+              color: '#34D399',
+              background: 'rgba(16,185,129,0.12)',
+              border: '1px solid rgba(16,185,129,0.3)',
+              fontWeight: 700,
+              fontSize: 13,
+              marginTop: 'auto',
+              marginBottom: 4,
+              overflow: 'hidden',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            <ShieldCheck size={18} style={{ color: '#34D399', flexShrink: 0 }} />
+            {!collapsed && <span>God Mode</span>}
+          </NavLink>
+        )}
       </nav>
 
       {/* Collapse toggle */}

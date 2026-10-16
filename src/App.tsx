@@ -6,6 +6,8 @@ import { Footer } from './components/layout/Footer';
 import { AuthProvider } from './contexts/AuthContext';
 import { useReferralCapture } from './hooks/useReferral';
 import { Skeleton } from './components/ui/Skeleton';
+import { AdminGuard } from './components/admin/AdminGuard';
+import { AdminLayout } from './components/admin/AdminLayout';
 
 // Public pages (lazy)
 const LandingPage = lazy(() => import('./pages/LandingPage'));
@@ -65,6 +67,29 @@ const CaptainLeaderboardPage = lazy(() =>
   import('./pages/captain/CaptainLeaderboardPage').then(m => ({ default: m.CaptainLeaderboardPage }))
 );
 
+// Phase 6: Admin Superpower Portal
+const AdminOverviewPage = lazy(() =>
+  import('./pages/admin/AdminOverviewPage').then(m => ({ default: m.AdminOverviewPage }))
+);
+const AdminUsersPage = lazy(() =>
+  import('./pages/admin/AdminUsersPage').then(m => ({ default: m.AdminUsersPage }))
+);
+const AdminQuestionsPage = lazy(() =>
+  import('./pages/admin/AdminQuestionsPage').then(m => ({ default: m.AdminQuestionsPage }))
+);
+const AdminApplicationsPage = lazy(() =>
+  import('./pages/admin/AdminApplicationsPage').then(m => ({ default: m.AdminApplicationsPage }))
+);
+const AdminPaymentsPage = lazy(() =>
+  import('./pages/admin/AdminPaymentsPage').then(m => ({ default: m.AdminPaymentsPage }))
+);
+const AdminReviewsPage = lazy(() =>
+  import('./pages/admin/AdminReviewsPage').then(m => ({ default: m.AdminReviewsPage }))
+);
+const AdminAuditLogsPage = lazy(() =>
+  import('./pages/admin/AdminAuditLogsPage').then(m => ({ default: m.AdminAuditLogsPage }))
+);
+
 function PageLoader() {
   return (
     <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -86,6 +111,40 @@ function AppInner() {
         {/* Test Engine — full-screen distraction-free, no Navbar/Footer */}
         <Route path="/test/:attemptId/result" element={<TestResultPage />} />
         <Route path="/test/:attemptId" element={<TestRunnerPage />} />
+
+        {/* Phase 6: Super-Admin Portal — strictly guarded for shsvirtualadmin@gmail.com */}
+        <Route
+          path="/admin"
+          element={
+            <AdminGuard>
+              <AdminLayout />
+            </AdminGuard>
+          }
+        >
+          <Route index element={<AdminOverviewPage />} />
+          <Route path="users" element={<AdminUsersPage />} />
+          <Route path="questions" element={<AdminQuestionsPage />} />
+          <Route path="applications" element={<AdminApplicationsPage />} />
+          <Route path="payments" element={<AdminPaymentsPage />} />
+          <Route path="reviews" element={<AdminReviewsPage />} />
+          <Route path="audit-logs" element={<AdminAuditLogsPage />} />
+          <Route path="*" element={<Navigate to="/admin" replace />} />
+        </Route>
+
+        {/* Dashboard shell — no Navbar/Footer */}
+        <Route path="/dashboard" element={<DashboardShell />}>
+          <Route index element={<OverviewPage />} />
+          <Route path="practice" element={<PracticePage />} />
+          <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
+          <Route path="arena" element={<PlaceholderPage title="Arena" />} />
+          <Route path="ai-tutor" element={<AiTutorPage />} />
+          <Route path="merit-meter" element={<PlaceholderPage title="Merit Meter" />} />
+          <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
+          <Route path="reviews" element={<PlaceholderPage title="Reviews" />} />
+          <Route path="plans" element={<PlaceholderPage title="Plans" />} />
+          <Route path="settings" element={<PlaceholderPage title="Settings" />} />
+          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+        </Route>
 
         {/* Public routes (with Navbar + Footer) */}
         <Route
@@ -122,21 +181,6 @@ function AppInner() {
           }
           path="/*"
         />
-
-        {/* Dashboard shell — no Navbar/Footer */}
-        <Route path="/dashboard" element={<DashboardShell />}>
-          <Route index element={<OverviewPage />} />
-          <Route path="practice" element={<PracticePage />} />
-          <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />
-          <Route path="arena" element={<PlaceholderPage title="Arena" />} />
-          <Route path="ai-tutor" element={<AiTutorPage />} />
-          <Route path="merit-meter" element={<PlaceholderPage title="Merit Meter" />} />
-          <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
-          <Route path="reviews" element={<PlaceholderPage title="Reviews" />} />
-          <Route path="plans" element={<PlaceholderPage title="Plans" />} />
-          <Route path="settings" element={<PlaceholderPage title="Settings" />} />
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
-        </Route>
 
         {/* Fallback */}
         <Route path="*" element={<Navigate to="/" replace />} />

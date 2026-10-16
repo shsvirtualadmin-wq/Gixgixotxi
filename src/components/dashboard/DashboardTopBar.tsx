@@ -8,7 +8,7 @@ interface Props {
 }
 
 export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) {
-  const { user, signOutUser } = useAuth();
+  const { user, signOutUser, isAdmin } = useAuth();
   const navigate = useNavigate();
   const { profile } = useProfile(user?.uid ?? null);
 
@@ -46,8 +46,31 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {/* God Mode shortcut for super-admin */}
+        {isAdmin && (
+          <button
+            onClick={() => navigate('/admin')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 14px',
+              borderRadius: 'var(--r-pill)',
+              background: 'linear-gradient(135deg, #10B981, #059669)',
+              border: 'none',
+              color: 'white',
+              fontSize: 13,
+              fontWeight: 700,
+              cursor: 'pointer',
+              boxShadow: '0 0 12px rgba(16,185,129,0.4)',
+            }}
+          >
+            ⚡ God Mode
+          </button>
+        )}
+
         {/* Upgrade pill for free users */}
-        {!isPremium && (
+        {!isPremium && !isAdmin && (
           <button
             onClick={() => navigate('/dashboard/plans')}
             style={{

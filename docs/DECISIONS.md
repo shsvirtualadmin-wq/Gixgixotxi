@@ -166,3 +166,23 @@ This document tracks all foundational architectural, security, and product desig
 - **Context:** Cloudflare Pages build environments use Bun 1.2.15 by default. Local development on newer Bun (v1.4+) generates text `bun.lock` (version 2) or binary `bun.lockb` formats that cause fatal build errors on Cloudflare Pages (`Unknown lockfile version` / `Outdated lockfile version: failed to parse lockfile`).
 - **Decision:** Standardized on `yarn.lock` (Yarn v1 specification) generated via `bun install --yarn`. Cloudflare Pages natively detects `yarn.lock` and executes `yarn install --frozen-lockfile` with Node 22, guaranteeing 100% deterministic, freeze-safe dependency installs in CI/CD while preserving lightning-fast local Bun execution.
 - **Consequences:** Zero lockfile format conflicts between local runtime and Cloudflare Pages CI/CD. Reliable automated git deployments.
+
+---
+
+## ADR 016: Phase 6 Admin Superpower Portal & 500+ Balanced MCQ Pool Seeder
+- **Status:** Approved
+- **Context:** System administration required secure, least-privilege operations exclusively restricted to `shsvirtualadmin@gmail.com`. Previous revisions had scattered role checks, risk of overwriting existing authentic questions, and no audit trail for privileged user overrides or manual payment approvals.
+- **Decision:**
+  1. **Super-Admin Route Guarding (`AdminGuard.tsx`) & Layout (`AdminLayout.tsx`)**: Enforced ironclad email-based gating (`shsvirtualadmin@gmail.com`). Non-admin users are strictly blocked with a clear access restricted message and safe return to student cockpit. The admin layout displays an emerald status banner with active named Firestore database indicator (`ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712`).
+  2. **1-Click "Ensure 500+ Balanced MCQ Pool" Tool (`seedBalancedPool.ts` & `adminService.ts`)**:
+     - Built an idempotent seeder guaranteeing at least 500 high-quality, KaTeX-validated questions evenly distributed across Subjects (125 Maths, 125 Physics, 125 Chem/CS, 125 English/Analytical), Universities (100 FAST-NUCES, 100 NUST NET, 100 GIKI, 100 LUMS, 100 NED/UET/COMSATS), and Difficulties (Easy, Medium, Hard).
+     - Deterministic document IDs (`seed_balanced_001` .. `seed_balanced_500`) and `setDoc(..., { merge: true })` guarantee zero deletion or alteration of the existing ~17,000 authentic question documents.
+  3. **User Overrides (`UserOverrideDrawer.tsx`)**:
+     - God-mode controls to inspect student records, modify roles (`student`, `crew`, `captain`, `admin`), grant Pro access with custom duration (30/90/365/lifetime), and toggle suspension (`suspended: true`, `isSuspended: true`).
+  4. **Applications, Payments & Reviews Moderation**:
+     - Single-click approval workflows for Campus Captain and Boardly Crew applications, updating roles, referral codes, and sending user notifications.
+     - Manual payment verification for Easypaisa/JazzCash/SadaPay receipts with automatic 30-day Pro activation.
+     - Student review moderation queue allowing approve/reject actions before publishing live.
+  5. **Immutable Audit Logging (`auditLogs`)**:
+     - Every administrative override, seeder run, and approval writes an immutable append-only record to `auditLogs` containing admin email, target UID/email, action type, and structured change payloads.
+- **Consequences:** Absolute administrative authority centralized for `shsvirtualadmin@gmail.com`, zero risk of question data loss, comprehensive audit logging, and streamlined operational management for the entire Pakistani entrance test platform.
