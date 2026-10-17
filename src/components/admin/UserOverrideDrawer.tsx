@@ -74,14 +74,16 @@ export function UserOverrideDrawer({
     }
   }, [user]);
 
+  const [verifiedNotice, setVerifiedNotice] = useState<string | null>(null);
+
   if (!user) return null;
 
   const displayName = getUserDisplayName(user);
-  const userInitial = displayName[0].toUpperCase();
 
   const handleApplyOverrides = async () => {
     setSaving(true);
     setError(null);
+    setVerifiedNotice(null);
 
     try {
       const updates: Partial<UserProfile> = {
@@ -96,12 +98,14 @@ export function UserOverrideDrawer({
       if (plan === 'pro') {
         updates.isPremium = true;
         updates.premiumSource = 'admin_override';
-        // 1 year grant by default
-        updates.premiumExpiresAt = Timestamp.fromMillis(Date.now() + 365 * 24 * 60 * 60 * 1000);
+        const exp = Timestamp.fromMillis(Date.now() + 365 * 24 * 60 * 60 * 1000);
+        updates.premiumExpiresAt = exp;
+        updates.planExpiresAt = exp;
       } else {
         updates.isPremium = false;
         updates.premiumSource = null;
         updates.premiumExpiresAt = null;
+        updates.planExpiresAt = null;
       }
 
       const previous: Partial<UserProfile> = {
@@ -113,9 +117,12 @@ export function UserOverrideDrawer({
         targetUniversity: user.targetUniversity,
       };
 
-      await updateUserOverride(adminEmail, user.uid, user.email, updates, previous);
-      onSuccess();
-      onClose();
+      const verified = await updateUserOverride(adminEmail, user.uid, user.email, updates, previous);
+      setVerifiedNotice(`Verified on server: Plan set to "${verified.plan?.toUpperCase() || plan.toUpperCase()}" (${verified.isPremium ? 'Active Pro' : 'Free'})`);
+      setTimeout(() => {
+        onSuccess();
+        onClose();
+      }, 1200);
     } catch (err: unknown) {
       console.error('Failed to update user override:', err);
       setError((err as Error).message || 'Failed to update user profile');
@@ -209,6 +216,13 @@ export function UserOverrideDrawer({
             <div className="p-3 rounded-[12px] bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] text-[12px] font-heading flex items-start gap-2">
               <AlertTriangle size={15} className="shrink-0 mt-0.5" />
               <span>{error}</span>
+            </div>
+          )}
+
+          {verifiedNotice && (
+            <div className="p-3 rounded-[12px] bg-[var(--card-2)] border border-emerald-500/50 text-emerald-400 text-[12px] font-heading flex items-start gap-2">
+              <span className="shrink-0">✓</span>
+              <span>{verifiedNotice}</span>
             </div>
           )}
 

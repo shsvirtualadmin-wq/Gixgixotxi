@@ -12,10 +12,12 @@ import type { UserProfile } from '@/types';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { firebaseConfig } from '@/lib/firebase';
 
+let cachedAdminUsers: UserProfile[] = [];
+
 export function AdminUsersPage() {
   const { user } = useAuth();
-  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [allUsers, setAllUsers] = useState<UserProfile[]>(() => cachedAdminUsers);
+  const [loading, setLoading] = useState(() => cachedAdminUsers.length === 0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [hasMore, setHasMore] = useState(false);
@@ -35,14 +37,15 @@ export function AdminUsersPage() {
   const [backfillMessage, setBackfillMessage] = useState<string | null>(null);
 
   const loadUsers = useCallback(async () => {
-    setLoading(true);
+    if (cachedAdminUsers.length === 0) {
+      setLoading(true);
+    }
     setError(null);
     try {
       const res = await fetchUsersPaginated({
-        limitCount: 50,
-        role: roleFilter,
-        plan: planFilter,
+        limitCount: 100,
       });
+      cachedAdminUsers = res.users;
       setAllUsers(res.users);
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
@@ -59,7 +62,7 @@ export function AdminUsersPage() {
     } finally {
       setLoading(false);
     }
-  }, [roleFilter, planFilter]);
+  }, []);
 
   const handleLoadMore = async () => {
     if (!lastDoc || loadingMore) return;
@@ -324,10 +327,24 @@ export function AdminUsersPage() {
             </div>
           ))
         ) : filteredUsers.length === 0 ? (
-          <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
+          <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center space-y-3">
             <p className="font-heading text-[14px] text-[var(--muted)]">
-              No users match your search.
+              No users match your filters or search criteria.
             </p>
+            {(search || roleFilter !== 'all' || planFilter !== 'all' || statusFilter !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch('');
+                  setRoleFilter('all');
+                  setPlanFilter('all');
+                  setStatusFilter('all');
+                }}
+                className="text-[12px] font-heading px-3 py-1.5 rounded-full border border-[var(--border)] text-[var(--text)] hover:border-[var(--text)] transition-colors cursor-pointer"
+              >
+                Reset all filters
+              </button>
+            )}
           </div>
         ) : (
           filteredUsers.map((u) => {
@@ -435,7 +452,21 @@ export function AdminUsersPage() {
             ) : filteredUsers.length === 0 ? (
               <tr>
                 <td colSpan={6} className="py-12 px-5 text-center text-[var(--muted)]">
-                  No users match your search.
+                  <p className="font-heading text-[14px] mb-2">No users match your filters or search criteria.</p>
+                  {(search || roleFilter !== 'all' || planFilter !== 'all' || statusFilter !== 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch('');
+                        setRoleFilter('all');
+                        setPlanFilter('all');
+                        setStatusFilter('all');
+                      }}
+                      className="text-[12px] font-heading px-3 py-1 rounded-full border border-[var(--border)] text-[var(--text)] hover:border-[var(--text)] transition-colors cursor-pointer"
+                    >
+                      Reset all filters
+                    </button>
+                  )}
                 </td>
               </tr>
             ) : (

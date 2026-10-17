@@ -146,6 +146,9 @@ const AdminReviewsPage = lazyWithRetry(() =>
 const AdminAuditLogsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminAuditLogsPage').then(m => ({ default: m.AdminAuditLogsPage }))
 );
+const AdminHealthPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminHealthPage').then(m => ({ default: m.AdminHealthPage }))
+);
 
 function PageLoader() {
   return (
@@ -186,6 +189,7 @@ function AppInner() {
           <Route path="payments" element={<AdminPaymentsPage />} />
           <Route path="reviews" element={<AdminReviewsPage />} />
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
+          <Route path="health" element={<AdminHealthPage />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>
 

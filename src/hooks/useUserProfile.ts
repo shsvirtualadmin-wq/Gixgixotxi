@@ -140,33 +140,13 @@ export function useUserProfile(): UserProfileHookResult {
             updatedAt: Date.now(),
           });
         } else {
-          // Document does not exist: auto-create standard profile
+          // Document does not exist yet: do NOT overwrite with defaults (AuthContext transaction handles creation)
           setDocExists(false);
           setFetchStatus('success');
-          console.log(`[useUserProfile] No Firestore doc at ${path}, creating default document`);
-          const defaultData: Partial<UserProfile> = {
-            uid: user.uid,
-            email: (user.email || '').toLowerCase(),
-            displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'Student'),
-            name: user.displayName || (user.email ? user.email.split('@')[0] : 'Student'),
-            photoURL: user.photoURL || null,
-            role: 'student',
-            plan: 'free',
-            status: 'active',
-            profileCompleted: false,
-            onboardingCompleted: false,
-            streak: 0,
-            createdAt: serverTimestamp() as unknown as undefined,
-            updatedAt: serverTimestamp() as unknown as undefined,
-          };
-
-          setDoc(doc(db, 'users', user.uid), defaultData, { merge: true }).catch((err) => {
-            console.warn('[useUserProfile] Auto-create default user doc warning:', err);
-          });
-
-          const completeProfile = { ...(authProfileRef.current || {}), ...defaultData } as UserProfile;
-          setProfile(completeProfile);
-          updateLocalProfileRef.current(completeProfile);
+          console.log(`[useUserProfile] User doc pending creation at ${path}`);
+          if (authProfileRef.current) {
+            setProfile(authProfileRef.current);
+          }
           debugTracker.recordUserFetch({
             status: 'success',
             durationMs: duration,
@@ -188,6 +168,14 @@ export function useUserProfile(): UserProfileHookResult {
           message: err.message,
           path,
         });
+        if (err.code === 'permission-denied') {
+          debugTracker.recordPlanLog({
+            action: 'profile_snapshot',
+            status: 'permission_denied',
+            errorCode: err.code,
+            details: `Permission denied reading ${path}`,
+          });
+        }
         debugTracker.recordUserFetch({
           status: 'error',
           code: err.code,

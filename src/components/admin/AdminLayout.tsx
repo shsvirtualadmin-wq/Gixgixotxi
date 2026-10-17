@@ -15,6 +15,7 @@ import {
   ChevronRight,
   ShieldAlert,
   ArrowLeft,
+  Activity,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -40,6 +41,7 @@ const SECONDARY_NAV: AdminNavItem[] = [
   { to: '/admin/payments', label: 'Payments', icon: CreditCard },
   { to: '/admin/reviews', label: 'Reviews', icon: MessageSquare },
   { to: '/admin/audit-logs', label: 'Audit log', icon: Terminal },
+  { to: '/admin/health', label: 'Health & Tests', icon: Activity },
 ];
 
 const ALL_SIDEBAR_NAV: AdminNavItem[] = [

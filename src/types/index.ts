@@ -55,14 +55,18 @@ export interface Question {
   topic?: string;
   difficulty: 'Easy' | 'Medium' | 'Hard' | string;
   university?: string;
+  universities?: string[];
   year?: number;
   question?: string;
   q?: string;
+  stem?: string;
   options: [string, string, string, string] | string[];
   correctAnswer?: 0 | 1 | 2 | 3 | number;
   correct?: 0 | 1 | 2 | 3 | number;
+  correctIndex?: number;
   explanation?: string;
   explain?: string;
+  status?: string;
   needsMathFix?: boolean;
   mathChecked?: boolean;
 }
@@ -70,13 +74,17 @@ export interface Question {
 export interface AttemptQuestion {
   id: string;
   q: string;
+  stem?: string;
   options: string[];
   correct: number;
+  correctIndex?: number;
   explain?: string;
+  explanation?: string;
   subject?: string;
   chapter?: string;
   difficulty?: string;
   university?: string;
+  universities?: string[];
 }
 
 export interface AttemptDoc {

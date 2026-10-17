@@ -8,6 +8,9 @@ import { Badge } from '@/components/ui/Badge';
 import { Zap, BookOpen, Target, Clock, ArrowRight } from 'lucide-react';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { FREE_DAILY_TESTS } from '@/constants/limits';
+import { startTestSessionWithLimit, DailyTestLimitError } from '@/services/testLimits';
+import { DailyLimitBlockedSheet } from '@/components/test/DailyLimitBlockedSheet';
 
 const UNIVERSITIES = ['Any', 'FAST-NUCES', 'NUST NET', 'GIKI', 'LUMS', 'NED', 'MDCAT', 'ECAT'];
 
@@ -41,6 +44,7 @@ export function PracticePage() {
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<{ code?: string; message: string; link?: string } | null>(null);
   const [todayAttempts, setTodayAttempts] = useState(0);
+  const [blockedSheetOpen, setBlockedSheetOpen] = useState(false);
   const errorBannerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -58,9 +62,8 @@ export function PracticePage() {
   }, [launchError]);
 
   const effectivePlan = useEffectivePlan();
-  const isPro = Boolean(effectivePlan.isPro || profile?.plan === 'pro' || profile?.isPremium);
-  const freeDailyLimit = 10;
-  const questionsLeft = isPro ? 'Unlimited' : Math.max(0, freeDailyLimit - todayAttempts);
+  const isPro = effectivePlan.isUnlimited;
+  const testsLeft = isPro ? 'Unlimited' : Math.max(0, FREE_DAILY_TESTS - todayAttempts);
 
   // PKT midnight reset timer countdown
   const [timeToMidnight, setTimeToMidnight] = useState('');
@@ -97,7 +100,8 @@ export function PracticePage() {
     getDoc(doc(db, 'users', user.uid, 'usage', dateKey))
       .then((snap) => {
         if (snap.exists()) {
-          setTodayAttempts(Number(snap.data()?.practiceAttempts ?? 0));
+          const data = snap.data();
+          setTodayAttempts(Number(data?.testsStarted ?? data?.practiceAttempts ?? 0));
         }
       })
       .catch((err) => {
@@ -218,10 +222,9 @@ export function PracticePage() {
       return;
     }
 
-    // ─── STEP (c): Attempt addDoc with Non-Blocking Client ID ───────────────
+    // ─── STEP (c): Atomically check daily test limit & create attempt doc ───
     const stepCStart = Date.now();
-    console.log(`[PracticePage] (c) Generating client-side attempt ID to prevent server freeze...`);
-    setLaunchStatus('(c) Creating attempt document...');
+    setLaunchStatus('(c) Verifying daily test allowance...');
 
     const newAttemptRef = doc(collection(db, 'attempts'));
     const attemptId = newAttemptRef.id;
@@ -242,16 +245,32 @@ export function PracticePage() {
       createdAt: serverTimestamp(),
     };
 
-    // Write in background with timing so UI does not freeze on slow connections
-    setDoc(newAttemptRef, attemptPayload)
-      .then(() => {
-        const stepCElapsed = Date.now() - stepCStart;
-        console.log(`[PracticePage] (c) Attempt setDoc finished in ${stepCElapsed}ms for doc ID: ${attemptId}`);
-      })
-      .catch((setErr: unknown) => {
-        const stepCElapsed = Date.now() - stepCStart;
-        console.error(`[PracticePage] (c) Background attempt setDoc failed after ${stepCElapsed}ms:`, setErr);
+    try {
+      await startTestSessionWithLimit({
+        uid: user.uid,
+        isUnlimited: effectivePlan.isUnlimited,
+        attemptPayload,
+        customAttemptId: attemptId,
       });
+      const stepCElapsed = Date.now() - stepCStart;
+      console.log(`[PracticePage] (c) Attempt created atomically in ${stepCElapsed}ms for doc ID: ${attemptId}`);
+    } catch (startErr: unknown) {
+      setLaunching(false);
+      setLaunchingType(null);
+      setLaunchStatus(null);
+      if (
+        startErr instanceof DailyTestLimitError ||
+        (startErr as { code?: string })?.code === 'DAILY_TESTS_LIMIT_EXCEEDED'
+      ) {
+        setBlockedSheetOpen(true);
+        return;
+      }
+      setLaunchError({
+        code: (startErr as { code?: string })?.code || 'LAUNCH_FAILED',
+        message: (startErr as Error)?.message || 'Failed to start test session. Please try again.',
+      });
+      return;
+    }
 
     // ─── STEP (d): Navigation to Test Page ──────────────────────────────────
     const totalElapsed = Date.now() - stepAStart;
@@ -262,7 +281,7 @@ export function PracticePage() {
 
   return (
     <div className="flex flex-col gap-6 max-w-[1000px] mx-auto">
-      {/* ── Header: Questions left in Dot font & PKT Midnight reset countdown ── */}
+      {/* ── Header: TESTS LEFT in Dot font & PKT Midnight reset countdown ── */}
       <Card className="p-6 sm:p-7">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
@@ -279,13 +298,13 @@ export function PracticePage() {
           </div>
 
           <div className="flex items-center gap-6 self-start sm:self-auto border-t sm:border-t-0 sm:border-l border-[var(--border)] pt-4 sm:pt-0 sm:pl-6 shrink-0">
-            {/* Questions left today in Doto font */}
+            {/* Tests left today in Doto font */}
             <div>
               <div className="text-[10px] uppercase font-semibold text-[var(--muted)] tracking-wider">
-                Questions Left
+                TESTS LEFT
               </div>
               <div className="font-doto text-2xl sm:text-3xl font-bold text-[#FFFFFF] mt-0.5">
-                {questionsLeft}
+                {testsLeft}
               </div>
             </div>
 
@@ -592,6 +611,12 @@ export function PracticePage() {
           </button>
         </div>
       </Card>
+
+      <DailyLimitBlockedSheet
+        isOpen={blockedSheetOpen}
+        onClose={() => setBlockedSheetOpen(false)}
+        testsUsed={todayAttempts >= FREE_DAILY_TESTS ? todayAttempts : FREE_DAILY_TESTS}
+      />
     </div>
   );
 }

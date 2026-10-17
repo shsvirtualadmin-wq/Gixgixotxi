@@ -22,12 +22,14 @@ import {
   doc,
   getDoc,
   setDoc,
+  runTransaction,
   serverTimestamp,
   type DocumentSnapshot,
   type DocumentData,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
+import { debugTracker } from '@/utils/debugTracker';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const SUPER_ADMIN_EMAIL = 'shsvirtualadmin@gmail.com';
@@ -170,22 +172,69 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const docRef = doc(db, 'users', firebaseUser.uid);
 
-      // Fast non-hanging lookup with 3000ms max wait
-      let snap: DocumentSnapshot<DocumentData> | null = null;
+      let loadedProfile: UserProfile | null = null;
+
+      // 1. Transactional check & create: ONLY create when doc truly does not exist
       try {
-        snap = await Promise.race([
-          getDoc(docRef),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
-        ]);
-      } catch (readErr) {
-        console.warn(`[Boardly] Firestore profile read deferred at ${path}:`, readErr);
+        await runTransaction(db, async (tx) => {
+          const freshSnap = await tx.get(docRef);
+          if (freshSnap.exists()) {
+            loadedProfile = freshSnap.data() as UserProfile;
+          } else {
+            // Truly new user: initialize clean defaults
+            const baseUserDoc: UserProfile = {
+              uid: firebaseUser.uid,
+              name: fallbackName,
+              displayName: fallbackName,
+              email: emailLower,
+              photoURL: firebaseUser.photoURL ?? null,
+              role: isSuperAdminAccount ? 'admin' : 'student',
+              plan: isSuperAdminAccount ? 'pro' : 'free',
+              status: 'active',
+              profileCompleted: isSuperAdminAccount ? true : false,
+              onboardingCompleted: isSuperAdminAccount ? true : false,
+              streak: 0,
+            };
+            tx.set(docRef, {
+              ...baseUserDoc,
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            });
+            loadedProfile = baseUserDoc;
+            createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '').catch(() => {});
+          }
+        });
+      } catch (txErr: unknown) {
+        console.warn(`[Boardly] User doc transaction check deferred at ${path}:`, txErr);
+        const code = (txErr as { code?: string })?.code;
+        if (code === 'permission-denied') {
+          debugTracker.recordPlanLog({
+            action: 'auth_load_profile',
+            status: 'permission_denied',
+            errorCode: code,
+            details: (txErr as Error)?.message,
+          });
+        }
       }
 
-      if (snap && typeof snap.exists === 'function' && snap.exists()) {
-        const data = snap.data() as UserProfile;
+      // If transaction did not set loadedProfile (e.g. timeout or race), try one non-mutating getDoc read
+      if (!loadedProfile) {
+        try {
+          const snap = await Promise.race([
+            getDoc(docRef),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
+          ]);
+          if (snap && typeof snap.exists === 'function' && snap.exists()) {
+            loadedProfile = snap.data() as UserProfile;
+          }
+        } catch (readErr) {
+          console.warn(`[Boardly] Fallback profile read deferred at ${path}:`, readErr);
+        }
+      }
 
+      if (loadedProfile) {
         // Suspension check
-        if (data.suspended === true || data.isSuspended === true) {
+        if (loadedProfile.suspended === true || loadedProfile.isSuspended === true) {
           await firebaseSignOut(auth);
           setUser(null);
           setProfile(null);
@@ -197,44 +246,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        // Ensure displayName is populated and never Unnamed Student
-        if (!data.displayName || data.displayName === 'Unnamed Student') {
-          data.displayName = fallbackName;
+        // Ensure displayName is populated without touching plan/role
+        if (!loadedProfile.displayName || loadedProfile.displayName === 'Unnamed Student') {
+          loadedProfile.displayName = fallbackName;
           setDoc(docRef, { displayName: fallbackName }, { merge: true }).catch(() => {});
         }
 
-        setProfile(data);
-      } else if (snap && typeof snap.exists === 'function' && !snap.exists()) {
-        // Document does not exist yet in Firestore - attempt automatic creation with clean defaults
-        const baseUserDoc = {
-          uid: firebaseUser.uid,
-          name: fallbackName,
-          displayName: fallbackName,
-          email: emailLower,
-          photoURL: firebaseUser.photoURL ?? null,
-          role: isSuperAdminAccount ? 'admin' : 'student',
-          plan: isSuperAdminAccount ? 'pro' : 'free',
-          status: 'active',
-          profileCompleted: isSuperAdminAccount ? true : false,
-          onboardingCompleted: isSuperAdminAccount ? true : false,
-          streak: 0,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        };
-
-        setDoc(doc(db, 'users', firebaseUser.uid), baseUserDoc, { merge: true }).catch((err) => {
-          console.warn('[Boardly] Initial user doc setDoc warning:', err);
-        });
-
-        setProfile({
-          ...defaultProfile,
-          profileCompleted: isSuperAdminAccount ? true : false,
-          onboardingCompleted: isSuperAdminAccount ? true : false,
-        });
-        createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '').catch(() => {});
+        setProfile(loadedProfile);
       } else {
-        // snap is null (timed out or offline) - activate fallback profile seamlessly
-        console.warn(`[Boardly] Profile read timed out or offline at ${path}. Using fallback profile.`);
+        // Doc read timed out or failed — use fallback profile in-memory ONLY.
+        // NEVER write this fallback profile to Firestore, as that would overwrite the user's real plan!
+        console.warn(`[Boardly] Profile read timed out or offline at ${path}. Keeping in-memory fallback.`);
         setProfile(defaultProfile);
       }
     } catch (err: unknown) {

@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { DottedRingProgress } from '@/components/ui/DottedRingProgress';
 import { DotRowStreak } from '@/components/ui/DotRowStreak';
 import { QrCodeSvg } from '@/components/crew/QrCodeSvg';
+import { Card } from '@/components/ui/Card';
 import {
   Copy,
   Check,
@@ -18,6 +19,7 @@ import {
   Plus,
   LogIn,
   AlertTriangle,
+  AlertCircle,
   Target,
   Share2,
   Lock,
@@ -139,6 +141,36 @@ export function CrewDashboardPage() {
         <Skeleton height={40} width="40%" />
         <Skeleton height={180} />
         <Skeleton height={240} />
+      </div>
+    );
+  }
+
+  // Error state with explicit Retry button (8-second timeout guard)
+  if (hookError && !crew) {
+    return (
+      <div style={{ maxWidth: 640, margin: '3rem auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <Link
+          to="/dashboard"
+          className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-white mb-2 transition-colors font-heading"
+        >
+          <ArrowLeft size={14} />
+          <span>Return to Dashboard</span>
+        </Link>
+        <Card className="p-8 text-center space-y-4">
+          <div className="w-12 h-12 rounded-full bg-[#1A1A1A] border border-[var(--red)] text-[var(--red)] flex items-center justify-center mx-auto">
+            <AlertCircle size={22} />
+          </div>
+          <h2 className="text-xl font-bold text-white font-heading">Study Crew Connection Delayed</h2>
+          <p className="text-sm text-[var(--muted)] leading-relaxed">{hookError}</p>
+          <div className="pt-2 flex items-center justify-center gap-3">
+            <Button variant="primary" size="md" onClick={retry}>
+              Retry Connection
+            </Button>
+            <Button variant="secondary" size="md" onClick={() => setActionError(null)}>
+              Create or Join Instead
+            </Button>
+          </div>
+        </Card>
       </div>
     );
   }

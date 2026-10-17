@@ -21,6 +21,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { PillNav, type PillNavItem } from '@/components/ui/PillNav';
 import { logRedirect } from '@/utils/debugTracker';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 
 export function DashboardBottomNav() {
   const { isAdmin, signOutUser } = useAuth();
@@ -61,7 +62,8 @@ export function DashboardBottomNav() {
     navigate('/login');
   };
 
-  const isPro = profile?.isPremium || profile?.plan === 'pro';
+  const effectivePlan = useEffectivePlan();
+  const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
   const isCrewMember = Boolean(profile?.isCrewMember || profile?.role === 'crew' || profile?.crewId);
   const displayName = profile?.displayName || user?.displayName || 'Student';
@@ -175,7 +177,11 @@ export function DashboardBottomNav() {
                           : 'border-[var(--border)] text-[var(--muted)]'
                       }`}
                     >
-                      {isPro ? 'Pro Member' : 'Free Starter'}
+                      {effectivePlan.isSuperAdmin
+                        ? 'Superadmin · Unlimited'
+                        : isPro
+                        ? (effectivePlan.source === 'crew' ? `Pro (${effectivePlan.crewName || 'Crew'})` : 'Pro Member')
+                        : 'Free Starter'}
                     </span>
                     {isAdmin && (
                       <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--red)] text-[var(--red)] font-semibold">

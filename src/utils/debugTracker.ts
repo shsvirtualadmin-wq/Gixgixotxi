@@ -85,6 +85,43 @@ class DebugTracker {
     this.notify();
   }
 
+  public crewSteps: { id: string; action: string; status: 'loading' | 'success' | 'error'; details?: string; errorCode?: string; timestamp: number }[] = [];
+  public planLogs: { id: string; action: string; status: 'read' | 'write' | 'permission_denied' | 'error'; details?: string; errorCode?: string; timestamp: number }[] = [];
+
+  public recordCrewStep(step: { action: string; status: 'loading' | 'success' | 'error'; details?: string; errorCode?: string }): void {
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      ...step,
+      timestamp: Date.now(),
+    };
+    this.crewSteps.unshift(entry);
+    if (this.crewSteps.length > 10) this.crewSteps = this.crewSteps.slice(0, 10);
+    console.log(`%c[Boardly Crew] ${step.action}: ${step.status} ${step.errorCode ? `[${step.errorCode}]` : ''} ${step.details || ''}`,
+      step.status === 'error' ? 'color: #ef4444; font-weight: bold;' : 'color: #38bdf8;');
+    this.notify();
+  }
+
+  public recordPlanLog(log: { action: string; status: 'read' | 'write' | 'permission_denied' | 'error'; details?: string; errorCode?: string }): void {
+    const entry = {
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      ...log,
+      timestamp: Date.now(),
+    };
+    this.planLogs.unshift(entry);
+    if (this.planLogs.length > 10) this.planLogs = this.planLogs.slice(0, 10);
+    console.log(`%c[Boardly Plan] ${log.action}: ${log.status} ${log.errorCode ? `[${log.errorCode}]` : ''} ${log.details || ''}`,
+      log.status === 'permission_denied' || log.status === 'error' ? 'color: #ef4444; font-weight: bold;' : 'color: #10b981;');
+    this.notify();
+  }
+
+  public getCrewSteps() {
+    return this.crewSteps;
+  }
+
+  public getPlanLogs() {
+    return this.planLogs;
+  }
+
   public getUserFetchStatus(): UserDocFetchStatus {
     return this.userFetchStatus;
   }
@@ -110,3 +147,4 @@ export const debugTracker = new DebugTracker();
 export function logRedirect(from: string, to: string, trigger: string): void {
   debugTracker.recordRedirect(from, to, trigger);
 }
+

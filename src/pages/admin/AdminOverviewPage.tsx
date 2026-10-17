@@ -18,6 +18,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import {
   fetchAdminStats,
+  getCachedAdminStats,
   seedBalancedMCQPool,
   fetchAuditLogs,
   type AdminStats,
@@ -39,8 +40,8 @@ const SUBJECT_TARGET_PILLS = [
 
 export function AdminOverviewPage() {
   const { user } = useAuth();
-  const [stats, setStats] = useState<AdminStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState<AdminStats | null>(() => getCachedAdminStats());
+  const [loading, setLoading] = useState(() => !getCachedAdminStats());
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
   const [recentLogs, setRecentLogs] = useState<AuditLog[]>([]);
 
@@ -314,9 +315,20 @@ export function AdminOverviewPage() {
           <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
             Questions by subject
           </h2>
-          <span className="font-heading text-[12px] text-[var(--muted)]">
-            Live counts in collection
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="font-heading text-[12px] text-[var(--muted)]">
+              Live counts
+            </span>
+            <button
+              type="button"
+              onClick={loadData}
+              disabled={loading}
+              className="p-1 rounded-md text-[var(--muted)] hover:text-white hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
+              title="Refresh subject counts"
+            >
+              <RefreshCw size={13} className={loading ? 'animate-spin' : ''} />
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
@@ -331,7 +343,11 @@ export function AdminOverviewPage() {
                   {subj}
                 </span>
                 <span className="font-dot text-[22px] font-bold text-[var(--text)] mt-2">
-                  {loading ? '...' : count.toLocaleString()}
+                  {loading && !stats ? (
+                    <span className="inline-block w-8 h-5 rounded bg-[var(--card)] animate-pulse" />
+                  ) : (
+                    count.toLocaleString()
+                  )}
                 </span>
               </div>
             );

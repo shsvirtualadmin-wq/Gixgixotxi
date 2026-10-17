@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import {
@@ -36,7 +37,8 @@ export function ProfilePage() {
   const [isSavingName, setIsSavingName] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  const isPro = Boolean(profile?.isPremium || profile?.plan === 'pro');
+  const effectivePlan = useEffectivePlan();
+  const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || (isAdmin ? 'superadmin' : 'student');
   const rawName =
     profile?.displayName ||
@@ -320,7 +322,11 @@ export function ProfilePage() {
                   isPro ? 'bg-[var(--red)] text-white' : 'bg-[var(--card-2)] text-[var(--muted)]'
                 }`}
               >
-                {isPro ? 'Pro Active' : 'Free Tier'}
+                {effectivePlan.isSuperAdmin
+                  ? 'Superadmin · Unlimited'
+                  : isPro
+                  ? 'Pro Active'
+                  : 'Free Tier'}
               </span>
             </div>
 
@@ -330,18 +336,24 @@ export function ProfilePage() {
                   Plan Details
                 </span>
                 <p className="font-heading text-base font-bold text-[var(--text)] mt-0.5">
-                  {isPro ? 'Pro Unlimited Pass' : 'Boardly Free Starter'}
+                  {effectivePlan.isSuperAdmin
+                    ? 'Superadmin · Unlimited'
+                    : isPro
+                    ? 'Pro Unlimited Pass'
+                    : 'Boardly Free Starter'}
                 </p>
                 <p className="text-xs text-[var(--muted)] mt-1">
-                  {isPro
-                    ? 'Unlimited questions, past papers, AI tutor deep explanations & full diagnostics.'
-                    : '10 daily practice sprint questions with essential scoring analytics.'}
+                  {effectivePlan.isSuperAdmin
+                    ? 'All entrance tests, drills, past paper vaults, and AI tools unlimited.'
+                    : isPro
+                    ? 'Unlimited tests, past papers, AI tutor deep explanations & full diagnostics.'
+                    : '10 daily tests with essential scoring analytics.'}
                 </p>
               </div>
 
               <div className="p-3 rounded-xl bg-[var(--bg)] border border-[var(--border)] space-y-1.5 text-xs text-[var(--muted)] font-heading">
                 <div className="flex justify-between">
-                  <span>Daily Question Allowance:</span>
+                  <span>Daily Test Allowance:</span>
                   <span className="text-[var(--text)] font-semibold">{isPro ? 'Unlimited' : '10 / day'}</span>
                 </div>
                 <div className="flex justify-between">
@@ -360,7 +372,11 @@ export function ProfilePage() {
             onClick={() => navigate('/dashboard/plans')}
             className={isPro ? 'w-full text-xs justify-center' : 'btn-red w-full text-xs justify-center cursor-pointer'}
           >
-            {isPro ? 'Manage Subscription' : 'Upgrade to Pro (PKR 199/mo)'}
+            {effectivePlan.isSuperAdmin
+              ? 'Superadmin · Unlimited'
+              : isPro
+              ? 'Manage Subscription'
+              : 'Upgrade to Pro (PKR 199/mo)'}
             <ArrowRight size={13} className="ml-1" />
           </Button>
         </Card>

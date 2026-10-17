@@ -78,7 +78,9 @@ export function PlansBillingPage() {
   };
 
   const effectivePlan = useEffectivePlan();
-  const isPro = Boolean(effectivePlan.isPro || profile?.plan === 'pro' || profile?.isPremium);
+  const isUnlimited = effectivePlan.isUnlimited;
+  const isSuperAdmin = effectivePlan.isSuperAdmin;
+  const isPro = isUnlimited;
   const isCrew = profile?.role === 'crew' || profile?.isCrewMember;
 
   return (
@@ -112,22 +114,34 @@ export function PlansBillingPage() {
               <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
                 Active Plan
               </span>
-              <Badge color={isPro ? 'brand' : 'default'}>
-                {isPro ? 'PRO ACCESS' : isCrew ? 'CREW PASS' : 'FREE TIER'}
+              <Badge color={isSuperAdmin || isPro ? 'brand' : 'default'}>
+                {isSuperAdmin
+                  ? 'SUPERADMIN · UNLIMITED'
+                  : isPro
+                  ? (effectivePlan.source === 'crew' ? `PRO ACCESS (${effectivePlan.crewName || 'CREW'})` : 'PRO ACCESS')
+                  : isCrew
+                  ? 'CREW PASS'
+                  : 'FREE TIER'}
               </Badge>
             </div>
             <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-              {isPro
-                ? 'Unlimited MCQs & Boardy AI Tutor Unlocked'
-                : '10 Practice MCQs and 5 AI Tokens per Day'}
+              {isSuperAdmin
+                ? 'Superadmin Access: All Tests, Papers & Tools Unlimited'
+                : isPro
+                ? 'Unlimited Tests & Boardy AI Tutor Unlocked'
+                : '10 tests per day and 5 AI Tokens per Day'}
             </p>
           </div>
 
-          {!isPro && (
+          {isSuperAdmin ? (
+            <div className="px-4 py-2 rounded-xl bg-[rgba(239,68,68,0.1)] border border-[#D71921] text-[#D71921] font-semibold text-xs font-heading">
+              Superadmin · Unlimited
+            </div>
+          ) : !isPro ? (
             <Button variant="primary" size="md" onClick={() => setModalOpen(true)}>
               <Zap size={15} /> Upgrade to Pro — PKR 199/mo
             </Button>
-          )}
+          ) : null}
         </GlassCard>
       )}
 
@@ -191,7 +205,7 @@ export function PlansBillingPage() {
 
           <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: 'var(--text-muted)' }}>
             <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> 10 Practice MCQs / Day
+              <Check size={14} className="text-[#D71921]" /> 10 tests per day
             </li>
             <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Check size={14} className="text-[#D71921]" /> 3 Arena Grand Mocks / Day
@@ -258,7 +272,7 @@ export function PlansBillingPage() {
 
           <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: 'var(--text)' }}>
             <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> Unlimited Practice MCQs
+              <Check size={14} className="text-[#D71921]" /> Unlimited Practice Tests &amp; Sprints
             </li>
             <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               <Check size={14} className="text-[#D71921]" /> Unlimited Arena Grand National Mocks
@@ -275,15 +289,21 @@ export function PlansBillingPage() {
           </ul>
 
           <div style={{ marginTop: 'auto' }}>
-            <Button
-              variant="primary"
-              size="md"
-              className="w-full"
-              onClick={() => setModalOpen(true)}
-              disabled={isPro}
-            >
-              {isPro ? 'Active Pro Member' : 'Upgrade to Pro'}
-            </Button>
+            {isSuperAdmin ? (
+              <div className="text-center py-2.5 px-3 rounded-xl border border-[#D71921] bg-[rgba(239,68,68,0.1)] text-[#D71921] font-semibold text-xs font-heading">
+                Superadmin · Unlimited
+              </div>
+            ) : (
+              <Button
+                variant="primary"
+                size="md"
+                className="w-full"
+                onClick={() => setModalOpen(true)}
+                disabled={isPro}
+              >
+                {isPro ? 'Active Pro Member' : 'Upgrade to Pro'}
+              </Button>
+            )}
           </div>
         </GlassCard>
 

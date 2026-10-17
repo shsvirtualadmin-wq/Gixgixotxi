@@ -4,8 +4,8 @@ import { Badge } from '../components/ui/Badge';
 import { Check, X } from 'lucide-react';
 
 const COMPARISON_ROWS = [
-  { feature: 'Daily Practice Sprints', free: '3 / day', pro: 'Unlimited' },
-  { feature: 'Boardy AI Questions', free: '10 / day', pro: '100 / day' },
+  { feature: 'Daily Tests (Practice, Sprints, Papers)', free: '10 / day', pro: 'Unlimited' },
+  { feature: 'Boardy AI Questions', free: '5 / day', pro: '100 / day' },
   { feature: 'KaTeX Math Derivations', free: true, pro: true },
   { feature: 'All University Past Papers', free: 'Sample sets', pro: 'Full vaults' },
   { feature: 'Negative Marking Simulation', free: true, pro: true },

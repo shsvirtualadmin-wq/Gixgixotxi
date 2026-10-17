@@ -8,6 +8,7 @@ import { RecentAttempts } from '@/components/dashboard/RecentAttempts';
 import { WeakChapters } from '@/components/dashboard/WeakChapters';
 import { DotRowStreak } from '@/components/ui/DotRowStreak';
 import { Card } from '@/components/ui/Card';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 
 class CockpitSectionErrorBoundary extends Component<
   { children: ReactNode; title: string },
@@ -64,7 +65,8 @@ export function OverviewPage() {
   // Per specification: /dashboard must NEVER redirect to /onboarding automatically.
   // Profile setup can be completed anytime via Menu > "Target Exam & Profile Setup" or banner.
 
-  const isPro = Boolean(profile?.isPremium || profile?.plan === 'pro');
+  const effectivePlan = useEffectivePlan();
+  const isPro = effectivePlan.isUnlimited;
   const streak = Number(profile?.streak ?? 0);
   const rawName =
     profile?.displayName ||
@@ -206,17 +208,23 @@ export function OverviewPage() {
                   className="font-bold text-base text-[var(--text)]"
                   style={{ fontFamily: 'var(--font-heading)' }}
                 >
-                  {isPro ? 'Pro Member' : 'Free Starter'}
+                  {effectivePlan.isSuperAdmin
+                    ? 'Superadmin · Unlimited'
+                    : isPro
+                    ? (effectivePlan.source === 'crew' ? `Pro (${effectivePlan.crewName || 'Crew'})` : 'Pro Member')
+                    : 'Free Starter'}
                 </span>
-                {!isPro && (
+                {!isPro && !effectivePlan.isSuperAdmin && (
                   <span className="text-[11px] text-[var(--red)] font-semibold">
                     Upgrade →
                   </span>
                 )}
               </div>
               <p className="text-[11px] text-[var(--muted)] mt-1">
-                {isPro
-                  ? 'Unlimited sprints & past papers unlocked'
+                {effectivePlan.isSuperAdmin
+                  ? 'Full superadmin access unlocked'
+                  : isPro
+                  ? 'Unlimited tests & past papers unlocked'
                   : 'PKR 199/month for unlimited access'}
               </p>
             </div>

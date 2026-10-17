@@ -9,6 +9,9 @@ import { ErrorState } from '@/components/ui/ErrorState';
 import { Button } from '@/components/ui/Button';
 import { TrendingDown, AlertTriangle, CheckCircle, ArrowRight, BookOpen, Target } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { startTestSessionWithLimit, DailyTestLimitError } from '@/services/testLimits';
+import { DailyLimitBlockedSheet } from '@/components/test/DailyLimitBlockedSheet';
 
 interface ChapterStat {
   id: string;
@@ -28,6 +31,8 @@ export function WeakChaptersPage() {
   const [launchError, setLaunchError] = useState<{ code?: string; message: string; link?: string } | null>(null);
   const [launchingChapter, setLaunchingChapter] = useState<string | null>(null);
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
+  const [blockedSheetOpen, setBlockedSheetOpen] = useState(false);
+  const effectivePlan = useEffectivePlan();
 
   const loadStats = useCallback(async () => {
     if (!user) return;
@@ -172,15 +177,31 @@ export function WeakChaptersPage() {
       createdAt: serverTimestamp(),
     };
 
-    setDoc(newAttemptRef, attemptPayload)
-      .then(() => {
-        const stepCElapsed = Date.now() - stepCStart;
-        console.log(`[WeakChaptersPage] (c) Attempt setDoc finished in ${stepCElapsed}ms for ID: ${attemptId}`);
-      })
-      .catch((setErr: unknown) => {
-        const stepCElapsed = Date.now() - stepCStart;
-        console.error(`[WeakChaptersPage] (c) Background attempt setDoc failed after ${stepCElapsed}ms:`, setErr);
+    try {
+      await startTestSessionWithLimit({
+        uid: user.uid,
+        isUnlimited: effectivePlan.isUnlimited,
+        attemptPayload,
+        customAttemptId: attemptId,
       });
+      const stepCElapsed = Date.now() - stepCStart;
+      console.log(`[WeakChaptersPage] (c) Attempt created atomically in ${stepCElapsed}ms for ID: ${attemptId}`);
+    } catch (startErr: unknown) {
+      setLaunchingChapter(null);
+      setLaunchStatus(null);
+      if (
+        startErr instanceof DailyTestLimitError ||
+        (startErr as { code?: string })?.code === 'DAILY_TESTS_LIMIT_EXCEEDED'
+      ) {
+        setBlockedSheetOpen(true);
+        return;
+      }
+      setLaunchError({
+        code: (startErr as { code?: string })?.code || 'LAUNCH_FAILED',
+        message: (startErr as Error)?.message || 'Failed to start test session. Please try again.',
+      });
+      return;
+    }
 
     // ─── STEP (d): Navigation to Test Page ──────────────────────────────────
     const totalElapsed = Date.now() - stepAStart;
@@ -431,6 +452,11 @@ export function WeakChaptersPage() {
           )}
         </div>
       )}
+
+      <DailyLimitBlockedSheet
+        isOpen={blockedSheetOpen}
+        onClose={() => setBlockedSheetOpen(false)}
+      />
     </div>
   );
 }

@@ -13,6 +13,7 @@ import {
   serverTimestamp,
   Timestamp,
   getCountFromServer,
+  getDocFromServer,
   addDoc,
   startAfter,
   type QueryConstraint,
@@ -113,14 +114,20 @@ export const CORE_SUBJECTS = [
   'Analytical Reasoning',
 ] as const;
 
+let cachedAdminStats: AdminStats | null = null;
+
+export function getCachedAdminStats(): AdminStats | null {
+  return cachedAdminStats;
+}
+
 export async function fetchAdminStats(): Promise<AdminStats> {
   const startTime = performance.now();
   const questionsCol = collection(db, 'questions');
   const usersCol = collection(db, 'users');
   const attemptsCol = collection(db, 'attempts');
 
-  // Hard 8-second timeout helper for individual queries to eliminate infinite hangs
-  const withTimeout = <T>(p: Promise<T>, fallback: T, ms = 8000): Promise<T> =>
+  // Fast 3.5-second timeout helper for individual queries to eliminate infinite hangs
+  const withTimeout = <T>(p: Promise<T>, fallback: T, ms = 3500): Promise<T> =>
     Promise.race([
       p,
       new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
@@ -175,7 +182,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     const elapsed = Math.round(performance.now() - startTime);
     console.log(`%c[AdminService] fetchAdminStats completed in ${elapsed}ms`, 'color: #10b981; font-weight: bold;');
 
-    return {
+    const result: AdminStats = {
       totalUsers: usersTotal,
       totalQuestions: totalQ,
       totalAttempts: attemptsTotal,
@@ -185,6 +192,9 @@ export async function fetchAdminStats(): Promise<AdminStats> {
       pendingReviews: pendingReviewsCount,
       subjectCounts,
     };
+
+    cachedAdminStats = result;
+    return result;
   } catch (err) {
     console.warn('[AdminService] Parallel stats fetch failed, returning zeroed stats:', err);
     return {
@@ -465,17 +475,30 @@ export async function updateUserOverride(
   targetEmail: string,
   updates: Partial<UserProfile>,
   previous: Partial<UserProfile>
-): Promise<void> {
+): Promise<UserProfile> {
   const ref = doc(db, 'users', targetUid);
   await setDoc(ref, updates, { merge: true });
+
+  // Verify write immediately directly from the server
+  let verifiedProfile: UserProfile | null = null;
+  try {
+    const verifiedSnap = await getDocFromServer(ref);
+    if (verifiedSnap.exists()) {
+      verifiedProfile = verifiedSnap.data() as UserProfile;
+    }
+  } catch (verifyErr) {
+    console.warn('[AdminService] getDocFromServer verification fallback:', verifyErr);
+  }
 
   await logAdminAction(
     adminEmail,
     'user_override',
-    { updates, previous },
+    { updates, previous, verified: Boolean(verifiedProfile) },
     targetUid,
     targetEmail
   );
+
+  return verifiedProfile || ({ ...previous, ...updates, uid: targetUid } as UserProfile);
 }
 
 export async function deleteUserAccount(
@@ -832,6 +855,7 @@ export async function approvePaymentRequest(
       isPremium: true,
       premiumSource: req.method || 'payment_request',
       premiumExpiresAt: expiresAt,
+      planExpiresAt: expiresAt,
     },
     { merge: true }
   );

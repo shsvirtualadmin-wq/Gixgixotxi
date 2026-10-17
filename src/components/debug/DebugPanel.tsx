@@ -242,6 +242,66 @@ export function DebugPanel() {
             )}
           </div>
 
+          {/* Plan & Permission Logs */}
+          {debugTracker.getPlanLogs().length > 0 && (
+            <div style={{ borderBottom: '1px solid #27272a', paddingBottom: 8 }}>
+              <div style={{ color: '#a1a1aa', fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Plan &amp; Quota Operations:</span>
+                <span style={{ fontSize: '10px', color: '#71717a' }}>{debugTracker.getPlanLogs().length} events</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {debugTracker.getPlanLogs().map((pl) => (
+                  <div
+                    key={pl.id}
+                    style={{
+                      padding: '4px 6px',
+                      backgroundColor: pl.status === 'permission_denied' || pl.status === 'error' ? '#450a0a' : '#18181b',
+                      borderRadius: '6px',
+                      border: `1px solid ${pl.status === 'permission_denied' || pl.status === 'error' ? '#ef4444' : '#27272a'}`,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: pl.status === 'permission_denied' ? '#ef4444' : '#34d399' }}>
+                      <span>{pl.action}</span>
+                      <span style={{ fontSize: '9px', textTransform: 'uppercase' }}>{pl.status}</span>
+                    </div>
+                    {pl.details && <div style={{ color: '#d4d4d8', fontSize: '10px', marginTop: 2 }}>{pl.details}</div>}
+                    {pl.errorCode && <div style={{ color: '#fca5a5', fontSize: '9px' }}>code: {pl.errorCode}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Crew Steps Log */}
+          {debugTracker.getCrewSteps().length > 0 && (
+            <div style={{ borderBottom: '1px solid #27272a', paddingBottom: 8 }}>
+              <div style={{ color: '#a1a1aa', fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>Study Crew Steps:</span>
+                <span style={{ fontSize: '10px', color: '#71717a' }}>{debugTracker.getCrewSteps().length} events</span>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {debugTracker.getCrewSteps().map((cs) => (
+                  <div
+                    key={cs.id}
+                    style={{
+                      padding: '4px 6px',
+                      backgroundColor: cs.status === 'error' ? '#450a0a' : '#18181b',
+                      borderRadius: '6px',
+                      border: `1px solid ${cs.status === 'error' ? '#ef4444' : '#27272a'}`,
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: cs.status === 'error' ? '#ef4444' : cs.status === 'loading' ? '#fbbf24' : '#38bdf8' }}>
+                      <span>{cs.action}</span>
+                      <span style={{ fontSize: '9px', textTransform: 'uppercase' }}>{cs.status}</span>
+                    </div>
+                    {cs.details && <div style={{ color: '#d4d4d8', fontSize: '10px', marginTop: 2 }}>{cs.details}</div>}
+                    {cs.errorCode && <div style={{ color: '#fca5a5', fontSize: '9px' }}>error: {cs.errorCode}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {fetchStatus.status === 'error' && (
             <div style={{ padding: '6px 8px', backgroundColor: '#450a0a', border: '1px solid #991b1b', borderRadius: '6px', color: '#fca5a5' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700 }}>

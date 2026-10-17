@@ -4,18 +4,14 @@ import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { FREE_DAILY_TESTS } from '@/constants/limits';
 
 interface UsageData {
+  testsStarted?: number;
   practiceAttempts?: number;
   arenaSessions?: number;
   aiTutorTokens?: number;
 }
-
-const FREE_LIMITS = {
-  practiceAttempts: 10,
-  arenaSessions: 3,
-  aiTutorTokens: 5,
-};
 
 interface Props {
   uid: string;
@@ -53,7 +49,7 @@ export function DailyLimitsMeter({ uid, isPremium }: Props) {
 
   if (loading || effectivePlan.loading) return <Skeleton height={70} />;
 
-  const hasUnlimited = Boolean(isPremium || effectivePlan.isPro);
+  const hasUnlimited = Boolean(isPremium || effectivePlan.isUnlimited);
 
   if (hasUnlimited) {
     return (
@@ -62,9 +58,11 @@ export function DailyLimitsMeter({ uid, isPremium }: Props) {
           ∞
         </div>
         <div>
-          <div className="text-xs font-semibold text-[var(--text)]">Unlimited Access</div>
+          <div className="text-xs font-semibold text-[var(--text)]">Unlimited</div>
           <div className="text-[11px] text-[var(--muted)]">
-            {effectivePlan.source === 'crew'
+            {effectivePlan.isSuperAdmin
+              ? 'Superadmin · Unlimited'
+              : effectivePlan.source === 'crew'
               ? `Pro active via ${effectivePlan.crewName || 'Study Crew'}`
               : 'Pro quota active'}
           </div>
@@ -73,29 +71,31 @@ export function DailyLimitsMeter({ uid, isPremium }: Props) {
     );
   }
 
-  const used = usage?.practiceAttempts ?? 0;
-  const max = FREE_LIMITS.practiceAttempts;
-  const pct = Math.min(Math.round((used / max) * 100), 100);
+  const used = usage?.testsStarted ?? usage?.practiceAttempts ?? 0;
+  const max = FREE_DAILY_TESTS;
+  const remaining = Math.max(0, max - used);
 
   return (
     <div className="flex items-center gap-3.5">
       {/* Daily Limit Ring */}
       <div className="relative w-12 h-12 rounded-full border-2 border-[var(--red)] border-t-[#2A2A2A] flex flex-col items-center justify-center shrink-0">
         <span className="font-doto text-xs font-bold text-[#FFFFFF] leading-none">
-          {used}
+          {remaining}
         </span>
-        <span className="text-[8px] text-[var(--muted)] font-doto">/{max}</span>
+        <span className="text-[8px] text-[var(--muted)] font-doto">left</span>
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between text-xs mb-1">
-          <span className="font-semibold text-[var(--text)]">Daily Practice Ring</span>
-          <span className="font-doto text-[var(--muted)]">{pct}%</span>
+          <span className="font-semibold text-[var(--text)] uppercase tracking-wider text-[11px]">TESTS LEFT</span>
+          <span className="font-doto text-[var(--muted)]">{used}/{max} used</span>
         </div>
         <div className="text-[11px] text-[var(--muted)]">
-          Resets at midnight PKT
+          Resets at 00:00 PKT
         </div>
       </div>
     </div>
   );
 }
+
+export default DailyLimitsMeter;

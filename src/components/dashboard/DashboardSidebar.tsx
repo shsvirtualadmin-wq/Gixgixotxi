@@ -15,12 +15,14 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { Logo } from '@/components/ui/Logo';
 
 export function DashboardSidebar() {
   const { isAdmin, signOutUser } = useAuth();
   const { user, profile } = useUserProfile();
   const navigate = useNavigate();
+  const effectivePlan = useEffectivePlan();
 
   // Theme state
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -42,7 +44,7 @@ export function DashboardSidebar() {
     navigate('/login');
   };
 
-  const isPro = profile?.isPremium || profile?.plan === 'pro';
+  const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
   const displayName = profile?.displayName || user?.displayName || 'Student';
   const initial = (displayName[0] || user?.email?.[0] || 'S').toUpperCase();

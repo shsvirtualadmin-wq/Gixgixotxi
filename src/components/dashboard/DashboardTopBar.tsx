@@ -4,6 +4,7 @@ import { User, CreditCard, LogOut, Sun, Moon, Shield, Award } from 'lucide-react
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { Logo } from '@/components/ui/Logo';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 
 interface Props {
   sidebarCollapsed?: boolean;
@@ -48,7 +49,8 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
     navigate('/login');
   };
 
-  const isPro = profile?.isPremium || profile?.plan === 'pro';
+  const effectivePlan = useEffectivePlan();
+  const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
 
   return (
@@ -139,7 +141,11 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                       isPro ? 'badge-pill-red' : ''
                     }`}
                   >
-                    {isPro ? 'Pro Member' : 'Free Starter'}
+                    {effectivePlan.isSuperAdmin
+                      ? 'Superadmin · Unlimited'
+                      : isPro
+                      ? (effectivePlan.source === 'crew' ? `Pro (${effectivePlan.crewName || 'Crew'})` : 'Pro Member')
+                      : 'Free Starter'}
                   </span>
                   {role !== 'student' && (
                     <span className="badge-pill text-[11px] px-2 py-0.5 capitalize">

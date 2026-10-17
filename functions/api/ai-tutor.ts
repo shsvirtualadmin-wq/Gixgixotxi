@@ -62,7 +62,7 @@ export async function onRequestPost(context: { request: Request; env: Env }): Pr
         parts: [{ text: userMessage }],
       });
 
-      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
 
       const geminiRes = await fetch(geminiUrl, {
         method: 'POST',

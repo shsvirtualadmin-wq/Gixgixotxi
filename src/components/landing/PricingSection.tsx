@@ -41,8 +41,8 @@ export function PricingSection() {
                 {/* List: 12px gap, red dot INSIDE the card with 12px space before text */}
                 <div className="flex flex-col gap-3">
                   {[
-                    '3 timed practice sprints per day',
-                    '10 Boardy AI queries per day',
+                    '10 tests per day (Practice, Sprints, Papers)',
+                    '5 Boardy AI queries per day',
                     'Full KaTeX formula derivations',
                     'PKT midnight quota reset (Asia/Karachi)',
                     'Live Blitz Arena participation',
