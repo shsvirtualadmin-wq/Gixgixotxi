@@ -127,26 +127,28 @@ export async function fetchAdminStats(): Promise<AdminStats> {
     const snap = await getCountFromServer(usersCol);
     usersTotal = snap.data().count;
   } catch (err: unknown) {
-    const e = err as { message?: string; code?: string };
-    throw new AdminFirestoreError(
-      e?.message || 'Failed to fetch user count from Firestore collection "users".',
-      e?.code || 'users-count-error',
-      'users',
-      'getCountFromServer(users)'
-    );
+    console.warn('[AdminService] getCountFromServer(users) warning:', err);
+    try {
+      const snap = await getDocs(query(usersCol, limit(100)));
+      usersTotal = snap.size;
+    } catch (fallbackErr) {
+      console.warn('[AdminService] Fallback getDocs(users) failed:', fallbackErr);
+      usersTotal = 0;
+    }
   }
 
   try {
     const snap = await getCountFromServer(questionsCol);
     questionsTotal = snap.data().count;
   } catch (err: unknown) {
-    const e = err as { message?: string; code?: string };
-    throw new AdminFirestoreError(
-      e?.message || 'Failed to fetch question count from Firestore collection "questions".',
-      e?.code || 'questions-count-error',
-      'questions',
-      'getCountFromServer(questions)'
-    );
+    console.warn('[AdminService] getCountFromServer(questions) warning:', err);
+    try {
+      const snap = await getDocs(query(questionsCol, limit(100)));
+      questionsTotal = snap.size;
+    } catch (fallbackErr) {
+      console.warn('[AdminService] Fallback getDocs(questions) failed:', fallbackErr);
+      questionsTotal = 0;
+    }
   }
 
   try {

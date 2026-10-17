@@ -90,8 +90,10 @@ export function AdminUsersPage() {
   };
 
   useEffect(() => {
-    loadUsers();
-  }, [loadUsers]);
+    if (user) {
+      loadUsers();
+    }
+  }, [user, loadUsers]);
 
   const handleBackfillNames = async () => {
     if (!user?.email) return;

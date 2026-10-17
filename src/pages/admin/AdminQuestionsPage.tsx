@@ -98,11 +98,12 @@ export function AdminQuestionsPage() {
   };
 
   useEffect(() => {
+    if (!user) return;
     const timer = setTimeout(() => {
       loadData();
     }, 200);
     return () => clearTimeout(timer);
-  }, [loadData]);
+  }, [user, loadData]);
 
   const handleOpenAdd = () => {
     setEditingQuestion({

@@ -29,12 +29,13 @@ import type { UserProfile } from '@/types';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const SUPER_ADMIN_EMAIL = 'shsvirtualadmin@gmail.com';
+const SUPER_ADMIN_UID = 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
 const REFERRAL_LS_KEY = 'boardly_ref_code';
 
 // ─── Timeout Helper (prevents hanging Firestore calls from freezing auth) ────
 function withTimeout<T>(
   promise: Promise<T>,
-  ms = 6000,
+  ms = 12000,
   timeoutMsg = 'Database operation timed out. Check Firestore rules or connectivity.'
 ): Promise<T> {
   return Promise.race([
@@ -83,7 +84,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [retryCount, setRetryCount] = useState(0);
 
   const isAdmin = !!(
+    (user?.uid && user.uid === SUPER_ADMIN_UID) ||
     (user?.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL) ||
+    (profile?.uid && profile.uid === SUPER_ADMIN_UID) ||
+    (profile?.email && profile.email.toLowerCase() === SUPER_ADMIN_EMAIL) ||
     profile?.role === 'admin'
   );
 
@@ -216,15 +220,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       // Crucial: Fallback in-memory profile so users are NEVER trapped on login screen
+      const isSuperAdminAccount =
+        firebaseUser.uid === SUPER_ADMIN_UID ||
+        firebaseUser.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
+
       const fallbackName =
         firebaseUser.displayName?.trim() ||
-        (firebaseUser.email ? firebaseUser.email.split('@')[0] : 'Student');
+        (firebaseUser.email
+          ? firebaseUser.email.split('@')[0]
+          : isSuperAdminAccount
+          ? 'Super Admin'
+          : 'Student');
+
       setProfile({
         uid: firebaseUser.uid,
         email: (firebaseUser.email ?? '').toLowerCase(),
         displayName: fallbackName,
-        role: 'student',
-        plan: 'free',
+        role: isSuperAdminAccount ? 'admin' : 'student',
+        plan: isSuperAdminAccount ? 'pro' : 'free',
         onboardingCompleted: true,
       });
     } finally {

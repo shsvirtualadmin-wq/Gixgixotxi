@@ -77,8 +77,10 @@ export function AdminOverviewPage() {
   };
 
   useEffect(() => {
-    loadData();
-  }, []);
+    if (user) {
+      loadData();
+    }
+  }, [user]);
 
   const handleConfirmSeed = async () => {
     setIsConfirmSeedOpen(false);

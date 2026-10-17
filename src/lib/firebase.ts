@@ -1,6 +1,6 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { initializeFirestore, getFirestore, memoryLocalCache } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 export const TARGET_PROJECT_ID = 'gen-lang-client-0366509316';
@@ -25,15 +25,8 @@ export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getA
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-// Force long-polling & in-memory cache so mobile networks, Cloudflare proxies, and IndexedDB locks never hang Firestore requests
-// Pinned to named database: ai-studio-25287ca6-33a1-49f8-8867-70061120a712
-export const db = initializeFirestore(
-  app,
-  {
-    experimentalForceLongPolling: true,
-    localCache: memoryLocalCache(),
-  },
-  TARGET_DATABASE_ID
-);
+// Initialize Firestore with the named database per configuration:
+// Named database: ai-studio-25287ca6-33a1-49f8-8867-70061120a712
+export const db = getFirestore(app, TARGET_DATABASE_ID);
 
 export { getApp, getFirestore, getAuth, getStorage };
