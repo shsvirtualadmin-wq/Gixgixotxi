@@ -15,14 +15,12 @@ import {
   ChevronRight,
   ShieldAlert,
   ArrowLeft,
-  Trash2,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { Logo } from '@/components/ui/Logo';
 import { getApp } from '@/lib/firebase';
-import { ResetUsersModal } from './ResetUsersModal';
 
 interface AdminNavItem {
   to: string;
@@ -56,7 +54,6 @@ export function AdminLayout() {
 
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isAvatarMenuOpen, setIsAvatarMenuOpen] = useState(false);
-  const [isResetModalOpen, setIsResetModalOpen] = useState(false);
 
   const handleSignOut = async () => {
     setIsAvatarMenuOpen(false);

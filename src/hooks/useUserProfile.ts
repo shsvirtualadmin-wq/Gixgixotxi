@@ -208,6 +208,7 @@ export function useUserProfile(): UserProfileHookResult {
     };
     // CRITICAL: only re-subscribe if user.uid changes or explicit retry is triggered!
     // Never include authProfile or updateLocalProfile in dependencies to prevent infinite re-render loops!
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.uid, retryTrigger]);
 
   const retryFetch = useCallback(() => {

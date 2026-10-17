@@ -5,24 +5,20 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import {
-  User,
   GraduationCap,
-  Calendar,
   Sparkles,
   Edit3,
   CheckCircle2,
   Clock,
-  BookOpen,
   Shield,
   ArrowRight,
   RefreshCw,
 } from 'lucide-react';
 
 export function ProfilePage() {
-  const { user, signOutUser, isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const {
     profile,
-    loading: profileLoading,
     university,
     targetExam,
     testDate,

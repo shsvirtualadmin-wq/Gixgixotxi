@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, Component, type ErrorInfo, type ReactNode } from 'react';
+import React, { useEffect, Component, type ErrorInfo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Flame, Target, BookOpen, Sparkles, ArrowRight, AlertTriangle } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -54,9 +54,8 @@ class CockpitSectionErrorBoundary extends Component<
 }
 
 export function OverviewPage() {
-  const { user, profile, loading: profileLoading, university, testDate } = useUserProfile();
+  const { user, profile, university, testDate } = useUserProfile();
   const navigate = useNavigate();
-  const hasCheckedOnboardingRef = useRef(false);
 
   useEffect(() => {
     document.title = 'Cockpit — Boardly';
