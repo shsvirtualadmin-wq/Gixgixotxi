@@ -44,15 +44,19 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
   });
 }
 
+import { ScrollToTop } from './components/ui/ScrollToTop';
+
 // Public pages (lazy with retry)
 const LandingPage = lazyWithRetry(() => import('./pages/LandingPage'));
 const FeaturesPage = lazyWithRetry(() => import('./pages/FeaturesPage'));
+const CrewPage = lazyWithRetry(() => import('./pages/crew/CrewPage'));
 const ArenaPage = lazyWithRetry(() => import('./pages/ArenaPage'));
 const PricingPage = lazyWithRetry(() => import('./pages/PricingPage'));
 const ReviewsPage = lazyWithRetry(() => import('./pages/ReviewsPage'));
 const PrivacyPage = lazyWithRetry(() => import('./pages/PrivacyPage'));
 const TermsPage = lazyWithRetry(() => import('./pages/TermsPage'));
 const ContactPage = lazyWithRetry(() => import('./pages/ContactPage'));
+const NotFoundPage = lazyWithRetry(() => import('./pages/NotFoundPage'));
 
 // Auth pages (lazy with retry) — use AuthLayout ONLY, NO public Navbar or Footer
 const LoginPage = lazyWithRetry(() => import('./pages/LoginPage'));
@@ -161,12 +165,12 @@ function PageLoader() {
   );
 }
 
-// Separate inner component so useReferralCapture can call useSearchParams (needs Router context)
 function AppInner() {
   useReferralCapture();
 
   return (
     <DashboardErrorBoundary fallbackTitle="Boardly encountered an issue">
+      <ScrollToTop />
       <Suspense fallback={<PageLoader />}>
       <Routes>
         {/* Test Engine — full-screen distraction-free, no Navbar/Footer */}
@@ -205,6 +209,7 @@ function AppInner() {
           <Route path="ai-tutor" element={<AiTutorPage />} />
           <Route path="merit-meter" element={<PlaceholderPage title="Merit Meter" />} />
           <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
+          <Route path="crew" element={<CrewDashboardPage />} />
           <Route path="reviews" element={<PlaceholderPage title="Reviews" />} />
           <Route path="plans" element={<PlansBillingPage />} />
           <Route path="profile" element={<ProfilePage />} />
@@ -217,18 +222,6 @@ function AppInner() {
         <Route path="/profile" element={<Navigate to="/dashboard/profile" replace />} />
         <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
 
-        {/* Public Marketing routes ONLY (wrapped by PublicLayout with Navbar + Footer) */}
-        <Route element={<PublicLayout />}>
-          <Route path="/" element={<LandingPage />} />
-          <Route path="/features" element={<FeaturesPage />} />
-          <Route path="/arena" element={<ArenaPage />} />
-          <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/reviews" element={<ReviewsPage />} />
-          <Route path="/privacy" element={<PrivacyPage />} />
-          <Route path="/terms" element={<TermsPage />} />
-          <Route path="/contact" element={<ContactPage />} />
-        </Route>
-
         {/* Auth routes ONLY (use AuthLayout ONLY, NO public Navbar or Footer) */}
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signup" element={<SignupPage />} />
@@ -238,19 +231,31 @@ function AppInner() {
         {/* Onboarding — uses OnboardingShell */}
         <Route path="/onboarding" element={<OnboardingPage />} />
 
-        {/* Crew & Captain Portals — independent shells, NO public Navbar or Footer */}
-        <Route path="/crew" element={<CrewDashboardPage />} />
+        {/* Crew & Captain Standalone Portals — independent shells, NO public Navbar or Footer */}
+        <Route path="/crew/dashboard" element={<CrewDashboardPage />} />
         <Route path="/crews" element={<Navigate to="/crew" replace />} />
         <Route path="/crew/apply" element={<CrewApplyPage />} />
         <Route path="/join/:code" element={<JoinCrewPage />} />
         <Route path="/join" element={<Navigate to="/crew" replace />} />
-        <Route path="/dashboard/crew" element={<Navigate to="/crew" replace />} />
+        <Route path="/dashboard/crew" element={<CrewDashboardPage />} />
         <Route path="/captain" element={<CaptainDashboardPage />} />
         <Route path="/captain/apply" element={<CaptainApplyPage />} />
         <Route path="/captain/leaderboard" element={<CaptainLeaderboardPage />} />
 
-        {/* Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Public Marketing routes ONLY (wrapped by PublicLayout with Navbar + Footer) */}
+        <Route element={<PublicLayout />}>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/crew" element={<CrewPage />} />
+          <Route path="/arena" element={<ArenaPage />} />
+          <Route path="/pricing" element={<PricingPage />} />
+          <Route path="/reviews" element={<ReviewsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/contact" element={<ContactPage />} />
+          {/* Clean 404 Page for any unmatched public routes */}
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
       </Routes>
     </Suspense>
     {import.meta.env.DEV && <DebugPanel />}

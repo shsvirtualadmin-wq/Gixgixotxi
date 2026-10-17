@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Cpu, Target, Calculator, Users, Flame } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { Card } from '../ui/Card';
@@ -104,14 +105,17 @@ export function FeaturesGrid() {
                 className="text-xl font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
               >
-                Study Circles
+                Study Crew &amp; Squads
               </h3>
               <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Create private sprint squads with friends using a 6-character room code. Compete on daily drill quotas and compare weak subtopics.
+                Form collaborative study squads of up to 30 classmates with private 6-character room codes. Compare solve times, coordinate drills, and track streaks.
               </p>
             </div>
-            <div className="mt-4 text-xs text-[var(--muted)]">
-              Join peer circles across Pakistan.
+            <div className="mt-4 pt-3 border-t border-[var(--border)]">
+              <Link to="/crew" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--red)] hover:underline">
+                <span>Learn more about Study Crew</span>
+                <span aria-hidden="true">&rarr;</span>
+              </Link>
             </div>
           </Card>
 
@@ -135,6 +139,17 @@ export function FeaturesGrid() {
               Keep your streak alive during late-night study sessions.
             </div>
           </Card>
+        </div>
+
+        {/* Learn more link to /features */}
+        <div className="text-center mt-10">
+          <Link
+            to="/features"
+            className="btn-outline inline-flex items-center gap-2 text-xs sm:text-sm font-semibold px-6 py-3 rounded-full"
+          >
+            <span>Explore all platform features &amp; capabilities</span>
+            <span aria-hidden="true">&rarr;</span>
+          </Link>
         </div>
       </div>
     </section>

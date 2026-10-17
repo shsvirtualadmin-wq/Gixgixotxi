@@ -125,10 +125,26 @@ function aiTutorPlugin() {
         if (req.method === 'OPTIONS') {
           res.writeHead(204, {
             'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
             'Access-Control-Allow-Headers': 'Content-Type, Authorization',
           });
           res.end();
+          return;
+        }
+
+        if (req.method === 'GET') {
+          const resendKey = process.env.RESEND_API_KEY;
+          const isConfigured = Boolean(resendKey && resendKey.length > 5);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(
+            JSON.stringify({
+              status: 'ok',
+              service: 'boardly-contact-api',
+              resendConfigured: isConfigured,
+              recipient: process.env.CONTACT_TO_EMAIL || 'support@boardly.cfd',
+              timestamp: new Date().toISOString(),
+            })
+          );
           return;
         }
 
@@ -140,34 +156,104 @@ function aiTutorPlugin() {
           req.on('end', async () => {
             try {
               const body = JSON.parse(rawBody || '{}');
+
+              // Honeypot check
+              if (body.honeypot && String(body.honeypot).trim().length > 0) {
+                res.writeHead(400, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, error: 'Spam validation check failed.', code: 'HONEYPOT_TRIGGERED' }));
+                return;
+              }
+
               const name = (body.name || '').trim();
               const email = (body.email || '').trim().toLowerCase();
+              const phone = (body.phone || '').trim();
               const message = (body.message || '').trim();
+              const pageUrl = (body.pageUrl || 'https://boardly.cfd/contact').trim();
 
-              if (!name || name.length < 2) {
+              if (!name || name.length < 2 || name.length > 80) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Please enter a valid name (at least 2 characters).', code: 'INVALID_NAME' }));
+                res.end(JSON.stringify({ success: false, error: 'Name must be between 2 and 80 characters long.', code: 'INVALID_NAME' }));
                 return;
               }
 
               const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
               if (!email || !emailRegex.test(email)) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Please enter a valid email address.', code: 'INVALID_EMAIL' }));
+                res.end(JSON.stringify({ success: false, error: 'Please enter a valid email address.', code: 'INVALID_EMAIL' }));
                 return;
               }
 
-              if (!message || message.length < 10) {
+              if (!message || message.length < 10 || message.length > 2000) {
                 res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Message must be at least 10 characters long.', code: 'MESSAGE_TOO_SHORT' }));
+                res.end(JSON.stringify({ success: false, error: 'Message must be between 10 and 2,000 characters long.', code: 'MESSAGE_LENGTH' }));
+                return;
+              }
+
+              const resendApiKey = process.env.RESEND_API_KEY;
+              const recipient = process.env.CONTACT_TO_EMAIL || 'support@boardly.cfd';
+
+              if (!resendApiKey) {
+                console.warn('[Contact Server] RESEND_API_KEY is not set in environment.');
+                res.writeHead(503, { 'Content-Type': 'application/json' });
+                res.end(
+                  JSON.stringify({
+                    success: false,
+                    error: 'Support email service is currently not configured on this server.',
+                    code: 'RESEND_NOT_CONFIGURED',
+                  })
+                );
+                return;
+              }
+
+              const pktTimeStr = new Intl.DateTimeFormat('en-GB', {
+                timeZone: 'Asia/Karachi',
+                dateStyle: 'full',
+                timeStyle: 'medium',
+              }).format(new Date());
+
+              const resendRes = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: {
+                  Authorization: `Bearer ${resendApiKey}`,
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  from: 'Boardly Contact <contact@boardly.cfd>',
+                  to: [recipient],
+                  reply_to: email,
+                  subject: `[Boardly] New inquiry from ${name}`,
+                  html: `<h3>New Student Inquiry</h3><p><strong>Name:</strong> ${name}</p><p><strong>Email:</strong> ${email}</p><p><strong>Phone:</strong> ${phone || 'Not provided'}</p><p><strong>Time (PKT):</strong> ${pktTimeStr}</p><p><strong>URL:</strong> ${pageUrl}</p><hr/><p><strong>Message:</strong></p><p>${message.replace(/\n/g, '<br/>')}</p>`,
+                  text: `Name: ${name}\nEmail: ${email}\nPhone: ${phone || 'Not provided'}\nTime (PKT): ${pktTimeStr}\n\nMessage:\n${message}`,
+                }),
+              });
+
+              if (!resendRes.ok) {
+                const errText = await resendRes.text();
+                console.error('[Resend Error in Dev Server]:', resendRes.status, errText);
+                res.writeHead(502, { 'Content-Type': 'application/json' });
+                res.end(
+                  JSON.stringify({
+                    success: false,
+                    error: 'Failed to deliver message via Resend.',
+                    code: `RESEND_ERROR_${resendRes.status}`,
+                    details: errText.slice(0, 300),
+                  })
+                );
+                return;
+              }
+
+              const resData: any = await resendRes.json();
+              if (!resData?.id) {
+                res.writeHead(502, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ success: false, error: 'Email gateway responded without message confirmation ID.', code: 'RESEND_MISSING_ID' }));
                 return;
               }
 
               res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ success: true, message: 'Message sent successfully!' }));
+              res.end(JSON.stringify({ success: true, message: 'Message sent successfully!', id: resData.id }));
             } catch (err: any) {
               res.writeHead(500, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ error: err?.message || 'Server error processing contact message' }));
+              res.end(JSON.stringify({ success: false, error: err?.message || 'Server error processing contact message' }));
             }
           });
           return;

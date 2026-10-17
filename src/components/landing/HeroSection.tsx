@@ -53,8 +53,8 @@ export function HeroSection() {
                 <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
               </Link>
 
-              <Link to="/#arena" className="btn-outline w-full sm:w-auto">
-                Explore Live Arena
+              <Link to="/features" className="btn-outline w-full sm:w-auto">
+                Explore Features
               </Link>
             </div>
 

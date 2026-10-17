@@ -117,6 +117,17 @@ export function PricingSection() {
             </div>
           </Card>
         </div>
+
+        {/* Link to /pricing */}
+        <div className="text-center mt-10">
+          <Link
+            to="/pricing"
+            className="btn-outline inline-flex items-center gap-2 text-xs sm:text-sm font-semibold px-6 py-3 rounded-full"
+          >
+            <span>View full plan comparison &amp; payment guide</span>
+            <span aria-hidden="true">&rarr;</span>
+          </Link>
+        </div>
       </div>
     </section>
   );

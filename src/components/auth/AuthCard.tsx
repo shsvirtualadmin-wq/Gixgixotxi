@@ -594,6 +594,20 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             'Create Account'
           )}
         </button>
+
+        {mode === 'signup' && (
+          <p className="text-[11px] text-center text-[var(--muted)] leading-relaxed mt-2">
+            By creating an account you agree to the{' '}
+            <Link to="/terms" className="underline hover:text-[var(--text)]">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link to="/privacy" className="underline hover:text-[var(--text)]">
+              Privacy Policy
+            </Link>
+            .
+          </p>
+        )}
       </form>
     </div>
   );

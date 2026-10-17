@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import { Star } from 'lucide-react';
 import { PLACEHOLDER_REVIEWS } from '../../data/placeholderReviews';
 import { Badge } from '../ui/Badge';
@@ -120,6 +121,17 @@ export function ReviewsMarquee() {
               ))}
             </div>
           </div>
+        </div>
+
+        {/* Link to /reviews */}
+        <div className="text-center mt-8">
+          <Link
+            to="/reviews"
+            className="btn-outline inline-flex items-center gap-2 text-xs sm:text-sm font-semibold px-6 py-3 rounded-full"
+          >
+            <span>Read all student reviews</span>
+            <span aria-hidden="true">&rarr;</span>
+          </Link>
         </div>
       </div>
     </section>

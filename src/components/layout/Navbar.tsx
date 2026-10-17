@@ -2,16 +2,16 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Moon, Sun } from 'lucide-react';
 import { Logo } from '@/components/ui/Logo';
+import { useTheme } from '@/hooks/useTheme';
 
 const NAV_LINKS = [
   { to: '/features', label: 'Features' },
+  { to: '/crew', label: 'Crew' },
   { to: '/pricing', label: 'Pricing' },
   { to: '/reviews', label: 'Reviews' },
   { to: '/contact', label: 'Contact' },
   { to: '/login', label: 'Login' },
 ];
-
-import { useTheme } from '@/hooks/useTheme';
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -34,10 +34,6 @@ export function Navbar() {
   }, [mobileOpen]);
 
   const isLinkActive = (to: string) => {
-    if (to.startsWith('/#')) {
-      const hash = to.slice(1);
-      return location.hash === hash;
-    }
     return location.pathname === to;
   };
 
@@ -55,18 +51,18 @@ export function Navbar() {
             aria-label="Main Navigation"
             className="w-full h-[72px] sm:h-[80px] rounded-full px-4 sm:px-7 flex items-center justify-between bg-[var(--card)]/90 backdrop-blur-md border border-[var(--border)] text-[var(--text)] shadow-xl"
           >
-            {/* Brand Logo - 1.5x bigger */}
+            {/* Brand Logo */}
             <Link to="/" className="flex items-center shrink-0" aria-label="Boardly Home">
               <Logo className="h-[54px] sm:h-[66px]" />
             </Link>
 
-            {/* Desktop Unified Segmented Pill Links (Features, Pricing, Reviews, Contact, Login, Get Started) */}
+            {/* Desktop Unified Segmented Pill Links (Features, Crew, Pricing, Reviews, Contact, Login, Get Started) */}
             <div className="hidden lg:flex items-center gap-1 bg-[var(--surface-2)] rounded-full p-1.5 border border-[var(--border)]">
-              {NAV_LINKS.map(link => {
+              {NAV_LINKS.map((link) => {
                 const active = isLinkActive(link.to);
                 return (
                   <Link
-                    key={link.label}
+                    key={link.to}
                     to={link.to}
                     className={`text-xs xl:text-sm font-medium px-4 py-2 rounded-full transition-all duration-200 ${
                       active
@@ -108,7 +104,7 @@ export function Navbar() {
                 {theme === 'dark' ? <Sun size={22} /> : <Moon size={22} />}
               </button>
               <button
-                onClick={() => setMobileOpen(prev => !prev)}
+                onClick={() => setMobileOpen((prev) => !prev)}
                 aria-label={mobileOpen ? 'Close Menu' : 'Open Menu'}
                 className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] bg-[var(--surface-2)]"
               >
@@ -119,9 +115,7 @@ export function Navbar() {
         </div>
       </header>
 
-      {/* Full-Screen Mobile Menu below 1024px:
-          Overlay uses theme variables only: background var(--bg), text var(--fg), borders var(--border).
-          NO hard-coded #000 or #fff anywhere in the menu. */}
+      {/* Full-Screen Mobile Menu below 1024px */}
       {mobileOpen && (
         <div
           role="dialog"
@@ -175,16 +169,16 @@ export function Navbar() {
             </div>
           </div>
 
-          {/* Large Navigation Links in the dot font (34px) highlighting current page */}
-          <div className="flex flex-col gap-6 my-auto py-8">
-            {NAV_LINKS.map(link => {
+          {/* Large Navigation Links in the dot font (32px-36px) highlighting current page */}
+          <div className="flex flex-col gap-5 my-auto py-6">
+            {NAV_LINKS.map((link) => {
               const active = isLinkActive(link.to);
               return (
                 <Link
-                  key={link.label}
+                  key={link.to}
                   to={link.to}
                   onClick={() => setMobileOpen(false)}
-                  className="font-dot text-[34px] leading-tight transition-colors tracking-tight"
+                  className="font-dot text-[32px] sm:text-[36px] leading-tight transition-colors tracking-tight"
                   style={{
                     fontFamily: 'var(--font-dot)',
                     fontWeight: 800,
@@ -198,9 +192,7 @@ export function Navbar() {
             })}
           </div>
 
-          {/* Bottom Auth Buttons:
-              "Sign In" is an outline button with text var(--fg) and a 1px var(--border) border.
-              "Get Started" is the red button with white text. */}
+          {/* Bottom Auth Buttons */}
           <div
             className="flex flex-col gap-3 pt-6"
             style={{ borderTop: '1px solid var(--border)' }}

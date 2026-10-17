@@ -14,7 +14,6 @@ export function Footer() {
       const text = wordmarkTextRef.current;
       if (!container || !text) return;
 
-      // Available width inside footer with safety padding (16px each side)
       const availWidth = container.clientWidth - 32;
       if (availWidth <= 0) return;
 
@@ -22,8 +21,7 @@ export function Footer() {
       const currentFontSize = parseFloat(window.getComputedStyle(text).fontSize) || 64;
 
       if (currentWidth > 0 && currentFontSize > 0) {
-        // Target font size: fit wordmark to ~96% of available width without overflow
-        const targetSize = Math.floor((availWidth * 0.96 / currentWidth) * currentFontSize);
+        const targetSize = Math.floor(((availWidth * 0.96) / currentWidth) * currentFontSize);
         const clampedSize = Math.min(320, Math.max(50, targetSize));
         setFittedFontSize(`${clampedSize}px`);
       }
@@ -64,7 +62,6 @@ export function Footer() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 w-full [grid-template-columns:repeat(2,minmax(0,1fr))] lg:[grid-template-columns:repeat(4,minmax(0,1fr))]">
           {/* Brand info (Full width on mobile, 1 col on desktop) */}
           <div className="col-span-2 lg:col-span-1 min-w-0">
-            {/* Logo: 72px on mobile, 88px on desktop, width auto, white, 24px space below */}
             <Link to="/" className="inline-flex items-center mb-6 group" aria-label="Boardly Home">
               <Logo
                 size="footer"
@@ -81,7 +78,7 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Test prep */}
+          {/* Test prep -> all point to real /features page */}
           <div className="min-w-0">
             <h4
               className="text-sm font-bold text-white mb-4"
@@ -91,29 +88,29 @@ export function Footer() {
             </h4>
             <ul className="space-y-2.5 text-sm text-white/80">
               <li>
-                <Link to="/#features" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
                   FAST-NUCES CS &amp; Eng
                 </Link>
               </li>
               <li>
-                <Link to="/#features" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
                   NUST NET Applied / Eng
                 </Link>
               </li>
               <li>
-                <Link to="/#features" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
                   GIKI Engineering Mock
                 </Link>
               </li>
               <li>
-                <Link to="/#features" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
                   MDCAT &amp; ECAT Vaults
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Platform */}
+          {/* Platform -> /features, /crew, /pricing, /reviews, /contact */}
           <div className="min-w-0">
             <h4
               className="text-sm font-bold text-white mb-4"
@@ -123,8 +120,13 @@ export function Footer() {
             </h4>
             <ul className="space-y-2.5 text-sm text-white/80">
               <li>
-                <Link to="/#arena" className="hover:text-white hover:underline transition-colors block break-words">
-                  Live Arena
+                <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
+                  Platform features
+                </Link>
+              </li>
+              <li>
+                <Link to="/crew" className="hover:text-white hover:underline transition-colors block break-words">
+                  Study Crew &amp; Squads
                 </Link>
               </li>
               <li>
@@ -145,7 +147,7 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Legal & trust */}
+          {/* Legal & trust -> /privacy, /terms */}
           <div className="min-w-0">
             <h4
               className="text-sm font-bold text-white mb-4"
@@ -173,30 +175,45 @@ export function Footer() {
           </div>
         </div>
 
-        {/* 1px rgba(255,255,255,0.25) divider separating sections */}
+        {/* 1px divider */}
         <div
           className="w-full mt-12 mb-8"
           style={{ borderTop: '1px solid rgba(255, 255, 255, 0.25)' }}
         />
 
-        {/* Copyright and tagline in white at 80% */}
+        {/* Copyright and contact info */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm text-white/80 pb-6">
           <div className="break-words">
             &copy; {new Date().getFullYear()} Boardly Technologies. All rights reserved.
           </div>
-          <div className="flex items-center gap-3 break-words">
-            <span>Designed for focused study. Asia/Karachi (PKT)</span>
+          <div className="flex flex-wrap items-center gap-4 break-words">
+            <div className="flex items-center gap-2">
+              <span>Phone / WhatsApp:</span>
+              <a href="tel:+923058969050" className="hover:text-white hover:underline">
+                0305 8969050
+              </a>
+              <span>(</span>
+              <a
+                href="https://wa.me/923058969050"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-white hover:underline underline font-medium"
+              >
+                WhatsApp
+              </a>
+              <span>)</span>
+            </div>
+            <span>&bull;</span>
+            <a href="mailto:support@boardly.cfd" className="hover:text-white hover:underline">
+              support@boardly.cfd
+            </a>
+            <span>&bull;</span>
+            <span>Asia/Karachi (PKT)</span>
           </div>
         </div>
       </div>
 
-      {/* ─── HUGE DOT-MATRIX "Boardly" WORDMARK IN DOTO FONT ─────────────────── */}
-      {/*
-        No overflow:hidden on wrapper that clips descenders.
-        No negative bottom margin, no translateY.
-        line-height: 1.15, padding-bottom: 0.25em so full "y" descender shows.
-        At least 16px of space below the wordmark (pb-6 = 24px, sm:pb-8 = 32px).
-      */}
+      {/* Huge dot-matrix "Boardly" wordmark in Doto font */}
       <div
         ref={wordmarkContainerRef}
         className="w-full flex items-center justify-center text-center px-4 pt-2 pb-6 sm:pb-8 select-none pointer-events-none"
