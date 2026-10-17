@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { User, CreditCard, LogOut, Sun, Moon, Shield, Award } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
+import { Logo } from '@/components/ui/Logo';
 
 interface Props {
   sidebarCollapsed?: boolean;
@@ -58,24 +59,8 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
     >
       {/* Left side: Mobile brand logo */}
       <div className="flex items-center gap-3">
-        <Link to="/dashboard" className="flex items-center gap-2.5 md:hidden">
-          <div
-            className="w-7 h-7 rounded-lg bg-[#FFFFFF] flex items-center justify-center shrink-0"
-            aria-hidden="true"
-          >
-            <span
-              className="font-bold text-sm text-[#000000] leading-none"
-              style={{ fontFamily: 'var(--font-heading)' }}
-            >
-              B
-            </span>
-          </div>
-          <span
-            className="text-lg font-bold tracking-tight text-[var(--text)]"
-            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-          >
-            Boardly
-          </span>
+        <Link to="/dashboard" className="flex items-center md:hidden" aria-label="Boardly Dashboard">
+          <Logo height={44} />
         </Link>
       </div>
 

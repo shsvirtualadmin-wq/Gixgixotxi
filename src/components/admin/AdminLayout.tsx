@@ -19,6 +19,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
+import { Logo } from '@/components/ui/Logo';
 import { getApp } from '@/lib/firebase';
 
 interface AdminNavItem {
@@ -75,17 +76,8 @@ export function AdminLayout() {
       <aside className="hidden md:flex md:w-[240px] md:flex-col md:fixed md:inset-y-0 md:left-0 bg-[var(--bg)] border-r border-[var(--border)] z-30">
         {/* Sidebar Header */}
         <div className="h-16 px-5 border-b border-[var(--border)] flex items-center justify-between">
-          <Link to="/admin" className="flex items-center gap-2.5">
-            <img
-              src="/favicon.svg"
-              alt="Boardly"
-              width={26}
-              height={26}
-              className="w-[26px] h-[26px] object-contain shrink-0"
-            />
-            <span className="font-heading font-bold text-[17px] tracking-tight text-[var(--text)]">
-              Boardly
-            </span>
+          <Link to="/admin" className="flex items-center" aria-label="Boardly Admin">
+            <Logo size="admin" />
           </Link>
           <span className="text-[11px] font-heading font-semibold text-[var(--muted)] px-2 py-0.5 rounded-full border border-[var(--border)]">
             Admin
@@ -166,21 +158,14 @@ export function AdminLayout() {
 
       {/* ─── MOBILE TOP BAR ─────────────────────────────────────────────────── */}
       <header className="md:hidden sticky top-0 z-30 h-14 bg-[var(--bg)] border-b border-[var(--border)] px-4 flex items-center justify-between">
-        <Link to="/admin" className="flex items-center gap-2">
-          <img
-            src="/favicon.svg"
-            alt="Boardly"
-            width={24}
-            height={24}
-            className="w-6 h-6 object-contain shrink-0"
-          />
-          <span className="font-heading font-bold text-[16px] text-[var(--text)] tracking-tight">
-            Boardly
-          </span>
-          <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] ml-1">
+        <div className="flex items-center gap-2">
+          <Link to="/admin" className="flex items-center" aria-label="Boardly Admin">
+            <Logo height={40} />
+          </Link>
+          <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
             Admin
           </span>
-        </Link>
+        </div>
 
         {/* Avatar Menu Trigger on Mobile */}
         <button

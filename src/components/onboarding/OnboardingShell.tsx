@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Logo } from '@/components/ui/Logo';
 
 const STEPS = ['University', 'Test Date', 'Subjects', 'Summary'];
 
@@ -16,14 +17,7 @@ export function OnboardingShell({ step, children }: OnboardingShellProps) {
       <div className="w-full max-w-lg mx-auto my-auto flex flex-col items-center">
         {/* Logo */}
         <div className="mb-6 flex items-center justify-center">
-          <img
-            src="/assets/boardly-logo.svg"
-            alt="Boardly"
-            className="h-8 object-contain"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = '/boardly-logo.png';
-            }}
-          />
+          <Logo size="onboarding" />
         </div>
 
         {/* Step indicators */}

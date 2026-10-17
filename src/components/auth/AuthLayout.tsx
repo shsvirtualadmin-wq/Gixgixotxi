@@ -1,6 +1,7 @@
 import { type ReactNode, useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Sun, Moon, ArrowLeft } from 'lucide-react';
+import { Logo } from '@/components/ui/Logo';
 
 interface AuthLayoutProps {
   children: ReactNode;
@@ -28,24 +29,8 @@ export function AuthLayout({ children }: AuthLayoutProps) {
     >
       {/* Slim Top Bar: Boardly Logo on Left, Back to home and Theme Toggle on Right */}
       <header className="w-full h-16 border-b border-[var(--border)] px-4 sm:px-8 flex items-center justify-between shrink-0">
-        <Link to="/" className="flex items-center gap-3">
-          <div
-            className="w-8 h-8 rounded-lg bg-[#FFFFFF] flex items-center justify-center shrink-0"
-            aria-hidden="true"
-          >
-            <span
-              className="font-bold text-base text-[#000000] leading-none"
-              style={{ fontFamily: 'var(--font-heading)' }}
-            >
-              B
-            </span>
-          </div>
-          <span
-            className="text-xl font-bold tracking-tight text-[var(--text)]"
-            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-          >
-            Boardly
-          </span>
+        <Link to="/" className="flex items-center" aria-label="Boardly Home">
+          <Logo height={46} />
         </Link>
 
         <div className="flex items-center gap-4">

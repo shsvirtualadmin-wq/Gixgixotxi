@@ -2,9 +2,7 @@ const CACHE_NAME = 'shs-boardly-mcq-v5';
 
 const ASSETS_TO_CACHE = [
   '/logo.png',
-  '/assets/boardly-logo.png',
   '/favicon.svg',
-  '/boardly-logo.svg',
   '/manifest.json'
 ];
 

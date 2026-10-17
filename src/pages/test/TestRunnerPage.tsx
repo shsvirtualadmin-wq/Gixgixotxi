@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import {
   getAttempt,
@@ -20,6 +20,7 @@ export function TestRunnerPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [attempt, setAttempt] = useState<AttemptDoc | null>(null);
   const [questions, setQuestions] = useState<AttemptQuestion[]>([]);
@@ -48,7 +49,17 @@ export function TestRunnerPage() {
         setLoading(true);
         setError(null);
 
-        const currentAttempt = await getAttempt(attemptId!);
+        let currentAttempt: AttemptDoc;
+        try {
+          currentAttempt = await getAttempt(attemptId!);
+        } catch (getErr) {
+          const stateAttempt = (location.state as { attempt?: Partial<AttemptDoc> })?.attempt;
+          if (stateAttempt) {
+            currentAttempt = { id: attemptId!, ...stateAttempt } as AttemptDoc;
+          } else {
+            throw getErr;
+          }
+        }
         if (!isMounted) return;
 
         // If already completed, jump straight to results
@@ -121,7 +132,7 @@ export function TestRunnerPage() {
       isMounted = false;
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
-  }, [attemptId, user, navigate]);
+  }, [attemptId, user, navigate, location.state]);
 
   // 2. Submission Handler
   const handleFinalSubmit = useCallback(async () => {

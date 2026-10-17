@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useProfile } from '@/hooks/useProfile';
-import { collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, query, where, limit, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -38,7 +38,9 @@ export function PracticePage() {
   );
   const [selectedUniversity, setSelectedUniversity] = useState('FAST-NUCES');
   const [launching, setLaunching] = useState(false);
-  const [launchError, setLaunchError] = useState<string | null>(null);
+  const [launchingType, setLaunchingType] = useState<'sprint' | 'full' | 'drill' | null>(null);
+  const [launchStatus, setLaunchStatus] = useState<string | null>(null);
+  const [launchError, setLaunchError] = useState<{ code?: string; message: string; link?: string } | null>(null);
   const [todayAttempts, setTodayAttempts] = useState(0);
 
   const isPro = profile?.plan === 'pro' || profile?.isPremium;
@@ -51,7 +53,6 @@ export function PracticePage() {
   useEffect(() => {
     function updateCountdown() {
       const now = new Date();
-      // UTC + 5 hours for PKT
       const pktOffset = 5 * 60;
       const localOffset = now.getTimezoneOffset();
       const pktNow = new Date(now.getTime() + (pktOffset + localOffset) * 60 * 1000);
@@ -96,11 +97,15 @@ export function PracticePage() {
 
   const launchTest = async (type: 'sprint' | 'full' | 'drill', customChapter?: string) => {
     if (!user) {
-      setLaunchError('Please sign in to start a practice test session.');
+      setLaunchError({
+        code: 'AUTH_REQUIRED',
+        message: 'Please sign in to start a practice test session.',
+      });
       return;
     }
     if (launching) return;
     setLaunching(true);
+    setLaunchingType(type);
     setLaunchError(null);
 
     let count = 10;
@@ -117,33 +122,139 @@ export function PracticePage() {
       title = `${customChapter || selectedChapter} Drill`;
     }
 
+    const chapterObj = CHAPTERS_LIST.find(c => c.name === (customChapter || selectedChapter));
+    const subjectToUse = chapterObj ? chapterObj.subject : (selectedSubject !== 'All' ? selectedSubject : 'General');
+    const targetUni = selectedUniversity === 'Any' ? 'FAST-NUCES' : selectedUniversity;
+    const targetChapter = customChapter || selectedChapter;
+
+    // ─── STEP (a): Button Clicked ───────────────────────────────────────────
+    const stepAStart = Date.now();
+    console.log(`[PracticePage] (a) Button clicked for ${type} test:`, {
+      type,
+      university: targetUni,
+      subject: subjectToUse,
+      chapter: targetChapter,
+      count,
+      timestamp: new Date().toISOString(),
+    });
+    setLaunchStatus(`(a) Starting ${type} test setup...`);
+
+    // ─── STEP (b): Questions Query & Verification ───────────────────────────
+    const stepBStart = Date.now();
+    console.log(`[PracticePage] (b) Starting Firestore questions query for subject: "${subjectToUse}", needed: ${count}...`);
+    setLaunchStatus(`(b) Querying questions from Firestore (subject: ${subjectToUse})...`);
+
+    let questionsCount = 0;
     try {
-      const chapterObj = CHAPTERS_LIST.find(c => c.name === (customChapter || selectedChapter));
-      const subjectToUse = chapterObj ? chapterObj.subject : (selectedSubject !== 'All' ? selectedSubject : 'General');
+      const questionsColl = collection(db, 'questions');
 
-      const attemptPayload = {
-        userId: user.uid,
-        uid: user.uid,
-        status: 'preparing',
-        mode: type,
-        title,
-        university: selectedUniversity === 'Any' ? 'FAST-NUCES' : selectedUniversity,
-        subject: subjectToUse,
-        chapter: customChapter || selectedChapter,
-        totalQuestions: count,
-        durationSeconds: duration,
-        timed: true,
-        createdAt: serverTimestamp(),
-      };
+      // 15-second timeout wrapper
+      const queryPromise = (async () => {
+        if (subjectToUse && subjectToUse !== 'All' && subjectToUse !== 'General') {
+          try {
+            const subjectQuery = query(
+              questionsColl,
+              where('subject', '==', subjectToUse),
+              limit(count)
+            );
+            const snap = await getDocs(subjectQuery);
+            if (snap.size > 0) return snap.size;
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            // Re-throw if it is an index error so user gets the link
+            if (msg.includes('index') || (err as { code?: string })?.code === 'failed-precondition') {
+              throw err;
+            }
+            console.warn('[PracticePage] Filtered subject query exception, trying general pool:', err);
+          }
+        }
+        const generalSnap = await getDocs(query(questionsColl, limit(count)));
+        return generalSnap.size;
+      })();
 
-      const docRef = await addDoc(collection(db, 'attempts'), attemptPayload);
-      navigate(`/test/${docRef.id}`);
-    } catch (err: unknown) {
-      console.error('Failed to launch test:', err);
-      const msg = err instanceof Error ? err.message : String(err);
-      setLaunchError(`Failed to start test session: ${msg}`);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          const timeoutErr = new Error('Questions query timed out after 15 seconds. Please check your Firestore connection.');
+          (timeoutErr as { code?: string }).code = 'QUERY_TIMEOUT';
+          reject(timeoutErr);
+        }, 15000);
+      });
+
+      questionsCount = await Promise.race([queryPromise, timeoutPromise]);
+      const stepBElapsed = Date.now() - stepBStart;
+      console.log(`[PracticePage] (b) Questions query completed in ${stepBElapsed}ms. Result count: ${questionsCount}`);
+      setLaunchStatus(`(b) Query returned ${questionsCount} questions in ${stepBElapsed}ms.`);
+    } catch (qErr: unknown) {
+      const stepBElapsed = Date.now() - stepBStart;
+      console.error(`[PracticePage] (b) Questions query failed after ${stepBElapsed}ms:`, qErr);
+      const errMsg = qErr instanceof Error ? qErr.message : String(qErr);
+      const errCode = (qErr as { code?: string })?.code || 'QUESTIONS_QUERY_ERROR';
+      const linkMatch = errMsg.match(/https:\/\/console\.firebase\.google\.com[^\s)]+/);
+
+      setLaunchError({
+        code: errCode,
+        message: errMsg,
+        link: linkMatch ? linkMatch[0] : undefined,
+      });
       setLaunching(false);
+      setLaunchingType(null);
+      setLaunchStatus(null);
+      return;
     }
+
+    // Step (b) Validation: If 0 docs found
+    if (questionsCount === 0) {
+      console.warn('[PracticePage] (b) No questions found in Firestore pool.');
+      setLaunchError({
+        code: 'NO_QUESTIONS',
+        message: 'No questions available yet. Please check back soon.',
+      });
+      setLaunching(false);
+      setLaunchingType(null);
+      setLaunchStatus(null);
+      return;
+    }
+
+    // ─── STEP (c): Attempt addDoc with Non-Blocking Client ID ───────────────
+    const stepCStart = Date.now();
+    console.log(`[PracticePage] (c) Generating client-side attempt ID to prevent server freeze...`);
+    setLaunchStatus('(c) Creating attempt document...');
+
+    const newAttemptRef = doc(collection(db, 'attempts'));
+    const attemptId = newAttemptRef.id;
+
+    const attemptPayload = {
+      id: attemptId,
+      userId: user.uid,
+      uid: user.uid,
+      status: 'preparing' as const,
+      mode: type,
+      title,
+      university: targetUni,
+      subject: subjectToUse,
+      chapter: targetChapter,
+      totalQuestions: count,
+      durationSeconds: duration,
+      timed: true,
+      createdAt: serverTimestamp(),
+    };
+
+    // Write in background with timing so UI does not freeze on slow connections
+    setDoc(newAttemptRef, attemptPayload)
+      .then(() => {
+        const stepCElapsed = Date.now() - stepCStart;
+        console.log(`[PracticePage] (c) Attempt setDoc finished in ${stepCElapsed}ms for doc ID: ${attemptId}`);
+      })
+      .catch((setErr: unknown) => {
+        const stepCElapsed = Date.now() - stepCStart;
+        console.error(`[PracticePage] (c) Background attempt setDoc failed after ${stepCElapsed}ms:`, setErr);
+      });
+
+    // ─── STEP (d): Navigation to Test Page ──────────────────────────────────
+    const totalElapsed = Date.now() - stepAStart;
+    console.log(`[PracticePage] (d) Navigating to /test/${attemptId} (total flow: ${totalElapsed}ms)`);
+    setLaunchStatus(`(d) Launching test cockpit...`);
+    navigate(`/test/${attemptId}`, { state: { attempt: attemptPayload } });
   };
 
   return (
@@ -188,16 +299,45 @@ export function PracticePage() {
           </div>
         </div>
       </Card>
+      {/* ── Real-time on-screen step status indicator ── */}
+      {launchStatus && (
+        <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-700 text-neutral-200 text-xs flex items-center gap-2.5">
+          <span className="w-3.5 h-3.5 border-2 border-[var(--red)] border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="font-mono text-xs">{launchStatus}</span>
+        </div>
+      )}
+
+      {/* ── Real error message banner with code and index link ── */}
       {launchError && (
-        <div className="p-4 rounded-2xl bg-red-950/40 border border-[var(--red)] text-red-200 text-xs sm:text-sm flex items-center justify-between gap-3">
-          <span>{launchError}</span>
-          <button
-            type="button"
-            onClick={() => setLaunchError(null)}
-            className="text-xs font-semibold underline hover:text-white shrink-0 cursor-pointer"
-          >
-            Dismiss
-          </button>
+        <div className="p-4 rounded-2xl bg-red-950/70 border border-[var(--red)] text-red-200 text-xs sm:text-sm flex flex-col gap-2">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="font-bold flex items-center gap-2 text-red-100">
+                <span>Error {launchError.code ? `[${launchError.code}]` : ''}:</span>
+              </div>
+              <p className="mt-1 text-red-200">{launchError.message}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLaunchError(null)}
+              className="text-xs font-semibold underline hover:text-white shrink-0 cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+          {launchError.link && (
+            <div className="pt-2 border-t border-red-800/60 flex items-center gap-2">
+              <span className="text-xs text-red-300">Missing index:</span>
+              <a
+                href={launchError.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-bold text-white underline hover:text-red-200"
+              >
+                Create Firestore Index in Firebase Console &rarr;
+              </a>
+            </div>
+          )}
         </div>
       )}
 
@@ -232,11 +372,20 @@ export function PracticePage() {
           <button
             onClick={() => launchTest('sprint')}
             disabled={launching}
-            className="btn-red w-full mt-4 cursor-pointer disabled:opacity-50"
+            className="btn-red w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ height: '48px' }}
           >
-            <span>Start Sprint</span>
-            <ArrowRight size={16} />
+            {launchingType === 'sprint' ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Starting Sprint...</span>
+              </>
+            ) : (
+              <>
+                <span>Start Sprint</span>
+                <ArrowRight size={16} />
+              </>
+            )}
           </button>
         </Card>
 
@@ -273,11 +422,20 @@ export function PracticePage() {
           <button
             onClick={() => launchTest('full')}
             disabled={launching}
-            className="btn-red w-full mt-4 cursor-pointer disabled:opacity-50"
+            className="btn-red w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ height: '48px' }}
           >
-            <span>Start Past Paper</span>
-            <ArrowRight size={16} />
+            {launchingType === 'full' ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Starting Past Paper...</span>
+              </>
+            ) : (
+              <>
+                <span>Start Past Paper</span>
+                <ArrowRight size={16} />
+              </>
+            )}
           </button>
         </Card>
 
@@ -310,11 +468,20 @@ export function PracticePage() {
           <button
             onClick={() => launchTest('drill', selectedChapter)}
             disabled={launching}
-            className="btn-red w-full mt-4 cursor-pointer disabled:opacity-50"
+            className="btn-red w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ height: '48px' }}
           >
-            <span>Start Chapter Drill</span>
-            <ArrowRight size={16} />
+            {launchingType === 'drill' ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Starting Drill...</span>
+              </>
+            ) : (
+              <>
+                <span>Start Chapter Drill</span>
+                <ArrowRight size={16} />
+              </>
+            )}
           </button>
         </Card>
       </div>
@@ -405,11 +572,20 @@ export function PracticePage() {
           <button
             onClick={() => launchTest('drill', selectedChapter)}
             disabled={launching}
-            className="btn-red w-full sm:w-auto px-6 cursor-pointer disabled:opacity-50"
+            className="btn-red w-full sm:w-auto px-6 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ height: '48px' }}
           >
-            <span>Start &ldquo;{selectedChapter}&rdquo; Drill</span>
-            <ArrowRight size={16} />
+            {launchingType === 'drill' ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>Starting Drill...</span>
+              </>
+            ) : (
+              <>
+                <span>Start &ldquo;{selectedChapter}&rdquo; Drill</span>
+                <ArrowRight size={16} />
+              </>
+            )}
           </button>
         </div>
       </Card>

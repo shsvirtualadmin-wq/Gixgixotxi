@@ -13,6 +13,7 @@ import {
   Award,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { Logo } from '@/components/ui/Logo';
 
 export function DashboardSidebar() {
   const { user, profile, isAdmin, signOutUser } = useAuth();
@@ -52,24 +53,10 @@ export function DashboardSidebar() {
       }}
     >
       {/* Brand Header */}
-      <div className="h-16 flex items-center px-6 border-b border-[var(--border)] gap-3 shrink-0">
-        <div
-          className="w-8 h-8 rounded-lg bg-[#FFFFFF] flex items-center justify-center shrink-0"
-          aria-hidden="true"
-        >
-          <span
-            className="font-bold text-base text-[#000000] leading-none"
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
-            B
-          </span>
-        </div>
-        <span
-          className="text-xl font-bold tracking-tight text-[var(--text)]"
-          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-        >
-          Boardly
-        </span>
+      <div className="h-16 flex items-center px-6 border-b border-[var(--border)] shrink-0">
+        <Link to="/dashboard" className="flex items-center" aria-label="Boardly Dashboard">
+          <Logo size="sidebar" />
+        </Link>
       </div>
 
       {/* Student Navigation Items */}

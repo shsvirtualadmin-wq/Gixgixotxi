@@ -1003,9 +1003,8 @@ function generateNavigationHeader(): string {
   return `
     <header class="bg-white/95 backdrop-blur border-b border-slate-200 sticky top-0 z-50">
       <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex items-center justify-between">
-        <a href="/" class="flex items-center gap-2 text-xl font-bold text-slate-950 font-display">
-          <img src="/assets/boardly-logo-transparent.png" alt="Boardly" class="h-8 w-auto object-contain" />
-          <span>Boardly</span>
+        <a href="/" class="flex items-center">
+          <img src="/logo.png" alt="Boardly" class="h-8 w-auto object-contain" />
         </a>
         <nav class="hidden lg:flex items-center gap-6 text-sm font-semibold text-slate-600" aria-label="Main Navigation">
           <a href="/" class="hover:text-blue-600">Home</a>

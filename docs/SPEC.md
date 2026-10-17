@@ -3,7 +3,7 @@
 **Document Version:** 1.0.0  
 **Target Project:** `gen-lang-client-0365509316`  
 **Named Firestore Database:** `ai-studio-25287ca6-33a1-49f8-8867-70061120a712`  
-**Authorized Auth Domain:** `gen-lang-client-0366509316.firebaseapp.com`  
+**Authorized Auth Domain:** `auth.boardly.cfd`  
 **Sole Super Admin:** `shsvirtualadmin@gmail.com`  
 
 ---

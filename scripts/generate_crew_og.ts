@@ -8,7 +8,7 @@ async function generateCrewOg() {
 
   // Read logo if available as base64
   let logoBase64 = '';
-  const logoPath = path.resolve(process.cwd(), 'public/assets/boardly-logo-transparent.png');
+  const logoPath = path.resolve(process.cwd(), 'public/logo.png');
   if (fs.existsSync(logoPath)) {
     logoBase64 = `data:image/png;base64,${fs.readFileSync(logoPath).toString('base64')}`;
   }

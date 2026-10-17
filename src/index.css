@@ -93,6 +93,16 @@
   --warning: #000000;
 }
 
+/* ===== BRAND LOGO THEME ADAPTATION ===== */
+.boardly-brand-logo {
+  filter: none;
+  transition: filter var(--dur-hover) var(--ease-out);
+}
+
+[data-theme="light"] .boardly-brand-logo {
+  filter: invert(1);
+}
+
 /* ===== BASE LAYER (Ensures Tailwind utilities are NEVER overridden) ===== */
 @layer base {
   *, *::before, *::after {

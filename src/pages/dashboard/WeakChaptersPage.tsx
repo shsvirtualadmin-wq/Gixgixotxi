@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, setDoc, query, where, limit, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -24,8 +24,9 @@ export function WeakChaptersPage() {
 
   const [stats, setStats] = useState<ChapterStat[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ code?: string; message: string } | null>(null);
+  const [error, setError] = useState<{ code?: string; message: string; link?: string } | null>(null);
   const [launchingChapter, setLaunchingChapter] = useState<string | null>(null);
+  const [launchStatus, setLaunchStatus] = useState<string | null>(null);
 
   const loadStats = useCallback(async () => {
     if (!user) return;
@@ -65,34 +66,133 @@ export function WeakChaptersPage() {
 
   const handleDrillChapter = async (item: ChapterStat) => {
     if (!user) {
-      setError({ message: 'Please sign in to start a chapter drill.' });
+      setError({ code: 'AUTH_REQUIRED', message: 'Please sign in to start a chapter drill.' });
       return;
     }
     setLaunchingChapter(item.chapter);
     setError(null);
+
+    // ─── STEP (a): Button Clicked ───────────────────────────────────────────
+    const stepAStart = Date.now();
+    console.log(`[WeakChaptersPage] (a) Button clicked to drill chapter: "${item.chapter}" (${item.subject})`);
+    setLaunchStatus(`(a) Starting drill setup for "${item.chapter}"...`);
+
+    // ─── STEP (b): Questions Query & Verification ───────────────────────────
+    const stepBStart = Date.now();
+    console.log(`[WeakChaptersPage] (b) Starting Firestore questions query for chapter: "${item.chapter}"...`);
+    setLaunchStatus(`(b) Querying questions from Firestore for "${item.chapter}"...`);
+
+    let questionsCount = 0;
     try {
-      const durationSeconds = 15 * 60; // 15 mins
-      const endsAt = new Date(Date.now() + durationSeconds * 1000);
-      const ref = await addDoc(collection(db, 'attempts'), {
-        userId: user.uid,
-        uid: user.uid,
-        subject: item.subject,
-        chapter: item.chapter,
-        difficulty: 'Medium',
-        totalQuestions: 15,
-        timed: true,
-        durationSeconds,
-        endsAt,
-        status: 'preparing',
-        createdAt: serverTimestamp(),
+      const questionsColl = collection(db, 'questions');
+      const queryPromise = (async () => {
+        try {
+          const chapterQuery = query(
+            questionsColl,
+            where('chapter', '==', item.chapter),
+            limit(15)
+          );
+          const snap = await getDocs(chapterQuery);
+          if (snap.size > 0) return snap.size;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (msg.includes('index') || (err as { code?: string })?.code === 'failed-precondition') {
+            throw err;
+          }
+        }
+        // Fallback to subject
+        if (item.subject && item.subject !== 'General') {
+          const subjectSnap = await getDocs(
+            query(questionsColl, where('subject', '==', item.subject), limit(15))
+          );
+          if (subjectSnap.size > 0) return subjectSnap.size;
+        }
+        // Fallback general
+        const generalSnap = await getDocs(query(questionsColl, limit(15)));
+        return generalSnap.size;
+      })();
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          const timeoutErr = new Error('Questions query timed out after 15 seconds.');
+          (timeoutErr as { code?: string }).code = 'QUERY_TIMEOUT';
+          reject(timeoutErr);
+        }, 15000);
       });
-      navigate(`/test/${ref.id}`);
-    } catch (err: unknown) {
-      console.error('[WeakChaptersPage] Launch drill error:', err);
-      const msg = err instanceof Error ? err.message : 'Failed to launch drill';
-      setError({ message: `Failed to launch test session: ${msg}` });
+
+      questionsCount = await Promise.race([queryPromise, timeoutPromise]);
+      const stepBElapsed = Date.now() - stepBStart;
+      console.log(`[WeakChaptersPage] (b) Questions query completed in ${stepBElapsed}ms. Result count: ${questionsCount}`);
+      setLaunchStatus(`(b) Query returned ${questionsCount} questions in ${stepBElapsed}ms.`);
+    } catch (qErr: unknown) {
+      const stepBElapsed = Date.now() - stepBStart;
+      console.error(`[WeakChaptersPage] (b) Questions query failed after ${stepBElapsed}ms:`, qErr);
+      const errMsg = qErr instanceof Error ? qErr.message : String(qErr);
+      const errCode = (qErr as { code?: string })?.code || 'QUESTIONS_QUERY_ERROR';
+      const linkMatch = errMsg.match(/https:\/\/console\.firebase\.google\.com[^\s)]+/);
+
+      setError({
+        code: errCode,
+        message: errMsg,
+        link: linkMatch ? linkMatch[0] : undefined,
+      });
       setLaunchingChapter(null);
+      setLaunchStatus(null);
+      return;
     }
+
+    if (questionsCount === 0) {
+      console.warn('[WeakChaptersPage] (b) No questions found in Firestore pool.');
+      setError({
+        code: 'NO_QUESTIONS',
+        message: 'No questions available yet. Please check back soon.',
+      });
+      setLaunchingChapter(null);
+      setLaunchStatus(null);
+      return;
+    }
+
+    // ─── STEP (c): Attempt creation with Non-Blocking Client ID ─────────────
+    const stepCStart = Date.now();
+    console.log(`[WeakChaptersPage] (c) Generating client-side attempt ID to prevent server freeze...`);
+    setLaunchStatus('(c) Creating attempt document...');
+
+    const durationSeconds = 15 * 60; // 15 mins
+    const endsAt = new Date(Date.now() + durationSeconds * 1000);
+
+    const newAttemptRef = doc(collection(db, 'attempts'));
+    const attemptId = newAttemptRef.id;
+
+    const attemptPayload = {
+      id: attemptId,
+      userId: user.uid,
+      uid: user.uid,
+      subject: item.subject,
+      chapter: item.chapter,
+      difficulty: 'Medium',
+      totalQuestions: 15,
+      timed: true,
+      durationSeconds,
+      endsAt,
+      status: 'preparing' as const,
+      createdAt: serverTimestamp(),
+    };
+
+    setDoc(newAttemptRef, attemptPayload)
+      .then(() => {
+        const stepCElapsed = Date.now() - stepCStart;
+        console.log(`[WeakChaptersPage] (c) Attempt setDoc finished in ${stepCElapsed}ms for ID: ${attemptId}`);
+      })
+      .catch((setErr: unknown) => {
+        const stepCElapsed = Date.now() - stepCStart;
+        console.error(`[WeakChaptersPage] (c) Background attempt setDoc failed after ${stepCElapsed}ms:`, setErr);
+      });
+
+    // ─── STEP (d): Navigation to Test Page ──────────────────────────────────
+    const totalElapsed = Date.now() - stepAStart;
+    console.log(`[WeakChaptersPage] (d) Navigating to /test/${attemptId} (total flow: ${totalElapsed}ms)`);
+    setLaunchStatus(`(d) Launching test cockpit...`);
+    navigate(`/test/${attemptId}`, { state: { attempt: attemptPayload } });
   };
 
   const weakChapters = stats.filter((s) => (s.correct / s.total) < 0.5);
@@ -109,6 +209,14 @@ export function WeakChaptersPage() {
           Real-time chapter breakdown derived from your completed tests. Focus drills on high-risk topics.
         </p>
       </div>
+
+      {/* Real-time on-screen step status indicator */}
+      {launchStatus && (
+        <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-700 text-neutral-200 text-xs flex items-center gap-2.5">
+          <span className="w-3.5 h-3.5 border-2 border-[var(--red)] border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="font-mono text-xs">{launchStatus}</span>
+        </div>
+      )}
 
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

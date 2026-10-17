@@ -291,7 +291,7 @@ export default defineConfig({
       process.env.VITE_FIREBASE_API_KEY ?? 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs'
     ),
     'import.meta.env.VITE_FIREBASE_AUTH_DOMAIN': JSON.stringify(
-      process.env.VITE_FIREBASE_AUTH_DOMAIN ?? 'gen-lang-client-0366509316.firebaseapp.com'
+      process.env.VITE_FIREBASE_AUTH_DOMAIN ?? 'auth.boardly.cfd'
     ),
     'import.meta.env.VITE_FIREBASE_PROJECT_ID': JSON.stringify(
       process.env.VITE_FIREBASE_PROJECT_ID ?? 'gen-lang-client-0365509316'
@@ -312,6 +312,7 @@ export default defineConfig({
       process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ?? 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712'
     ),
     '__BUILD_TIME__': JSON.stringify(new Date().toUTCString()),
+    '__BUILD_ID__': JSON.stringify('boardly-' + Date.now().toString(36)),
   },
   build: {
     target: 'esnext',

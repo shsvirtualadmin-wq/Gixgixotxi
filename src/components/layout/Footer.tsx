@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { Logo } from '@/components/ui/Logo';
 
 export function Footer() {
   return (
@@ -16,24 +17,8 @@ export function Footer() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Brand info (Full width on mobile, 1 col on desktop) */}
           <div className="col-span-2 lg:col-span-1">
-            <Link to="/" className="flex items-center gap-3 mb-4 group">
-              <div
-                className="w-8 h-8 rounded-lg bg-[#FFFFFF] flex items-center justify-center shrink-0"
-                aria-hidden="true"
-              >
-                <span
-                  className="font-bold text-base text-[#000000] leading-none"
-                  style={{ fontFamily: 'var(--font-heading)' }}
-                >
-                  B
-                </span>
-              </div>
-              <span
-                className="text-xl font-bold text-[var(--text)]"
-                style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-              >
-                Boardly
-              </span>
+            <Link to="/" className="inline-flex items-center mb-4 group" aria-label="Boardly Home">
+              <Logo size="footer" />
             </Link>
             <p className="text-sm text-[var(--muted)] leading-relaxed mb-4 max-w-sm">
               Pakistan&apos;s premier MCQ test-prep platform for FAST-NUCES, NUST NET, GIKI, LUMS, NED, MDCAT, ECAT, and intermediate boards.

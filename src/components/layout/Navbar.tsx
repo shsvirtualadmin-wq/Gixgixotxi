@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, Moon, Sun } from 'lucide-react';
+import { Logo } from '@/components/ui/Logo';
 
 const NAV_LINKS = [
   { to: '/features', label: 'Features' },
@@ -64,30 +65,11 @@ export function Navbar() {
         <div className="boardly-container">
           <nav
             aria-label="Main Navigation"
-            className="w-full h-14 sm:h-16 rounded-full px-3.5 sm:px-6 flex items-center justify-between bg-neutral-900/90 backdrop-blur-md border border-white/10 shadow-2xl shadow-black/50"
+            className="w-full h-16 sm:h-20 rounded-full px-4 sm:px-7 flex items-center justify-between bg-neutral-900/90 backdrop-blur-md border border-white/10 shadow-2xl shadow-black/50"
           >
-            {/* Brand Logo & Name */}
-            <Link to="/" className="flex items-center gap-2.5 sm:gap-3 shrink-0">
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-white text-black"
-                aria-hidden="true"
-              >
-                <span
-                  className="font-bold text-base leading-none"
-                  style={{ fontFamily: 'var(--font-heading)' }}
-                >
-                  B
-                </span>
-              </div>
-              <span
-                className="text-lg sm:text-xl font-bold tracking-tight text-white"
-                style={{
-                  fontFamily: 'var(--font-heading)',
-                  letterSpacing: '-0.02em',
-                }}
-              >
-                Boardly
-              </span>
+            {/* Brand Logo */}
+            <Link to="/" className="flex items-center shrink-0" aria-label="Boardly Home">
+              <Logo size="navbar" />
             </Link>
 
             {/* Desktop Unified Segmented Pill Links (Features, Pricing, Reviews, Contact, Login, Get Started) */}
@@ -171,33 +153,10 @@ export function Navbar() {
             <Link
               to="/"
               onClick={() => setMobileOpen(false)}
-              className="flex items-center gap-3"
+              className="flex items-center shrink-0"
+              aria-label="Boardly Home"
             >
-              <div
-                className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
-                style={{
-                  backgroundColor: 'var(--fg)',
-                  color: 'var(--bg)',
-                }}
-                aria-hidden="true"
-              >
-                <span
-                  className="font-bold text-base leading-none"
-                  style={{ fontFamily: 'var(--font-heading)' }}
-                >
-                  B
-                </span>
-              </div>
-              <span
-                className="text-xl font-bold tracking-tight"
-                style={{
-                  fontFamily: 'var(--font-heading)',
-                  letterSpacing: '-0.02em',
-                  color: 'var(--fg)',
-                }}
-              >
-                Boardly
-              </span>
+              <Logo size="navbar" />
             </Link>
 
             <div className="flex items-center gap-2">
