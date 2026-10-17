@@ -22,7 +22,7 @@ export function FeaturesGrid() {
           {/* Card 1: KaTeX Derivations (Spans 2 cols) */}
           <Card className="md:col-span-2 justify-between">
             <div className="space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] border border-[var(--border)] text-[#FFFFFF] flex items-center justify-center shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-[#0A0A0A] border border-[rgba(255,255,255,0.12)] text-[#FFFFFF] flex items-center justify-center shrink-0">
                 <Calculator size={22} />
               </div>
               <div>
@@ -37,13 +37,20 @@ export function FeaturesGrid() {
                 </p>
               </div>
 
-              {/* Live Math Demo */}
-              <div className="p-4 rounded-xl bg-[#0A0A0A] border border-[var(--border)] text-sm space-y-2">
-                <div className="text-xs text-[var(--muted)]">Sample solution step:</div>
-                <div className="text-[var(--text)]">
-                  <MathText block>
-                    {'$$\\int x e^{2x} \\, dx = \\frac{1}{2} x e^{2x} - \\frac{1}{4} e^{2x} + C$$'}
-                  </MathText>
+              {/* Live Math Demo: Intentional dark panel with explicit white text and clear KaTeX */}
+              <div
+                className="p-4 rounded-xl border text-sm space-y-2 select-text"
+                style={{
+                  backgroundColor: '#0A0A0A',
+                  color: '#FFFFFF',
+                  borderColor: 'rgba(255, 255, 255, 0.12)',
+                }}
+              >
+                <div style={{ color: 'rgba(255, 255, 255, 0.7)' }} className="text-xs font-medium">
+                  Sample solution step:
+                </div>
+                <div style={{ color: '#FFFFFF' }} className="py-1">
+                  <MathText block text={'$$\\int x e^{2x} \\, dx = \\frac{1}{2} x e^{2x} - \\frac{1}{4} e^{2x} + C$$'} />
                 </div>
               </div>
             </div>
@@ -56,7 +63,7 @@ export function FeaturesGrid() {
           {/* Card 2: Negative Marking */}
           <Card className="justify-between">
             <div className="space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] border border-[var(--border)] text-[#FFFFFF] flex items-center justify-center shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-[#0A0A0A] border border-[rgba(255,255,255,0.12)] text-[#FFFFFF] flex items-center justify-center shrink-0">
                 <Target size={22} />
               </div>
               <h3
@@ -69,7 +76,15 @@ export function FeaturesGrid() {
                 Test yourself under real conditions — FAST-NUCES 0.25 negative marking, NET time-per-question constraints, and GIKI penalty rules.
               </p>
             </div>
-            <div className="mt-5 p-3 rounded-xl bg-[#1A1A1A] border border-[var(--border)] text-xs text-[var(--text)]">
+            {/* Callout: solid red #D71921 with white text */}
+            <div
+              className="mt-5 p-3.5 rounded-xl text-xs font-semibold"
+              style={{
+                backgroundColor: '#D71921',
+                color: '#FFFFFF',
+                border: '1px solid #D71921',
+              }}
+            >
               Stop losing aggregate to careless wild guesses.
             </div>
           </Card>
@@ -77,7 +92,7 @@ export function FeaturesGrid() {
           {/* Card 3: Boardy AI Tutor */}
           <Card className="justify-between">
             <div className="space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] border border-[var(--border)] text-[#FFFFFF] flex items-center justify-center shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-[#0A0A0A] border border-[rgba(255,255,255,0.12)] text-[#FFFFFF] flex items-center justify-center shrink-0">
                 <Cpu size={22} />
               </div>
               <h3
@@ -98,7 +113,7 @@ export function FeaturesGrid() {
           {/* Card 4: Study Circles & Squads */}
           <Card className="justify-between">
             <div className="space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] border border-[var(--border)] text-[#FFFFFF] flex items-center justify-center shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-[#0A0A0A] border border-[rgba(255,255,255,0.12)] text-[#FFFFFF] flex items-center justify-center shrink-0">
                 <Users size={22} />
               </div>
               <h3
@@ -122,7 +137,7 @@ export function FeaturesGrid() {
           {/* Card 5: Daily Drills & Streak */}
           <Card className="justify-between">
             <div className="space-y-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] border border-[var(--border)] text-[#FFFFFF] flex items-center justify-center shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-[#0A0A0A] border border-[rgba(255,255,255,0.12)] text-[#FFFFFF] flex items-center justify-center shrink-0">
                 <Flame size={22} />
               </div>
               <h3
@@ -139,17 +154,6 @@ export function FeaturesGrid() {
               Keep your streak alive during late-night study sessions.
             </div>
           </Card>
-        </div>
-
-        {/* Learn more link to /features */}
-        <div className="text-center mt-10">
-          <Link
-            to="/features"
-            className="btn-outline inline-flex items-center gap-2 text-xs sm:text-sm font-semibold px-6 py-3 rounded-full"
-          >
-            <span>Explore all platform features &amp; capabilities</span>
-            <span aria-hidden="true">&rarr;</span>
-          </Link>
         </div>
       </div>
     </section>

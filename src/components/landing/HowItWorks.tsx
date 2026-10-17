@@ -49,14 +49,14 @@ export function HowItWorks() {
                 className="justify-between"
               >
                 <div>
-                  {/* Top row: number (dot font, 40px, #9A9A9A), icon box top-right with 16px margin */}
+                  {/* Top row: number in dot font, icon box top-right */}
                   <div className="flex items-center justify-between mb-4">
                     <span
-                      className="font-doto text-[40px] leading-none font-bold text-[#9A9A9A]"
+                      className="font-doto text-[40px] leading-none font-bold text-[var(--text-muted)]"
                     >
                       {item.step}
                     </span>
-                    <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-[#FFFFFF] shrink-0">
+                    <div className="w-12 h-12 rounded-2xl bg-[#0A0A0A] border border-[rgba(255,255,255,0.12)] flex items-center justify-center text-[#FFFFFF] shrink-0">
                       <Icon size={22} />
                     </div>
                   </div>
@@ -72,9 +72,9 @@ export function HowItWorks() {
                   </p>
                 </div>
 
-                {/* Step X of 3 at the bottom after a 1px divider with 16px padding-top, Space Grotesk 13px, #9A9A9A */}
+                {/* Step X of 3 at the bottom after a 1px divider */}
                 <div
-                  className="mt-auto pt-4 border-t border-[var(--border)] text-[13px] text-[#9A9A9A]"
+                  className="mt-auto pt-4 border-t border-[var(--border)] text-[13px] text-[var(--text-muted)] font-medium"
                   style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                 >
                   Step {idx + 1} of 3

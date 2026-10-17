@@ -54,8 +54,8 @@ export function ReviewsMarquee() {
                       <span className="badge-pill">
                         {review.university ?? 'Entrance'}
                       </span>
-                      {/* 5 White stars */}
-                      <div className="flex text-[#FFFFFF]">
+                      {/* 5 Brand Red stars */}
+                      <div className="flex text-[#D71921]">
                         {Array.from({ length: review.rating }).map((_, idx) => (
                           <Star key={idx} size={12} fill="currentColor" />
                         ))}
@@ -94,8 +94,8 @@ export function ReviewsMarquee() {
                       <span className="badge-pill">
                         {review.university ?? 'Entrance'}
                       </span>
-                      {/* 5 White stars */}
-                      <div className="flex text-[#FFFFFF]">
+                      {/* 5 Brand Red stars */}
+                      <div className="flex text-[#D71921]">
                         {Array.from({ length: review.rating }).map((_, idx) => (
                           <Star key={idx} size={12} fill="currentColor" />
                         ))}

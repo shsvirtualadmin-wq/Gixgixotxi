@@ -70,7 +70,7 @@ export function ScrollDrivenPreview() {
                       className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
                         isSelected
                           ? 'bg-[var(--red)] text-[#FFFFFF] border-[var(--red)]'
-                          : 'bg-[#1A1A1A] text-[var(--muted)] border-[var(--border)]'
+                          : 'bg-[#0A0A0A] text-[#FFFFFF] border-[rgba(255,255,255,0.12)]'
                       }`}
                     >
                       <Icon size={18} />

@@ -113,7 +113,7 @@ export function ArenaStrip() {
                     Sunday Blitz Honor Roll
                   </span>
                   <span
-                    className="text-[#9A9A9A] text-[13px]"
+                    className="text-[var(--muted)] text-[13px]"
                     style={{ fontFamily: 'var(--font-heading)' }}
                   >
                     Live rankings
@@ -132,7 +132,7 @@ export function ArenaStrip() {
                         className="px-4 py-3.5 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-between text-xs"
                       >
                         <div className="flex items-center gap-3">
-                          <span className="font-doto font-bold text-sm text-[#F2F2F2] w-6 text-left shrink-0">
+                          <span className="font-doto font-bold text-sm text-[var(--text)] w-6 text-left shrink-0">
                             {student.rank}
                           </span>
                           <div>
@@ -149,11 +149,11 @@ export function ArenaStrip() {
                         </div>
 
                         <div className="text-right shrink-0">
-                          <div className="font-doto font-bold text-sm text-[#FFFFFF]">
+                          <div className="font-doto font-bold text-sm text-[var(--text)]">
                             {student.score} pts
                           </div>
                           <div
-                            className="text-[13px] text-[#9A9A9A]"
+                            className="text-[12px] text-[var(--muted)] font-medium"
                             style={{ fontFamily: 'var(--font-heading)' }}
                           >
                             {student.percentile}

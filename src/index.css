@@ -145,8 +145,11 @@
 [data-theme="light"] .bg-neutral-950 .boardly-brand-logo,
 [data-theme="light"] [class*="bg-neutral-900"] .boardly-brand-logo,
 [data-theme="light"] [class*="bg-neutral-950"] .boardly-brand-logo,
-[data-theme="light"] nav[aria-label="Main Navigation"] .boardly-brand-logo {
-  filter: none;
+nav[aria-label="Main Navigation"] .boardly-brand-logo,
+[data-theme="light"] nav[aria-label="Main Navigation"] .boardly-brand-logo,
+[data-theme="dark"] nav[aria-label="Main Navigation"] .boardly-brand-logo {
+  filter: none !important;
+  opacity: 1 !important;
 }
 
 /* ===== BASE LAYER (Ensures Tailwind utilities are NEVER overridden) ===== */
@@ -583,10 +586,19 @@
 }
 
 /* ===== KATEX MATH STYLING ===== */
-.katex {
+.katex,
+.katex * {
   color: inherit !important;
+}
+
+.katex {
   font-size: 1.05em;
   text-rendering: auto;
+}
+
+.katex .frac-line,
+.katex .sqrt-line {
+  border-color: currentColor !important;
 }
 
 .katex-display {

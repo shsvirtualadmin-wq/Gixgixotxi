@@ -77,7 +77,7 @@ export function FaqSection() {
                 {/* Answer text: Space Grotesk 14px, #9A9A9A, 12px space below question when open */}
                 {isOpen && (
                   <div
-                    className="mt-3 pt-3 border-t border-[var(--border)] text-[14px] text-[#9A9A9A] leading-relaxed"
+                    className="mt-3 pt-3 border-t border-[var(--border)] text-[14px] text-[var(--text-muted)] leading-relaxed"
                     style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.01em' }}
                   >
                     {faq.a}

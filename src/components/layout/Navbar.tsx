@@ -10,7 +10,6 @@ const NAV_LINKS = [
   { to: '/pricing', label: 'Pricing' },
   { to: '/reviews', label: 'Reviews' },
   { to: '/contact', label: 'Contact' },
-  { to: '/login', label: 'Login' },
 ];
 
 export function Navbar() {
@@ -49,15 +48,24 @@ export function Navbar() {
         <div className="boardly-container">
           <nav
             aria-label="Main Navigation"
-            className="w-full h-[72px] sm:h-[80px] rounded-full px-4 sm:px-7 flex items-center justify-between bg-[var(--card)]/90 backdrop-blur-md border border-[var(--border)] text-[var(--text)] shadow-xl"
+            className="w-full h-[72px] sm:h-[80px] rounded-full px-4 sm:px-7 flex items-center justify-between text-white transition-colors"
+            style={{
+              backgroundColor: theme === 'dark' ? '#141414' : '#0A0A0A',
+              border: theme === 'dark' ? '1px solid rgba(255,255,255,0.14)' : '1px solid rgba(255,255,255,0.12)',
+              boxShadow: '0 12px 36px -8px rgba(0,0,0,0.35)',
+            }}
           >
-            {/* Brand Logo */}
+            {/* Brand Logo - 100% white, full opacity, no fade filter */}
             <Link to="/" className="flex items-center shrink-0" aria-label="Boardly Home">
-              <Logo className="h-[54px] sm:h-[66px]" />
+              <Logo
+                className="h-[52px] sm:h-[64px]"
+                style={{ filter: 'none', opacity: 1 }}
+                alt="Boardly"
+              />
             </Link>
 
-            {/* Desktop Unified Segmented Pill Links (Features, Crew, Pricing, Reviews, Contact, Login, Get Started) */}
-            <div className="hidden lg:flex items-center gap-1 bg-[var(--surface-2)] rounded-full p-1.5 border border-[var(--border)]">
+            {/* Desktop Unified Segmented Pill Links */}
+            <div className="hidden lg:flex items-center gap-1 bg-[rgba(255,255,255,0.08)] rounded-full p-1.5 border border-[rgba(255,255,255,0.1)]">
               {NAV_LINKS.map((link) => {
                 const active = isLinkActive(link.to);
                 return (
@@ -66,56 +74,61 @@ export function Navbar() {
                     to={link.to}
                     className={`text-xs xl:text-sm font-medium px-4 py-2 rounded-full transition-all duration-200 ${
                       active
-                        ? 'bg-[var(--text)] text-[var(--bg)] font-semibold shadow-sm'
-                        : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                        ? 'bg-white text-black font-semibold shadow-sm'
+                        : 'text-[rgba(255,255,255,0.7)] hover:text-white'
                     }`}
                   >
                     {link.label}
                   </Link>
                 );
               })}
+            </div>
 
+            {/* Desktop Right Actions: Sign In (white outline), Get Started (#D71921), and Theme Toggle */}
+            <div className="hidden lg:flex items-center gap-2.5">
+              <Link
+                to="/login"
+                className="text-xs xl:text-sm font-medium px-4 py-2 rounded-full border border-[rgba(255,255,255,0.6)] hover:border-white text-white hover:bg-white/10 transition-all cursor-pointer"
+              >
+                Sign In
+              </Link>
               <Link
                 to="/signup"
-                className="text-xs xl:text-sm font-semibold px-4 py-2 rounded-full bg-[#D71921] hover:bg-[#b0131a] text-white transition-all shadow-sm ml-1"
+                className="text-xs xl:text-sm font-semibold px-4 py-2 rounded-full bg-[#D71921] hover:bg-[#b0131a] text-white transition-all shadow-sm cursor-pointer"
               >
                 Get Started
               </Link>
-            </div>
-
-            {/* Desktop Right Actions: Theme Toggle (44x44 tap target, 22px icon) */}
-            <div className="hidden lg:flex items-center gap-2">
               <button
                 onClick={toggle}
                 aria-label="Toggle theme"
-                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] bg-[var(--surface-2)]"
+                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer bg-[rgba(255,255,255,0.12)] hover:bg-[#D71921] active:bg-[#D71921] text-white ml-1"
               >
-                {theme === 'dark' ? <Sun size={22} /> : <Moon size={22} />}
+                {theme === 'dark' ? <Sun size={22} className="text-white" /> : <Moon size={22} className="text-white" />}
               </button>
             </div>
 
-            {/* Mobile Controls (44x44 tap targets with 22px icons) */}
+            {/* Mobile Controls: 44x44 circles, rgba(255,255,255,0.12), white 22px icons, red on hover/active */}
             <div className="flex lg:hidden items-center gap-2">
               <button
                 onClick={toggle}
                 aria-label="Toggle theme"
-                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] bg-[var(--surface-2)]"
+                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer bg-[rgba(255,255,255,0.12)] hover:bg-[#D71921] active:bg-[#D71921] text-white"
               >
-                {theme === 'dark' ? <Sun size={22} /> : <Moon size={22} />}
+                {theme === 'dark' ? <Sun size={22} className="text-white" /> : <Moon size={22} className="text-white" />}
               </button>
               <button
                 onClick={() => setMobileOpen((prev) => !prev)}
                 aria-label={mobileOpen ? 'Close Menu' : 'Open Menu'}
-                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)] bg-[var(--surface-2)]"
+                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer bg-[rgba(255,255,255,0.12)] hover:bg-[#D71921] active:bg-[#D71921] text-white"
               >
-                {mobileOpen ? <X size={22} /> : <Menu size={22} />}
+                {mobileOpen ? <X size={22} className="text-white" /> : <Menu size={22} className="text-white" />}
               </button>
             </div>
           </nav>
         </div>
       </header>
 
-      {/* Full-Screen Mobile Menu below 1024px */}
+      {/* Full-Screen Mobile Menu */}
       {mobileOpen && (
         <div
           role="dialog"
@@ -123,14 +136,14 @@ export function Navbar() {
           aria-label="Mobile Navigation"
           className="fixed inset-0 z-[1001] flex flex-col justify-between p-6 sm:p-8 animate-[page-enter_0.2s_ease-out]"
           style={{
-            backgroundColor: 'var(--bg)',
-            color: 'var(--fg)',
+            backgroundColor: '#0A0A0A',
+            color: '#FFFFFF',
           }}
         >
           {/* Top Bar inside Menu */}
           <div
             className="flex items-center justify-between pb-6"
-            style={{ borderBottom: '1px solid var(--border)' }}
+            style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}
           >
             <Link
               to="/"
@@ -138,38 +151,32 @@ export function Navbar() {
               className="flex items-center shrink-0"
               aria-label="Boardly Home"
             >
-              <Logo className="h-[54px] sm:h-[66px]" />
+              <Logo
+                className="h-[52px] sm:h-[64px]"
+                style={{ filter: 'none', opacity: 1 }}
+                alt="Boardly"
+              />
             </Link>
 
             <div className="flex items-center gap-2">
               <button
                 onClick={toggle}
                 aria-label="Toggle theme"
-                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer"
-                style={{
-                  border: '1px solid var(--border)',
-                  color: 'var(--fg)',
-                  backgroundColor: 'transparent',
-                }}
+                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer bg-[rgba(255,255,255,0.12)] hover:bg-[#D71921] active:bg-[#D71921] text-white"
               >
-                {theme === 'dark' ? <Sun size={22} /> : <Moon size={22} />}
+                {theme === 'dark' ? <Sun size={22} className="text-white" /> : <Moon size={22} className="text-white" />}
               </button>
               <button
                 onClick={() => setMobileOpen(false)}
                 aria-label="Close menu"
-                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer"
-                style={{
-                  border: '1px solid var(--border)',
-                  color: 'var(--fg)',
-                  backgroundColor: 'transparent',
-                }}
+                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer bg-[rgba(255,255,255,0.12)] hover:bg-[#D71921] active:bg-[#D71921] text-white"
               >
-                <X size={22} />
+                <X size={22} className="text-white" />
               </button>
             </div>
           </div>
 
-          {/* Large Navigation Links in the dot font (32px-36px) highlighting current page */}
+          {/* Large Navigation Links in the dot font */}
           <div className="flex flex-col gap-5 my-auto py-6">
             {NAV_LINKS.map((link) => {
               const active = isLinkActive(link.to);
@@ -183,7 +190,7 @@ export function Navbar() {
                     fontFamily: 'var(--font-dot)',
                     fontWeight: 800,
                     letterSpacing: '0.01em',
-                    color: active ? 'var(--red)' : 'var(--fg)',
+                    color: active ? '#D71921' : '#FFFFFF',
                   }}
                 >
                   {link.label}
@@ -195,17 +202,14 @@ export function Navbar() {
           {/* Bottom Auth Buttons */}
           <div
             className="flex flex-col gap-3 pt-6"
-            style={{ borderTop: '1px solid var(--border)' }}
+            style={{ borderTop: '1px solid rgba(255,255,255,0.12)' }}
           >
             <Link
               to="/login"
               onClick={() => setMobileOpen(false)}
-              className="w-full flex items-center justify-center rounded-full transition-colors text-[15px] font-semibold"
+              className="w-full flex items-center justify-center rounded-full transition-colors text-[15px] font-semibold border border-[rgba(255,255,255,0.6)] hover:border-white text-white hover:bg-white/10"
               style={{
                 height: '52px',
-                border: '1px solid var(--border)',
-                color: 'var(--fg)',
-                backgroundColor: 'transparent',
                 fontFamily: 'var(--font-heading)',
                 letterSpacing: '-0.02em',
               }}
@@ -215,9 +219,11 @@ export function Navbar() {
             <Link
               to="/signup"
               onClick={() => setMobileOpen(false)}
-              className="btn-red w-full"
+              className="w-full flex items-center justify-center rounded-full transition-colors text-[15px] font-semibold bg-[#D71921] hover:bg-[#b0131a] text-white shadow-sm"
               style={{
                 height: '52px',
+                fontFamily: 'var(--font-heading)',
+                letterSpacing: '-0.02em',
               }}
             >
               Get Started
