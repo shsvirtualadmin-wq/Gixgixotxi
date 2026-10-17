@@ -2,25 +2,29 @@ import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import {
+  TARGET_PROJECT_ID,
+  TARGET_DATABASE_ID,
+  TARGET_AUTH_DOMAIN,
+  TARGET_API_KEY,
+  TARGET_STORAGE_BUCKET,
+  TARGET_MESSAGING_SENDER_ID,
+  TARGET_APP_ID,
+  firebaseConfig,
+} from './firebaseConfig';
 
-export const TARGET_PROJECT_ID = 'gen-lang-client-0366509316';
-export const TARGET_DATABASE_ID = 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712';
-export const TARGET_AUTH_DOMAIN = 'gen-lang-client-0366509316.firebaseapp.com';
-export const TARGET_API_KEY = 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs';
-export const TARGET_STORAGE_BUCKET = 'gen-lang-client-0366509316.firebasestorage.app';
-export const TARGET_MESSAGING_SENDER_ID = '0366509316';
-export const TARGET_APP_ID = '1:0366509316:web:gen-lang-client-0366509316';
-
-export const firebaseConfig = {
-  apiKey: (import.meta.env.VITE_FIREBASE_API_KEY as string | undefined)?.trim() || TARGET_API_KEY,
-  authDomain: (import.meta.env.VITE_FIREBASE_AUTH_DOMAIN as string | undefined)?.trim() || TARGET_AUTH_DOMAIN,
-  projectId: TARGET_PROJECT_ID,
-  storageBucket: (import.meta.env.VITE_FIREBASE_STORAGE_BUCKET as string | undefined)?.trim() || TARGET_STORAGE_BUCKET,
-  messagingSenderId: (import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID as string | undefined)?.trim() || TARGET_MESSAGING_SENDER_ID,
-  appId: (import.meta.env.VITE_FIREBASE_APP_ID as string | undefined)?.trim() || TARGET_APP_ID,
-  firestoreDatabaseId: TARGET_DATABASE_ID,
+export {
+  TARGET_PROJECT_ID,
+  TARGET_DATABASE_ID,
+  TARGET_AUTH_DOMAIN,
+  TARGET_API_KEY,
+  TARGET_STORAGE_BUCKET,
+  TARGET_MESSAGING_SENDER_ID,
+  TARGET_APP_ID,
+  firebaseConfig,
 };
 
+// Single, shared Firebase App instance used by both Auth and Firestore
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const storage = getStorage(app);

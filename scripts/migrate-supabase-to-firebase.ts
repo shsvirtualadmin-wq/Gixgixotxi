@@ -11,11 +11,11 @@ import { getFirestore, doc, setDoc, collection, addDoc, getDoc } from 'firebase/
 
 const firebaseConfig = {
   apiKey: process.env.VITE_FIREBASE_API_KEY || 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs',
-  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'gen-lang-client-0366509316.firebaseapp.com',
-  projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'gen-lang-client-0366509316',
-  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'gen-lang-client-0366509316.firebasestorage.app',
-  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '0366509316',
-  appId: process.env.VITE_FIREBASE_APP_ID || '1:0366509316:web:gen-lang-client-0366509316',
+  authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'gen-lang-client-0365509316.firebaseapp.com',
+  projectId: process.env.VITE_FIREBASE_PROJECT_ID || 'gen-lang-client-0365509316',
+  storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'gen-lang-client-0365509316.firebasestorage.app',
+  messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '0365509316',
+  appId: process.env.VITE_FIREBASE_APP_ID || '1:0365509316:web:gen-lang-client-0365509316',
   firestoreDatabaseId: process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712',
 };
 

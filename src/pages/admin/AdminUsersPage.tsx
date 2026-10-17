@@ -53,7 +53,7 @@ export function AdminUsersPage() {
         code: e?.code || 'USERS_FETCH_FAILED',
         message: e?.message || 'Failed to load users from database. Please verify Firestore permissions.',
         collection: e?.collection || 'users',
-        projectId: e?.projectId || firebaseConfig.projectId || 'gen-lang-client-0366509316',
+        projectId: e?.projectId || firebaseConfig.projectId || 'gen-lang-client-0365509316',
         operation: e?.operation || 'fetchUsersPaginated',
       });
     } finally {
@@ -81,7 +81,7 @@ export function AdminUsersPage() {
         code: e?.code || 'USERS_LOAD_MORE_FAILED',
         message: e?.message || 'Failed to load additional users from database.',
         collection: 'users',
-        projectId: firebaseConfig.projectId || 'gen-lang-client-0366509316',
+        projectId: firebaseConfig.projectId || 'gen-lang-client-0365509316',
         operation: 'handleLoadMore',
       });
     } finally {

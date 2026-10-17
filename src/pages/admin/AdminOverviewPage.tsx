@@ -69,7 +69,7 @@ export function AdminOverviewPage() {
         code: e?.code || 'FETCH_STATS_FAILED',
         message: e?.message || 'Failed to fetch overview metrics. Check Firestore rules or collection names.',
         collection: e?.collection || 'questions/users',
-        projectId: e?.projectId || firebaseConfig.projectId || 'gen-lang-client-0366509316',
+        projectId: e?.projectId || firebaseConfig.projectId || 'gen-lang-client-0365509316',
         operation: e?.operation || 'fetchAdminStats',
       });
       setStats({

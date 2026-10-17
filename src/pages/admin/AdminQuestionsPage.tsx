@@ -60,7 +60,7 @@ export function AdminQuestionsPage() {
         code: e?.code || 'QUESTIONS_FETCH_FAILED',
         message: e?.message || 'Failed to load questions from database. Please verify Firestore permissions.',
         collection: e?.collection || 'questions',
-        projectId: e?.projectId || firebaseConfig.projectId || 'gen-lang-client-0366509316',
+        projectId: e?.projectId || firebaseConfig.projectId || 'gen-lang-client-0365509316',
         operation: e?.operation || 'fetchQuestionsPaginated',
       });
     } finally {
@@ -89,7 +89,7 @@ export function AdminQuestionsPage() {
         code: e?.code || 'QUESTIONS_LOAD_MORE_FAILED',
         message: e?.message || 'Failed to load additional questions from database.',
         collection: 'questions',
-        projectId: firebaseConfig.projectId || 'gen-lang-client-0366509316',
+        projectId: firebaseConfig.projectId || 'gen-lang-client-0365509316',
         operation: 'handleLoadMore',
       });
     } finally {

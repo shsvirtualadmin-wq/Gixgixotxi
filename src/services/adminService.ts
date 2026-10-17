@@ -43,7 +43,7 @@ export class AdminFirestoreError extends Error {
     this.name = 'AdminFirestoreError';
     this.code = code;
     this.collection = collection;
-    this.projectId = firebaseConfig.projectId || 'gen-lang-client-0366509316';
+    this.projectId = firebaseConfig.projectId || 'gen-lang-client-0365509316';
     this.operation = operation;
   }
 }

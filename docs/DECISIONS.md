@@ -14,7 +14,7 @@ This document tracks all foundational architectural, security, and product desig
 
 ## ADR 002: Single Source of Truth for Firebase Instance & Named Database ID
 - **Status:** Approved
-- **Context:** Firestore in this project operates on a specific named database instance: `ai-studio-25287ca6-33a1-49f8-8867-70061120a712` under project `gen-lang-client-0366509316`. Multiple `initializeApp` calls or missing database IDs caused silent fallback to empty default databases.
+- **Context:** Firestore in this project operates on a specific named database instance: `ai-studio-25287ca6-33a1-49f8-8867-70061120a712` under project `gen-lang-client-0365509316`. Multiple `initializeApp` calls or missing database IDs caused silent fallback to empty default databases.
 - **Decision:** All Firebase services (`app`, `auth`, `db`) are instantiated strictly once in `src/lib/firebaseConfig.ts` (re-exported via `src/lib/firebase.ts`) with `TARGET_FIRESTORE_DATABASE_ID`. Experimental long polling is enforced to eliminate WebChannel streaming hang-ups on proxies.
 - **Consequences:** All collections (questions, users, events, sessions) consistently route to the correct database instance across all devices and hosting targets.
 

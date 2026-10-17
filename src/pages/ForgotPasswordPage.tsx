@@ -35,7 +35,7 @@ export function ForgotPasswordPage() {
       setErrorDetails({
         code: fe.code || 'auth/reset-failed',
         message: fe.message ?? 'Failed to send reset email. Please try again.',
-        url: 'https://gen-lang-client-0366509316.firebaseapp.com (sendPasswordResetEmail)',
+        url: 'https://gen-lang-client-0365509316.firebaseapp.com (sendPasswordResetEmail)',
       });
     } finally {
       setLoading(false);

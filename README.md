@@ -1,6 +1,6 @@
 # Boardly — MCQ Practice & Competitive Test Platform for FSC & Entry Exams
 
-> **IMPORTANT:** Connected to Firebase project `gen-lang-client-0366509316` (database `ai-studio-25287ca6-33a1-49f8-8867-70061120a712`).
+> **IMPORTANT:** Connected to Firebase project `gen-lang-client-0365509316` (database `ai-studio-25287ca6-33a1-49f8-8867-70061120a712`).
 
 Boardly (B-O-A-R-D-L-Y) is a mobile-first, diagnostic testing and exam revision platform for Matric (SSC), FSC (HSSC), and Pakistani university entrance tests (MDCAT, ECAT, NUST NET, FAST, GIKI, PIEAS, USAT).
 
