@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Plus, Trophy, Users, Flame, Sparkles, Lock, Unlock, Eye, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Search, Plus, Trophy, Sparkles, Lock, Unlock, Eye, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
 import type { PublicCrewSummary, CrewEligibilityState } from '@/types/crew';
 import { fetchCrewLeaderboard, joinCrew, cancelJoinRequest } from '@/services/crewService';
@@ -47,7 +47,7 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
     return () => clearTimeout(timer);
   }, [search]);
 
-  const loadCrews = async () => {
+  const loadCrews = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetchCrewLeaderboard({
@@ -62,11 +62,11 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
     } finally {
       setLoading(false);
     }
-  };
+  }, [debouncedSearch, page]);
 
   useEffect(() => {
     loadCrews();
-  }, [debouncedSearch, page]);
+  }, [loadCrews]);
 
   const handleJoinDirect = async (crew: PublicCrewSummary) => {
     setActionLoadingId(crew.id);
@@ -189,16 +189,16 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         {/* Filters */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-          {[
+          {([
             { id: 'all', label: 'All Crews' },
             { id: 'open', label: 'Open to Join' },
             { id: 'request', label: 'Request Only' },
             { id: 'eligible', label: 'Eligible for Me' },
-          ].map((tab) => (
+          ] as const).map((tab) => (
             <button
               key={tab.id}
               type="button"
-              onClick={() => setFilter(tab.id as any)}
+              onClick={() => setFilter(tab.id)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 ${
                 filter === tab.id
                   ? 'bg-white text-black font-bold'

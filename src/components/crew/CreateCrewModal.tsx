@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Sparkles, Shield, Users, Check, AlertCircle } from 'lucide-react';
+import { X, Sparkles, Users, Check, AlertCircle } from 'lucide-react';
 import { AvatarPicker } from '@/lib/matrixAvatars';
 import { type MatrixAvatarVariant } from '@/lib/matrixAvatarsData';
 import type { CrewTier, CrewJoinMode } from '@/types/crew';
