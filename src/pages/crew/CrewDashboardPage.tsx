@@ -1,25 +1,14 @@
-import { useState, useEffect, useCallback } from 'react';
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  doc,
-  setDoc,
-  updateDoc,
-  addDoc,
-  serverTimestamp,
-  arrayUnion,
-  arrayRemove,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import React, { useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useStudyCrew, type CrewMember } from '@/hooks/useStudyCrew';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { DottedRingProgress } from '@/components/ui/DottedRingProgress';
 import { DotRowStreak } from '@/components/ui/DotRowStreak';
+import { QrCodeSvg } from '@/components/crew/QrCodeSvg';
 import {
   Users,
   Copy,
@@ -31,138 +20,55 @@ import {
   LogIn,
   AlertTriangle,
   Target,
+  Share2,
+  Lock,
+  Unlock,
+  LogOut,
+  Sparkles,
+  Trophy,
+  ArrowLeft,
+  ChevronRight,
+  ShieldCheck,
 } from 'lucide-react';
-
-interface CrewMember {
-  uid: string;
-  displayName: string;
-  email: string;
-  joinedAt: string;
-  activeToday?: boolean;
-}
-
-interface CrewDoc {
-  id: string;
-  name: string;
-  code: string;
-  leaderId: string;
-  leaderName: string;
-  goalQuestions: number;
-  currentQuestions: number;
-  members: CrewMember[];
-  streak: number;
-  weakChapters?: { chapter: string; errorCount: number }[];
-  createdAt?: { seconds: number; nanoseconds?: number } | null;
-}
-
-function generateCrewCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  let res = '';
-  for (let i = 0; i < 6; i++) {
-    res += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return res;
-}
 
 export function CrewDashboardPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const {
+    crew,
+    loading,
+    error: hookError,
+    createCrew,
+    joinCrewByCode,
+    leaveCrew,
+    transferLeadership,
+    toggleLock,
+    regenerateCode,
+    kickMember,
+  } = useStudyCrew();
 
-  const [crew, setCrew] = useState<CrewDoc | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [copiedCode, setCopiedCode] = useState(false);
-
-  // Modal / Form state
+  // Form / Action states
   const [newCrewName, setNewCrewName] = useState('');
   const [joinCodeInput, setJoinCodeInput] = useState('');
-  const [actionError, setActionError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [selectedNewLeader, setSelectedNewLeader] = useState<string>('');
+  const [leaderboardTab, setLeaderboardTab] = useState<'weekly' | 'alltime'>('weekly');
 
-  const loadCrew = useCallback(async () => {
-    if (!user) return;
-    setLoading(true);
-    setActionError(null);
-    try {
-      // 1. Check if user is leader or in members
-      const q1 = query(collection(db, 'crews'), where('leaderId', '==', user.uid));
-      const snap1 = await getDocs(q1);
+  const isLeader = Boolean(crew && user && crew.leaderId === user.uid);
+  const joinUrl = crew ? `https://boardly.cfd/join/${crew.code}` : '';
 
-      if (!snap1.empty) {
-        const d = snap1.docs[0];
-        setCrew({ id: d.id, ...d.data() } as CrewDoc);
-        setLoading(false);
-        return;
-      }
-
-      // Check all crews if user is in members array
-      const allCrewsSnap = await getDocs(collection(db, 'crews'));
-      const found = allCrewsSnap.docs.find((d) => {
-        const data = d.data();
-        const members: CrewMember[] = data.members || [];
-        return members.some((m) => m.uid === user.uid);
-      });
-
-      if (found) {
-        setCrew({ id: found.id, ...found.data() } as CrewDoc);
-      } else {
-        setCrew(null);
-      }
-    } catch (err: unknown) {
-      console.warn('[CrewDashboardPage] Error loading crew:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    loadCrew();
-  }, [loadCrew]);
-
-  const handleCreateCrew = async (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !newCrewName.trim()) return;
-
+    if (!newCrewName.trim()) return;
     setActionLoading(true);
     setActionError(null);
     try {
-      const code = generateCrewCode();
-      const member: CrewMember = {
-        uid: user.uid,
-        displayName: user.displayName || user.email?.split('@')[0] || 'Leader',
-        email: user.email || '',
-        joinedAt: new Date().toISOString(),
-        activeToday: true,
-      };
-
-      const docRef = await addDoc(collection(db, 'crews'), {
-        name: newCrewName.trim(),
-        code,
-        leaderId: user.uid,
-        leaderName: member.displayName,
-        goalQuestions: 300,
-        currentQuestions: 20,
-        members: [member],
-        streak: 1,
-        weakChapters: [
-          { chapter: 'Calculus & Integration', errorCount: 14 },
-          { chapter: 'Electromagnetism', errorCount: 9 },
-        ],
-        createdAt: serverTimestamp(),
-      });
-
-      // Update user profile role to crew
-      await setDoc(
-        doc(db, 'users', user.uid),
-        {
-          role: 'crew',
-          isCrewMember: true,
-          crewId: docRef.id,
-          crewName: newCrewName.trim(),
-        },
-        { merge: true }
-      );
-
+      await createCrew(newCrewName.trim());
       setNewCrewName('');
-      await loadCrew();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to create crew';
       setActionError(msg);
@@ -171,59 +77,14 @@ export function CrewDashboardPage() {
     }
   };
 
-  const handleJoinCrew = async (e: React.FormEvent) => {
+  const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !joinCodeInput.trim()) return;
-
+    if (!joinCodeInput.trim()) return;
     setActionLoading(true);
     setActionError(null);
     try {
-      const cleanCode = joinCodeInput.trim().toUpperCase();
-      const q = query(collection(db, 'crews'), where('code', '==', cleanCode));
-      const snap = await getDocs(q);
-
-      if (snap.empty) {
-        setActionError('Invalid invite code. Please check with your crew leader.');
-        setActionLoading(false);
-        return;
-      }
-
-      const crewDoc = snap.docs[0];
-      const crewData = crewDoc.data();
-      const existingMembers: CrewMember[] = crewData.members || [];
-
-      if (existingMembers.some((m) => m.uid === user.uid)) {
-        setJoinCodeInput('');
-        await loadCrew();
-        return;
-      }
-
-      const newMember: CrewMember = {
-        uid: user.uid,
-        displayName: user.displayName || user.email?.split('@')[0] || 'Crew Member',
-        email: user.email || '',
-        joinedAt: new Date().toISOString(),
-        activeToday: true,
-      };
-
-      await updateDoc(crewDoc.ref, {
-        members: arrayUnion(newMember),
-        currentQuestions: (crewData.currentQuestions || 0) + 15,
-      });
-
-      await setDoc(
-        doc(db, 'users', user.uid),
-        {
-          role: 'crew',
-          isCrewMember: true,
-          crewId: crewDoc.id,
-          crewName: crewData.name,
-        },
-        { merge: true }
-      );
-
+      await joinCrewByCode(joinCodeInput.trim());
       setJoinCodeInput('');
-      await loadCrew();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to join crew';
       setActionError(msg);
@@ -232,57 +93,48 @@ export function CrewDashboardPage() {
     }
   };
 
-  const handleRemoveMember = async (memberToRemove: CrewMember) => {
-    if (!crew || !user || crew.leaderId !== user.uid) return;
-    if (memberToRemove.uid === user.uid) return;
-
-    if (!confirm(`Remove ${memberToRemove.displayName} from this crew?`)) return;
-
-    try {
-      const crewRef = doc(db, 'crews', crew.id);
-      await updateDoc(crewRef, {
-        members: arrayRemove(memberToRemove),
-      });
-
-      // Reset user's crew role
-      await setDoc(
-        doc(db, 'users', memberToRemove.uid),
-        {
-          role: 'student',
-          isCrewMember: false,
-          crewId: null,
-          crewName: null,
-        },
-        { merge: true }
-      );
-
-      await loadCrew();
-    } catch (err) {
-      console.error('[CrewDashboardPage] Remove member error:', err);
-    }
-  };
-
-  const handleResetInviteCode = async () => {
-    if (!crew || !user || crew.leaderId !== user.uid) return;
-    try {
-      const newCode = generateCrewCode();
-      await updateDoc(doc(db, 'crews', crew.id), {
-        code: newCode,
-      });
-      setCrew((prev) => (prev ? { ...prev, code: newCode } : null));
-    } catch (err) {
-      console.error('[CrewDashboardPage] Reset code error:', err);
-    }
-  };
-
-  const copyCode = () => {
+  const handleCopyCode = () => {
     if (!crew?.code) return;
     navigator.clipboard.writeText(crew.code);
     setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2500);
+    setTimeout(() => setCopiedCode(false), 2000);
   };
 
-  const isLeader = crew?.leaderId === user?.uid;
+  const handleCopyLink = () => {
+    if (!joinUrl) return;
+    navigator.clipboard.writeText(joinUrl);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  const handleWhatsAppShare = () => {
+    if (!crew) return;
+    const msg = encodeURIComponent(
+      `Join our Study Crew "${crew.name}" on Boardly!\nPrepare together for FAST, NUST & GIKI with shared Pro quota (up to 30 members):\n${joinUrl}`
+    );
+    window.open(`https://api.whatsapp.com/send?text=${msg}`, '_blank');
+  };
+
+  const handleLeave = async () => {
+    if (!confirm('Are you sure you want to leave this study crew?')) return;
+    try {
+      await leaveCrew();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to leave crew';
+      alert(msg);
+    }
+  };
+
+  const handleTransfer = async () => {
+    if (!selectedNewLeader) return;
+    try {
+      await transferLeadership(selectedNewLeader);
+      setTransferModalOpen(false);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to transfer leadership';
+      alert(msg);
+    }
+  };
 
   if (loading) {
     return (
@@ -294,26 +146,42 @@ export function CrewDashboardPage() {
     );
   }
 
-  // If not currently in a crew, show Join or Create screen
+  // State A: Not in a crew
   if (!crew) {
     return (
-      <div style={{ maxWidth: 720, margin: '2rem auto', display: 'flex', flexDirection: 'column', gap: 24, padding: '1rem' }}>
+      <div style={{ maxWidth: 760, margin: '2rem auto', display: 'flex', flexDirection: 'column', gap: 24, padding: '1rem' }}>
         <div>
+          <Link
+            to="/dashboard"
+            className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-white mb-2 transition-colors font-heading"
+          >
+            <ArrowLeft size={14} />
+            <span>Return to Dashboard</span>
+          </Link>
           <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>
             Boardly Study Crews
           </h1>
           <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-            Join a squad of 4–8 students preparing for the same entrance exam. Share daily goals, track team streaks, and drill weak chapters together.
+            Join or start a squad of up to 30 students. Share daily goals, track collective streaks, drill common weak chapters, and share Pro access!
           </p>
         </div>
 
-        {actionError && (
+        {(actionError || hookError) && (
           <div style={{ padding: '12px 16px', borderRadius: 'var(--r-input)', background: 'rgba(215, 25, 33, 0.1)', border: '1px solid #D71921', color: '#D71921', fontSize: 13 }}>
-            {actionError}
+            {actionError || hookError}
           </div>
         )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 20 }}>
+        {/* Advantage Banner */}
+        <div className="p-4 rounded-xl bg-red-500/10 border border-[#D71921]/30 flex items-start gap-3">
+          <Sparkles size={20} className="text-[#D71921] shrink-0 mt-0.5" />
+          <div className="text-xs text-[var(--muted)] leading-relaxed">
+            <span className="font-bold text-[var(--text)] block text-sm mb-0.5">Shared Pro Member Advantage</span>
+            Study Crews support <strong className="text-[var(--text)]">up to 30 members</strong>. When any single squad member upgrades to Pro, unlimited practice MCQs and AI tokens instantly unlock for everyone in the crew!
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
           {/* Join Crew Card */}
           <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#D71921' }}>
@@ -323,10 +191,10 @@ export function CrewDashboardPage() {
               </h3>
             </div>
             <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Enter the 6-character code provided by your crew leader or classmate.
+              Enter the 6-character code provided by your crew leader or classmate (or open an invite link).
             </p>
 
-            <form onSubmit={handleJoinCrew} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 'auto' }}>
+            <form onSubmit={handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 'auto' }}>
               <input
                 type="text"
                 required
@@ -358,18 +226,18 @@ export function CrewDashboardPage() {
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text)' }}>
               <Plus size={20} className="text-[#D71921]" />
               <h3 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
-                Start a New Crew
+                Create New Crew
               </h3>
             </div>
             <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Create a custom squad for your college friends or study group. Set a shared weekly question target.
+              Start your own study crew for up to 30 classmates and become the squad leader.
             </p>
 
-            <form onSubmit={handleCreateCrew} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 'auto' }}>
+            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 'auto' }}>
               <input
                 type="text"
                 required
-                placeholder="Crew Name (e.g. FAST Aces)"
+                placeholder="Crew Name (e.g. FAST Aces 2026)"
                 value={newCrewName}
                 onChange={(e) => setNewCrewName(e.target.value)}
                 style={{
@@ -392,35 +260,71 @@ export function CrewDashboardPage() {
     );
   }
 
-  // Crew is loaded: full Crew Dashboard
+  // State B: User has an active crew
   const members = crew.members || [];
+  const memberCount = members.length;
   const currentQuestions = crew.currentQuestions || 0;
-  const goalQuestions = crew.goalQuestions || 300;
+  const goalQuestions = crew.goalQuestions || 500;
+
+  // Member Leaderboard calculation
+  const sortedMembers = [...members].sort((a, b) => {
+    if (leaderboardTab === 'weekly') {
+      return (b.questionsSolved || 0) - (a.questionsSolved || 0);
+    }
+    return (b.streak || 0) - (a.streak || 0);
+  });
 
   return (
     <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24, padding: '1rem' }}>
+      {/* ── Return Link ── */}
+      <div>
+        <Link
+          to="/dashboard"
+          className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-white mb-2 transition-colors font-heading"
+        >
+          <ArrowLeft size={14} />
+          <span>Return to Dashboard</span>
+        </Link>
+      </div>
+
       {/* ── Crew Header ────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
             <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
-              Active Crew Squad
+              Study Crew
             </span>
             {isLeader && <Badge color="brand">LEADER</Badge>}
+            {crew.hasProMember && (
+              <span className="text-[10px] font-heading px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                PRO ACTIVE
+              </span>
+            )}
+            {crew.isLocked && (
+              <span className="text-[10px] font-heading px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/40 flex items-center gap-1">
+                <Lock size={10} /> LOCKED
+              </span>
+            )}
           </div>
           <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>
             {crew.name}
           </h1>
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-            Led by {crew.leaderName} · {members.length} members
+            Led by {crew.leaderName} · <strong className="text-[var(--text)]">{memberCount} / 30 members</strong>
           </p>
         </div>
 
-        {/* Invite Code Box */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Action buttons (Share, Code, Lock, Leave) */}
+        <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+          {/* Share Modal Trigger */}
+          <Button variant="primary" size="sm" onClick={() => setShareModalOpen(true)}>
+            <Share2 size={14} /> Share Squad
+          </Button>
+
+          {/* Quick Copy Code Pill */}
           <div
             style={{
-              padding: '8px 14px',
+              padding: '6px 12px',
               borderRadius: 'var(--r-input)',
               background: 'var(--surface)',
               border: '1px solid var(--border)',
@@ -430,30 +334,41 @@ export function CrewDashboardPage() {
             }}
           >
             <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>CODE:</span>
-            <span className="font-mono" style={{ fontSize: 14, fontWeight: 700, color: '#D71921', letterSpacing: '0.1em' }}>
+            <span className="font-mono" style={{ fontSize: 13, fontWeight: 700, color: '#D71921', letterSpacing: '0.1em' }}>
               {crew.code}
             </span>
-            <button onClick={copyCode} title="Copy code" style={{ color: 'var(--text-muted)', cursor: 'pointer' }}>
-              {copiedCode ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+            <button onClick={handleCopyCode} title="Copy code" style={{ color: 'var(--text-muted)', cursor: 'pointer' }}>
+              {copiedCode ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
             </button>
           </div>
 
+          {/* Leader Controls: Lock/Unlock & Regenerate */}
           {isLeader && (
-            <button
-              onClick={handleResetInviteCode}
-              title="Reset code"
-              style={{
-                padding: '8px 12px',
-                borderRadius: 'var(--r-input)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-muted)',
-                cursor: 'pointer',
-                fontSize: 12,
-              }}
-            >
-              <RefreshCw size={14} />
-            </button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={toggleLock}
+                title={crew.isLocked ? 'Unlock invites' : 'Lock invites'}
+              >
+                {crew.isLocked ? <Unlock size={14} /> : <Lock size={14} />}
+                <span>{crew.isLocked ? 'Unlock' : 'Lock'}</span>
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={regenerateCode}
+                title="Regenerate invite code"
+              >
+                <RefreshCw size={14} />
+              </Button>
+            </>
           )}
+
+          {/* Leave Crew Button */}
+          <Button variant="ghost" size="sm" onClick={handleLeave} style={{ color: 'var(--text-faint)' }}>
+            <LogOut size={14} /> Leave
+          </Button>
         </div>
       </div>
 
@@ -486,7 +401,7 @@ export function CrewDashboardPage() {
               <span style={{ fontSize: 14, color: 'var(--text-muted)' }}> / {goalQuestions} MCQs</span>
             </div>
             <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 4 }}>
-              Combined total solved by all squad members this week.
+              Combined total solved by all up to 30 members this week.
             </p>
           </div>
         </GlassCard>
@@ -514,12 +429,12 @@ export function CrewDashboardPage() {
             </div>
           </div>
           <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Maintained when at least one crew member solves tests each calendar day.
+            Maintained whenever at least one crew member solves tests each calendar day.
           </p>
         </GlassCard>
       </div>
 
-      {/* ── 2-Column: Member List & Daily Activity Dots + Crew Weak Chapters ── */}
+      {/* ── 2-Column: Crew Member Leaderboard + Squad Weak Topics ── */}
       <div
         style={{
           display: 'grid',
@@ -527,48 +442,81 @@ export function CrewDashboardPage() {
           gap: 20,
         }}
       >
-        {/* Members List with Daily Activity Dots */}
+        {/* Crew Leaderboard */}
         <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Users size={18} className="text-[#D71921]" />
+              <Trophy size={18} className="text-[#D71921]" />
               <h3 className="font-display" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-                Squad Members ({members.length})
+                Squad Leaderboard ({memberCount}/30)
               </h3>
             </div>
-            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>Today's Activity</span>
+
+            {/* Toggle Weekly vs All-Time */}
+            <div className="flex items-center gap-1 p-0.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-xs">
+              <button
+                type="button"
+                onClick={() => setLeaderboardTab('weekly')}
+                className={`px-2.5 py-1 rounded-md transition-colors ${
+                  leaderboardTab === 'weekly'
+                    ? 'bg-[var(--card)] text-[var(--text)] font-semibold shadow-sm'
+                    : 'text-[var(--muted)] hover:text-white'
+                }`}
+              >
+                Weekly MCQs
+              </button>
+              <button
+                type="button"
+                onClick={() => setLeaderboardTab('alltime')}
+                className={`px-2.5 py-1 rounded-md transition-colors ${
+                  leaderboardTab === 'alltime'
+                    ? 'bg-[var(--card)] text-[var(--text)] font-semibold shadow-sm'
+                    : 'text-[var(--muted)] hover:text-white'
+                }`}
+              >
+                Streaks
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {members.map((m, _idx) => {
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {sortedMembers.map((m, idx) => {
               const isMemLeader = m.uid === crew.leaderId;
               const isCurrentUser = Boolean(user && m.uid === user.uid);
+              const rank = idx + 1;
 
               return (
                 <div
                   key={m.uid}
                   style={{
-                    padding: '12px 14px',
+                    padding: '10px 14px',
                     borderRadius: 'var(--r-input)',
-                    background: 'var(--surface-hover)',
-                    border: '1px solid var(--border)',
+                    background: isCurrentUser ? 'rgba(215, 25, 33, 0.08)' : 'var(--surface-hover)',
+                    border: isCurrentUser ? '1px solid #D71921' : '1px solid var(--border)',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {/* Activity Dot */}
+                    {/* Rank Badge */}
                     <div
                       style={{
-                        width: 10,
-                        height: 10,
+                        width: 22,
+                        height: 22,
                         borderRadius: '50%',
-                        background: '#D71921',
-                        boxShadow: '0 0 6px rgba(215, 25, 33, 0.6)',
+                        background: rank === 1 ? '#eab308' : rank === 2 ? '#94a3b8' : rank === 3 ? '#d97706' : 'var(--surface)',
+                        color: rank <= 3 ? '#000000' : 'var(--text-muted)',
+                        fontSize: 10,
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        flexShrink: 0,
                       }}
-                      title="Active today"
-                    />
+                    >
+                      {rank}
+                    </div>
 
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -578,6 +526,11 @@ export function CrewDashboardPage() {
                         {isMemLeader && (
                           <span style={{ fontSize: 9, background: '#D71921', color: 'white', padding: '1px 5px', borderRadius: 999 }}>
                             LEADER
+                          </span>
+                        )}
+                        {m.isPro && (
+                          <span style={{ fontSize: 9, background: '#059669', color: 'white', padding: '1px 5px', borderRadius: 999 }}>
+                            PRO
                           </span>
                         )}
                         {isCurrentUser && (
@@ -590,25 +543,41 @@ export function CrewDashboardPage() {
                     </div>
                   </div>
 
-                  {isLeader && !isMemLeader && (
-                    <button
-                      onClick={() => handleRemoveMember(m)}
-                      title="Remove member"
-                      style={{
-                        color: 'var(--danger)',
-                        background: 'transparent',
-                        border: 'none',
-                        cursor: 'pointer',
-                        padding: 6,
-                      }}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    <div style={{ textAlign: 'right' }}>
+                      <span className="font-display tabular-nums" style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                        {leaderboardTab === 'weekly' ? `${m.questionsSolved || 0} MCQs` : `${m.streak || 1} Days`}
+                      </span>
+                    </div>
+
+                    {isLeader && !isMemLeader && (
+                      <button
+                        onClick={() => kickMember(m.uid)}
+                        title="Remove member"
+                        style={{
+                          color: 'var(--danger)',
+                          background: 'transparent',
+                          border: 'none',
+                          cursor: 'pointer',
+                          padding: 4,
+                        }}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               );
             })}
           </div>
+
+          {isLeader && members.length > 1 && (
+            <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', justifyContent: 'flex-end' }}>
+              <Button variant="ghost" size="sm" onClick={() => setTransferModalOpen(true)}>
+                Transfer Leadership
+              </Button>
+            </div>
+          )}
         </GlassCard>
 
         {/* Crew Weak Chapters */}
@@ -620,11 +589,11 @@ export function CrewDashboardPage() {
             </h3>
           </div>
           <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Topics where squad members made the highest number of errors this week.
+            High-error chapters aggregated across all active squad members this week.
           </p>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {(crew.weakChapters || []).map((ch, _idx) => (
+            {(crew.weakChapters || []).map((ch) => (
               <div
                 key={ch.chapter}
                 style={{
@@ -650,7 +619,7 @@ export function CrewDashboardPage() {
                 <Button
                   variant="secondary"
                   size="sm"
-                  onClick={() => (window.location.href = '/dashboard/practice')}
+                  onClick={() => navigate('/dashboard/practice')}
                 >
                   <Target size={12} /> Drill
                 </Button>
@@ -659,6 +628,82 @@ export function CrewDashboardPage() {
           </div>
         </GlassCard>
       </div>
+
+      {/* ── Modal: Share Squad (QR + Link + WhatsApp) ──────────────── */}
+      {shareModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-[var(--card)] border border-[var(--border)] p-6 shadow-2xl flex flex-col gap-4">
+            <div className="text-center">
+              <h3 className="text-lg font-bold font-display text-[var(--text)]">Invite to {crew.name}</h3>
+              <p className="text-xs text-[var(--muted)] mt-1">
+                Share this QR code or link with classmates (up to 30 members)
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center p-2 rounded-xl bg-white/5 border border-[var(--border)]">
+              <QrCodeSvg value={joinUrl} size={150} />
+            </div>
+
+            <div className="p-2.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-center">
+              <span className="text-[10px] font-mono text-[var(--text-faint)] block mb-0.5">INVITE CODE</span>
+              <span className="font-mono text-lg font-bold text-[#D71921] tracking-widest">{crew.code}</span>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Button variant="secondary" size="md" fullWidth onClick={handleCopyLink}>
+                {copiedCode ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
+                <span>{copiedCode ? 'Link Copied!' : 'Copy Direct Link'}</span>
+              </Button>
+              <Button variant="primary" size="md" fullWidth onClick={handleWhatsAppShare}>
+                <Share2 size={14} />
+                <span>Share via WhatsApp</span>
+              </Button>
+            </div>
+
+            <Button variant="ghost" size="sm" onClick={() => setShareModalOpen(false)}>
+              Close
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal: Transfer Leadership ─────────────────────────────── */}
+      {transferModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-2xl bg-[var(--card)] border border-[var(--border)] p-6 shadow-2xl flex flex-col gap-4">
+            <div>
+              <h3 className="text-lg font-bold font-display text-[var(--text)]">Transfer Leadership</h3>
+              <p className="text-xs text-[var(--muted)] mt-1">
+                Select a member to become the new crew squad leader.
+              </p>
+            </div>
+
+            <select
+              value={selectedNewLeader}
+              onChange={(e) => setSelectedNewLeader(e.target.value)}
+              className="w-full p-2.5 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm text-[var(--text)]"
+            >
+              <option value="">Select a squad member...</option>
+              {members
+                .filter((m) => m.uid !== user?.uid)
+                .map((m) => (
+                  <option key={m.uid} value={m.uid}>
+                    {m.displayName} ({m.email})
+                  </option>
+                ))}
+            </select>
+
+            <div className="flex gap-2">
+              <Button variant="secondary" fullWidth onClick={() => setTransferModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button variant="primary" fullWidth disabled={!selectedNewLeader} onClick={handleTransfer}>
+                Confirm Transfer
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

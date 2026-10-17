@@ -2,6 +2,7 @@ import { doc, onSnapshot } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 interface UsageData {
@@ -18,12 +19,13 @@ const FREE_LIMITS = {
 
 interface Props {
   uid: string;
-  isPremium: boolean;
+  isPremium?: boolean;
 }
 
 export function DailyLimitsMeter({ uid, isPremium }: Props) {
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
+  const effectivePlan = useEffectivePlan();
 
   const dateKey = getPKTDateKey();
 
@@ -49,9 +51,11 @@ export function DailyLimitsMeter({ uid, isPremium }: Props) {
     return unsubscribe;
   }, [uid, dateKey]);
 
-  if (loading) return <Skeleton height={70} />;
+  if (loading || effectivePlan.loading) return <Skeleton height={70} />;
 
-  if (isPremium) {
+  const hasUnlimited = Boolean(isPremium || effectivePlan.isPro);
+
+  if (hasUnlimited) {
     return (
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 rounded-full border-2 border-[var(--red)] flex items-center justify-center font-doto text-xs font-bold text-[#FFFFFF]">
@@ -59,7 +63,11 @@ export function DailyLimitsMeter({ uid, isPremium }: Props) {
         </div>
         <div>
           <div className="text-xs font-semibold text-[var(--text)]">Unlimited Access</div>
-          <div className="text-[11px] text-[var(--muted)]">Pro quota active</div>
+          <div className="text-[11px] text-[var(--muted)]">
+            {effectivePlan.source === 'crew'
+              ? `Pro active via ${effectivePlan.crewName || 'Study Crew'}`
+              : 'Pro quota active'}
+          </div>
         </div>
       </div>
     );

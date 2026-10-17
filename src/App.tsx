@@ -108,6 +108,9 @@ const AiTutorPage = lazyWithRetry(() =>
 const CrewDashboardPage = lazyWithRetry(() =>
   import('./pages/crew/CrewDashboardPage').then(m => ({ default: m.CrewDashboardPage }))
 );
+const JoinCrewPage = lazyWithRetry(() =>
+  import('./pages/crew/JoinCrewPage').then(m => ({ default: m.JoinCrewPage }))
+);
 const CrewApplyPage = lazyWithRetry(() =>
   import('./pages/crew/CrewApplyPage').then(m => ({ default: m.CrewApplyPage }))
 );
@@ -234,6 +237,9 @@ function AppInner() {
         {/* Crew & Captain Portals — independent shells, NO public Navbar or Footer */}
         <Route path="/crew" element={<CrewDashboardPage />} />
         <Route path="/crew/apply" element={<CrewApplyPage />} />
+        <Route path="/join/:code" element={<JoinCrewPage />} />
+        <Route path="/join" element={<Navigate to="/crew" replace />} />
+        <Route path="/dashboard/crew" element={<Navigate to="/crew" replace />} />
         <Route path="/captain" element={<CaptainDashboardPage />} />
         <Route path="/captain/apply" element={<CaptainApplyPage />} />
         <Route path="/captain/leaderboard" element={<CaptainLeaderboardPage />} />

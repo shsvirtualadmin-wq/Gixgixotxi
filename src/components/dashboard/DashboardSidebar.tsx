@@ -11,6 +11,7 @@ import {
   Moon,
   Award,
   User,
+  LogOut,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';

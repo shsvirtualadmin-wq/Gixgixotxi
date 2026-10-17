@@ -29,8 +29,12 @@ export interface UserProfile {
   updatedAt?: Timestamp;
   streak?: number;
   isCrewMember?: boolean;
+  crewId?: string | null;
+  crewName?: string | null;
   crewStatus?: string;
   crewReferralCode?: string;
+  streakFreezes?: number;
+  streakFreezeActive?: boolean;
 }
 
 export interface PlaceholderReview {

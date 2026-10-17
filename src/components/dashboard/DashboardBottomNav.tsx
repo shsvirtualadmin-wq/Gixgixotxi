@@ -15,6 +15,7 @@ import {
   Flame,
   Target,
   User,
+  Users,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -62,10 +63,11 @@ export function DashboardBottomNav() {
 
   const isPro = profile?.isPremium || profile?.plan === 'pro';
   const role = profile?.role || 'student';
+  const isCrewMember = Boolean(profile?.isCrewMember || profile?.role === 'crew' || profile?.crewId);
   const displayName = profile?.displayName || user?.displayName || 'Student';
   const initial = (displayName[0] || user?.email?.[0] || 'S').toUpperCase();
 
-  // Unified PillNav items (exact specification: Daily Practice, Cockpit, Weak Chapters, Streaks, Menu)
+  // Unified PillNav items (Daily Practice, Cockpit, Weak Chapters, Streaks, optional Crew for members, Menu)
   const navItems: PillNavItem[] = [
     {
       to: '/dashboard/practice',
@@ -88,6 +90,15 @@ export function DashboardBottomNav() {
       label: 'Streaks',
       icon: <Flame size={18} />,
     },
+    ...(isCrewMember
+      ? [
+          {
+            to: '/crew',
+            label: 'Crew',
+            icon: <Users size={18} />,
+          },
+        ]
+      : []),
     {
       id: 'menu',
       label: 'Menu',
@@ -256,6 +267,24 @@ export function DashboardBottomNav() {
                 </div>
               </button>
 
+              {/* Study Crew for all students */}
+              <button
+                type="button"
+                onClick={() => handleNav('/crew')}
+                className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <Users size={18} className="text-[var(--muted)]" />
+                  <span>Study Crew &amp; Squads</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
+                    Up to 30
+                  </span>
+                  <ChevronRight size={14} className="text-[var(--muted)]" />
+                </div>
+              </button>
+
               {role === 'crew' && (
                 <button
                   type="button"
@@ -313,6 +342,16 @@ export function DashboardBottomNav() {
                 <LogOut size={16} />
                 <span>Sign Out</span>
               </button>
+
+              {/* Build ID at bottom of Menu Sheet */}
+              <div className="pt-2 pb-1 text-center select-all">
+                <span className="font-mono text-[9px] text-[var(--muted)] tracking-wider block">
+                  BUILD: {typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : 'dev'}
+                </span>
+                <span className="font-mono text-[8px] text-[var(--muted)] opacity-60 block">
+                  {typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : ''}
+                </span>
+              </div>
             </div>
           </div>
         </div>

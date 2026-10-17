@@ -1,6 +1,6 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, initializeFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, memoryLocalCache } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import {
   TARGET_PROJECT_ID,
@@ -29,15 +29,16 @@ export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getA
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-// Initialize Firestore with the named database per configuration:
-// Named database: ai-studio-25287ca6-33a1-49f8-8867-70061120a712
-// Uses experimentalAutoDetectLongPolling: true so Firestore automatically selects WebSockets or Long-Polling
+// Initialize Firestore with the named database:
+// Uses experimentalAutoDetectLongPolling: true for optimal transport
+// Uses memoryLocalCache() to prevent multi-tab IndexedDB lock contention & write queue stalls
 export const db = (() => {
   try {
     return initializeFirestore(
       app,
       {
         experimentalAutoDetectLongPolling: true,
+        localCache: memoryLocalCache(),
       } as unknown as Parameters<typeof initializeFirestore>[1],
       TARGET_DATABASE_ID
     );

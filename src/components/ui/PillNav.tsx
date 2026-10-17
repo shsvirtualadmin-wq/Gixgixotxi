@@ -20,6 +20,7 @@ interface PillNavProps {
   activeItemClassName?: string;
   inactiveItemClassName?: string;
   layout?: 'row' | 'stacked-mobile'; // stacked-mobile shows icon above label on small screens
+  compactActiveLabelOnly?: boolean;
 }
 
 export function PillNav({
@@ -31,6 +32,7 @@ export function PillNav({
   activeItemClassName = '',
   inactiveItemClassName = '',
   layout = 'row',
+  compactActiveLabelOnly = false,
 }: PillNavProps) {
   return (
     <div
@@ -73,7 +75,13 @@ export function PillNav({
                       {item.icon}
                     </span>
                   )}
-                  <span className="leading-tight truncate">{item.label}</span>
+                  <span
+                    className={`leading-tight truncate ${
+                      compactActiveLabelOnly && !isActive ? 'hidden sm:inline' : 'inline'
+                    }`}
+                  >
+                    {item.label}
+                  </span>
                   {item.badge !== undefined && (
                     <span
                       className={`ml-1 text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
@@ -120,7 +128,13 @@ export function PillNav({
                 {item.icon}
               </span>
             )}
-            <span className="leading-tight truncate">{item.label}</span>
+            <span
+              className={`leading-tight truncate ${
+                compactActiveLabelOnly && !isSelected ? 'hidden sm:inline' : 'inline'
+              }`}
+            >
+              {item.label}
+            </span>
             {item.badge !== undefined && (
               <span
                 className={`ml-1 text-[10px] font-bold px-1.5 py-0.2 rounded-full ${

@@ -3,7 +3,8 @@ import { useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { debugTracker, type RedirectEvent, type UserDocFetchStatus } from '@/utils/debugTracker';
-import { Activity, ChevronDown, ChevronUp, AlertCircle, RefreshCw } from 'lucide-react';
+import { subscribeToSaveProcess, getSaveProcessState, type SaveProcessState } from '@/lib/robustSave';
+import { Activity, ChevronDown, ChevronUp, AlertCircle, RefreshCw, Save } from 'lucide-react';
 
 export function DebugPanel() {
   const location = useLocation();
@@ -13,7 +14,13 @@ export function DebugPanel() {
   const [isOpen, setIsOpen] = useState(true);
   const [redirects, setRedirects] = useState<RedirectEvent[]>(() => debugTracker.getRedirects());
   const [fetchStatus, setFetchStatus] = useState<UserDocFetchStatus>(() => debugTracker.getUserFetchStatus());
+  const [saveState, setSaveState] = useState<SaveProcessState>(() => getSaveProcessState());
   const [visible, setVisible] = useState(() => debugTracker.isDebugMode());
+
+  useEffect(() => {
+    const unsubSave = subscribeToSaveProcess(setSaveState);
+    return () => unsubSave();
+  }, []);
 
   useEffect(() => {
     const checkVisibility = () => {
@@ -148,6 +155,60 @@ export function DebugPanel() {
             <span style={{ color: '#38bdf8', wordBreak: 'break-all' }}>{currentRoute}</span>
           </div>
 
+          {/* Live Save Process Monitor */}
+          <div style={{ borderBottom: '1px solid #27272a', paddingBottom: 8 }}>
+            <div style={{ color: '#a1a1aa', fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Save size={12} style={{ color: '#38bdf8' }} />
+              <span>Live Save Monitor:</span>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '110px 1fr', gap: '3px 8px' }}>
+              <span style={{ color: '#71717a' }}>Save status:</span>
+              <span
+                style={{
+                  fontWeight: 600,
+                  color:
+                    saveState.status === 'confirmed'
+                      ? '#10b981'
+                      : saveState.status === 'server_verified'
+                      ? '#38bdf8'
+                      : saveState.status === 'syncing_offline'
+                      ? '#f59e0b'
+                      : saveState.status === 'rejected'
+                      ? '#ef4444'
+                      : saveState.status === 'saving'
+                      ? '#fbbf24'
+                      : '#71717a',
+                }}
+              >
+                {saveState.status}
+              </span>
+
+              <span style={{ color: '#71717a' }}>Time elapsed:</span>
+              <span style={{ color: '#f4f4f5' }}>{saveState.elapsedMs}ms</span>
+
+              {saveState.saveId && (
+                <>
+                  <span style={{ color: '#71717a' }}>saveId:</span>
+                  <span style={{ color: '#a1a1aa', wordBreak: 'break-all' }}>{saveState.saveId}</span>
+                </>
+              )}
+
+              <span style={{ color: '#71717a' }}>Server verified:</span>
+              <span style={{ color: saveState.serverVerified ? '#10b981' : '#71717a' }}>
+                {saveState.serverVerified ? 'Yes (getDocFromServer)' : saveState.status === 'saving' ? 'checking...' : 'none'}
+              </span>
+
+              {saveState.errorCode && (
+                <>
+                  <span style={{ color: '#ef4444' }}>Error code:</span>
+                  <span style={{ color: '#ef4444', wordBreak: 'break-all' }}>
+                    {saveState.errorCode}: {saveState.errorMessage}
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+
           {/* Last 5 redirects */}
           <div>
             <div style={{ color: '#a1a1aa', fontWeight: 600, marginBottom: 4, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -194,7 +255,10 @@ export function DebugPanel() {
           )}
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 4 }}>
-            <span style={{ fontSize: '9px', color: '#52525b' }}>Boardly Engine v2.4</span>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span style={{ fontSize: '9px', color: '#71717a' }}>Build: {typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : 'dev'}</span>
+              <span style={{ fontSize: '8px', color: '#52525b' }}>{typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : ''}</span>
+            </div>
             <button
               type="button"
               onClick={() => window.location.reload()}

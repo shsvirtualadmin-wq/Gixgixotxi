@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { serverTimestamp } from 'firebase/firestore';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { GlassCard } from '@/components/ui/GlassCard';
+import { SyncingIndicator } from '@/components/ui/SyncingIndicator';
+import { robustSaveUserProfile } from '@/lib/robustSave';
 import { AlertCircle } from 'lucide-react';
 
 interface SummaryData {
@@ -22,6 +23,7 @@ interface StepSummaryProps {
 export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
   const { user, updateLocalProfile } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [error, setError] = useState<{ code?: string; message: string; path?: string } | null>(null);
 
   const handleSave = async () => {
@@ -32,8 +34,8 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
     const path = `users/${user.uid}`;
     setSaving(true);
     setError(null);
+    setSyncNotice(null);
 
-    // 2. Safe fields only - writes uniform field names matching dashboard expectations
     const safePayload = {
       targetExam: data.targetUniversity,
       targetUniversity: data.targetUniversity,
@@ -44,27 +46,16 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
       onboardingCompleted: true,
       profileCompletedAt: serverTimestamp(),
       onboardingCompletedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
     };
 
-    console.log(`[StepSummary] Starting setDoc for ${path} with fields:`, safePayload);
+    console.log(`[StepSummary] Starting safe save for ${path} with fields:`, safePayload);
 
     try {
-      // 3. Flow: setDoc, wait for it with a loading state on the button (up to 15 seconds)
-      const setDocPromise = setDoc(doc(db, 'users', user.uid), safePayload, { merge: true });
+      // Robust save: setDoc with saveId, 8s server-verification fallback, and offline syncing tolerance
+      const result = await robustSaveUserProfile(user.uid, safePayload);
+      console.log(`[StepSummary] Save completed successfully (mode: ${result.mode}, saveId: ${result.saveId})`);
 
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => {
-          const timeoutErr = new Error('Save operation timed out after 15 seconds. Please check your network and retry.');
-          (timeoutErr as { code?: string }).code = 'TIMEOUT_15S';
-          reject(timeoutErr);
-        }, 15000);
-      });
-
-      await Promise.race([setDocPromise, timeoutPromise]);
-      console.log(`[StepSummary] Successfully confirmed setDoc on ${path}`);
-
-      // 4. Update the in-memory profile state (AuthContext) immediately so dashboard shows new values without a reload
+      // Update in-memory profile immediately
       updateLocalProfile({
         targetExam: data.targetUniversity,
         targetUniversity: data.targetUniversity,
@@ -75,15 +66,21 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
         onboardingCompleted: true,
       });
 
-      // Navigate to the dashboard
-      onComplete();
+      if (result.mode === 'syncing_offline') {
+        setSyncNotice('Saved on this device. Syncing to cloud in background...');
+        setTimeout(() => {
+          onComplete();
+        }, 1200);
+      } else {
+        onComplete();
+      }
     } catch (err: unknown) {
       setSaving(false);
       const fe = err as { code?: string; message?: string };
-      console.error(`[StepSummary] Onboarding save failed at ${path}:`, err);
+      console.error(`[StepSummary] Save rejected at ${path}:`, err);
       setError({
-        code: fe.code || 'SAVE_FAILED',
-        message: fe.message || 'Failed to save your preferences.',
+        code: fe.code || 'SAVE_REJECTED',
+        message: fe.message || 'Permission denied or network connection failed.',
         path,
       });
     }
@@ -137,6 +134,12 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
           {error.code && <code style={{ fontSize: 11, color: 'var(--danger)', display: 'block', marginBottom: 4 }}>{error.code}</code>}
           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>{error.message}</p>
           {error.path && <p style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'monospace' }}>Path: {error.path}</p>}
+        </div>
+      )}
+
+      {syncNotice && (
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <SyncingIndicator isSyncing={true} message={syncNotice} />
         </div>
       )}
 

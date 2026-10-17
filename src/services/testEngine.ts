@@ -10,10 +10,12 @@ import {
   serverTimestamp,
   setDoc,
   increment,
+  arrayUnion,
   Timestamp,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
+import { robustSaveDoc, robustTransaction } from '@/lib/robustSave';
 import type { AttemptDoc, AttemptQuestion, Question } from '@/types/index';
 
 /**
@@ -111,32 +113,38 @@ function prefilterAndConvertMath(text: string): string {
  * Normalizes question document from Firestore into a consistent AttemptQuestion format.
  */
 function normalizeQuestionDoc(id: string, data: Partial<Question>): AttemptQuestion {
-  const rawQ = data.q ?? data.question ?? 'Untitled Question';
-  const qText = prefilterAndConvertMath(rawQ);
+  const stem = (data.stem ?? data.q ?? data.question ?? '').trim();
   const rawOpts = data.options ?? [];
   const options = Array.isArray(rawOpts) && rawOpts.length >= 2
-    ? rawOpts.map((opt) => prefilterAndConvertMath(String(opt)))
+    ? rawOpts.map((opt) => String(opt).trim())
     : ['Option A', 'Option B', 'Option C', 'Option D'];
 
   let correctIdx = 0;
-  if (typeof data.correct === 'number') {
+  if (typeof data.correctIndex === 'number') {
+    correctIdx = data.correctIndex;
+  } else if (typeof data.correct === 'number') {
     correctIdx = data.correct;
   } else if (typeof data.correctAnswer === 'number') {
     correctIdx = data.correctAnswer;
   }
 
-  const rawExplain = data.explain ?? data.explanation ?? '';
+  const rawExplain = data.explanation ?? data.explain ?? '';
 
   return {
     id,
-    q: qText,
+    stem,
+    q: stem, // legacy alias
     options,
-    correct: Math.min(Math.max(0, correctIdx), options.length - 1),
-    explain: prefilterAndConvertMath(rawExplain),
+    correctIndex: Math.min(Math.max(0, correctIdx), options.length - 1),
+    correct: Math.min(Math.max(0, correctIdx), options.length - 1), // legacy alias
+    explanation: rawExplain,
+    explain: rawExplain, // legacy alias
     subject: data.subject ?? 'General',
     chapter: data.chapter ?? data.topic ?? '',
-    difficulty: data.difficulty ?? 'Medium',
-    university: data.university,
+    difficulty: (data.difficulty ?? 'medium').toLowerCase(),
+    universities: Array.isArray(data.universities)
+      ? data.universities
+      : (data.university ? [data.university] : []),
   };
 }
 
@@ -153,7 +161,68 @@ function shuffle<T>(arr: T[]): T[] {
 }
 
 /**
+ * Computes deterministic 32-char hex stemHash from normalized stem string.
+ */
+export async function computeStemHash(stem: string): Promise<string> {
+  const normalized = stem.trim().toLowerCase().replace(/\s+/g, ' ');
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(normalized);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('').substring(0, 32);
+    } catch {
+      // fallback
+    }
+  }
+  let hash = 0;
+  for (let i = 0; i < normalized.length; i++) {
+    hash = (hash << 5) - hash + normalized.charCodeAt(i);
+    hash |= 0;
+  }
+  return `h_${Math.abs(hash).toString(16).padStart(8, '0')}`;
+}
+
+/**
+ * Student Report Question action: saves report doc and marks question status='reported'.
+ */
+export async function reportQuestion(params: {
+  questionId: string;
+  stem: string;
+  subject: string;
+  chapter?: string;
+  reason: 'wrong_key' | 'broken_math' | 'unclear' | 'other';
+  comment?: string;
+  userId: string;
+  userEmail?: string;
+}): Promise<void> {
+  const reportRef = doc(collection(db, 'questionReports'));
+  await robustSaveDoc(reportRef, {
+    questionId: params.questionId,
+    stem: params.stem,
+    subject: params.subject,
+    chapter: params.chapter || '',
+    reason: params.reason,
+    comment: params.comment || '',
+    userId: params.userId,
+    userEmail: params.userEmail || '',
+    status: 'pending',
+    createdAt: serverTimestamp(),
+  });
+
+  // Flag question document as reported
+  try {
+    const qDocRef = doc(db, 'questions', params.questionId);
+    await setDoc(qDocRef, { status: 'reported', updatedAt: serverTimestamp() }, { merge: true });
+  } catch (err) {
+    console.warn('[testEngine] Flagging question status as reported note:', err);
+  }
+}
+
+/**
  * Fetches questions from Firestore matching attempt criteria (with intelligent fallback).
+ * Returns empty array if pool is empty.
  */
 export async function fetchQuestionsForAttempt(attempt: AttemptDoc): Promise<AttemptQuestion[]> {
   const questionsColl = collection(db, 'questions');
@@ -161,12 +230,19 @@ export async function fetchQuestionsForAttempt(attempt: AttemptDoc): Promise<Att
   const questionsMap = new Map<string, AttemptQuestion>();
 
   // 1. Try specific subject query if specified
-  if (attempt.subject && attempt.subject !== 'Any') {
+  if (attempt.subject && attempt.subject !== 'Any' && attempt.subject !== 'General') {
     try {
-      const q = query(questionsColl, where('subject', '==', attempt.subject), limit(needed * 2));
+      const q = query(
+        questionsColl,
+        where('subject', '==', attempt.subject),
+        limit(needed * 2)
+      );
       const snap = await getDocs(q);
       snap.docs.forEach((d) => {
-        questionsMap.set(d.id, normalizeQuestionDoc(d.id, d.data() as Partial<Question>));
+        const data = d.data() as Partial<Question>;
+        // Filter out drafts if status field is present
+        if (data.status === 'draft') return;
+        questionsMap.set(d.id, normalizeQuestionDoc(d.id, data));
       });
     } catch (e) {
       console.warn('[testEngine] Filtered question query fallback:', e);
@@ -179,14 +255,15 @@ export async function fetchQuestionsForAttempt(attempt: AttemptDoc): Promise<Att
       const fallbackQuery = query(questionsColl, limit(Math.max(50, needed * 2)));
       const snap = await getDocs(fallbackQuery);
       snap.docs.forEach((d) => {
-        questionsMap.set(d.id, normalizeQuestionDoc(d.id, d.data() as Partial<Question>));
+        const data = d.data() as Partial<Question>;
+        if (data.status === 'draft') return;
+        questionsMap.set(d.id, normalizeQuestionDoc(d.id, data));
       });
     } catch (e) {
       console.error('[testEngine] General question query error:', e);
     }
   }
 
-  // Questions come strictly from Firestore. If fewer questions exist, return available questions.
   const all = Array.from(questionsMap.values());
   return shuffle(all).slice(0, needed);
 }
@@ -312,10 +389,22 @@ export async function submitAttempt(
   });
 
   // 1. Update daily usage in PKT timezone
+  // 1. Increment daily usage & questions solved in PKT timezone
+  const pktDateKey = getPKTDateKey();
   try {
-    const pktDateKey = getPKTDateKey();
     const usageRef = doc(db, 'users', uid, 'usage', pktDateKey);
-    await setDoc(usageRef, { practiceAttempts: increment(1) }, { merge: true });
+    await setDoc(
+      usageRef,
+      {
+        practiceAttempts: increment(1),
+        questionsSolved: increment(totalQuestions),
+        accuracy: percentage,
+        timeSpentSeconds: increment(timeTakenSeconds),
+        subjects: arrayUnion(attempt.subject || 'General'),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   } catch (err) {
     console.warn('[testEngine] Failed to increment daily usage:', err);
   }
@@ -324,7 +413,6 @@ export async function submitAttempt(
   try {
     const entries = Object.entries(chapterAcc);
     for (const [ch, stat] of entries) {
-      // Safe ID for Firestore doc
       const safeId = ch.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_').toLowerCase();
       if (!safeId) continue;
       const chRef = doc(db, 'users', uid, 'chapterStats', safeId);
@@ -365,16 +453,18 @@ export async function submitAttempt(
     console.warn('[testEngine] Referral activation update note:', err);
   }
 
-  // 4. Update user streak in PKT timezone
+  // 4. Update user streak in PKT timezone & calculate crew points
   let currentStreak = 1;
+  let userCrewId: string | null = null;
   try {
     const userDocRef = doc(db, 'users', uid);
     const userSnap = await getDoc(userDocRef);
     if (userSnap.exists()) {
       const udata = userSnap.data();
+      userCrewId = (udata.crewId as string) || null;
       const lastActive = udata.lastActiveDate as string | undefined;
       const prevStreak = Number(udata.streak ?? 0);
-      const pktDateKey = getPKTDateKey();
+      const prevBest = Number(udata.bestStreak ?? prevStreak);
 
       if (lastActive === pktDateKey) {
         currentStreak = Math.max(1, prevStreak);
@@ -395,7 +485,8 @@ export async function submitAttempt(
         userDocRef,
         {
           streak: currentStreak,
-          lastActiveDate: getPKTDateKey(),
+          bestStreak: Math.max(currentStreak, prevBest),
+          lastActiveDate: pktDateKey,
           updatedAt: serverTimestamp(),
         },
         { merge: true }
@@ -405,7 +496,35 @@ export async function submitAttempt(
     console.warn('[testEngine] Failed to update user streak:', err);
   }
 
-  // 5. Update global leaderboard
+  // 5. Update Study Crew points in transaction (Job 4: 2 pts / correct + 1 pt / attempt + streak bonus)
+  if (userCrewId) {
+    try {
+      const pointsEarned = (2 * correctCount) + (1 * totalQuestions) + Math.min(currentStreak, 30);
+      const memberRef = doc(db, 'crews', userCrewId, 'members', uid);
+      const crewRef = doc(db, 'crews', userCrewId);
+
+      await robustTransaction(async (transaction) => {
+        const mSnap = await transaction.get(memberRef);
+        if (mSnap.exists()) {
+          transaction.update(memberRef, {
+            weeklyPoints: increment(pointsEarned),
+            totalPoints: increment(pointsEarned),
+            currentStreak: currentStreak,
+            questionsThisWeek: increment(totalQuestions),
+            accuracyThisWeek: percentage,
+            updatedAt: serverTimestamp(),
+          });
+        }
+        transaction.update(crewRef, {
+          updatedAt: serverTimestamp(),
+        });
+      });
+    } catch (err) {
+      console.warn('[testEngine] Failed to award crew points:', err);
+    }
+  }
+
+  // 6. Update global leaderboard
   try {
     const lbRef = doc(db, 'leaderboard', uid);
     const userSnap = await getDoc(doc(db, 'users', uid));

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -76,7 +77,8 @@ export function PlansBillingPage() {
     }
   };
 
-  const isPro = profile?.plan === 'pro' || profile?.isPremium;
+  const effectivePlan = useEffectivePlan();
+  const isPro = Boolean(effectivePlan.isPro || profile?.plan === 'pro' || profile?.isPremium);
   const isCrew = profile?.role === 'crew' || profile?.isCrewMember;
 
   return (
