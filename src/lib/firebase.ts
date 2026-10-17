@@ -1,6 +1,6 @@
 import { initializeApp, getApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 export const TARGET_PROJECT_ID = 'gen-lang-client-0366509316';
@@ -27,6 +27,19 @@ export const storage = getStorage(app);
 
 // Initialize Firestore with the named database per configuration:
 // Named database: ai-studio-25287ca6-33a1-49f8-8867-70061120a712
-export const db = getFirestore(app, TARGET_DATABASE_ID);
+// Uses experimentalAutoDetectLongPolling to eliminate WebChannel proxy buffering timeouts
+export const db = (() => {
+  try {
+    return initializeFirestore(
+      app,
+      {
+        experimentalAutoDetectLongPolling: true,
+      },
+      TARGET_DATABASE_ID
+    );
+  } catch {
+    return getFirestore(app, TARGET_DATABASE_ID);
+  }
+})();
 
 export { getApp, getFirestore, getAuth, getStorage };

@@ -7,6 +7,23 @@ import './index.css';
 
 // Handle dynamic chunk import failures cleanly with safe single-reload guard
 if (typeof window !== 'undefined') {
+  console.log(`[Boardly] Initializing client bundle. Build: ${typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev'}`);
+  
+  // Unregister any legacy service workers to prevent serving stale cached bundles on boardly.cfd
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations().then((registrations) => {
+      for (const registration of registrations) {
+        registration.unregister().then((unregistered) => {
+          if (unregistered) {
+            console.log('[Boardly] Purged legacy service worker registration');
+          }
+        });
+      }
+    }).catch((swErr) => {
+      console.warn('[Boardly] Service worker inspection error:', swErr);
+    });
+  }
+
   window.addEventListener('vite:preloadError', (event) => {
     const hasReloaded = sessionStorage.getItem('boardly-preload-reloaded');
     if (!hasReloaded) {

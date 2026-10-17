@@ -5,6 +5,7 @@ import { StepUniversity } from '@/components/onboarding/StepUniversity';
 import { StepTestDate } from '@/components/onboarding/StepTestDate';
 import { StepSubjects } from '@/components/onboarding/StepSubjects';
 import { StepSummary } from '@/components/onboarding/StepSummary';
+import { FirestoreDebugPanel } from '@/components/debug/FirestoreDebugPanel';
 
 export function OnboardingPage() {
   const navigate = useNavigate();
@@ -20,7 +21,8 @@ export function OnboardingPage() {
   };
 
   return (
-    <OnboardingShell step={step}>
+    <div className="w-full flex flex-col items-center">
+      <OnboardingShell step={step}>
       {step === 1 && (
         <StepUniversity
           value={targetUniversity}
@@ -55,6 +57,10 @@ export function OnboardingPage() {
         />
       )}
     </OnboardingShell>
+    <div className="w-full max-w-4xl px-4 pb-12">
+      <FirestoreDebugPanel />
+    </div>
+  </div>
   );
 }
 

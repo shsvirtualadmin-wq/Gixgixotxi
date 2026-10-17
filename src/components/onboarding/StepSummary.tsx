@@ -43,7 +43,8 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
     });
 
     try {
-      // 2. Wrap Firestore write with a 6-second timeout fallback
+      // 2. Wrap Firestore write with a 6-second timeout fallback while capturing real errors immediately
+      let realError: { code?: string; message?: string } | null = null;
       const writePromise = setDoc(
         doc(db, 'users', user.uid),
         {
@@ -55,11 +56,23 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
           onboardingCompletedAt: serverTimestamp(),
         },
         { merge: true }
-      );
+      ).catch((err: unknown) => {
+        const fe = err as { code?: string; message?: string };
+        realError = { code: fe.code, message: fe.message };
+        console.error(`[Boardly Firestore Underlying Error at ${path}]:`, err);
+        throw err;
+      });
 
       const timeoutPromise = new Promise((_, reject) =>
         setTimeout(
-          () => reject(new Error('Save operation timed out after 6 seconds. Proceeding to dashboard.')),
+          () =>
+            reject(
+              new Error(
+                realError
+                  ? `Firestore Error (${realError.code}): ${realError.message}`
+                  : 'Save operation timed out after 6 seconds. Proceeding to dashboard.'
+              )
+            ),
           6000
         )
       );

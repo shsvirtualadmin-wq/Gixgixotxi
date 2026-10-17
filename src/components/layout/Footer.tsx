@@ -143,8 +143,11 @@ export function Footer() {
           <div>
             &copy; {new Date().getFullYear()} Boardly Technologies. All rights reserved.
           </div>
-          <div>
-            Designed for focused study. Asia/Karachi (PKT)
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-[10px] text-gray-500">
+              Build: {typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev'}
+            </span>
+            <span>Designed for focused study. Asia/Karachi (PKT)</span>
           </div>
         </div>
       </div>

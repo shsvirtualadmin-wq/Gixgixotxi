@@ -311,6 +311,7 @@ export default defineConfig({
     'import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID': JSON.stringify(
       process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ?? 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712'
     ),
+    '__BUILD_TIME__': JSON.stringify(new Date().toUTCString()),
   },
   build: {
     target: 'esnext',
