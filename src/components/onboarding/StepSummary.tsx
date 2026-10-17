@@ -33,13 +33,16 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
     setSaving(true);
     setError(null);
 
-    // 2. Safe fields only - NEVER write role, plan, isPremium, premium, admin, suspended
+    // 2. Safe fields only - writes uniform field names matching dashboard expectations
     const safePayload = {
+      targetExam: data.targetUniversity,
       targetUniversity: data.targetUniversity,
       targetTestDate: data.targetTestDate,
       academicTrack: data.academicTrack,
       subjects: data.subjects,
+      profileCompleted: true,
       onboardingCompleted: true,
+      profileCompletedAt: serverTimestamp(),
       onboardingCompletedAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
@@ -61,19 +64,14 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
       await Promise.race([setDocPromise, timeoutPromise]);
       console.log(`[StepSummary] Successfully confirmed setDoc on ${path}`);
 
-      // 7. Verify by re-reading the doc after save and logging the result
-      const verifySnap = await getDoc(doc(db, 'users', user.uid));
-      console.log(
-        `[StepSummary] Post-save re-read verification on ${path}:`,
-        verifySnap.exists() ? verifySnap.data() : 'NOT_FOUND'
-      );
-
       // 4. Update the in-memory profile state (AuthContext) immediately so dashboard shows new values without a reload
       updateLocalProfile({
+        targetExam: data.targetUniversity,
         targetUniversity: data.targetUniversity,
         targetTestDate: data.targetTestDate,
         academicTrack: data.academicTrack,
         subjects: data.subjects,
+        profileCompleted: true,
         onboardingCompleted: true,
       });
 

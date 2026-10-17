@@ -62,30 +62,8 @@ export function OverviewPage() {
     document.title = 'Cockpit — Boardly';
   }, []);
 
-  // Only the dashboard may redirect new users to onboarding, and only once, after the profile has loaded and is truly missing.
-  useEffect(() => {
-    if (!profileLoading && user && !hasCheckedOnboardingRef.current) {
-      hasCheckedOnboardingRef.current = true;
-      if (!profile || profile.onboardingCompleted === false) {
-        console.log('[OverviewPage] New user missing completed profile, redirecting to onboarding once.');
-        navigate('/onboarding', { replace: true });
-      }
-    }
-  }, [user, profile, profileLoading, navigate]);
-
-  if (profileLoading) {
-    return (
-      <div className="flex flex-col gap-6 w-full animate-pulse">
-        <div className="h-12 w-64 bg-[var(--card)] rounded-xl" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="h-32 bg-[var(--card)] rounded-2xl border border-[var(--border)]" />
-          <div className="h-32 bg-[var(--card)] rounded-2xl border border-[var(--border)]" />
-          <div className="h-32 bg-[var(--card)] rounded-2xl border border-[var(--border)]" />
-          <div className="h-32 bg-[var(--card)] rounded-2xl border border-[var(--border)]" />
-        </div>
-      </div>
-    );
-  }
+  // Per specification: /dashboard must NEVER redirect to /onboarding automatically.
+  // Profile setup can be completed anytime via Menu > "Target Exam & Profile Setup" or banner.
 
   const isPro = Boolean(profile?.isPremium || profile?.plan === 'pro');
   const streak = Number(profile?.streak ?? 0);
@@ -127,6 +105,32 @@ export function OverviewPage() {
           <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
         </button>
       </div>
+
+      {/* ── Complete Target Exam & Profile Setup Banner (if not completed) ────── */}
+      {profile && !profile.profileCompleted && !profile.onboardingCompleted && (
+        <div className="p-4 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-[rgba(239,68,68,0.12)] text-[var(--red)] flex items-center justify-center shrink-0">
+              <Target size={18} />
+            </div>
+            <div>
+              <p className="font-heading font-semibold text-sm text-[var(--text)]">
+                Target Exam &amp; Profile Setup
+              </p>
+              <p className="text-xs text-[var(--muted)]">
+                Select your target university and test date to personalize your daily practice drills.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => navigate('/onboarding')}
+            className="btn-red text-xs px-4 py-2 rounded-xl cursor-pointer"
+          >
+            Setup Now
+          </button>
+        </div>
+      )}
 
       {/* ── 4-Card Cockpit Metric Row (Responsive Grid: 1 col mobile, 2 sm, 4 lg) ──────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

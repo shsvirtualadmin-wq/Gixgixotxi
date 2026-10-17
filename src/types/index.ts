@@ -1,6 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 
-export type UserRole = 'student' | 'crew' | 'captain' | 'admin';
+export type UserRole = 'student' | 'crew' | 'captain' | 'admin' | 'superadmin';
 export type UserPlan = 'free' | 'pro';
 
 export interface UserProfile {
@@ -15,7 +15,9 @@ export interface UserProfile {
   isPremium?: boolean;
   premiumExpiresAt?: Timestamp | null;
   premiumSource?: string | null;
+  profileCompleted?: boolean;
   onboardingCompleted: boolean;
+  targetExam?: string;
   targetUniversity?: string;
   targetTestDate?: string;
   academicTrack?: string;
@@ -24,6 +26,7 @@ export interface UserProfile {
   suspended?: boolean;
   isSuspended?: boolean;
   createdAt?: Timestamp;
+  updatedAt?: Timestamp;
   streak?: number;
   isCrewMember?: boolean;
   crewStatus?: string;

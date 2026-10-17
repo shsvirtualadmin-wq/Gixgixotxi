@@ -1,26 +1,11 @@
-import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { AuthLayout } from '@/components/auth/AuthLayout';
-import { AuthCard } from '@/components/auth/AuthCard';
-import { useAuth } from '@/contexts/AuthContext';
+import { Navigate } from 'react-router-dom';
 
+/**
+ * No registration portal: All user signup/creation is handled seamlessly
+ * on first login (email or Google). Redirect any /signup requests straight to /login.
+ */
 export function SignupPage() {
-  const { user, profile, profileLoading, getRoleRedirectUrl } = useAuth();
-  const navigate = useNavigate();
-
-  // If already logged in, immediately redirect to dashboard
-  useEffect(() => {
-    if (user && !profileLoading) {
-      const dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
-      navigate(dest, { replace: true });
-    }
-  }, [user, profile, profileLoading, navigate, getRoleRedirectUrl]);
-
-  return (
-    <AuthLayout>
-      <AuthCard initialMode="signup" />
-    </AuthLayout>
-  );
+  return <Navigate to="/login" replace />;
 }
 
 export default SignupPage;

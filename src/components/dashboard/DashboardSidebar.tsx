@@ -9,8 +9,8 @@ import {
   Shield,
   Sun,
   Moon,
-  LogOut,
   Award,
+  User,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -116,21 +116,38 @@ export function DashboardSidebar() {
           <span>Arena</span>
         </NavLink>
 
-        {/* 4. Target Exam & Profile */}
-        <NavLink
-          to="/onboarding"
-          className={({ isActive }) =>
-            `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
-              isActive
-                ? 'bg-[var(--text)] text-[var(--bg)] font-bold'
-                : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)]'
-            }`
-          }
-          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-        >
-          <GraduationCap size={18} />
-          <span>Target Exam &amp; Profile</span>
-        </NavLink>
+        {/* 4. Target Exam & Profile Setup (switches to Profile when setup is complete) */}
+        {profile?.profileCompleted || profile?.onboardingCompleted ? (
+          <NavLink
+            to="/dashboard/profile"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                isActive
+                  ? 'bg-[var(--text)] text-[var(--bg)] font-bold'
+                  : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)]'
+              }`
+            }
+            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+          >
+            <User size={18} />
+            <span>Profile</span>
+          </NavLink>
+        ) : (
+          <NavLink
+            to="/onboarding"
+            className={({ isActive }) =>
+              `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+                isActive
+                  ? 'bg-[var(--text)] text-[var(--bg)] font-bold'
+                  : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)]'
+              }`
+            }
+            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+          >
+            <GraduationCap size={18} />
+            <span>Target Exam &amp; Profile Setup</span>
+          </NavLink>
+        )}
 
         {/* 5. Plans & Upgrade */}
         <NavLink

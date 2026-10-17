@@ -31,6 +31,7 @@ import type { UserProfile } from '@/types';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const SUPER_ADMIN_EMAIL = 'shsvirtualadmin@gmail.com';
+const SUPER_ADMIN_EMAIL_SUPPORT = 'support@boardly.cfd';
 const SUPER_ADMIN_UID = 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
 const REFERRAL_LS_KEY = 'boardly_ref_code';
 
@@ -88,9 +89,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = !!(
     (user?.uid && user.uid === SUPER_ADMIN_UID) ||
     (user?.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL) ||
+    (user?.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL_SUPPORT) ||
     (profile?.uid && profile.uid === SUPER_ADMIN_UID) ||
     (profile?.email && profile.email.toLowerCase() === SUPER_ADMIN_EMAIL) ||
-    profile?.role === 'admin'
+    (profile?.email && profile.email.toLowerCase() === SUPER_ADMIN_EMAIL_SUPPORT) ||
+    profile?.role === 'admin' ||
+    profile?.role === 'superadmin'
   );
 
   // ── Helper to determine target dashboard URL by role ─────────────────────
@@ -135,9 +139,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setProfileError(null);
     const path = `users/${firebaseUser.uid}`;
 
+    const emailLower = (firebaseUser.email ?? '').toLowerCase();
     const isSuperAdminAccount =
       firebaseUser.uid === SUPER_ADMIN_UID ||
-      firebaseUser.email?.toLowerCase() === SUPER_ADMIN_EMAIL;
+      emailLower === SUPER_ADMIN_EMAIL ||
+      emailLower === SUPER_ADMIN_EMAIL_SUPPORT;
 
     const fallbackName =
       firebaseUser.displayName?.trim() ||
@@ -149,25 +155,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const defaultProfile: UserProfile = {
       uid: firebaseUser.uid,
-      email: (firebaseUser.email ?? '').toLowerCase(),
+      email: emailLower,
       displayName: fallbackName,
       name: fallbackName,
       photoURL: firebaseUser.photoURL ?? null,
       role: isSuperAdminAccount ? 'admin' : 'student',
       plan: isSuperAdminAccount ? 'pro' : 'free',
       status: 'active',
-      onboardingCompleted: true,
+      profileCompleted: isSuperAdminAccount ? true : false,
+      onboardingCompleted: isSuperAdminAccount ? true : false,
+      streak: 0,
     };
 
     try {
       const docRef = doc(db, 'users', firebaseUser.uid);
 
-      // Fast non-hanging lookup with 2000ms max wait
+      // Fast non-hanging lookup with 3000ms max wait
       let snap: DocumentSnapshot<DocumentData> | null = null;
       try {
         snap = await Promise.race([
           getDoc(docRef),
-          new Promise<null>((resolve) => setTimeout(() => resolve(null), 2000)),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
         ]);
       } catch (readErr) {
         console.warn(`[Boardly] Firestore profile read deferred at ${path}:`, readErr);
@@ -197,18 +205,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setProfile(data);
       } else if (snap && typeof snap.exists === 'function' && !snap.exists()) {
-        // Document does not exist yet in Firestore - attempt non-blocking creation
+        // Document does not exist yet in Firestore - attempt automatic creation with clean defaults
         const baseUserDoc = {
           uid: firebaseUser.uid,
           name: fallbackName,
           displayName: fallbackName,
-          email: (firebaseUser.email ?? '').toLowerCase(),
+          email: emailLower,
           photoURL: firebaseUser.photoURL ?? null,
           role: isSuperAdminAccount ? 'admin' : 'student',
           plan: isSuperAdminAccount ? 'pro' : 'free',
           status: 'active',
-          onboardingCompleted: false,
+          profileCompleted: isSuperAdminAccount ? true : false,
+          onboardingCompleted: isSuperAdminAccount ? true : false,
+          streak: 0,
           createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
         };
 
         setDoc(doc(db, 'users', firebaseUser.uid), baseUserDoc, { merge: true }).catch((err) => {
@@ -217,6 +228,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         setProfile({
           ...defaultProfile,
+          profileCompleted: isSuperAdminAccount ? true : false,
           onboardingCompleted: isSuperAdminAccount ? true : false,
         });
         createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '').catch(() => {});

@@ -114,105 +114,90 @@ export const CORE_SUBJECTS = [
 ] as const;
 
 export async function fetchAdminStats(): Promise<AdminStats> {
+  const startTime = performance.now();
   const questionsCol = collection(db, 'questions');
   const usersCol = collection(db, 'users');
   const attemptsCol = collection(db, 'attempts');
 
-  let usersTotal = 0;
-  let questionsTotal = 0;
-  let attemptsTotal = 0;
+  // Hard 8-second timeout helper for individual queries to eliminate infinite hangs
+  const withTimeout = <T>(p: Promise<T>, fallback: T, ms = 8000): Promise<T> =>
+    Promise.race([
+      p,
+      new Promise<T>((resolve) => setTimeout(() => resolve(fallback), ms)),
+    ]);
 
-  try {
-    const snap = await getCountFromServer(usersCol);
-    usersTotal = snap.data().count;
-  } catch (err: unknown) {
-    console.warn('[AdminService] getCountFromServer(users) warning:', err);
+  const safeCount = async (targetQuery: Parameters<typeof getCountFromServer>[0]): Promise<number> => {
     try {
-      const snap = await getDocs(query(usersCol, limit(100)));
-      usersTotal = snap.size;
-    } catch (fallbackErr) {
-      console.warn('[AdminService] Fallback getDocs(users) failed:', fallbackErr);
-      usersTotal = 0;
-    }
-  }
-
-  try {
-    const snap = await getCountFromServer(questionsCol);
-    questionsTotal = snap.data().count;
-  } catch (err: unknown) {
-    console.warn('[AdminService] getCountFromServer(questions) warning:', err);
-    try {
-      const snap = await getDocs(query(questionsCol, limit(100)));
-      questionsTotal = snap.size;
-    } catch (fallbackErr) {
-      console.warn('[AdminService] Fallback getDocs(questions) failed:', fallbackErr);
-      questionsTotal = 0;
-    }
-  }
-
-  try {
-    const snap = await getCountFromServer(attemptsCol);
-    attemptsTotal = snap.data().count;
-  } catch (err: unknown) {
-    console.warn('[AdminService] Attempts count warning:', err);
-    attemptsTotal = 0;
-  }
-
-  const [
-    pendingCaptainsSnap,
-    pendingCrewSnap,
-    pendingPaymentsSnap,
-    pendingReviewsSnap,
-  ] = await Promise.all([
-    getDocs(query(collection(db, 'captainApplications'), limit(100))).catch(() => ({ docs: [], size: 0 })),
-    getDocs(query(collection(db, 'crewApplications'), limit(100))).catch(() => ({ docs: [], size: 0 })),
-    getDocs(query(collection(db, 'paymentRequests'), limit(100))).catch(() => ({ docs: [], size: 0 })),
-    getDocs(query(collection(db, 'reviews'), limit(100))).catch(() => ({ docs: [], size: 0 })),
-  ]);
-
-  const pendingCaptainsCount = pendingCaptainsSnap.docs
-    ? pendingCaptainsSnap.docs.filter((d: QueryDocumentSnapshot<DocumentData>) => d.data()?.status === 'pending').length
-    : pendingCaptainsSnap.size;
-  const pendingCrewCount = pendingCrewSnap.docs
-    ? pendingCrewSnap.docs.filter((d: QueryDocumentSnapshot<DocumentData>) => d.data()?.status === 'pending').length
-    : pendingCrewSnap.size;
-  const pendingPaymentsCount = pendingPaymentsSnap.docs
-    ? pendingPaymentsSnap.docs.filter((d: QueryDocumentSnapshot<DocumentData>) => d.data()?.status === 'pending').length
-    : pendingPaymentsSnap.size;
-  const pendingReviewsCount = pendingReviewsSnap.docs
-    ? pendingReviewsSnap.docs.filter((d: QueryDocumentSnapshot<DocumentData>) => d.data()?.status === 'pending').length
-    : pendingReviewsSnap.size;
-
-  // Query subject counts in parallel using getCountFromServer per subject
-  const subjectCounts: Record<string, number> = {};
-  await Promise.all(
-    CORE_SUBJECTS.map(async (subj) => {
-      try {
-        const snap = await getCountFromServer(query(questionsCol, where('subject', '==', subj)));
-        subjectCounts[subj] = snap.data().count;
-      } catch (err: unknown) {
-        console.warn(`[AdminService] Subject count query for ${subj}:`, err);
-        subjectCounts[subj] = 0;
+      const snap = await withTimeout(getCountFromServer(targetQuery), null);
+      if (snap && typeof snap.data === 'function') {
+        return snap.data().count;
       }
-    })
-  );
-
-  let totalQ = questionsTotal;
-  const subjectSum = Object.values(subjectCounts).reduce((a, b) => a + b, 0);
-  if (totalQ === 0 && subjectSum > 0) {
-    totalQ = subjectSum;
-  }
-
-  return {
-    totalUsers: usersTotal,
-    totalQuestions: totalQ,
-    totalAttempts: attemptsTotal,
-    pendingCaptains: pendingCaptainsCount,
-    pendingCrew: pendingCrewCount,
-    pendingPayments: pendingPaymentsCount,
-    pendingReviews: pendingReviewsCount,
-    subjectCounts,
+      return 0;
+    } catch (err) {
+      console.warn('[AdminService] safeCount query fallback:', err);
+      return 0;
+    }
   };
+
+  try {
+    // 1. Run all aggregate count queries IN PARALLEL with Promise.all
+    const [
+      usersTotal,
+      questionsTotal,
+      attemptsTotal,
+      pendingCaptainsCount,
+      pendingCrewCount,
+      pendingPaymentsCount,
+      pendingReviewsCount,
+      ...subjectCountsList
+    ] = await Promise.all([
+      safeCount(usersCol),
+      safeCount(questionsCol),
+      safeCount(attemptsCol),
+      safeCount(query(collection(db, 'captainApplications'), where('status', '==', 'pending'))),
+      safeCount(query(collection(db, 'crewApplications'), where('status', '==', 'pending'))),
+      safeCount(query(collection(db, 'paymentRequests'), where('status', '==', 'pending'))),
+      safeCount(query(collection(db, 'reviews'), where('status', '==', 'pending'))),
+      ...CORE_SUBJECTS.map((subj) => safeCount(query(questionsCol, where('subject', '==', subj)))),
+    ]);
+
+    const subjectCounts: Record<string, number> = {};
+    CORE_SUBJECTS.forEach((subj, idx) => {
+      subjectCounts[subj] = subjectCountsList[idx] ?? 0;
+    });
+
+    let totalQ = questionsTotal;
+    const subjectSum = Object.values(subjectCounts).reduce((a, b) => a + b, 0);
+    if (totalQ === 0 && subjectSum > 0) {
+      totalQ = subjectSum;
+    }
+
+    const elapsed = Math.round(performance.now() - startTime);
+    console.log(`%c[AdminService] fetchAdminStats completed in ${elapsed}ms`, 'color: #10b981; font-weight: bold;');
+
+    return {
+      totalUsers: usersTotal,
+      totalQuestions: totalQ,
+      totalAttempts: attemptsTotal,
+      pendingCaptains: pendingCaptainsCount,
+      pendingCrew: pendingCrewCount,
+      pendingPayments: pendingPaymentsCount,
+      pendingReviews: pendingReviewsCount,
+      subjectCounts,
+    };
+  } catch (err) {
+    console.warn('[AdminService] Parallel stats fetch failed, returning zeroed stats:', err);
+    return {
+      totalUsers: 0,
+      totalQuestions: 0,
+      totalAttempts: 0,
+      pendingCaptains: 0,
+      pendingCrew: 0,
+      pendingPayments: 0,
+      pendingReviews: 0,
+      subjectCounts: {},
+    };
+  }
 }
 
 // ─── 500+ BALANCED MCQ POOL SEEDER ───────────────────────────────────────────
@@ -220,7 +205,7 @@ export async function seedBalancedMCQPool(
   _adminEmail: string,
   _onProgress?: (done: number, total: number) => void
 ): Promise<{ seeded: number; total: number }> {
-  // Disabled per Task B - questions are loaded dynamically from Firestore without hardcoded seeds
+  // Questions are seeded/managed in Firestore
   return { seeded: 0, total: 0 };
 }
 
@@ -229,6 +214,7 @@ export interface PaginatedUsersResult {
   users: UserProfile[];
   lastDoc: QueryDocumentSnapshot<DocumentData> | null;
   hasMore: boolean;
+  queryTimeMs: number;
 }
 
 export async function fetchUsersPaginated(options?: {
@@ -237,11 +223,11 @@ export async function fetchUsersPaginated(options?: {
   role?: string;
   plan?: string;
 }): Promise<PaginatedUsersResult> {
+  const startTime = performance.now();
   const ref = collection(db, 'users');
-  const count = options?.limitCount ?? 50;
+  const count = options?.limitCount ?? 20;
   const queryConstraints: QueryConstraint[] = [];
 
-  // Note: Never combine where() with orderBy() to prevent missing composite index failures. Sort client-side.
   if (options?.role && options.role !== 'all') {
     queryConstraints.push(where('role', '==', options.role));
   } else if (options?.plan && options.plan !== 'all') {
@@ -256,12 +242,21 @@ export async function fetchUsersPaginated(options?: {
 
   try {
     const q = query(ref, ...queryConstraints);
-    const snap = await getDocs(q);
+    const snap = await Promise.race([
+      getDocs(q),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Users list query timed out after 8 seconds')), 8000)
+      ),
+    ]);
+
     const users = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
     const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
     const hasMore = snap.docs.length >= count;
+    const queryTimeMs = Math.round(performance.now() - startTime);
 
-    return { users, lastDoc, hasMore };
+    console.log(`%c[AdminService] fetchUsersPaginated (${users.length} users) in ${queryTimeMs}ms`, 'color: #10b981;');
+
+    return { users, lastDoc, hasMore, queryTimeMs };
   } catch (err: unknown) {
     const e = err as { message?: string; code?: string };
     throw new AdminFirestoreError(
@@ -271,6 +266,192 @@ export async function fetchUsersPaginated(options?: {
       'fetchUsersPaginated'
     );
   }
+}
+
+// ─── SUPERADMIN CHECK & RESET ALL USERS ──────────────────────────────────────
+export function isProtectedSuperAdmin(userOrProfile: { email?: string | null; role?: string | null; uid?: string | null } | null | undefined): boolean {
+  if (!userOrProfile) return false;
+  const email = userOrProfile.email?.toLowerCase().trim();
+  const role = userOrProfile.role;
+  return (
+    role === 'superadmin' ||
+    role === 'admin' ||
+    email === 'shsvirtualadmin@gmail.com' ||
+    email === 'support@boardly.cfd' ||
+    userOrProfile.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
+  );
+}
+
+export interface UserResetPreview {
+  totalUsers: number;
+  usersToDelete: { uid: string; email: string; displayName?: string | null }[];
+  superadminsKept: { uid: string; email: string; role?: string }[];
+}
+
+export async function previewResetUsers(): Promise<UserResetPreview> {
+  const usersSnap = await getDocs(collection(db, 'users'));
+  const usersToDelete: { uid: string; email: string; displayName?: string | null }[] = [];
+  const superadminsKept: { uid: string; email: string; role?: string }[] = [];
+
+  usersSnap.docs.forEach((d) => {
+    const data = d.data() as UserProfile;
+    const item = {
+      uid: d.id,
+      email: data.email || 'no-email',
+      displayName: data.displayName || data.name,
+      role: data.role,
+    };
+
+    if (isProtectedSuperAdmin(item)) {
+      superadminsKept.push(item);
+    } else {
+      usersToDelete.push(item);
+    }
+  });
+
+  return {
+    totalUsers: usersSnap.size,
+    usersToDelete,
+    superadminsKept,
+  };
+}
+
+export async function executeResetAllUsers(
+  adminEmail: string,
+  onProgress?: (done: number, total: number) => void
+): Promise<{ deletedUsersCount: number; deletedRecordsCount: number; keptSuperadmins: string[] }> {
+  const emailLower = adminEmail.toLowerCase().trim();
+  if (emailLower !== 'shsvirtualadmin@gmail.com' && emailLower !== 'support@boardly.cfd') {
+    throw new Error('Unauthorized: Only platform superadmin can perform a user reset.');
+  }
+
+  const preview = await previewResetUsers();
+  const targetUsers = preview.usersToDelete;
+  const total = targetUsers.length;
+
+  if (total === 0) {
+    return {
+      deletedUsersCount: 0,
+      deletedRecordsCount: 0,
+      keptSuperadmins: preview.superadminsKept.map((s) => s.email),
+    };
+  }
+
+  let totalDeletedRecords = 0;
+  let processedUsers = 0;
+
+  // Process deletions in batches of 400 operations using writeBatch
+  let currentBatch = writeBatch(db);
+  let batchOps = 0;
+
+  const commitBatchIfNeeded = async (force = false) => {
+    if (batchOps >= 400 || (force && batchOps > 0)) {
+      await currentBatch.commit();
+      totalDeletedRecords += batchOps;
+      currentBatch = writeBatch(db);
+      batchOps = 0;
+    }
+  };
+
+  for (const u of targetUsers) {
+    const uid = u.uid;
+
+    // 1. Delete users/{uid}
+    currentBatch.delete(doc(db, 'users', uid));
+    batchOps++;
+    await commitBatchIfNeeded();
+
+    // 2. Delete streaks/{uid}
+    currentBatch.delete(doc(db, 'streaks', uid));
+    batchOps++;
+    await commitBatchIfNeeded();
+
+    // 3. Delete referrals/{uid}
+    currentBatch.delete(doc(db, 'referrals', uid));
+    batchOps++;
+    await commitBatchIfNeeded();
+
+    // 4. Delete leaderboard/{uid}
+    currentBatch.delete(doc(db, 'leaderboard', uid));
+    batchOps++;
+    await commitBatchIfNeeded();
+
+    // 5. Delete captainApplications/{uid} & crewApplications/{uid}
+    currentBatch.delete(doc(db, 'captainApplications', uid));
+    batchOps++;
+    await commitBatchIfNeeded();
+
+    currentBatch.delete(doc(db, 'crewApplications', uid));
+    batchOps++;
+    await commitBatchIfNeeded();
+
+    // 6. Delete related attempts for this user
+    try {
+      const attemptsSnap = await getDocs(
+        query(collection(db, 'attempts'), where('userId', '==', uid), limit(40))
+      );
+      for (const aDoc of attemptsSnap.docs) {
+        currentBatch.delete(aDoc.ref);
+        batchOps++;
+        await commitBatchIfNeeded();
+      }
+    } catch (e) {
+      console.warn(`[ResetUsers] Skipping attempts cleanup for ${uid}:`, e);
+    }
+
+    // 7. Delete related paymentRequests for this user
+    try {
+      const paymentsSnap = await getDocs(
+        query(collection(db, 'paymentRequests'), where('userId', '==', uid), limit(20))
+      );
+      for (const pDoc of paymentsSnap.docs) {
+        currentBatch.delete(pDoc.ref);
+        batchOps++;
+        await commitBatchIfNeeded();
+      }
+    } catch (e) {
+      console.warn(`[ResetUsers] Skipping payments cleanup for ${uid}:`, e);
+    }
+
+    // 8. Delete related reviews for this user
+    try {
+      const reviewsSnap = await getDocs(
+        query(collection(db, 'reviews'), where('userId', '==', uid), limit(20))
+      );
+      for (const rDoc of reviewsSnap.docs) {
+        currentBatch.delete(rDoc.ref);
+        batchOps++;
+        await commitBatchIfNeeded();
+      }
+    } catch (e) {
+      console.warn(`[ResetUsers] Skipping reviews cleanup for ${uid}:`, e);
+    }
+
+    processedUsers++;
+    if (onProgress) {
+      onProgress(processedUsers, total);
+    }
+  }
+
+  // Final batch commit
+  await commitBatchIfNeeded(true);
+
+  // Single entry to admin audit trail
+  await logAdminAction(
+    adminEmail,
+    'reset_all_users',
+    {
+      deletedUsersCount: targetUsers.length,
+      deletedRecordsCount: totalDeletedRecords,
+      keptSuperadmins: preview.superadminsKept.map((s) => s.email),
+    }
+  );
+
+  return {
+    deletedUsersCount: targetUsers.length,
+    deletedRecordsCount: totalDeletedRecords,
+    keptSuperadmins: preview.superadminsKept.map((s) => s.email),
+  };
 }
 
 export async function fetchUsers(): Promise<UserProfile[]> {

@@ -14,10 +14,12 @@ import {
   Award,
   Flame,
   Target,
+  User,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { PillNav, type PillNavItem } from '@/components/ui/PillNav';
+import { logRedirect } from '@/utils/debugTracker';
 
 export function DashboardBottomNav() {
   const { isAdmin, signOutUser } = useAuth();
@@ -33,6 +35,7 @@ export function DashboardBottomNav() {
 
   const handleNav = (target: string) => {
     setIsMenuOpen(false);
+    logRedirect(location.pathname, target, 'DashboardBottomNav (menu click)');
     navigate(target);
   };
 
@@ -207,17 +210,32 @@ export function DashboardBottomNav() {
 
             {/* Navigation links in drawer */}
             <div className="space-y-1.5">
-              <button
-                type="button"
-                onClick={() => handleNav('/onboarding')}
-                className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
-              >
-                <div className="flex items-center gap-3">
-                  <GraduationCap size={18} className="text-[var(--muted)]" />
-                  <span>Target Exam &amp; Profile Setup</span>
-                </div>
-                <ChevronRight size={14} className="text-[var(--muted)]" />
-              </button>
+              {/* Dynamic menu button: Profile if completed, Target Exam & Profile Setup if incomplete */}
+              {profile?.profileCompleted || profile?.onboardingCompleted ? (
+                <button
+                  type="button"
+                  onClick={() => handleNav('/dashboard/profile')}
+                  className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <User size={18} className="text-[var(--muted)]" />
+                    <span>Profile</span>
+                  </div>
+                  <ChevronRight size={14} className="text-[var(--muted)]" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleNav('/onboarding')}
+                  className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <GraduationCap size={18} className="text-[var(--muted)]" />
+                    <span>Target Exam &amp; Profile Setup</span>
+                  </div>
+                  <ChevronRight size={14} className="text-[var(--muted)]" />
+                </button>
+              )}
 
               <button
                 type="button"

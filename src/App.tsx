@@ -8,6 +8,7 @@ import { AdminLayout } from './components/admin/AdminLayout';
 import { PublicLayout } from './components/layout/PublicLayout';
 import { DashboardShell } from './components/dashboard/DashboardShell';
 import { DashboardErrorBoundary } from './components/dashboard/DashboardErrorBoundary';
+import { DebugPanel } from './components/debug/DebugPanel';
 
 /**
  * Robust chunk import with 2 retries and single guarded reload
@@ -81,6 +82,9 @@ const StreaksPage = lazyWithRetry(() =>
 );
 const SettingsPage = lazyWithRetry(() =>
   import('./pages/dashboard/SettingsPage').then(m => ({ default: m.SettingsPage }))
+);
+const ProfilePage = lazyWithRetry(() =>
+  import('./pages/dashboard/ProfilePage').then(m => ({ default: m.ProfilePage }))
 );
 const ResultsListPage = lazyWithRetry(() =>
   import('./pages/dashboard/ResultsListPage').then(m => ({ default: m.ResultsListPage }))
@@ -196,12 +200,14 @@ function AppInner() {
           <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
           <Route path="reviews" element={<PlaceholderPage title="Reviews" />} />
           <Route path="plans" element={<PlansBillingPage />} />
+          <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
 
-        {/* Global shortcuts for plans and settings */}
+        {/* Global shortcuts for plans, profile and settings */}
         <Route path="/plans" element={<Navigate to="/dashboard/plans" replace />} />
+        <Route path="/profile" element={<Navigate to="/dashboard/profile" replace />} />
         <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
 
         {/* Public Marketing routes ONLY (wrapped by PublicLayout with Navbar + Footer) */}
@@ -236,6 +242,7 @@ function AppInner() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
+    <DebugPanel />
     </DashboardErrorBoundary>
   );
 }

@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { auth } from '@/lib/firebase';
+import { logRedirect } from '@/utils/debugTracker';
 
 interface AuthCardProps {
   initialMode?: 'signin' | 'signup';
@@ -59,12 +60,9 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     if (user && !signupSuccess) {
       // Do not block navigation if Firestore profile sync is slow/offline
       if (!profileLoading || profile) {
-        if (profile && !profile.onboardingCompleted) {
-          navigate('/onboarding', { replace: true });
-        } else {
-          const dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
-          navigate(dest, { replace: true });
-        }
+        const dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
+        logRedirect('/login', dest, 'AuthCard.tsx (user authenticated -> send straight to dashboard/admin)');
+        navigate(dest, { replace: true });
       }
     }
   }, [user, profile, profileLoading, signupSuccess, navigate, getRoleRedirectUrl]);
@@ -91,6 +89,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       if (loggedInUser) {
         // Immediate explicit navigation to dashboard
         const dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
+        logRedirect('/login', dest, 'AuthCard.tsx (Google sign in explicit)');
         navigate(dest, { replace: true });
       }
     } catch (err: unknown) {

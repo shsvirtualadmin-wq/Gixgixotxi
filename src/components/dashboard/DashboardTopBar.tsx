@@ -150,15 +150,27 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
               </div>
 
               {/* Menu items */}
-              <Link
-                to="/onboarding"
-                onClick={() => setMenuOpen(false)}
-                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)] transition-colors"
-                style={{ fontFamily: 'var(--font-heading)' }}
-              >
-                <User size={16} />
-                <span>Target Exam &amp; Profile</span>
-              </Link>
+              {profile?.profileCompleted || profile?.onboardingCompleted ? (
+                <Link
+                  to="/dashboard/profile"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)] transition-colors"
+                  style={{ fontFamily: 'var(--font-heading)' }}
+                >
+                  <User size={16} />
+                  <span>Profile</span>
+                </Link>
+              ) : (
+                <Link
+                  to="/onboarding"
+                  onClick={() => setMenuOpen(false)}
+                  className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)] transition-colors"
+                  style={{ fontFamily: 'var(--font-heading)' }}
+                >
+                  <User size={16} />
+                  <span>Target Exam &amp; Profile Setup</span>
+                </Link>
+              )}
 
               <Link
                 to="/pricing"

@@ -6,10 +6,11 @@ import { StepUniversity } from '@/components/onboarding/StepUniversity';
 import { StepTestDate } from '@/components/onboarding/StepTestDate';
 import { StepSubjects } from '@/components/onboarding/StepSubjects';
 import { StepSummary } from '@/components/onboarding/StepSummary';
-import { ArrowLeft } from 'lucide-react';
+import { logRedirect } from '@/utils/debugTracker';
+import { ArrowLeft, AlertCircle, RefreshCw } from 'lucide-react';
 
 export function OnboardingPage() {
-  const { user, profile, loading: profileLoading } = useUserProfile();
+  const { user, profile, loading: profileLoading, error: profileError, retryFetch } = useUserProfile();
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
 
@@ -18,11 +19,13 @@ export function OnboardingPage() {
   const [academicTrack, setAcademicTrack] = useState('');
   const [subjects, setSubjects] = useState<string[]>([]);
   const [hasPrefilled, setHasPrefilled] = useState(false);
+  const [timeoutExceeded, setTimeoutExceeded] = useState(false);
 
-  // Pre-fill fields from the user's saved profile if already present
+  // Pre-fill fields from user profile when available
   useEffect(() => {
     if (profile && !hasPrefilled) {
-      if (profile.targetUniversity) setTargetUniversity(profile.targetUniversity);
+      const exam = profile.targetExam || profile.targetUniversity || '';
+      if (exam) setTargetUniversity(exam);
       if (profile.targetTestDate) setTargetTestDate(profile.targetTestDate);
       if (profile.academicTrack) setAcademicTrack(profile.academicTrack);
       if (Array.isArray(profile.subjects) && profile.subjects.length > 0) {
@@ -32,46 +35,61 @@ export function OnboardingPage() {
     }
   }, [profile, hasPrefilled]);
 
+  // 8-second safety timeout: if profile takes >8s, allow editing anyway with clean notice
+  useEffect(() => {
+    if (!profileLoading) return;
+    const timer = setTimeout(() => {
+      setTimeoutExceeded(true);
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [profileLoading]);
+
   // If unauthenticated, redirect to login only after auth has finished loading
   useEffect(() => {
     if (!profileLoading && !user) {
+      logRedirect('/onboarding', '/login', 'OnboardingPage (unauthenticated user)');
       navigate('/login', { replace: true });
     }
   }, [user, profileLoading, navigate]);
 
-  // NEVER redirect away just because profile is complete or incomplete.
-  // The user must be able to open this setup page at any time to edit their target exam.
-
+  // Per specification: /onboarding must NEVER redirect to /dashboard on its own,
+  // except once, right after the user taps Save and the Firestore write succeeded.
   const handleComplete = () => {
+    logRedirect('/onboarding', '/dashboard', 'OnboardingPage (Save successful)');
     navigate('/dashboard', { replace: true });
   };
 
-  if (profileLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black text-white p-6">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-full border-2 border-[var(--red)] border-t-transparent animate-spin" />
-          <p className="text-xs text-[var(--muted)] font-heading">
-            Loading Target Exam &amp; Profile...
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="w-full flex flex-col items-center">
-      {/* Return to Cockpit shortcut for already onboarded students */}
-      {profile?.onboardingCompleted && (
-        <div className="w-full max-w-lg pt-4 px-4 flex justify-between items-center text-xs text-[var(--muted)] font-heading">
-          <Link
-            to="/dashboard"
-            className="inline-flex items-center gap-1.5 hover:text-white transition-colors"
-          >
-            <ArrowLeft size={14} />
-            <span>Return to Cockpit</span>
-          </Link>
-          <span className="text-[11px] text-[var(--muted)]">Setup &amp; Preferences</span>
+      {/* Return to Cockpit shortcut */}
+      <div className="w-full max-w-lg pt-4 px-4 flex justify-between items-center text-xs text-[var(--muted)] font-heading">
+        <Link
+          to="/dashboard"
+          className="inline-flex items-center gap-1.5 hover:text-white transition-colors"
+        >
+          <ArrowLeft size={14} />
+          <span>Return to Cockpit</span>
+        </Link>
+        <span className="text-[11px] text-[var(--muted)]">Target Exam &amp; Profile Setup</span>
+      </div>
+
+      {/* Timeout notice if profile fetch is slow or failed */}
+      {(timeoutExceeded || profileError) && !profile && (
+        <div className="w-full max-w-lg mt-3 px-4">
+          <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-500/40 text-amber-200 text-xs flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={15} className="text-amber-400 shrink-0" />
+              <span>Could not load your saved profile. You can proceed to set your targets below.</span>
+            </div>
+            <button
+              type="button"
+              onClick={retryFetch}
+              className="text-[11px] px-2.5 py-1 rounded bg-amber-600/60 hover:bg-amber-600 text-white font-medium flex items-center gap-1 shrink-0 cursor-pointer"
+            >
+              <RefreshCw size={11} />
+              Retry
+            </button>
+          </div>
         </div>
       )}
 

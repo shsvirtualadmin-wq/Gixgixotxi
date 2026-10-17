@@ -31,21 +31,22 @@ export const storage = getStorage(app);
 
 // Initialize Firestore with the named database per configuration:
 // Named database: ai-studio-25287ca6-33a1-49f8-8867-70061120a712
-// Uses experimentalForceLongPolling: true and useFetchStreams: false to eliminate WebChannel proxy buffering timeouts
+// Uses experimentalAutoDetectLongPolling: true so Firestore automatically selects WebSockets or Long-Polling
 export const db = (() => {
   try {
     return initializeFirestore(
       app,
       {
-        experimentalForceLongPolling: true,
-        useFetchStreams: false,
+        experimentalAutoDetectLongPolling: true,
       } as unknown as Parameters<typeof initializeFirestore>[1],
-      "ai-studio-25287ca6-33a1-49f8-8867-70061120a712"
+      TARGET_DATABASE_ID
     );
-  } catch {
-    return getFirestore(app, "ai-studio-25287ca6-33a1-49f8-8867-70061120a712");
+  } catch (err) {
+    console.warn('[Firebase] initializeFirestore failed, falling back to getFirestore:', err);
+    return getFirestore(app, TARGET_DATABASE_ID);
   }
 })();
+
 
 if (typeof window !== 'undefined') {
   const authProj = auth.app.options.projectId;

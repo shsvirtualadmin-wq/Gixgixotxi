@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AuthLayout } from '@/components/auth/AuthLayout';
 import { AuthCard } from '@/components/auth/AuthCard';
 import { useAuth } from '@/contexts/AuthContext';
+import { logRedirect } from '@/utils/debugTracker';
 
 export function LoginPage() {
   const { user, profile, profileLoading, getRoleRedirectUrl } = useAuth();
@@ -12,6 +13,7 @@ export function LoginPage() {
   useEffect(() => {
     if (user && !profileLoading) {
       const dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
+      logRedirect('/login', dest, 'LoginPage.tsx (already authenticated)');
       navigate(dest, { replace: true });
     }
   }, [user, profile, profileLoading, navigate, getRoleRedirectUrl]);
