@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { collection, getDocs, doc, setDoc, query, where, limit, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, query, where, limit, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/ui/GlassCard';

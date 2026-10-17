@@ -24,8 +24,6 @@ import {
   setDoc,
   runTransaction,
   serverTimestamp,
-  type DocumentSnapshot,
-  type DocumentData,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import type { UserProfile } from '@/types';

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
-import { collection, doc, getDoc, getDocs, setDoc, query, where, limit, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where, limit, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
