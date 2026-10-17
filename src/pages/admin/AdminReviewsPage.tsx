@@ -27,7 +27,7 @@ export function AdminReviewsPage() {
       const data = await fetchReviews(statusFilter);
       setReviews(data);
     } catch (err) {
-      console.error('Failed to load reviews:', err);
+      console.warn('Failed to load reviews:', err);
     } finally {
       setLoading(false);
     }

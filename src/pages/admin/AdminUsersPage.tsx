@@ -47,7 +47,7 @@ export function AdminUsersPage() {
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
     } catch (err: unknown) {
-      console.error('Failed to load users:', err);
+      console.warn('Failed to load users:', err);
       const e = err as Partial<AdminDiagnosticError>;
       setError({
         code: e?.code || 'USERS_FETCH_FAILED',
@@ -75,7 +75,7 @@ export function AdminUsersPage() {
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
     } catch (err: unknown) {
-      console.error('Failed to load more users:', err);
+      console.warn('Failed to load more users:', err);
       const e = err as Partial<AdminDiagnosticError>;
       setError({
         code: e?.code || 'USERS_LOAD_MORE_FAILED',

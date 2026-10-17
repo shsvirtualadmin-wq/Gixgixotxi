@@ -47,7 +47,7 @@ export function AdminApplicationsPage() {
         setCrew(data);
       }
     } catch (err) {
-      console.error('Failed to load applications:', err);
+      console.warn('Failed to load applications:', err);
     } finally {
       setLoading(false);
     }

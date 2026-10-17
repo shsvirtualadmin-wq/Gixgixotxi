@@ -12,7 +12,8 @@ import { DashboardErrorBoundary } from './components/dashboard/DashboardErrorBou
 /**
  * Robust chunk import with 2 retries and single guarded reload
  */
-function lazyWithRetry<T extends React.ComponentType<Record<string, unknown>>>(
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function lazyWithRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
   retries = 2
 ): React.LazyExoticComponent<T> {

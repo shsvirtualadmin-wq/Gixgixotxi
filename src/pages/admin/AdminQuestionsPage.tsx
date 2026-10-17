@@ -54,7 +54,7 @@ export function AdminQuestionsPage() {
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
     } catch (err: unknown) {
-      console.error('Failed to load questions:', err);
+      console.warn('Failed to load questions:', err);
       const e = err as Partial<AdminDiagnosticError>;
       setError({
         code: e?.code || 'QUESTIONS_FETCH_FAILED',
@@ -83,7 +83,7 @@ export function AdminQuestionsPage() {
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
     } catch (err: unknown) {
-      console.error('Failed to load more questions:', err);
+      console.warn('Failed to load more questions:', err);
       const e = err as Partial<AdminDiagnosticError>;
       setError({
         code: e?.code || 'QUESTIONS_LOAD_MORE_FAILED',

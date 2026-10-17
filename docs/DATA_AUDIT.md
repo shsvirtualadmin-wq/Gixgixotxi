@@ -1,6 +1,6 @@
 # Boardly Firestore Data Audit Report
 
-**Execution Date:** 2026-10-15T18:50:01.687Z
+**Execution Date:** 2026-10-17T04:41:22.381Z
 **Target Firebase Project:** `gen-lang-client-0366509316`
 **Named Firestore Database:** `ai-studio-25287ca6-33a1-49f8-8867-70061120a712`
 **Total Target Collections Audited:** 29
@@ -14,7 +14,7 @@
 
 | # | Collection Name | Source Audited | Samples Inspected | Key Identifiers & Fields |
 |---|---|---|---|---|
-| 1 | `users` | authoritative_export_data | 5 | id, name, email, grade, stream, target_university (+2 more) |
+| 1 | `users` | codebase_schema_spec | 0 | Schema mapped from rules |
 | 2 | `questions` | authoritative_export_data | 5 | id, q, options, correct, explain, topic (+6 more) |
 | 3 | `sheets` | codebase_schema_spec | 1 | id, title, subject, chapter, topic, questionCount (+7 more) |
 | 4 | `universities` | src/data/universities.ts | 1 | id, name, shortName, location, logoUrl, programs (+7 more) |
@@ -50,36 +50,10 @@
 
 ### users
 
-- **Data Source:** `authoritative_export_data`
-- **Samples Audited:** 5 document(s)
+- **Data Source:** `codebase_schema_spec`
+- **Samples Audited:** 0 document(s)
 
-#### Field Specifications
-
-| Field Name | Observed Data Type(s) | Description / Notes |
-|---|---|---|
-| `id` | `string` | Preserved from active system records |
-| `name` | `string` | Preserved from active system records |
-| `email` | `string` | Preserved from active system records |
-| `grade` | `string` | Preserved from active system records |
-| `stream` | `string` | Preserved from active system records |
-| `target_university` | `string` | Preserved from active system records |
-| `plan` | `string` | Preserved from active system records |
-| `created_at` | `string` | Preserved from active system records |
-
-#### Representative Sample Document (Sanitized)
-
-```json
-{
-  "id": "std-ayesha-01",
-  "name": "Ayesha Khan",
-  "email": "ay***@gmail.com",
-  "grade": "Class 12",
-  "stream": "Pre-Medical",
-  "target_university": "King Edward Medical University (KEMU)",
-  "plan": "pro",
-  "created_at": "2026-08-15T09:30:00.000Z"
-}
-```
+*Document schema enforced by Firestore security rules and application interfaces.*
 
 ---
 

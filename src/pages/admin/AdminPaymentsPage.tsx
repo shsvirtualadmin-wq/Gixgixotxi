@@ -31,7 +31,7 @@ export function AdminPaymentsPage() {
       const data = await fetchPaymentRequests(statusFilter);
       setRequests(data);
     } catch (err) {
-      console.error('Failed to load payment requests:', err);
+      console.warn('Failed to load payment requests:', err);
     } finally {
       setLoading(false);
     }

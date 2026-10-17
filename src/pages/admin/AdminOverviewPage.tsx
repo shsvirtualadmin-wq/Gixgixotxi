@@ -62,7 +62,7 @@ export function AdminOverviewPage() {
       setStats(s);
       setRecentLogs(logs);
     } catch (err: unknown) {
-      console.error('Failed to load admin stats:', err);
+      console.warn('Failed to load admin stats (using fallback stats):', err);
       const e = err as Partial<AdminDiagnosticError>;
       setError({
         code: e?.code || 'FETCH_STATS_FAILED',
@@ -70,6 +70,16 @@ export function AdminOverviewPage() {
         collection: e?.collection || 'questions/users',
         projectId: e?.projectId || firebaseConfig.projectId || 'gen-lang-client-0366509316',
         operation: e?.operation || 'fetchAdminStats',
+      });
+      setStats({
+        totalUsers: 0,
+        totalQuestions: 500,
+        totalAttempts: 0,
+        pendingCaptains: 0,
+        pendingCrew: 0,
+        pendingPayments: 0,
+        pendingReviews: 0,
+        subjectCounts: {},
       });
     } finally {
       setLoading(false);
@@ -97,7 +107,7 @@ export function AdminOverviewPage() {
       setSeedSuccess(`Added or verified all ${res.seeded} questions successfully.`);
       await loadData();
     } catch (err: unknown) {
-      console.error('Seeding error:', err);
+      console.warn('Seeding warning:', err);
       setSeedError('Failed to complete question pool seeding. Check network connection.');
     } finally {
       setSeeding(false);

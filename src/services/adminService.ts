@@ -770,8 +770,13 @@ export async function fetchAuditLogs(limitCount = 100): Promise<AuditLog[]> {
   } catch (err) {
     // If index is not yet built, fall back to simple limit without order
     console.warn('[AdminService] fetchAuditLogs fallback:', err);
-    const snap = await getDocs(query(collection(db, 'auditLogs'), limit(limitCount)));
-    return snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
+    try {
+      const snap = await getDocs(query(collection(db, 'auditLogs'), limit(limitCount)));
+      return snap.docs.map(d => ({ id: d.id, ...d.data() } as AuditLog));
+    } catch (fallbackErr) {
+      console.warn('[AdminService] fetchAuditLogs secondary fallback warning:', fallbackErr);
+      return [];
+    }
   }
 }
 

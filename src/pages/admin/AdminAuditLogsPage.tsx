@@ -20,7 +20,7 @@ export function AdminAuditLogsPage() {
       const data = await fetchAuditLogs(120);
       setLogs(data);
     } catch (err) {
-      console.error('Failed to load audit logs:', err);
+      console.warn('Failed to load audit logs:', err);
     } finally {
       setLoading(false);
     }
