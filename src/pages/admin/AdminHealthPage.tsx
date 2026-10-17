@@ -348,12 +348,19 @@ export function AdminHealthPage() {
     try {
       // 1. Create crew doc
       const tCreate0 = performance.now();
-      const initialMember = {
+      const initialMember: {
+        uid: string;
+        displayName: string;
+        email: string;
+        joinedAt: string;
+        role: 'leader' | 'member';
+        isPro: boolean;
+      } = {
         uid: tempLeaderUid,
         displayName: 'Healthcheck Leader',
         email: 'leader@healthcheck.internal',
         joinedAt: new Date().toISOString(),
-        role: 'leader' as const,
+        role: 'leader',
         isPro: true,
       };
 
@@ -373,7 +380,14 @@ export function AdminHealthPage() {
 
       // 2. Synthesize up to 30 members in batches
       const tBatch0 = performance.now();
-      const syntheticMembers = [initialMember];
+      const syntheticMembers: Array<{
+        uid: string;
+        displayName: string;
+        email: string;
+        joinedAt: string;
+        role: 'leader' | 'member';
+        isPro: boolean;
+      }> = [initialMember];
       const syntheticUids = [tempLeaderUid];
 
       for (let i = 2; i <= 30; i++) {

@@ -2,6 +2,7 @@ import { doc, collection, runTransaction, serverTimestamp } from 'firebase/fires
 import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
+import { isSuperAdminEmailOrRole } from '@/hooks/useEffectivePlan';
 
 export { FREE_DAILY_TESTS };
 
@@ -35,12 +36,17 @@ export class DailyTestLimitError extends Error {
  */
 export async function startTestSessionWithLimit(params: {
   uid: string;
+  userEmail?: string | null;
+  userRole?: string | null;
   isUnlimited: boolean;
   attemptPayload: Record<string, unknown>;
   customAttemptId?: string;
 }): Promise<StartTestSessionResult> {
-  const { uid, isUnlimited, attemptPayload, customAttemptId } = params;
+  const { uid, userEmail, userRole, isUnlimited, attemptPayload, customAttemptId } = params;
   const dateKey = getPKTDateKey();
+
+  const isSuper = isSuperAdminEmailOrRole(userEmail, userRole, uid);
+  const bypassLimit = isSuper || isUnlimited;
 
   const attemptRef = customAttemptId
     ? doc(db, 'attempts', customAttemptId)
@@ -55,7 +61,7 @@ export async function startTestSessionWithLimit(params: {
   };
 
   await runTransaction(db, async (tx) => {
-    if (isUnlimited) {
+    if (bypassLimit) {
       // Unlimited accounts (superadmin, pro, crew-shared) are NEVER blocked
       tx.set(attemptRef, finalAttemptPayload);
       return;

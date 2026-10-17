@@ -368,7 +368,7 @@ export function useStudyCrew() {
 
           // Already joined
           if (memberUids.includes(user.uid) || currentMembers.some((m) => m.uid === user.uid)) {
-            resultingCrew = { id: freshCrewSnap.id, ...freshData };
+            resultingCrew = { ...freshData, id: freshCrewSnap.id };
             return;
           }
 
@@ -430,10 +430,11 @@ export function useStudyCrew() {
 
         getDocFromServer(crewRef).catch(() => {});
 
+        const finalCrew = resultingCrew as CrewDoc | null;
         debugTracker.recordCrewStep({
           action: 'join_crew_success',
           status: 'success',
-          details: `Joined crew "${resultingCrew?.name || cleanCode}"`,
+          details: `Joined crew "${finalCrew?.name || cleanCode}"`,
         });
 
         return resultingCrew!;

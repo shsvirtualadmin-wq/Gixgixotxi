@@ -1,5 +1,7 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { auth } from '@/lib/firebase';
+import { isSuperAdminEmailOrRole } from '@/hooks/useEffectivePlan';
 
 interface Props {
   children: ReactNode;
@@ -33,17 +35,61 @@ export class DashboardErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const isDebug =
+        typeof window !== 'undefined' &&
+        (new URLSearchParams(window.location.search).get('debug') === '1' ||
+          sessionStorage.getItem('boardly_debug') === '1');
+      const currentEmail = auth.currentUser?.email;
+      const isSuper = isSuperAdminEmailOrRole(currentEmail, null, auth.currentUser?.uid);
+      const showTechDetails = isDebug || isSuper;
+
+      if (!showTechDetails) {
+        return (
+          <div className="min-h-[40vh] p-4 sm:p-6 flex items-center justify-center">
+            <div className="w-full max-w-[500px] p-6 rounded-[24px] bg-[#0D0D0D] border border-[#222222] text-center space-y-4">
+              <div className="w-12 h-12 rounded-full bg-[#1A1A1A] border border-[#D71921] text-[#D71921] flex items-center justify-center mx-auto">
+                <AlertCircle size={22} />
+              </div>
+              <h2 className="text-lg font-bold text-white font-heading">
+                {this.props.fallbackTitle || 'Something went wrong'}
+              </h2>
+              <p className="text-xs text-[var(--muted)] leading-relaxed">
+                An unexpected issue occurred while rendering this section. Please try again or refresh the page.
+              </p>
+              <div className="flex items-center justify-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={this.handleRetry}
+                  className="px-5 py-2.5 rounded-full bg-[#D71921] hover:bg-[#b0141a] text-white text-xs font-heading font-semibold transition-colors cursor-pointer"
+                >
+                  Try Again
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="px-5 py-2.5 rounded-full bg-[#1A1A1A] hover:bg-[#252525] border border-[#333333] text-white text-xs font-heading transition-colors cursor-pointer"
+                >
+                  Reload Page
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       const stack = this.state.error?.stack || '';
       const componentStack = this.state.errorInfo?.componentStack || '';
 
       // Extract component name from componentStack (e.g., "in PracticePage (at ...)" or "at PracticePage")
-      const compMatch = componentStack.match(/(?:at|in)\s+([A-Z][A-Za-z0-9_]+)/) ||
-                        stack.match(/(?:at|in)\s+([A-Z][A-Za-z0-9_]+)/);
+      const compMatch =
+        componentStack.match(/(?:at|in)\s+([A-Z][A-Za-z0-9_]+)/) ||
+        stack.match(/(?:at|in)\s+([A-Z][A-Za-z0-9_]+)/);
       const componentName = compMatch ? compMatch[1] : 'UnknownComponent';
 
       // Extract source file from stack (e.g., "PracticePage.tsx", "assets/PracticePage-DzQrIYCg.js")
-      const fileMatch = stack.match(/([a-zA-Z0-9_-]+\.(?:tsx|ts|jsx|js)(?::\d+:\d+)?)/) ||
-                        componentStack.match(/([a-zA-Z0-9_-]+\.(?:tsx|ts|jsx|js)(?::\d+:\d+)?)/);
+      const fileMatch =
+        stack.match(/([a-zA-Z0-9_-]+\.(?:tsx|ts|jsx|js)(?::\d+:\d+)?)/) ||
+        componentStack.match(/([a-zA-Z0-9_-]+\.(?:tsx|ts|jsx|js)(?::\d+:\d+)?)/);
       const fileName = fileMatch ? fileMatch[1] : 'Unknown File';
 
       return (

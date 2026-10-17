@@ -11,6 +11,7 @@ import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
 import { startTestSessionWithLimit, DailyTestLimitError } from '@/services/testLimits';
 import { DailyLimitBlockedSheet } from '@/components/test/DailyLimitBlockedSheet';
+import { DashboardErrorBoundary } from '@/components/dashboard/DashboardErrorBoundary';
 
 const UNIVERSITIES = ['Any', 'FAST-NUCES', 'NUST NET', 'GIKI', 'LUMS', 'NED', 'MDCAT', 'ECAT'];
 
@@ -248,7 +249,8 @@ export function PracticePage() {
     try {
       await startTestSessionWithLimit({
         uid: user.uid,
-        isUnlimited: effectivePlan.isUnlimited,
+        userEmail: user.email,
+        isUnlimited: Boolean(effectivePlan.isUnlimited || effectivePlan.isSuperAdmin),
         attemptPayload,
         customAttemptId: attemptId,
       });
@@ -262,7 +264,9 @@ export function PracticePage() {
         startErr instanceof DailyTestLimitError ||
         (startErr as { code?: string })?.code === 'DAILY_TESTS_LIMIT_EXCEEDED'
       ) {
-        setBlockedSheetOpen(true);
+        if (!effectivePlan.isUnlimited && !effectivePlan.isSuperAdmin) {
+          setBlockedSheetOpen(true);
+        }
         return;
       }
       setLaunchError({
@@ -280,7 +284,8 @@ export function PracticePage() {
   };
 
   return (
-    <div className="flex flex-col gap-6 max-w-[1000px] mx-auto">
+    <DashboardErrorBoundary fallbackTitle="Practice Cockpit encountered an issue">
+      <div className="flex flex-col gap-6 max-w-[1000px] mx-auto">
       {/* ── Header: TESTS LEFT in Dot font & PKT Midnight reset countdown ── */}
       <Card className="p-6 sm:p-7">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -612,12 +617,13 @@ export function PracticePage() {
         </div>
       </Card>
 
-      <DailyLimitBlockedSheet
-        isOpen={blockedSheetOpen}
-        onClose={() => setBlockedSheetOpen(false)}
-        testsUsed={todayAttempts >= FREE_DAILY_TESTS ? todayAttempts : FREE_DAILY_TESTS}
-      />
-    </div>
+        <DailyLimitBlockedSheet
+          isOpen={blockedSheetOpen && !effectivePlan.isUnlimited && !effectivePlan.isSuperAdmin}
+          onClose={() => setBlockedSheetOpen(false)}
+          testsUsed={todayAttempts >= FREE_DAILY_TESTS ? todayAttempts : FREE_DAILY_TESTS}
+        />
+      </div>
+    </DashboardErrorBoundary>
   );
 }
 

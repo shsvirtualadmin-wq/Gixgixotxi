@@ -13,6 +13,7 @@ export interface UserProfile {
   plan: UserPlan;
   status?: string;
   isPremium?: boolean;
+  planExpiresAt?: Timestamp | null;
   premiumExpiresAt?: Timestamp | null;
   premiumSource?: string | null;
   profileCompleted?: boolean;

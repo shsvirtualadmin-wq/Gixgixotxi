@@ -79,6 +79,7 @@ export function UserOverrideDrawer({
   if (!user) return null;
 
   const displayName = getUserDisplayName(user);
+  const userInitial = (displayName || user.email || 'U').charAt(0).toUpperCase();
 
   const handleApplyOverrides = async () => {
     setSaving(true);

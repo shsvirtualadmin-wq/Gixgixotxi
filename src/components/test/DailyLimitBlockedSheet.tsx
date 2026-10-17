@@ -1,5 +1,8 @@
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { X, Zap, Users } from 'lucide-react';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 
 interface DailyLimitBlockedSheetProps {
   isOpen: boolean;
@@ -13,6 +16,7 @@ export function DailyLimitBlockedSheet({
   testsUsed = FREE_DAILY_TESTS,
 }: DailyLimitBlockedSheetProps) {
   const navigate = useNavigate();
+  const effectivePlan = useEffectivePlan();
   const [countdown, setCountdown] = useState('');
 
   // PKT (UTC+5) Midnight Reset Timer
@@ -41,7 +45,8 @@ export function DailyLimitBlockedSheet({
     return () => clearInterval(interval);
   }, []);
 
-  if (!isOpen) return null;
+  // Superadmin, Pro, and crew-shared unlimited users must NEVER see the blocked sheet
+  if (!isOpen || effectivePlan.isUnlimited || effectivePlan.isSuperAdmin) return null;
 
   return (
     <div
