@@ -7,7 +7,7 @@ const EXPECTED_PROJECT_ID = 'gen-lang-client-0365509316';
 const EXPECTED_AUTH_DOMAIN = 'auth.boardly.cfd';
 const EXPECTED_API_KEY = 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs';
 const EXPECTED_STORAGE_BUCKET = 'gen-lang-client-0365509316.firebasestorage.app';
-const EXPECTED_DATABASE_ID = '(default)';
+const EXPECTED_DATABASE_ID = 'ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712';
 
 const errors = [];
 

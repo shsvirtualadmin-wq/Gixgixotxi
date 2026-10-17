@@ -2,7 +2,7 @@
 
 **Execution Date:** 2026-10-17T04:41:22.381Z
 **Target Firebase Project:** `gen-lang-client-0365509316`
-**Named Firestore Database:** `ai-studio-25287ca6-33a1-49f8-8867-70061120a712`
+**Named Firestore Database:** `ai-studio-gixgixotxi-25287ca6-33a1-49f8-8867-70061120a712`
 **Total Target Collections Audited:** 29
 **Mode:** READ-ONLY (Strictly non-destructive, 0 mutations performed)
 

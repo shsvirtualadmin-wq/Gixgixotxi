@@ -9,6 +9,8 @@ import { fileURLToPath } from 'url';
 import { initializeApp, getApps } from 'firebase/app';
 import { getFirestore, doc, setDoc, collection, addDoc, getDoc } from 'firebase/firestore';
 
+import { TARGET_DATABASE_ID } from '../src/lib/firebaseConfig';
+
 const firebaseConfig = {
   apiKey: process.env.VITE_FIREBASE_API_KEY || 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs',
   authDomain: process.env.VITE_FIREBASE_AUTH_DOMAIN || 'auth.boardly.cfd',
@@ -16,11 +18,11 @@ const firebaseConfig = {
   storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'gen-lang-client-0365509316.firebasestorage.app',
   messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '556734245207',
   appId: process.env.VITE_FIREBASE_APP_ID || '1:556734245207:web:4797f3915b424209b03612',
-  firestoreDatabaseId: process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)',
+  firestoreDatabaseId: TARGET_DATABASE_ID,
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-const db = getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)');
+const db = getFirestore(app, TARGET_DATABASE_ID);
 
 async function runMigration() {
   console.log('====================================================');

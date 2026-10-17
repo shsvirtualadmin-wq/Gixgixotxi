@@ -30,14 +30,15 @@ export const auth = getAuth(app);
 export const storage = getStorage(app);
 
 // Initialize Firestore with the unified database:
-// Uses experimentalAutoDetectLongPolling: true for optimal transport
+// Uses experimentalForceLongPolling: true and useFetchStreams: false
 // Uses memoryLocalCache() to prevent multi-tab IndexedDB lock contention & write queue stalls
 export const db = (() => {
   try {
     return initializeFirestore(
       app,
       {
-        experimentalAutoDetectLongPolling: true,
+        experimentalForceLongPolling: true,
+        useFetchStreams: false,
         localCache: memoryLocalCache(),
       } as unknown as Parameters<typeof initializeFirestore>[1],
       TARGET_DATABASE_ID
@@ -50,7 +51,7 @@ export const db = (() => {
   }
 })();
 
-console.log('[Firebase Init] projectId:', TARGET_PROJECT_ID, '| databaseId:', TARGET_DATABASE_ID);
+console.log(`USING DATABASE: ${TARGET_DATABASE_ID}`);
 
 if (typeof window !== 'undefined') {
   const authProj = auth.app.options.projectId;
