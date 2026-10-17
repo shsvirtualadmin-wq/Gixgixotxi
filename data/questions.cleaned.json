@@ -1,1 +1,177 @@
-[]
+[
+  {
+    "id": "mcq-m-01",
+    "q": "Evaluate the definite integral: $\\int_{0}^{\\pi/2} \\sin^2(x) dx$.",
+    "options": ["$\\frac{\\pi}{4}$", "$\\frac{\\pi}{2}$", "$\\frac{\\pi}{8}$", "$1$"],
+    "correct": 0,
+    "explain": "Using the double-angle identity $\\sin^2(x) = \\frac{1 - \\cos(2x)}{2}$, we integrate: $\\int_{0}^{\\pi/2} \\frac{1 - \\cos(2x)}{2} dx = \\left[ \\frac{x}{2} - \\frac{\\sin(2x)}{4} \\right]_{0}^{\\pi/2} = \\frac{\\pi}{4} - 0 = \\frac{\\pi}{4}$.",
+    "subject": "Mathematics",
+    "chapter": "Calculus & Derivatives",
+    "difficulty": "Medium",
+    "university": "FAST-NUCES"
+  },
+  {
+    "id": "mcq-m-02",
+    "q": "What is the derivative of $f(x) = x^x$ with respect to $x$ for $x > 0$?",
+    "options": ["$x \\cdot x^{x-1}$", "$x^x(1 + \\ln x)$", "$x^x \\ln x$", "$x^{x-1}(1 + \\ln x)$"],
+    "correct": 1,
+    "explain": "Taking the natural logarithm: $\\ln y = x \\ln x$. Differentiating implicitly: $\\frac{1}{y} \\frac{dy}{dx} = \\ln x + x \\left(\\frac{1}{x}\\right) = 1 + \\ln x$. Thus $\\frac{dy}{dx} = x^x(1 + \\ln x)$.",
+    "subject": "Mathematics",
+    "chapter": "Calculus & Derivatives",
+    "difficulty": "Medium",
+    "university": "NUST NET"
+  },
+  {
+    "id": "mcq-m-03",
+    "q": "If the vectors $\\vec{a} = 2\\hat{i} + \\lambda\\hat{j} + \\hat{k}$ and $\\vec{b} = 4\\hat{i} - 2\\hat{j} - 2\\hat{k}$ are perpendicular, find $\\lambda$.",
+    "options": ["$2$", "$3$", "$4$", "$-3$"],
+    "correct": 1,
+    "explain": "Two vectors are perpendicular if and only if their dot product is zero: $\\vec{a} \\cdot \\vec{b} = (2)(4) + (\\lambda)(-2) + (1)(-2) = 8 - 2\\lambda - 2 = 6 - 2\\lambda = 0 \\implies 2\\lambda = 6 \\implies \\lambda = 3$.",
+    "subject": "Mathematics",
+    "chapter": "Vectors & Equilibrium",
+    "difficulty": "Easy",
+    "university": "FAST-NUCES"
+  },
+  {
+    "id": "mcq-m-04",
+    "q": "Find $\\lim_{x \\to 0} \\frac{\\sin(5x)}{\\tan(2x)}$.",
+    "options": ["$\\frac{5}{2}$", "$\\frac{2}{5}$", "$1$", "$0$"],
+    "correct": 0,
+    "explain": "Rewrite as $\\lim_{x \\to 0} \\frac{\\frac{\\sin(5x)}{5x} \\cdot 5x}{\\frac{\\tan(2x)}{2x} \\cdot 2x} = \\frac{1 \\cdot 5}{1 \\cdot 2} = \\frac{5}{2}$.",
+    "subject": "Mathematics",
+    "chapter": "Calculus & Derivatives",
+    "difficulty": "Easy",
+    "university": "GIKI"
+  },
+  {
+    "id": "mcq-m-05",
+    "q": "The eccentricity $e$ of the hyperbola $\\frac{x^2}{16} - \\frac{y^2}{9} = 1$ is:",
+    "options": ["$\\frac{5}{4}$", "$\\frac{4}{5}$", "$\\frac{5}{3}$", "$\\frac{\\sqrt{7}}{4}$"],
+    "correct": 0,
+    "explain": "For a horizontal hyperbola, $c^2 = a^2 + b^2 = 16 + 9 = 25 \\implies c = 5$. The eccentricity is $e = \\frac{c}{a} = \\frac{5}{4} > 1$.",
+    "subject": "Mathematics",
+    "chapter": "Conic Sections & Hyperbola",
+    "difficulty": "Medium",
+    "university": "FAST-NUCES"
+  },
+  {
+    "id": "mcq-p-01",
+    "q": "A projectile is launched with velocity $v_0$ at an angle of $45^\\circ$ above the horizontal. The ratio of its maximum height $H$ to its horizontal range $R$ is:",
+    "options": ["$\\frac{1}{4}$", "$\\frac{1}{2}$", "$1$", "$\\frac{1}{8}$"],
+    "correct": 0,
+    "explain": "Range $R = \\frac{v_0^2 \\sin(2\\theta)}{g}$ and maximum height $H = \\frac{v_0^2 \\sin^2(\\theta)}{2g}$. At $\\theta = 45^\\circ$, $\\sin(2\\theta) = 1$ and $\\sin^2(45^\\circ) = \\frac{1}{2}$, giving $H = \\frac{v_0^2}{4g} = \\frac{R}{4}$. Therefore, $\\frac{H}{R} = \\frac{1}{4}$.",
+    "subject": "Physics",
+    "chapter": "Work, Energy & Power",
+    "difficulty": "Medium",
+    "university": "FAST-NUCES"
+  },
+  {
+    "id": "mcq-p-02",
+    "q": "A wire of resistance $R$ is stretched uniformly until its length is doubled. What is its new resistance?",
+    "options": ["$2R$", "$4R$", "$\\frac{R}{2}$", "$\\frac{R}{4}$"],
+    "correct": 1,
+    "explain": "Volume $V = A \\cdot L$ remains constant. When length doubles ($L' = 2L$), cross-sectional area halves ($A' = A/2$). New resistance $R' = \\rho \\frac{L'}{A'} = \\rho \\frac{2L}{A/2} = 4 \\rho \\frac{L}{A} = 4R$.",
+    "subject": "Physics",
+    "chapter": "Electromagnetism & Induction",
+    "difficulty": "Easy",
+    "university": "NUST NET"
+  },
+  {
+    "id": "mcq-p-03",
+    "q": "The work done by the magnetic Lorentz force $\\vec{F} = q(\\vec{v} \\times \\vec{B})$ on a charged particle moving through a constant magnetic field is always:",
+    "options": ["Positive", "Negative", "Zero", "Dependent on the charge sign"],
+    "correct": 2,
+    "explain": "Since $\\vec{F} = q(\\vec{v} \\times \\vec{B})$ is always perpendicular to the instantaneous velocity $\\vec{v}$, the instantaneous power is $P = \\vec{F} \\cdot \\vec{v} = 0$. Hence the work done on the particle is strictly zero.",
+    "subject": "Physics",
+    "chapter": "Electromagnetism & Induction",
+    "difficulty": "Easy",
+    "university": "GIKI"
+  },
+  {
+    "id": "mcq-p-04",
+    "q": "In a nuclear reactor, heavy water ($D_2O$) is primarily utilized as a:",
+    "options": ["Coolant only", "Moderator to slow down fast neutrons", "Control rod absorber", "Fuel isotope"],
+    "correct": 1,
+    "explain": "Deuterium has a very low neutron capture cross-section and effective kinetic moderation mass, making heavy water an ideal moderator to thermalize fast fission neutrons.",
+    "subject": "Physics",
+    "chapter": "Nuclear Physics",
+    "difficulty": "Medium",
+    "university": "PIEAS"
+  },
+  {
+    "id": "mcq-c-01",
+    "q": "Which reagent is used to differentiate between an aldehyde and a ketone via silver mirror formation?",
+    "options": ["Fehling's reagent", "Tollens' reagent", "Lucas reagent", "Benedict's solution"],
+    "correct": 1,
+    "explain": "Tollens' reagent (ammoniacal silver nitrate $[Ag(NH_3)_2]^+$) oxidizes aldehydes to carboxylate ions while being reduced to metallic silver (silver mirror). Ketones do not react under standard neutral/mild conditions.",
+    "subject": "Chemistry",
+    "chapter": "Aldehydes & Ketones",
+    "difficulty": "Easy",
+    "university": "MDCAT"
+  },
+  {
+    "id": "mcq-c-02",
+    "q": "For the Haber process $N_2(g) + 3H_2(g) \\rightleftharpoons 2NH_3(g)$ with $\\Delta H < 0$, which condition shifts equilibrium forward?",
+    "options": ["Increasing temperature and decreasing pressure", "Decreasing temperature and increasing pressure", "Decreasing pressure only", "Adding an inert gas at constant volume"],
+    "correct": 1,
+    "explain": "The reaction is exothermic ($\\Delta H < 0$) and produces fewer moles of gas (4 moles reactants $\\to$ 2 moles products). By Le Chatelier's principle, lowering temperature and increasing pressure shifts equilibrium towards $NH_3$.",
+    "subject": "Chemistry",
+    "chapter": "Chemical Equilibrium",
+    "difficulty": "Medium",
+    "university": "ECAT"
+  },
+  {
+    "id": "mcq-cs-01",
+    "q": "What is the worst-case time complexity of searching for an element in a Balanced Binary Search Tree (AVL tree) with $n$ nodes?",
+    "options": ["$O(1)$", "$O(\\log n)$", "$O(n)$", "$O(n \\log n)$"],
+    "correct": 1,
+    "explain": "An AVL tree maintains height balance such that the height $h \\le 1.44 \\log_2(n)$. Because tree height is strictly $O(\\log n)$, traversal from root to leaf takes $O(\\log n)$ in the worst case.",
+    "subject": "Computer Science",
+    "chapter": "Data Structures & Trees",
+    "difficulty": "Medium",
+    "university": "FAST-NUCES"
+  },
+  {
+    "id": "mcq-cs-02",
+    "q": "Which logic gate outputs $1$ (HIGH) if and only if an odd number of its inputs are $1$?",
+    "options": ["NAND", "NOR", "XOR", "XNOR"],
+    "correct": 2,
+    "explain": "The Exclusive OR (XOR) gate performs modulo-2 addition: its output is HIGH (1) whenever the parity of 1s among its inputs is odd.",
+    "subject": "Computer Science",
+    "chapter": "Digital Logic & Gates",
+    "difficulty": "Easy",
+    "university": "FAST-NUCES"
+  },
+  {
+    "id": "mcq-en-01",
+    "q": "Choose the grammatically correct sentence:",
+    "options": [
+      "Neither the students nor the teacher were present in the laboratory.",
+      "Neither the students nor the teacher was present in the laboratory.",
+      "Neither the students or the teacher was present in the laboratory.",
+      "Neither of the students nor the teacher were present in the laboratory."
+    ],
+    "correct": 1,
+    "explain": "When using 'neither... nor', the verb agrees with the subject closest to it. Here, 'the teacher' is singular, so the singular verb 'was' is required.",
+    "subject": "English",
+    "chapter": "Sentence Correction & Idioms",
+    "difficulty": "Medium",
+    "university": "NUST NET"
+  },
+  {
+    "id": "mcq-iq-01",
+    "q": "If all Bloops are Razzies, and some Razzies are Lurgs, which conclusion MUST logically follow?",
+    "options": [
+      "All Bloops are Lurgs.",
+      "Some Bloops are Lurgs.",
+      "No Bloop is a Lurg.",
+      "None of the above conclusions necessarily follows."
+    ],
+    "correct": 3,
+    "explain": "Since only 'some Razzies' are Lurgs, the subset of Razzies that are Bloops might have zero overlap with the subset of Razzies that are Lurgs. Thus, none of the categorical conclusions is guaranteed.",
+    "subject": "Analytical/IQ",
+    "chapter": "Analytical Reasoning Scenarios",
+    "difficulty": "Hard",
+    "university": "FAST-NUCES"
+  }
+]
