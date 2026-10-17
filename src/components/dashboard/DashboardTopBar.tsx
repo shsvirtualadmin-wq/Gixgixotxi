@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { User, CreditCard, LogOut, Sun, Moon, Shield, Award } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useProfile } from '@/hooks/useProfile';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { Logo } from '@/components/ui/Logo';
 
 interface Props {
@@ -10,10 +10,9 @@ interface Props {
 }
 
 export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) {
-  const { user, profile: authProfile, signOutUser, isAdmin } = useAuth();
+  const { signOutUser, isAdmin } = useAuth();
+  const { user, profile } = useUserProfile();
   const navigate = useNavigate();
-  const { profile: hookProfile } = useProfile(user?.uid ?? null);
-  const profile = authProfile || hookProfile;
 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);

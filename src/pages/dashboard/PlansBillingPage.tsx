@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { collection, addDoc, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
-import { useAuth } from '@/contexts/AuthContext';
-import { useProfile } from '@/hooks/useProfile';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -21,8 +20,7 @@ interface PaymentRequestItem {
 
 export function PlansBillingPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { profile, loading: profileLoading } = useProfile(user?.uid ?? null);
+  const { user, profile, loading: profileLoading } = useUserProfile();
 
   const [modalOpen, setModalOpen] = useState(false);
   const [method, setMethod] = useState<'easypaisa' | 'jazzcash' | 'sadapay' | 'nayapay' | 'bank'>('easypaisa');

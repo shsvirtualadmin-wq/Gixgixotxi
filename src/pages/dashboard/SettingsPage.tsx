@@ -1,8 +1,6 @@
 import { useState, useEffect } from 'react';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import { useProfile } from '@/hooks/useProfile';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -24,8 +22,8 @@ const PAKISTANI_UNIVERSITIES = [
 ];
 
 export function SettingsPage() {
-  const { user, signOutUser } = useAuth();
-  const { profile, loading: profileLoading } = useProfile(user?.uid ?? null);
+  const { signOutUser } = useAuth();
+  const { user, profile, loading: profileLoading, updateProfileData } = useUserProfile();
 
   const [displayName, setDisplayName] = useState('');
   const [targetUniversity, setTargetUniversity] = useState('');
@@ -61,16 +59,11 @@ export function SettingsPage() {
     setSavedSuccess(false);
 
     try {
-      await setDoc(
-        doc(db, 'users', user.uid),
-        {
-          displayName: displayName.trim(),
-          targetUniversity: targetUniversity.trim(),
-          targetTestDate: targetTestDate.trim(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
+      await updateProfileData({
+        displayName: displayName.trim(),
+        targetUniversity: targetUniversity.trim(),
+        targetTestDate: targetTestDate.trim(),
+      });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);
     } catch (err) {

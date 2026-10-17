@@ -1,8 +1,7 @@
-import React, { useEffect, Component, type ErrorInfo, type ReactNode } from 'react';
+import React, { useEffect, useRef, Component, type ErrorInfo, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Flame, Target, BookOpen, Sparkles, ArrowRight, AlertTriangle } from 'lucide-react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useProfile } from '@/hooks/useProfile';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { CountdownTimer } from '@/components/dashboard/CountdownTimer';
 import { DailyLimitsMeter } from '@/components/dashboard/DailyLimitsMeter';
 import { RecentAttempts } from '@/components/dashboard/RecentAttempts';
@@ -55,14 +54,38 @@ class CockpitSectionErrorBoundary extends Component<
 }
 
 export function OverviewPage() {
-  const { user, profile: authProfile } = useAuth();
-  const { profile: hookProfile } = useProfile(user?.uid ?? null);
-  const profile = hookProfile || authProfile;
+  const { user, profile, loading: profileLoading, university, testDate } = useUserProfile();
   const navigate = useNavigate();
+  const hasCheckedOnboardingRef = useRef(false);
 
   useEffect(() => {
     document.title = 'Cockpit — Boardly';
   }, []);
+
+  // Only the dashboard may redirect new users to onboarding, and only once, after the profile has loaded and is truly missing.
+  useEffect(() => {
+    if (!profileLoading && user && !hasCheckedOnboardingRef.current) {
+      hasCheckedOnboardingRef.current = true;
+      if (!profile || profile.onboardingCompleted === false) {
+        console.log('[OverviewPage] New user missing completed profile, redirecting to onboarding once.');
+        navigate('/onboarding', { replace: true });
+      }
+    }
+  }, [user, profile, profileLoading, navigate]);
+
+  if (profileLoading) {
+    return (
+      <div className="flex flex-col gap-6 w-full animate-pulse">
+        <div className="h-12 w-64 bg-[var(--card)] rounded-xl" />
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="h-32 bg-[var(--card)] rounded-2xl border border-[var(--border)]" />
+          <div className="h-32 bg-[var(--card)] rounded-2xl border border-[var(--border)]" />
+          <div className="h-32 bg-[var(--card)] rounded-2xl border border-[var(--border)]" />
+          <div className="h-32 bg-[var(--card)] rounded-2xl border border-[var(--border)]" />
+        </div>
+      </div>
+    );
+  }
 
   const isPro = Boolean(profile?.isPremium || profile?.plan === 'pro');
   const streak = Number(profile?.streak ?? 0);
@@ -72,8 +95,8 @@ export function OverviewPage() {
     user?.displayName ||
     (user?.email ? user.email.split('@')[0] : 'Student');
   const firstName = rawName.trim().split(' ')[0] || 'Student';
-  const targetUniversity = profile?.targetUniversity;
-  const targetTestDate = profile?.targetTestDate;
+  const targetUniversity = profile?.targetUniversity || university;
+  const targetTestDate = profile?.targetTestDate || testDate;
   const currentUid = user?.uid || '';
 
   return (

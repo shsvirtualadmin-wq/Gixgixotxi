@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
-import { useProfile } from '@/hooks/useProfile';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { collection, doc, getDoc, getDocs, setDoc, query, where, limit, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
@@ -27,8 +26,7 @@ const CHAPTERS_LIST = [
 ];
 
 export function PracticePage() {
-  const { user } = useAuth();
-  const { profile } = useProfile(user?.uid ?? null);
+  const { user, profile, university } = useUserProfile();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -36,13 +34,21 @@ export function PracticePage() {
   const [selectedChapter, setSelectedChapter] = useState<string>(
     searchParams.get('chapter') || 'Integration by Parts'
   );
-  const [selectedUniversity, setSelectedUniversity] = useState('FAST-NUCES');
+  const [selectedUniversity, setSelectedUniversity] = useState(university || profile?.targetUniversity || 'FAST-NUCES');
   const [launching, setLaunching] = useState(false);
   const [launchingType, setLaunchingType] = useState<'sprint' | 'full' | 'drill' | null>(null);
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<{ code?: string; message: string; link?: string } | null>(null);
   const [todayAttempts, setTodayAttempts] = useState(0);
   const errorBannerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (university) {
+      setSelectedUniversity(university);
+    } else if (profile?.targetUniversity) {
+      setSelectedUniversity(profile.targetUniversity);
+    }
+  }, [university, profile?.targetUniversity]);
 
   useEffect(() => {
     if (launchError && errorBannerRef.current) {

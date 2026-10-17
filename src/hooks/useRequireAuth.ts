@@ -1,27 +1,26 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '@/contexts/AuthContext';
+import { useUserProfile } from '@/hooks/useUserProfile';
 
 /**
- * Redirect unauthenticated users to /login.
- * Redirect authenticated users who haven't completed onboarding to /onboarding.
- * Call at the top of any protected page.
+ * Redirect unauthenticated users to /login only when loading is fully complete.
+ * Never redirect prematurely while Auth or Firestore profile is resolving.
  */
 export function useRequireAuth(options?: { requireOnboarding?: boolean }) {
-  const { user, profile, profileLoading } = useAuth();
+  const { user, profile, loading } = useUserProfile();
   const navigate = useNavigate();
   const requireOnboarding = options?.requireOnboarding;
 
   useEffect(() => {
-    if (profileLoading) return;
+    if (loading) return;
     if (!user) {
       navigate('/login', { replace: true });
       return;
     }
-    if (requireOnboarding && profile && !profile.onboardingCompleted) {
+    if (requireOnboarding && profile && profile.onboardingCompleted === false) {
       navigate('/onboarding', { replace: true });
     }
-  }, [user, profile, profileLoading, navigate, requireOnboarding]);
+  }, [user, profile, loading, navigate, requireOnboarding]);
 
-  return { user, profile, profileLoading };
+  return { user, profile, profileLoading: loading };
 }

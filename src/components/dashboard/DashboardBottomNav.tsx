@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   BookOpen,
@@ -16,12 +16,25 @@ import {
   Target,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { PillNav, type PillNavItem } from '@/components/ui/PillNav';
 
 export function DashboardBottomNav() {
-  const { user, profile, isAdmin, signOutUser } = useAuth();
+  const { isAdmin, signOutUser } = useAuth();
+  const { user, profile } = useUserProfile();
   const navigate = useNavigate();
+  const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  // Auto-close drawer on any route change so state never gets stuck or re-triggered
+  useEffect(() => {
+    setIsMenuOpen(false);
+  }, [location.pathname]);
+
+  const handleNav = (target: string) => {
+    setIsMenuOpen(false);
+    navigate(target);
+  };
 
   // Theme toggle state
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
@@ -170,10 +183,10 @@ export function DashboardBottomNav() {
 
             {/* ── SUPERADMIN PORTAL (Visible ONLY for admins) ───────────────── */}
             {isAdmin && (
-              <Link
-                to="/admin"
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center justify-between py-3.5 px-4 rounded-xl bg-[rgba(239,68,68,0.08)] border border-[var(--red)] text-[var(--red)] transition-all hover:bg-[rgba(239,68,68,0.14)]"
+              <button
+                type="button"
+                onClick={() => handleNav('/admin')}
+                className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl bg-[rgba(239,68,68,0.08)] border border-[var(--red)] text-[var(--red)] transition-all hover:bg-[rgba(239,68,68,0.14)] text-left cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-[var(--red)] text-white flex items-center justify-center shrink-0">
@@ -189,27 +202,27 @@ export function DashboardBottomNav() {
                   </div>
                 </div>
                 <ChevronRight size={16} className="text-[var(--red)]" />
-              </Link>
+              </button>
             )}
 
             {/* Navigation links in drawer */}
             <div className="space-y-1.5">
-              <Link
-                to="/onboarding"
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors"
+              <button
+                type="button"
+                onClick={() => handleNav('/onboarding')}
+                className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <GraduationCap size={18} className="text-[var(--muted)]" />
                   <span>Target Exam &amp; Profile Setup</span>
                 </div>
                 <ChevronRight size={14} className="text-[var(--muted)]" />
-              </Link>
+              </button>
 
-              <Link
-                to="/dashboard/plans"
-                onClick={() => setIsMenuOpen(false)}
-                className="flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors"
+              <button
+                type="button"
+                onClick={() => handleNav('/dashboard/plans')}
+                className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
               >
                 <div className="flex items-center gap-3">
                   <Sparkles size={18} className="text-[var(--muted)]" />
@@ -223,34 +236,34 @@ export function DashboardBottomNav() {
                   )}
                   <ChevronRight size={14} className="text-[var(--muted)]" />
                 </div>
-              </Link>
+              </button>
 
               {role === 'crew' && (
-                <Link
-                  to="/crew"
-                  onClick={() => setIsMenuOpen(false)}
-                  className="flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors"
+                <button
+                  type="button"
+                  onClick={() => handleNav('/crew')}
+                  className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
                 >
                   <div className="flex items-center gap-3">
                     <Award size={18} className="text-[var(--muted)]" />
                     <span>Crew Ambassador Hub</span>
                   </div>
                   <ChevronRight size={14} className="text-[var(--muted)]" />
-                </Link>
+                </button>
               )}
 
               {role === 'captain' && (
-                <Link
-                  to="/captain"
-                  onClick={() => setIsMenuOpen(false)}
-                  className="flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors"
+                <button
+                  type="button"
+                  onClick={() => handleNav('/captain')}
+                  className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
                 >
                   <div className="flex items-center gap-3">
                     <Award size={18} className="text-[var(--muted)]" />
                     <span>Campus Captain Hub</span>
                   </div>
                   <ChevronRight size={14} className="text-[var(--muted)]" />
-                </Link>
+                </button>
               )}
             </div>
 

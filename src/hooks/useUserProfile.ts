@@ -21,6 +21,7 @@ export interface UserProfileHookResult {
     targetTestDate?: string;
     academicTrack?: string;
     subjects?: string[];
+    onboardingCompleted?: boolean;
   }) => Promise<void>;
 }
 
@@ -30,19 +31,20 @@ export interface UserProfileHookResult {
  * Prevents writing protected fields (`role`, `plan`, `isPremium`, `premium`, `admin`, `suspended`).
  */
 export function useUserProfile(): UserProfileHookResult {
-  const { user, profile: authProfile, updateLocalProfile } = useAuth();
+  const { user, profile: authProfile, profileLoading: authLoading, updateLocalProfile } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(authProfile ?? null);
-  const [loading, setLoading] = useState<boolean>(!authProfile && Boolean(user?.uid));
+  const [hasReceivedSnapshot, setHasReceivedSnapshot] = useState<boolean>(false);
   const [error, setError] = useState<{ code?: string; message: string; path?: string } | null>(null);
 
   useEffect(() => {
     if (!user?.uid) {
       setProfile(null);
-      setLoading(false);
+      setHasReceivedSnapshot(false);
       setError(null);
       return;
     }
 
+    setHasReceivedSnapshot(false);
     const path = `users/${user.uid}`;
     const unsubscribe = onSnapshot(
       doc(db, 'users', user.uid),
@@ -56,9 +58,11 @@ export function useUserProfile(): UserProfileHookResult {
           // If Firestore doc is pending or not created yet, fallback to in-memory profile
           if (authProfile) {
             setProfile(authProfile);
+          } else {
+            setProfile(null);
           }
         }
-        setLoading(false);
+        setHasReceivedSnapshot(true);
         setError(null);
       },
       (err) => {
@@ -68,22 +72,25 @@ export function useUserProfile(): UserProfileHookResult {
           message: err.message,
           path,
         });
-        setLoading(false);
+        setHasReceivedSnapshot(true);
       }
     );
 
     return () => unsubscribe();
   }, [user?.uid, updateLocalProfile, authProfile]);
 
-  // Derived unified fields
-  const university = profile?.targetUniversity || 'FAST-NUCES';
+  // Combined loading: true while Auth is resolving OR while initial snapshot is fetching for active user
+  const loading = authLoading || (Boolean(user?.uid) && !hasReceivedSnapshot);
+
+  // Derived unified fields (no hardcoded or leftover fake defaults)
+  const university = profile?.targetUniversity || '';
   const testDate = profile?.targetTestDate || '';
-  const track = profile?.academicTrack || 'Pre-Engineering';
+  const track = profile?.academicTrack || '';
   const subjects = useMemo(() => {
     if (profile?.subjects && Array.isArray(profile.subjects) && profile.subjects.length > 0) {
       return profile.subjects;
     }
-    return ['Mathematics', 'Physics', 'English'];
+    return [];
   }, [profile?.subjects]);
 
   const daysLeft = useMemo(() => {
@@ -107,6 +114,7 @@ export function useUserProfile(): UserProfileHookResult {
       targetTestDate?: string;
       academicTrack?: string;
       subjects?: string[];
+      onboardingCompleted?: boolean;
     }) => {
       if (!user?.uid) throw new Error('Cannot update profile: Unauthenticated user');
       const path = `users/${user.uid}`;
@@ -135,6 +143,12 @@ export function useUserProfile(): UserProfileHookResult {
       }
       if (updates.subjects !== undefined) {
         safePayload.subjects = updates.subjects;
+      }
+      if (updates.onboardingCompleted !== undefined) {
+        safePayload.onboardingCompleted = updates.onboardingCompleted;
+        if (updates.onboardingCompleted) {
+          safePayload.onboardingCompletedAt = serverTimestamp();
+        }
       }
 
       // 1. Immediately update in-memory state

@@ -13,10 +13,12 @@ import {
   Award,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { Logo } from '@/components/ui/Logo';
 
 export function DashboardSidebar() {
-  const { user, profile, isAdmin, signOutUser } = useAuth();
+  const { isAdmin, signOutUser } = useAuth();
+  const { user, profile } = useUserProfile();
   const navigate = useNavigate();
 
   // Theme state

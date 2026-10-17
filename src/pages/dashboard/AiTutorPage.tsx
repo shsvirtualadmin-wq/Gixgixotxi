@@ -1,6 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useProfile } from '@/hooks/useProfile';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { doc, getDoc, setDoc, increment } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -26,8 +25,7 @@ const SUGGESTED_PROMPTS = [
 const FREE_DAILY_TOKEN_LIMIT = 5;
 
 export function AiTutorPage() {
-  const { user } = useAuth();
-  const { profile } = useProfile(user?.uid ?? null);
+  const { user, profile } = useUserProfile();
   const isPremium = profile?.isPremium || profile?.plan === 'pro';
 
   const [messages, setMessages] = useState<Message[]>([
