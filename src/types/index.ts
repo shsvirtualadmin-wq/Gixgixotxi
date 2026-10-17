@@ -49,43 +49,81 @@ export interface PlaceholderReview {
   isPlaceholder: true;
 }
 
+export type QuestionDifficulty = 'easy' | 'medium' | 'hard';
+export type QuestionStatus = 'draft' | 'reviewed' | 'published';
+
+/**
+ * Public question document stored in `questions/{id}`.
+ * NEVER contains correct answer or explanation.
+ */
 export interface Question {
   id: string;
-  subject: string;
-  chapter?: string;
+  subject: string; // slug, e.g. "mathematics"
+  chapter: string; // slug, e.g. "integration-by-parts"
+  difficulty: QuestionDifficulty;
+  q: string; // string with KaTeX math ($...$, $$...$$, \ce{})
+  options: [string, string, string, string]; // exactly 4 distinct strings
+  tags: string[]; // e.g. ["nust", "fast", "mdcat"]
+  source?: string;
+  year?: number | string;
+  status: QuestionStatus;
+  active: boolean;
+  rand: number; // uniform random 0 to 1 for index-assisted random selection
+  schemaVersion: 1;
+  contentHash: string;
+  createdAt: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
+  updatedAt: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
+  createdBy: string;
+  // Legacy optional fields for backward compatibility
   topic?: string;
-  difficulty: 'Easy' | 'Medium' | 'Hard' | string;
-  university?: string;
-  universities?: string[];
-  year?: number;
-  question?: string;
-  q?: string;
   stem?: string;
-  options: [string, string, string, string] | string[];
-  correctAnswer?: 0 | 1 | 2 | 3 | number;
-  correct?: 0 | 1 | 2 | 3 | number;
-  correctIndex?: number;
-  explanation?: string;
-  explain?: string;
-  status?: string;
-  needsMathFix?: boolean;
-  mathChecked?: boolean;
+  question?: string;
 }
 
+/**
+ * Secret key document stored in `questionKeys/{id}` with restricted permissions.
+ */
+export interface QuestionKey {
+  id: string;
+  correct: number; // integer 0 to 3
+  explain: string; // string with KaTeX math
+  updatedAt: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
+}
+
+/**
+ * Student issue report stored in `questionReports/{id}`.
+ */
+export interface QuestionReport {
+  id?: string;
+  questionId: string;
+  userId: string;
+  userEmail?: string;
+  reason: 'wrong_key' | 'broken_math' | 'unclear' | 'other' | string;
+  comment?: string;
+  createdAt: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
+  status: 'open' | 'resolved' | 'dismissed';
+}
+
+/**
+ * Representation of a question inside an attempt.
+ * Contains shuffled options and an optionMapping array to resolve answers without exposing keys early.
+ */
 export interface AttemptQuestion {
   id: string;
   q: string;
-  stem?: string;
-  options: string[];
-  correct: number;
-  correctIndex?: number;
+  options: [string, string, string, string] | string[];
+  subject: string;
+  chapter: string;
+  difficulty: string;
+  optionMapping?: number[]; // optionMapping[shuffledIndex] = originalIndex
+  // Populated ONLY at submission or review mode from questionKeys:
+  correct?: number;
   explain?: string;
+  isUnavailable?: boolean; // Flagged if question was deleted from bank
+  // Legacy aliases for backward compatibility with existing components
+  stem?: string;
+  correctIndex?: number;
   explanation?: string;
-  subject?: string;
-  chapter?: string;
-  difficulty?: string;
-  university?: string;
-  universities?: string[];
 }
 
 export interface AttemptDoc {

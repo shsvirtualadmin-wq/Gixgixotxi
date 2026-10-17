@@ -14,22 +14,15 @@ import { DailyLimitBlockedSheet } from '@/components/test/DailyLimitBlockedSheet
 import { DashboardErrorBoundary } from '@/components/dashboard/DashboardErrorBoundary';
 import { useUserChapterStats } from '@/hooks/useUserChapterStats';
 
-const UNIVERSITIES = ['Any', 'FAST-NUCES', 'NUST NET', 'GIKI', 'LUMS', 'NED', 'MDCAT', 'ECAT'];
+import {
+  getAllSubjects,
+  getChaptersForSubject,
+  formatSubjectName,
+  formatChapterName,
+} from '@/constants/taxonomy';
+import type { QueryConstraint } from 'firebase/firestore';
 
-const SYLLABUS_CHAPTERS = [
-  { subject: 'Mathematics', name: 'Integration by Parts' },
-  { subject: 'Mathematics', name: 'Calculus & Derivatives' },
-  { subject: 'Mathematics', name: 'Conic Sections & Hyperbola' },
-  { subject: 'Physics', name: 'Electromagnetism & Induction' },
-  { subject: 'Physics', name: 'Work, Energy & Power' },
-  { subject: 'Physics', name: 'Nuclear Physics' },
-  { subject: 'Chemistry', name: 'Aldehydes & Ketones' },
-  { subject: 'Chemistry', name: 'Chemical Equilibrium' },
-  { subject: 'Computer Science', name: 'Data Structures & Trees' },
-  { subject: 'Computer Science', name: 'Digital Logic & Gates' },
-  { subject: 'English', name: 'Sentence Correction & Idioms' },
-  { subject: 'Analytical/IQ', name: 'Analytical Reasoning Scenarios' },
-];
+const UNIVERSITIES = ['Any', 'FAST-NUCES', 'NUST NET', 'GIKI', 'LUMS', 'NED', 'MDCAT', 'ECAT'];
 
 export function PracticePage() {
   const { user, profile, university } = useUserProfile();
@@ -38,10 +31,12 @@ export function PracticePage() {
 
   const { statsMap } = useUserChapterStats(user?.uid);
 
-  const [selectedSubject, setSelectedSubject] = useState('All');
-  const [selectedChapter, setSelectedChapter] = useState<string>(
-    searchParams.get('chapter') || 'Integration by Parts'
-  );
+  const allTaxonomySubjects = useMemo(() => getAllSubjects(), []);
+  const initialSubject = 'all';
+  const initialChapterSlug = searchParams.get('chapter') || 'integration-by-parts';
+
+  const [selectedSubject, setSelectedSubject] = useState(initialSubject);
+  const [selectedChapter, setSelectedChapter] = useState<string>(initialChapterSlug);
   const [selectedUniversity, setSelectedUniversity] = useState(university || profile?.targetUniversity || 'FAST-NUCES');
   const [launching, setLaunching] = useState(false);
   const [launchingType, setLaunchingType] = useState<'sprint' | 'full' | 'drill' | null>(null);
@@ -124,49 +119,66 @@ export function PracticePage() {
   }, [user]);
 
   const chaptersWithRealStats = useMemo(() => {
-    return SYLLABUS_CHAPTERS.map((ch) => {
-      const lookupKey = ch.name.toLowerCase();
-      const safeId = ch.name.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_').toLowerCase();
-      const stat = statsMap[lookupKey] || statsMap[safeId];
+    const list: Array<{
+      subjectSlug: string;
+      subject: string;
+      chapterSlug: string;
+      name: string;
+      statusLabel: string;
+      acc: number | null;
+      dots: number;
+      totalAnswered: number;
+    }> = [];
 
-      if (!stat || stat.total === 0) {
-        return {
-          ...ch,
-          statusLabel: 'Not attempted',
-          acc: null,
-          dots: 0,
-          totalAnswered: 0,
-        };
+    const subjectsToScan = selectedSubject === 'all'
+      ? allTaxonomySubjects
+      : allTaxonomySubjects.filter((s) => s.slug === selectedSubject);
+
+    for (const sub of subjectsToScan) {
+      for (const ch of sub.chapters) {
+        const stat = statsMap[ch.slug] || statsMap[ch.name.toLowerCase()];
+        if (!stat || stat.total === 0) {
+          list.push({
+            subjectSlug: sub.slug,
+            subject: sub.name,
+            chapterSlug: ch.slug,
+            name: ch.name,
+            statusLabel: 'Not attempted',
+            acc: null,
+            dots: 0,
+            totalAnswered: 0,
+          });
+        } else {
+          const dots = Math.max(1, Math.min(7, Math.round((stat.accuracy / 100) * 7)));
+          const statusLabel = stat.notEnoughData
+            ? `${stat.accuracy}% (Needs 3+)`
+            : `${stat.accuracy}%`;
+          list.push({
+            subjectSlug: sub.slug,
+            subject: sub.name,
+            chapterSlug: ch.slug,
+            name: ch.name,
+            statusLabel,
+            acc: stat.accuracy,
+            dots,
+            totalAnswered: stat.total,
+          });
+        }
       }
+    }
+    return list;
+  }, [allTaxonomySubjects, selectedSubject, statsMap]);
 
-      const dots = Math.max(1, Math.min(7, Math.round((stat.accuracy / 100) * 7)));
-      const statusLabel = stat.notEnoughData
-        ? `${stat.accuracy}% (Needs 3+)`
-        : `${stat.accuracy}%`;
+  const filteredChapters = chaptersWithRealStats;
 
-      return {
-        ...ch,
-        statusLabel,
-        acc: stat.accuracy,
-        dots,
-        totalAnswered: stat.total,
-      };
-    });
-  }, [statsMap]);
-
-  const filteredChapters = useMemo(() => {
-    if (selectedSubject === 'All') return chaptersWithRealStats;
-    return chaptersWithRealStats.filter(c => c.subject === selectedSubject);
-  }, [chaptersWithRealStats, selectedSubject]);
-
-  const launchTest = async (type: 'sprint' | 'full' | 'drill', customChapter?: string) => {
+  const launchTest = async (type: 'sprint' | 'full' | 'drill', customChapterSlug?: string) => {
     if (!user) {
       setLaunchError('Please sign in to start a practice test session.');
       return;
     }
     if (launching) return;
 
-    setLastLaunchParams({ type, customChapter });
+    setLastLaunchParams({ type, customChapter: customChapterSlug });
     setLaunching(true);
     setLaunchingType(type);
     setLaunchError(null);
@@ -180,12 +192,26 @@ export function PracticePage() {
       setLaunching(false);
       setLaunchingType(null);
       setLaunchStatus(null);
-      setLaunchError('Setting up your test session took longer than expected. Please check your connection and try again.');
+      setLaunchError('Setting up your test session took longer than expected. Please check your connection and tap Try Again.');
     }, 15000);
 
     let count = 10;
     let duration = 600; // 10 mins
     let title = '10-Minute Sprint';
+
+    const targetChapterSlug = customChapterSlug || selectedChapter;
+    const targetUni = selectedUniversity === 'Any' ? 'FAST-NUCES' : selectedUniversity;
+
+    // Resolve subject slug
+    let subjectSlugToUse = selectedSubject !== 'all' ? selectedSubject : 'mathematics';
+    if (type === 'drill' && targetChapterSlug) {
+      for (const sub of allTaxonomySubjects) {
+        if (sub.chapters.some((c) => c.slug === targetChapterSlug)) {
+          subjectSlugToUse = sub.slug;
+          break;
+        }
+      }
+    }
 
     if (type === 'full') {
       count = 30;
@@ -194,69 +220,37 @@ export function PracticePage() {
     } else if (type === 'drill') {
       count = 20;
       duration = 1200; // 20 mins
-      title = `${customChapter || selectedChapter} Drill`;
+      title = `${formatChapterName(subjectSlugToUse, targetChapterSlug)} Drill`;
     }
 
-    const chapterObj = SYLLABUS_CHAPTERS.find(c => c.name === (customChapter || selectedChapter));
-    const subjectToUse = chapterObj ? chapterObj.subject : (selectedSubject !== 'All' ? selectedSubject : 'General');
-    const targetUni = selectedUniversity === 'Any' ? 'FAST-NUCES' : selectedUniversity;
-    const targetChapter = customChapter || selectedChapter;
-
-    if (import.meta.env.DEV) {
-      console.log(`[PracticePage] Launching ${type} test:`, {
-        university: targetUni,
-        subject: subjectToUse,
-        chapter: targetChapter,
-        count,
-      });
-    }
-
+    // Pre-flight check: query published & active questions in Firestore
     let questionsCount = 0;
     try {
       const questionsColl = collection(db, 'questions');
+      const constraints: QueryConstraint[] = [
+        where('status', '==', 'published'),
+        where('active', '==', true),
+      ];
 
-      if (type === 'drill' && targetChapter) {
-        try {
-          const chSnap = await getDocs(query(questionsColl, where('chapter', '==', targetChapter), limit(count)));
-          questionsCount = chSnap.size;
-        } catch (err: unknown) {
-          if (import.meta.env.DEV) {
-            console.warn('[PracticePage] Chapter query note:', err);
-          }
-          questionsCount = 1;
-        }
+      if (type === 'drill' && targetChapterSlug) {
+        constraints.push(where('chapter', '==', targetChapterSlug));
+      } else if (subjectSlugToUse && subjectSlugToUse !== 'all') {
+        constraints.push(where('subject', '==', subjectSlugToUse));
       }
 
-      if (questionsCount === 0 && subjectToUse && subjectToUse !== 'All' && subjectToUse !== 'General') {
-        try {
-          const subjectQuery = query(
-            questionsColl,
-            where('subject', '==', subjectToUse),
-            limit(count)
-          );
-          const snap = await getDocs(subjectQuery);
-          questionsCount = snap.size;
-        } catch (err: unknown) {
-          if (import.meta.env.DEV) {
-            const errObj = err as { message?: string };
-            console.warn('[PracticePage] Filtered subject query exception:', err);
-            if (errObj?.message?.includes('index')) {
-              console.warn('[PracticePage] Required Firestore index url:', errObj.message);
-            }
-          }
-          questionsCount = 1; // Proceed to test generator
-        }
-      }
+      const snap = await getDocs(query(questionsColl, ...constraints, limit(count)));
+      questionsCount = snap.size;
 
-      if (questionsCount === 0) {
-        const generalSnap = await getDocs(query(questionsColl, limit(count)));
+      // If drill was requested but 0 in chapter, check general subject
+      if (questionsCount === 0 && type !== 'drill') {
+        const generalSnap = await getDocs(query(questionsColl, where('status', '==', 'published'), where('active', '==', true), limit(count)));
         questionsCount = generalSnap.size;
       }
     } catch (qErr: unknown) {
       if (import.meta.env.DEV) {
-        console.warn('[PracticePage] Query pre-flight check notice:', qErr);
+        console.warn('[PracticePage] Pre-flight query note:', qErr);
       }
-      questionsCount = 1;
+      questionsCount = 1; // Proceed so test engine can run its fallbacks
     }
 
     if (timedOut) return;
@@ -265,8 +259,8 @@ export function PracticePage() {
       if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
       setLaunchError(
         type === 'drill'
-          ? `Questions for "${targetChapter}" aren't available yet. Please select another chapter or start a sprint.`
-          : `Questions for ${subjectToUse} aren't available yet. Please select another subject or check back soon.`
+          ? `Not enough questions yet for this chapter. Please choose another chapter or try a 10-Minute Sprint.`
+          : `Not enough questions yet for ${formatSubjectName(subjectSlugToUse)}. Please choose another subject or check back soon.`
       );
       setLaunching(false);
       setLaunchingType(null);
@@ -554,8 +548,8 @@ export function PracticePage() {
               <span>·</span>
               <span>20 Minutes</span>
               <span>·</span>
-              <span className="truncate max-w-[120px] font-semibold text-[var(--text)]">
-                {selectedChapter}
+              <span className="truncate max-w-[140px] font-semibold text-[var(--text)]">
+                {formatChapterName(selectedSubject !== 'all' ? selectedSubject : 'mathematics', selectedChapter)}
               </span>
             </div>
           </div>
@@ -598,18 +592,24 @@ export function PracticePage() {
 
           {/* Subject Filter Pills */}
           <div className="flex items-center gap-1.5 flex-wrap">
-            {['All', 'Mathematics', 'Physics', 'Chemistry', 'Computer Science'].map(subj => (
+            {[{ slug: 'all', name: 'All' }, ...allTaxonomySubjects].map((subj) => (
               <button
-                key={subj}
-                onClick={() => setSelectedSubject(subj)}
+                key={subj.slug}
+                onClick={() => {
+                  setSelectedSubject(subj.slug);
+                  if (subj.slug !== 'all') {
+                    const chs = getChaptersForSubject(subj.slug);
+                    if (chs.length > 0) setSelectedChapter(chs[0].slug);
+                  }
+                }}
                 className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
-                  selectedSubject === subj
+                  selectedSubject === subj.slug
                     ? 'bg-[var(--text)] text-[var(--bg)]'
                     : 'bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)]'
                 }`}
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                {subj}
+                {subj.name}
               </button>
             ))}
           </div>
@@ -617,12 +617,12 @@ export function PracticePage() {
 
         {/* Chapter Chips Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 my-4">
-          {filteredChapters.map(c => {
-            const isSelected = selectedChapter === c.name;
+          {filteredChapters.map((c) => {
+            const isSelected = selectedChapter === c.chapterSlug;
             return (
               <div
-                key={c.name}
-                onClick={() => setSelectedChapter(c.name)}
+                key={c.chapterSlug}
+                onClick={() => setSelectedChapter(c.chapterSlug)}
                 className={`p-3.5 rounded-2xl border transition-colors cursor-pointer flex flex-col justify-between gap-2 ${
                   isSelected
                     ? 'bg-[var(--surface-2)] border-[var(--accent)] shadow-sm'

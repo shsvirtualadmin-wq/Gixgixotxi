@@ -289,10 +289,24 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
-    // Content: questions, sheets, universities, formulas
+    // Content: questions (public portion), questionKeys (secret keys), and questionReports
     match /questions/{qId} {
-      allow read: if true;
+      allow read: if isAdmin() || (
+        isAuthenticated() &&
+        resource.data.status == 'published' &&
+        resource.data.active == true
+      );
       allow write: if isAdmin();
+    }
+
+    match /questionKeys/{keyId} {
+      allow read: if isAuthenticated() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /questionReports/{reportId} {
+      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if isAdmin();
     }
 
     match /sheets/{sheetId} {

@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { formatChapterName, formatSubjectName } from '@/constants/taxonomy';
 
 export interface ChapterStatItem {
-  id: string;
-  chapter: string;
-  subject: string;
+  id: string; // chapter slug
+  chapter: string; // display name
+  chapterSlug: string;
+  subject: string; // display name
+  subjectSlug: string;
   correct: number;
   total: number;
   accuracy: number;
@@ -40,20 +43,22 @@ export function useUserChapterStats(uid?: string | null) {
 
         snap.docs.forEach((d) => {
           const data = d.data();
-          const chapter = String(data.chapter || d.id).trim();
-          const subject = String(data.subject || 'General').trim();
+          const chapterSlug = String(data.chapter || d.id).trim().toLowerCase();
+          const subjectSlug = String(data.subject || 'general').trim().toLowerCase();
           const correct = Number(data.correct ?? 0);
           const total = Number(data.total ?? 0);
           const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
           const notAttempted = total === 0;
           const notEnoughData = total > 0 && total < 3;
-          // Per specification: Weak chapters ONLY if at least 3 answered questions AND < 50% accuracy
+          // Weak chapters defined as: at least 3 answered questions AND < 50% accuracy
           const isWeak = total >= 3 && accuracy < 50;
 
           const item: ChapterStatItem = {
-            id: d.id,
-            chapter,
-            subject,
+            id: chapterSlug,
+            chapterSlug,
+            chapter: formatChapterName(subjectSlug, chapterSlug),
+            subjectSlug,
+            subject: formatSubjectName(subjectSlug),
             correct,
             total,
             accuracy,
@@ -62,9 +67,9 @@ export function useUserChapterStats(uid?: string | null) {
             notAttempted,
           };
 
-          map[chapter.toLowerCase()] = item;
-          // Also key by id
-          map[d.id.toLowerCase()] = item;
+          map[chapterSlug] = item;
+          // Also key by display name lowercased for backward compatibility
+          map[item.chapter.toLowerCase()] = item;
 
           if (isWeak) {
             weakList.push(item);

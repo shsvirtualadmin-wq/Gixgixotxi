@@ -78,7 +78,7 @@ export function TestRunnerPage() {
             setQuestions([]);
             setError({
               code: 'NO_QUESTIONS',
-              message: 'No questions available yet. Please select another subject or check back later.',
+              message: 'Not enough questions yet. Please select another subject or check back soon.',
             });
             setLoading(false);
             return;
@@ -306,10 +306,10 @@ export function TestRunnerPage() {
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
         <ErrorState
-          title={isNoQuestions ? 'No questions available yet' : 'Could not load practice session'}
+          title={isNoQuestions ? 'Not enough questions yet' : 'Could not load practice session'}
           error={
             isNoQuestions
-              ? { message: 'No questions have been published for this test track yet. Please check back soon or select another subject.' }
+              ? { message: 'Not enough questions have been published for this test track yet. Please choose another subject or check back soon.' }
               : error
           }
           path={error?.path}

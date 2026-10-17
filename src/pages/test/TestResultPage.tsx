@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getAttempt } from '@/services/testEngine';
+import { getAttempt, reportQuestion } from '@/services/testEngine';
+import { useAuth } from '@/contexts/AuthContext';
 import { MathText } from '@/components/ui/MathText';
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -17,6 +18,10 @@ import {
   Bot,
   Sparkles,
   RotateCcw,
+  Flag,
+  CheckCircle2,
+  Loader2,
+  AlertTriangle,
 } from 'lucide-react';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
@@ -24,6 +29,7 @@ type ReviewFilter = 'all' | 'mistakes' | 'flagged';
 
 export function TestResultPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   const [attempt, setAttempt] = useState<AttemptDoc | null>(null);
@@ -32,6 +38,13 @@ export function TestResultPage() {
   const [filter, setFilter] = useState<ReviewFilter>('all');
   const [aiExplaining, setAiExplaining] = useState<Record<number, boolean>>({});
   const [aiExplanations, setAiExplanations] = useState<Record<number, string>>({});
+
+  // Report modal state
+  const [reportingQuestionId, setReportingQuestionId] = useState<string | null>(null);
+  const [reportReason, setReportReason] = useState<string>('wrong_key');
+  const [reportComment, setReportComment] = useState('');
+  const [reporting, setReporting] = useState(false);
+  const [reportSuccess, setReportSuccess] = useState(false);
 
   const handleRequestAiExplanation = async (
     questionIndex: number,
@@ -336,6 +349,8 @@ export function TestResultPage() {
             const isSkipped = userAns === undefined || userAns === null;
             const isItemFlagged = flagged.includes(idx);
 
+            const isUnavailable = q.isUnavailable || (!q.q && !q.stem);
+
             return (
               <div
                 key={q.id || idx}
@@ -354,7 +369,7 @@ export function TestResultPage() {
                 }}
               >
                 {/* Header */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                       Question {idx + 1}
@@ -371,7 +386,7 @@ export function TestResultPage() {
                     )}
                   </div>
 
-                  <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {isCorrect ? (
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--success)', fontSize: 12, fontWeight: 700 }}>
                         <CheckCircle size={14} /> Correct (+1)
@@ -385,89 +400,119 @@ export function TestResultPage() {
                         <XCircle size={14} /> Incorrect ({isFastNuces ? '-0.25' : '0'})
                       </span>
                     )}
+
+                    <button
+                      type="button"
+                      onClick={() => setReportingQuestionId(q.id)}
+                      style={{
+                        background: 'transparent',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--r-pill)',
+                        padding: '3px 9px',
+                        fontSize: 11,
+                        color: 'var(--text-muted)',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                      }}
+                      title="Report issue with this question"
+                    >
+                      <Flag size={11} />
+                      <span>Report</span>
+                    </button>
                   </div>
                 </div>
 
-                {/* Question Stem */}
-                <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', lineHeight: 1.6 }}>
-                  <MathText block>{q.q}</MathText>
-                </div>
+                {/* Question Stem or Deleted note */}
+                {isUnavailable ? (
+                  <div style={{ padding: '12px 16px', borderRadius: 'var(--r-input)', background: 'var(--surface-hover)', border: '1px solid var(--border)', fontSize: 13, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <AlertTriangle size={16} className="text-[var(--accent)] shrink-0" />
+                    <span>Question no longer available in the question bank. Your test score remains intact.</span>
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', lineHeight: 1.6 }}>
+                    <MathText block>{q.q || q.stem || ''}</MathText>
+                  </div>
+                )}
 
                 {/* Options Review */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {q.options.map((optText, optIdx) => {
-                    const isOptionCorrect = optIdx === q.correct;
-                    const isUserChoice = optIdx === userAns;
+                {!isUnavailable && Array.isArray(q.options) && q.options.length > 0 && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {q.options.map((optText, optIdx) => {
+                      const isOptionCorrect = optIdx === q.correct;
+                      const isUserChoice = optIdx === userAns;
 
-                    let bg = 'var(--surface)';
-                    let border = '1px solid var(--border)';
-                    let textColor = 'var(--text-muted)';
+                      let bg = 'var(--surface)';
+                      let border = '1px solid var(--border)';
+                      let textColor = 'var(--text-muted)';
 
-                    if (isOptionCorrect) {
-                      bg = 'rgba(52, 211, 153, 0.12)';
-                      border = '1px solid var(--success)';
-                      textColor = 'var(--text)';
-                    } else if (isUserChoice && !isOptionCorrect) {
-                      bg = 'rgba(248, 113, 113, 0.12)';
-                      border = '1px solid var(--danger)';
-                      textColor = 'var(--text)';
-                    }
+                      if (isOptionCorrect) {
+                        bg = 'rgba(52, 211, 153, 0.12)';
+                        border = '1px solid var(--success)';
+                        textColor = 'var(--text)';
+                      } else if (isUserChoice && !isOptionCorrect) {
+                        bg = 'rgba(248, 113, 113, 0.12)';
+                        border = '1px solid var(--danger)';
+                        textColor = 'var(--text)';
+                      }
 
-                    return (
-                      <div
-                        key={optIdx}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 12,
-                          padding: '10px 14px',
-                          borderRadius: 'var(--r-input)',
-                          background: bg,
-                          border,
-                          color: textColor,
-                          fontSize: 14,
-                        }}
-                      >
+                      return (
                         <div
+                          key={optIdx}
                           style={{
-                            width: 22,
-                            height: 22,
-                            borderRadius: '50%',
                             display: 'flex',
                             alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: 11,
-                            fontWeight: 700,
-                            flexShrink: 0,
-                            background: isOptionCorrect
-                              ? 'var(--success)'
-                              : isUserChoice
-                              ? 'var(--danger)'
-                              : 'rgba(255, 255, 255, 0.08)',
-                            color: isOptionCorrect || isUserChoice ? '#ffffff' : 'var(--text-faint)',
+                            gap: 12,
+                            padding: '10px 14px',
+                            borderRadius: 'var(--r-input)',
+                            background: bg,
+                            border,
+                            color: textColor,
+                            fontSize: 14,
                           }}
                         >
-                          {isOptionCorrect ? <Check size={13} /> : isUserChoice ? <X size={13} /> : ['A', 'B', 'C', 'D'][optIdx]}
-                        </div>
+                          <div
+                            style={{
+                              width: 22,
+                              height: 22,
+                              borderRadius: '50%',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: 11,
+                              fontWeight: 700,
+                              flexShrink: 0,
+                              background: isOptionCorrect
+                                ? 'var(--success)'
+                                : isUserChoice
+                                ? 'var(--danger)'
+                                : 'rgba(255, 255, 255, 0.08)',
+                              color: isOptionCorrect || isUserChoice ? '#ffffff' : 'var(--text-faint)',
+                            }}
+                          >
+                            {isOptionCorrect ? <Check size={13} /> : isUserChoice ? <X size={13} /> : ['A', 'B', 'C', 'D'][optIdx]}
+                          </div>
 
-                        <div style={{ flex: 1 }}>
-                          <MathText>{optText}</MathText>
-                        </div>
+                          <div style={{ flex: 1 }}>
+                            <MathText>{optText}</MathText>
+                          </div>
 
-                        {isOptionCorrect && (
-                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--success)' }}>
-                            Correct Answer
-                          </span>
-                        )}
-                        {isUserChoice && !isOptionCorrect && (
-                          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)' }}>
-                            Your Choice
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                          {isOptionCorrect && (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--success)' }}>
+                              Correct Answer
+                            </span>
+                          )}
+                          {isUserChoice && !isOptionCorrect && (
+                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)' }}>
+                              Your Choice
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
 
                 {/* Explanation */}
                 {q.explain && (
@@ -567,6 +612,104 @@ export function TestResultPage() {
           })}
         </div>
       </div>
+
+      {/* ── REPORT ISSUE MODAL ── */}
+      {reportingQuestionId && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl max-w-md w-full p-5 space-y-4 shadow-xl text-[var(--text)]">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
+              <h3 className="font-bold text-sm" style={{ fontFamily: 'var(--font-heading)' }}>
+                Report Question
+              </h3>
+              <button
+                type="button"
+                onClick={() => setReportingQuestionId(null)}
+                className="text-[var(--text-muted)] hover:text-[var(--text)] text-xs cursor-pointer"
+              >
+                Close
+              </button>
+            </div>
+
+            {reportSuccess ? (
+              <div className="py-6 text-center space-y-2">
+                <CheckCircle2 className="mx-auto text-[var(--accent)]" size={32} />
+                <p className="text-sm font-semibold">Report Received</p>
+                <p className="text-xs text-[var(--text-muted)]">
+                  Thank you! Our academic reviewers will verify this question.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-semibold mb-1 text-[var(--text)]">What seems wrong?</label>
+                  <select
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    className="w-full p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)]"
+                  >
+                    <option value="wrong_key">Answer key appears incorrect</option>
+                    <option value="broken_math">Math formula formatting issue</option>
+                    <option value="unclear">Question wording is ambiguous or incomplete</option>
+                    <option value="other">Other issue</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold mb-1 text-[var(--text)]">Details (optional)</label>
+                  <textarea
+                    rows={3}
+                    value={reportComment}
+                    onChange={(e) => setReportComment(e.target.value)}
+                    placeholder="Describe what needs correction..."
+                    className="w-full p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] resize-none"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setReportingQuestionId(null)}
+                    className="btn-outline px-3 py-1.5 rounded-xl text-xs cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!user || reporting) return;
+                      setReporting(true);
+                      try {
+                        await reportQuestion({
+                          questionId: reportingQuestionId,
+                          reason: reportReason,
+                          comment: reportComment,
+                          userId: user.uid,
+                          userEmail: user.email || '',
+                        });
+                        setReportSuccess(true);
+                        setTimeout(() => {
+                          setReportingQuestionId(null);
+                          setReportSuccess(false);
+                          setReportComment('');
+                        }, 1400);
+                      } catch (err) {
+                        console.warn('Report error:', err);
+                      } finally {
+                        setReporting(false);
+                      }
+                    }}
+                    disabled={reporting}
+                    className="btn-red px-4 py-1.5 rounded-xl text-xs flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {reporting && <Loader2 size={12} className="animate-spin" />}
+                    <span>Submit Report</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

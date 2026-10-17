@@ -24,12 +24,19 @@ import { db } from '@/lib/firebase';
 import type {
   UserProfile,
   Question,
+  QuestionKey,
+  QuestionReport,
   AuditLog,
   PaymentRequest,
   StudentReview,
   CaptainApplication,
   CrewApplication,
 } from '@/types';
+import {
+  findSubjectSlug,
+  findChapterSlug,
+  computeContentHash,
+} from '@/constants/taxonomy';
 
 // ─── DIAGNOSTIC FIRESTORE ERROR ──────────────────────────────────────────────
 export class AdminFirestoreError extends Error {
@@ -647,28 +654,367 @@ export async function fetchQuestions(filters: {
   return res.questions;
 }
 
-export async function saveQuestion(adminEmail: string, question: Question): Promise<void> {
-  const qId = question.id || `q_custom_${Date.now()}`;
-  const payload = {
-    ...question,
+export async function fetchQuestionKey(questionId: string): Promise<QuestionKey | null> {
+  try {
+    const snap = await getDocFromServer(doc(db, 'questionKeys', questionId));
+    if (snap.exists()) {
+      return { id: snap.id, ...snap.data() } as QuestionKey;
+    }
+    return null;
+  } catch (err) {
+    console.warn('[AdminService] fetchQuestionKey warning:', err);
+    return null;
+  }
+}
+
+/**
+ * Saves MCQ strictly separating public `questions/{id}` and secret `questionKeys/{id}`.
+ * NEVER stores the answer key inside the `questions` collection!
+ */
+export async function saveQuestion(
+  adminEmail: string,
+  question: Partial<Question> & {
+    correct?: number;
+    correctAnswer?: number;
+    explain?: string;
+    explanation?: string;
+  }
+): Promise<string> {
+  const qId = question.id && !question.id.startsWith('q_custom') ? question.id : `q_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const qText = (question.q || question.question || '').trim();
+  const rawOpts = question.options && question.options.length >= 4 ? question.options : ['', '', '', ''];
+  const options: [string, string, string, string] = [
+    rawOpts[0] || '',
+    rawOpts[1] || '',
+    rawOpts[2] || '',
+    rawOpts[3] || '',
+  ];
+
+  const subjectSlug = findSubjectSlug(question.subject || 'mathematics');
+  const chapterSlug = findChapterSlug(subjectSlug, question.chapter || '');
+  const difficulty = (question.difficulty || 'medium').toLowerCase() as 'easy' | 'medium' | 'hard';
+  const status = (question.status || 'published') as 'draft' | 'reviewed' | 'published';
+  const active = question.active !== undefined ? Boolean(question.active) : true;
+  const rand = typeof question.rand === 'number' ? question.rand : Math.random();
+  const contentHash = await computeContentHash(qText, options);
+
+  // 1. Public question doc in `questions/{qId}` — strictly NO correct or explain!
+  const publicDoc: Record<string, unknown> = {
     id: qId,
-    q: question.question || question.q || '',
-    question: question.question || question.q || '',
-    correct: question.correctAnswer ?? question.correct ?? 0,
-    correctAnswer: question.correctAnswer ?? question.correct ?? 0,
-    explain: question.explanation || question.explain || '',
-    explanation: question.explanation || question.explain || '',
-    mathChecked: true,
+    subject: subjectSlug,
+    chapter: chapterSlug,
+    difficulty,
+    q: qText,
+    options,
+    tags: Array.isArray(question.tags) ? question.tags : ['entrance'],
+    status,
+    active,
+    rand,
+    schemaVersion: 1,
+    contentHash,
     updatedAt: serverTimestamp(),
+    createdBy: adminEmail,
   };
 
-  await setDoc(doc(db, 'questions', qId), payload, { merge: true });
-  await logAdminAction(adminEmail, 'save_question', { questionId: qId, subject: question.subject });
+  if (question.source) publicDoc.source = question.source;
+  if (question.year) publicDoc.year = question.year;
+  if (question.createdAt) publicDoc.createdAt = question.createdAt;
+  else publicDoc.createdAt = serverTimestamp();
+
+  await setDoc(doc(db, 'questions', qId), publicDoc, { merge: true });
+
+  // 2. Secret key doc in `questionKeys/{qId}`
+  const correctVal = typeof question.correct === 'number'
+    ? question.correct
+    : typeof question.correctAnswer === 'number'
+    ? question.correctAnswer
+    : 0;
+  const explainVal = (question.explain || question.explanation || '').trim();
+
+  await setDoc(
+    doc(db, 'questionKeys', qId),
+    {
+      id: qId,
+      correct: correctVal,
+      explain: explainVal,
+      updatedAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
+
+  await logAdminAction(adminEmail, 'save_question', {
+    questionId: qId,
+    subject: subjectSlug,
+    chapter: chapterSlug,
+  });
+
+  return qId;
 }
 
 export async function deleteQuestion(adminEmail: string, questionId: string): Promise<void> {
-  await deleteDoc(doc(db, 'questions', questionId));
+  const batch = writeBatch(db);
+  batch.delete(doc(db, 'questions', questionId));
+  batch.delete(doc(db, 'questionKeys', questionId));
+  await batch.commit();
   await logAdminAction(adminEmail, 'delete_question', { questionId });
+}
+
+export interface BankHealthStats {
+  totalQuestions: number;
+  bySubject: Record<string, number>;
+  byChapter: Record<string, number>;
+  byDifficulty: { easy: number; medium: number; hard: number };
+  byStatus: { draft: number; reviewed: number; published: number };
+  activeCount: number;
+  inactiveCount: number;
+  openReportsCount: number;
+  duplicatesDetected: number;
+}
+
+export async function fetchBankHealth(): Promise<BankHealthStats> {
+  const result: BankHealthStats = {
+    totalQuestions: 0,
+    bySubject: {},
+    byChapter: {},
+    byDifficulty: { easy: 0, medium: 0, hard: 0 },
+    byStatus: { draft: 0, reviewed: 0, published: 0 },
+    activeCount: 0,
+    inactiveCount: 0,
+    openReportsCount: 0,
+    duplicatesDetected: 0,
+  };
+
+  try {
+    const questionsSnap = await getDocs(query(collection(db, 'questions'), limit(2500)));
+    result.totalQuestions = questionsSnap.size;
+
+    const seenHashes = new Set<string>();
+
+    for (const d of questionsSnap.docs) {
+      const data = d.data();
+      const s = data.subject || 'unknown';
+      const c = data.chapter || 'unknown';
+      const diff = (data.difficulty || 'medium').toLowerCase();
+      const st = (data.status || 'published').toLowerCase();
+      const act = data.active !== false;
+
+      result.bySubject[s] = (result.bySubject[s] || 0) + 1;
+      result.byChapter[c] = (result.byChapter[c] || 0) + 1;
+
+      if (diff === 'easy') result.byDifficulty.easy++;
+      else if (diff === 'hard') result.byDifficulty.hard++;
+      else result.byDifficulty.medium++;
+
+      if (st === 'draft') result.byStatus.draft++;
+      else if (st === 'reviewed') result.byStatus.reviewed++;
+      else result.byStatus.published++;
+
+      if (act) result.activeCount++;
+      else result.inactiveCount++;
+
+      if (data.contentHash) {
+        if (seenHashes.has(data.contentHash)) {
+          result.duplicatesDetected++;
+        } else {
+          seenHashes.add(data.contentHash);
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[AdminService] fetchBankHealth questions error:', err);
+  }
+
+  try {
+    const repSnap = await getDocs(
+      query(collection(db, 'questionReports'), where('status', '==', 'open'), limit(200))
+    );
+    result.openReportsCount = repSnap.size;
+  } catch (err) {
+    console.warn('[AdminService] fetchBankHealth reports error:', err);
+  }
+
+  return result;
+}
+
+export async function batchUpdateQuestions(
+  adminEmail: string,
+  questionIds: string[],
+  updates: { status?: 'draft' | 'reviewed' | 'published'; active?: boolean; chapter?: string }
+): Promise<number> {
+  const chunkSize = 400;
+  let updated = 0;
+
+  for (let i = 0; i < questionIds.length; i += chunkSize) {
+    const chunk = questionIds.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+
+    for (const qId of chunk) {
+      const payload: Record<string, unknown> = {
+        updatedAt: serverTimestamp(),
+      };
+      if (updates.status !== undefined) payload.status = updates.status;
+      if (updates.active !== undefined) payload.active = updates.active;
+      if (updates.chapter !== undefined) payload.chapter = updates.chapter;
+
+      batch.update(doc(db, 'questions', qId), payload);
+    }
+
+    await batch.commit();
+    updated += chunk.length;
+  }
+
+  await logAdminAction(adminEmail, 'batch_update_questions', {
+    count: updated,
+    updates,
+  });
+
+  return updated;
+}
+
+export interface ImportCandidate {
+  question: Partial<Question>;
+  key: { correct: number; explain: string };
+}
+
+export interface ImportResult {
+  imported: number;
+  duplicatesSkipped: number;
+  errors: string[];
+}
+
+export async function batchImportQuestions(
+  adminEmail: string,
+  candidates: ImportCandidate[],
+  onProgress?: (done: number, total: number) => void
+): Promise<ImportResult> {
+  const result: ImportResult = {
+    imported: 0,
+    duplicatesSkipped: 0,
+    errors: [],
+  };
+
+  // 1. Gather all existing content hashes to prevent duplicates
+  const existingHashes = new Set<string>();
+  try {
+    const existingSnap = await getDocs(query(collection(db, 'questions'), limit(3000)));
+    for (const d of existingSnap.docs) {
+      const h = d.data().contentHash;
+      if (h) existingHashes.add(h);
+    }
+  } catch (hErr) {
+    console.warn('[AdminService] Existing hash gathering notice:', hErr);
+  }
+
+  const validItems: Array<{ qId: string; publicDoc: Record<string, unknown>; keyDoc: Record<string, unknown> }> = [];
+
+  for (const item of candidates) {
+    const qText = (item.question.q || item.question.question || '').trim();
+    const rawOpts = item.question.options || [];
+    const options: [string, string, string, string] = [
+      rawOpts[0] || '',
+      rawOpts[1] || '',
+      rawOpts[2] || '',
+      rawOpts[3] || '',
+    ];
+
+    if (!qText || options.some(o => !o.trim())) {
+      result.errors.push(`Row with empty stem or options skipped`);
+      continue;
+    }
+
+    const cHash = item.question.contentHash || (await computeContentHash(qText, options));
+
+    if (existingHashes.has(cHash)) {
+      result.duplicatesSkipped++;
+      continue;
+    }
+    existingHashes.add(cHash);
+
+    const qId = item.question.id || `q_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const subjectSlug = findSubjectSlug(item.question.subject || 'mathematics');
+    const chapterSlug = findChapterSlug(subjectSlug, item.question.chapter || '');
+
+    const publicDoc: Record<string, unknown> = {
+      id: qId,
+      subject: subjectSlug,
+      chapter: chapterSlug,
+      difficulty: (item.question.difficulty || 'medium').toLowerCase(),
+      q: qText,
+      options,
+      tags: Array.isArray(item.question.tags) && item.question.tags.length > 0 ? item.question.tags : ['entrance'],
+      status: item.question.status || 'published',
+      active: item.question.active !== undefined ? Boolean(item.question.active) : true,
+      rand: typeof item.question.rand === 'number' ? item.question.rand : Math.random(),
+      schemaVersion: 1,
+      contentHash: cHash,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      createdBy: adminEmail,
+    };
+    if (item.question.source) publicDoc.source = item.question.source;
+    if (item.question.year) publicDoc.year = item.question.year;
+
+    const keyDoc: Record<string, unknown> = {
+      id: qId,
+      correct: typeof item.key.correct === 'number' ? item.key.correct : 0,
+      explain: (item.key.explain || '').trim(),
+      updatedAt: serverTimestamp(),
+    };
+
+    validItems.push({ qId, publicDoc, keyDoc });
+  }
+
+  // 2. Commit in batches of 200 items (400 ops: questions + questionKeys)
+  const chunkSize = 200;
+  for (let i = 0; i < validItems.length; i += chunkSize) {
+    const chunk = validItems.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+
+    for (const entry of chunk) {
+      batch.set(doc(db, 'questions', entry.qId), entry.publicDoc);
+      batch.set(doc(db, 'questionKeys', entry.qId), entry.keyDoc);
+    }
+
+    await batch.commit();
+    result.imported += chunk.length;
+    if (onProgress) {
+      onProgress(result.imported, validItems.length);
+    }
+  }
+
+  await logAdminAction(adminEmail, 'batch_import_questions', {
+    imported: result.imported,
+    duplicatesSkipped: result.duplicatesSkipped,
+    errorsCount: result.errors.length,
+  });
+
+  return result;
+}
+
+export async function fetchQuestionReports(): Promise<QuestionReport[]> {
+  try {
+    const snap = await getDocs(
+      query(collection(db, 'questionReports'), orderBy('createdAt', 'desc'), limit(100))
+    );
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() } as QuestionReport));
+  } catch (err) {
+    console.warn('[AdminService] fetchQuestionReports fallback without orderBy:', err);
+    const fallbackSnap = await getDocs(query(collection(db, 'questionReports'), limit(100)));
+    return fallbackSnap.docs.map((d) => ({ id: d.id, ...d.data() } as QuestionReport));
+  }
+}
+
+export async function updateQuestionReportStatus(
+  adminEmail: string,
+  reportId: string,
+  status: 'resolved' | 'dismissed'
+): Promise<void> {
+  await updateDoc(doc(db, 'questionReports', reportId), {
+    status,
+    resolvedBy: adminEmail,
+    resolvedAt: serverTimestamp(),
+  });
+  await logAdminAction(adminEmail, 'update_question_report', { reportId, status });
 }
 
 // ─── APPLICATION REVIEWS (CAPTAINS & CREW) ───────────────────────────────────
