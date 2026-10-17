@@ -33,6 +33,19 @@ export class DashboardErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
+      const stack = this.state.error?.stack || '';
+      const componentStack = this.state.errorInfo?.componentStack || '';
+
+      // Extract component name from componentStack (e.g., "in PracticePage (at ...)" or "at PracticePage")
+      const compMatch = componentStack.match(/(?:at|in)\s+([A-Z][A-Za-z0-9_]+)/) ||
+                        stack.match(/(?:at|in)\s+([A-Z][A-Za-z0-9_]+)/);
+      const componentName = compMatch ? compMatch[1] : 'UnknownComponent';
+
+      // Extract source file from stack (e.g., "PracticePage.tsx", "assets/PracticePage-DzQrIYCg.js")
+      const fileMatch = stack.match(/([a-zA-Z0-9_-]+\.(?:tsx|ts|jsx|js)(?::\d+:\d+)?)/) ||
+                        componentStack.match(/([a-zA-Z0-9_-]+\.(?:tsx|ts|jsx|js)(?::\d+:\d+)?)/);
+      const fileName = fileMatch ? fileMatch[1] : 'Unknown File';
+
       return (
         <div className="min-h-[50vh] p-4 sm:p-6 flex items-center justify-center">
           <div className="w-full max-w-[620px] p-6 rounded-[24px] bg-[var(--card)] border border-[var(--red)]/40 shadow-none space-y-4">
@@ -44,9 +57,14 @@ export class DashboardErrorBoundary extends Component<Props, State> {
                 <h2 className="font-heading font-bold text-base text-[var(--text)]">
                   {this.props.fallbackTitle || 'Unable to display view'}
                 </h2>
-                <p className="text-xs text-[var(--muted)]">
-                  A component error was caught in this section.
-                </p>
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-[rgba(239,68,68,0.15)] text-[var(--red)] font-semibold">
+                    Component: {componentName}
+                  </span>
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-[var(--card-2)] text-[var(--muted)] border border-[var(--border)]">
+                    File: {fileName}
+                  </span>
+                </div>
               </div>
             </div>
 

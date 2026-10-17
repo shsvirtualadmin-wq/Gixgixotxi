@@ -49,7 +49,7 @@ export function useUserProfile(): UserProfileHookResult {
       (snap) => {
         if (snap.exists()) {
           const data = snap.data() as UserProfile;
-          setProfile({ uid: user.uid, ...data });
+          setProfile({ ...data, uid: user.uid });
           // Synchronize AuthContext in-memory state
           updateLocalProfile(data);
         } else {

@@ -39,7 +39,7 @@ export const db = (() => {
       {
         experimentalForceLongPolling: true,
         useFetchStreams: false,
-      },
+      } as unknown as Parameters<typeof initializeFirestore>[1],
       "ai-studio-25287ca6-33a1-49f8-8867-70061120a712"
     );
   } catch {
