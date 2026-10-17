@@ -20,7 +20,7 @@ import {
   type DocumentData,
   type QueryDocumentSnapshot,
 } from 'firebase/firestore';
-import { db, firebaseConfig } from '@/lib/firebase';
+import { db } from '@/lib/firebase';
 import type {
   UserProfile,
   Question,
@@ -35,7 +35,6 @@ import type {
 export class AdminFirestoreError extends Error {
   code: string;
   collection: string;
-  projectId: string;
   operation: string;
 
   constructor(message: string, code: string, collection: string, operation: string) {
@@ -43,7 +42,6 @@ export class AdminFirestoreError extends Error {
     this.name = 'AdminFirestoreError';
     this.code = code;
     this.collection = collection;
-    this.projectId = firebaseConfig.projectId || 'gen-lang-client-0365509316';
     this.operation = operation;
   }
 }
@@ -477,7 +475,14 @@ export async function updateUserOverride(
   previous: Partial<UserProfile>
 ): Promise<UserProfile> {
   const ref = doc(db, 'users', targetUid);
-  await setDoc(ref, updates, { merge: true });
+  // Ensure no unsupported undefined values reach setDoc
+  const safeUpdates: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(updates)) {
+    if (value !== undefined) {
+      safeUpdates[key] = value;
+    }
+  }
+  await setDoc(ref, safeUpdates, { merge: true });
 
   // Verify write immediately directly from the server
   let verifiedProfile: UserProfile | null = null;

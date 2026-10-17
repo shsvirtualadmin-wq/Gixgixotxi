@@ -2,7 +2,6 @@ import { useState, useEffect, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { auth } from '@/lib/firebase';
 import { logRedirect } from '@/utils/debugTracker';
 
 interface AuthCardProps {
@@ -594,22 +593,6 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             'Create Account'
           )}
         </button>
-
-        {/* Runtime OAuth & AuthDomain Environment Indicator */}
-        <div className="mt-4 pt-3.5 border-t border-[var(--border)] text-[11px] text-[var(--muted)] flex flex-col gap-1 font-mono">
-          <div className="flex items-center justify-between">
-            <span>authDomain:</span>
-            <span className="font-semibold text-emerald-400">{auth.app.options.authDomain || 'unknown'}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>projectId:</span>
-            <span className="text-[var(--text)]">{auth.app.options.projectId || 'unknown'}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span>origin:</span>
-            <span className="text-[var(--text)]">{typeof window !== 'undefined' ? window.location.origin : ''}</span>
-          </div>
-        </div>
       </form>
     </div>
   );

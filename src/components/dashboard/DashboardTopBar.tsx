@@ -61,7 +61,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
         {isAdmin && (
           <button
             onClick={() => navigate('/admin')}
-            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[#1A1A1A] border border-[var(--red)] text-[var(--red)] hover:bg-[var(--red)] hover:text-[#FFFFFF] transition-colors cursor-pointer"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--card-2)] border border-[var(--red)] text-[var(--red)] hover:bg-[var(--red)] hover:text-white transition-colors cursor-pointer"
             style={{ fontFamily: 'var(--font-heading)' }}
           >
             <Shield size={13} />
@@ -94,7 +94,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
           <button
             onClick={() => setMenuOpen(!menuOpen)}
             aria-label="User profile menu"
-            className="w-10 h-10 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-[var(--text)] font-semibold hover:border-[var(--red)] transition-colors cursor-pointer text-sm"
+            className="w-10 h-10 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-[var(--text)] font-semibold hover:border-[var(--red)] transition-colors cursor-pointer text-sm"
             style={{ fontFamily: 'var(--font-heading)' }}
           >
             {user?.photoURL ? (
@@ -111,8 +111,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
           {/* Avatar Dropdown Menu */}
           {menuOpen && (
             <div
-              className="absolute right-0 mt-2 w-64 rounded-2xl bg-[#111111] border border-[var(--border)] p-2 shadow-xl z-50 flex flex-col gap-1"
-              style={{ backgroundColor: 'var(--card)', borderColor: 'var(--border)' }}
+              className="absolute right-0 mt-2 w-64 rounded-2xl bg-[var(--card)] border border-[var(--border)] p-2 shadow-xl z-50 flex flex-col gap-1"
             >
               {/* User summary header */}
               <div className="p-3 border-b border-[var(--border)]">

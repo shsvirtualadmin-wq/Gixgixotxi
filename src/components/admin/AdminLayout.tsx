@@ -21,7 +21,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { Logo } from '@/components/ui/Logo';
-import { getApp } from '@/lib/firebase';
+import { motion } from 'framer-motion';
 
 interface AdminNavItem {
   to: string;
@@ -55,10 +55,8 @@ export function AdminLayout() {
   const location = useLocation();
 
   const [isMoreOpen, setIsMoreOpen] = useState(false);
-  const [isAvatarMenuOpen, setIsAvatarMenuOpen] = useState(false);
 
   const handleSignOut = async () => {
-    setIsAvatarMenuOpen(false);
     setIsMoreOpen(false);
     await signOutUser();
     navigate('/login');
@@ -82,13 +80,10 @@ export function AdminLayout() {
       {/* ─── DESKTOP LEFT SIDEBAR (240px) ─────────────────────────────────── */}
       <aside className="hidden md:flex md:w-[240px] md:flex-col md:fixed md:inset-y-0 md:left-0 bg-[var(--bg)] border-r border-[var(--border)] z-30">
         {/* Sidebar Header */}
-        <div className="h-16 px-5 border-b border-[var(--border)] flex items-center justify-between">
+        <div className="h-16 px-5 border-b border-[var(--border)] flex items-center">
           <Link to="/admin" className="flex items-center" aria-label="Boardly Admin">
             <Logo size="admin" />
           </Link>
-          <span className="text-[11px] font-heading font-semibold text-[var(--muted)] px-2 py-0.5 rounded-full border border-[var(--border)]">
-            Admin
-          </span>
         </div>
 
         {/* Sidebar Links */}
@@ -164,29 +159,14 @@ export function AdminLayout() {
       </aside>
 
       {/* ─── MOBILE TOP BAR ─────────────────────────────────────────────────── */}
-      <header className="md:hidden sticky top-0 z-30 h-16 bg-[var(--bg)] border-b border-[var(--border)] px-4 flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <Link to="/admin" className="flex items-center" aria-label="Boardly Admin">
-            <Logo size="admin" />
-          </Link>
-          <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
-            Admin
-          </span>
-        </div>
-
-        {/* Avatar Menu Trigger on Mobile */}
-        <button
-          type="button"
-          onClick={() => setIsAvatarMenuOpen(true)}
-          className="w-8 h-8 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-[12px] font-heading font-bold text-[var(--text)]"
-          aria-label="Admin account menu"
-        >
-          {userInitial}
-        </button>
+      <header className="md:hidden sticky top-0 z-30 h-16 bg-[var(--bg)] px-4 flex items-center">
+        <Link to="/admin" className="flex items-center" aria-label="Boardly Admin">
+          <Logo size="admin" />
+        </Link>
       </header>
 
       {/* ─── MAIN CONTENT VIEWPORT ─────────────────────────────────────────── */}
-      <main className="flex-1 md:ml-[240px] min-w-0 min-h-[calc(100vh-3.5rem)] md:min-h-screen p-4 sm:p-6 md:p-8 pb-24 md:pb-8 max-w-[1400px] w-full mx-auto overflow-x-hidden">
+      <main className="flex-1 md:ml-[240px] min-w-0 min-h-[calc(100vh-3.5rem)] md:min-h-screen p-4 sm:p-6 md:p-8 pb-32 sm:pb-36 md:pb-8 max-w-[1400px] w-full mx-auto overflow-x-hidden">
         {profileLoading ? (
           <div className="space-y-4 max-w-4xl py-4">
             <Skeleton height={32} width="40%" />
@@ -226,67 +206,109 @@ export function AdminLayout() {
             </div>
           </div>
         ) : (
-          <>
-            <Outlet />
-            <footer className="mt-8 pt-4 pb-12 border-t border-[var(--border)] flex items-center justify-between flex-wrap gap-2 text-[11px] font-mono text-[var(--muted)]">
-              <span>Firebase Active Project ID: <strong className="text-[var(--text)]">{getApp().options.projectId || 'unknown'}</strong></span>
-              <span>Auth Domain: <strong className="text-[var(--text)]">{getApp().options.authDomain || 'unknown'}</strong></span>
-            </footer>
-          </>
+          <Outlet />
         )}
       </main>
 
-      {/* ─── MOBILE BOTTOM NAV (4 Items: Overview, Users, Questions, More) ──── */}
-      <nav
-        className="md:hidden fixed bottom-0 inset-x-0 z-30 h-16 bg-[var(--bg)] border-t border-[var(--border)] grid grid-cols-4 items-center px-1"
-        aria-label="Admin Mobile Navigation"
+      {/* ─── MOBILE FLOATING PILL BOTTOM NAV (Overview, Users, Questions, More) ──── */}
+      <div
+        className="md:hidden fixed bottom-4 inset-x-0 mx-auto w-[calc(100%-2rem)] max-w-md z-40"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        aria-label="Admin Navigation Bar"
       >
-        {PRIMARY_NAV.map(({ to, label, icon: Icon, end }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={end}
-            className={({ isActive }) =>
-              `flex flex-col items-center justify-center py-1 transition-colors ${
-                isActive ? 'text-[var(--text)]' : 'text-[var(--muted)]'
-              }`
-            }
-          >
-            {({ isActive }) => (
-              <>
-                <div className="relative">
-                  <Icon size={19} />
-                  {isActive && (
-                    <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-[var(--red)]" />
-                  )}
-                </div>
-                <span className={`text-[10px] mt-1 font-heading ${isActive ? 'font-semibold' : 'font-normal'}`}>
-                  {label}
-                </span>
-              </>
-            )}
-          </NavLink>
-        ))}
-
-        {/* 4th Tab: "More" opens Bottom Sheet */}
-        <button
-          type="button"
-          onClick={() => setIsMoreOpen(true)}
-          className={`flex flex-col items-center justify-center py-1 transition-colors ${
-            isSecondaryActive ? 'text-[var(--text)]' : 'text-[var(--muted)]'
-          }`}
+        <nav
+          role="tablist"
+          style={{
+            backgroundColor: 'var(--nav-bg)',
+            borderColor: 'var(--border)',
+          }}
+          className="rounded-full backdrop-blur-md border p-1.5 flex items-center justify-around gap-1 shadow-2xl select-none relative"
         >
-          <div className="relative">
-            <MoreHorizontal size={19} />
+          {PRIMARY_NAV.map(({ to, label, icon: Icon, end }) => {
+            const isQuestions = to.includes('questions');
+            return (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  `relative rounded-full transition-colors duration-200 cursor-pointer min-h-[44px] min-w-[44px] flex flex-col items-center justify-center px-2 py-1 flex-1 text-center outline-none select-none ${
+                    isActive ? 'font-semibold' : 'hover:text-[var(--text)]'
+                  }`
+                }
+                style={({ isActive }) => ({
+                  color: isActive ? 'var(--nav-active-text)' : 'var(--text-muted)',
+                })}
+              >
+                {({ isActive }) => (
+                  <>
+                    {isActive && (
+                      <motion.div
+                        layoutId="adminActiveNavPill"
+                        className="absolute inset-0 rounded-full"
+                        style={{ backgroundColor: 'var(--nav-active-bg)' }}
+                        transition={{
+                          type: 'spring',
+                          stiffness: 420,
+                          damping: 38,
+                          mass: 0.8,
+                        }}
+                      />
+                    )}
+                    <span className="relative z-10 flex flex-col items-center justify-center">
+                      <div className="relative shrink-0 flex items-center justify-center">
+                        <Icon size={18} />
+                        {isQuestions && (
+                          <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[var(--red)] ring-2 ring-[var(--nav-bg)]" />
+                        )}
+                      </div>
+                      <span className="text-[10px] leading-tight truncate mt-0.5">
+                        {label}
+                      </span>
+                    </span>
+                  </>
+                )}
+              </NavLink>
+            );
+          })}
+
+          {/* 4th Tab: "More" button */}
+          <button
+            type="button"
+            role="tab"
+            aria-selected={isSecondaryActive}
+            onClick={() => setIsMoreOpen(true)}
+            className={`relative rounded-full transition-colors duration-200 cursor-pointer min-h-[44px] min-w-[44px] flex flex-col items-center justify-center px-2 py-1 flex-1 text-center outline-none select-none ${
+              isSecondaryActive ? 'font-semibold' : 'hover:text-[var(--text)]'
+            }`}
+            style={{
+              color: isSecondaryActive ? 'var(--nav-active-text)' : 'var(--text-muted)',
+            }}
+          >
             {isSecondaryActive && (
-              <span className="absolute -top-1 -right-1 w-1.5 h-1.5 rounded-full bg-[var(--red)]" />
+              <motion.div
+                layoutId="adminActiveNavPill"
+                className="absolute inset-0 rounded-full"
+                style={{ backgroundColor: 'var(--nav-active-bg)' }}
+                transition={{
+                  type: 'spring',
+                  stiffness: 420,
+                  damping: 38,
+                  mass: 0.8,
+                }}
+              />
             )}
-          </div>
-          <span className={`text-[10px] mt-1 font-heading ${isSecondaryActive ? 'font-semibold' : 'font-normal'}`}>
-            More
-          </span>
-        </button>
-      </nav>
+            <span className="relative z-10 flex flex-col items-center justify-center">
+              <div className="relative shrink-0 flex items-center justify-center">
+                <MoreHorizontal size={18} />
+              </div>
+              <span className="text-[10px] leading-tight truncate mt-0.5">
+                More
+              </span>
+            </span>
+          </button>
+        </nav>
+      </div>
 
       {/* ─── MOBILE "MORE" BOTTOM SHEET ────────────────────────────────────── */}
       {isMoreOpen && (

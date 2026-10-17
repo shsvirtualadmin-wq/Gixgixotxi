@@ -339,16 +339,6 @@ export function DashboardBottomNav() {
                 <LogOut size={16} />
                 <span>Sign Out</span>
               </button>
-
-              {/* Build ID at bottom of Menu Sheet */}
-              <div className="pt-2 pb-1 text-center select-all">
-                <span className="font-mono text-[9px] text-[var(--muted)] tracking-wider block">
-                  BUILD: {typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : 'dev'}
-                </span>
-                <span className="font-mono text-[8px] text-[var(--muted)] opacity-60 block">
-                  {typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : ''}
-                </span>
-              </div>
             </div>
           </div>
         </div>

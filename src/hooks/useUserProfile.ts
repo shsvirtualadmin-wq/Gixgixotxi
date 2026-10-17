@@ -266,11 +266,12 @@ export function useUserProfile(): UserProfileHookResult {
       }
       const resolvedExam = updates.targetExam || updates.targetUniversity;
       if (resolvedExam !== undefined) {
-        safePayload.targetExam = resolvedExam.trim();
-        safePayload.targetUniversity = resolvedExam.trim();
+        const val = resolvedExam ? resolvedExam.trim() || null : null;
+        safePayload.targetExam = val;
+        safePayload.targetUniversity = val;
       }
       if (updates.targetTestDate !== undefined) {
-        safePayload.targetTestDate = updates.targetTestDate.trim();
+        safePayload.targetTestDate = updates.targetTestDate ? updates.targetTestDate.trim() || null : null;
       }
       if (updates.academicTrack !== undefined) {
         safePayload.academicTrack = updates.academicTrack.trim();

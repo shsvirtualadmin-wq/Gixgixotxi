@@ -253,7 +253,7 @@ function AppInner() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
-    <DebugPanel />
+    {import.meta.env.DEV && <DebugPanel />}
     </DashboardErrorBoundary>
   );
 }

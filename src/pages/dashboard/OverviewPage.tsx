@@ -164,7 +164,7 @@ export function OverviewPage() {
             </div>
             <div>
               <div className="flex items-baseline gap-2 mb-2">
-                <span className="font-doto text-3xl font-bold text-[#FFFFFF]">
+                <span className="font-doto text-3xl font-bold text-[var(--text)]">
                   {streak}
                 </span>
                 <span className="text-xs text-[var(--muted)]">Days</span>

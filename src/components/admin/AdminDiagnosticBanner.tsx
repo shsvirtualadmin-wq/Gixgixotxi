@@ -1,11 +1,10 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react';
-import { auth, firebaseConfig } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
 
 export interface AdminDiagnosticError {
   code?: string;
   message: string;
   collection?: string;
-  projectId?: string;
   operation?: string;
   details?: unknown;
 }
@@ -28,9 +27,11 @@ export function AdminDiagnosticBanner({
   const currentUser = auth.currentUser;
   const diagError = error as AdminDiagnosticError;
   const errorCode = diagError.code || 'FIRESTORE_ERROR';
-  const errorMessage = error.message || 'An unexpected database error occurred.';
+  const rawMessage = error.message || 'An unexpected database error occurred.';
+  const errorMessage = rawMessage.includes('projects/') || rawMessage.includes('databases/') || rawMessage.includes('gen-lang') || rawMessage.includes('ai-studio')
+    ? 'A database error occurred. Please verify your connection or permissions.'
+    : rawMessage;
   const targetCollection = diagError.collection || collectionName || 'questions';
-  const targetProjectId = diagError.projectId || firebaseConfig.projectId || 'gen-lang-client-0365509316';
 
   return (
     <div
@@ -69,12 +70,7 @@ export function AdminDiagnosticBanner({
           </p>
 
           {/* Diagnostic Context Table */}
-          <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 text-xs">
-            <div className="p-2.5 rounded-lg bg-black/40 border border-red-500/30">
-              <span className="text-red-300 font-semibold uppercase text-[10px] block">Target Project ID</span>
-              <span className="font-mono text-white text-xs truncate block">{targetProjectId}</span>
-            </div>
-
+          <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
             <div className="p-2.5 rounded-lg bg-black/40 border border-red-500/30">
               <span className="text-red-300 font-semibold uppercase text-[10px] block">Collection Queried</span>
               <span className="font-mono text-white text-xs truncate block">{targetCollection}</span>

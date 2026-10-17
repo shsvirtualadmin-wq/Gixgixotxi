@@ -52,20 +52,23 @@ export function DailyLimitsMeter({ uid, isPremium }: Props) {
   const hasUnlimited = Boolean(isPremium || effectivePlan.isUnlimited);
 
   if (hasUnlimited) {
+    const planLabel = effectivePlan.isSuperAdmin
+      ? 'Superadmin'
+      : effectivePlan.source === 'crew'
+      ? (effectivePlan.crewName || 'Study Crew')
+      : 'Pro';
+
     return (
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-full border-2 border-[var(--red)] flex items-center justify-center font-doto text-xs font-bold text-[#FFFFFF]">
+      <div className="flex items-center gap-3 py-1">
+        <span
+          className="font-doto text-3xl font-extrabold leading-none text-[var(--accent)] select-none shrink-0"
+          aria-hidden="true"
+        >
           ∞
-        </div>
-        <div>
-          <div className="text-xs font-semibold text-[var(--text)]">Unlimited</div>
-          <div className="text-[11px] text-[var(--muted)]">
-            {effectivePlan.isSuperAdmin
-              ? 'Superadmin · Unlimited'
-              : effectivePlan.source === 'crew'
-              ? `Pro active via ${effectivePlan.crewName || 'Study Crew'}`
-              : 'Pro quota active'}
-          </div>
+        </span>
+        <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
+          <span className="text-sm font-semibold text-[var(--text)]">Unlimited</span>
+          <span className="text-xs text-[var(--text-muted)] font-medium">· {planLabel}</span>
         </div>
       </div>
     );
@@ -78,19 +81,22 @@ export function DailyLimitsMeter({ uid, isPremium }: Props) {
   return (
     <div className="flex items-center gap-3.5">
       {/* Daily Limit Ring */}
-      <div className="relative w-12 h-12 rounded-full border-2 border-[var(--red)] border-t-[#2A2A2A] flex flex-col items-center justify-center shrink-0">
-        <span className="font-doto text-xs font-bold text-[#FFFFFF] leading-none">
+      <div
+        className="relative w-12 h-12 rounded-full border-2 border-[var(--accent)] flex flex-col items-center justify-center shrink-0"
+        style={{ borderTopColor: 'var(--border)' }}
+      >
+        <span className="font-doto text-xs font-bold text-[var(--text)] leading-none">
           {remaining}
         </span>
-        <span className="text-[8px] text-[var(--muted)] font-doto">left</span>
+        <span className="text-[8px] text-[var(--text-muted)] font-doto mt-0.5">left</span>
       </div>
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between text-xs mb-1">
           <span className="font-semibold text-[var(--text)] uppercase tracking-wider text-[11px]">TESTS LEFT</span>
-          <span className="font-doto text-[var(--muted)]">{used}/{max} used</span>
+          <span className="font-doto text-[var(--text-muted)]">{used}/{max} used</span>
         </div>
-        <div className="text-[11px] text-[var(--muted)]">
+        <div className="text-[11px] text-[var(--text-muted)]">
           Resets at 00:00 PKT
         </div>
       </div>

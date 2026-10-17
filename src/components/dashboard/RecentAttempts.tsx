@@ -70,11 +70,17 @@ export function RecentAttempts({ uid }: Props) {
         const total = a.totalQuestions ?? a.total ?? 10;
         const pct = total > 0 ? Math.round((score / total) * 100) : 0;
 
+        const rawStatus = (a.status || 'completed').toLowerCase();
+        const friendlyStatus =
+          rawStatus === 'in_progress' || rawStatus === 'in-progress' || rawStatus === 'started'
+            ? 'In progress'
+            : 'Completed';
+
         return (
           <Link
             key={a.id}
             to={`/test/${a.id}/result`}
-            className="p-3.5 rounded-2xl bg-[#0A0A0A] border border-[var(--border)] hover:border-[var(--muted)] flex items-center justify-between gap-3 transition-colors"
+            className="p-3.5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--text-muted)] flex items-center justify-between gap-3 transition-colors"
           >
             <div className="flex-1 min-w-0">
               <div
@@ -83,16 +89,16 @@ export function RecentAttempts({ uid }: Props) {
               >
                 {a.subject || 'Practice Sprint'} {a.university ? `· ${a.university}` : ''}
               </div>
-              <div className="text-[11px] text-[var(--muted)] mt-0.5">
-                Status: {a.status || 'Completed'}
+              <div className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                Status: {friendlyStatus}
               </div>
             </div>
 
             <div className="text-right shrink-0">
-              <div className="font-doto font-bold text-sm text-[#FFFFFF]">
+              <div className="font-doto font-bold text-sm text-[var(--text)]">
                 {score} / {total}
               </div>
-              <div className="font-doto text-[11px] text-[var(--muted)]">
+              <div className="font-doto text-[11px] text-[var(--text-muted)]">
                 {pct}%
               </div>
             </div>

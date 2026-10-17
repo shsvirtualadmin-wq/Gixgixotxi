@@ -308,7 +308,7 @@ export function PracticePage() {
               <div className="text-[10px] uppercase font-semibold text-[var(--muted)] tracking-wider">
                 TESTS LEFT
               </div>
-              <div className="font-doto text-2xl sm:text-3xl font-bold text-[#FFFFFF] mt-0.5">
+              <div className="font-doto text-2xl sm:text-3xl font-bold text-[var(--text)] mt-0.5">
                 {testsLeft}
               </div>
             </div>

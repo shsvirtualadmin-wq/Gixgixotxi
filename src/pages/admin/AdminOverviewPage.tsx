@@ -13,7 +13,6 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
-import { getApp, firebaseConfig } from '@/lib/firebase';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import {
@@ -69,7 +68,6 @@ export function AdminOverviewPage() {
         code: e?.code || 'FETCH_STATS_FAILED',
         message: e?.message || 'Failed to fetch overview metrics. Check Firestore rules or collection names.',
         collection: e?.collection || 'questions/users',
-        projectId: e?.projectId || firebaseConfig.projectId || 'gen-lang-client-0365509316',
         operation: e?.operation || 'fetchAdminStats',
       });
       setStats({
@@ -500,12 +498,6 @@ export function AdminOverviewPage() {
           </div>
         </div>
       )}
-
-      {/* ─── FIREBASE PROJECT DEBUG FOOTER ───────────────────────────────────── */}
-      <div className="pt-4 pb-2 border-t border-[var(--border)] flex items-center justify-between flex-wrap gap-2 text-[11px] font-mono text-[var(--muted)]">
-        <span>Firebase Active Project ID: <strong className="text-[var(--text)]">{getApp().options.projectId || 'unknown'}</strong></span>
-        <span>Auth Domain: <strong className="text-[var(--text)]">{getApp().options.authDomain || 'unknown'}</strong></span>
-      </div>
     </div>
   );
 }

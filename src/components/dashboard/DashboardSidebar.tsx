@@ -214,7 +214,7 @@ export function DashboardSidebar() {
       {/* Footer: User summary, Theme Toggle & Sign Out */}
       <div className="p-3 border-t border-[var(--border)] bg-[var(--card)] flex flex-col gap-2">
         <div className="flex items-center gap-2.5 p-2 rounded-xl bg-[var(--card-2)] border border-[var(--border)]">
-          <div className="w-8 h-8 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center font-bold text-xs text-white shrink-0">
+          <div className="w-8 h-8 rounded-full bg-[var(--surface-hover)] border border-[var(--border)] flex items-center justify-center font-bold text-xs text-[var(--text)] shrink-0">
             {user?.photoURL ? (
               <img
                 src={user.photoURL}

@@ -34,23 +34,25 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
     setError(null);
 
     const safePayload = {
-      targetUniversity: data.targetUniversity,
-      testDate: data.targetTestDate,
-      track: data.academicTrack,
-      subjects: data.subjects,
+      targetUniversity: data.targetUniversity || null,
+      testDate: data.targetTestDate || null,
+      track: data.academicTrack || null,
+      subjects: data.subjects || [],
       onboardingComplete: true,
       updatedAt: serverTimestamp(),
       // Backward compatibility aliases
-      targetExam: data.targetUniversity,
-      targetTestDate: data.targetTestDate,
-      academicTrack: data.academicTrack,
+      targetExam: data.targetUniversity || null,
+      targetTestDate: data.targetTestDate || null,
+      academicTrack: data.academicTrack || null,
       profileCompleted: true,
       onboardingCompleted: true,
       profileCompletedAt: serverTimestamp(),
       onboardingCompletedAt: serverTimestamp(),
     };
 
-    console.log(`[StepSummary] Starting server-confirmed save for ${path}:`, safePayload);
+    if (import.meta.env.DEV) {
+      console.log(`[StepSummary] Starting server-confirmed save for ${path}:`, safePayload);
+    }
 
     try {
       const docRef = doc(db, 'users', user.uid);

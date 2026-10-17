@@ -29,6 +29,44 @@ interface UserOverrideDrawerProps {
   onSuccess: () => void;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseExpiryDate(val: any): Date | null {
+  if (!val) return null;
+  if (typeof val.toDate === 'function') {
+    return val.toDate();
+  }
+  if (typeof val.toMillis === 'function') {
+    return new Date(val.toMillis());
+  }
+  if (typeof val === 'object' && typeof val.seconds === 'number') {
+    return new Date(val.seconds * 1000);
+  }
+  if (typeof val === 'string' || typeof val === 'number') {
+    const d = new Date(val);
+    if (!isNaN(d.getTime())) return d;
+  }
+  return null;
+}
+
+function formatPlanExpiry(plan?: string, planExpiresAt?: unknown): string {
+  if (plan !== 'pro') {
+    return 'Free';
+  }
+  const date = parseExpiryDate(planExpiresAt);
+  if (!date) {
+    return 'Pro (Monthly)';
+  }
+  const dateStr = date.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+  if (date.getTime() < Date.now()) {
+    return `Pro (Expired ${dateStr})`;
+  }
+  return `Pro, expires ${dateStr}`;
+}
+
 export function UserOverrideDrawer({
   user,
   adminEmail,
@@ -39,6 +77,7 @@ export function UserOverrideDrawer({
 
   const [role, setRole] = useState<UserRole>('student');
   const [plan, setPlan] = useState<UserPlan>('free');
+  const [extendMonths, setExtendMonths] = useState<0 | 1 | 2 | 3>(0);
   const [isSuspended, setIsSuspended] = useState<boolean>(false);
   const [targetUniversity, setTargetUniversity] = useState<string>('');
   const [targetTestDate, setTargetTestDate] = useState<string>('');
@@ -59,6 +98,7 @@ export function UserOverrideDrawer({
     if (user) {
       setRole(user.role || 'student');
       setPlan(user.plan || 'free');
+      setExtendMonths(0);
       setIsSuspended(!!(user.suspended || user.isSuspended));
       setTargetUniversity(user.targetUniversity || '');
       setTargetTestDate(user.targetTestDate || '');
@@ -92,14 +132,31 @@ export function UserOverrideDrawer({
         plan,
         suspended: isSuspended,
         isSuspended: isSuspended,
-        targetUniversity: targetUniversity.trim() || undefined,
-        targetTestDate: targetTestDate.trim() || undefined,
+        targetUniversity: targetUniversity.trim() || null,
+        targetTestDate: targetTestDate.trim() || null,
       };
 
       if (plan === 'pro') {
         updates.isPremium = true;
         updates.premiumSource = 'admin_override';
-        const exp = Timestamp.fromMillis(Date.now() + 365 * 24 * 60 * 60 * 1000);
+
+        const currentExpDate = parseExpiryDate(user.planExpiresAt || user.premiumExpiresAt);
+        const isCurrentActive = currentExpDate && currentExpDate.getTime() > Date.now();
+
+        let targetMillis: number;
+        if (extendMonths > 0) {
+          const baseTime = isCurrentActive ? currentExpDate.getTime() : Date.now();
+          targetMillis = baseTime + extendMonths * 30 * 24 * 60 * 60 * 1000;
+        } else {
+          // Setting Pro (Monthly) sets plan: "pro" and planExpiresAt = now + 30 days
+          if (!isCurrentActive || user.plan !== 'pro') {
+            targetMillis = Date.now() + 30 * 24 * 60 * 60 * 1000;
+          } else {
+            targetMillis = currentExpDate.getTime();
+          }
+        }
+
+        const exp = Timestamp.fromMillis(targetMillis);
         updates.premiumExpiresAt = exp;
         updates.planExpiresAt = exp;
       } else {
@@ -116,17 +173,31 @@ export function UserOverrideDrawer({
         suspended: user.suspended,
         isSuspended: user.isSuspended,
         targetUniversity: user.targetUniversity,
+        targetTestDate: user.targetTestDate,
+        planExpiresAt: user.planExpiresAt,
+        premiumExpiresAt: user.premiumExpiresAt,
       };
 
-      const verified = await updateUserOverride(adminEmail, user.uid, user.email, updates, previous);
-      setVerifiedNotice(`Verified on server: Plan set to "${verified.plan?.toUpperCase() || plan.toUpperCase()}" (${verified.isPremium ? 'Active Pro' : 'Free'})`);
+      await updateUserOverride(adminEmail, user.uid, user.email, updates, previous);
+      const newExpDate = plan === 'pro' && updates.planExpiresAt ? parseExpiryDate(updates.planExpiresAt) : null;
+      const formattedExp = newExpDate
+        ? newExpDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+        : null;
+
+      setVerifiedNotice(
+        plan === 'pro'
+          ? `Changes saved: Pro (Monthly) active until ${formattedExp || '30 days'}`
+          : 'Changes saved: User set to Free tier'
+      );
       setTimeout(() => {
         onSuccess();
         onClose();
-      }, 1200);
+      }, 1000);
     } catch (err: unknown) {
-      console.error('Failed to update user override:', err);
-      setError((err as Error).message || 'Failed to update user profile');
+      if (import.meta.env.DEV) {
+        console.error('[UserOverrideDrawer] Failed to update user override:', err);
+      }
+      setError('Unable to save changes. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -230,6 +301,12 @@ export function UserOverrideDrawer({
           {/* User Profile Information */}
           <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] space-y-2.5 text-[12px] font-heading">
             <div className="flex items-center justify-between">
+              <span className="text-[var(--muted)]">Subscription</span>
+              <span className="text-[var(--text)] font-semibold">
+                {formatPlanExpiry(user.plan, user.planExpiresAt || user.premiumExpiresAt)}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
               <span className="text-[var(--muted)]">User ID</span>
               <span className="text-[var(--text)] truncate max-w-[220px]">
                 {user.uid}
@@ -263,20 +340,28 @@ export function UserOverrideDrawer({
 
           {/* Plan Selection */}
           <div className="space-y-2">
-            <label className="block text-[12px] font-heading text-[var(--muted)]">
-              Subscription plan
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="block text-[12px] font-heading text-[var(--muted)]">
+                Subscription plan
+              </label>
+              <span className="text-[11px] font-heading text-[var(--muted)]">
+                {plan === 'pro' ? '30 days / month' : 'No recurring fee'}
+              </span>
+            </div>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => setPlan('free')}
+                onClick={() => {
+                  setPlan('free');
+                  setExtendMonths(0);
+                }}
                 className={`py-2 px-3 rounded-[12px] border text-[13px] font-heading font-medium transition-colors ${
                   plan === 'free'
                     ? 'border-[var(--text)] bg-[var(--text)] text-[var(--bg)]'
                     : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
                 }`}
               >
-                Free tier
+                Free
               </button>
               <button
                 type="button"
@@ -287,9 +372,46 @@ export function UserOverrideDrawer({
                     : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
                 }`}
               >
-                Pro tier (1 year)
+                Pro (Monthly)
               </button>
             </div>
+
+            {/* Optional Extend by control */}
+            {plan === 'pro' && (
+              <div className="mt-2.5 p-3 rounded-[12px] bg-[var(--surface-hover)] border border-[var(--border)] space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-heading text-[var(--muted)]">
+                    Extend by
+                  </span>
+                  {extendMonths > 0 && (
+                    <span className="text-[11px] font-heading text-[var(--red)] font-semibold">
+                      +{extendMonths * 30} days
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {([0, 1, 2, 3] as const).map((months) => (
+                    <button
+                      key={months}
+                      type="button"
+                      onClick={() => setExtendMonths(months)}
+                      className={`py-1.5 px-2 rounded-[8px] border text-[11px] font-heading font-medium transition-colors ${
+                        extendMonths === months
+                          ? 'border-[var(--red)] bg-[var(--red)] text-white font-semibold'
+                          : 'border-[var(--border)] bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      {months === 0 ? 'Standard' : `+${months} mo`}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-[var(--muted)] font-heading">
+                  {extendMonths === 0
+                    ? 'Sets plan to Pro with 30 days of active access.'
+                    : `Extends expiry by ${extendMonths * 30} days (${extendMonths} month${extendMonths > 1 ? 's' : ''}).`}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Role Selection (Guarded to Superadmin) */}

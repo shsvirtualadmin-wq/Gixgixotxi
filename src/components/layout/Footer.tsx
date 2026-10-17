@@ -129,11 +129,24 @@ export function Footer() {
             &copy; {new Date().getFullYear()} Boardly Technologies. All rights reserved.
           </div>
           <div className="flex items-center gap-3">
-            <span className="font-mono text-[10px] text-gray-500">
-              Build: {typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev'}
-            </span>
             <span>Designed for focused study. Asia/Karachi (PKT)</span>
           </div>
+        </div>
+      </div>
+
+      {/* ─── RED FOOTER WITH GIANT DOTTED "BOARDLY" ────────────────────────── */}
+      <div className="w-full bg-[#D71921] text-white mt-10 py-6 sm:py-10 px-4 overflow-hidden select-none">
+        <div className="max-w-[1200px] mx-auto flex items-center justify-center text-center overflow-hidden">
+          <span
+            className="font-dot text-[13vw] sm:text-[12vw] lg:text-[140px] font-black tracking-tighter leading-none text-white uppercase inline-block max-w-full select-none pointer-events-none"
+            style={{
+              fontFamily: 'var(--font-dot)',
+              letterSpacing: '-0.03em',
+            }}
+            aria-hidden="true"
+          >
+            BOARDLY
+          </span>
         </div>
       </div>
     </footer>
