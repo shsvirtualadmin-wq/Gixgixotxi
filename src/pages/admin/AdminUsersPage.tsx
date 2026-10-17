@@ -362,8 +362,8 @@ export function AdminUsersPage() {
                 className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] hover:border-[var(--text)]/40 transition-colors cursor-pointer flex flex-col gap-3.5"
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  {/* Avatar: solid #1A1A1A circle with white initial, no gradient */}
-                  <div className="w-10 h-10 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[14px] text-white shrink-0">
+                  {/* Avatar: solid surface-2 circle with theme text initial, no gradient */}
+                  <div className="w-10 h-10 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[14px] text-[var(--text)] shrink-0">
                     {initial}
                   </div>
                   <div className="min-w-0 flex-1">
@@ -487,7 +487,7 @@ export function AdminUsersPage() {
                     {/* User info */}
                     <td className="py-3.5 px-5">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[12px] text-white shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[12px] text-[var(--text)] shrink-0">
                           {initial}
                         </div>
                         <div className="min-w-0">

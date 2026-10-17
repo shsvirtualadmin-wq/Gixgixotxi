@@ -29,7 +29,7 @@ export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getA
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 
-// Initialize Firestore with the named database:
+// Initialize Firestore with the unified database:
 // Uses experimentalAutoDetectLongPolling: true for optimal transport
 // Uses memoryLocalCache() to prevent multi-tab IndexedDB lock contention & write queue stalls
 export const db = (() => {
@@ -44,10 +44,13 @@ export const db = (() => {
     );
   } catch (err) {
     console.warn('[Firebase] initializeFirestore failed, falling back to getFirestore:', err);
-    return getFirestore(app, TARGET_DATABASE_ID);
+    return TARGET_DATABASE_ID === '(default)'
+      ? getFirestore(app)
+      : getFirestore(app, TARGET_DATABASE_ID);
   }
 })();
 
+console.log('[Firebase Init] projectId:', TARGET_PROJECT_ID, '| databaseId:', TARGET_DATABASE_ID);
 
 if (typeof window !== 'undefined') {
   const authProj = auth.app.options.projectId;
@@ -56,7 +59,7 @@ if (typeof window !== 'undefined') {
   const origin = window.location.origin;
 
   console.log(
-    `%c[Firebase Runtime Config] authDomain: ${authDomain} | projectId: ${authProj} | origin: ${origin}`,
+    `%c[Firebase Runtime Config] authDomain: ${authDomain} | projectId: ${authProj} | databaseId: ${TARGET_DATABASE_ID} | origin: ${origin}`,
     'background: #0f172a; color: #38bdf8; font-size: 13px; font-weight: bold; padding: 4px 8px; border-radius: 4px;'
   );
 
@@ -80,4 +83,5 @@ if (typeof window !== 'undefined') {
   }
 }
 
-export { getApp, getFirestore, getAuth, getStorage };
+export { getApp, getAuth, getStorage };
+

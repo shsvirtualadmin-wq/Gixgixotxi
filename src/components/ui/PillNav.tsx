@@ -37,7 +37,11 @@ export function PillNav({
   return (
     <div
       role="tablist"
-      className={`rounded-full bg-neutral-900/90 backdrop-blur-md border border-white/10 p-1.5 flex items-center justify-around sm:justify-center gap-1 sm:gap-1.5 shadow-2xl shadow-black/50 select-none ${className}`}
+      style={{
+        backgroundColor: 'var(--nav-bg)',
+        borderColor: 'var(--border)',
+      }}
+      className={`rounded-full backdrop-blur-md border p-1.5 flex items-center justify-around sm:justify-center gap-1 sm:gap-1.5 shadow-lg select-none ${className}`}
     >
       {items.map((item, index) => {
         const id = item.id ?? item.to ?? index;
@@ -49,17 +53,28 @@ export function PillNav({
               key={item.to}
               to={item.to}
               end={item.end}
+              style={({ isActive }) =>
+                isActive
+                  ? {
+                      backgroundColor: 'var(--nav-active-bg)',
+                      color: 'var(--nav-active-text)',
+                    }
+                  : {
+                      color: 'var(--text-muted)',
+                      backgroundColor: 'transparent',
+                    }
+              }
               className={({ isActive }) => {
                 const baseClasses =
-                  'rounded-full transition-all duration-200 cursor-pointer text-xs sm:text-sm md:text-base font-medium flex items-center justify-center text-center outline-none select-none';
+                  'rounded-full transition-all duration-200 cursor-pointer text-xs sm:text-sm md:text-base font-medium flex items-center justify-center text-center outline-none select-none hover:text-[var(--text)]';
                 const layoutClasses =
                   layout === 'stacked-mobile'
                     ? 'flex-col sm:flex-row px-2 sm:px-4 md:px-5 py-1.5 sm:py-2 md:py-2.5 gap-0.5 sm:gap-2 flex-1 sm:flex-initial'
                     : 'flex-row px-3 sm:px-5 py-1.5 sm:py-2.5 gap-2 flex-1 sm:flex-initial';
 
                 const stateClasses = isActive
-                  ? `bg-white text-black font-semibold shadow-sm ${activeItemClassName}`
-                  : `text-neutral-400 hover:text-white bg-transparent ${inactiveItemClassName}`;
+                  ? `font-semibold shadow-sm ${activeItemClassName}`
+                  : `${inactiveItemClassName}`;
 
                 return `${baseClasses} ${layoutClasses} ${stateClasses} ${itemClassName}`;
               }}
@@ -68,9 +83,8 @@ export function PillNav({
                 <>
                   {item.icon && (
                     <span
-                      className={`shrink-0 transition-colors ${
-                        isActive ? 'text-black' : 'text-neutral-400 group-hover:text-white'
-                      }`}
+                      className="shrink-0 transition-colors"
+                      style={{ color: isActive ? 'var(--nav-active-text)' : 'inherit' }}
                     >
                       {item.icon}
                     </span>
@@ -84,9 +98,11 @@ export function PillNav({
                   </span>
                   {item.badge !== undefined && (
                     <span
-                      className={`ml-1 text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                        isActive ? 'bg-black text-white' : 'bg-white/10 text-neutral-300'
-                      }`}
+                      className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{
+                        backgroundColor: isActive ? 'var(--nav-bg)' : 'var(--surface-2)',
+                        color: isActive ? 'var(--text)' : 'var(--text-muted)',
+                      }}
                     >
                       {item.badge}
                     </span>
@@ -109,21 +125,31 @@ export function PillNav({
               if (item.onClick) item.onClick();
               if (onChange) onChange(id);
             }}
-            className={`rounded-full transition-all duration-200 cursor-pointer text-xs sm:text-sm md:text-base font-medium flex items-center justify-center text-center outline-none select-none ${
+            style={
+              isSelected
+                ? {
+                    backgroundColor: 'var(--nav-active-bg)',
+                    color: 'var(--nav-active-text)',
+                  }
+                : {
+                    color: 'var(--text-muted)',
+                    backgroundColor: 'transparent',
+                  }
+            }
+            className={`rounded-full transition-all duration-200 cursor-pointer text-xs sm:text-sm md:text-base font-medium flex items-center justify-center text-center outline-none select-none hover:text-[var(--text)] ${
               layout === 'stacked-mobile'
                 ? 'flex-col sm:flex-row px-2 sm:px-4 md:px-5 py-1.5 sm:py-2 md:py-2.5 gap-0.5 sm:gap-2 flex-1 sm:flex-initial'
                 : 'flex-row px-3 sm:px-5 py-1.5 sm:py-2.5 gap-2 flex-1 sm:flex-initial'
             } ${
               isSelected
-                ? `bg-white text-black font-semibold shadow-sm ${activeItemClassName}`
-                : `text-neutral-400 hover:text-white bg-transparent ${inactiveItemClassName}`
+                ? `font-semibold shadow-sm ${activeItemClassName}`
+                : `${inactiveItemClassName}`
             } ${itemClassName}`}
           >
             {item.icon && (
               <span
-                className={`shrink-0 transition-colors ${
-                  isSelected ? 'text-black' : 'text-neutral-400 hover:text-white'
-                }`}
+                className="shrink-0 transition-colors"
+                style={{ color: isSelected ? 'var(--nav-active-text)' : 'inherit' }}
               >
                 {item.icon}
               </span>
@@ -137,9 +163,11 @@ export function PillNav({
             </span>
             {item.badge !== undefined && (
               <span
-                className={`ml-1 text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
-                  isSelected ? 'bg-black text-white' : 'bg-white/10 text-neutral-300'
-                }`}
+                className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                style={{
+                  backgroundColor: isSelected ? 'var(--nav-bg)' : 'var(--surface-2)',
+                  color: isSelected ? 'var(--text)' : 'var(--text-muted)',
+                }}
               >
                 {item.badge}
               </span>

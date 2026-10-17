@@ -94,7 +94,7 @@ export function WeakChapters({ uid }: Props) {
         return (
           <div
             key={c.id}
-            className="p-3.5 rounded-2xl bg-[#0A0A0A] border border-[var(--border)] flex items-center justify-between gap-3"
+            className="p-3.5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] flex items-center justify-between gap-3"
           >
             <div className="flex-1 min-w-0">
               <div
@@ -103,16 +103,16 @@ export function WeakChapters({ uid }: Props) {
               >
                 {chapterName}
               </div>
-              <div className="text-[11px] text-[var(--muted)] flex items-center gap-2 mt-0.5">
+              <div className="text-[11px] text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
                 <span>{c.subject ?? 'General'}</span>
                 <span>·</span>
-                <span className="font-doto text-[var(--red)] font-semibold">{acc}% Accuracy</span>
+                <span className="font-doto text-[var(--accent)] font-semibold">{acc}% Accuracy</span>
               </div>
             </div>
 
             <button
               onClick={() => navigate(`/dashboard/practice?chapter=${encodeURIComponent(chapterName)}`)}
-              className="px-3 py-1.5 rounded-full bg-[#1A1A1A] border border-[var(--border)] hover:border-[var(--red)] hover:bg-[var(--red)] hover:text-[#FFFFFF] text-xs font-semibold text-[var(--text)] transition-colors shrink-0 cursor-pointer"
+              className="px-3 py-1.5 rounded-full bg-[var(--surface-2)] border border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--accent)] hover:text-white text-xs font-semibold text-[var(--text)] transition-colors shrink-0 cursor-pointer"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
               Practice

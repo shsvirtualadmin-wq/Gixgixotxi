@@ -6,6 +6,8 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { Logo } from '@/components/ui/Logo';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 
+import { useTheme } from '@/hooks/useTheme';
+
 interface Props {
   sidebarCollapsed?: boolean;
 }
@@ -18,19 +20,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    const stored = typeof window !== 'undefined' ? localStorage.getItem('boardly-theme') : 'dark';
-    return stored === 'light' ? 'light' : 'dark';
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('boardly-theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme(t => (t === 'dark' ? 'light' : 'dark'));
-  };
+  const { theme, toggle: toggleTheme } = useTheme();
 
   // Close dropdown on outside click
   useEffect(() => {

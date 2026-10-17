@@ -629,20 +629,20 @@ export function AdminHealthPage() {
       {/* ── Results List Grouped by Category ─────────────────────────────── */}
       <div className="space-y-6">
         {/* Category 1: Plan Resolver Tests */}
-        <div className="rounded-[20px] bg-[#0D0D0D] border border-[#222222] p-5 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-[#1F1F1F]">
+        <div className="rounded-[20px] bg-[var(--surface)] border border-[var(--border)] p-5 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
             <div className="flex items-center gap-2">
-              <Shield size={16} className="text-[#D71921]" />
-              <h2 className="text-sm font-bold text-white font-heading">
+              <Shield size={16} className="text-[var(--accent)]" />
+              <h2 className="text-sm font-bold text-[var(--text)] font-heading">
                 (a) Plan Resolver Logic Suite (Pure Logic)
               </h2>
             </div>
-            <span className="text-[11px] font-mono text-[#888888]">
+            <span className="text-[11px] font-mono text-[var(--text-muted)]">
               {results.filter((r) => r.category === 'plan_resolver').length} checks
             </span>
           </div>
 
-          <div className="divide-y divide-[#1A1A1A]">
+          <div className="divide-y divide-[var(--border)]">
             {results
               .filter((r) => r.category === 'plan_resolver')
               .map((item) => (
@@ -677,20 +677,20 @@ export function AdminHealthPage() {
         </div>
 
         {/* Category 2: Starter Test Limit Verification */}
-        <div className="rounded-[20px] bg-[#0D0D0D] border border-[#222222] p-5 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-[#1F1F1F]">
+        <div className="rounded-[20px] bg-[var(--surface)] border border-[var(--border)] p-5 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
             <div className="flex items-center gap-2">
-              <Layers size={16} className="text-[#D71921]" />
-              <h2 className="text-sm font-bold text-white font-heading">
+              <Layers size={16} className="text-[var(--accent)]" />
+              <h2 className="text-sm font-bold text-[var(--text)] font-heading">
                 (b) Daily Starter Limit &amp; Atomic Blocking Suite
               </h2>
             </div>
-            <span className="text-[11px] font-mono text-[#888888]">
+            <span className="text-[11px] font-mono text-[var(--text-muted)]">
               {results.filter((r) => r.category === 'test_limits').length} checks
             </span>
           </div>
 
-          <div className="divide-y divide-[#1A1A1A]">
+          <div className="divide-y divide-[var(--border)]">
             {results
               .filter((r) => r.category === 'test_limits')
               .map((item) => (
@@ -725,20 +725,20 @@ export function AdminHealthPage() {
         </div>
 
         {/* Category 3: Study Crew Lifecycle & 30-Cap */}
-        <div className="rounded-[20px] bg-[#0D0D0D] border border-[#222222] p-5 space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-[#1F1F1F]">
+        <div className="rounded-[20px] bg-[var(--surface)] border border-[var(--border)] p-5 space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
             <div className="flex items-center gap-2">
-              <Users size={16} className="text-[#D71921]" />
-              <h2 className="text-sm font-bold text-white font-heading">
+              <Users size={16} className="text-[var(--accent)]" />
+              <h2 className="text-sm font-bold text-[var(--text)] font-heading">
                 (c) Study Crew Lifecycle &amp; 30-Member Cap Suite
               </h2>
             </div>
-            <span className="text-[11px] font-mono text-[#888888]">
+            <span className="text-[11px] font-mono text-[var(--text-muted)]">
               {results.filter((r) => r.category === 'crew_lifecycle').length} checks
             </span>
           </div>
 
-          <div className="divide-y divide-[#1A1A1A]">
+          <div className="divide-y divide-[var(--border)]">
             {results
               .filter((r) => r.category === 'crew_lifecycle')
               .map((item) => (

@@ -10,7 +10,7 @@ import fs from 'fs';
 import path from 'path';
 
 const TARGET_PROJECT_ID = process.env.VITE_FIREBASE_PROJECT_ID || 'gen-lang-client-0365509316';
-const TARGET_DATABASE_ID = process.env.VITE_FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712';
+const TARGET_DATABASE_ID = process.env.VITE_FIREBASE_DATABASE_ID || process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)';
 const TARGET_API_KEY = process.env.VITE_FIREBASE_API_KEY || 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs';
 
 const COLLECTIONS = [

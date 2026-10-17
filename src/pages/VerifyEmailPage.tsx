@@ -37,7 +37,7 @@ export function VerifyEmailPage() {
         className="w-full rounded-[28px] border border-[var(--border)] p-7 sm:p-8 flex flex-col items-center text-center gap-5"
         style={{ backgroundColor: 'var(--card)' }}
       >
-        <div className="w-14 h-14 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-[var(--red)]">
+        <div className="w-14 h-14 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-[var(--accent)]">
           <Mail size={28} />
         </div>
 
@@ -58,14 +58,14 @@ export function VerifyEmailPage() {
         </div>
 
         {resendSuccess && (
-          <div className="w-full p-3 rounded-xl bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center gap-2 text-xs text-[var(--text)]">
-            <CheckCircle2 size={16} className="text-[var(--red)]" />
+          <div className="w-full p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center gap-2 text-xs text-[var(--text)]">
+            <CheckCircle2 size={16} className="text-[var(--accent)]" />
             <span>Verification email sent! Check your inbox.</span>
           </div>
         )}
 
         {error && (
-          <div className="w-full p-3 rounded-xl bg-[#1A1A1A] border border-[var(--red)] text-xs text-[#FFFFFF]">
+          <div className="w-full p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--accent)] text-xs text-[var(--text)]">
             {error}
           </div>
         )}

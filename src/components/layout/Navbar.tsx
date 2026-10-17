@@ -11,19 +11,7 @@ const NAV_LINKS = [
   { to: '/login', label: 'Login' },
 ];
 
-function useTheme() {
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    const stored = typeof window !== 'undefined' ? localStorage.getItem('boardly-theme') : 'dark';
-    return stored === 'light' ? 'light' : 'dark';
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('boardly-theme', theme);
-  }, [theme]);
-
-  return { theme, toggle: () => setTheme(t => (t === 'dark' ? 'light' : 'dark')) };
-}
+import { useTheme } from '@/hooks/useTheme';
 
 export function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false);

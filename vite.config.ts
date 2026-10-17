@@ -306,10 +306,10 @@ export default defineConfig({
       process.env.VITE_FIREBASE_APP_ID ?? '1:556734245207:web:4797f3915b424209b03612'
     ),
     'import.meta.env.VITE_FIREBASE_DATABASE_ID': JSON.stringify(
-      process.env.VITE_FIREBASE_DATABASE_ID ?? 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712'
+      process.env.VITE_FIREBASE_DATABASE_ID ?? '(default)'
     ),
     'import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID': JSON.stringify(
-      process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ?? 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712'
+      process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ?? '(default)'
     ),
     '__BUILD_TIME__': JSON.stringify(new Date().toUTCString()),
     '__BUILD_ID__': JSON.stringify('boardly-' + Date.now().toString(36)),

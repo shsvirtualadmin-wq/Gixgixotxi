@@ -22,7 +22,7 @@ export function ArenaPage() {
       {/* Rules & Mechanics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="p-6 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] border border-[var(--border)] text-[#FFFFFF] flex items-center justify-center">
+          <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] flex items-center justify-center">
             <Clock size={22} />
           </div>
           <h3
@@ -37,7 +37,7 @@ export function ArenaPage() {
         </div>
 
         <div className="p-6 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] border border-[var(--border)] text-[#FFFFFF] flex items-center justify-center">
+          <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] flex items-center justify-center">
             <Shield size={22} />
           </div>
           <h3
@@ -52,7 +52,7 @@ export function ArenaPage() {
         </div>
 
         <div className="p-6 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] border border-[var(--border)] text-[#FFFFFF] flex items-center justify-center">
+          <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] flex items-center justify-center">
             <Trophy size={22} />
           </div>
           <h3

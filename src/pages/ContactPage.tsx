@@ -200,24 +200,29 @@ export function ContactPage() {
                 {errorDetails && (
                   <div
                     role="alert"
-                    className="p-4 rounded-2xl bg-red-950/80 border-2 border-red-500 text-red-100 text-xs shadow-lg space-y-2"
+                    style={{
+                      backgroundColor: 'rgba(215, 25, 33, 0.08)',
+                      borderColor: 'var(--accent)',
+                      color: 'var(--text)',
+                    }}
+                    className="p-4 rounded-2xl border text-xs shadow-sm space-y-2"
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 font-bold text-white">
-                        <AlertCircle size={16} className="text-red-400 shrink-0" />
+                      <div className="flex items-center gap-2 font-bold text-[var(--accent)]">
+                        <AlertCircle size={16} className="shrink-0" />
                         <span>Failed to send message</span>
                       </div>
-                      <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-red-600/40 border border-red-500">
+                      <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)]">
                         {errorDetails.code || `HTTP ${errorDetails.status}`}
                       </span>
                     </div>
-                    <p className="text-red-200 font-medium">{errorDetails.message}</p>
-                    <div className="pt-2 border-t border-red-500/30 grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono">
-                      <div><strong className="text-red-300">Target URL:</strong> {errorDetails.url}</div>
-                      <div><strong className="text-red-300">Status:</strong> {errorDetails.status}</div>
+                    <p className="text-[var(--text)] font-medium">{errorDetails.message}</p>
+                    <div className="pt-2 border-t border-[var(--border)] grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px] font-mono text-[var(--text-muted)]">
+                      <div><strong className="text-[var(--text)]">Target URL:</strong> {errorDetails.url}</div>
+                      <div><strong className="text-[var(--text)]">Status:</strong> {errorDetails.status}</div>
                     </div>
                     {errorDetails.snippet && (
-                      <div className="pt-1.5 font-mono text-[10px] text-red-300 bg-black/40 p-2 rounded border border-red-500/30 break-all">
+                      <div className="pt-1.5 font-mono text-[10px] text-[var(--text)] bg-[var(--surface-2)] p-2 rounded border border-[var(--border)] break-all">
                         <strong>Response body:</strong> {errorDetails.snippet}
                       </div>
                     )}

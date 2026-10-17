@@ -47,7 +47,7 @@ export function ReviewsPage() {
               onClick={() => setSelectedUni(uni)}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors duration-150 cursor-pointer ${
                 selectedUni === uni
-                  ? 'bg-[#FFFFFF] text-[#000000]'
+                  ? 'bg-[var(--text)] text-[var(--bg)]'
                   : 'bg-[var(--card-2)] text-[var(--muted)] hover:text-[var(--text)]'
               }`}
             >
@@ -65,7 +65,7 @@ export function ReviewsPage() {
               onClick={() => setSelectedRating(rate)}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors duration-150 cursor-pointer ${
                 selectedRating === rate
-                  ? 'bg-[#FFFFFF] text-[#000000]'
+                  ? 'bg-[var(--text)] text-[var(--bg)]'
                   : 'bg-[var(--card-2)] text-[var(--muted)] hover:text-[var(--text)]'
               }`}
             >

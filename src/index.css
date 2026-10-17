@@ -11,31 +11,33 @@
 
 /* ===== DESIGN TOKENS (NOTHING OS) ===== */
 :root {
-  /* Dark Mode Default */
-  --bg: #000000;
-  --fg: #F2F2F2;
-  --card: #111111;
-  --card-2: #1A1A1A;
-  --border: #2A2A2A;
-  --text: #F2F2F2;
-  --muted: #9A9A9A;
-
-  /* ONE Accent: Nothing Red */
-  --red: #D71921;
+  /* Shared Base Theme: Light Mode on :root */
+  --bg: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-2: #F2F2F2;
+  --border: #E0E0E0;
+  --text: #0A0A0A;
+  --text-muted: #6B6B6B;
+  --accent: #D71921;
+  --nav-bg: #FFFFFF;
+  --nav-active-bg: #0A0A0A;
+  --nav-active-text: #FFFFFF;
 
   /* Aliases strictly mapping to tokens */
-  --bg-2: #0A0A0A;
-  --surface: #111111;
-  --surface-hover: #1A1A1A;
-  --text-muted: #9A9A9A;
-  --text-faint: #9A9A9A;
-  --brand: #D71921;
-  --brand-2: #F2F2F2;
-  --accent: #D71921;
-  --violet: #D71921;
-  --danger: #D71921;
-  --success: #F2F2F2;
-  --warning: #F2F2F2;
+  --fg: var(--text);
+  --card: var(--surface);
+  --card-2: var(--surface-2);
+  --bg-2: var(--surface-2);
+  --muted: var(--text-muted);
+  --text-faint: var(--text-muted);
+  --surface-hover: var(--surface-2);
+  --red: var(--accent);
+  --brand: var(--accent);
+  --brand-2: var(--text);
+  --violet: var(--accent);
+  --danger: var(--accent);
+  --success: var(--text);
+  --warning: var(--text);
 
   /* Layout & Sizing */
   --container-w: 1200px;
@@ -68,29 +70,63 @@
   --dur-hover: 160ms;
 }
 
-/* ===== LIGHT THEME ===== */
-[data-theme="light"] {
-  --bg: #F2F2F2;
-  --fg: #000000;
-  --card: #FFFFFF;
-  --card-2: #E9E9E9;
-  --border: #D2D2D2;
-  --text: #000000;
-  --muted: #666666;
-  --red: #D71921;
-
-  --bg-2: #E9E9E9;
-  --surface: #FFFFFF;
-  --surface-hover: #E9E9E9;
-  --text-muted: #666666;
-  --text-faint: #666666;
-  --brand: #D71921;
-  --brand-2: #000000;
+/* ===== DARK THEME OVERRIDES ===== */
+.dark,
+[data-theme="dark"] {
+  --bg: #000000;
+  --surface: #111111;
+  --surface-2: #1A1A1A;
+  --border: #2A2A2A;
+  --text: #F5F5F5;
+  --text-muted: #A0A0A0;
   --accent: #D71921;
-  --violet: #D71921;
-  --danger: #D71921;
-  --success: #000000;
-  --warning: #000000;
+  --nav-bg: #1C1C1C;
+  --nav-active-bg: #FFFFFF;
+  --nav-active-text: #0A0A0A;
+
+  --fg: var(--text);
+  --card: var(--surface);
+  --card-2: var(--surface-2);
+  --bg-2: var(--surface-2);
+  --muted: var(--text-muted);
+  --text-faint: var(--text-muted);
+  --surface-hover: var(--surface-2);
+  --red: var(--accent);
+  --brand: var(--accent);
+  --brand-2: var(--text);
+  --violet: var(--accent);
+  --danger: var(--accent);
+  --success: var(--text);
+  --warning: var(--text);
+}
+
+/* ===== EXPLICIT LIGHT THEME ===== */
+[data-theme="light"] {
+  --bg: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-2: #F2F2F2;
+  --border: #E0E0E0;
+  --text: #0A0A0A;
+  --text-muted: #6B6B6B;
+  --accent: #D71921;
+  --nav-bg: #FFFFFF;
+  --nav-active-bg: #0A0A0A;
+  --nav-active-text: #FFFFFF;
+
+  --fg: var(--text);
+  --card: var(--surface);
+  --card-2: var(--surface-2);
+  --bg-2: var(--surface-2);
+  --muted: var(--text-muted);
+  --text-faint: var(--text-muted);
+  --surface-hover: var(--surface-2);
+  --red: var(--accent);
+  --brand: var(--accent);
+  --brand-2: var(--text);
+  --violet: var(--accent);
+  --danger: var(--accent);
+  --success: var(--text);
+  --warning: var(--text);
 }
 
 /* ===== BRAND LOGO THEME ADAPTATION ===== */

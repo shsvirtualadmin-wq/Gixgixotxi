@@ -152,16 +152,16 @@ export function CrewDashboardPage() {
       <div style={{ maxWidth: 640, margin: '3rem auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: 20 }}>
         <Link
           to="/dashboard"
-          className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-white mb-2 transition-colors font-heading"
+          className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-[var(--text)] mb-2 transition-colors font-heading"
         >
           <ArrowLeft size={14} />
           <span>Return to Dashboard</span>
         </Link>
         <Card className="p-8 text-center space-y-4">
-          <div className="w-12 h-12 rounded-full bg-[#1A1A1A] border border-[var(--red)] text-[var(--red)] flex items-center justify-center mx-auto">
+          <div className="w-12 h-12 rounded-full bg-[var(--surface-2)] border border-[var(--accent)] text-[var(--accent)] flex items-center justify-center mx-auto">
             <AlertCircle size={22} />
           </div>
-          <h2 className="text-xl font-bold text-white font-heading">Study Crew Connection Delayed</h2>
+          <h2 className="text-xl font-bold text-[var(--text)] font-heading">Study Crew Connection Delayed</h2>
           <p className="text-sm text-[var(--muted)] leading-relaxed">{hookError}</p>
           <div className="pt-2 flex items-center justify-center gap-3">
             <Button variant="primary" size="md" onClick={retry}>

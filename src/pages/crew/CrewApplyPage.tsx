@@ -73,7 +73,7 @@ export function CrewApplyPage() {
 
       {submitted ? (
         <Card className="text-center items-center py-12 px-6">
-          <div className="w-14 h-14 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-[var(--red)] mb-2">
+          <div className="w-14 h-14 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-[var(--accent)] mb-2">
             <CheckCircle2 size={28} />
           </div>
 
@@ -114,7 +114,7 @@ export function CrewApplyPage() {
           </div>
 
           {error && (
-            <div className="p-3 rounded-xl bg-[#1A1A1A] border border-[var(--red)] text-xs text-[#FFFFFF]">
+            <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--accent)] text-xs text-[var(--text)]">
               {error}
             </div>
           )}
@@ -129,7 +129,7 @@ export function CrewApplyPage() {
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
                 style={{ height: '52px' }}
               />
             </div>
@@ -144,7 +144,7 @@ export function CrewApplyPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
                   style={{ height: '52px' }}
                 />
               </div>
@@ -159,7 +159,7 @@ export function CrewApplyPage() {
                   placeholder="0300 1234567"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
                   style={{ height: '52px' }}
                 />
               </div>
@@ -176,7 +176,7 @@ export function CrewApplyPage() {
                   placeholder="e.g. Punjab Group of Colleges"
                   value={institution}
                   onChange={(e) => setInstitution(e.target.value)}
-                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
                   style={{ height: '52px' }}
                 />
               </div>
@@ -191,7 +191,7 @@ export function CrewApplyPage() {
                   placeholder="e.g. Lahore / Islamabad"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
                   style={{ height: '52px' }}
                 />
               </div>
@@ -204,7 +204,7 @@ export function CrewApplyPage() {
               <select
                 value={academicLevel}
                 onChange={(e) => setAcademicLevel(e.target.value)}
-                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--red)]"
+                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--red)]"
                 style={{ height: '52px' }}
               >
                 <option value="FSc Pre-Engineering">FSc Pre-Engineering</option>
@@ -225,7 +225,7 @@ export function CrewApplyPage() {
                 placeholder="Share your outreach plan, student groups, or academy study circles..."
                 value={promotionPlan}
                 onChange={(e) => setPromotionPlan(e.target.value)}
-                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] p-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] p-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
               />
             </div>
 

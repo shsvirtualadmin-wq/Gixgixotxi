@@ -169,13 +169,13 @@ export function ArenaDashboardPage() {
   return (
     <div className="flex flex-col gap-6 max-w-[1000px] mx-auto">
       {/* ── Segmented Control: "Leaderboard | Blitz | My circle" ─────────────── */}
-      <div className="w-full max-w-[420px] mx-auto h-11 p-1 rounded-full bg-[#111111] border border-[var(--border)] grid grid-cols-3 gap-1 items-center">
+      <div className="w-full max-w-[420px] mx-auto h-11 p-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] grid grid-cols-3 gap-1 items-center">
         <button
           onClick={() => setActiveTab('leaderboard')}
           className={`h-full rounded-full text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
             activeTab === 'leaderboard'
-              ? 'bg-[#FFFFFF] text-[#000000]'
-              : 'text-[#9A9A9A] hover:text-[#F2F2F2]'
+              ? 'bg-[var(--text)] text-[var(--bg)]'
+              : 'text-[var(--text-muted)] hover:text-[var(--text)]'
           }`}
           style={{ fontFamily: 'var(--font-heading)' }}
         >
@@ -185,8 +185,8 @@ export function ArenaDashboardPage() {
           onClick={() => setActiveTab('blitz')}
           className={`h-full rounded-full text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
             activeTab === 'blitz'
-              ? 'bg-[#FFFFFF] text-[#000000]'
-              : 'text-[#9A9A9A] hover:text-[#F2F2F2]'
+              ? 'bg-[var(--text)] text-[var(--bg)]'
+              : 'text-[var(--text-muted)] hover:text-[var(--text)]'
           }`}
           style={{ fontFamily: 'var(--font-heading)' }}
         >
@@ -196,8 +196,8 @@ export function ArenaDashboardPage() {
           onClick={() => setActiveTab('circle')}
           className={`h-full rounded-full text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
             activeTab === 'circle'
-              ? 'bg-[#FFFFFF] text-[#000000]'
-              : 'text-[#9A9A9A] hover:text-[#F2F2F2]'
+              ? 'bg-[var(--text)] text-[var(--bg)]'
+              : 'text-[var(--text-muted)] hover:text-[var(--text)]'
           }`}
           style={{ fontFamily: 'var(--font-heading)' }}
         >
@@ -218,7 +218,7 @@ export function ArenaDashboardPage() {
                 National Entrance Leaderboard
               </h2>
             </div>
-            <span className="text-xs text-[var(--muted)] font-doto">Top Aspirants</span>
+            <span className="text-xs text-[var(--text-muted)] font-doto">Top Aspirants</span>
           </div>
 
           {loadingLeaderboard ? (
@@ -236,13 +236,13 @@ export function ArenaDashboardPage() {
                     key={item.id}
                     className={`p-3.5 sm:p-4 rounded-2xl flex items-center justify-between transition-colors ${
                       isCurrentUser
-                        ? 'bg-[#1A1A1A] border-2 border-[var(--red)] shadow-sm'
-                        : 'bg-[#0A0A0A] border border-[var(--border)]'
+                        ? 'bg-[var(--surface-2)] border-2 border-[var(--accent)] shadow-sm'
+                        : 'bg-[var(--surface)] border border-[var(--border)]'
                     }`}
                   >
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                       {/* Rank in Doto font */}
-                      <span className="font-doto font-bold text-base sm:text-lg text-[var(--muted)] w-7 shrink-0 text-left">
+                      <span className="font-doto font-bold text-base sm:text-lg text-[var(--text-muted)] w-7 shrink-0 text-left">
                         {rankNum}
                       </span>
 
@@ -260,7 +260,7 @@ export function ArenaDashboardPage() {
                             </span>
                           )}
                         </div>
-                        <div className="text-[11px] text-[var(--muted)] mt-0.5 truncate">
+                        <div className="text-[11px] text-[var(--text-muted)] mt-0.5 truncate">
                           {item.university || 'Engineering Track'} {item.city ? `· ${item.city}` : ''}
                         </div>
                       </div>
@@ -268,10 +268,10 @@ export function ArenaDashboardPage() {
 
                     {/* Score in Doto font */}
                     <div className="text-right shrink-0">
-                      <div className="font-doto font-bold text-sm sm:text-base text-[#FFFFFF]">
+                      <div className="font-doto font-bold text-sm sm:text-base text-[var(--text)]">
                         {item.score} pts
                       </div>
-                      <div className="font-doto text-[10px] text-[var(--muted)]">
+                      <div className="font-doto text-[10px] text-[var(--text-muted)]">
                         {item.streak ? `${item.streak}d streak` : 'active'}
                       </div>
                     </div>
@@ -303,33 +303,33 @@ export function ArenaDashboardPage() {
                 A synchronized, high-stakes 45-minute national mock test. Every aspirant across Pakistan answers identical past-paper questions simultaneously under strict anti-cheat auto-submission.
               </p>
 
-              <div className="grid grid-cols-2 gap-3 text-xs text-[var(--muted)] font-doto">
-                <div className="p-3 rounded-xl bg-[#0A0A0A] border border-[var(--border)]">
-                  <div className="text-[10px] text-[var(--muted)] uppercase">Questions</div>
-                  <div className="text-sm font-bold text-[#FFFFFF] mt-0.5">50 MCQs</div>
+              <div className="grid grid-cols-2 gap-3 text-xs text-[var(--text-muted)] font-doto">
+                <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                  <div className="text-[10px] text-[var(--text-muted)] uppercase">Questions</div>
+                  <div className="text-sm font-bold text-[var(--text)] mt-0.5">50 MCQs</div>
                 </div>
-                <div className="p-3 rounded-xl bg-[#0A0A0A] border border-[var(--border)]">
-                  <div className="text-[10px] text-[var(--muted)] uppercase">Time Limit</div>
-                  <div className="text-sm font-bold text-[#FFFFFF] mt-0.5">45 Minutes</div>
+                <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+                  <div className="text-[10px] text-[var(--text-muted)] uppercase">Time Limit</div>
+                  <div className="text-sm font-bold text-[var(--text)] mt-0.5">45 Minutes</div>
                 </div>
               </div>
             </div>
 
             {/* Countdown Box & Register Button */}
-            <div className="p-6 rounded-2xl bg-[#0A0A0A] border border-[var(--border)] flex flex-col items-center text-center gap-4 shrink-0 w-full md:w-80">
-              <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                <Clock size={16} className="text-[var(--red)]" />
+            <div className="p-6 rounded-2xl bg-[var(--surface)] border border-[var(--border)] flex flex-col items-center text-center gap-4 shrink-0 w-full md:w-80">
+              <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                <Clock size={16} className="text-[var(--accent)]" />
                 <span>Next Session Countdown</span>
               </div>
 
               {/* Countdown in Doto font */}
-              <div className="font-doto text-2xl sm:text-3xl font-bold text-[#FFFFFF] tracking-tight">
+              <div className="font-doto text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight">
                 {blitzCountdown || '00d 00h 00m 00s'}
               </div>
 
               {registeredBlitz ? (
-                <div className="w-full p-3 rounded-xl bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center gap-2 text-xs text-[#FFFFFF]">
-                  <CheckCircle2 size={16} className="text-[var(--red)]" />
+                <div className="w-full p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center gap-2 text-xs text-[var(--text)]">
+                  <CheckCircle2 size={16} className="text-[var(--accent)]" />
                   <span>Seat Reserved for Sunday</span>
                 </div>
               ) : (
@@ -343,7 +343,7 @@ export function ArenaDashboardPage() {
                 </button>
               )}
 
-              <p className="text-[11px] text-[var(--muted)]">
+              <p className="text-[11px] text-[var(--text-muted)]">
                 National percentile results posted right after session close.
               </p>
             </div>
@@ -361,9 +361,9 @@ export function ArenaDashboardPage() {
                 className="text-xl sm:text-2xl font-bold text-[var(--text)] tracking-tight"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                Study Circle · Code: <span className="font-doto text-[var(--red)]">{circleCode}</span>
+                Study Circle · Code: <span className="font-doto text-[var(--accent)]">{circleCode}</span>
               </h2>
-              <p className="text-xs sm:text-sm text-[var(--muted)] mt-1">
+              <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
                 Collaborative micro-squads. Compete with your friends on daily drill goals.
               </p>
             </div>
@@ -384,7 +384,7 @@ export function ArenaDashboardPage() {
               placeholder="Enter 6-char room code (e.g. NET2026)"
               value={circleInput}
               onChange={(e) => setCircleInput(e.target.value)}
-              className="flex-1 rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-xs sm:text-sm text-[var(--text)] placeholder-[var(--muted)] uppercase tracking-wider focus:border-[var(--red)]"
+              className="flex-1 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-xs sm:text-sm text-[var(--text)] placeholder-[var(--text-muted)] uppercase tracking-wider focus:border-[var(--accent)]"
               style={{ height: '48px' }}
             />
             <button
@@ -397,15 +397,15 @@ export function ArenaDashboardPage() {
           </form>
 
           {circleCreated && (
-            <div className="mb-4 p-3 rounded-xl bg-[#1A1A1A] border border-[var(--border)] text-xs text-[#FFFFFF]">
-              New squad created! Share code <strong className="text-[var(--red)] font-doto">{circleCode}</strong> with your academy peers.
+            <div className="mb-4 p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text)]">
+              New squad created! Share code <strong className="text-[var(--accent)] font-doto">{circleCode}</strong> with your academy peers.
             </div>
           )}
 
           {/* Circle Members & Daily Progress */}
           <div className="mt-3">
             <h3
-              className="text-xs font-semibold uppercase tracking-wider text-[var(--muted)] mb-3"
+              className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)] mb-3"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
               Squad Members ({circleMembers.length})
@@ -415,25 +415,25 @@ export function ArenaDashboardPage() {
               {circleMembers.map((m) => (
                 <div
                   key={m.uid}
-                  className="p-4 rounded-2xl bg-[#0A0A0A] border border-[var(--border)] flex items-center justify-between"
+                  className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-xs font-bold text-[var(--text)]">
+                    <div className="w-10 h-10 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-xs font-bold text-[var(--text)]">
                       {m.name.slice(0, 1)}
                     </div>
                     <div>
                       <div className="text-sm font-semibold text-[var(--text)]">{m.name}</div>
-                      <div className="text-[11px] text-[var(--muted)] font-doto">
+                      <div className="text-[11px] text-[var(--text-muted)] font-doto">
                         {m.streak}d streak
                       </div>
                     </div>
                   </div>
 
                   <div className="text-right">
-                    <div className="font-doto font-bold text-sm text-[var(--red)]">
+                    <div className="font-doto font-bold text-sm text-[var(--accent)]">
                       {m.dailyMcqs} MCQs
                     </div>
-                    <div className="text-[10px] text-[var(--muted)]">Today&apos;s sprint</div>
+                    <div className="text-[10px] text-[var(--text-muted)]">Today&apos;s sprint</div>
                   </div>
                 </div>
               ))}

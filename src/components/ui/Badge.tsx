@@ -1,65 +1,54 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, CSSProperties } from 'react';
 
-type BadgeColor = 'brand' | 'violet' | 'success' | 'warning' | 'danger' | 'muted' | 'default' | 'red' | 'red-outline';
+export type BadgeColor = 'muted' | 'red' | 'red-outline' | 'brand' | 'default' | 'warning' | 'violet' | string;
 
-interface BadgeProps {
+export interface BadgeProps {
   children: ReactNode;
   color?: BadgeColor;
-  className?: string;
   dot?: boolean;
-  pulse?: boolean;
+  className?: string;
+  style?: CSSProperties;
 }
 
-export function Badge({ children, color = 'muted', className = '', dot = false, pulse = false }: BadgeProps) {
-  const isSolidRed = color === 'red' || color === 'danger';
-  const isRedOutline = color === 'red-outline';
-  const hasDot = dot || pulse;
+export function Badge({
+  children,
+  color = 'muted',
+  dot = false,
+  className = '',
+  style,
+}: BadgeProps) {
+  let badgeClass = 'badge-pill';
+  let dotColor = 'var(--muted)';
 
-  let bg = 'transparent';
-  let textColor = 'var(--muted)';
-  let borderColor = 'var(--border)';
-  let dotColor = 'var(--red)';
-
-  if (isSolidRed) {
-    bg = 'var(--red)';
-    textColor = '#FFFFFF';
-    borderColor = 'var(--red)';
+  if (color === 'red') {
+    badgeClass = 'badge-pill-red';
     dotColor = '#FFFFFF';
-  } else if (isRedOutline) {
-    bg = 'transparent';
-    textColor = 'var(--red)';
-    borderColor = 'var(--red)';
+  } else if (color === 'red-outline') {
+    badgeClass = 'badge-pill-red-outline';
     dotColor = 'var(--red)';
+  } else if (color === 'brand' || color === 'violet') {
+    badgeClass = 'badge-pill-red-outline';
+    dotColor = 'var(--red)';
+  } else if (color === 'warning') {
+    badgeClass = 'badge-pill';
+    dotColor = 'var(--text)';
+  } else {
+    badgeClass = 'badge-pill';
+    dotColor = 'var(--muted)';
   }
 
   return (
-    <span
-      className={`inline-flex items-center gap-1.5 rounded-full whitespace-nowrap ${className}`}
-      style={{
-        padding: '6px 14px',
-        fontSize: '13px',
-        fontFamily: 'var(--font-heading)',
-        letterSpacing: '-0.02em',
-        lineHeight: '1.1',
-        fontWeight: isSolidRed || isRedOutline ? 600 : 500,
-        backgroundColor: bg,
-        color: textColor,
-        border: `1px solid ${borderColor}`,
-        width: 'fit-content',
-      }}
-    >
-      {hasDot && (
+    <span className={`${badgeClass} ${className}`.trim()} style={style}>
+      {dot && (
         <span
-          style={{
-            width: 6,
-            height: 6,
-            borderRadius: '50%',
-            backgroundColor: dotColor,
-            flexShrink: 0,
-          }}
+          className="inline-block w-1.5 h-1.5 rounded-full shrink-0"
+          style={{ backgroundColor: dotColor }}
+          aria-hidden="true"
         />
       )}
       {children}
     </span>
   );
 }
+
+export default Badge;

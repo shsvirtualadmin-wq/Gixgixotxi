@@ -328,38 +328,46 @@ export function PracticePage() {
       </Card>
       {/* ── Real-time on-screen step status indicator ── */}
       {launchStatus && (
-        <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-700 text-neutral-200 text-xs flex items-center gap-2.5">
-          <span className="w-3.5 h-3.5 border-2 border-[var(--red)] border-t-transparent rounded-full animate-spin shrink-0" />
+        <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-xs flex items-center gap-2.5">
+          <span className="w-3.5 h-3.5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin shrink-0" />
           <span className="font-mono text-xs">{launchStatus}</span>
         </div>
       )}
 
       {/* ── Real error message banner with code and index link ── */}
       {launchError && (
-        <div ref={errorBannerRef} className="p-4 rounded-2xl bg-red-950/70 border border-[var(--red)] text-red-200 text-xs sm:text-sm flex flex-col gap-2">
+        <div
+          ref={errorBannerRef}
+          style={{
+            backgroundColor: 'rgba(215, 25, 33, 0.08)',
+            borderColor: 'var(--accent)',
+            color: 'var(--text)',
+          }}
+          className="p-4 rounded-2xl border text-xs sm:text-sm flex flex-col gap-2"
+        >
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="font-bold flex items-center gap-2 text-red-100">
+              <div className="font-bold flex items-center gap-2 text-[var(--accent)]">
                 <span>Error {launchError.code ? `[${launchError.code}]` : ''}:</span>
               </div>
-              <p className="mt-1 text-red-200">{launchError.message}</p>
+              <p className="mt-1 text-[var(--text)] leading-relaxed">{launchError.message}</p>
             </div>
             <button
               type="button"
               onClick={() => setLaunchError(null)}
-              className="text-xs font-semibold underline hover:text-white shrink-0 cursor-pointer"
+              className="text-xs font-semibold underline text-[var(--accent)] hover:opacity-80 shrink-0 cursor-pointer"
             >
               Dismiss
             </button>
           </div>
           {launchError.link && (
-            <div className="pt-2 border-t border-red-800/60 flex items-center gap-2">
-              <span className="text-xs text-red-300">Missing index:</span>
+            <div className="pt-2 border-t border-[var(--border)] flex items-center gap-2">
+              <span className="text-xs text-[var(--text-muted)]">Missing index:</span>
               <a
                 href={launchError.link}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-xs font-bold text-white underline hover:text-red-200"
+                className="text-xs font-bold text-[var(--accent)] underline hover:opacity-80"
               >
                 Create Firestore Index in Firebase Console &rarr;
               </a>
@@ -373,8 +381,8 @@ export function PracticePage() {
         {/* Card 1: 10-Minute Sprint */}
         <Card className="justify-between p-6">
           <div className="space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] border border-[var(--border)] text-[#FFFFFF] flex items-center justify-center shrink-0">
-              <Zap size={22} className="text-[var(--red)]" />
+            <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--accent)] flex items-center justify-center shrink-0">
+              <Zap size={22} className="text-[var(--accent)]" />
             </div>
             <div>
               <h2
@@ -387,7 +395,7 @@ export function PracticePage() {
                 10 rapid-fire questions covering mixed subjects. Perfect for quick speed drills between classes.
               </p>
             </div>
-            <div className="flex items-center gap-2 text-xs text-[var(--muted)] font-doto">
+            <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] font-doto">
               <span>10 MCQs</span>
               <span>·</span>
               <span>10 Minutes</span>
@@ -419,8 +427,8 @@ export function PracticePage() {
         {/* Card 2: Full Past Paper */}
         <Card className="justify-between p-6">
           <div className="space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] border border-[var(--border)] text-[#FFFFFF] flex items-center justify-center shrink-0">
-              <BookOpen size={22} className="text-[#FFFFFF]" />
+            <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] flex items-center justify-center shrink-0">
+              <BookOpen size={22} className="text-[var(--text)]" />
             </div>
             <div>
               <h2
@@ -437,7 +445,7 @@ export function PracticePage() {
               <select
                 value={selectedUniversity}
                 onChange={(e) => setSelectedUniversity(e.target.value)}
-                className="w-full text-xs rounded-xl bg-[#0A0A0A] border border-[var(--border)] px-3 py-2 text-[var(--text)] focus:border-[var(--red)]"
+                className="w-full text-xs rounded-xl bg-[var(--surface)] border border-[var(--border)] px-3 py-2 text-[var(--text)] focus:border-[var(--accent)]"
               >
                 {UNIVERSITIES.map(u => (
                   <option key={u} value={u}>{u}</option>
@@ -469,8 +477,8 @@ export function PracticePage() {
         {/* Card 3: Weak-Chapter Drill */}
         <Card className="justify-between p-6">
           <div className="space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-[#1A1A1A] border border-[var(--border)] text-[#FFFFFF] flex items-center justify-center shrink-0">
-              <Target size={22} className="text-[var(--red)]" />
+            <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--accent)] flex items-center justify-center shrink-0">
+              <Target size={22} className="text-[var(--accent)]" />
             </div>
             <div>
               <h2
@@ -536,8 +544,8 @@ export function PracticePage() {
                 onClick={() => setSelectedSubject(subj)}
                 className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors cursor-pointer ${
                   selectedSubject === subj
-                    ? 'bg-[#FFFFFF] text-[#000000]'
-                    : 'bg-[#1A1A1A] text-[var(--muted)] hover:text-[var(--text)] border border-[var(--border)]'
+                    ? 'bg-[var(--text)] text-[var(--bg)]'
+                    : 'bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)] border border-[var(--border)]'
                 }`}
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
@@ -557,20 +565,20 @@ export function PracticePage() {
                 onClick={() => setSelectedChapter(c.name)}
                 className={`p-3.5 rounded-2xl border transition-colors cursor-pointer flex flex-col justify-between gap-2 ${
                   isSelected
-                    ? 'bg-[#1A1A1A] border-[var(--red)]'
-                    : 'bg-[#0A0A0A] border-[var(--border)] hover:bg-[#141414]'
+                    ? 'bg-[var(--surface-2)] border-[var(--accent)] shadow-sm'
+                    : 'bg-[var(--surface)] border-[var(--border)] hover:bg-[var(--surface-2)]'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-[var(--text)] truncate">
                     {c.name}
                   </span>
-                  <span className="font-doto text-xs font-bold text-[var(--red)]">
+                  <span className="font-doto text-xs font-bold text-[var(--accent)]">
                     {c.acc}%
                   </span>
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] text-[var(--muted)]">
+                <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
                   <span>{c.subject}</span>
                   {/* Accuracy dots */}
                   <div className="flex items-center gap-1">
@@ -578,7 +586,7 @@ export function PracticePage() {
                       <span
                         key={i}
                         className={`w-1.5 h-1.5 rounded-full ${
-                          i < c.dots ? 'bg-[var(--red)]' : 'bg-[#2A2A2A]'
+                          i < c.dots ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'
                         }`}
                       />
                     ))}

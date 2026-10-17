@@ -21,6 +21,8 @@ const PAKISTANI_UNIVERSITIES = [
   'AKU (Aga Khan University)',
 ];
 
+import { useTheme } from '@/hooks/useTheme';
+
 export function SettingsPage() {
   const { signOutUser } = useAuth();
   const { user, profile, loading: profileLoading, updateProfileData } = useUserProfile();
@@ -28,15 +30,9 @@ export function SettingsPage() {
   const [displayName, setDisplayName] = useState('');
   const [targetUniversity, setTargetUniversity] = useState('');
   const [targetTestDate, setTargetTestDate] = useState('');
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const { theme, setTheme: toggleTheme } = useTheme();
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
-
-  useEffect(() => {
-    // Read theme from html attribute or localStorage
-    const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    setTheme(current);
-  }, []);
 
   useEffect(() => {
     if (profile) {
@@ -45,12 +41,6 @@ export function SettingsPage() {
       setTargetTestDate(profile.targetTestDate || '');
     }
   }, [profile, user]);
-
-  const toggleTheme = (newTheme: 'dark' | 'light') => {
-    setTheme(newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
-    localStorage.setItem('boardly_theme', newTheme);
-  };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();

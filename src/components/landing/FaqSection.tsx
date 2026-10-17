@@ -56,11 +56,9 @@ export function FaqSection() {
               <div
                 key={faq.q}
                 onClick={() => toggle(idx)}
-                className="rounded-[16px] bg-[#111111] border border-[#2A2A2A] cursor-pointer transition-colors hover:bg-[#1A1A1A]"
+                className="rounded-[16px] bg-[var(--surface)] border border-[var(--border)] cursor-pointer transition-colors hover:bg-[var(--surface-2)]"
                 style={{
                   padding: '20px',
-                  backgroundColor: 'var(--card)',
-                  borderColor: 'var(--border)',
                 }}
               >
                 {/* Question row: Space Grotesk 16px, + / - toggle icon */}

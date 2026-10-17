@@ -16,7 +16,7 @@ const firebaseConfig = {
   storageBucket: process.env.VITE_FIREBASE_STORAGE_BUCKET || 'gen-lang-client-0365509316.firebasestorage.app',
   messagingSenderId: process.env.VITE_FIREBASE_MESSAGING_SENDER_ID || '556734245207',
   appId: process.env.VITE_FIREBASE_APP_ID || '1:556734245207:web:4797f3915b424209b03612',
-  firestoreDatabaseId: process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712',
+  firestoreDatabaseId: process.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || '(default)',
 };
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];

@@ -62,7 +62,7 @@ export function ForgotPasswordPage() {
 
         {sent ? (
           <div className="flex flex-col items-center text-center gap-4 py-3">
-            <div className="w-12 h-12 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-[var(--red)]">
+            <div className="w-12 h-12 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-[var(--accent)]">
               <CheckCircle2 size={24} />
             </div>
             <div>
@@ -80,20 +80,25 @@ export function ForgotPasswordPage() {
             {errorDetails && (
               <div
                 role="alert"
-                className="p-4 rounded-2xl bg-red-950/80 border-2 border-red-500 text-red-100 text-xs shadow-lg space-y-1.5"
+                style={{
+                  backgroundColor: 'rgba(215, 25, 33, 0.08)',
+                  borderColor: 'var(--accent)',
+                  color: 'var(--text)',
+                }}
+                className="p-4 rounded-2xl border text-xs shadow-sm space-y-1.5"
               >
-                <div className="flex items-center gap-2 font-bold text-white">
-                  <AlertCircle size={16} className="text-red-400 shrink-0" />
+                <div className="flex items-center gap-2 font-bold text-[var(--accent)]">
+                  <AlertCircle size={16} className="shrink-0" />
                   <span>Password Reset Failed</span>
                   {errorDetails.code && (
-                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-red-600/40 border border-red-500">
+                    <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)]">
                       {errorDetails.code}
                     </span>
                   )}
                 </div>
-                <p className="text-red-200 font-medium">{errorDetails.message}</p>
+                <p className="text-[var(--text)] font-medium">{errorDetails.message}</p>
                 {errorDetails.url && (
-                  <p className="font-mono text-[10px] text-red-300">Target: {errorDetails.url}</p>
+                  <p className="font-mono text-[10px] text-[var(--text-muted)]">Target: {errorDetails.url}</p>
                 )}
               </div>
             )}
@@ -118,7 +123,7 @@ export function ForgotPasswordPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="student@example.com"
                   autoComplete="email"
-                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)] transition-colors text-sm"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)] transition-colors text-sm"
                   style={{
                     height: '52px',
                     paddingLeft: '44px',

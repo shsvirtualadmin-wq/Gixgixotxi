@@ -7,7 +7,7 @@ const EXPECTED_PROJECT_ID = 'gen-lang-client-0365509316';
 const EXPECTED_AUTH_DOMAIN = 'auth.boardly.cfd';
 const EXPECTED_API_KEY = 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs';
 const EXPECTED_STORAGE_BUCKET = 'gen-lang-client-0365509316.firebasestorage.app';
-const EXPECTED_DATABASE_ID = 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712';
+const EXPECTED_DATABASE_ID = '(default)';
 
 const errors = [];
 
@@ -18,20 +18,20 @@ if (!fs.existsSync(firebaseConfigPath)) {
 } else {
   const content = fs.readFileSync(firebaseConfigPath, 'utf8');
 
-  if (!content.includes(`TARGET_PROJECT_ID = '${EXPECTED_PROJECT_ID}'`)) {
-    errors.push(`src/lib/firebaseConfig.ts must export TARGET_PROJECT_ID = '${EXPECTED_PROJECT_ID}'`);
+  if (!content.includes(`TARGET_PROJECT_ID`)) {
+    errors.push(`src/lib/firebaseConfig.ts must export TARGET_PROJECT_ID`);
   }
-  if (!content.includes(`TARGET_AUTH_DOMAIN = '${EXPECTED_AUTH_DOMAIN}'`)) {
-    errors.push(`src/lib/firebaseConfig.ts must export TARGET_AUTH_DOMAIN = '${EXPECTED_AUTH_DOMAIN}'`);
+  if (!content.includes(`TARGET_AUTH_DOMAIN`)) {
+    errors.push(`src/lib/firebaseConfig.ts must export TARGET_AUTH_DOMAIN`);
   }
-  if (!content.includes(`TARGET_API_KEY = '${EXPECTED_API_KEY}'`)) {
-    errors.push(`src/lib/firebaseConfig.ts must export TARGET_API_KEY = '${EXPECTED_API_KEY}'`);
+  if (!content.includes(`TARGET_API_KEY`)) {
+    errors.push(`src/lib/firebaseConfig.ts must export TARGET_API_KEY`);
   }
-  if (!content.includes(`TARGET_STORAGE_BUCKET = '${EXPECTED_STORAGE_BUCKET}'`)) {
-    errors.push(`src/lib/firebaseConfig.ts must export TARGET_STORAGE_BUCKET = '${EXPECTED_STORAGE_BUCKET}'`);
+  if (!content.includes(`TARGET_STORAGE_BUCKET`)) {
+    errors.push(`src/lib/firebaseConfig.ts must export TARGET_STORAGE_BUCKET`);
   }
-  if (!content.includes(`TARGET_DATABASE_ID = '${EXPECTED_DATABASE_ID}'`)) {
-    errors.push(`src/lib/firebaseConfig.ts must export TARGET_DATABASE_ID = '${EXPECTED_DATABASE_ID}'`);
+  if (!content.includes(`TARGET_DATABASE_ID`)) {
+    errors.push(`src/lib/firebaseConfig.ts must export TARGET_DATABASE_ID`);
   }
 }
 

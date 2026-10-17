@@ -1,26 +1,15 @@
-import { type ReactNode, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Sun, Moon, ArrowLeft } from 'lucide-react';
 import { Logo } from '@/components/ui/Logo';
+import { useTheme } from '@/hooks/useTheme';
 
 interface AuthLayoutProps {
   children: ReactNode;
 }
 
 export function AuthLayout({ children }: AuthLayoutProps) {
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    const stored = typeof window !== 'undefined' ? localStorage.getItem('boardly-theme') : 'dark';
-    return stored === 'light' ? 'light' : 'dark';
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('boardly-theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme(t => (t === 'dark' ? 'light' : 'dark'));
-  };
+  const { theme, toggle: toggleTheme } = useTheme();
 
   return (
     <div

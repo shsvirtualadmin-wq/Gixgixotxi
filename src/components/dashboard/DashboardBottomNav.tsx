@@ -20,8 +20,8 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { PillNav, type PillNavItem } from '@/components/ui/PillNav';
-import { logRedirect } from '@/utils/debugTracker';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { useTheme } from '@/hooks/useTheme';
 
 export function DashboardBottomNav() {
   const { isAdmin, signOutUser } = useAuth();
@@ -35,26 +35,7 @@ export function DashboardBottomNav() {
     setIsMenuOpen(false);
   }, [location.pathname]);
 
-  const handleNav = (target: string) => {
-    setIsMenuOpen(false);
-    logRedirect(location.pathname, target, 'DashboardBottomNav (menu click)');
-    navigate(target);
-  };
-
-  // Theme toggle state
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    const stored = typeof window !== 'undefined' ? localStorage.getItem('boardly-theme') : 'dark';
-    return stored === 'light' ? 'light' : 'dark';
-  });
-
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('boardly-theme', theme);
-  }, [theme]);
-
-  const toggleTheme = () => {
-    setTheme((t) => (t === 'dark' ? 'light' : 'dark'));
-  };
+  const { theme, toggle: toggleTheme } = useTheme();
 
   const handleSignOut = async () => {
     setIsMenuOpen(false);

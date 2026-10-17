@@ -1,10 +1,9 @@
 import { useState } from 'react';
-import { serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDocFromServer, serverTimestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { GlassCard } from '@/components/ui/GlassCard';
-import { SyncingIndicator } from '@/components/ui/SyncingIndicator';
-import { robustSaveUserProfile } from '@/lib/robustSave';
 import { AlertCircle } from 'lucide-react';
 
 interface SummaryData {
@@ -23,7 +22,6 @@ interface StepSummaryProps {
 export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
   const { user, updateLocalProfile } = useAuth();
   const [saving, setSaving] = useState(false);
-  const [syncNotice, setSyncNotice] = useState<string | null>(null);
   const [error, setError] = useState<{ code?: string; message: string; path?: string } | null>(null);
 
   const handleSave = async () => {
@@ -34,52 +32,74 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
     const path = `users/${user.uid}`;
     setSaving(true);
     setError(null);
-    setSyncNotice(null);
 
     const safePayload = {
-      targetExam: data.targetUniversity,
       targetUniversity: data.targetUniversity,
+      testDate: data.targetTestDate,
+      track: data.academicTrack,
+      subjects: data.subjects,
+      onboardingComplete: true,
+      updatedAt: serverTimestamp(),
+      // Backward compatibility aliases
+      targetExam: data.targetUniversity,
       targetTestDate: data.targetTestDate,
       academicTrack: data.academicTrack,
-      subjects: data.subjects,
       profileCompleted: true,
       onboardingCompleted: true,
       profileCompletedAt: serverTimestamp(),
       onboardingCompletedAt: serverTimestamp(),
     };
 
-    console.log(`[StepSummary] Starting safe save for ${path} with fields:`, safePayload);
+    console.log(`[StepSummary] Starting server-confirmed save for ${path}:`, safePayload);
 
     try {
-      // Robust save: setDoc with saveId, 8s server-verification fallback, and offline syncing tolerance
-      const result = await robustSaveUserProfile(user.uid, safePayload);
-      console.log(`[StepSummary] Save completed successfully (mode: ${result.mode}, saveId: ${result.saveId})`);
+      const docRef = doc(db, 'users', user.uid);
 
-      // Update in-memory profile immediately
-      updateLocalProfile({
-        targetExam: data.targetUniversity,
-        targetUniversity: data.targetUniversity,
-        targetTestDate: data.targetTestDate,
-        academicTrack: data.academicTrack,
-        subjects: data.subjects,
-        profileCompleted: true,
-        onboardingCompleted: true,
+      const writeAndVerify = async () => {
+        // Write to users/{uid} with merge: true
+        await setDoc(docRef, safePayload, { merge: true });
+
+        // Confirm write directly from server
+        const snap = await getDocFromServer(docRef);
+        if (!snap.exists()) {
+          throw new Error('Profile write could not be confirmed on the server.');
+        }
+        return snap.data();
+      };
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          const tErr = new Error('Database write timed out after 15 seconds. Please verify your connection.');
+          (tErr as { code?: string }).code = 'TIMEOUT_15S';
+          reject(tErr);
+        }, 15000);
       });
 
-      if (result.mode === 'syncing_offline') {
-        setSyncNotice('Saved on this device. Syncing to cloud in background...');
-        setTimeout(() => {
-          onComplete();
-        }, 1200);
-      } else {
-        onComplete();
-      }
+      const confirmedData = await Promise.race([writeAndVerify(), timeoutPromise]);
+      console.log(`[StepSummary] Server confirmed profile write at ${path}:`, confirmedData);
+
+      // Update local profile state
+      updateLocalProfile({
+        targetUniversity: data.targetUniversity,
+        targetExam: data.targetUniversity,
+        testDate: data.targetTestDate,
+        targetTestDate: data.targetTestDate,
+        track: data.academicTrack,
+        academicTrack: data.academicTrack,
+        subjects: data.subjects,
+        onboardingComplete: true,
+        onboardingCompleted: true,
+        profileCompleted: true,
+      });
+
+      setSaving(false);
+      onComplete();
     } catch (err: unknown) {
       setSaving(false);
       const fe = err as { code?: string; message?: string };
-      console.error(`[StepSummary] Save rejected at ${path}:`, err);
+      console.error(`[StepSummary] Save failed at ${path}:`, err);
       setError({
-        code: fe.code || 'SAVE_REJECTED',
+        code: fe.code || 'SAVE_FAILED',
         message: fe.message || 'Permission denied or network connection failed.',
         path,
       });
@@ -137,12 +157,6 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
         </div>
       )}
 
-      {syncNotice && (
-        <div style={{ display: 'flex', justifyContent: 'center' }}>
-          <SyncingIndicator isSyncing={true} message={syncNotice} />
-        </div>
-      )}
-
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', gap: 10 }}>
           <Button variant="secondary" size="lg" onClick={onBack} disabled={saving} style={{ flex: '0 0 auto' }}>Back</Button>
@@ -150,16 +164,6 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
             {error ? 'Retry Save' : 'Save & Go to Dashboard'}
           </Button>
         </div>
-        {error && (
-          <Button
-            variant="ghost"
-            size="md"
-            onClick={onComplete}
-            style={{ color: 'var(--text-muted)', fontSize: 13, textDecoration: 'underline' }}
-          >
-            Skip to Dashboard anyway →
-          </Button>
-        )}
       </div>
     </div>
   );

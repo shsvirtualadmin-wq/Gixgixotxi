@@ -74,7 +74,7 @@ export function CaptainApplyPage() {
 
       {submitted ? (
         <Card className="text-center items-center py-12 px-6">
-          <div className="w-14 h-14 rounded-full bg-[#1A1A1A] border border-[var(--border)] flex items-center justify-center text-[var(--red)] mb-2">
+          <div className="w-14 h-14 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-[var(--accent)] mb-2">
             <CheckCircle2 size={28} />
           </div>
 
@@ -115,7 +115,7 @@ export function CaptainApplyPage() {
           </div>
 
           {error && (
-            <div className="p-3 rounded-xl bg-[#1A1A1A] border border-[var(--red)] text-xs text-[#FFFFFF]">
+            <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--accent)] text-xs text-[var(--text)]">
               {error}
             </div>
           )}
@@ -130,7 +130,7 @@ export function CaptainApplyPage() {
                 required
                 value={studentName}
                 onChange={(e) => setStudentName(e.target.value)}
-                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
                 style={{ height: '52px' }}
               />
             </div>
@@ -145,7 +145,7 @@ export function CaptainApplyPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
                   style={{ height: '52px' }}
                 />
               </div>
@@ -160,7 +160,7 @@ export function CaptainApplyPage() {
                   placeholder="0300 1234567"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
                   style={{ height: '52px' }}
                 />
               </div>
@@ -177,7 +177,7 @@ export function CaptainApplyPage() {
                   placeholder="e.g. Government College University"
                   value={institution}
                   onChange={(e) => setInstitution(e.target.value)}
-                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
                   style={{ height: '52px' }}
                 />
               </div>
@@ -192,7 +192,7 @@ export function CaptainApplyPage() {
                   placeholder="e.g. Lahore / Rawalpindi"
                   value={city}
                   onChange={(e) => setCity(e.target.value)}
-                  className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
                   style={{ height: '52px' }}
                 />
               </div>
@@ -205,7 +205,7 @@ export function CaptainApplyPage() {
               <select
                 value={grade}
                 onChange={(e) => setGrade(e.target.value)}
-                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] px-4 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--red)]"
+                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--red)]"
                 style={{ height: '52px' }}
               >
                 <option value="HSSC-I (11th Class)">HSSC-I (11th Class)</option>
@@ -226,7 +226,7 @@ export function CaptainApplyPage() {
                 placeholder="Share your extracurricular experience, student reach, or vision for your college..."
                 value={statement}
                 onChange={(e) => setStatement(e.target.value)}
-                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] p-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
+                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] p-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)]"
               />
             </div>
 
