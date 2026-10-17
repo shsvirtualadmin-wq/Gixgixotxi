@@ -60,7 +60,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
       {/* Left side: Mobile brand logo */}
       <div className="flex items-center gap-3">
         <Link to="/dashboard" className="flex items-center md:hidden" aria-label="Boardly Dashboard">
-          <Logo height={44} />
+          <Logo size="navbar" />
         </Link>
       </div>
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
@@ -33,45 +33,62 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
     setSaving(true);
     setError(null);
 
-    // 1. Immediately update local state/context so the UI reflects completed onboarding
-    updateLocalProfile({
+    // 2. Safe fields only - NEVER write role, plan, isPremium, premium, admin, suspended
+    const safePayload = {
       targetUniversity: data.targetUniversity,
       targetTestDate: data.targetTestDate,
       academicTrack: data.academicTrack,
       subjects: data.subjects,
       onboardingCompleted: true,
-    });
+      onboardingCompletedAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    };
 
-    console.log(`[StepSummary] Issuing setDoc for ${path} with preferences:`, data);
+    console.log(`[StepSummary] Starting setDoc for ${path} with fields:`, safePayload);
 
-    // 2. Issue setDoc (Firestore queues it locally immediately) and let it confirm in background
-    setDoc(
-      doc(db, 'users', user.uid),
-      {
+    try {
+      // 3. Flow: setDoc, wait for it with a loading state on the button (up to 15 seconds)
+      const setDocPromise = setDoc(doc(db, 'users', user.uid), safePayload, { merge: true });
+
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          const timeoutErr = new Error('Save operation timed out after 15 seconds. Please check your network and retry.');
+          (timeoutErr as { code?: string }).code = 'TIMEOUT_15S';
+          reject(timeoutErr);
+        }, 15000);
+      });
+
+      await Promise.race([setDocPromise, timeoutPromise]);
+      console.log(`[StepSummary] Successfully confirmed setDoc on ${path}`);
+
+      // 7. Verify by re-reading the doc after save and logging the result
+      const verifySnap = await getDoc(doc(db, 'users', user.uid));
+      console.log(
+        `[StepSummary] Post-save re-read verification on ${path}:`,
+        verifySnap.exists() ? verifySnap.data() : 'NOT_FOUND'
+      );
+
+      // 4. Update the in-memory profile state (AuthContext) immediately so dashboard shows new values without a reload
+      updateLocalProfile({
         targetUniversity: data.targetUniversity,
         targetTestDate: data.targetTestDate,
         academicTrack: data.academicTrack,
         subjects: data.subjects,
         onboardingCompleted: true,
-        onboardingCompletedAt: serverTimestamp(),
-      },
-      { merge: true }
-    )
-      .then(() => {
-        console.log(`[StepSummary] Background Firestore write confirmed for ${path}`);
-      })
-      .catch((err: unknown) => {
-        const fe = err as { code?: string; message?: string };
-        console.error(`[Boardly Firestore Underlying Error at ${path}]: Code: ${fe.code} | Message: ${fe.message}`, err);
-        setError({
-          code: fe.code,
-          message: fe.message ?? 'Failed to save your preferences.',
-          path,
-        });
       });
 
-    // 3. Navigate to dashboard right away (no 6-second timeout block)
-    onComplete();
+      // Navigate to the dashboard
+      onComplete();
+    } catch (err: unknown) {
+      setSaving(false);
+      const fe = err as { code?: string; message?: string };
+      console.error(`[StepSummary] Onboarding save failed at ${path}:`, err);
+      setError({
+        code: fe.code || 'SAVE_FAILED',
+        message: fe.message || 'Failed to save your preferences.',
+        path,
+      });
+    }
   };
 
   const rows: { label: string; value: string }[] = [

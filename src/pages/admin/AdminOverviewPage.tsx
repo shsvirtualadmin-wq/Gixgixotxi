@@ -16,7 +16,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { getApp, firebaseConfig } from '@/lib/firebase';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
-import { FirestoreDebugPanel } from '@/components/debug/FirestoreDebugPanel';
 import {
   fetchAdminStats,
   seedBalancedMCQPool,
@@ -164,8 +163,7 @@ export function AdminOverviewPage() {
         retrying={loading}
       />
 
-      {/* Task A Step 1 Temporary Live Diagnostic Panel */}
-      <FirestoreDebugPanel />
+
 
       {/* ─── 6 STAT CARDS (2 cols mobile, 4 cols desktop) ───────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">

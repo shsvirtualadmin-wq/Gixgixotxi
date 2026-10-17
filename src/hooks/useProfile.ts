@@ -49,3 +49,5 @@ export function useProfile(uid: string | null): ProfileState {
 
   return state;
 }
+
+export { useUserProfile } from './useUserProfile';

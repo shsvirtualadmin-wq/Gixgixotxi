@@ -157,10 +157,10 @@ export function AdminLayout() {
       </aside>
 
       {/* ─── MOBILE TOP BAR ─────────────────────────────────────────────────── */}
-      <header className="md:hidden sticky top-0 z-30 h-14 bg-[var(--bg)] border-b border-[var(--border)] px-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <header className="md:hidden sticky top-0 z-30 h-16 bg-[var(--bg)] border-b border-[var(--border)] px-4 flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
           <Link to="/admin" className="flex items-center" aria-label="Boardly Admin">
-            <Logo height={40} />
+            <Logo size="admin" />
           </Link>
           <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
             Admin

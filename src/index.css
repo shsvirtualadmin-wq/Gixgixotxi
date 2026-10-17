@@ -103,6 +103,16 @@
   filter: invert(1);
 }
 
+/* Maintain crisp white logo inside dark surfaces (e.g. Navbar floating pill, Onboarding) */
+[data-theme="light"] .bg-black .boardly-brand-logo,
+[data-theme="light"] .bg-neutral-900 .boardly-brand-logo,
+[data-theme="light"] .bg-neutral-950 .boardly-brand-logo,
+[data-theme="light"] [class*="bg-neutral-900"] .boardly-brand-logo,
+[data-theme="light"] [class*="bg-neutral-950"] .boardly-brand-logo,
+[data-theme="light"] nav[aria-label="Main Navigation"] .boardly-brand-logo {
+  filter: none;
+}
+
 /* ===== BASE LAYER (Ensures Tailwind utilities are NEVER overridden) ===== */
 @layer base {
   *, *::before, *::after {

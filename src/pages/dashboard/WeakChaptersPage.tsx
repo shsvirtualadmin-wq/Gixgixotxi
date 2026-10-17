@@ -24,14 +24,15 @@ export function WeakChaptersPage() {
 
   const [stats, setStats] = useState<ChapterStat[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<{ code?: string; message: string; link?: string } | null>(null);
+  const [pageError, setPageError] = useState<{ code?: string; message: string; link?: string } | null>(null);
+  const [launchError, setLaunchError] = useState<{ code?: string; message: string; link?: string } | null>(null);
   const [launchingChapter, setLaunchingChapter] = useState<string | null>(null);
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
 
   const loadStats = useCallback(async () => {
     if (!user) return;
     setLoading(true);
-    setError(null);
+    setPageError(null);
     try {
       const snap = await getDocs(collection(db, 'users', user.uid, 'chapterStats'));
       const items = snap.docs.map((d) => {
@@ -54,7 +55,7 @@ export function WeakChaptersPage() {
     } catch (err: unknown) {
       console.error('[WeakChaptersPage] Error:', err);
       const msg = err instanceof Error ? err.message : 'Failed to load chapter stats';
-      setError({ message: msg });
+      setPageError({ message: msg });
     } finally {
       setLoading(false);
     }
@@ -66,15 +67,19 @@ export function WeakChaptersPage() {
 
   const handleDrillChapter = async (item: ChapterStat) => {
     if (!user) {
-      setError({ code: 'AUTH_REQUIRED', message: 'Please sign in to start a chapter drill.' });
+      setLaunchError({ code: 'AUTH_REQUIRED', message: 'Please sign in to start a chapter drill.' });
       return;
     }
     setLaunchingChapter(item.chapter);
-    setError(null);
+    setLaunchError(null);
 
     // ─── STEP (a): Button Clicked ───────────────────────────────────────────
     const stepAStart = Date.now();
-    console.log(`[WeakChaptersPage] (a) Button clicked to drill chapter: "${item.chapter}" (${item.subject})`);
+    console.log(`[WeakChaptersPage] (a) Button clicked to drill chapter: "${item.chapter}" (${item.subject})`, {
+      chapter: item.chapter,
+      subject: item.subject,
+      timestamp: new Date().toISOString(),
+    });
     setLaunchStatus(`(a) Starting drill setup for "${item.chapter}"...`);
 
     // ─── STEP (b): Questions Query & Verification ───────────────────────────
@@ -114,7 +119,7 @@ export function WeakChaptersPage() {
 
       const timeoutPromise = new Promise<never>((_, reject) => {
         setTimeout(() => {
-          const timeoutErr = new Error('Questions query timed out after 15 seconds.');
+          const timeoutErr = new Error('Questions query timed out after 15 seconds. Please check your Firestore connection.');
           (timeoutErr as { code?: string }).code = 'QUERY_TIMEOUT';
           reject(timeoutErr);
         }, 15000);
@@ -131,7 +136,7 @@ export function WeakChaptersPage() {
       const errCode = (qErr as { code?: string })?.code || 'QUESTIONS_QUERY_ERROR';
       const linkMatch = errMsg.match(/https:\/\/console\.firebase\.google\.com[^\s)]+/);
 
-      setError({
+      setLaunchError({
         code: errCode,
         message: errMsg,
         link: linkMatch ? linkMatch[0] : undefined,
@@ -143,7 +148,7 @@ export function WeakChaptersPage() {
 
     if (questionsCount === 0) {
       console.warn('[WeakChaptersPage] (b) No questions found in Firestore pool.');
-      setError({
+      setLaunchError({
         code: 'NO_QUESTIONS',
         message: 'No questions available yet. Please check back soon.',
       });
@@ -218,14 +223,48 @@ export function WeakChaptersPage() {
         </div>
       )}
 
+      {/* Real error message banner with code and index link */}
+      {launchError && (
+        <div className="p-4 rounded-2xl bg-red-950/70 border border-[var(--red)] text-red-200 text-xs sm:text-sm flex flex-col gap-2">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="font-bold flex items-center gap-2 text-red-100">
+                <span>Error {launchError.code ? `[${launchError.code}]` : ''}:</span>
+              </div>
+              <p className="mt-1 text-red-200">{launchError.message}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setLaunchError(null)}
+              className="text-xs font-semibold underline hover:text-white shrink-0 cursor-pointer"
+            >
+              Dismiss
+            </button>
+          </div>
+          {launchError.link && (
+            <div className="pt-2 border-t border-red-800/60 flex items-center gap-2">
+              <span className="text-xs text-red-300">Missing index:</span>
+              <a
+                href={launchError.link}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-bold text-white underline hover:text-red-200"
+              >
+                Create Firestore Index in Firebase Console &rarr;
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Skeleton height={100} />
           <Skeleton height={100} />
           <Skeleton height={100} />
         </div>
-      ) : error ? (
-        <ErrorState title="Could not load chapter analytics" error={error} onRetry={loadStats} />
+      ) : pageError ? (
+        <ErrorState title="Could not load chapter analytics" error={pageError} onRetry={loadStats} />
       ) : stats.length === 0 ? (
         <EmptyState
           icon={<TrendingDown size={40} className="text-[#D71921]" />}

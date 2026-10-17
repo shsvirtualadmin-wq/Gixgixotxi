@@ -42,6 +42,13 @@ export function PracticePage() {
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
   const [launchError, setLaunchError] = useState<{ code?: string; message: string; link?: string } | null>(null);
   const [todayAttempts, setTodayAttempts] = useState(0);
+  const errorBannerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (launchError && errorBannerRef.current) {
+      errorBannerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [launchError]);
 
   const isPro = profile?.plan === 'pro' || profile?.isPremium;
   const freeDailyLimit = 10;
@@ -309,7 +316,7 @@ export function PracticePage() {
 
       {/* ── Real error message banner with code and index link ── */}
       {launchError && (
-        <div className="p-4 rounded-2xl bg-red-950/70 border border-[var(--red)] text-red-200 text-xs sm:text-sm flex flex-col gap-2">
+        <div ref={errorBannerRef} className="p-4 rounded-2xl bg-red-950/70 border border-[var(--red)] text-red-200 text-xs sm:text-sm flex flex-col gap-2">
           <div className="flex items-start justify-between gap-3">
             <div>
               <div className="font-bold flex items-center gap-2 text-red-100">

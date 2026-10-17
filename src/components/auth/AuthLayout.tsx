@@ -30,7 +30,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
       {/* Slim Top Bar: Boardly Logo on Left, Back to home and Theme Toggle on Right */}
       <header className="w-full h-16 border-b border-[var(--border)] px-4 sm:px-8 flex items-center justify-between shrink-0">
         <Link to="/" className="flex items-center" aria-label="Boardly Home">
-          <Logo height={46} />
+          <Logo size="navbar" />
         </Link>
 
         <div className="flex items-center gap-4">

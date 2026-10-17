@@ -38,17 +38,17 @@ export function Logo({
   } else if (typeof size === 'number') {
     inlineHeight = `${size}px`;
   } else if (size === 'navbar') {
-    // 44-52px on mobile, 56-64px on desktop per specification
-    resolvedClass = `h-[46px] sm:h-[58px] ${className}`.trim();
+    // 44-52px on mobile (48px), 56-64px on desktop (60px) per specification
+    resolvedClass = `h-[48px] sm:h-[60px] ${className}`.trim();
   } else if (size === 'footer') {
-    // 56-72px for footer per specification
-    resolvedClass = `h-[60px] sm:h-[66px] ${className}`.trim();
+    // 56-72px for footer (62px mobile, 68px desktop) per specification
+    resolvedClass = `h-[62px] sm:h-[68px] ${className}`.trim();
   } else if (size === 'sidebar') {
-    resolvedClass = `h-[46px] ${className}`.trim();
+    resolvedClass = `h-[48px] ${className}`.trim();
   } else if (size === 'admin') {
-    resolvedClass = `h-[42px] sm:h-[46px] ${className}`.trim();
+    resolvedClass = `h-[44px] sm:h-[48px] ${className}`.trim();
   } else if (size === 'onboarding') {
-    resolvedClass = `h-[50px] sm:h-[56px] ${className}`.trim();
+    resolvedClass = `h-[54px] sm:h-[60px] ${className}`.trim();
   } else if (typeof size === 'string') {
     inlineHeight = size;
   }
