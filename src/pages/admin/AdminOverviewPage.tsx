@@ -74,7 +74,7 @@ export function AdminOverviewPage() {
       });
       setStats({
         totalUsers: 0,
-        totalQuestions: 500,
+        totalQuestions: 0,
         totalAttempts: 0,
         pendingCaptains: 0,
         pendingCrew: 0,

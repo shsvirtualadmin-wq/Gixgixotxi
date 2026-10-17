@@ -15,7 +15,6 @@ import {
 import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import type { AttemptDoc, AttemptQuestion, Question } from '@/types/index';
-import { BALANCED_500_QUESTIONS } from '@/data/seedBalancedPool';
 
 /**
  * Loads an existing attempt document by ID.
@@ -84,16 +83,11 @@ export async function generateTestBatch(params: {
     }
   }
 
-  // Graceful fallback from client-side BALANCED_500_QUESTIONS if API route failed
-  console.warn('[testEngine] generateTestBatch falling back to client pool:', lastError);
-  const excludeSet = new Set(excludeIds);
-  const available = BALANCED_500_QUESTIONS.filter((q) => !excludeSet.has(q.id));
-  const pool = available.length >= count ? available : BALANCED_500_QUESTIONS;
-  const shuffled = [...pool].sort(() => 0.5 - Math.random()).slice(0, count);
-
+  // Clean return when API route fails or returns no questions (per Task B)
+  console.warn('[testEngine] generateTestBatch returned no questions:', lastError);
   return {
-    questions: shuffled.map((q) => normalizeQuestionDoc(q.id, q)),
-    hasMore: pool.length > count,
+    questions: [],
+    hasMore: false,
   };
 }
 
@@ -192,29 +186,7 @@ export async function fetchQuestionsForAttempt(attempt: AttemptDoc): Promise<Att
     }
   }
 
-  // 3. Fallback from balanced pool if database returned fewer than needed
-  if (questionsMap.size < needed) {
-    const matchingSubject =
-      attempt.subject && attempt.subject !== 'Any' && attempt.subject !== 'General'
-        ? BALANCED_500_QUESTIONS.filter(
-            (q) => q.subject?.toLowerCase() === attempt.subject?.toLowerCase()
-          )
-        : BALANCED_500_QUESTIONS;
-
-    const pool =
-      matchingSubject.length >= needed - questionsMap.size
-        ? matchingSubject
-        : BALANCED_500_QUESTIONS;
-    const shuffledPool = shuffle(pool);
-
-    for (const q of shuffledPool) {
-      if (questionsMap.size >= needed) break;
-      if (!questionsMap.has(q.id)) {
-        questionsMap.set(q.id, normalizeQuestionDoc(q.id, q));
-      }
-    }
-  }
-
+  // Questions come strictly from Firestore. If fewer questions exist, return available questions.
   const all = Array.from(questionsMap.values());
   return shuffle(all).slice(0, needed);
 }

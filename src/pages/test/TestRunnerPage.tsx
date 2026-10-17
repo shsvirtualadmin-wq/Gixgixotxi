@@ -62,6 +62,16 @@ export function TestRunnerPage() {
         // If status is preparing or no questions attached, fetch and start
         if (currentAttempt.status === 'preparing' || testQuestions.length === 0) {
           testQuestions = await fetchQuestionsForAttempt(currentAttempt);
+          if (testQuestions.length === 0) {
+            setAttempt(currentAttempt);
+            setQuestions([]);
+            setError({
+              code: 'NO_QUESTIONS',
+              message: 'No questions available yet. Please select another subject or check back later.',
+            });
+            setLoading(false);
+            return;
+          }
           const { endsAt } = await startAttempt(
             attemptId!,
             testQuestions,
@@ -281,11 +291,16 @@ export function TestRunnerPage() {
   }
 
   if (error || !attempt || questions.length === 0) {
+    const isNoQuestions = (!error || error.code === 'NO_QUESTIONS') && attempt && questions.length === 0;
     return (
       <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
         <ErrorState
-          title="Could not load practice session"
-          error={error}
+          title={isNoQuestions ? 'No questions available yet' : 'Could not load practice session'}
+          error={
+            isNoQuestions
+              ? { message: 'No questions have been published for this test track yet. Please check back soon or select another subject.' }
+              : error
+          }
           path={error?.path}
           onRetry={() => window.location.reload()}
           onBack={() => navigate('/dashboard/practice')}

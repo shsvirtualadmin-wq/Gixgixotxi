@@ -29,7 +29,6 @@ import type {
   CaptainApplication,
   CrewApplication,
 } from '@/types';
-import { BALANCED_500_QUESTIONS } from '@/data/seedBalancedPool';
 
 // ─── DIAGNOSTIC FIRESTORE ERROR ──────────────────────────────────────────────
 export class AdminFirestoreError extends Error {
@@ -218,36 +217,11 @@ export async function fetchAdminStats(): Promise<AdminStats> {
 
 // ─── 500+ BALANCED MCQ POOL SEEDER ───────────────────────────────────────────
 export async function seedBalancedMCQPool(
-  adminEmail: string,
-  onProgress?: (done: number, total: number) => void
+  _adminEmail: string,
+  _onProgress?: (done: number, total: number) => void
 ): Promise<{ seeded: number; total: number }> {
-  const total = BALANCED_500_QUESTIONS.length;
-  const batchSize = 50;
-  let done = 0;
-
-  for (let i = 0; i < total; i += batchSize) {
-    const chunk = BALANCED_500_QUESTIONS.slice(i, i + batchSize);
-    const batch = writeBatch(db);
-
-    for (const q of chunk) {
-      const ref = doc(db, 'questions', q.id);
-      batch.set(ref, q, { merge: true });
-    }
-
-    await batch.commit();
-    done += chunk.length;
-    if (onProgress) {
-      onProgress(done, total);
-    }
-  }
-
-  await logAdminAction(
-    adminEmail,
-    'seed_balanced_mcq_pool',
-    { seededCount: total, sampleIds: ['seed_balanced_001', 'seed_balanced_500'] }
-  );
-
-  return { seeded: done, total };
+  // Disabled per Task B - questions are loaded dynamically from Firestore without hardcoded seeds
+  return { seeded: 0, total: 0 };
 }
 
 // ─── USER MANAGEMENT & OVERRIDES ─────────────────────────────────────────────
