@@ -152,13 +152,13 @@ export function FirestoreDebugPanel() {
       });
     }
 
-    // F) Test setDoc with { debugPing: true } merged into user's own doc
+    // F) Test setDoc with { debugPing: true } merged into user's own doc (with 15s timeout)
     if (auth.currentUser?.uid) {
       const uid = auth.currentUser.uid;
       setSetDocTest({ status: 'running' });
       const tSet0 = performance.now();
       try {
-        await setDoc(
+        const setDocPromise = setDoc(
           doc(db, 'users', uid),
           {
             debugPing: true,
@@ -166,6 +166,16 @@ export function FirestoreDebugPanel() {
           },
           { merge: true }
         );
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => {
+            const err = new Error('setDoc write took over 15s (queued in background)');
+            (err as { code?: string }).code = 'TIMEOUT_15S';
+            reject(err);
+          }, 15000);
+        });
+
+        await Promise.race([setDocPromise, timeoutPromise]);
         const durationMs = Math.round(performance.now() - tSet0);
         setSetDocTest({
           status: 'success',
@@ -310,7 +320,7 @@ export function FirestoreDebugPanel() {
             </div>
             <div className="flex items-center justify-between">
               <span className="text-gray-400">Transport:</span>
-              <span className="text-cyan-300 font-bold">AutoDetectLongPolling</span>
+              <span className="text-cyan-300 font-bold">ForceLongPolling</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-gray-400">Session Status:</span>

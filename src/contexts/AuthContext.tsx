@@ -258,6 +258,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
+        // Warm-up read of config/{any} right after sign-in so the first connection is opened early
+        getDoc(doc(db, 'config', 'app')).catch(() => {});
+
         loadProfile(firebaseUser).catch((err) => {
           console.warn('[Boardly Auth] onAuthStateChanged profile load error:', err);
         });

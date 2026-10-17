@@ -42,55 +42,36 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
       onboardingCompleted: true,
     });
 
-    try {
-      // 2. Wrap Firestore write with a 6-second timeout fallback while capturing real errors immediately
-      let realError: { code?: string; message?: string } | null = null;
-      const writePromise = setDoc(
-        doc(db, 'users', user.uid),
-        {
-          targetUniversity: data.targetUniversity,
-          targetTestDate: data.targetTestDate,
-          academicTrack: data.academicTrack,
-          subjects: data.subjects,
-          onboardingCompleted: true,
-          onboardingCompletedAt: serverTimestamp(),
-        },
-        { merge: true }
-      ).catch((err: unknown) => {
+    console.log(`[StepSummary] Issuing setDoc for ${path} with preferences:`, data);
+
+    // 2. Issue setDoc (Firestore queues it locally immediately) and let it confirm in background
+    setDoc(
+      doc(db, 'users', user.uid),
+      {
+        targetUniversity: data.targetUniversity,
+        targetTestDate: data.targetTestDate,
+        academicTrack: data.academicTrack,
+        subjects: data.subjects,
+        onboardingCompleted: true,
+        onboardingCompletedAt: serverTimestamp(),
+      },
+      { merge: true }
+    )
+      .then(() => {
+        console.log(`[StepSummary] Background Firestore write confirmed for ${path}`);
+      })
+      .catch((err: unknown) => {
         const fe = err as { code?: string; message?: string };
-        realError = { code: fe.code, message: fe.message };
-        console.error(`[Boardly Firestore Underlying Error at ${path}]:`, err);
-        throw err;
+        console.error(`[Boardly Firestore Underlying Error at ${path}]: Code: ${fe.code} | Message: ${fe.message}`, err);
+        setError({
+          code: fe.code,
+          message: fe.message ?? 'Failed to save your preferences.',
+          path,
+        });
       });
 
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(
-          () =>
-            reject(
-              new Error(
-                realError
-                  ? `Firestore Error (${realError.code}): ${realError.message}`
-                  : 'Save operation timed out after 6 seconds. Proceeding to dashboard.'
-              )
-            ),
-          6000
-        )
-      );
-
-      await Promise.race([writePromise, timeoutPromise]);
-      onComplete();
-    } catch (err: unknown) {
-      const fe = err as { code?: string; message?: string };
-      console.error(`[Boardly] Onboarding save failed at ${path}:`, err);
-      setError({
-        code: fe.code,
-        message: fe.message ?? 'Failed to save your preferences.',
-        path,
-      });
-    } finally {
-      // 3. Stop loading spinner in finally block
-      setSaving(false);
-    }
+    // 3. Navigate to dashboard right away (no 6-second timeout block)
+    onComplete();
   };
 
   const rows: { label: string; value: string }[] = [
