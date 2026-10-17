@@ -4,7 +4,7 @@ import path from 'path';
 console.log('[check-firebase-config] Running Firebase project configuration validation...');
 
 const EXPECTED_PROJECT_ID = 'gen-lang-client-0365509316';
-const EXPECTED_AUTH_DOMAIN = 'gen-lang-client-0365509316.firebaseapp.com';
+const EXPECTED_AUTH_DOMAIN = 'gen-lang-client-0366509316.firebaseapp.com';
 const EXPECTED_API_KEY = 'AIzaSyDNnUtJ0s0ZlNUvs-SVC0i5MaQLV8F3Uqs';
 const EXPECTED_STORAGE_BUCKET = 'gen-lang-client-0365509316.firebasestorage.app';
 const EXPECTED_DATABASE_ID = 'ai-studio-25287ca6-33a1-49f8-8867-70061120a712';

@@ -1,7 +1,7 @@
 # PROJECT RULES & PERMANENT AUTH GUARDRAILS
 
 **Target Project:** `gen-lang-client-0365509316`  
-**Target Auth Domain:** `gen-lang-client-0365509316.firebaseapp.com`  
+**Target Auth Domain:** `gen-lang-client-0366509316.firebaseapp.com`  
 **Firestore Named Database ID:** `ai-studio-25287ca6-33a1-49f8-8867-70061120a712`
 
 ---
