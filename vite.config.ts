@@ -577,6 +577,19 @@ RULES:
         res.writeHead(405, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Method not allowed' }));
       });
+
+      // ─── CREW API (LEADERBOARDS, MODERATION, PAYMENTS) ───────────────────
+      server.middlewares.use('/api/crews', async (req: any, res: any) => {
+        console.log('[DEBUG] /api/crews hit! url:', req.url);
+        try {
+          const { handleCrewApi } = await import('./src/server/crewApiHandler.ts');
+          await handleCrewApi(req, res);
+        } catch (err: any) {
+          console.error('[ViteMiddleware] Crew API error:', err);
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: err?.message || 'Server error' }));
+        }
+      });
     },
   };
 }

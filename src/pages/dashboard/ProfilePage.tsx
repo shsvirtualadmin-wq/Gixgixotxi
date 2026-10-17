@@ -14,7 +14,10 @@ import {
   Shield,
   ArrowRight,
   RefreshCw,
+  X,
 } from 'lucide-react';
+import { MatrixAvatar, AvatarPicker } from '@/lib/matrixAvatars';
+import { getDefaultAvatar, type MatrixAvatarVariant } from '@/lib/matrixAvatarsData';
 
 export function ProfilePage() {
   const { user, isAdmin } = useAuth();
@@ -36,6 +39,12 @@ export function ProfilePage() {
   const [displayNameInput, setDisplayNameInput] = useState('');
   const [isSavingName, setIsSavingName] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [isPickingAvatar, setIsPickingAvatar] = useState(false);
+  const [isSavingAvatar, setIsSavingAvatar] = useState(false);
+
+  const defaultAvatar = getDefaultAvatar(user?.uid);
+  const currentAvatarKey = profile?.avatarKey || defaultAvatar.key;
+  const currentAvatarVariant = ((profile?.avatarVariant as MatrixAvatarVariant) || defaultAvatar.variant);
 
   const effectivePlan = useEffectivePlan();
   const isPro = effectivePlan.isUnlimited;
@@ -45,7 +54,6 @@ export function ProfilePage() {
     profile?.name ||
     user?.displayName ||
     (user?.email ? user.email.split('@')[0] : 'Student');
-  const userInitial = (rawName[0] || 'S').toUpperCase();
 
   const handleStartEditName = () => {
     setDisplayNameInput(rawName);
@@ -115,8 +123,22 @@ export function ProfilePage() {
       <Card className="p-6">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-2xl font-bold font-heading text-[var(--text)] text-white shadow-inner shrink-0">
-              {userInitial}
+            <div className="relative group shrink-0">
+              <MatrixAvatar
+                avatarKey={profile?.avatarKey}
+                variant={profile?.avatarVariant}
+                seed={user?.uid}
+                size={64}
+                className="cursor-pointer shadow-md hover:ring-2 hover:ring-[var(--red)] transition-all"
+              />
+              <button
+                type="button"
+                onClick={() => setIsPickingAvatar(true)}
+                className="absolute -bottom-1 -right-1 bg-[#D71921] hover:bg-[#b0131a] text-white p-1 rounded-full text-[10px] shadow-sm transition-transform hover:scale-110"
+                title="Change matrix avatar"
+              >
+                <Edit3 size={11} />
+              </button>
             </div>
             <div>
               {isEditingName ? (
@@ -404,6 +426,57 @@ export function ProfilePage() {
             Open Admin Portal
           </Button>
         </Card>
+      )}
+
+      {/* ── Matrix Avatar Picker Modal ── */}
+      {isPickingAvatar && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0A0A0A] border border-[rgba(255,255,255,0.15)] rounded-2xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-white font-heading">Pick Your Dot-Matrix Avatar</h3>
+                <p className="text-xs text-[rgba(255,255,255,0.7)]">Select a custom Nothing OS matrix icon &amp; color variant</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPickingAvatar(false)}
+                className="p-1 rounded-lg text-[rgba(255,255,255,0.6)] hover:text-white hover:bg-white/10"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <AvatarPicker
+              selectedKey={currentAvatarKey}
+              selectedVariant={currentAvatarVariant}
+              onSelect={async (key, variant) => {
+                setIsSavingAvatar(true);
+                try {
+                  await updateProfileData({
+                    avatarKey: key,
+                    avatarVariant: variant,
+                  });
+                  setIsPickingAvatar(false);
+                } catch (err) {
+                  console.error('Failed to update avatar:', err);
+                } finally {
+                  setIsSavingAvatar(false);
+                }
+              }}
+            />
+
+            <div className="flex justify-end pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsPickingAvatar(false)}
+                disabled={isSavingAvatar}
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -46,12 +46,20 @@ export interface PlanResolverInput {
   planExpiresAt?: unknown;
   premiumExpiresAt?: unknown;
   crew?: {
+    tier?: 'free' | 'paid' | string;
+    paid_until?: string | null;
     hasProMember?: boolean;
     isProShared?: boolean;
     name?: string;
     members?: Array<{ uid?: string; isPro?: boolean; plan?: string }>;
   } | null;
   inCrew?: boolean;
+}
+
+export function isCrewPaidActive(paidUntil?: string | null): boolean {
+  if (!paidUntil) return false;
+  const d = new Date(paidUntil);
+  return !isNaN(d.getTime()) && d.getTime() > Date.now();
 }
 
 export function resolveEffectivePlan(input: PlanResolverInput): EffectivePlanResult {
@@ -113,19 +121,16 @@ export function resolveEffectivePlan(input: PlanResolverInput): EffectivePlanRes
   // 3. Crew shared Pro check (only if user is actually in crew)
   if (input.inCrew && input.crew) {
     const crewData = input.crew;
-    // Sharing active check (defaults to true if isProShared not explicitly false)
-    const sharingEnabled = crewData.isProShared !== false;
+    const isPaidLargeCrew = crewData.tier === 'paid' && isCrewPaidActive(crewData.paid_until);
+    const legacySharing =
+      crewData.isProShared !== false &&
+      (crewData.hasProMember === true ||
+        (Array.isArray(crewData.members) &&
+          crewData.members.some(
+            (m) => (m.isPro === true || m.plan === 'pro') && (!input.uid || m.uid !== input.uid || isPrem)
+          )));
 
-    const crewHasPro = Boolean(
-      sharingEnabled &&
-        (crewData.hasProMember === true ||
-          (Array.isArray(crewData.members) &&
-            crewData.members.some(
-              (m) => (m.isPro === true || m.plan === 'pro') && (!input.uid || m.uid !== input.uid || isPrem)
-            )))
-    );
-
-    if (crewHasPro) {
+    if (isPaidLargeCrew || legacySharing) {
       return {
         isPro: true,
         isUnlimited: true,

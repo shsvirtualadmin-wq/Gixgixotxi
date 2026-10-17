@@ -53,7 +53,7 @@ export const db = (() => {
   }
 })();
 
-if (import.meta.env.DEV) {
+if (typeof import.meta !== 'undefined' && import.meta.env?.DEV) {
   console.log(`USING DATABASE: ${TARGET_DATABASE_ID}`);
 
   if (typeof window !== 'undefined') {

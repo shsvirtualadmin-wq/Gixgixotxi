@@ -31,6 +31,8 @@ export interface UserProfileHookResult {
     subjects?: string[];
     profileCompleted?: boolean;
     onboardingCompleted?: boolean;
+    avatarKey?: string | null;
+    avatarVariant?: string | null;
   }) => Promise<void>;
   retryFetch: () => void;
 }
@@ -263,6 +265,12 @@ export function useUserProfile(): UserProfileHookResult {
       }
       if (updates.photoURL !== undefined) {
         safePayload.photoURL = updates.photoURL;
+      }
+      if (updates.avatarKey !== undefined) {
+        safePayload.avatarKey = updates.avatarKey;
+      }
+      if (updates.avatarVariant !== undefined) {
+        safePayload.avatarVariant = updates.avatarVariant;
       }
       const resolvedExam = updates.targetExam || updates.targetUniversity;
       if (resolvedExam !== undefined) {

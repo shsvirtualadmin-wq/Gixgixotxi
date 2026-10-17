@@ -36,6 +36,8 @@ export interface UserProfile {
   crewReferralCode?: string;
   streakFreezes?: number;
   streakFreezeActive?: boolean;
+  avatarKey?: string | null;
+  avatarVariant?: string | null;
 }
 
 export interface PlaceholderReview {
