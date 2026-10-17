@@ -33,7 +33,7 @@ function renderMathSegment(mathStr: string, isBlock: boolean): string {
   }
 }
 
-export function parseAndRenderMath(rawText: string): string {
+function parseAndRenderMath(rawText: string): string {
   if (!rawText || typeof rawText !== 'string') return '';
 
   const patterns = [

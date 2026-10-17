@@ -409,12 +409,14 @@ export function QuestionCard({
 
                 {/* Reason options */}
                 <div className="flex flex-col gap-2 font-mono text-xs">
-                  {[
-                    { id: 'wrong_key', label: 'Wrong answer key (correct choice is incorrect)' },
-                    { id: 'broken_math', label: 'Broken math formula / LaTeX compilation error' },
-                    { id: 'unclear', label: 'Unclear wording, ambiguity, or syllabus mismatch' },
-                    { id: 'other', label: 'Other typo or technical issue' },
-                  ].map((r) => (
+                  {(
+                    [
+                      { id: 'wrong_key', label: 'Wrong answer key (correct choice is incorrect)' },
+                      { id: 'broken_math', label: 'Broken math formula / LaTeX compilation error' },
+                      { id: 'unclear', label: 'Unclear wording, ambiguity, or syllabus mismatch' },
+                      { id: 'other', label: 'Other typo or technical issue' },
+                    ] as const
+                  ).map((r) => (
                     <label
                       key={r.id}
                       className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-colors ${
@@ -427,7 +429,7 @@ export function QuestionCard({
                         type="radio"
                         name="reportReason"
                         checked={reportReason === r.id}
-                        onChange={() => setReportReason(r.id as any)}
+                        onChange={() => setReportReason(r.id)}
                         className="accent-[#D71921]"
                       />
                       <span>{r.label}</span>

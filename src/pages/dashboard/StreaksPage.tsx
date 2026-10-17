@@ -2,13 +2,12 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { collection, getDocs, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
-import { usePKTDate, getPKTDateKey } from '@/hooks/usePKTDate';
+import { usePKTDate } from '@/hooks/usePKTDate';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { DotRowStreak } from '@/components/ui/DotRowStreak';
 import { DottedRingProgress } from '@/components/ui/DottedRingProgress';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import {
   Flame,
   Calendar,
@@ -18,11 +17,8 @@ import {
   Snowflake,
   Check,
   Copy,
-  Clock,
   ArrowRight,
-  Info,
   X,
-  Sparkles,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 

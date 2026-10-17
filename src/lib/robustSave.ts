@@ -3,10 +3,27 @@ import {
   setDoc,
   serverTimestamp,
   getDocFromServer,
-  onSnapshot,
+  runTransaction,
+  type DocumentReference,
+  type Transaction,
+  type SetOptions,
+  type DocumentData,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { debugTracker } from '@/utils/debugTracker';
+
+export async function robustSaveDoc<AppModelType = DocumentData, DbModelType extends DocumentData = DocumentData>(
+  docRef: DocumentReference<AppModelType, DbModelType>,
+  data: Partial<AppModelType> | Record<string, unknown>,
+  options: SetOptions = { merge: true }
+): Promise<void> {
+  await setDoc(docRef, data as Partial<AppModelType>, options);
+}
+
+export async function robustTransaction<T>(
+  updateFunction: (transaction: Transaction) => Promise<T>
+): Promise<T> {
+  return runTransaction(db, updateFunction);
+}
 
 export interface SaveProcessState {
   status: 'idle' | 'saving' | 'server_verified' | 'confirmed' | 'syncing_offline' | 'rejected';
@@ -108,12 +125,8 @@ export async function robustSaveUserProfile(
   };
 
   try {
-    let writeResolved = false;
-
     // Track write promise
-    const writePromise = setDoc(userDocRef, payload, { merge: true }).then(() => {
-      writeResolved = true;
-    });
+    const writePromise = setDoc(userDocRef, payload, { merge: true });
 
     // Race between write promise and ~8s verification trigger
     const timeoutTrigger = new Promise<'timeout'>((resolve) => {

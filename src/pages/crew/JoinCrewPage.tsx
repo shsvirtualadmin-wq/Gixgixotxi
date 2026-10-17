@@ -6,7 +6,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useStudyCrew, type CrewDoc } from '@/hooks/useStudyCrew';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { QrCodeSvg } from '@/components/crew/QrCodeSvg';
 import { Users, Check, Copy, Share2, Sparkles, AlertCircle, ArrowLeft, LogIn } from 'lucide-react';

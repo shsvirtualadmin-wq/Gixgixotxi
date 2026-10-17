@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useStudyCrew, type CrewMember } from '@/hooks/useStudyCrew';
+import { useStudyCrew } from '@/hooks/useStudyCrew';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -10,7 +10,6 @@ import { DottedRingProgress } from '@/components/ui/DottedRingProgress';
 import { DotRowStreak } from '@/components/ui/DotRowStreak';
 import { QrCodeSvg } from '@/components/crew/QrCodeSvg';
 import {
-  Users,
   Copy,
   Check,
   Flame,
@@ -27,8 +26,6 @@ import {
   Sparkles,
   Trophy,
   ArrowLeft,
-  ChevronRight,
-  ShieldCheck,
 } from 'lucide-react';
 
 export function CrewDashboardPage() {

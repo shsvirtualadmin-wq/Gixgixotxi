@@ -113,10 +113,10 @@ function prefilterAndConvertMath(text: string): string {
  * Normalizes question document from Firestore into a consistent AttemptQuestion format.
  */
 function normalizeQuestionDoc(id: string, data: Partial<Question>): AttemptQuestion {
-  const stem = (data.stem ?? data.q ?? data.question ?? '').trim();
+  const stem = prefilterAndConvertMath((data.stem ?? data.q ?? data.question ?? '').trim());
   const rawOpts = data.options ?? [];
   const options = Array.isArray(rawOpts) && rawOpts.length >= 2
-    ? rawOpts.map((opt) => String(opt).trim())
+    ? rawOpts.map((opt) => prefilterAndConvertMath(String(opt).trim()))
     : ['Option A', 'Option B', 'Option C', 'Option D'];
 
   let correctIdx = 0;
@@ -128,7 +128,7 @@ function normalizeQuestionDoc(id: string, data: Partial<Question>): AttemptQuest
     correctIdx = data.correctAnswer;
   }
 
-  const rawExplain = data.explanation ?? data.explain ?? '';
+  const rawExplain = prefilterAndConvertMath(data.explanation ?? data.explain ?? '');
 
   return {
     id,
