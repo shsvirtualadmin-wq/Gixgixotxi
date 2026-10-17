@@ -41,7 +41,6 @@ import {
   buildBoardySystemPrompt,
   BoardyMode,
 } from "./src/config/boardyConfig.js";
-import { BALANCED_500_QUESTIONS } from "./src/data/seedBalancedPool.js";
 
 dotenv.config();
 
@@ -8783,86 +8782,6 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
         ok: false,
         success: false,
         error: err?.message || "Failed to process contact inquiry.",
-      });
-    }
-  });
-
-  // API Endpoint: Practice Test Generation (Batched streaming for student test runner)
-  app.post("/api/tests/generate", (req: express.Request, res: express.Response) => {
-    try {
-      const body = req.body || {};
-      const count = Math.min(Math.max(Number(body.count) || 5, 1), 20);
-      const subject = String(body.subject || 'All').trim();
-      const chapter = String(body.chapter || '').trim();
-      const university = String(body.university || '').trim();
-      const excludeIds = new Set<string>(Array.isArray(body.excludeIds) ? body.excludeIds : []);
-
-      // Filter candidates from balanced pool
-      let candidates = BALANCED_500_QUESTIONS.filter((q) => {
-        if (excludeIds.has(q.id)) return false;
-        if (subject && subject !== 'All' && subject !== 'General') {
-          if (q.subject && !q.subject.toLowerCase().includes(subject.toLowerCase())) return false;
-        }
-        if (chapter && chapter !== 'All') {
-          const cLower = chapter.toLowerCase();
-          const qChapter = (q.chapter || '').toLowerCase();
-          if (!qChapter.includes(cLower)) return false;
-        }
-        return true;
-      });
-
-      // Relax chapter constraint if insufficient
-      if (candidates.length < count && subject && subject !== 'All' && subject !== 'General') {
-        const subjectPool = BALANCED_500_QUESTIONS.filter((q) => {
-          if (excludeIds.has(q.id)) return false;
-          return q.subject && q.subject.toLowerCase().includes(subject.toLowerCase());
-        });
-        candidates = [...candidates, ...subjectPool];
-      }
-
-      // Fall back to entire pool if still insufficient
-      if (candidates.length < count) {
-        const generalPool = BALANCED_500_QUESTIONS.filter((q) => !excludeIds.has(q.id));
-        candidates = [...candidates, ...generalPool];
-      }
-
-      // Deduplicate
-      const uniqueMap = new Map<string, (typeof BALANCED_500_QUESTIONS)[0]>();
-      for (const c of candidates) {
-        if (!uniqueMap.has(c.id)) uniqueMap.set(c.id, c);
-      }
-      const uniqueList = Array.from(uniqueMap.values());
-
-      // Shuffle & slice batch
-      const shuffled = [...uniqueList].sort(() => 0.5 - Math.random());
-      const selectedRaw = shuffled.slice(0, count);
-
-      const questions = selectedRaw.map((q) => ({
-        id: q.id,
-        q: q.question || (q as any).q || '',
-        options: Array.isArray(q.options) && q.options.length >= 2 ? q.options : ['A', 'B', 'C', 'D'],
-        correct: typeof q.correctAnswer === 'number' ? q.correctAnswer : (q as any).correct ?? 0,
-        explain: q.explanation || (q as any).explain || '',
-        subject: q.subject || subject || 'General',
-        chapter: q.chapter || chapter || '',
-        difficulty: q.difficulty || 'Medium',
-        university: (q as any).university || university || 'FAST-NUCES',
-      }));
-
-      return res.status(200).json({
-        success: true,
-        questions,
-        count: questions.length,
-        batchIndex: Number(body.batchIndex) || 0,
-        hasMore: uniqueList.length > count,
-      });
-    } catch (err: any) {
-      console.error("[api/tests/generate error]:", err);
-      const errorMsg = err?.message || "Failed to generate test batch.";
-      return res.status(500).json({
-        error: errorMsg,
-        code: "TEST_GEN_ERROR",
-        snippet: errorMsg.slice(0, 200),
       });
     }
   });
