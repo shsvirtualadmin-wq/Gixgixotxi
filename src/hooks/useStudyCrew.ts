@@ -240,8 +240,8 @@ export function useStudyCrew() {
         joinedAt: new Date().toISOString(),
         role: 'leader',
         activeToday: true,
-        questionsSolved: 20,
-        streak: profile?.streak || 1,
+        questionsSolved: 0,
+        streak: profile?.streak || 0,
         isPro,
       };
 
@@ -253,17 +253,14 @@ export function useStudyCrew() {
         leaderId: user.uid,
         leaderName: displayName,
         goalQuestions: 500,
-        currentQuestions: 20,
+        currentQuestions: 0,
         members: [leaderMember],
         memberUids: [user.uid],
         maxMembers: MAX_CREW_MEMBERS, // 30
         isLocked: false,
-        streak: 1,
+        streak: profile?.streak || 1,
         hasProMember: isPro,
-        weakChapters: [
-          { chapter: 'Calculus & Integration', errorCount: 14 },
-          { chapter: 'Electromagnetism', errorCount: 9 },
-        ],
+        weakChapters: [],
       };
 
       // 1. Safe-save step: write to Firestore
@@ -385,8 +382,8 @@ export function useStudyCrew() {
             joinedAt: new Date().toISOString(),
             role: 'member',
             activeToday: true,
-            questionsSolved: 15,
-            streak: userData.streak || 1,
+            questionsSolved: 0,
+            streak: userData.streak || 0,
             isPro: isUserPro,
           };
 
@@ -398,7 +395,7 @@ export function useStudyCrew() {
             members: updatedMembers,
             memberUids: updatedUids,
             hasProMember: hasPro,
-            currentQuestions: (freshData.currentQuestions || 0) + 15,
+            currentQuestions: Number(freshData.currentQuestions) || 0,
             updatedAt: serverTimestamp(),
           });
 

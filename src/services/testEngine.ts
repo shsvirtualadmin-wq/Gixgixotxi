@@ -15,7 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
-import { robustSaveDoc, robustTransaction } from '@/lib/robustSave';
+import { robustSaveDoc } from '@/lib/robustSave';
 import type { AttemptDoc, AttemptQuestion, Question } from '@/types/index';
 
 /**
@@ -354,15 +354,17 @@ export async function submitAttempt(
     if (!chapterAcc[chName]) {
       chapterAcc[chName] = { subject: q.subject || 'General', correct: 0, total: 0 };
     }
-    chapterAcc[chName].total += 1;
-
     if (ans === undefined || ans === null) {
       unansweredCount += 1;
-    } else if (ans === q.correct) {
-      correctCount += 1;
-      chapterAcc[chName].correct += 1;
     } else {
-      wrongCount += 1;
+      // Question counts as answered only if student selected an option
+      chapterAcc[chName].total += 1;
+      if (ans === q.correct) {
+        correctCount += 1;
+        chapterAcc[chName].correct += 1;
+      } else {
+        wrongCount += 1;
+      }
     }
   });
 
@@ -392,12 +394,13 @@ export async function submitAttempt(
   // 1. Increment daily usage & questions solved in PKT timezone
   const pktDateKey = getPKTDateKey();
   try {
+    const answeredCount = correctCount + wrongCount;
     const usageRef = doc(db, 'users', uid, 'usage', pktDateKey);
     await setDoc(
       usageRef,
       {
         practiceAttempts: increment(1),
-        questionsSolved: increment(totalQuestions),
+        questionsSolved: increment(answeredCount),
         accuracy: percentage,
         timeSpentSeconds: increment(timeTakenSeconds),
         subjects: arrayUnion(attempt.subject || 'General'),
@@ -496,31 +499,66 @@ export async function submitAttempt(
     console.warn('[testEngine] Failed to update user streak:', err);
   }
 
-  // 5. Update Study Crew points in transaction (Job 4: 2 pts / correct + 1 pt / attempt + streak bonus)
+  // 5. Update Study Crew on completed attempt
   if (userCrewId) {
     try {
-      const pointsEarned = (2 * correctCount) + (1 * totalQuestions) + Math.min(currentStreak, 30);
-      const memberRef = doc(db, 'crews', userCrewId, 'members', uid);
+      const answeredCount = correctCount + wrongCount;
       const crewRef = doc(db, 'crews', userCrewId);
-
-      await robustTransaction(async (transaction) => {
-        const mSnap = await transaction.get(memberRef);
-        if (mSnap.exists()) {
-          transaction.update(memberRef, {
-            weeklyPoints: increment(pointsEarned),
-            totalPoints: increment(pointsEarned),
-            currentStreak: currentStreak,
-            questionsThisWeek: increment(totalQuestions),
-            accuracyThisWeek: percentage,
-            updatedAt: serverTimestamp(),
+      const crewSnap = await getDoc(crewRef);
+      if (crewSnap.exists()) {
+        const crewData = crewSnap.data();
+        const rawMembers = Array.isArray(crewData.members) ? [...crewData.members] : [];
+        const mIdx = rawMembers.findIndex((m: { uid?: string }) => m.uid === uid);
+        if (mIdx !== -1) {
+          rawMembers[mIdx] = {
+            ...rawMembers[mIdx],
+            questionsSolved: (Number(rawMembers[mIdx].questionsSolved) || 0) + answeredCount,
+            streak: currentStreak,
+            activeToday: true,
+          };
+        } else {
+          rawMembers.push({
+            uid,
+            name: attempt.userEmail?.split('@')[0] || 'Member',
+            joinedAt: new Date().toISOString(),
+            role: 'member',
+            activeToday: true,
+            questionsSolved: answeredCount,
+            streak: currentStreak,
           });
         }
-        transaction.update(crewRef, {
+
+        // Aggregate wrong answers for crew.weakChapters
+        const existingWeak = Array.isArray(crewData.weakChapters) ? [...crewData.weakChapters] : [];
+        const weakMap = new Map<string, number>();
+        existingWeak.forEach((w: { chapter?: string; errorCount?: number }) => {
+          if (w.chapter) weakMap.set(w.chapter, Number(w.errorCount) || 0);
+        });
+
+        // Tally wrong answers from this completed attempt
+        questions.forEach((q, idx) => {
+          const ans = userAnswers[String(idx)];
+          if (ans !== undefined && ans !== null && ans !== q.correct) {
+            const ch = q.chapter || q.subject || 'General';
+            weakMap.set(ch, (weakMap.get(ch) || 0) + 1);
+          }
+        });
+
+        const updatedWeak = Array.from(weakMap.entries())
+          .map(([chapter, errorCount]) => ({ chapter, errorCount }))
+          .sort((a, b) => b.errorCount - a.errorCount)
+          .slice(0, 10);
+
+        await updateDoc(crewRef, {
+          currentQuestions: increment(answeredCount),
+          members: rawMembers,
+          weakChapters: updatedWeak,
+          streak: Math.max(Number(crewData.streak) || 1, currentStreak),
           updatedAt: serverTimestamp(),
         });
-      });
+      }
     } catch (err) {
-      console.warn('[testEngine] Failed to award crew points:', err);
+      console.warn('[testEngine] Failed to update crew doc on test completion:', err);
     }
   }
 

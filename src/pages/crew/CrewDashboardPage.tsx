@@ -622,40 +622,54 @@ export function CrewDashboardPage() {
             High-error chapters aggregated across all active squad members this week.
           </p>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {(crew.weakChapters || []).map((ch) => (
-              <div
-                key={ch.chapter}
-                style={{
-                  padding: '12px 16px',
-                  borderRadius: 'var(--r-input)',
-                  background: 'var(--surface-hover)',
-                  border: '1px solid var(--border)',
-                  borderLeft: '4px solid #D71921',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                }}
-              >
-                <div>
-                  <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-                    {ch.chapter}
-                  </h4>
-                  <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
-                    {ch.errorCount} squad mistake flags
-                  </span>
-                </div>
+          {(!crew.weakChapters ||
+            crew.weakChapters.length === 0 ||
+            crew.weakChapters.reduce((sum, c) => sum + (c.errorCount || 0), 0) < 3) ? (
+            <div className="p-6 rounded-2xl bg-[var(--surface)] border border-[var(--border)] text-center flex flex-col items-center gap-2">
+              <Target size={28} className="text-[var(--text-muted)] opacity-60 mb-1" />
+              <p className="text-sm font-semibold text-[var(--text)]">No squad mistake flags yet</p>
+              <p className="text-xs text-[var(--text-muted)] max-w-sm">
+                High-error chapters will appear here once squad members record at least 3 mistakes during practice tests.
+              </p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {crew.weakChapters
+                .filter((ch) => (ch.errorCount || 0) > 0)
+                .map((ch) => (
+                  <div
+                    key={ch.chapter}
+                    style={{
+                      padding: '12px 16px',
+                      borderRadius: 'var(--r-input)',
+                      background: 'var(--surface-hover)',
+                      border: '1px solid var(--border)',
+                      borderLeft: '4px solid #D71921',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                    }}
+                  >
+                    <div>
+                      <h4 style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                        {ch.chapter}
+                      </h4>
+                      <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                        {ch.errorCount} squad mistake {ch.errorCount === 1 ? 'flag' : 'flags'}
+                      </span>
+                    </div>
 
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => navigate('/dashboard/practice')}
-                >
-                  <Target size={12} /> Drill
-                </Button>
-              </div>
-            ))}
-          </div>
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => navigate('/dashboard/practice')}
+                    >
+                      <Target size={12} /> Drill
+                    </Button>
+                  </div>
+                ))}
+            </div>
+          )}
         </GlassCard>
       </div>
 

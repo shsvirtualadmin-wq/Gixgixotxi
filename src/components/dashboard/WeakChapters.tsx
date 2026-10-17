@@ -1,121 +1,73 @@
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
-import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db } from '@/lib/firebase';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Target } from 'lucide-react';
-
-interface ChapterStat {
-  id: string;
-  subject?: string;
-  chapter?: string;
-  correct?: number;
-  total?: number;
-}
+import { Target, ArrowRight } from 'lucide-react';
+import { useUserChapterStats } from '@/hooks/useUserChapterStats';
 
 interface Props {
   uid: string;
 }
 
 export function WeakChapters({ uid }: Props) {
-  const [chapters, setChapters] = useState<ChapterStat[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { weakChapters, loading } = useUserChapterStats(uid);
   const navigate = useNavigate();
-
-  useEffect(() => {
-    if (!uid) {
-      setChapters([
-        { id: 'math_integration', subject: 'Mathematics', chapter: 'Integration by Parts', correct: 12, total: 25 },
-        { id: 'phy_electro', subject: 'Physics', chapter: 'Electromagnetism', correct: 15, total: 30 },
-        { id: 'chem_organic', subject: 'Chemistry', chapter: 'Aldehydes & Ketones', correct: 8, total: 20 },
-      ]);
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-
-    getDocs(
-      query(collection(db, 'users', uid, 'chapterStats'), orderBy('total', 'desc'), limit(15))
-    )
-      .then((snap) => {
-        const stats = snap.docs.map(d => ({ id: d.id, ...d.data() } as ChapterStat));
-        // Sort by accuracy ascending, take bottom 3
-        const sorted = stats
-          .filter(s => (s.total ?? 0) > 0)
-          .sort((a, b) => {
-            const accA = (a.correct ?? 0) / (a.total ?? 1);
-            const accB = (b.correct ?? 0) / (b.total ?? 1);
-            return accA - accB;
-          })
-          .slice(0, 3);
-
-        // Fallback default chapters if no real attempts yet
-        if (sorted.length === 0) {
-          setChapters([
-            { id: 'math_integration', subject: 'Mathematics', chapter: 'Integration by Parts', correct: 12, total: 25 },
-            { id: 'phy_electro', subject: 'Physics', chapter: 'Electromagnetism', correct: 15, total: 30 },
-            { id: 'chem_organic', subject: 'Chemistry', chapter: 'Aldehydes & Ketones', correct: 8, total: 20 },
-          ]);
-        } else {
-          setChapters(sorted);
-        }
-        setLoading(false);
-      })
-      .catch(() => {
-        // Fallback gracefully
-        setChapters([
-          { id: 'math_integration', subject: 'Mathematics', chapter: 'Integration by Parts', correct: 12, total: 25 },
-          { id: 'phy_electro', subject: 'Physics', chapter: 'Electromagnetism', correct: 15, total: 30 },
-          { id: 'chem_organic', subject: 'Chemistry', chapter: 'Aldehydes & Ketones', correct: 8, total: 20 },
-        ]);
-        setLoading(false);
-      });
-  }, [uid]);
 
   if (loading) return <Skeleton height={50} count={3} />;
 
-  if (chapters.length === 0) {
+  if (weakChapters.length === 0) {
     return (
       <EmptyState
         icon={<Target size={32} />}
-        title="No chapter data yet"
-        description="Complete practice sessions to identify your weak chapters."
+        title="No weak chapters detected"
+        description="Chapters where you answer 3+ questions with under 50% accuracy will be flagged here for focused drills."
+        action={
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard/practice')}
+            className="btn-outline text-xs px-4 py-2 rounded-xl mt-2 cursor-pointer inline-flex items-center gap-1.5"
+          >
+            <span>Start Practice Drill</span>
+            <ArrowRight size={13} />
+          </button>
+        }
       />
     );
   }
 
+  // Display top 3 weakest chapters
+  const topWeak = weakChapters.slice(0, 3);
+
   return (
     <div className="flex flex-col gap-2.5">
-      {chapters.map((c) => {
-        const acc = Math.round(((c.correct ?? 0) / (c.total ?? 1)) * 100);
-        const chapterName = c.chapter ?? c.id;
+      {topWeak.map((c) => {
         return (
           <div
             key={c.id}
-            className="p-3.5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] flex items-center justify-between gap-3"
+            className="p-3.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between gap-3"
           >
             <div className="flex-1 min-w-0">
               <div
-                className="text-xs sm:text-sm font-semibold text-[var(--text)] truncate"
+                className="font-bold text-sm text-[var(--text)] truncate"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                {chapterName}
+                {c.chapter}
               </div>
-              <div className="text-[11px] text-[var(--text-muted)] flex items-center gap-2 mt-0.5">
-                <span>{c.subject ?? 'General'}</span>
+              <div className="text-xs text-[var(--muted)] flex items-center gap-2 mt-0.5">
+                <span>{c.subject}</span>
                 <span>·</span>
-                <span className="font-doto text-[var(--accent)] font-semibold">{acc}% Accuracy</span>
+                <span>{c.total} answered</span>
+                <span>·</span>
+                <span className="text-[var(--red)] font-semibold">{c.accuracy}% acc</span>
               </div>
             </div>
 
             <button
-              onClick={() => navigate(`/dashboard/practice?chapter=${encodeURIComponent(chapterName)}`)}
-              className="px-3 py-1.5 rounded-full bg-[var(--surface-2)] border border-[var(--border)] hover:border-[var(--accent)] hover:bg-[var(--accent)] hover:text-white text-xs font-semibold text-[var(--text)] transition-colors shrink-0 cursor-pointer"
+              type="button"
+              onClick={() => navigate(`/dashboard/practice?chapter=${encodeURIComponent(c.chapter)}`)}
+              className="px-3 py-1.5 rounded-xl border border-[var(--red)]/40 text-[var(--red)] text-xs font-semibold hover:bg-[var(--red)] hover:text-white transition-colors cursor-pointer shrink-0"
               style={{ fontFamily: 'var(--font-heading)' }}
             >
-              Practice
+              Drill
             </button>
           </div>
         );
@@ -123,3 +75,5 @@ export function WeakChapters({ uid }: Props) {
     </div>
   );
 }
+
+export default WeakChapters;

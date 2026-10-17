@@ -1,15 +1,51 @@
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, Trophy } from 'lucide-react';
+import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { db } from '../../lib/firebase';
 import { Badge } from '../ui/Badge';
 
-const LEADERBOARD_PREVIEW = [
-  { rank: '01', name: 'Zaid K.', city: 'Lahore', target: 'FAST CS', score: '98', percentile: '99.8%' },
-  { rank: '02', name: 'Ayesha M.', city: 'Islamabad', target: 'NUST SEECS', score: '96', percentile: '99.4%' },
-  { rank: '03', name: 'Bilal H.', city: 'Karachi', target: 'NED CS', score: '94', percentile: '98.9%' },
-  { rank: '04', name: 'Maryam N.', city: 'Peshawar', target: 'GIKI Eng', score: '92', percentile: '98.1%' },
-];
+interface HonorStudent {
+  rank: string;
+  name: string;
+  city: string;
+  target: string;
+  score: string;
+  percentile: string;
+}
 
 export function ArenaStrip() {
+  const [honorRoll, setHonorRoll] = useState<HonorStudent[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadHonorRoll() {
+      try {
+        const snap = await getDocs(query(collection(db, 'leaderboard'), orderBy('score', 'desc'), limit(4)));
+        if (!snap.empty) {
+          const list: HonorStudent[] = snap.docs.map((docSnap, i) => {
+            const data = docSnap.data();
+            return {
+              rank: String(i + 1).padStart(2, '0'),
+              name: data.displayName || 'Candidate',
+              city: data.city || 'Pakistan',
+              target: data.university || 'Engineering Track',
+              score: String(data.score ?? 0),
+              percentile: data.percentile ? `${data.percentile}%` : 'Top Rank',
+            };
+          });
+          setHonorRoll(list);
+        } else {
+          setHonorRoll([]);
+        }
+      } catch {
+        setHonorRoll([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadHonorRoll();
+  }, []);
   return (
     <section id="arena" className="landing-section relative">
       <div className="boardly-container">
@@ -68,63 +104,77 @@ export function ArenaStrip() {
             {/* Right Column: Honor roll inner card with 16px padding, 24px space on all sides */}
             <div>
               <div className="p-4 rounded-[20px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col gap-3">
-                {/* Fixed header: sentence case, 520+ candidates in Space Grotesk 13px #9A9A9A */}
                 <div className="flex items-center justify-between text-xs pb-3 border-b border-[var(--border)]">
                   <span
                     className="font-semibold text-[var(--text)] flex items-center gap-2"
                     style={{ fontFamily: 'var(--font-heading)' }}
                   >
                     <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
-                    Last week&apos;s honor roll
+                    Sunday Blitz Honor Roll
                   </span>
                   <span
                     className="text-[#9A9A9A] text-[13px]"
                     style={{ fontFamily: 'var(--font-heading)' }}
                   >
-                    520+ candidates
+                    Live rankings
                   </span>
                 </div>
 
-                {/* Rows: row padding 14px 16px, gap 8px between rows */}
-                <div className="flex flex-col gap-2">
-                  {LEADERBOARD_PREVIEW.map(student => (
-                    <div
-                      key={student.name}
-                      className="px-4 py-3.5 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-between text-xs"
-                    >
-                      {/* Left: Rank in dot font (#F2F2F2, not faint) + Name and school */}
-                      <div className="flex items-center gap-3">
-                        <span className="font-doto font-bold text-sm text-[#F2F2F2] w-6 text-left shrink-0">
-                          {student.rank}
-                        </span>
-                        <div>
+                {loading ? (
+                  <div className="py-8 text-center text-xs text-[var(--muted)]">
+                    Loading standings...
+                  </div>
+                ) : honorRoll.length > 0 ? (
+                  <div className="flex flex-col gap-2">
+                    {honorRoll.map(student => (
+                      <div
+                        key={student.rank + student.name}
+                        className="px-4 py-3.5 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-between text-xs"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="font-doto font-bold text-sm text-[#F2F2F2] w-6 text-left shrink-0">
+                            {student.rank}
+                          </span>
+                          <div>
+                            <div
+                              className="font-semibold text-[var(--text)]"
+                              style={{ fontFamily: 'var(--font-heading)' }}
+                            >
+                              {student.name}
+                            </div>
+                            <div className="text-[11px] text-[var(--muted)] mt-0.5">
+                              {student.city} · {student.target}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <div className="font-doto font-bold text-sm text-[#FFFFFF]">
+                            {student.score} pts
+                          </div>
                           <div
-                            className="font-semibold text-[var(--text)]"
+                            className="text-[13px] text-[#9A9A9A]"
                             style={{ fontFamily: 'var(--font-heading)' }}
                           >
-                            {student.name}
-                          </div>
-                          <div className="text-[11px] text-[var(--muted)] mt-0.5">
-                            {student.city} · {student.target}
+                            {student.percentile}
                           </div>
                         </div>
                       </div>
-
-                      {/* Right: Score right-aligned, score in dot font white, percentile in Space Grotesk 13px #9A9A9A */}
-                      <div className="text-right shrink-0">
-                        <div className="font-doto font-bold text-sm text-[#FFFFFF]">
-                          {student.score}/100
-                        </div>
-                        <div
-                          className="text-[13px] text-[#9A9A9A]"
-                          style={{ fontFamily: 'var(--font-heading)' }}
-                        >
-                          {student.percentile}
-                        </div>
-                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-6 px-4 rounded-xl bg-[var(--card)] border border-[var(--border)] text-center space-y-2">
+                    <div className="w-10 h-10 rounded-full bg-[var(--surface-2)] mx-auto flex items-center justify-center text-[var(--red)]">
+                      <Trophy size={20} />
                     </div>
-                  ))}
-                </div>
+                    <div className="text-xs font-semibold text-[var(--text)]">
+                      Rankings Open This Sunday
+                    </div>
+                    <p className="text-[11px] text-[var(--muted)] max-w-xs mx-auto">
+                      Rankings update automatically after each Sunday Blitz session at 8:00 PM PKT.
+                    </p>
+                  </div>
+                )}
 
                 <div className="pt-1 text-center">
                   <span className="text-[11px] text-[var(--muted)]">

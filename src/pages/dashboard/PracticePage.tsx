@@ -5,35 +5,38 @@ import { collection, doc, getDoc, getDocs, query, where, limit, serverTimestamp 
 import { db } from '@/lib/firebase';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
-import { Zap, BookOpen, Target, Clock, ArrowRight } from 'lucide-react';
+import { Zap, BookOpen, Target, Clock, ArrowRight, RotateCcw, AlertTriangle } from 'lucide-react';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { FREE_DAILY_TESTS } from '@/constants/limits';
 import { startTestSessionWithLimit, DailyTestLimitError } from '@/services/testLimits';
 import { DailyLimitBlockedSheet } from '@/components/test/DailyLimitBlockedSheet';
 import { DashboardErrorBoundary } from '@/components/dashboard/DashboardErrorBoundary';
+import { useUserChapterStats } from '@/hooks/useUserChapterStats';
 
 const UNIVERSITIES = ['Any', 'FAST-NUCES', 'NUST NET', 'GIKI', 'LUMS', 'NED', 'MDCAT', 'ECAT'];
 
-const CHAPTERS_LIST = [
-  { subject: 'Mathematics', name: 'Integration by Parts', acc: 48, dots: 5 },
-  { subject: 'Mathematics', name: 'Calculus & Derivatives', acc: 62, dots: 6 },
-  { subject: 'Mathematics', name: 'Conic Sections & Hyperbola', acc: 42, dots: 4 },
-  { subject: 'Physics', name: 'Electromagnetism & Induction', acc: 54, dots: 5 },
-  { subject: 'Physics', name: 'Work, Energy & Power', acc: 70, dots: 7 },
-  { subject: 'Physics', name: 'Nuclear Physics', acc: 50, dots: 5 },
-  { subject: 'Chemistry', name: 'Aldehydes & Ketones', acc: 38, dots: 4 },
-  { subject: 'Chemistry', name: 'Chemical Equilibrium', acc: 65, dots: 6 },
-  { subject: 'Computer Science', name: 'Data Structures & Trees', acc: 58, dots: 6 },
-  { subject: 'Computer Science', name: 'Digital Logic & Gates', acc: 72, dots: 7 },
-  { subject: 'English', name: 'Sentence Correction & Idioms', acc: 68, dots: 7 },
-  { subject: 'Analytical/IQ', name: 'Analytical Reasoning Scenarios', acc: 55, dots: 5 },
+const SYLLABUS_CHAPTERS = [
+  { subject: 'Mathematics', name: 'Integration by Parts' },
+  { subject: 'Mathematics', name: 'Calculus & Derivatives' },
+  { subject: 'Mathematics', name: 'Conic Sections & Hyperbola' },
+  { subject: 'Physics', name: 'Electromagnetism & Induction' },
+  { subject: 'Physics', name: 'Work, Energy & Power' },
+  { subject: 'Physics', name: 'Nuclear Physics' },
+  { subject: 'Chemistry', name: 'Aldehydes & Ketones' },
+  { subject: 'Chemistry', name: 'Chemical Equilibrium' },
+  { subject: 'Computer Science', name: 'Data Structures & Trees' },
+  { subject: 'Computer Science', name: 'Digital Logic & Gates' },
+  { subject: 'English', name: 'Sentence Correction & Idioms' },
+  { subject: 'Analytical/IQ', name: 'Analytical Reasoning Scenarios' },
 ];
 
 export function PracticePage() {
   const { user, profile, university } = useUserProfile();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  const { statsMap } = useUserChapterStats(user?.uid);
 
   const [selectedSubject, setSelectedSubject] = useState('All');
   const [selectedChapter, setSelectedChapter] = useState<string>(
@@ -43,10 +46,18 @@ export function PracticePage() {
   const [launching, setLaunching] = useState(false);
   const [launchingType, setLaunchingType] = useState<'sprint' | 'full' | 'drill' | null>(null);
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
-  const [launchError, setLaunchError] = useState<{ code?: string; message: string; link?: string } | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
+  const [lastLaunchParams, setLastLaunchParams] = useState<{ type: 'sprint' | 'full' | 'drill'; customChapter?: string } | null>(null);
   const [todayAttempts, setTodayAttempts] = useState(0);
   const [blockedSheetOpen, setBlockedSheetOpen] = useState(false);
   const errorBannerRef = useRef<HTMLDivElement | null>(null);
+  const launchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (university) {
@@ -106,27 +117,71 @@ export function PracticePage() {
         }
       })
       .catch((err) => {
-        console.warn('Practice usage fetch:', err);
+        if (import.meta.env.DEV) {
+          console.warn('[PracticePage] Practice usage fetch notice:', err);
+        }
       });
   }, [user]);
 
+  const chaptersWithRealStats = useMemo(() => {
+    return SYLLABUS_CHAPTERS.map((ch) => {
+      const lookupKey = ch.name.toLowerCase();
+      const safeId = ch.name.replace(/[^\w\s-]/g, '').trim().replace(/\s+/g, '_').toLowerCase();
+      const stat = statsMap[lookupKey] || statsMap[safeId];
+
+      if (!stat || stat.total === 0) {
+        return {
+          ...ch,
+          statusLabel: 'Not attempted',
+          acc: null,
+          dots: 0,
+          totalAnswered: 0,
+        };
+      }
+
+      const dots = Math.max(1, Math.min(7, Math.round((stat.accuracy / 100) * 7)));
+      const statusLabel = stat.notEnoughData
+        ? `${stat.accuracy}% (Needs 3+)`
+        : `${stat.accuracy}%`;
+
+      return {
+        ...ch,
+        statusLabel,
+        acc: stat.accuracy,
+        dots,
+        totalAnswered: stat.total,
+      };
+    });
+  }, [statsMap]);
+
   const filteredChapters = useMemo(() => {
-    if (selectedSubject === 'All') return CHAPTERS_LIST;
-    return CHAPTERS_LIST.filter(c => c.subject === selectedSubject);
-  }, [selectedSubject]);
+    if (selectedSubject === 'All') return chaptersWithRealStats;
+    return chaptersWithRealStats.filter(c => c.subject === selectedSubject);
+  }, [chaptersWithRealStats, selectedSubject]);
 
   const launchTest = async (type: 'sprint' | 'full' | 'drill', customChapter?: string) => {
     if (!user) {
-      setLaunchError({
-        code: 'AUTH_REQUIRED',
-        message: 'Please sign in to start a practice test session.',
-      });
+      setLaunchError('Please sign in to start a practice test session.');
       return;
     }
     if (launching) return;
+
+    setLastLaunchParams({ type, customChapter });
     setLaunching(true);
     setLaunchingType(type);
     setLaunchError(null);
+    setLaunchStatus('Preparing your questions...');
+
+    // 15-second safety timeout
+    if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+    let timedOut = false;
+    launchTimeoutRef.current = setTimeout(() => {
+      timedOut = true;
+      setLaunching(false);
+      setLaunchingType(null);
+      setLaunchStatus(null);
+      setLaunchError('Setting up your test session took longer than expected. Please check your connection and try again.');
+    }, 15000);
 
     let count = 10;
     let duration = 600; // 10 mins
@@ -142,90 +197,82 @@ export function PracticePage() {
       title = `${customChapter || selectedChapter} Drill`;
     }
 
-    const chapterObj = CHAPTERS_LIST.find(c => c.name === (customChapter || selectedChapter));
+    const chapterObj = SYLLABUS_CHAPTERS.find(c => c.name === (customChapter || selectedChapter));
     const subjectToUse = chapterObj ? chapterObj.subject : (selectedSubject !== 'All' ? selectedSubject : 'General');
     const targetUni = selectedUniversity === 'Any' ? 'FAST-NUCES' : selectedUniversity;
     const targetChapter = customChapter || selectedChapter;
 
-    // ─── STEP (a): Button Clicked ───────────────────────────────────────────
-    const stepAStart = Date.now();
-    console.log(`[PracticePage] (a) Button clicked for ${type} test:`, {
-      type,
-      university: targetUni,
-      subject: subjectToUse,
-      chapter: targetChapter,
-      count,
-      timestamp: new Date().toISOString(),
-    });
-    setLaunchStatus(`(a) Starting ${type} test setup...`);
-
-    // ─── STEP (b): Questions Query & Verification ───────────────────────────
-    const stepBStart = Date.now();
-    console.log(`[PracticePage] (b) Starting Firestore questions query for subject: "${subjectToUse}", needed: ${count}...`);
-    setLaunchStatus(`(b) Querying questions from Firestore (subject: ${subjectToUse})...`);
+    if (import.meta.env.DEV) {
+      console.log(`[PracticePage] Launching ${type} test:`, {
+        university: targetUni,
+        subject: subjectToUse,
+        chapter: targetChapter,
+        count,
+      });
+    }
 
     let questionsCount = 0;
     try {
       const questionsColl = collection(db, 'questions');
 
-      // 15-second timeout wrapper
-      const queryPromise = (async () => {
-        if (subjectToUse && subjectToUse !== 'All' && subjectToUse !== 'General') {
-          try {
-            const subjectQuery = query(
-              questionsColl,
-              where('subject', '==', subjectToUse),
-              limit(count)
-            );
-            const snap = await getDocs(subjectQuery);
-            if (snap.size > 0) return snap.size;
-          } catch (err: unknown) {
-            const msg = err instanceof Error ? err.message : String(err);
-            // Re-throw if it is an index error so user gets the link
-            if (msg.includes('index') || (err as { code?: string })?.code === 'failed-precondition') {
-              throw err;
-            }
-            console.warn('[PracticePage] Filtered subject query exception, trying general pool:', err);
+      if (type === 'drill' && targetChapter) {
+        try {
+          const chSnap = await getDocs(query(questionsColl, where('chapter', '==', targetChapter), limit(count)));
+          questionsCount = chSnap.size;
+        } catch (err: unknown) {
+          if (import.meta.env.DEV) {
+            console.warn('[PracticePage] Chapter query note:', err);
           }
+          questionsCount = 1;
         }
-        const generalSnap = await getDocs(query(questionsColl, limit(count)));
-        return generalSnap.size;
-      })();
-
-      // Fast pre-flight check without hard-blocking failure
-      try {
-        questionsCount = await Promise.race([
-          queryPromise,
-          new Promise<number>((resolve) => setTimeout(() => resolve(1), 3000)),
-        ]);
-      } catch (checkErr) {
-        console.warn('[PracticePage] Pre-check query exception (proceeding with generator):', checkErr);
-        questionsCount = 1;
       }
-      const stepBElapsed = Date.now() - stepBStart;
-      console.log(`[PracticePage] (b) Questions check completed in ${stepBElapsed}ms. Result count: ${questionsCount}`);
-      setLaunchStatus(`(b) Questions verified in ${stepBElapsed}ms.`);
+
+      if (questionsCount === 0 && subjectToUse && subjectToUse !== 'All' && subjectToUse !== 'General') {
+        try {
+          const subjectQuery = query(
+            questionsColl,
+            where('subject', '==', subjectToUse),
+            limit(count)
+          );
+          const snap = await getDocs(subjectQuery);
+          questionsCount = snap.size;
+        } catch (err: unknown) {
+          if (import.meta.env.DEV) {
+            const errObj = err as { message?: string };
+            console.warn('[PracticePage] Filtered subject query exception:', err);
+            if (errObj?.message?.includes('index')) {
+              console.warn('[PracticePage] Required Firestore index url:', errObj.message);
+            }
+          }
+          questionsCount = 1; // Proceed to test generator
+        }
+      }
+
+      if (questionsCount === 0) {
+        const generalSnap = await getDocs(query(questionsColl, limit(count)));
+        questionsCount = generalSnap.size;
+      }
     } catch (qErr: unknown) {
-      console.warn('[PracticePage] (b) Query note:', qErr);
+      if (import.meta.env.DEV) {
+        console.warn('[PracticePage] Query pre-flight check notice:', qErr);
+      }
       questionsCount = 1;
     }
 
-    // Step (b) Validation: If 0 docs found
+    if (timedOut) return;
+
     if (questionsCount === 0) {
-      console.warn('[PracticePage] (b) No questions found in Firestore pool.');
-      setLaunchError({
-        code: 'NO_QUESTIONS',
-        message: 'No questions available yet. Please check back soon.',
-      });
+      if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+      setLaunchError(
+        type === 'drill'
+          ? `Questions for "${targetChapter}" aren't available yet. Please select another chapter or start a sprint.`
+          : `Questions for ${subjectToUse} aren't available yet. Please select another subject or check back soon.`
+      );
       setLaunching(false);
       setLaunchingType(null);
       setLaunchStatus(null);
       return;
     }
-
-    // ─── STEP (c): Atomically check daily test limit & create attempt doc ───
-    const stepCStart = Date.now();
-    setLaunchStatus('(c) Verifying daily test allowance...');
 
     const newAttemptRef = doc(collection(db, 'attempts'));
     const attemptId = newAttemptRef.id;
@@ -254,12 +301,17 @@ export function PracticePage() {
         attemptPayload,
         customAttemptId: attemptId,
       });
-      const stepCElapsed = Date.now() - stepCStart;
-      console.log(`[PracticePage] (c) Attempt created atomically in ${stepCElapsed}ms for doc ID: ${attemptId}`);
+
+      if (timedOut) return;
+      if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+
+      navigate(`/test/${attemptId}`, { state: { attempt: attemptPayload } });
     } catch (startErr: unknown) {
+      if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
       setLaunching(false);
       setLaunchingType(null);
       setLaunchStatus(null);
+
       if (
         startErr instanceof DailyTestLimitError ||
         (startErr as { code?: string })?.code === 'DAILY_TESTS_LIMIT_EXCEEDED'
@@ -269,18 +321,13 @@ export function PracticePage() {
         }
         return;
       }
-      setLaunchError({
-        code: (startErr as { code?: string })?.code || 'LAUNCH_FAILED',
-        message: (startErr as Error)?.message || 'Failed to start test session. Please try again.',
-      });
-      return;
-    }
 
-    // ─── STEP (d): Navigation to Test Page ──────────────────────────────────
-    const totalElapsed = Date.now() - stepAStart;
-    console.log(`[PracticePage] (d) Navigating to /test/${attemptId} (total flow: ${totalElapsed}ms)`);
-    setLaunchStatus(`(d) Launching test cockpit...`);
-    navigate(`/test/${attemptId}`, { state: { attempt: attemptPayload } });
+      if (import.meta.env.DEV) {
+        console.error('[PracticePage] Test start error:', startErr);
+      }
+
+      setLaunchError('Could not start your test session. Please check your connection and try again.');
+    }
   };
 
   return (
@@ -319,22 +366,23 @@ export function PracticePage() {
                 <Clock size={12} className="text-[var(--red)]" />
                 <span>PKT Midnight Reset</span>
               </div>
-              <div className="font-doto text-sm sm:text-base font-bold text-[var(--text)] mt-1">
+              <div className="font-doto text-sm sm:text-base font-bold text-[var(--text)] mt-0.5">
                 {timeToMidnight || 'Calculating...'}
               </div>
             </div>
           </div>
         </div>
       </Card>
-      {/* ── Real-time on-screen step status indicator ── */}
+
+      {/* ── Friendly status indicator ── */}
       {launchStatus && (
         <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-xs flex items-center gap-2.5">
           <span className="w-3.5 h-3.5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin shrink-0" />
-          <span className="font-mono text-xs">{launchStatus}</span>
+          <span className="font-medium">{launchStatus}</span>
         </div>
       )}
 
-      {/* ── Real error message banner with code and index link ── */}
+      {/* ── Friendly Error Banner with Try Again Button ── */}
       {launchError && (
         <div
           ref={errorBannerRef}
@@ -343,46 +391,44 @@ export function PracticePage() {
             borderColor: 'var(--accent)',
             color: 'var(--text)',
           }}
-          className="p-4 rounded-2xl border text-xs sm:text-sm flex flex-col gap-2"
+          className="p-4 rounded-2xl border text-xs sm:text-sm flex flex-col gap-3"
         >
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="font-bold flex items-center gap-2 text-[var(--accent)]">
-                <span>Error {launchError.code ? `[${launchError.code}]` : ''}:</span>
-              </div>
-              <p className="mt-1 text-[var(--text)] leading-relaxed">{launchError.message}</p>
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle size={18} className="text-[var(--accent)] shrink-0 mt-0.5" />
+              <p className="text-[var(--text)] leading-relaxed font-medium">{launchError}</p>
             </div>
             <button
               type="button"
               onClick={() => setLaunchError(null)}
-              className="text-xs font-semibold underline text-[var(--accent)] hover:opacity-80 shrink-0 cursor-pointer"
+              className="text-xs font-semibold text-[var(--accent)] hover:underline shrink-0 cursor-pointer"
             >
               Dismiss
             </button>
           </div>
-          {launchError.link && (
+
+          {lastLaunchParams && (
             <div className="pt-2 border-t border-[var(--border)] flex items-center gap-2">
-              <span className="text-xs text-[var(--text-muted)]">Missing index:</span>
-              <a
-                href={launchError.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-bold text-[var(--accent)] underline hover:opacity-80"
+              <button
+                type="button"
+                onClick={() => launchTest(lastLaunchParams.type, lastLaunchParams.customChapter)}
+                className="btn-red text-xs px-3.5 py-1.5 rounded-xl cursor-pointer inline-flex items-center gap-1.5"
               >
-                Create Firestore Index in Firebase Console &rarr;
-              </a>
+                <RotateCcw size={12} />
+                <span>Try again</span>
+              </button>
             </div>
           )}
         </div>
       )}
 
-      {/* ── Three Big Start Cards ────────────────────────────────────────── */}
+      {/* ── Mode Selection: 3 Cards Grid ── */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Card 1: 10-Minute Sprint */}
         <Card className="justify-between p-6">
           <div className="space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--accent)] flex items-center justify-center shrink-0">
-              <Zap size={22} className="text-[var(--accent)]" />
+            <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] flex items-center justify-center shrink-0">
+              <Zap size={22} className="text-[var(--red)]" />
             </div>
             <div>
               <h2
@@ -391,12 +437,12 @@ export function PracticePage() {
               >
                 10-Minute Sprint
               </h2>
-              <p className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
-                10 rapid-fire questions covering mixed subjects. Perfect for quick speed drills between classes.
+              <p className="text-xs text-[var(--muted)] leading-relaxed mt-1">
+                Fast diagnostic sprint. 10 rapid-fire questions to test your speed and accuracy.
               </p>
             </div>
-            <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] font-doto">
-              <span>10 MCQs</span>
+            <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+              <span>10 Questions</span>
               <span>·</span>
               <span>10 Minutes</span>
               <span>·</span>
@@ -435,20 +481,32 @@ export function PracticePage() {
                 className="text-lg font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
               >
-                Full Past Paper
+                Full Past Paper Mock
               </h2>
-              <p className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
-                Authentic 30-question university format. Calibrated against actual exam timing and penalty patterns.
+              <p className="text-xs text-[var(--muted)] leading-relaxed mt-1">
+                Full-length simulation matched to your target university syllabus and negative marking rules.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+
+            {/* University Selector Dropdown */}
+            <div>
+              <label
+                htmlFor="target-uni-select"
+                className="text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)] block mb-1"
+              >
+                Target Track:
+              </label>
               <select
+                id="target-uni-select"
                 value={selectedUniversity}
                 onChange={(e) => setSelectedUniversity(e.target.value)}
-                className="w-full text-xs rounded-xl bg-[var(--surface)] border border-[var(--border)] px-3 py-2 text-[var(--text)] focus:border-[var(--accent)]"
+                className="w-full text-xs font-semibold rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] px-3 py-2 outline-none cursor-pointer"
+                style={{ fontFamily: 'var(--font-heading)' }}
               >
                 {UNIVERSITIES.map(u => (
-                  <option key={u} value={u}>{u}</option>
+                  <option key={u} value={u} className="bg-[var(--surface)] text-[var(--text)]">
+                    {u}
+                  </option>
                 ))}
               </select>
             </div>
@@ -457,58 +515,60 @@ export function PracticePage() {
           <button
             onClick={() => launchTest('full')}
             disabled={launching}
-            className="btn-red w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+            className="btn-outline w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ height: '48px' }}
           >
             {launchingType === 'full' ? (
               <>
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span className="w-4 h-4 border-2 border-[var(--text)] border-t-transparent rounded-full animate-spin" />
                 <span>Starting Past Paper...</span>
               </>
             ) : (
               <>
-                <span>Start Past Paper</span>
+                <span>Start Full Past Paper</span>
                 <ArrowRight size={16} />
               </>
             )}
           </button>
         </Card>
 
-        {/* Card 3: Weak-Chapter Drill */}
+        {/* Card 3: Targeted Chapter Drill */}
         <Card className="justify-between p-6">
           <div className="space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--accent)] flex items-center justify-center shrink-0">
-              <Target size={22} className="text-[var(--accent)]" />
+            <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] flex items-center justify-center shrink-0">
+              <Target size={22} className="text-[var(--text)]" />
             </div>
             <div>
               <h2
                 className="text-lg font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
               >
-                Weak-Chapter Drill
+                Targeted Chapter Drill
               </h2>
-              <p className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
-                20 questions focused directly on your lowest scoring chapters to turn weak areas into guarantees.
+              <p className="text-xs text-[var(--muted)] leading-relaxed mt-1">
+                20 questions focused exclusively on a single high-yield chapter to turn weak areas into strengths.
               </p>
             </div>
-            <div className="flex items-center gap-2 text-xs text-[var(--muted)] font-doto">
-              <span>20 MCQs</span>
+            <div className="flex items-center gap-2 text-xs text-[var(--muted)]">
+              <span>20 Questions</span>
               <span>·</span>
               <span>20 Minutes</span>
               <span>·</span>
-              <span>Target Focus</span>
+              <span className="truncate max-w-[120px] font-semibold text-[var(--text)]">
+                {selectedChapter}
+              </span>
             </div>
           </div>
 
           <button
-            onClick={() => launchTest('drill', selectedChapter)}
+            onClick={() => launchTest('drill')}
             disabled={launching}
-            className="btn-red w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+            className="btn-outline w-full mt-4 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
             style={{ height: '48px' }}
           >
             {launchingType === 'drill' ? (
               <>
-                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span className="w-4 h-4 border-2 border-[var(--text)] border-t-transparent rounded-full animate-spin" />
                 <span>Starting Drill...</span>
               </>
             ) : (
@@ -521,7 +581,7 @@ export function PracticePage() {
         </Card>
       </div>
 
-      {/* ── Below: Chapter Chips with Accuracy Dot Rows and Red Start Button ── */}
+      {/* ── Below: Chapter Chips with Real Accuracy Dot Rows and Red Start Button ── */}
       <Card className="p-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-[var(--border)]">
           <div>
@@ -532,7 +592,7 @@ export function PracticePage() {
               Chapter Bank &amp; Accuracy Diagnostic
             </h2>
             <p className="text-xs text-[var(--muted)] mt-0.5">
-              Select a chapter chip to drill targeted past paper questions.
+              Select a chapter chip to drill targeted past paper questions. Real accuracy calculated from your completed tests.
             </p>
           </div>
 
@@ -573,15 +633,15 @@ export function PracticePage() {
                   <span className="text-xs font-semibold text-[var(--text)] truncate">
                     {c.name}
                   </span>
-                  <span className="font-doto text-xs font-bold text-[var(--accent)]">
-                    {c.acc}%
+                  <span className={`font-doto text-xs font-bold ${c.acc !== null ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+                    {c.statusLabel}
                   </span>
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] text-[var(--text-muted)]">
                   <span>{c.subject}</span>
-                  {/* Accuracy dots */}
-                  <div className="flex items-center gap-1">
+                  {/* Accuracy dots: 7 dots */}
+                  <div className="flex items-center gap-1" title={c.acc !== null ? `${c.acc}% accuracy (${c.totalAnswered} answered)` : 'Not attempted yet'}>
                     {Array.from({ length: 7 }).map((_, i) => (
                       <span
                         key={i}

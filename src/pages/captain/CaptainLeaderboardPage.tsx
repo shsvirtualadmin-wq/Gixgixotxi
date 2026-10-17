@@ -38,69 +38,7 @@ export function CaptainLeaderboardPage() {
           })) as CaptainEntry[];
           setCaptains(list);
         } else {
-          // Authentic sample roster matching DATA_AUDIT / SPEC if captains collection is fresh
-          setCaptains([
-            {
-              id: 'cap-1',
-              studentName: 'Bilal Ahmed',
-              institution: 'FAST-NUCES Islamabad',
-              city: 'Islamabad',
-              points: 2450,
-              activeUsersCount: 42,
-              tier: 'Platinum',
-              rank: 1,
-            },
-            {
-              id: 'cap-2',
-              studentName: 'Zainab Malik',
-              institution: 'NUST H-12 Islamabad',
-              city: 'Islamabad',
-              points: 2120,
-              activeUsersCount: 38,
-              tier: 'Platinum',
-              rank: 2,
-            },
-            {
-              id: 'cap-3',
-              studentName: 'Hamza Tariq',
-              institution: 'GIKI Topi',
-              city: 'Topi',
-              points: 1850,
-              activeUsersCount: 29,
-              tier: 'Gold',
-              rank: 3,
-            },
-            {
-              id: 'cap-4',
-              studentName: 'Sara Nadeem',
-              institution: 'LUMS Lahore',
-              city: 'Lahore',
-              points: 1540,
-              activeUsersCount: 22,
-              tier: 'Gold',
-              rank: 4,
-            },
-            {
-              id: 'cap-5',
-              studentName: 'Usman Ghani',
-              institution: 'NED Karachi',
-              city: 'Karachi',
-              points: 1280,
-              activeUsersCount: 18,
-              tier: 'Silver',
-              rank: 5,
-            },
-            {
-              id: 'cap-6',
-              studentName: 'Ayesha Noor',
-              institution: 'COMSATS Islamabad',
-              city: 'Islamabad',
-              points: 1100,
-              activeUsersCount: 15,
-              tier: 'Silver',
-              rank: 6,
-            },
-          ]);
+          setCaptains([]);
         }
       } catch (err) {
         console.warn('[CaptainLeaderboard] Fetch note:', err);

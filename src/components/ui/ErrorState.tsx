@@ -64,9 +64,9 @@ export function ErrorState({
       {message && (
         <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>{message}</p>
       )}
-      {path && (
+      {import.meta.env.DEV && path && (
         <p style={{ fontSize: 12, color: 'var(--text-faint)', fontFamily: 'monospace' }}>
-          Path: {path}
+          Debug Path: {path}
         </p>
       )}
       <div style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap', marginTop: 8 }}>

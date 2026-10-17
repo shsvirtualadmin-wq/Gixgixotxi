@@ -270,8 +270,8 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           }}
           className={`h-full rounded-full text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
             mode === 'signin'
-              ? 'bg-[var(--text)] text-[var(--bg)] shadow-sm'
-              : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+              ? 'bg-[#D71921] text-white shadow-sm'
+              : 'bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
           }`}
           style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
         >
@@ -287,8 +287,8 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           }}
           className={`h-full rounded-full text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
             mode === 'signup'
-              ? 'bg-[var(--text)] text-[var(--bg)] shadow-sm'
-              : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+              ? 'bg-[#D71921] text-white shadow-sm'
+              : 'bg-transparent text-[var(--muted)] hover:text-[var(--text)]'
           }`}
           style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
         >

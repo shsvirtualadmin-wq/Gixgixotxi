@@ -1,286 +1,230 @@
-import { useEffect, useState, useCallback } from 'react';
-import { collection, getDocs, doc, query, where, limit, serverTimestamp } from 'firebase/firestore';
+import { useState, useRef, useEffect } from 'react';
+import { collection, doc, query, where, limit, serverTimestamp, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { ErrorState } from '@/components/ui/ErrorState';
 import { Button } from '@/components/ui/Button';
-import { TrendingDown, AlertTriangle, CheckCircle, ArrowRight, BookOpen, Target } from 'lucide-react';
+import { AlertTriangle, Target, RotateCcw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { startTestSessionWithLimit, DailyTestLimitError } from '@/services/testLimits';
 import { DailyLimitBlockedSheet } from '@/components/test/DailyLimitBlockedSheet';
-
-interface ChapterStat {
-  id: string;
-  chapter: string;
-  subject: string;
-  correct: number;
-  total: number;
-}
+import { useUserChapterStats, type ChapterStatItem } from '@/hooks/useUserChapterStats';
 
 export function WeakChaptersPage() {
-  const { user, profileLoading } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
+  const { weakChapters, statsMap, loading, error: statsError } = useUserChapterStats(user?.uid);
 
-  const [stats, setStats] = useState<ChapterStat[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [pageError, setPageError] = useState<{ code?: string; message: string; link?: string } | null>(null);
-  const [launchError, setLaunchError] = useState<{ code?: string; message: string; link?: string } | null>(null);
+  const [launchError, setLaunchError] = useState<string | null>(null);
+  const [lastAttemptedChapter, setLastAttemptedChapter] = useState<ChapterStatItem | null>(null);
   const [launchingChapter, setLaunchingChapter] = useState<string | null>(null);
   const [launchStatus, setLaunchStatus] = useState<string | null>(null);
   const [blockedSheetOpen, setBlockedSheetOpen] = useState(false);
+  const errorBannerRef = useRef<HTMLDivElement | null>(null);
+  const launchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const effectivePlan = useEffectivePlan();
 
-  const loadStats = useCallback(async () => {
-    if (!user) {
-      if (!profileLoading) {
-        setLoading(false);
-      }
-      return;
-    }
-    setLoading(true);
-    setPageError(null);
-    try {
-      const snapPromise = getDocs(collection(db, 'users', user.uid, 'chapterStats'));
-      const snap = await Promise.race([
-        snapPromise,
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('Chapter stats query timed out')), 6000)
-        ),
-      ]);
-      const items = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          chapter: data.chapter || d.id,
-          subject: data.subject || 'General',
-          correct: Number(data.correct ?? 0),
-          total: Number(data.total ?? 0),
-        };
-      });
-      // Sort by accuracy ascending (weakest first)
-      items.sort((a, b) => {
-        const accA = a.total > 0 ? a.correct / a.total : 0;
-        const accB = b.total > 0 ? b.correct / b.total : 0;
-        return accA - accB;
-      });
-      setStats(items.filter((item) => item.total > 0));
-    } catch (err: unknown) {
-      console.error('[WeakChaptersPage] Error:', err);
-      const msg = err instanceof Error ? err.message : 'Failed to load chapter stats';
-      setPageError({ message: msg });
-    } finally {
-      setLoading(false);
-    }
-  }, [user, profileLoading]);
-
   useEffect(() => {
-    loadStats();
-  }, [loadStats]);
-
-  // Safety failsafe: never leave loading as true indefinitely under any network condition
-  useEffect(() => {
-    const safetyTimer = setTimeout(() => {
-      setLoading(false);
-    }, 4000);
-    return () => clearTimeout(safetyTimer);
+    return () => {
+      if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+    };
   }, []);
 
-  const handleDrillChapter = async (item: ChapterStat) => {
+  useEffect(() => {
+    if (launchError && errorBannerRef.current) {
+      errorBannerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [launchError]);
+
+  const handleDrillChapter = async (item: ChapterStatItem) => {
     if (!user) {
-      setLaunchError({ code: 'AUTH_REQUIRED', message: 'Please sign in to start a chapter drill.' });
+      setLaunchError('Please sign in to start a chapter drill.');
       return;
     }
+    if (launchingChapter) return;
+
+    setLastAttemptedChapter(item);
     setLaunchingChapter(item.chapter);
     setLaunchError(null);
+    setLaunchStatus('Preparing your questions...');
 
-    // ─── STEP (a): Button Clicked ───────────────────────────────────────────
-    const stepAStart = Date.now();
-    console.log(`[WeakChaptersPage] (a) Button clicked to drill chapter: "${item.chapter}" (${item.subject})`, {
-      chapter: item.chapter,
-      subject: item.subject,
-      timestamp: new Date().toISOString(),
-    });
-    setLaunchStatus(`(a) Starting drill setup for "${item.chapter}"...`);
-
-    // ─── STEP (b): Questions Query & Verification ───────────────────────────
-    const stepBStart = Date.now();
-    console.log(`[WeakChaptersPage] (b) Starting Firestore questions query for chapter: "${item.chapter}"...`);
-    setLaunchStatus(`(b) Querying questions from Firestore for "${item.chapter}"...`);
-
-    let questionsCount = 0;
-    try {
-      const questionsColl = collection(db, 'questions');
-      const queryPromise = (async () => {
-        try {
-          const chapterQuery = query(
-            questionsColl,
-            where('chapter', '==', item.chapter),
-            limit(15)
-          );
-          const snap = await getDocs(chapterQuery);
-          if (snap.size > 0) return snap.size;
-        } catch (err: unknown) {
-          const msg = err instanceof Error ? err.message : String(err);
-          if (msg.includes('index') || (err as { code?: string })?.code === 'failed-precondition') {
-            throw err;
-          }
-        }
-        // Fallback to subject
-        if (item.subject && item.subject !== 'General') {
-          const subjectSnap = await getDocs(
-            query(questionsColl, where('subject', '==', item.subject), limit(15))
-          );
-          if (subjectSnap.size > 0) return subjectSnap.size;
-        }
-        // Fallback general
-        const generalSnap = await getDocs(query(questionsColl, limit(15)));
-        return generalSnap.size;
-      })();
-
-      // Fast pre-flight check without hard-blocking failure: falls back to test generator
-      try {
-        questionsCount = await Promise.race([
-          queryPromise,
-          new Promise<number>((resolve) => setTimeout(() => resolve(1), 3000)),
-        ]);
-      } catch (checkErr) {
-        console.warn('[WeakChaptersPage] Pre-check query note (proceeding with generator):', checkErr);
-        questionsCount = 1;
-      }
-      const stepBElapsed = Date.now() - stepBStart;
-      console.log(`[WeakChaptersPage] (b) Questions query completed in ${stepBElapsed}ms. Result count: ${questionsCount}`);
-      setLaunchStatus(`(b) Pre-flight verified (${stepBElapsed}ms). Initializing chapter drill...`);
-    } catch (qErr: unknown) {
-      console.warn('[WeakChaptersPage] (b) Query note:', qErr);
-      questionsCount = 1;
-    }
-
-    if (questionsCount === 0) {
-      console.warn('[WeakChaptersPage] (b) No questions found in Firestore pool.');
-      setLaunchError({
-        code: 'NO_QUESTIONS',
-        message: 'No questions available yet. Please check back soon.',
-      });
+    // 15-second safety timeout
+    if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+    let timedOut = false;
+    launchTimeoutRef.current = setTimeout(() => {
+      timedOut = true;
       setLaunchingChapter(null);
       setLaunchStatus(null);
-      return;
-    }
-
-    // ─── STEP (c): Attempt creation with Non-Blocking Client ID ─────────────
-    const stepCStart = Date.now();
-    console.log(`[WeakChaptersPage] (c) Generating client-side attempt ID to prevent server freeze...`);
-    setLaunchStatus('(c) Creating attempt document...');
-
-    const durationSeconds = 15 * 60; // 15 mins
-    const endsAt = new Date(Date.now() + durationSeconds * 1000);
-
-    const newAttemptRef = doc(collection(db, 'attempts'));
-    const attemptId = newAttemptRef.id;
-
-    const attemptPayload = {
-      id: attemptId,
-      userId: user.uid,
-      uid: user.uid,
-      subject: item.subject,
-      chapter: item.chapter,
-      difficulty: 'Medium',
-      totalQuestions: 15,
-      timed: true,
-      durationSeconds,
-      endsAt,
-      status: 'preparing' as const,
-      createdAt: serverTimestamp(),
-    };
+      setLaunchError('Setting up your drill took longer than expected. Please check your connection and try again.');
+    }, 15000);
 
     try {
+      if (import.meta.env.DEV) {
+        console.log(`[WeakChapters] Setting up drill for chapter: "${item.chapter}"`);
+      }
+
+      // Check if questions are available
+      const questionsColl = collection(db, 'questions');
+      let questionsCount = 0;
+
+      try {
+        const chapterQuery = query(
+          questionsColl,
+          where('chapter', '==', item.chapter),
+          limit(15)
+        );
+        const snap = await getDocs(chapterQuery);
+        questionsCount = snap.size;
+      } catch (checkErr: unknown) {
+        if (import.meta.env.DEV) {
+          const errObj = checkErr as { message?: string };
+          console.warn('[WeakChapters] Pre-flight query notice:', checkErr);
+          if (errObj?.message?.includes('index')) {
+            console.warn('[WeakChapters] Required Firestore index url:', errObj.message);
+          }
+        }
+        questionsCount = 1; // Proceed to attempt initialization
+      }
+
+      if (timedOut) return;
+
+      if (questionsCount === 0) {
+        // Fallback check on subject
+        if (item.subject && item.subject !== 'General') {
+          try {
+            const subSnap = await getDocs(query(questionsColl, where('subject', '==', item.subject), limit(15)));
+            questionsCount = subSnap.size;
+          } catch {
+            questionsCount = 1;
+          }
+        }
+      }
+
+      if (questionsCount === 0) {
+        if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+        setLaunchingChapter(null);
+        setLaunchStatus(null);
+        setLaunchError(`Questions for ${item.chapter} aren't available yet. Please try another chapter or a general sprint.`);
+        return;
+      }
+
+      const durationSeconds = 15 * 60; // 15 mins
+      const newAttemptRef = doc(collection(db, 'attempts'));
+      const attemptId = newAttemptRef.id;
+
+      const attemptPayload = {
+        id: attemptId,
+        userId: user.uid,
+        uid: user.uid,
+        subject: item.subject,
+        chapter: item.chapter,
+        totalQuestions: 15,
+        timed: true,
+        durationSeconds,
+        status: 'preparing' as const,
+        createdAt: serverTimestamp(),
+      };
+
       await startTestSessionWithLimit({
         uid: user.uid,
-        isUnlimited: effectivePlan.isUnlimited,
+        isUnlimited: Boolean(effectivePlan.isUnlimited || effectivePlan.isSuperAdmin),
         attemptPayload,
         customAttemptId: attemptId,
       });
-      const stepCElapsed = Date.now() - stepCStart;
-      console.log(`[WeakChaptersPage] (c) Attempt created atomically in ${stepCElapsed}ms for ID: ${attemptId}`);
+
+      if (timedOut) return;
+      if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+
+      navigate(`/test/${attemptId}`, { state: { attempt: attemptPayload } });
     } catch (startErr: unknown) {
+      if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
       setLaunchingChapter(null);
       setLaunchStatus(null);
+
       if (
         startErr instanceof DailyTestLimitError ||
         (startErr as { code?: string })?.code === 'DAILY_TESTS_LIMIT_EXCEEDED'
       ) {
-        setBlockedSheetOpen(true);
+        if (!effectivePlan.isUnlimited && !effectivePlan.isSuperAdmin) {
+          setBlockedSheetOpen(true);
+        }
         return;
       }
-      setLaunchError({
-        code: (startErr as { code?: string })?.code || 'LAUNCH_FAILED',
-        message: (startErr as Error)?.message || 'Failed to start test session. Please try again.',
-      });
-      return;
-    }
 
-    // ─── STEP (d): Navigation to Test Page ──────────────────────────────────
-    const totalElapsed = Date.now() - stepAStart;
-    console.log(`[WeakChaptersPage] (d) Navigating to /test/${attemptId} (total flow: ${totalElapsed}ms)`);
-    setLaunchStatus(`(d) Launching test cockpit...`);
-    navigate(`/test/${attemptId}`, { state: { attempt: attemptPayload } });
+      if (import.meta.env.DEV) {
+        console.error('[WeakChapters] Drill setup error:', startErr);
+      }
+
+      setLaunchError('Could not start your chapter drill. Please check your connection and try again.');
+    }
   };
 
-  const weakChapters = stats.filter((s) => (s.correct / s.total) < 0.5);
-  const moderateChapters = stats.filter((s) => (s.correct / s.total) >= 0.5 && (s.correct / s.total) < 0.75);
-  const masteredChapters = stats.filter((s) => (s.correct / s.total) >= 0.75);
+  const allStatsList = Object.values(statsMap).filter((s) => s.total > 0);
+  const masteredList = allStatsList.filter((s) => s.total >= 3 && s.accuracy >= 70);
+  const developingList = allStatsList.filter((s) => s.total >= 3 && s.accuracy >= 50 && s.accuracy < 70);
+  const needDataList = allStatsList.filter((s) => s.notEnoughData);
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ maxWidth: 880, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24, padding: '1rem' }}>
+      {/* ── Header ──────────────────────────────────────────────────────── */}
       <div>
-        <h1 className="font-display" style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>
+        <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
           Weak Chapters Diagnostic
+        </span>
+        <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginTop: 4 }}>
+          Priority Weak Chapters
         </h1>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-          Real-time chapter breakdown derived from your completed tests. Focus drills on high-risk topics.
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 4 }}>
+          Auto-diagnosed from completed attempts. Chapters with 3 or more answered questions and under 50% accuracy are prioritized here.
         </p>
       </div>
 
-      {/* Real-time on-screen step status indicator */}
+      {/* ── Status indicator ── */}
       {launchStatus && (
-        <div className="p-3.5 rounded-xl bg-neutral-900 border border-neutral-700 text-neutral-200 text-xs flex items-center gap-2.5">
-          <span className="w-3.5 h-3.5 border-2 border-[var(--red)] border-t-transparent rounded-full animate-spin shrink-0" />
-          <span className="font-mono text-xs">{launchStatus}</span>
+        <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-xs flex items-center gap-2.5">
+          <span className="w-3.5 h-3.5 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin shrink-0" />
+          <span className="font-medium">{launchStatus}</span>
         </div>
       )}
 
-      {/* Real error message banner with code and index link */}
+      {/* ── Error Banner with Try Again Button ── */}
       {launchError && (
-        <div className="p-4 rounded-2xl bg-red-950/70 border border-[var(--red)] text-red-200 text-xs sm:text-sm flex flex-col gap-2">
+        <div
+          ref={errorBannerRef}
+          style={{
+            backgroundColor: 'rgba(215, 25, 33, 0.08)',
+            borderColor: 'var(--accent)',
+            color: 'var(--text)',
+          }}
+          className="p-4 rounded-2xl border text-xs sm:text-sm flex flex-col gap-3"
+        >
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <div className="font-bold flex items-center gap-2 text-red-100">
-                <span>Error {launchError.code ? `[${launchError.code}]` : ''}:</span>
-              </div>
-              <p className="mt-1 text-red-200">{launchError.message}</p>
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle size={18} className="text-[var(--accent)] shrink-0 mt-0.5" />
+              <p className="text-[var(--text)] leading-relaxed font-medium">{launchError}</p>
             </div>
             <button
               type="button"
               onClick={() => setLaunchError(null)}
-              className="text-xs font-semibold underline hover:text-white shrink-0 cursor-pointer"
+              className="text-xs font-semibold text-[var(--accent)] hover:underline shrink-0 cursor-pointer"
             >
               Dismiss
             </button>
           </div>
-          {launchError.link && (
-            <div className="pt-2 border-t border-red-800/60 flex items-center gap-2">
-              <span className="text-xs text-red-300">Missing index:</span>
-              <a
-                href={launchError.link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-bold text-white underline hover:text-red-200"
+
+          {lastAttemptedChapter && (
+            <div className="pt-2 border-t border-[var(--border)] flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleDrillChapter(lastAttemptedChapter)}
+                className="btn-red text-xs px-3.5 py-1.5 rounded-xl cursor-pointer inline-flex items-center gap-1.5"
               >
-                Create Firestore Index in Firebase Console &rarr;
-              </a>
+                <RotateCcw size={12} />
+                <span>Try again</span>
+              </button>
             </div>
           )}
         </div>
@@ -292,188 +236,192 @@ export function WeakChaptersPage() {
           <Skeleton height={100} />
           <Skeleton height={100} />
         </div>
-      ) : pageError ? (
-        <ErrorState title="Could not load chapter analytics" error={pageError} onRetry={loadStats} />
-      ) : stats.length === 0 ? (
+      ) : statsError ? (
         <EmptyState
-          icon={<TrendingDown size={40} className="text-[#D71921]" />}
-          title="No chapter analytics yet"
-          description="Take practice tests in Physics, Math, and Chemistry. We will track your accuracy per chapter automatically."
-          actionLabel="Start a Practice Drill"
+          icon={<AlertTriangle size={36} className="text-[var(--accent)]" />}
+          title="Could not load chapter analytics"
+          description="Please check your connection and refresh the page."
+          actionLabel="Refresh Page"
+          onAction={() => window.location.reload()}
+        />
+      ) : weakChapters.length === 0 && allStatsList.length === 0 ? (
+        <EmptyState
+          icon={<Target size={40} className="text-[var(--text-muted)]" />}
+          title="No practice data yet"
+          description="Take practice tests in Physics, Math, Chemistry, or Computer Science. Once you complete at least 3 questions in a chapter, your accuracy will be diagnosed here."
+          actionLabel="Start a Practice Sprint"
           onAction={() => navigate('/dashboard/practice')}
         />
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* High Priority (Weak) */}
-          {weakChapters.length > 0 && (
+          {/* High Priority (Weak: total >= 3 and acc < 50%) */}
+          {weakChapters.length > 0 ? (
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, color: '#D71921' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, color: 'var(--red)' }}>
                 <AlertTriangle size={18} />
                 <h2 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
                   High-Risk Topics (Below 50% Accuracy)
                 </h2>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {weakChapters.map((ch) => {
-                  const acc = Math.round((ch.correct / ch.total) * 100);
-                  return (
-                    <GlassCard
-                      key={ch.id}
-                      style={{
-                        padding: '16px 20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: 12,
-                        borderLeft: '4px solid #D71921',
-                      }}
-                    >
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'var(--surface-hover)', color: 'var(--text-faint)' }}>
-                            {ch.subject}
-                          </span>
-                          <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-                            {ch.chapter}
-                          </h3>
-                        </div>
-                        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                          {ch.correct} / {ch.total} answered correctly ({acc}% accuracy)
-                        </p>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                        <span className="font-display tabular-nums" style={{ fontSize: 20, fontWeight: 800, color: '#D71921' }}>
-                          {acc}%
+                {weakChapters.map((ch) => (
+                  <GlassCard
+                    key={ch.id}
+                    style={{
+                      padding: '16px 20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: 12,
+                      borderLeft: '4px solid var(--accent)',
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'var(--surface-hover)', color: 'var(--text-faint)' }}>
+                          {ch.subject}
                         </span>
-                        <Button
-                          variant="primary"
-                          size="sm"
-                          onClick={() => handleDrillChapter(ch)}
-                          loading={launchingChapter === ch.chapter}
-                        >
-                          <Target size={13} /> Drill Topic
-                        </Button>
+                        <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                          {ch.chapter}
+                        </h3>
                       </div>
-                    </GlassCard>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
+                        {ch.correct} / {ch.total} answered correctly ({ch.accuracy}% accuracy)
+                      </p>
+                    </div>
 
-          {/* Moderate */}
-          {moderateChapters.length > 0 && (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, color: 'var(--warning)' }}>
-                <BookOpen size={18} />
-                <h2 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
-                  Needs Practice (50% – 75% Accuracy)
-                </h2>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {moderateChapters.map((ch) => {
-                  const acc = Math.round((ch.correct / ch.total) * 100);
-                  return (
-                    <GlassCard
-                      key={ch.id}
-                      style={{
-                        padding: '16px 20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: 12,
-                        borderLeft: '4px solid var(--warning)',
-                      }}
-                    >
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'var(--surface-hover)', color: 'var(--text-faint)' }}>
-                            {ch.subject}
-                          </span>
-                          <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-                            {ch.chapter}
-                          </h3>
-                        </div>
-                        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                          {ch.correct} / {ch.total} answered correctly ({acc}% accuracy)
-                        </p>
-                      </div>
-
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                        <span className="font-display tabular-nums" style={{ fontSize: 20, fontWeight: 800, color: 'var(--warning)' }}>
-                          {acc}%
-                        </span>
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => handleDrillChapter(ch)}
-                          loading={launchingChapter === ch.chapter}
-                        >
-                          Drill <ArrowRight size={13} />
-                        </Button>
-                      </div>
-                    </GlassCard>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Mastered */}
-          {masteredChapters.length > 0 && (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, color: 'var(--success)' }}>
-                <CheckCircle size={18} />
-                <h2 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
-                  Mastered Chapters (75%+ Accuracy)
-                </h2>
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                {masteredChapters.map((ch) => {
-                  const acc = Math.round((ch.correct / ch.total) * 100);
-                  return (
-                    <GlassCard
-                      key={ch.id}
-                      style={{
-                        padding: '16px 20px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        flexWrap: 'wrap',
-                        gap: 12,
-                        borderLeft: '4px solid var(--success)',
-                      }}
-                    >
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'var(--surface-hover)', color: 'var(--text-faint)' }}>
-                            {ch.subject}
-                          </span>
-                          <h3 style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-                            {ch.chapter}
-                          </h3>
-                        </div>
-                        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>
-                          {ch.correct} / {ch.total} correct ({acc}% accuracy)
-                        </p>
-                      </div>
-                      <span className="font-display tabular-nums" style={{ fontSize: 20, fontWeight: 800, color: 'var(--success)' }}>
-                        {acc}%
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                      <span className="font-display tabular-nums" style={{ fontSize: 20, fontWeight: 800, color: 'var(--red)' }}>
+                        {ch.accuracy}%
                       </span>
-                    </GlassCard>
-                  );
-                })}
+                      <Button
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleDrillChapter(ch)}
+                        loading={launchingChapter === ch.chapter}
+                      >
+                        <Target size={13} /> Drill Topic
+                      </Button>
+                    </div>
+                  </GlassCard>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="p-6 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-center flex flex-col items-center gap-2">
+              <Target size={28} className="text-[var(--text-muted)] opacity-60 mb-1" />
+              <p className="text-sm font-semibold text-[var(--text)]">No weak chapters detected</p>
+              <p className="text-xs text-[var(--text-muted)] max-w-md">
+                None of your attempted chapters are below 50% accuracy with 3+ attempts. Great job maintaining high aggregate accuracy!
+              </p>
+            </div>
+          )}
+
+          {/* Chapters with fewer than 3 attempts */}
+          {needDataList.length > 0 && (
+            <div>
+              <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
+                Preliminary Chapters (Needs 3+ Questions)
+              </h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {needDataList.map((ch) => (
+                  <GlassCard
+                    key={ch.id}
+                    style={{
+                      padding: '14px 18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: 12,
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'var(--surface-hover)', color: 'var(--text-faint)' }}>
+                          {ch.subject}
+                        </span>
+                        <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
+                          {ch.chapter}
+                        </h3>
+                      </div>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                        {ch.total} answered · Not enough data yet to diagnose
+                      </p>
+                    </div>
+
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => handleDrillChapter(ch)}
+                      loading={launchingChapter === ch.chapter}
+                    >
+                      <Target size={13} /> Continue Drill
+                    </Button>
+                  </GlassCard>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Developing & Mastered Topics */}
+          {(developingList.length > 0 || masteredList.length > 0) && (
+            <div>
+              <h2 className="font-display" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 12 }}>
+                Healthy &amp; Mastered Topics (50%+ Accuracy)
+              </h2>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                {[...masteredList, ...developingList].map((ch) => (
+                  <GlassCard
+                    key={ch.id}
+                    style={{
+                      padding: '14px 18px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: 12,
+                    }}
+                  >
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 999, background: 'var(--surface-hover)', color: 'var(--text-faint)' }}>
+                          {ch.subject}
+                        </span>
+                        <h3 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>
+                          {ch.chapter}
+                        </h3>
+                      </div>
+                      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                        {ch.correct} / {ch.total} answered ({ch.accuracy}% accuracy)
+                      </p>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <span className="font-display tabular-nums" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
+                        {ch.accuracy}%
+                      </span>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleDrillChapter(ch)}
+                        loading={launchingChapter === ch.chapter}
+                      >
+                        Practice
+                      </Button>
+                    </div>
+                  </GlassCard>
+                ))}
               </div>
             </div>
           )}
         </div>
       )}
 
+      {/* Daily limit reached modal */}
       <DailyLimitBlockedSheet
-        isOpen={blockedSheetOpen}
+        open={blockedSheetOpen}
         onClose={() => setBlockedSheetOpen(false)}
       />
     </div>

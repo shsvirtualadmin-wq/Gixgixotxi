@@ -49,7 +49,7 @@ export function FeaturesGrid() {
             </div>
             <div className="mt-4 flex items-center gap-2 text-xs text-[var(--muted)]">
               <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
-              <span>Over 3,000+ formulas verified and normalized</span>
+              <span>Formulas and step derivations verified in KaTeX</span>
             </div>
           </Card>
 

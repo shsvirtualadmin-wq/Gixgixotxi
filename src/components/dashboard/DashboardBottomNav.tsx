@@ -51,11 +51,10 @@ export function DashboardBottomNav() {
   const effectivePlan = useEffectivePlan();
   const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
-  const isCrewMember = Boolean(profile?.isCrewMember || profile?.role === 'crew' || profile?.crewId);
   const displayName = profile?.displayName || user?.displayName || 'Student';
   const initial = (displayName[0] || user?.email?.[0] || 'S').toUpperCase();
 
-  // Unified PillNav items (Daily Practice, Cockpit, Weak Chapters, Streaks, optional Crew for members, Menu)
+  // Unified 6-item Student Nav: Daily Practice, Cockpit, Weak Chapters, Streaks, Crew, Menu
   const navItems: PillNavItem[] = [
     {
       to: '/dashboard/practice',
@@ -78,27 +77,21 @@ export function DashboardBottomNav() {
       label: 'Streaks',
       icon: <Flame size={18} />,
     },
-    ...(isCrewMember
-      ? [
-          {
-            to: '/crew',
-            label: 'Crew',
-            icon: <Users size={18} />,
-          },
-        ]
-      : []),
+    {
+      to: '/crew',
+      label: 'Crew',
+      icon: <Users size={18} />,
+    },
     {
       id: 'menu',
       label: 'Menu',
       icon: (
-        <div className="w-5 h-5 rounded-full bg-neutral-800 border border-white/20 flex items-center justify-center text-[10px] font-bold text-white relative">
-          {initial}
-          {isAdmin && (
-            <span
-              className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-red-600"
-              title="Admin access active"
-            />
-          )}
+        <div className="w-6 h-6 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-[10px] font-bold text-[var(--text)] relative shrink-0">
+          <span>{initial}</span>
+          <span
+            className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--accent)] ring-1 ring-[var(--surface)]"
+            title="Menu & Account"
+          />
         </div>
       ),
       onClick: () => setIsMenuOpen(true),
@@ -109,16 +102,15 @@ export function DashboardBottomNav() {
     <>
       {/* ─── FIXED UNIFIED PILL BOTTOM NAVIGATION ────────────────────────────── */}
       <div
-        className={`fixed bottom-4 inset-x-0 mx-auto w-[calc(100%-2rem)] max-w-3xl z-40 transition-opacity duration-150 ${
+        className={`fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[520px] z-40 transition-opacity duration-150 ${
           isMenuOpen ? 'pointer-events-none opacity-0 invisible' : 'pointer-events-auto opacity-100'
         }`}
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         aria-label="Student Navigation Bar"
       >
         <PillNav
           items={navItems}
-          layout="stacked-mobile"
-          className="w-full justify-between sm:justify-center px-2 py-1.5 shadow-2xl"
+          layoutId="studentBottomNavActive"
+          activeLabelOnly={true}
         />
       </div>
 

@@ -5,7 +5,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { Clock, CheckCircle2 } from 'lucide-react';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Clock, CheckCircle2, Award, Users } from 'lucide-react';
 
 interface LeaderboardItem {
   id: string;
@@ -40,12 +41,7 @@ export function ArenaDashboardPage() {
   // Circle State
   const [circleCode, setCircleCode] = useState('FAST26');
   const [circleInput, setCircleInput] = useState('');
-  const [circleMembers, setCircleMembers] = useState<CircleMember[]>([
-    { uid: user?.uid || 'you', name: 'You', dailyMcqs: 18, streak: Number(profile?.streak || 3) },
-    { uid: 'u2', name: 'Zaid Khan', dailyMcqs: 25, streak: 7 },
-    { uid: 'u3', name: 'Ayesha Malik', dailyMcqs: 22, streak: 5 },
-    { uid: 'u4', name: 'Bilal Hassan', dailyMcqs: 14, streak: 4 },
-  ]);
+  const [circleMembers, setCircleMembers] = useState<CircleMember[]>([]);
   const [circleCreated, setCircleCreated] = useState(false);
 
   // Calculate next Sunday 8:00 PM PKT
@@ -91,24 +87,10 @@ export function ArenaDashboardPage() {
           const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as LeaderboardItem));
           setLeaderboard(items);
         } else {
-          // Fallback to attempts or authentic initial rankings
-          setLeaderboard([
-            { id: '1', uid: 'u_zaid', displayName: 'Zaid K.', university: 'FAST-NUCES CS', city: 'Lahore', score: 98, streak: 12 },
-            { id: '2', uid: 'u_ayesha', displayName: 'Ayesha M.', university: 'NUST SEECS', city: 'Islamabad', score: 96, streak: 9 },
-            { id: '3', uid: 'u_bilal', displayName: 'Bilal H.', university: 'GIKI Computer Eng', city: 'Karachi', score: 94, streak: 8 },
-            { id: '4', uid: user?.uid || 'you_current', displayName: user?.displayName || 'You', university: profile?.targetUniversity || 'FAST-NUCES', city: 'Lahore', score: 88, streak: Number(profile?.streak || 3) },
-            { id: '5', uid: 'u_maryam', displayName: 'Maryam N.', university: 'NED Karachi', city: 'Peshawar', score: 86, streak: 6 },
-            { id: '6', uid: 'u_hamza', displayName: 'Hamza A.', university: 'UET Lahore', city: 'Rawalpindi', score: 82, streak: 5 },
-          ]);
+          setLeaderboard([]);
         }
       } catch {
-        setLeaderboard([
-          { id: '1', uid: 'u_zaid', displayName: 'Zaid K.', university: 'FAST-NUCES CS', city: 'Lahore', score: 98, streak: 12 },
-          { id: '2', uid: 'u_ayesha', displayName: 'Ayesha M.', university: 'NUST SEECS', city: 'Islamabad', score: 96, streak: 9 },
-          { id: '3', uid: 'u_bilal', displayName: 'Bilal H.', university: 'GIKI Computer Eng', city: 'Karachi', score: 94, streak: 8 },
-          { id: '4', uid: user?.uid || 'you_current', displayName: user?.displayName || 'You', university: profile?.targetUniversity || 'FAST-NUCES', city: 'Lahore', score: 88, streak: Number(profile?.streak || 3) },
-          { id: '5', uid: 'u_maryam', displayName: 'Maryam N.', university: 'NED Karachi', city: 'Peshawar', score: 86, streak: 6 },
-        ]);
+        setLeaderboard([]);
       } finally {
         setLoadingLeaderboard(false);
       }
@@ -224,6 +206,14 @@ export function ArenaDashboardPage() {
           {loadingLeaderboard ? (
             <div className="space-y-2 py-4">
               <Skeleton height={50} count={5} />
+            </div>
+          ) : leaderboard.length === 0 ? (
+            <div className="py-6">
+              <EmptyState
+                icon={<Award size={36} className="text-[var(--text-muted)]" />}
+                title="No leaderboard rankings yet"
+                description="Complete practice sprints and national mock tests to appear on the nationwide honor roll."
+              />
             </div>
           ) : (
             <div className="flex flex-col gap-2 mt-4">
@@ -411,33 +401,43 @@ export function ArenaDashboardPage() {
               Squad Members ({circleMembers.length})
             </h3>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {circleMembers.map((m) => (
-                <div
-                  key={m.uid}
-                  className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-xs font-bold text-[var(--text)]">
-                      {m.name.slice(0, 1)}
-                    </div>
-                    <div>
-                      <div className="text-sm font-semibold text-[var(--text)]">{m.name}</div>
-                      <div className="text-[11px] text-[var(--text-muted)] font-doto">
-                        {m.streak}d streak
+            {circleMembers.length === 0 ? (
+              <div className="py-6">
+                <EmptyState
+                  icon={<Users size={36} className="text-[var(--text-muted)]" />}
+                  title="No circle members yet"
+                  description="Share your room code above with classmates to track daily MCQ goals and build consistent habits."
+                />
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {circleMembers.map((m) => (
+                  <div
+                    key={m.uid}
+                    className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-[var(--surface)] border border-[var(--border)] flex items-center justify-center text-xs font-bold text-[var(--text)]">
+                        {m.name.slice(0, 1)}
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold text-[var(--text)]">{m.name}</div>
+                        <div className="text-[11px] text-[var(--text-muted)] font-doto">
+                          {m.streak}d streak
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="text-right">
-                    <div className="font-doto font-bold text-sm text-[var(--accent)]">
-                      {m.dailyMcqs} MCQs
+                    <div className="text-right">
+                      <div className="font-doto font-bold text-sm text-[var(--accent)]">
+                        {m.dailyMcqs} MCQs
+                      </div>
+                      <div className="text-[10px] text-[var(--text-muted)]">Today&apos;s sprint</div>
                     </div>
-                    <div className="text-[10px] text-[var(--text-muted)]">Today&apos;s sprint</div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </Card>
       )}

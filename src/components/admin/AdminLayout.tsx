@@ -212,8 +212,7 @@ export function AdminLayout() {
 
       {/* ─── MOBILE FLOATING PILL BOTTOM NAV (Overview, Users, Questions, More) ──── */}
       <div
-        className="md:hidden fixed bottom-4 inset-x-0 mx-auto w-[calc(100%-2rem)] max-w-md z-40"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+        className="md:hidden fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[420px] z-40"
         aria-label="Admin Navigation Bar"
       >
         <nav
@@ -222,7 +221,7 @@ export function AdminLayout() {
             backgroundColor: 'var(--nav-bg)',
             borderColor: 'var(--border)',
           }}
-          className="rounded-full backdrop-blur-md border p-1.5 flex items-center justify-around gap-1 shadow-2xl select-none relative"
+          className="rounded-full backdrop-blur-md border p-1 flex items-center justify-between shadow-2xl select-none relative overflow-hidden h-[54px]"
         >
           {PRIMARY_NAV.map(({ to, label, icon: Icon, end }) => {
             const isQuestions = to.includes('questions');
@@ -231,40 +230,45 @@ export function AdminLayout() {
                 key={to}
                 to={to}
                 end={end}
-                className={({ isActive }) =>
-                  `relative rounded-full transition-colors duration-200 cursor-pointer min-h-[44px] min-w-[44px] flex flex-col items-center justify-center px-2 py-1 flex-1 text-center outline-none select-none ${
-                    isActive ? 'font-semibold' : 'hover:text-[var(--text)]'
-                  }`
-                }
-                style={({ isActive }) => ({
-                  color: isActive ? 'var(--nav-active-text)' : 'var(--text-muted)',
-                })}
+                title={label}
+                aria-label={label}
+                className="relative rounded-full transition-colors duration-150 cursor-pointer h-full flex items-center justify-center text-center outline-none select-none flex-1 min-w-0 px-1"
               >
                 {({ isActive }) => (
                   <>
                     {isActive && (
                       <motion.div
                         layoutId="adminActiveNavPill"
-                        className="absolute inset-0 rounded-full"
-                        style={{ backgroundColor: 'var(--nav-active-bg)' }}
+                        className="absolute inset-0 rounded-full z-0"
+                        style={{ backgroundColor: '#D71921' }}
                         transition={{
                           type: 'spring',
-                          stiffness: 420,
-                          damping: 38,
-                          mass: 0.8,
+                          stiffness: 450,
+                          damping: 35,
+                          mass: 0.6,
                         }}
                       />
                     )}
-                    <span className="relative z-10 flex flex-col items-center justify-center">
+                    <span
+                      className={`relative z-10 flex items-center justify-center gap-1.5 transition-colors max-w-full ${
+                        isActive
+                          ? 'text-white font-semibold text-xs px-2'
+                          : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+                      }`}
+                    >
                       <div className="relative shrink-0 flex items-center justify-center">
-                        <Icon size={18} />
+                        <Icon size={18} className={isActive ? 'text-white' : ''} />
                         {isQuestions && (
-                          <span className="absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[var(--red)] ring-2 ring-[var(--nav-bg)]" />
+                          <span className={`absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[var(--red)] ring-2 ${isActive ? 'ring-[#D71921]' : 'ring-[var(--nav-bg)]'}`} />
                         )}
                       </div>
-                      <span className="text-[10px] leading-tight truncate mt-0.5">
-                        {label}
-                      </span>
+                      {isActive ? (
+                        <span className="truncate whitespace-nowrap leading-none text-[11px] sm:text-xs">
+                          {label}
+                        </span>
+                      ) : (
+                        <span className="sr-only">{label}</span>
+                      )}
                     </span>
                   </>
                 )}
@@ -277,34 +281,41 @@ export function AdminLayout() {
             type="button"
             role="tab"
             aria-selected={isSecondaryActive}
+            title="More admin sections"
+            aria-label="More admin sections"
             onClick={() => setIsMoreOpen(true)}
-            className={`relative rounded-full transition-colors duration-200 cursor-pointer min-h-[44px] min-w-[44px] flex flex-col items-center justify-center px-2 py-1 flex-1 text-center outline-none select-none ${
-              isSecondaryActive ? 'font-semibold' : 'hover:text-[var(--text)]'
-            }`}
-            style={{
-              color: isSecondaryActive ? 'var(--nav-active-text)' : 'var(--text-muted)',
-            }}
+            className="relative rounded-full transition-colors duration-150 cursor-pointer h-full flex items-center justify-center text-center outline-none select-none flex-1 min-w-0 px-1"
           >
             {isSecondaryActive && (
               <motion.div
                 layoutId="adminActiveNavPill"
-                className="absolute inset-0 rounded-full"
-                style={{ backgroundColor: 'var(--nav-active-bg)' }}
+                className="absolute inset-0 rounded-full z-0"
+                style={{ backgroundColor: '#D71921' }}
                 transition={{
                   type: 'spring',
-                  stiffness: 420,
-                  damping: 38,
-                  mass: 0.8,
+                  stiffness: 450,
+                  damping: 35,
+                  mass: 0.6,
                 }}
               />
             )}
-            <span className="relative z-10 flex flex-col items-center justify-center">
+            <span
+              className={`relative z-10 flex items-center justify-center gap-1.5 transition-colors max-w-full ${
+                isSecondaryActive
+                  ? 'text-white font-semibold text-xs px-2'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+              }`}
+            >
               <div className="relative shrink-0 flex items-center justify-center">
-                <MoreHorizontal size={18} />
+                <MoreHorizontal size={18} className={isSecondaryActive ? 'text-white' : ''} />
               </div>
-              <span className="text-[10px] leading-tight truncate mt-0.5">
-                More
-              </span>
+              {isSecondaryActive ? (
+                <span className="truncate whitespace-nowrap leading-none text-[11px] sm:text-xs">
+                  More
+                </span>
+              ) : (
+                <span className="sr-only">More</span>
+              )}
             </span>
           </button>
         </nav>
@@ -364,65 +375,6 @@ export function AdminLayout() {
                 <div className="flex items-center gap-3">
                   <ExternalLink size={16} />
                   <span>Student cockpit view</span>
-                </div>
-                <ChevronRight size={14} className="text-[var(--muted)]" />
-              </Link>
-
-              <button
-                type="button"
-                onClick={handleSignOut}
-                className="w-full flex items-center justify-center gap-2 p-3 rounded-[16px] border border-[var(--red)]/40 text-[var(--red)] font-heading text-[13px] font-medium"
-              >
-                <LogOut size={15} />
-                <span>Sign out</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ─── MOBILE AVATAR MENU BOTTOM SHEET ───────────────────────────────── */}
-      {isAvatarMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex items-end">
-          <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm"
-            onClick={() => setIsAvatarMenuOpen(false)}
-          />
-          <div className="relative w-full bg-[var(--card)] border-t border-[var(--border)] rounded-t-[24px] p-5 flex flex-col gap-4 animate-in slide-in-from-bottom duration-200">
-            <div className="w-10 h-1 bg-[var(--border)] rounded-full mx-auto -mt-1 mb-1" />
-
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-9 h-9 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-[13px] font-heading font-bold text-[var(--text)] shrink-0">
-                  {userInitial}
-                </div>
-                <div className="min-w-0">
-                  <p className="font-heading text-[13px] text-[var(--text)] font-medium truncate">
-                    {user?.email || 'admin@boardly.cfd'}
-                  </p>
-                  <span className="inline-block mt-0.5 text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--red)] text-[var(--red)]">
-                    {isSuperAdmin ? 'Superadmin' : 'Admin'}
-                  </span>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsAvatarMenuOpen(false)}
-                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)]"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Link
-                to="/dashboard"
-                onClick={() => setIsAvatarMenuOpen(false)}
-                className="flex items-center justify-between p-3 rounded-[16px] border border-[var(--border)] text-[13px] font-heading text-[var(--text)]"
-              >
-                <div className="flex items-center gap-2.5">
-                  <ExternalLink size={15} />
-                  <span>Switch to student cockpit</span>
                 </div>
                 <ChevronRight size={14} className="text-[var(--muted)]" />
               </Link>
