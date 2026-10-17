@@ -328,22 +328,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.warn('Could not update Firebase Auth profile displayName:', err);
       }
 
-      // Create base user document immediately with all required fields
-      await withTimeout(
-        setDoc(doc(db, 'users', newUser.uid), {
-          uid: newUser.uid,
-          name: resolvedName,
-          displayName: resolvedName,
-          email: email.toLowerCase(),
-          photoURL: null,
-          role: 'student',
-          plan: 'free',
-          status: 'active',
-          onboardingCompleted: false,
-          createdAt: serverTimestamp(),
-        }, { merge: true }),
-        6000
-      );
+      // Create base user document ONLY if it doesn't already exist
+      const userDocRef = doc(db, 'users', newUser.uid);
+      const existingSnap = await getDoc(userDocRef).catch(() => null);
+      if (!existingSnap || !existingSnap.exists()) {
+        await withTimeout(
+          setDoc(
+            userDocRef,
+            {
+              uid: newUser.uid,
+              name: resolvedName,
+              displayName: resolvedName,
+              email: email.toLowerCase(),
+              photoURL: null,
+              role: 'student',
+              plan: 'free',
+              status: 'active',
+              onboardingCompleted: false,
+              createdAt: serverTimestamp(),
+            },
+            { merge: true }
+          ),
+          6000
+        );
+      }
 
       // Send email verification
       try {

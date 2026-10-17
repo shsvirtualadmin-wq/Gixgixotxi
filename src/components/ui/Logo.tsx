@@ -41,8 +41,8 @@ export function Logo({
     // 44-52px on mobile (48px), 56-64px on desktop (60px) per specification
     resolvedClass = `h-[48px] sm:h-[60px] ${className}`.trim();
   } else if (size === 'footer') {
-    // 56-72px for footer (62px mobile, 68px desktop) per specification
-    resolvedClass = `h-[62px] sm:h-[68px] ${className}`.trim();
+    // 72px on mobile, 88px on desktop per specification
+    resolvedClass = `h-[72px] sm:h-[88px] ${className}`.trim();
   } else if (size === 'sidebar') {
     resolvedClass = `h-[48px] ${className}`.trim();
   } else if (size === 'admin') {

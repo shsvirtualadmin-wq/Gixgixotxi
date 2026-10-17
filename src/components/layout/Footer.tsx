@@ -1,59 +1,112 @@
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '@/components/ui/Logo';
 
 export function Footer() {
+  const wordmarkContainerRef = useRef<HTMLDivElement>(null);
+  const wordmarkTextRef = useRef<HTMLSpanElement>(null);
+  const [fittedFontSize, setFittedFontSize] = useState<string>('clamp(56px, 24cqw, 320px)');
+
+  // Measure and fit "Boardly" wordmark to fit footer width at 360px, 390px, 430px and desktop
+  useEffect(() => {
+    const adjustWordmark = () => {
+      const container = wordmarkContainerRef.current;
+      const text = wordmarkTextRef.current;
+      if (!container || !text) return;
+
+      // Available width inside footer with safety padding (16px each side)
+      const availWidth = container.clientWidth - 32;
+      if (availWidth <= 0) return;
+
+      const currentWidth = text.scrollWidth;
+      const currentFontSize = parseFloat(window.getComputedStyle(text).fontSize) || 64;
+
+      if (currentWidth > 0 && currentFontSize > 0) {
+        // Target font size: fit wordmark to ~96% of available width without overflow
+        const targetSize = Math.floor((availWidth * 0.96 / currentWidth) * currentFontSize);
+        const clampedSize = Math.min(320, Math.max(50, targetSize));
+        setFittedFontSize(`${clampedSize}px`);
+      }
+    };
+
+    adjustWordmark();
+
+    const ro = new ResizeObserver(adjustWordmark);
+    if (wordmarkContainerRef.current) {
+      ro.observe(wordmarkContainerRef.current);
+    }
+    window.addEventListener('resize', adjustWordmark);
+
+    if (document.fonts?.ready) {
+      document.fonts.ready.then(adjustWordmark);
+    }
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', adjustWordmark);
+    };
+  }, []);
+
   return (
     <footer
-      className="w-full mt-auto"
+      className="w-full mt-auto bg-[#D71921] text-white rounded-t-[48px] md:rounded-t-[64px] pt-14 sm:pt-16 md:pt-20 select-none"
       style={{
-        backgroundColor: 'var(--bg)',
-        borderTop: '1px solid var(--border)',
-        paddingTop: '48px',
-        paddingBottom: '48px',
+        backgroundColor: '#D71921',
+        width: '100%',
+        maxWidth: '100vw',
+        overflowX: 'clip',
+        boxSizing: 'border-box',
+        containerType: 'inline-size',
       }}
     >
-      <div className="boardly-container">
+      <div className="boardly-container w-full max-w-[1200px] mx-auto px-5 sm:px-6 md:px-8 box-border">
         {/* 4-column grid on desktop, 2 columns on mobile with brand on top */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-8">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 w-full [grid-template-columns:repeat(2,minmax(0,1fr))] lg:[grid-template-columns:repeat(4,minmax(0,1fr))]">
           {/* Brand info (Full width on mobile, 1 col on desktop) */}
-          <div className="col-span-2 lg:col-span-1">
-            <Link to="/" className="inline-flex items-center mb-4 group" aria-label="Boardly Home">
-              <Logo size="footer" />
+          <div className="col-span-2 lg:col-span-1 min-w-0">
+            {/* Logo: 72px on mobile, 88px on desktop, width auto, white, 24px space below */}
+            <Link to="/" className="inline-flex items-center mb-6 group" aria-label="Boardly Home">
+              <Logo
+                size="footer"
+                className="h-[72px] sm:h-[88px] w-auto max-w-none brightness-0 invert"
+                style={{ maxHeight: 'none' }}
+                alt="Boardly"
+              />
             </Link>
-            <p className="text-sm text-[var(--muted)] leading-relaxed mb-4 max-w-sm">
+            <p className="text-sm text-white/80 leading-relaxed mb-4 max-w-sm break-words">
               Pakistan&apos;s premier MCQ test-prep platform for FAST-NUCES, NUST NET, GIKI, LUMS, NED, MDCAT, ECAT, and intermediate boards.
             </p>
-            <div className="text-xs text-[var(--muted)]">
+            <div className="text-xs text-white/80 break-words">
               Built with precision for Pakistani aspirants.
             </div>
           </div>
 
           {/* Test prep */}
-          <div>
+          <div className="min-w-0">
             <h4
-              className="text-sm font-semibold text-[var(--text)] mb-4"
+              className="text-sm font-bold text-white mb-4"
               style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
             >
               Test prep
             </h4>
-            <ul className="space-y-2.5 text-sm text-[var(--muted)]">
+            <ul className="space-y-2.5 text-sm text-white/80">
               <li>
-                <Link to="/#features" className="hover:text-[var(--text)] transition-colors">
+                <Link to="/#features" className="hover:text-white hover:underline transition-colors block break-words">
                   FAST-NUCES CS &amp; Eng
                 </Link>
               </li>
               <li>
-                <Link to="/#features" className="hover:text-[var(--text)] transition-colors">
+                <Link to="/#features" className="hover:text-white hover:underline transition-colors block break-words">
                   NUST NET Applied / Eng
                 </Link>
               </li>
               <li>
-                <Link to="/#features" className="hover:text-[var(--text)] transition-colors">
+                <Link to="/#features" className="hover:text-white hover:underline transition-colors block break-words">
                   GIKI Engineering Mock
                 </Link>
               </li>
               <li>
-                <Link to="/#features" className="hover:text-[var(--text)] transition-colors">
+                <Link to="/#features" className="hover:text-white hover:underline transition-colors block break-words">
                   MDCAT &amp; ECAT Vaults
                 </Link>
               </li>
@@ -61,31 +114,31 @@ export function Footer() {
           </div>
 
           {/* Platform */}
-          <div>
+          <div className="min-w-0">
             <h4
-              className="text-sm font-semibold text-[var(--text)] mb-4"
+              className="text-sm font-bold text-white mb-4"
               style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
             >
               Platform
             </h4>
-            <ul className="space-y-2.5 text-sm text-[var(--muted)]">
+            <ul className="space-y-2.5 text-sm text-white/80">
               <li>
-                <Link to="/#arena" className="hover:text-[var(--text)] transition-colors">
+                <Link to="/#arena" className="hover:text-white hover:underline transition-colors block break-words">
                   Live Arena
                 </Link>
               </li>
               <li>
-                <Link to="/pricing" className="hover:text-[var(--text)] transition-colors">
+                <Link to="/pricing" className="hover:text-white hover:underline transition-colors block break-words">
                   Pricing &amp; plans
                 </Link>
               </li>
               <li>
-                <Link to="/reviews" className="hover:text-[var(--text)] transition-colors">
+                <Link to="/reviews" className="hover:text-white hover:underline transition-colors block break-words">
                   Student reviews
                 </Link>
               </li>
               <li>
-                <Link to="/contact" className="hover:text-[var(--text)] transition-colors">
+                <Link to="/contact" className="hover:text-white hover:underline transition-colors block break-words">
                   Contact support
                 </Link>
               </li>
@@ -93,26 +146,26 @@ export function Footer() {
           </div>
 
           {/* Legal & trust */}
-          <div>
+          <div className="min-w-0">
             <h4
-              className="text-sm font-semibold text-[var(--text)] mb-4"
+              className="text-sm font-bold text-white mb-4"
               style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
             >
               Legal &amp; trust
             </h4>
-            <ul className="space-y-2.5 text-sm text-[var(--muted)]">
+            <ul className="space-y-2.5 text-sm text-white/80">
               <li>
-                <Link to="/privacy" className="hover:text-[var(--text)] transition-colors">
+                <Link to="/privacy" className="hover:text-white hover:underline transition-colors block break-words">
                   Privacy policy
                 </Link>
               </li>
               <li>
-                <Link to="/terms" className="hover:text-[var(--text)] transition-colors">
+                <Link to="/terms" className="hover:text-white hover:underline transition-colors block break-words">
                   Terms of service
                 </Link>
               </li>
               <li>
-                <span className="text-xs text-[var(--muted)]">
+                <span className="text-xs text-white/80 block break-words">
                   Not affiliated with any university official testing body.
                 </span>
               </li>
@@ -120,35 +173,54 @@ export function Footer() {
           </div>
         </div>
 
-        {/* Thin dotted divider separating sections */}
-        <div className="divider-dotted mt-10 mb-8" />
+        {/* 1px rgba(255,255,255,0.25) divider separating sections */}
+        <div
+          className="w-full mt-12 mb-8"
+          style={{ borderTop: '1px solid rgba(255, 255, 255, 0.25)' }}
+        />
 
-        {/* Copyright and tagline */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-[var(--muted)]">
-          <div>
+        {/* Copyright and tagline in white at 80% */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm text-white/80 pb-6">
+          <div className="break-words">
             &copy; {new Date().getFullYear()} Boardly Technologies. All rights reserved.
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 break-words">
             <span>Designed for focused study. Asia/Karachi (PKT)</span>
           </div>
         </div>
       </div>
 
-      {/* ─── RED FOOTER WITH GIANT DOTTED "BOARDLY" ────────────────────────── */}
-      <div className="w-full bg-[#D71921] text-white mt-10 py-6 sm:py-10 px-4 overflow-hidden select-none">
-        <div className="max-w-[1200px] mx-auto flex items-center justify-center text-center overflow-hidden">
-          <span
-            className="font-dot text-[13vw] sm:text-[12vw] lg:text-[140px] font-black tracking-tighter leading-none text-white uppercase inline-block max-w-full select-none pointer-events-none"
-            style={{
-              fontFamily: 'var(--font-dot)',
-              letterSpacing: '-0.03em',
-            }}
-            aria-hidden="true"
-          >
-            BOARDLY
-          </span>
-        </div>
+      {/* ─── HUGE DOT-MATRIX "Boardly" WORDMARK IN DOTO FONT ─────────────────── */}
+      {/*
+        No overflow:hidden on wrapper that clips descenders.
+        No negative bottom margin, no translateY.
+        line-height: 1.15, padding-bottom: 0.25em so full "y" descender shows.
+        At least 16px of space below the wordmark (pb-6 = 24px, sm:pb-8 = 32px).
+      */}
+      <div
+        ref={wordmarkContainerRef}
+        className="w-full flex items-center justify-center text-center px-4 pt-2 pb-6 sm:pb-8 select-none pointer-events-none"
+        style={{
+          boxSizing: 'border-box',
+        }}
+      >
+        <span
+          ref={wordmarkTextRef}
+          className="font-dot text-white inline-block select-none pointer-events-none text-center whitespace-nowrap"
+          style={{
+            fontFamily: 'var(--font-dot)',
+            fontSize: fittedFontSize,
+            lineHeight: 1.15,
+            paddingBottom: '0.25em',
+            letterSpacing: '-0.02em',
+          }}
+          aria-hidden="true"
+        >
+          Boardly
+        </span>
       </div>
     </footer>
   );
 }
+
+export default Footer;

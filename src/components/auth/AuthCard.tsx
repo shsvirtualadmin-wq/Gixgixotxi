@@ -9,7 +9,12 @@ interface AuthCardProps {
 }
 
 export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
-  const [mode, setMode] = useState<'signin' | 'signup'>(initialMode);
+  const [mode, setMode] = useState<'signin' | 'signup'>(() => {
+    if (typeof window !== 'undefined' && window.location.pathname === '/signup') {
+      return 'signup';
+    }
+    return initialMode;
+  });
   const {
     signIn,
     signUp,
@@ -158,10 +163,12 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         await signIn(email.trim(), password);
       } else {
         await signUp(email.trim(), password, displayName.trim());
-        setSignupSuccess(true);
-        setResendCooldown(60);
+        navigate('/onboarding', { replace: true });
       }
     } catch (err: unknown) {
+      if (import.meta.env.DEV) {
+        console.error('[AuthCard] Submit error:', err);
+      }
       const fe = err as { code?: string; message?: string };
       const code = fe.code ?? '';
 
@@ -175,8 +182,10 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         setGeneralError('Too many failed attempts. Please wait a few moments before trying again.');
       } else if (code === 'auth/user-disabled') {
         setGeneralError('This account has been disabled. Please contact support@boardly.cfd.');
+      } else if (code === 'auth/network-request-failed') {
+        setGeneralError('Network connection issue. Please check your internet connection.');
       } else {
-        setGeneralError(fe.message || 'Authentication failed. Please try again.');
+        setGeneralError('Authentication failed. Please check your details and try again.');
       }
     } finally {
       setLoading(false);
@@ -249,18 +258,20 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         boxShadow: 'none',
       }}
     >
-      {/* Segmented Tabs: "Sign in" & "Create account" (Active: white with black text, Inactive: #9A9A9A on #111) */}
-      <div className="w-full h-11 p-1 rounded-full bg-[#111111] border border-[var(--border)] grid grid-cols-2 gap-1 items-center">
+      {/* Segmented Tabs: "Sign in" & "Create account" */}
+      <div className="w-full h-11 p-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] grid grid-cols-2 gap-1 items-center">
         <button
           type="button"
           onClick={() => {
             setMode('signin');
-            navigate('/login', { replace: true });
+            if (typeof window !== 'undefined') {
+              window.history.replaceState(null, '', '/login');
+            }
           }}
           className={`h-full rounded-full text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
             mode === 'signin'
-              ? 'bg-[#FFFFFF] text-[#000000]'
-              : 'text-[#9A9A9A] hover:text-[#F2F2F2]'
+              ? 'bg-[var(--text)] text-[var(--bg)] shadow-sm'
+              : 'text-[var(--text-muted)] hover:text-[var(--text)]'
           }`}
           style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
         >
@@ -270,12 +281,14 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           type="button"
           onClick={() => {
             setMode('signup');
-            navigate('/signup', { replace: true });
+            if (typeof window !== 'undefined') {
+              window.history.replaceState(null, '', '/signup');
+            }
           }}
           className={`h-full rounded-full text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
             mode === 'signup'
-              ? 'bg-[#FFFFFF] text-[#000000]'
-              : 'text-[#9A9A9A] hover:text-[#F2F2F2]'
+              ? 'bg-[var(--text)] text-[var(--bg)] shadow-sm'
+              : 'text-[var(--text-muted)] hover:text-[var(--text)]'
           }`}
           style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
         >
@@ -305,24 +318,12 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           <div className="flex items-start gap-3">
             <AlertCircle size={18} className="text-[#EF4444] shrink-0 mt-0.5" />
             <div className="flex-1 space-y-1.5 text-left">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="font-semibold text-[#FCA5A5] uppercase tracking-wider text-[11px]">
-                  Sign-In Issue
-                </span>
-                {(authError?.code || profileError?.code) && (
-                  <span className="font-mono text-[11px] font-bold bg-[#EF4444]/20 text-[#FCA5A5] px-2 py-0.5 rounded border border-[#EF4444]/40">
-                    {authError?.code || profileError?.code}
-                  </span>
-                )}
-              </div>
+              <span className="font-semibold text-[#FCA5A5] uppercase tracking-wider text-[11px] block">
+                {mode === 'signin' ? 'Sign-In Issue' : 'Sign-Up Issue'}
+              </span>
               <p className="text-[#FEE2E2] leading-relaxed font-medium">
                 {generalError || authError?.message || profileError?.message}
               </p>
-              {profileError?.path && (
-                <p className="text-[11px] text-[#FCA5A5]/80 font-mono">
-                  Path: {profileError.path}
-                </p>
-              )}
             </div>
             <button
               type="button"
