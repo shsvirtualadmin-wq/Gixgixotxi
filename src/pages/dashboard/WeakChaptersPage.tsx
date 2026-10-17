@@ -22,7 +22,7 @@ interface ChapterStat {
 }
 
 export function WeakChaptersPage() {
-  const { user } = useAuth();
+  const { user, profileLoading } = useAuth();
   const navigate = useNavigate();
 
   const [stats, setStats] = useState<ChapterStat[]>([]);
@@ -35,11 +35,22 @@ export function WeakChaptersPage() {
   const effectivePlan = useEffectivePlan();
 
   const loadStats = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      if (!profileLoading) {
+        setLoading(false);
+      }
+      return;
+    }
     setLoading(true);
     setPageError(null);
     try {
-      const snap = await getDocs(collection(db, 'users', user.uid, 'chapterStats'));
+      const snapPromise = getDocs(collection(db, 'users', user.uid, 'chapterStats'));
+      const snap = await Promise.race([
+        snapPromise,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('Chapter stats query timed out')), 6000)
+        ),
+      ]);
       const items = snap.docs.map((d) => {
         const data = d.data();
         return {
@@ -64,11 +75,19 @@ export function WeakChaptersPage() {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, profileLoading]);
 
   useEffect(() => {
     loadStats();
   }, [loadStats]);
+
+  // Safety failsafe: never leave loading as true indefinitely under any network condition
+  useEffect(() => {
+    const safetyTimer = setTimeout(() => {
+      setLoading(false);
+    }, 4000);
+    return () => clearTimeout(safetyTimer);
+  }, []);
 
   const handleDrillChapter = async (item: ChapterStat) => {
     if (!user) {

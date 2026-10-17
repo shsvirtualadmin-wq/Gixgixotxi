@@ -240,6 +240,7 @@ function AppInner() {
 
         {/* Crew & Captain Portals — independent shells, NO public Navbar or Footer */}
         <Route path="/crew" element={<CrewDashboardPage />} />
+        <Route path="/crews" element={<Navigate to="/crew" replace />} />
         <Route path="/crew/apply" element={<CrewApplyPage />} />
         <Route path="/join/:code" element={<JoinCrewPage />} />
         <Route path="/join" element={<Navigate to="/crew" replace />} />

@@ -37,6 +37,11 @@ export function DashboardBottomNav() {
 
   const { theme, toggle: toggleTheme } = useTheme();
 
+  const handleNav = (target: string) => {
+    setIsMenuOpen(false);
+    navigate(target);
+  };
+
   const handleSignOut = async () => {
     setIsMenuOpen(false);
     await signOutUser();
@@ -104,7 +109,9 @@ export function DashboardBottomNav() {
     <>
       {/* ─── FIXED UNIFIED PILL BOTTOM NAVIGATION ────────────────────────────── */}
       <div
-        className="fixed bottom-4 inset-x-0 mx-auto w-[calc(100%-2rem)] max-w-3xl z-50 pointer-events-auto"
+        className={`fixed bottom-4 inset-x-0 mx-auto w-[calc(100%-2rem)] max-w-3xl z-40 transition-opacity duration-150 ${
+          isMenuOpen ? 'pointer-events-none opacity-0 invisible' : 'pointer-events-auto opacity-100'
+        }`}
         style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
         aria-label="Student Navigation Bar"
       >
@@ -117,17 +124,20 @@ export function DashboardBottomNav() {
 
       {/* ─── BOTTOM MENU DRAWER / MODAL ────────────────────────────────────── */}
       {isMenuOpen && (
-        <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center p-0 md:p-4">
+        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center p-0 md:p-4">
           {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity"
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm transition-opacity z-0 pointer-events-auto"
             onClick={() => setIsMenuOpen(false)}
           />
 
           {/* Drawer/Modal content: full-width bottom sheet on mobile; centered modal on md+ */}
-          <div className="relative w-full md:max-w-md bg-[var(--card)] border border-[var(--border)] rounded-t-[28px] md:rounded-2xl p-5 sm:p-6 pb-8 md:pb-6 flex flex-col gap-4 overflow-y-auto max-h-[88vh] md:max-h-[85vh] z-10 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full md:max-w-md bg-[var(--card)] border border-[var(--border)] rounded-t-[28px] md:rounded-2xl p-5 sm:p-6 pb-8 md:pb-6 flex flex-col gap-4 overflow-y-auto max-h-[88vh] md:max-h-[85vh] z-10 pointer-events-auto shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+          >
             {/* Grab handle for mobile */}
-            <div className="md:hidden w-10 h-1 bg-[var(--border)] rounded-full mx-auto -mt-1 mb-1" />
+            <div className="md:hidden w-10 h-1 bg-[var(--border)] rounded-full mx-auto -mt-1 mb-1 pointer-events-none" />
 
             {/* Header: User Summary */}
             <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border)]">

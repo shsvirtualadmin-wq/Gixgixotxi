@@ -538,3 +538,21 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ===== SKELETON LOADERS ===== */
+.skeleton {
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-input);
+  animation: skeleton-pulse 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}
+

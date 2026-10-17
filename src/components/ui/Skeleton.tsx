@@ -11,8 +11,14 @@ export function Skeleton({ width = '100%', height = 16, className = '', count = 
       {Array.from({ length: count }).map((_, i) => (
         <div
           key={i}
-          className={`skeleton ${className}`}
-          style={{ width, height, marginBottom: count > 1 ? 8 : 0 }}
+          className={`skeleton animate-pulse rounded-xl ${className}`}
+          style={{
+            width,
+            height,
+            backgroundColor: 'var(--surface-2)',
+            border: '1px solid var(--border)',
+            marginBottom: count > 1 ? 8 : 0,
+          }}
         />
       ))}
     </>
