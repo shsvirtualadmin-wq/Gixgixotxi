@@ -399,6 +399,15 @@ export async function handleRequestActionServer(params: {
       throw new Error(`${request.displayName} has already joined another crew.`);
     }
 
+    // Re-check min streak requirement on approval
+    const currentStreak = Number(targetUserData.streak ?? request.streak) || 0;
+    const requiredStreak = Number(crew.minStreak) || 0;
+    if (currentStreak < requiredStreak) {
+      throw new Error(
+        `User ${request.displayName} no longer meets the streak requirement (${currentStreak}/${requiredStreak} days).`
+      );
+    }
+
     const newMember: CrewMember = {
       uid: request.userId,
       displayName: request.displayName,

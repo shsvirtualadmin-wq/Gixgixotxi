@@ -3,6 +3,7 @@ import { NavLink, Outlet, Link, useNavigate, useLocation, Navigate } from 'react
 import {
   LayoutDashboard,
   Users,
+  Shield,
   Database,
   FileCheck2,
   CreditCard,
@@ -33,6 +34,7 @@ interface AdminNavItem {
 const PRIMARY_NAV: AdminNavItem[] = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/users', label: 'Users', icon: Users },
+  { to: '/admin/crews', label: 'Crews', icon: Shield },
   { to: '/admin/questions', label: 'Questions', icon: Database },
 ];
 

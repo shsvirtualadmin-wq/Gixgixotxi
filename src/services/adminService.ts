@@ -37,6 +37,7 @@ import {
   findChapterSlug,
   computeContentHash,
 } from '@/constants/taxonomy';
+import { recordCrewPaymentActionServer } from './crewBackend';
 
 // ─── DIAGNOSTIC FIRESTORE ERROR ──────────────────────────────────────────────
 export class AdminFirestoreError extends Error {
@@ -1187,16 +1188,45 @@ export async function approvePaymentRequest(
   adminEmail: string,
   req: PaymentRequest
 ): Promise<void> {
-  // 30 days of Pro access from today
-  const durationDays = (req.durationMonths ?? 1) * 30;
-  const expiresAt = Timestamp.fromMillis(Date.now() + durationDays * 24 * 60 * 60 * 1000);
-
   // 1. Update payment request
   await updateDoc(doc(db, 'paymentRequests', req.id), {
     status: 'approved',
     approvedAt: serverTimestamp(),
     approvedBy: adminEmail,
   });
+
+  // If this is a Large Crew upgrade request, update crew record (never write crew Pro into user's personal subscription)
+  if ((req.plan === 'large_crew' || req.crewId) && req.crewId) {
+    await recordCrewPaymentActionServer({
+      crewId: req.crewId,
+      action: 'extend_month',
+      adminEmail,
+      reason: `Verified ${req.method} transaction ${req.transactionId}`,
+      amount: req.amount,
+      transactionId: req.transactionId,
+    });
+
+    await addDoc(collection(db, 'notifications'), {
+      userId: req.userId,
+      title: 'Squad Upgraded to Large Crew! 🎉',
+      message: `Your payment of PKR ${req.amount} via ${req.method} (TRX: ${req.transactionId}) was verified. Your study squad now has Large Crew status with up to 30 members and Pro sharing for all squad members!`,
+      read: false,
+      createdAt: serverTimestamp(),
+    });
+
+    await logAdminAction(
+      adminEmail,
+      'approve_crew_payment_request',
+      { reqId: req.id, crewId: req.crewId, amount: req.amount, method: req.method, transactionId: req.transactionId },
+      req.userId,
+      req.userEmail
+    );
+    return;
+  }
+
+  // Otherwise, personal Pro account upgrade: 30 days of Pro access from today
+  const durationDays = (req.durationMonths ?? 1) * 30;
+  const expiresAt = Timestamp.fromMillis(Date.now() + durationDays * 24 * 60 * 60 * 1000);
 
   // 2. Upgrade student account
   await setDoc(

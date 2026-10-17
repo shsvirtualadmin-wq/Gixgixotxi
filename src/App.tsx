@@ -153,6 +153,9 @@ const AdminAuditLogsPage = lazyWithRetry(() =>
 const AdminHealthPage = lazyWithRetry(() =>
   import('./pages/admin/AdminHealthPage').then(m => ({ default: m.AdminHealthPage }))
 );
+const AdminCrewsPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminCrewsPage').then(m => ({ default: m.AdminCrewsPage }))
+);
 
 function PageLoader() {
   return (
@@ -193,6 +196,7 @@ function AppInner() {
           <Route path="payments" element={<AdminPaymentsPage />} />
           <Route path="reviews" element={<AdminReviewsPage />} />
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
+          <Route path="crews" element={<AdminCrewsPage />} />
           <Route path="health" element={<AdminHealthPage />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>
@@ -232,6 +236,7 @@ function AppInner() {
         <Route path="/onboarding" element={<OnboardingPage />} />
 
         {/* Crew & Captain Standalone Portals — independent shells, NO public Navbar or Footer */}
+        <Route path="/crew/my" element={<CrewDashboardPage />} />
         <Route path="/crew/dashboard" element={<CrewDashboardPage />} />
         <Route path="/crews" element={<Navigate to="/crew" replace />} />
         <Route path="/crew/apply" element={<CrewApplyPage />} />

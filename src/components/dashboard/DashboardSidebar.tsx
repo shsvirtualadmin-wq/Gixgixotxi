@@ -10,6 +10,7 @@ import {
   Moon,
   Award,
   User,
+  Users,
   LogOut,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -139,6 +140,22 @@ export function DashboardSidebar() {
             <span>Target Exam &amp; Profile Setup</span>
           </NavLink>
         )}
+
+        {/* Study Squads */}
+        <NavLink
+          to={profile?.crewId || profile?.isCrewMember ? '/crew/my' : '/crew'}
+          className={({ isActive }) =>
+            `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+              isActive
+                ? 'bg-[var(--text)] text-[var(--bg)] font-bold'
+                : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)]'
+            }`
+          }
+          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+        >
+          <Users size={18} />
+          <span>Study Squads</span>
+        </NavLink>
 
         {/* 5. Plans & Upgrade */}
         <NavLink

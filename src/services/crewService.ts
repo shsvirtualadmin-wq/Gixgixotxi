@@ -428,6 +428,67 @@ export async function leaveCrewSelf(crewId: string, userId: string): Promise<voi
 }
 
 /**
+ * Transfer leadership of a crew to another existing member.
+ */
+export async function promoteMemberToLeader(
+  crewId: string,
+  newLeaderUid: string,
+  operator: { uid: string; email?: string; isAdmin?: boolean }
+): Promise<void> {
+  const crewRef = doc(db, 'crews', crewId);
+  await runTransaction(db, async (tx) => {
+    const snap = await tx.get(crewRef);
+    if (!snap.exists()) throw new Error('Crew not found.');
+    const crew = snap.data() as CrewDoc;
+
+    const isLeader = crew.leaderId === operator.uid;
+    const isSuper = Boolean(operator.isAdmin || operator.email?.toLowerCase() === 'shsvirtualadmin@gmail.com');
+    if (!isLeader && !isSuper) {
+      throw new Error('Only the current crew leader or superadmin can transfer leadership.');
+    }
+
+    const members = crew.members || [];
+    const newLeader = members.find((m) => m.uid === newLeaderUid);
+    if (!newLeader) {
+      throw new Error('Selected user is not a member of this crew.');
+    }
+
+    const updatedMembers = members.map((m) => {
+      if (m.uid === newLeaderUid) {
+        return { ...m, role: 'leader' as const };
+      }
+      if (m.uid === crew.leaderId) {
+        return { ...m, role: 'member' as const };
+      }
+      return m;
+    });
+
+    tx.update(crewRef, {
+      leaderId: newLeaderUid,
+      leaderName: newLeader.displayName || 'Leader',
+      members: updatedMembers,
+      updatedAt: serverTimestamp(),
+    });
+
+    if (isSuper) {
+      const auditRef = doc(collection(db, 'auditLogs'));
+      tx.set(auditRef, {
+        adminEmail: operator.email || 'admin',
+        action: 'crew_transfer_leadership',
+        targetUid: crewId,
+        details: {
+          crewName: crew.name,
+          oldLeaderId: crew.leaderId,
+          newLeaderUid,
+          newLeaderName: newLeader.displayName,
+        },
+        timestamp: serverTimestamp(),
+      });
+    }
+  });
+}
+
+/**
  * Superadmin payment management.
  */
 export async function adminCrewPaymentControl(params: {

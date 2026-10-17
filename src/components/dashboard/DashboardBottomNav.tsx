@@ -52,7 +52,8 @@ export function DashboardBottomNav() {
   const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
   const displayName = profile?.displayName || user?.displayName || 'Student';
-  const initial = (displayName[0] || user?.email?.[0] || 'S').toUpperCase();
+  const isInCrew = Boolean(profile?.crewId || profile?.isCrewMember);
+  const crewLink = isInCrew ? '/crew/my' : '/crew';
 
   // Unified 6-item Student Nav: Daily Practice, Cockpit, Weak Chapters, Streaks, Crew, Menu
   const navItems: PillNavItem[] = [
@@ -78,7 +79,7 @@ export function DashboardBottomNav() {
       icon: <Flame size={18} />,
     },
     {
-      to: '/crew',
+      to: crewLink,
       label: 'Crew',
       icon: <Users size={18} />,
     },
@@ -259,7 +260,7 @@ export function DashboardBottomNav() {
               {/* Study Crew for all students */}
               <button
                 type="button"
-                onClick={() => handleNav('/crew')}
+                onClick={() => handleNav(crewLink)}
                 className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
               >
                 <div className="flex items-center gap-3">

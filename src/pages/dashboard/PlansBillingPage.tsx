@@ -4,11 +4,14 @@ import { collection, addDoc, query, where, getDocs, serverTimestamp } from 'fire
 import { db } from '@/lib/firebase';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { useStudyCrew } from '@/hooks/useStudyCrew';
+import { DEFAULT_CREW_PRICING } from '@/config/crewPricing';
+import { isCrewPaidActive } from '@/services/crewBackend';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { Check, Zap, Users, Clock } from 'lucide-react';
+import { Check, Zap, Users, Clock, Sparkles } from 'lucide-react';
 
 interface PaymentRequestItem {
   id: string;
@@ -22,8 +25,10 @@ interface PaymentRequestItem {
 export function PlansBillingPage() {
   const navigate = useNavigate();
   const { user, profile, loading: profileLoading } = useUserProfile();
+  const { crew } = useStudyCrew();
 
   const [modalOpen, setModalOpen] = useState(false);
+  const [upgradeTarget, setUpgradeTarget] = useState<'pro' | 'crew'>('pro');
   const [method, setMethod] = useState<'easypaisa' | 'jazzcash' | 'sadapay' | 'nayapay' | 'bank'>('easypaisa');
   const [transactionId, setTransactionId] = useState('');
   const [senderName, setSenderName] = useState('');
@@ -54,12 +59,18 @@ export function PlansBillingPage() {
 
     setSubmitting(true);
     try {
+      const isCrewUpgrade = upgradeTarget === 'crew';
+      const amount = isCrewUpgrade ? DEFAULT_CREW_PRICING.largeCrewPricePKR : 199;
+      const planName = isCrewUpgrade ? 'large_crew' : 'pro';
+
       await addDoc(collection(db, 'paymentRequests'), {
         userId: user.uid,
         userEmail: user.email?.toLowerCase(),
         displayName: senderName.trim() || user.displayName || user.email?.split('@')[0],
-        amount: 199,
-        plan: 'pro',
+        amount,
+        plan: planName,
+        crewId: isCrewUpgrade ? (crew?.id || null) : null,
+        crewName: isCrewUpgrade ? (crew?.name || null) : null,
         durationMonths: 1,
         method,
         transactionId: transactionId.trim().toUpperCase(),
@@ -110,23 +121,32 @@ export function PlansBillingPage() {
           }}
         >
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 4 }}>
               <span style={{ fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>
                 Active Plan
               </span>
               <Badge color={isSuperAdmin || isPro ? 'brand' : 'default'}>
                 {isSuperAdmin
                   ? 'SUPERADMIN · UNLIMITED'
+                  : effectivePlan.source === 'crew'
+                  ? `PRO VIA CREW (${effectivePlan.crewName || 'CREW'})`
                   : isPro
-                  ? (effectivePlan.source === 'crew' ? `PRO ACCESS (${effectivePlan.crewName || 'CREW'})` : 'PRO ACCESS')
+                  ? 'PRO ACCESS'
                   : isCrew
                   ? 'CREW PASS'
                   : 'FREE TIER'}
               </Badge>
+              {effectivePlan.source === 'crew' && (
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#D71921]/20 text-[#D71921] border border-[#D71921]/40 flex items-center gap-1">
+                  <Sparkles size={11} /> Pro via Crew
+                </span>
+              )}
             </div>
             <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
               {isSuperAdmin
                 ? 'Superadmin Access: All Tests, Papers & Tools Unlimited'
+                : effectivePlan.source === 'crew'
+                ? `Unlimited Pro access shared from your squad (${effectivePlan.crewName || 'Study Crew'})`
                 : isPro
                 ? 'Unlimited Tests & Boardy AI Tutor Unlocked'
                 : '10 tests per day and 5 AI Tokens per Day'}
@@ -138,7 +158,14 @@ export function PlansBillingPage() {
               Superadmin · Unlimited
             </div>
           ) : !isPro ? (
-            <Button variant="primary" size="md" onClick={() => setModalOpen(true)}>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() => {
+                setUpgradeTarget('pro');
+                setModalOpen(true);
+              }}
+            >
               <Zap size={15} /> Upgrade to Pro — PKR 199/mo
             </Button>
           ) : null}
@@ -298,66 +325,137 @@ export function PlansBillingPage() {
                 variant="primary"
                 size="md"
                 className="w-full"
-                onClick={() => setModalOpen(true)}
+                onClick={() => {
+                  setUpgradeTarget('pro');
+                  setModalOpen(true);
+                }}
                 disabled={isPro}
               >
-                {isPro ? 'Active Pro Member' : 'Upgrade to Pro'}
+                {isPro ? (effectivePlan.source === 'crew' ? 'Pro Unlocked via Crew' : 'Active Pro Member') : 'Upgrade to Pro'}
               </Button>
             )}
           </div>
         </GlassCard>
 
-        {/* Tier 3: Crew */}
-        <GlassCard
-          style={{
-            padding: '24px',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 16,
-            borderRadius: 'var(--r-card)',
-          }}
-        >
-          <div>
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-faint)', textTransform: 'uppercase' }}>
-              Study Group Pass
-            </span>
-            <h3 className="font-display" style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', marginTop: 4 }}>
-              Crew Pass
-            </h3>
-            <div style={{ marginTop: 8 }}>
-              <span className="font-display tabular-nums" style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)' }}>
-                Included
-              </span>
-              <span style={{ fontSize: 13, color: 'var(--text-faint)' }}> with active Crew</span>
-            </div>
-          </div>
+        {/* Tier 3: Crew Pass (Free up to 5 / Large Crew PKR 499) */}
+        {(() => {
+          const isLeader = Boolean(crew && user && crew.leaderId === user.uid);
+          const isPaidCrew = Boolean(crew?.tier === 'paid' && isCrewPaidActive(crew?.paid_until));
+          const isExpiredCrew = Boolean(crew?.tier === 'paid' && !isCrewPaidActive(crew?.paid_until));
 
-          <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: 'var(--text-muted)' }}>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> Shared Crew Goal Progress Ring
-            </li>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> Crew Team Leaderboards & Streaks
-            </li>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> Aggregated Crew Weak Chapter Stats
-            </li>
-            <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <Check size={14} className="text-[#D71921]" /> Competitive Daily Group Drills
-            </li>
-          </ul>
-
-          <div style={{ marginTop: 'auto' }}>
-            <Button
-              variant="secondary"
-              size="md"
-              className="w-full"
-              onClick={() => navigate('/crew')}
+          return (
+            <GlassCard
+              style={{
+                padding: '24px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 16,
+                borderRadius: 'var(--r-card)',
+                border: isPaidCrew ? '1px solid #D71921' : '1px solid var(--border)',
+              }}
             >
-              <Users size={14} /> Open Crew Hub
-            </Button>
-          </div>
-        </GlassCard>
+              <div>
+                <div className="flex items-center justify-between">
+                  <span style={{ fontSize: 12, fontWeight: 700, color: isPaidCrew ? '#D71921' : 'var(--text-faint)', textTransform: 'uppercase' }}>
+                    Study Group Pass
+                  </span>
+                  {isPaidCrew && (
+                    <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded bg-[#D71921]/20 border border-[#D71921]/40 text-[#D71921] flex items-center gap-1">
+                      <Sparkles size={10} /> Active Large Crew
+                    </span>
+                  )}
+                </div>
+                <h3 className="font-display" style={{ fontSize: 22, fontWeight: 800, color: 'var(--text)', marginTop: 4 }}>
+                  Crew Pass
+                </h3>
+                <div style={{ marginTop: 8 }}>
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-display tabular-nums" style={{ fontSize: 32, fontWeight: 800, color: 'var(--text)' }}>
+                      PKR {DEFAULT_CREW_PRICING.largeCrewPricePKR}
+                    </span>
+                    <span style={{ fontSize: 13, color: 'var(--text-faint)' }}> / month</span>
+                  </div>
+                  <span className="text-xs text-[var(--muted)] block mt-0.5">
+                    Free up to 5 members · Large Crew (up to 30)
+                  </span>
+                </div>
+              </div>
+
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13, color: 'var(--text-muted)' }}>
+                <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Check size={14} className="text-[#D71921]" /> Free Crew: up to 5 members forever
+                </li>
+                <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Check size={14} className="text-[#D71921]" /> Large Crew: up to 30 members
+                </li>
+                <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Check size={14} className="text-[#D71921]" /> <strong>Pro sharing:</strong> Unlimited MCQs &amp; AI for all members
+                </li>
+                <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Check size={14} className="text-[#D71921]" /> Shared Crew Goal Ring &amp; National Leaderboards
+                </li>
+                <li style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Check size={14} className="text-[#D71921]" /> Aggregated Crew Weak Chapter Stats
+                </li>
+              </ul>
+
+              <div style={{ marginTop: 'auto' }}>
+                {!crew ? (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    className="w-full"
+                    onClick={() => navigate('/crew/my')}
+                  >
+                    <Users size={14} /> Join or Create Crew
+                  </Button>
+                ) : isPaidCrew ? (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    className="w-full"
+                    onClick={() => navigate('/crew/my')}
+                  >
+                    <Check size={14} className="text-emerald-400" /> Active Large Crew ({crew.name})
+                  </Button>
+                ) : isExpiredCrew && isLeader ? (
+                  <Button
+                    variant="primary"
+                    size="md"
+                    className="w-full"
+                    onClick={() => {
+                      setUpgradeTarget('crew');
+                      setModalOpen(true);
+                    }}
+                  >
+                    <Sparkles size={14} /> Renew Crew — PKR {DEFAULT_CREW_PRICING.largeCrewPricePKR}/mo
+                  </Button>
+                ) : isLeader ? (
+                  <Button
+                    variant="primary"
+                    size="md"
+                    className="w-full"
+                    onClick={() => {
+                      setUpgradeTarget('crew');
+                      setModalOpen(true);
+                    }}
+                  >
+                    <Sparkles size={14} /> Upgrade Crew — PKR {DEFAULT_CREW_PRICING.largeCrewPricePKR}/mo
+                  </Button>
+                ) : (
+                  <Button
+                    variant="secondary"
+                    size="md"
+                    className="w-full"
+                    onClick={() => navigate('/crew/my')}
+                  >
+                    <Users size={14} /> Member of {crew.name}
+                  </Button>
+                )}
+              </div>
+            </GlassCard>
+          );
+        })()}
       </div>
 
       {/* Payment Modal */}
@@ -391,10 +489,12 @@ export function PlansBillingPage() {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
                 <h3 className="font-display" style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>
-                  Upgrade to Boardly Pro
+                  {upgradeTarget === 'crew' ? 'Upgrade Squad to Large Crew' : 'Upgrade to Boardly Pro'}
                 </h3>
                 <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  PKR 199 for 30 days full unlimited access
+                  {upgradeTarget === 'crew'
+                    ? `PKR ${DEFAULT_CREW_PRICING.largeCrewPricePKR} for 30 days · Unlocks 30 member limit & Pro for all squad members`
+                    : 'PKR 199 for 30 days full unlimited access'}
                 </p>
               </div>
               <button
@@ -447,7 +547,7 @@ export function PlansBillingPage() {
             >
               <p><strong>Account Name:</strong> SHS Virtual Academy / Boardly</p>
               <p><strong>Account / IBAN:</strong> 0300-1234567</p>
-              <p><strong>Amount:</strong> PKR 199</p>
+              <p><strong>Amount:</strong> PKR {upgradeTarget === 'crew' ? DEFAULT_CREW_PRICING.largeCrewPricePKR : 199}</p>
             </div>
 
             <form onSubmit={handleUpgradeSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

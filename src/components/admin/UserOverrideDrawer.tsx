@@ -1,9 +1,14 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   X,
   AlertTriangle,
   Clock,
   Trash2,
+  Shield,
+  Sparkles,
+  UserMinus,
+  ExternalLink,
 } from 'lucide-react';
 import type { UserProfile, UserRole, UserPlan } from '@/types';
 import {
@@ -12,6 +17,10 @@ import {
   fetchUserRecentAttempts,
   getUserDisplayName,
 } from '@/services/adminService';
+import { MatrixAvatar } from '@/lib/matrixAvatars';
+import { fetchCrewDetails, removeMemberFromCrew } from '@/services/crewService';
+import { isCrewPaidActive } from '@/services/crewBackend';
+import type { CrewDoc } from '@/types/crew';
 import { Timestamp } from 'firebase/firestore';
 
 interface RecentAttemptItem {
@@ -111,9 +120,24 @@ export function UserOverrideDrawer({
         .then((attempts) => setRecentAttempts(attempts))
         .catch(() => setRecentAttempts([]))
         .finally(() => setLoadingAttempts(false));
+
+      // Load user crew if joined
+      if (user.crewId) {
+        setLoadingCrew(true);
+        fetchCrewDetails(user.crewId)
+          .then((c) => setUserCrew(c))
+          .catch(() => setUserCrew(null))
+          .finally(() => setLoadingCrew(false));
+      } else {
+        setUserCrew(null);
+      }
     }
   }, [user]);
 
+  const navigate = useNavigate();
+  const [userCrew, setUserCrew] = useState<CrewDoc | null>(null);
+  const [loadingCrew, setLoadingCrew] = useState(false);
+  const [removingFromCrew, setRemovingFromCrew] = useState(false);
   const [verifiedNotice, setVerifiedNotice] = useState<string | null>(null);
 
   if (!user) return null;
@@ -336,6 +360,157 @@ export function UserOverrideDrawer({
                 {isSuspended ? 'Suspended' : 'Active'}
               </span>
             </div>
+          </div>
+
+          {/* ── Cockpit Crew Block ── */}
+          <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] space-y-3 text-[12px] font-heading">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Shield size={15} className="text-[#D71921]" />
+                <span className="font-bold text-[var(--text)] uppercase tracking-wider text-[11px]">
+                  Study Squad &bull; Crew Roster
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <MatrixAvatar
+                  avatarKey={user.avatarKey}
+                  variant={user.avatarVariant}
+                  seed={user.uid}
+                  size={26}
+                  className="shrink-0"
+                />
+                <span className="text-[11px] font-mono text-[var(--muted)]">
+                  {user.streak || 0}d streak
+                </span>
+              </div>
+            </div>
+
+            {loadingCrew ? (
+              <div className="text-[11px] text-[var(--muted)] py-2">Loading squad details...</div>
+            ) : userCrew ? (
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[var(--muted)]">Crew Name</span>
+                  <span className="font-bold text-[var(--text)] flex items-center gap-1.5">
+                    <span>{userCrew.name}</span>
+                    <span className="text-[10px] font-mono uppercase px-1 py-0.2 rounded bg-white/10 text-white/80">
+                      {userCrew.code}
+                    </span>
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-[var(--muted)]">Role in Crew</span>
+                  <span className="text-[var(--text)] font-semibold">
+                    {userCrew.leaderId === user.uid ? (
+                      <span className="text-[#D71921] font-bold">Crew Admin (Leader)</span>
+                    ) : (
+                      <span>Squad Member</span>
+                    )}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-[var(--muted)]">Crew Tier</span>
+                  <span className="text-[var(--text)] font-semibold">
+                    {userCrew.tier === 'paid' && isCrewPaidActive(userCrew.paid_until) ? (
+                      <span className="text-emerald-400 flex items-center gap-1 font-bold">
+                        <Sparkles size={11} /> Large Crew (Pro Shared)
+                      </span>
+                    ) : (
+                      <span>Free Crew (Limit 5)</span>
+                    )}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <span className="text-[var(--muted)]">Paid Until</span>
+                  <span className="text-[var(--text)] font-mono text-[11px]">
+                    {userCrew.paid_until
+                      ? new Date(userCrew.paid_until).toLocaleDateString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })
+                      : 'Never (Free Tier)'}
+                  </span>
+                </div>
+
+                {/* Read-Only Pro Via Crew Banner (Never written to user subscription) */}
+                <div className="p-2.5 rounded-xl bg-black/40 border border-[rgba(255,255,255,0.08)] space-y-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-[var(--text)]">Pro via Crew Status</span>
+                    {userCrew.tier === 'paid' && isCrewPaidActive(userCrew.paid_until) ? (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">
+                        ACTIVE · PRO VIA CREW
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-[var(--muted)]">INACTIVE</span>
+                    )}
+                  </div>
+                  <p className="text-[10px] text-[var(--muted)] leading-relaxed">
+                    Read-only: Derived dynamically from active squad status. Never writes to personal user subscription.
+                  </p>
+                </div>
+
+                {/* Crew Actions */}
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      navigate('/admin/crews');
+                    }}
+                    className="flex-1 py-1.5 px-2 rounded-lg bg-[var(--surface-hover)] hover:bg-neutral-800 border border-[var(--border)] text-[11px] text-[var(--text)] font-semibold flex items-center justify-center gap-1 transition-colors"
+                  >
+                    <ExternalLink size={12} />
+                    <span>View Crew in Admin</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!window.confirm(`Remove ${displayName} from ${userCrew.name}?`)) return;
+                      setRemovingFromCrew(true);
+                      try {
+                        await removeMemberFromCrew(userCrew.id, user.uid, {
+                          uid: user.uid,
+                          email: adminEmail,
+                          isAdmin: true,
+                        });
+                        setUserCrew(null);
+                        setVerifiedNotice(`Removed ${displayName} from crew.`);
+                        onSuccess();
+                      } catch (err: unknown) {
+                        setError(err instanceof Error ? err.message : 'Failed to remove from crew');
+                      } finally {
+                        setRemovingFromCrew(false);
+                      }
+                    }}
+                    disabled={removingFromCrew}
+                    className="py-1.5 px-3 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-950/20 text-[11px] font-semibold flex items-center gap-1 transition-colors disabled:opacity-50"
+                  >
+                    <UserMinus size={12} />
+                    <span>{removingFromCrew ? 'Removing...' : 'Remove'}</span>
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="py-2 text-[11px] text-[var(--muted)] flex items-center justify-between">
+                <span>Not currently enrolled in any study crew.</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    navigate('/admin/crews');
+                  }}
+                  className="text-[#D71921] hover:underline flex items-center gap-1 text-[11px]"
+                >
+                  <span>Browse Crews</span>
+                  <ExternalLink size={10} />
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Plan Selection */}

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
+import { PublicLeaderboard } from '@/components/crew/PublicLeaderboard';
 import {
   Users,
   Trophy,
@@ -110,9 +112,12 @@ const CREW_FAQS = [
 
 export function CrewPage() {
   const { user } = useAuth();
+  const { profile } = useUserProfile();
   const navigate = useNavigate();
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [inviteCodeInput, setInviteCodeInput] = useState('');
+
+  const isInCrew = Boolean(profile?.crewId || profile?.isCrewMember);
 
   const handleJoinByCode = (e: React.FormEvent) => {
     e.preventDefault();
@@ -143,12 +148,16 @@ export function CrewPage() {
           </p>
 
           <div className="pt-3 flex flex-wrap items-center justify-center gap-3">
-            {user ? (
-              <Link to="/dashboard/crew" className="btn-red" style={{ height: '52px' }}>
-                Open My Crew Dashboard
+            {isInCrew ? (
+              <Link to="/crew/my" className="btn-red" style={{ height: '52px' }}>
+                Go to My Crew
+              </Link>
+            ) : user ? (
+              <Link to="/crew/my" className="btn-red" style={{ height: '52px' }}>
+                Create or Join a Crew
               </Link>
             ) : (
-              <Link to="/login?redirect=/dashboard/crew" className="btn-red" style={{ height: '52px' }}>
+              <Link to="/login?redirect=/crew/my" className="btn-red" style={{ height: '52px' }}>
                 Sign In to Join / Create Squad
               </Link>
             )}
@@ -241,6 +250,31 @@ export function CrewPage() {
               </Card>
             ))}
           </div>
+        </div>
+
+        {/* ── National Public Leaderboard ── */}
+        <div className="space-y-8">
+          <div className="section-header">
+            <Badge color="red">Live Rankings</Badge>
+            <h2>National Crew Leaderboard</h2>
+            <p>
+              Real-time Pakistan standings based on cumulative questions solved, streak consistency, and sprint accuracy.
+            </p>
+          </div>
+
+          <PublicLeaderboard
+            currentUser={
+              user
+                ? {
+                    uid: user.uid,
+                    email: user.email || '',
+                    streak: profile?.streak || 0,
+                    score: 0,
+                    crewId: profile?.crewId || null,
+                  }
+                : null
+            }
+          />
         </div>
 
         {/* ── 4. Roles Section ── */}

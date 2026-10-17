@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useStudyCrew } from '@/hooks/useStudyCrew';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { InAppLeaderboard } from '@/components/crew/InAppLeaderboard';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -16,8 +18,6 @@ import {
   Flame,
   Trash2,
   RefreshCw,
-  Plus,
-  LogIn,
   AlertTriangle,
   AlertCircle,
   Target,
@@ -25,21 +25,19 @@ import {
   Lock,
   Unlock,
   LogOut,
-  Sparkles,
   Trophy,
   ArrowLeft,
 } from 'lucide-react';
 
 export function CrewDashboardPage() {
   const { user } = useAuth();
+  const { profile } = useUserProfile();
   const navigate = useNavigate();
   const {
     crew,
     loading,
     error: hookError,
     retry,
-    createCrew,
-    joinCrewByCode,
     leaveCrew,
     transferLeadership,
     toggleLock,
@@ -48,10 +46,6 @@ export function CrewDashboardPage() {
   } = useStudyCrew();
 
   // Form / Action states
-  const [newCrewName, setNewCrewName] = useState('');
-  const [joinCodeInput, setJoinCodeInput] = useState('');
-  const [actionLoading, setActionLoading] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [transferModalOpen, setTransferModalOpen] = useState(false);
@@ -60,38 +54,6 @@ export function CrewDashboardPage() {
 
   const isLeader = Boolean(crew && user && crew.leaderId === user.uid);
   const joinUrl = crew ? `https://boardly.cfd/join/${crew.code}` : '';
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newCrewName.trim()) return;
-    setActionLoading(true);
-    setActionError(null);
-    try {
-      await createCrew(newCrewName.trim());
-      setNewCrewName('');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to create crew';
-      setActionError(msg);
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  const handleJoin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!joinCodeInput.trim()) return;
-    setActionLoading(true);
-    setActionError(null);
-    try {
-      await joinCrewByCode(joinCodeInput.trim());
-      setJoinCodeInput('');
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to join crew';
-      setActionError(msg);
-    } finally {
-      setActionLoading(false);
-    }
-  };
 
   const handleCopyCode = () => {
     if (!crew?.code) return;
@@ -176,10 +138,10 @@ export function CrewDashboardPage() {
     );
   }
 
-  // State A: Not in a crew
+  // State A: Not in a crew -> In-app leaderboard replaces old Join/Create screen
   if (!crew) {
     return (
-      <div style={{ maxWidth: 760, margin: '2rem auto', display: 'flex', flexDirection: 'column', gap: 24, padding: '1rem' }}>
+      <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 space-y-6">
         <div>
           <Link
             to="/dashboard"
@@ -188,104 +150,29 @@ export function CrewDashboardPage() {
             <ArrowLeft size={14} />
             <span>Return to Dashboard</span>
           </Link>
-          <h1 className="font-display" style={{ fontSize: 28, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>
-            Boardly Study Crews
+          <h1 className="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight">
+            Study Squads &amp; Leaderboard
           </h1>
-          <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-            Join or start a squad of up to 30 students. Share daily goals, track collective streaks, drill common weak chapters, and share Pro access!
+          <p className="text-sm text-[var(--muted)] mt-1">
+            Join a squad, climb the national leaderboard, or assemble your own squad. Free for up to 5 members, or Large Crew (30 members) with shared Pro access.
           </p>
         </div>
 
-        {(actionError || hookError) && (
-          <div style={{ padding: '12px 16px', borderRadius: 'var(--r-input)', background: 'rgba(215, 25, 33, 0.1)', border: '1px solid #D71921', color: '#D71921', fontSize: 13 }}>
-            {actionError || hookError}
-          </div>
+        {user && (
+          <InAppLeaderboard
+            currentUser={{
+              uid: user.uid,
+              email: user.email || '',
+              displayName: profile?.displayName || user.displayName || user.email?.split('@')[0] || 'Student',
+              streak: profile?.streak || 0,
+              score: profile?.score || 0,
+              crewId: null,
+              avatarKey: profile?.avatarKey || null,
+              avatarVariant: profile?.avatarVariant || null,
+            }}
+            onCrewJoined={retry}
+          />
         )}
-
-        {/* Advantage Banner */}
-        <div className="p-4 rounded-xl bg-red-500/10 border border-[#D71921]/30 flex items-start gap-3">
-          <Sparkles size={20} className="text-[#D71921] shrink-0 mt-0.5" />
-          <div className="text-xs text-[var(--muted)] leading-relaxed">
-            <span className="font-bold text-[var(--text)] block text-sm mb-0.5">Shared Pro Member Advantage</span>
-            Study Crews support <strong className="text-[var(--text)]">up to 30 members</strong>. When any single squad member upgrades to Pro, unlimited practice MCQs and AI tokens instantly unlock for everyone in the crew!
-          </div>
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 20 }}>
-          {/* Join Crew Card */}
-          <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#D71921' }}>
-              <LogIn size={20} />
-              <h3 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
-                Join with Invite Code
-              </h3>
-            </div>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Enter the 6-character code provided by your crew leader or classmate (or open an invite link).
-            </p>
-
-            <form onSubmit={handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 'auto' }}>
-              <input
-                type="text"
-                required
-                maxLength={6}
-                placeholder="e.g. NET26A"
-                value={joinCodeInput}
-                onChange={(e) => setJoinCodeInput(e.target.value.toUpperCase())}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: 'var(--r-input)',
-                  background: 'var(--surface-hover)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text)',
-                  fontSize: 16,
-                  fontFamily: 'monospace',
-                  letterSpacing: '0.2em',
-                  textAlign: 'center',
-                }}
-              />
-              <Button variant="primary" size="md" type="submit" loading={actionLoading}>
-                Join Squad
-              </Button>
-            </form>
-          </GlassCard>
-
-          {/* Create Crew Card */}
-          <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text)' }}>
-              <Plus size={20} className="text-[#D71921]" />
-              <h3 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
-                Create New Crew
-              </h3>
-            </div>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
-              Start your own study crew for up to 30 classmates and become the squad leader.
-            </p>
-
-            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 'auto' }}>
-              <input
-                type="text"
-                required
-                placeholder="Crew Name (e.g. FAST Aces 2026)"
-                value={newCrewName}
-                onChange={(e) => setNewCrewName(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: 'var(--r-input)',
-                  background: 'var(--surface-hover)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text)',
-                  fontSize: 14,
-                }}
-              />
-              <Button variant="secondary" size="md" type="submit" loading={actionLoading}>
-                Create Crew Squad
-              </Button>
-            </form>
-          </GlassCard>
-        </div>
       </div>
     );
   }

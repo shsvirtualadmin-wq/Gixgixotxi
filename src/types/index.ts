@@ -191,7 +191,9 @@ export interface PaymentRequest {
   userEmail?: string;
   displayName?: string;
   amount: number;
-  plan: 'pro';
+  plan: 'pro' | 'large_crew' | string;
+  crewId?: string | null;
+  crewName?: string | null;
   durationMonths?: number;
   method: 'easypaisa' | 'jazzcash' | 'sadapay' | 'nayapay' | 'bank' | string;
   transactionId: string;
