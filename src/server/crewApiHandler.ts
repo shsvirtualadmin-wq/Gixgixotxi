@@ -5,7 +5,7 @@ import {
   handleRequestActionServer,
   recordCrewPaymentActionServer,
 } from '../services/crewBackend';
-import { fetchCrewPricing, updateCrewPricing } from '../config/crewPricing';
+import { fetchCrewPricing, updateCrewPricing, DEFAULT_CREW_PRICING } from '../config/crewPricing';
 import {
   fetchCrewDetails,
   cancelJoinRequest,
@@ -25,7 +25,8 @@ function sendJson(res: ServerResponse, statusCode: number, data: unknown) {
   res.end(JSON.stringify(data));
 }
 
-function parseJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseJsonBody(req: IncomingMessage): Promise<Record<string, any>> {
   return new Promise((resolve, reject) => {
     let raw = '';
     req.on('data', (chunk) => {

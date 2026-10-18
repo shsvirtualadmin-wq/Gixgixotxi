@@ -691,8 +691,8 @@ export async function saveQuestion(
     rawOpts[3] || '',
   ];
 
-  const subjectSlug = findSubjectSlug(question.subject || 'mathematics');
-  const chapterSlug = findChapterSlug(subjectSlug, question.chapter || '');
+  const subjectSlug = findSubjectSlug(question.subject || 'mathematics') || 'mathematics';
+  const chapterSlug = findChapterSlug(subjectSlug, question.chapter || '') || '';
   const difficulty = (question.difficulty || 'medium').toLowerCase() as 'easy' | 'medium' | 'hard';
   const status = (question.status || 'published') as 'draft' | 'reviewed' | 'published';
   const active = question.active !== undefined ? Boolean(question.active) : true;
@@ -850,7 +850,8 @@ export async function batchUpdateQuestions(
     const batch = writeBatch(db);
 
     for (const qId of chunk) {
-      const payload: Record<string, unknown> = {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const payload: Record<string, any> = {
         updatedAt: serverTimestamp(),
       };
       if (updates.status !== undefined) payload.status = updates.status;
@@ -932,8 +933,8 @@ export async function batchImportQuestions(
     existingHashes.add(cHash);
 
     const qId = item.question.id || `q_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-    const subjectSlug = findSubjectSlug(item.question.subject || 'mathematics');
-    const chapterSlug = findChapterSlug(subjectSlug, item.question.chapter || '');
+    const subjectSlug = findSubjectSlug(item.question.subject || 'mathematics') || 'mathematics';
+    const chapterSlug = findChapterSlug(subjectSlug, item.question.chapter || '') || '';
 
     const publicDoc: Record<string, unknown> = {
       id: qId,

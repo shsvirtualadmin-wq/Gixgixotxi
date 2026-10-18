@@ -421,7 +421,7 @@ export function WeakChaptersPage() {
 
       {/* Daily limit reached modal */}
       <DailyLimitBlockedSheet
-        open={blockedSheetOpen}
+        isOpen={blockedSheetOpen}
         onClose={() => setBlockedSheetOpen(false)}
       />
     </div>

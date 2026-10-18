@@ -295,8 +295,8 @@ export function AdminQuestionsPage() {
   const handleOpenEdit = async (q: Question) => {
     const keyData = await fetchQuestionKey(q.id);
     const rawOpts = q.options && q.options.length >= 4 ? q.options : ['', '', '', ''];
-    const sSlug = findSubjectSlug(q.subject || 'mathematics');
-    const cSlug = findChapterSlug(sSlug, q.chapter || '');
+    const sSlug = findSubjectSlug(q.subject || 'mathematics') || 'mathematics';
+    const cSlug = findChapterSlug(sSlug, q.chapter || '') || '';
 
     setEditingQuestion({
       id: q.id,

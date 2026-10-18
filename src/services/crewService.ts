@@ -92,8 +92,8 @@ export async function fetchCrewDetails(crewId: string): Promise<CrewDoc | null> 
     if (!snap.exists()) return null;
     const data = snap.data() as CrewDoc;
     return {
-      id: snap.id,
       ...data,
+      id: snap.id,
       score: computeCrewScore(data),
     };
   } catch (err) {

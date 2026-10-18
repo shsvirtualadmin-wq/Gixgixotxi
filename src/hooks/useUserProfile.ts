@@ -242,6 +242,8 @@ export function useUserProfile(): UserProfileHookResult {
     async (updates: {
       displayName?: string;
       photoURL?: string | null;
+      avatarKey?: string | null;
+      avatarVariant?: string | null;
       targetUniversity?: string;
       targetExam?: string;
       targetTestDate?: string;

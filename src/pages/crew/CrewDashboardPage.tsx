@@ -129,7 +129,7 @@ export function CrewDashboardPage() {
             <Button variant="primary" size="md" onClick={retry}>
               Retry Connection
             </Button>
-            <Button variant="secondary" size="md" onClick={() => setActionError(null)}>
+            <Button variant="secondary" size="md" onClick={() => navigate('/crew')}>
               Create or Join Instead
             </Button>
           </div>

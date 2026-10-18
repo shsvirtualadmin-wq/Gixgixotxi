@@ -19,6 +19,7 @@ interface FirestoreReview {
   city?: string;
   exam?: string;
   university?: string;
+  role?: string;
   status: 'approved' | 'pending' | 'rejected';
   createdAt?: { seconds: number } | string;
   isPlaceholder?: false;

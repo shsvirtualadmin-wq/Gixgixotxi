@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Search, Plus, Trophy, Sparkles, Lock, Unlock, Eye, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
-import type { PublicCrewSummary, CrewEligibilityState } from '@/types/crew';
+import type { PublicCrewSummary } from '@/types/crew';
 import { fetchCrewLeaderboard, joinCrew, cancelJoinRequest } from '@/services/crewService';
 import { evaluateUserEligibility } from '@/services/crewBackend';
 import { CrewDetailsModal } from './CrewDetailsModal';
@@ -134,15 +134,15 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
 
   // Filter crews based on active tab
   const filteredCrews = crews.filter((c) => {
-    const eligibility: CrewEligibilityState = evaluateUserEligibility(
+    const eligibilityResult = evaluateUserEligibility(
       c,
       {
         uid: currentUser.uid,
         streak: currentUser.streak,
         crewId: currentUser.crewId,
-      },
-      false
+      }
     );
+    const eligibility = eligibilityResult.state;
 
     if (filter === 'open') return c.joinMode === 'direct' && !c.isClosed;
     if (filter === 'request') return c.joinMode === 'request' && !c.isClosed;
@@ -246,15 +246,15 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
         <div className="space-y-2.5">
           {filteredCrews.map((c) => {
             const isUserCrew = currentUser.crewId === c.id;
-            const eligibility: CrewEligibilityState = evaluateUserEligibility(
+            const eligibilityResult = evaluateUserEligibility(
               c,
               {
                 uid: currentUser.uid,
                 streak: currentUser.streak,
                 crewId: currentUser.crewId,
-              },
-              false
+              }
             );
+            const eligibility = eligibilityResult.state;
 
             const isActionLoading = actionLoadingId === c.id;
 

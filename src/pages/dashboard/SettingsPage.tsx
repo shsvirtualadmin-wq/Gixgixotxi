@@ -51,8 +51,8 @@ export function SettingsPage() {
     try {
       await updateProfileData({
         displayName: displayName.trim(),
-        targetUniversity: targetUniversity.trim() || null,
-        targetTestDate: targetTestDate.trim() || null,
+        targetUniversity: targetUniversity.trim() || undefined,
+        targetTestDate: targetTestDate.trim() || undefined,
       });
       setSavedSuccess(true);
       setTimeout(() => setSavedSuccess(false), 3000);

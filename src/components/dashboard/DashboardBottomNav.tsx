@@ -52,6 +52,7 @@ export function DashboardBottomNav() {
   const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
   const displayName = profile?.displayName || user?.displayName || 'Student';
+  const initial = (displayName[0] || user?.email?.[0] || 'S').toUpperCase();
   const isInCrew = Boolean(profile?.crewId || profile?.isCrewMember);
   const crewLink = isInCrew ? '/crew/my' : '/crew';
 

@@ -18,9 +18,9 @@ export interface UserProfile {
   premiumSource?: string | null;
   profileCompleted?: boolean;
   onboardingCompleted: boolean;
-  targetExam?: string;
-  targetUniversity?: string;
-  targetTestDate?: string;
+  targetExam?: string | null;
+  targetUniversity?: string | null;
+  targetTestDate?: string | null;
   academicTrack?: string;
   subjects?: string[];
   weakChapters?: string[];
@@ -38,6 +38,10 @@ export interface UserProfile {
   streakFreezeActive?: boolean;
   avatarKey?: string | null;
   avatarVariant?: string | null;
+  score?: number;
+  testDate?: string;
+  track?: string;
+  onboardingComplete?: boolean;
 }
 
 export interface PlaceholderReview {
@@ -80,6 +84,8 @@ export interface Question {
   topic?: string;
   stem?: string;
   question?: string;
+  correct?: number;
+  explain?: string;
 }
 
 /**
@@ -134,6 +140,9 @@ export interface AttemptDoc {
   uid?: string;
   university?: string | null;
   subject?: string | null;
+  chapter?: string | null;
+  mode?: string;
+  title?: string;
   difficulty?: string | null;
   totalQuestions: number;
   timed: boolean;

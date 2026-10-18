@@ -53,7 +53,9 @@ export function TestResultPage() {
   ) => {
     setAiExplaining((prev) => ({ ...prev, [questionIndex]: true }));
     try {
-      const prompt = `Explain why the correct answer is "${question.options[question.correct]}" and why the choice "${
+      const prompt = `Explain why the correct answer is "${
+        question.correct !== undefined ? question.options[question.correct] : 'Not specified'
+      }" and why the choice "${
         userAns !== undefined ? question.options[userAns] : 'Skipped'
       }" is wrong. Provide a clear derivation with KaTeX math formulas and entrance test speed shortcuts.\n\nQuestion: ${
         question.q

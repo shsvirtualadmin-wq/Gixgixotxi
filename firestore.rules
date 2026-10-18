@@ -13,7 +13,7 @@ service cloud.firestore {
 
     // Superadmin authorization matching app logic:
     // 1. Direct unforgeable UID check for shsvirtualadmin@gmail.com (UID: A5YMRimdHRcmeDWutxtUGt2e4hf2)
-    // 2. Email checks (exact string match and case-insensitive regex)
+    // 2. Email checks (shsvirtualadmin@gmail.com, support@boardly.cfd)
     // 3. Custom claim role check
     // 4. Firestore user document role check
     function isSuperAdmin() {
@@ -21,11 +21,15 @@ service cloud.firestore {
         request.auth.uid == 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
         (request.auth.token.email != null && (
           request.auth.token.email == 'shsvirtualadmin@gmail.com' ||
-          request.auth.token.email.matches('(?i)shsvirtualadmin@gmail\\.com')
+          request.auth.token.email == 'support@boardly.cfd'
         )) ||
-        (request.auth.token.role == 'admin') ||
+        ('role' in request.auth.token && (
+          request.auth.token.role == 'admin' ||
+          request.auth.token.role == 'superadmin'
+        )) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin')
+         'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'superadmin'])
       );
     }
 
@@ -33,26 +37,24 @@ service cloud.firestore {
       return isSuperAdmin();
     }
 
-    // ADMIN OVERRIDE: full read/write for superadmin across all collections
-    match /{document=**} {
-      allow read, write: if isSuperAdmin();
-    }
-
     // ─── USERS COLLECTION ───────────────────────────────────────────────────
-    // Protects user profile records.
-    // - Users can read their own profile; admins can list and read all profiles.
-    // - Users can create their profile on signup only with base privileges (role: 'student', plan: 'free', status: 'active').
-    // - Users can update profile preferences (name, target exam, test date, track, avatar, streak counters, crew id),
-    //   but can NEVER escalate privileges (role, plan, paid_until, status, suspended/isSuspended).
+    // Protects student profile records.
+    // - Users read their own profile; admins can list and read all profiles.
+    // - Users create profile on signup only with base privileges (role: 'student', plan: 'free', status: 'active').
+    // - Users update profile preferences (name, target exam, test date, track, avatar, streak counters),
+    //   but can NEVER escalate privileges (role, plan, paid_until, isPremium, planExpiresAt, status, suspended).
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
 
       allow create: if isAdmin() || (
         isOwner(userId) &&
-        request.resource.data.role in ['student', 'user'] &&
-        request.resource.data.plan in ['free', 'starter'] &&
+        (!('role' in request.resource.data) || request.resource.data.role in ['student', 'user']) &&
+        (!('plan' in request.resource.data) || request.resource.data.plan in ['free', 'starter']) &&
         (!('paid_until' in request.resource.data) || request.resource.data.paid_until == null) &&
+        (!('isPremium' in request.resource.data) || request.resource.data.isPremium == false) &&
+        (!('premiumExpiresAt' in request.resource.data) || request.resource.data.premiumExpiresAt == null) &&
+        (!('planExpiresAt' in request.resource.data) || request.resource.data.planExpiresAt == null) &&
         (!('status' in request.resource.data) || request.resource.data.status == 'active') &&
         (!('suspended' in request.resource.data) || request.resource.data.suspended == false) &&
         (!('isSuspended' in request.resource.data) || request.resource.data.isSuspended == false)
@@ -60,41 +62,40 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         isOwner(userId) &&
-        (!('role' in request.resource.data) || request.resource.data.role == resource.data.role) &&
-        (!('plan' in request.resource.data) || request.resource.data.plan == resource.data.plan) &&
-        (!('paid_until' in request.resource.data) || request.resource.data.paid_until == resource.data.paid_until) &&
-        (!('status' in request.resource.data) || request.resource.data.status == resource.data.status) &&
-        (!('suspended' in request.resource.data) || request.resource.data.suspended == resource.data.suspended) &&
-        (!('isSuspended' in request.resource.data) || request.resource.data.isSuspended == resource.data.isSuspended)
+        // Privilege & financial protection: cannot modify role, plan, tier, or status
+        (!('role' in request.resource.data) || ('role' in resource.data && request.resource.data.role == resource.data.role)) &&
+        (!('plan' in request.resource.data) || ('plan' in resource.data && request.resource.data.plan == resource.data.plan)) &&
+        (!('paid_until' in request.resource.data) || ('paid_until' in resource.data && request.resource.data.paid_until == resource.data.paid_until)) &&
+        (!('isPremium' in request.resource.data) || ('isPremium' in resource.data && request.resource.data.isPremium == resource.data.isPremium)) &&
+        (!('premiumExpiresAt' in request.resource.data) || ('premiumExpiresAt' in resource.data && request.resource.data.premiumExpiresAt == resource.data.premiumExpiresAt)) &&
+        (!('planExpiresAt' in request.resource.data) || ('planExpiresAt' in resource.data && request.resource.data.planExpiresAt == resource.data.planExpiresAt)) &&
+        (!('premiumSource' in request.resource.data) || ('premiumSource' in resource.data && request.resource.data.premiumSource == resource.data.premiumSource)) &&
+        (!('status' in request.resource.data) || ('status' in resource.data && request.resource.data.status == resource.data.status)) &&
+        (!('suspended' in request.resource.data) || ('suspended' in resource.data && request.resource.data.suspended == resource.data.suspended)) &&
+        (!('isSuspended' in request.resource.data) || ('isSuspended' in resource.data && request.resource.data.isSuspended == resource.data.isSuspended))
       );
 
       allow delete: if isAdmin();
 
       // Subcollection: Daily Practice & AI Tutor usage limits (PKT timezone keyed)
       match /usage/{dateKey} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId) || isAdmin();
+        allow read, write: if isOwner(userId) || isAdmin();
       }
 
       // Subcollection: Chapter-level diagnostic performance stats
       match /chapterStats/{chapterId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId) || isAdmin();
-      }
-
-      // Catch-all for any other student subcollections
-      match /{allSubcollections=**} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
     }
 
     // ─── STUDY CREWS (SQUADS / CIRCLES) ───────────────────────────────────────
-    // Protects crew collaborative spaces, membership rosters, and subscription tiers.
-    // - Public leaderboard & search can read crew metadata (name, bio, avatar, score, rank, tier).
-    // - Any authenticated student can create a free crew (tier: 'free', paid_until: null).
-    // - Paid tier upgrades, extensions, and payment records can NEVER be written by clients (Admin / Functions only).
-    // - Crew admins can edit allowed settings (name 2-50 chars, bio <= 160 chars, avatar, joinMode, minStreak, maxMembers, isClosed).
-    // - Members and applicants can only update membership/requests arrays via transactions (cannot modify tier or payment records).
+    // Protects study crews, leadership privileges, and subscription tiers.
+    // - Public leaderboard & search read public crew metadata.
+    // - Authenticated students create a free crew (tier: 'free', paid_until: null, self as leader).
+    // - Paid tier upgrades, extensions, and payment histories written by Admin SDK/Functions only.
+    // - Crew admins edit allowed fields (name, bio, avatarKey, avatarVariant, joinMode, minStreak, maxMembers, isClosed, goalQuestions).
+    // - Membership writes (members, memberUids) must go through Functions only.
+    // - Non-leader students can only append/cancel their join request in requests array.
     match /crews/{crewId} {
       allow read: if true;
 
@@ -111,34 +112,46 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         isAuthenticated() &&
-        // Money & privilege lockdown: non-admin cannot change tier, paid_until, or payment histories
+        // Money & tier lockdown: non-admin can NEVER change tier, paid_until, or payments
         request.resource.data.tier == resource.data.tier &&
         request.resource.data.paid_until == resource.data.paid_until &&
-        (!('payments' in request.resource.data) || request.resource.data.payments == resource.data.payments) &&
+        (!('payments' in request.resource.data) || ('payments' in resource.data && request.resource.data.payments == resource.data.payments)) &&
         (
-          // Path A: Crew Leader updating settings or moderating
-          (resource.data.leaderId == request.auth.uid) ||
-          // Path B: Student joining, requesting, leaving, or member activity updating score/questions
-          (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'requests', 'members', 'memberUids', 'updatedAt', 'score', 'streak', 'currentQuestions', 'goalQuestions'
-          ]))
+          // Path A: Crew Leader updating settings or moderating join requests
+          (
+            resource.data.leaderId == request.auth.uid &&
+            request.resource.data.leaderId == resource.data.leaderId &&
+            request.resource.data.code == resource.data.code &&
+            (!('members' in request.resource.data) || ('members' in resource.data && request.resource.data.members == resource.data.members)) &&
+            (!('memberUids' in request.resource.data) || ('memberUids' in resource.data && request.resource.data.memberUids == resource.data.memberUids)) &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'name', 'bio', 'avatarKey', 'avatarVariant', 'joinMode', 'minStreak', 'maxMembers', 'isClosed', 'goalQuestions', 'requests', 'updatedAt'
+            ]) &&
+            request.resource.data.name is string &&
+            request.resource.data.name.size() >= 2 &&
+            request.resource.data.name.size() <= 50 &&
+            (!('bio' in request.resource.data) || (request.resource.data.bio is string && request.resource.data.bio.size() <= 160)) &&
+            (!('maxMembers' in request.resource.data) || (
+              resource.data.tier == 'paid' ? request.resource.data.maxMembers <= 50 : request.resource.data.maxMembers <= 5
+            ))
+          ) ||
+          // Path B: User submitting or cancelling their join request only (members and memberUids remain unchanged)
+          (
+            (!('members' in request.resource.data) || ('members' in resource.data && request.resource.data.members == resource.data.members)) &&
+            (!('memberUids' in request.resource.data) || ('memberUids' in resource.data && request.resource.data.memberUids == resource.data.memberUids)) &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requests', 'updatedAt'])
+          )
         )
       );
 
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.leaderId == request.auth.uid);
-
-      // Subcollections under crews (e.g. chat messages, activity logs, announcements)
-      match /{allSubcollections=**} {
-        allow read: if true;
-        allow write: if isAuthenticated() || isAdmin();
-      }
     }
 
     // ─── TEST ENGINE ATTEMPTS ────────────────────────────────────────────────
-    // Protects student test sessions, question submissions, and attempt scoring.
-    // - Students can read only their own test attempts; admins can inspect all.
-    // - Students can create an attempt in 'preparing' or 'in_progress' status.
-    // - Students can update an attempt only while not yet 'completed' (with 120s grace period past endsAt).
+    // Protects student test sessions, question submissions, and scoring.
+    // - Students read only their own test attempts; admins inspect all.
+    // - Students create an attempt in 'preparing' or 'in_progress' status.
+    // - Students update an attempt only while not yet 'completed' (within 120s grace period past endsAt).
     // - Completed attempts are immutable to students.
     match /attempts/{attemptId} {
       allow read: if (isAuthenticated() && (
@@ -166,10 +179,18 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // ─── STREAKS COLLECTION ──────────────────────────────────────────────────
+    // Tracks daily test streak counters.
+    match /streaks/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow write: if isOwner(userId) || isAdmin();
+    }
+
     // ─── QUESTIONS BANK & CONTENT ────────────────────────────────────────────
-    // Protects authentic ~17,000 entrance test question bank and secret answer keys.
+    // Protects entrance test question bank (~17,000 MCQs) and secret answer keys.
     // - Published active questions can be read by signed-in students.
-    // - Write operations (create, update, delete, imports) strictly restricted to Admin.
+    // - Secret answer keys readable by authenticated students (needed for test scoring) or admin.
+    // - Write operations (create, update, delete, bulk import) strictly restricted to Admin.
     match /questions/{qId} {
       allow read: if isAdmin() || (
         isAuthenticated() &&
@@ -192,7 +213,7 @@ service cloud.firestore {
 
     // ─── PAYMENTS & PRIVILEGED FINANCIAL RECORDS ─────────────────────────────
     // Protects manual payment approval workflow (Easypaisa / JazzCash / SadaPay).
-    // - Students can submit a payment request in 'pending' status for their own UID.
+    // - Students submit a payment request in 'pending' status for their own UID.
     // - Students can NEVER approve or modify payment requests (Admin only).
     // - The 'payments' collection stores finalized receipts; writable ONLY by Admin.
     match /paymentRequests/{requestId} {
@@ -212,10 +233,10 @@ service cloud.firestore {
     }
 
     // ─── REVIEWS & STUDENT TESTIMONIALS ───────────────────────────────────────
-    // Protects public landing page testimonials.
+    // Protects landing page testimonials and student feedback.
     // - Public can read approved reviews. Author and admin can read pending ones.
     // - Students create reviews strictly with status 'pending', rating 1-5, text 10-800 characters.
-    // - Students can edit their review while still pending; approval is Admin-only.
+    // - Students edit their review while still pending; approval is Admin-only.
     match /reviews/{reviewId} {
       allow read: if (resource.data.status == 'approved') ||
         (isAuthenticated() && resource.data.uid == request.auth.uid) ||
@@ -255,7 +276,7 @@ service cloud.firestore {
 
     // ─── AMBASSADOR & CREW APPLICATIONS ──────────────────────────────────────
     // Protects Campus Captain and Boardly Crew applications.
-    // - Students can submit applications for themselves in 'pending' status.
+    // - Students submit applications for themselves in 'pending' status.
     // - Approval, role promotion, and deletion are Admin-only.
     match /applications/{appId} {
       allow read: if isAdmin() || (
@@ -370,13 +391,13 @@ service cloud.firestore {
     }
 
     // ─── IMMUTABLE AUDIT LOGS ────────────────────────────────────────────────
-    // Protects compliance & audit trail. Records admin actions, overrides, and payment operations.
+    // Protects audit logs and operational history.
     // - Read strictly restricted to Admin.
-    // - Append-only: create allowed by authenticated actors or Admin.
+    // - Client writes are DENIED; append-only via Admin SDK / Server Functions.
     // - Updates and deletions are NEVER permitted (immutable).
     match /auditLogs/{logId} {
       allow read: if isAdmin();
-      allow create: if isAuthenticated() || isAdmin();
+      allow create: if false;
       allow update, delete: if false;
     }
 

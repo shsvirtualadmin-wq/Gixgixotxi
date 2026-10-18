@@ -46,6 +46,12 @@ export interface CrewDoc {
   streak: number;
   hasProMember?: boolean;
   weakChapters?: { chapter: string; errorCount: number }[];
+  tier?: 'free' | 'paid';
+  paid_until?: string | null;
+  avatarKey?: string;
+  avatarVariant?: string;
+  joinMode?: 'direct' | 'request';
+  minStreak?: number;
   createdAt?: unknown;
 }
 
