@@ -590,6 +590,93 @@ RULES:
           res.end(JSON.stringify({ error: err?.message || 'Server error' }));
         }
       });
+
+      // ─── PDF DOWNLOAD RATE LIMIT API (1 DOWNLOAD PER HOUR PER USER) ──────
+      server.middlewares.use('/api/tests/pdf-download-check', async (req: any, res: any) => {
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'POST, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+          });
+          res.end();
+          return;
+        }
+
+        if (req.method !== 'POST') {
+          res.writeHead(405, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Method not allowed' }));
+          return;
+        }
+
+        let raw = '';
+        req.on('data', (chunk: any) => {
+          raw += chunk;
+        });
+        req.on('end', () => {
+          try {
+            const body = JSON.parse(raw || '{}');
+            const uid = body.uid;
+            const email = (body.email || '').toLowerCase().trim();
+            const role = (body.role || '').toLowerCase().trim();
+
+            if (!uid) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'Missing uid' }));
+              return;
+            }
+
+            // Superadmins and admins are exempt
+            const superAdmins = ['shsvirtualadmin@gmail.com', 'support@boardly.cfd', 'jan798408@gmail.com'];
+            const isAdmin = role === 'admin' || role === 'superadmin' || superAdmins.includes(email);
+            if (isAdmin) {
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ allowed: true, isAdminExempt: true }));
+              return;
+            }
+
+            const downloadLogPath = path.resolve(__dirname, './data/pdf_downloads.json');
+            let downloads: Record<string, number> = {};
+            if (fs.existsSync(downloadLogPath)) {
+              try {
+                downloads = JSON.parse(fs.readFileSync(downloadLogPath, 'utf-8'));
+              } catch (_) {}
+            }
+
+            const now = Date.now();
+            const lastTime = downloads[uid] || 0;
+            const oneHour = 60 * 60 * 1000;
+
+            if (lastTime && now - lastTime < oneHour) {
+              const remainingMs = oneHour - (now - lastTime);
+              const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+              res.writeHead(429, { 'Content-Type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  allowed: false,
+                  remainingMinutes,
+                  message: `Download limit: Pro members can download 1 PDF per hour. Please wait ${remainingMinutes} minute${
+                    remainingMinutes === 1 ? '' : 's'
+                  } before downloading another test PDF.`,
+                })
+              );
+              return;
+            }
+
+            // Record download
+            downloads[uid] = now;
+            try {
+              fs.writeFileSync(downloadLogPath, JSON.stringify(downloads, null, 2), 'utf-8');
+            } catch (_) {}
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ allowed: true, downloadedAt: now }));
+          } catch (err: any) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: err?.message || 'Server error' }));
+          }
+        });
+      });
     },
   };
 }

@@ -23,6 +23,7 @@ import {
   Loader2,
   AlertTriangle,
 } from 'lucide-react';
+import { getUniversityCriteria, getSectionCriteria } from '@/constants/universityCriteria';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
 type ReviewFilter = 'all' | 'mistakes' | 'flagged';
@@ -133,10 +134,6 @@ export function TestResultPage() {
   const userAnswers = attempt.userAnswers ?? {};
   const flagged = attempt.flagged ?? [];
 
-  const isFastNuces =
-    attempt.university?.toUpperCase().includes('FAST') ||
-    attempt.university?.toUpperCase().includes('NUCES');
-
   const formatTime = (secs?: number) => {
     if (!secs) return '—';
     const m = Math.floor(secs / 60);
@@ -213,7 +210,7 @@ export function TestResultPage() {
             {percentage}%
           </span>
           <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-muted)' }}>
-            ({score} / {total})
+            ({score} / {attempt.maxMarks || total})
           </span>
         </div>
 
@@ -225,11 +222,17 @@ export function TestResultPage() {
             : 'Review the step-by-step explanations below to master the core concepts.'}
         </p>
 
-        {isFastNuces && (
-          <p style={{ fontSize: 12, color: 'var(--warning)', background: 'rgba(251, 191, 36, 0.1)', padding: '4px 12px', borderRadius: 999 }}>
-            ⚡ FAST-NUCES negative marking applied: -0.25 per incorrect answer
-          </p>
-        )}
+        {(() => {
+          const uniCriteria = getUniversityCriteria(attempt.university);
+          if (uniCriteria.hasNegativeMarking) {
+            return (
+              <p style={{ fontSize: 12, color: 'var(--warning)', background: 'rgba(251, 191, 36, 0.1)', padding: '4px 12px', borderRadius: 999 }}>
+                ⚡ {uniCriteria.name} negative marking applied: {uniCriteria.negativeMarking}
+              </p>
+            );
+          }
+          return null;
+        })()}
 
         {/* Key Metrics Row */}
         <div
@@ -389,19 +392,31 @@ export function TestResultPage() {
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    {isCorrect ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--success)', fontSize: 12, fontWeight: 700 }}>
-                        <CheckCircle size={14} /> Correct (+1)
-                      </span>
-                    ) : isSkipped ? (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text-faint)', fontSize: 12 }}>
-                        <Clock size={14} /> Skipped (0)
-                      </span>
-                    ) : (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--danger)', fontSize: 12, fontWeight: 700 }}>
-                        <XCircle size={14} /> Incorrect ({isFastNuces ? '-0.25' : '0'})
-                      </span>
-                    )}
+                    {(() => {
+                      const secCrit = getSectionCriteria(attempt.university, q.subject);
+                      const correctLabel = `+${secCrit.correctMarks}`;
+                      const penaltyLabel = secCrit.hasPenalty ? `${secCrit.negativePenalty}` : '0';
+
+                      if (isCorrect) {
+                        return (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--success)', fontSize: 12, fontWeight: 700 }}>
+                            <CheckCircle size={14} /> Correct ({correctLabel})
+                          </span>
+                        );
+                      }
+                      if (isSkipped) {
+                        return (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text-faint)', fontSize: 12 }}>
+                            <Clock size={14} /> Skipped (0)
+                          </span>
+                        );
+                      }
+                      return (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--danger)', fontSize: 12, fontWeight: 700 }}>
+                          <XCircle size={14} /> Incorrect ({penaltyLabel})
+                        </span>
+                      );
+                    })()}
 
                     <button
                       type="button"

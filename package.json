@@ -19,6 +19,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "firebase": "^10.14.1",
     "framer-motion": "^11.18.2",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "katex": "^0.16.22",
     "lucide-react": "^0.511.0",

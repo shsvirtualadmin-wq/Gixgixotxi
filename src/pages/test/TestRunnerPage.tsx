@@ -16,6 +16,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { exportTestToPdf } from '@/utils/testPdfExporter';
+import { getUniversityRulesSummary } from '@/constants/universityCriteria';
 import { Sparkles, Lock, X, AlertCircle, Check } from 'lucide-react';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
@@ -243,8 +244,8 @@ export function TestRunnerPage() {
     }, 2000);
   }, [flagged, currentIndex, attemptId, userAnswers]);
 
-  // PDF Download Handler with Pro check & Hourly Limit
-  const handleDownloadPdf = useCallback(() => {
+  // PDF Download Handler with Pro check & Server-enforced Hourly Limit
+  const handleDownloadPdf = useCallback(async () => {
     if (!user) return;
 
     // 1. Pro check: Only Pro users (or Admin) can download
@@ -253,25 +254,47 @@ export function TestRunnerPage() {
       return;
     }
 
-    // 2. Hourly rate limit: 1 download per hour per Pro user (Admin exempt)
+    // 2. Server-side hourly rate limit: 1 download per hour per user (Admin exempt)
     if (!isAdmin) {
-      const storageKey = `boardly_pdf_dl_${user.uid}`;
-      const lastStr = localStorage.getItem(storageKey);
-      if (lastStr) {
-        const lastTime = Number(lastStr);
-        const elapsed = Date.now() - lastTime;
-        const oneHour = 60 * 60 * 1000;
-        if (elapsed < oneHour) {
-          const remainingMinutes = Math.ceil((oneHour - elapsed) / (60 * 1000));
+      try {
+        const res = await fetch('/api/tests/pdf-download-check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: user.uid,
+            email: user.email,
+            role: (user as { role?: string }).role || 'student',
+          }),
+        });
+
+        if (res.status === 429) {
+          const data = (await res.json()) as { message?: string; remainingMinutes?: number };
           setPdfLimitMessage(
-            `Download limit: Pro members can download 1 PDF per hour. Please wait ${remainingMinutes} minute${
-              remainingMinutes === 1 ? '' : 's'
-            } before downloading another test PDF.`
+            data.message ||
+              `Download limit: Pro members can download 1 PDF per hour. Please wait before downloading another test PDF.`
           );
           return;
         }
+      } catch {
+        // Fallback to client localStorage check if server API is unavailable
+        const storageKey = `boardly_pdf_dl_${user.uid}`;
+        const lastStr = localStorage.getItem(storageKey);
+        if (lastStr) {
+          const lastTime = Number(lastStr);
+          const elapsed = Date.now() - lastTime;
+          const oneHour = 60 * 60 * 1000;
+          if (elapsed < oneHour) {
+            const remainingMinutes = Math.ceil((oneHour - elapsed) / (60 * 1000));
+            setPdfLimitMessage(
+              `Download limit: Pro members can download 1 PDF per hour. Please wait ${remainingMinutes} minute${
+                remainingMinutes === 1 ? '' : 's'
+              } before downloading another test PDF.`
+            );
+            return;
+          }
+        }
+        localStorage.setItem(storageKey, String(Date.now()));
       }
-      localStorage.setItem(storageKey, String(Date.now()));
     }
 
     const testTitle = [
@@ -281,19 +304,24 @@ export function TestRunnerPage() {
       .filter(Boolean)
       .join(' ') || 'Boardly Practice Test';
 
-    exportTestToPdf({
-      title: testTitle,
-      university: attempt?.university || 'General Entrance Drill',
-      markingScheme: attempt?.university?.toLowerCase().includes('fast')
-        ? 'FAST Negative Marking (-0.25)'
-        : 'Standard Marking (+1.0 / 0.0)',
-      studentName: user.displayName || 'Candidate',
-      studentEmail: user.email || '',
-      questions,
-    });
+    setPdfSuccessMessage('Generating test PDF with KaTeX math rendering...');
 
-    setPdfSuccessMessage('Test PDF downloaded successfully!');
-    setTimeout(() => setPdfSuccessMessage(null), 3500);
+    try {
+      await exportTestToPdf({
+        title: testTitle,
+        university: attempt?.university || 'General Entrance Drill',
+        markingScheme: getUniversityRulesSummary(attempt?.university),
+        studentName: user.displayName || 'Candidate',
+        studentEmail: user.email || '',
+        questions,
+      });
+
+      setPdfSuccessMessage('Test PDF downloaded successfully!');
+      setTimeout(() => setPdfSuccessMessage(null), 3500);
+    } catch (exportErr) {
+      console.error('[TestRunnerPage] PDF export failed:', exportErr);
+      setPdfLimitMessage('Could not generate PDF. Please try again.');
+    }
   }, [user, isPro, isAdmin, attempt, questions]);
 
   // 5. Keyboard Navigation
@@ -439,6 +467,8 @@ export function TestRunnerPage() {
           onNext={() => setCurrentIndex((i) => Math.min(questions.length - 1, i + 1))}
           canPrev={currentIndex > 0}
           canNext={currentIndex < questions.length - 1}
+          university={attempt.university}
+          isPro={isPro || isAdmin}
           onDownloadPdf={handleDownloadPdf}
         />
       </main>

@@ -11,11 +11,13 @@ import {
   CheckCircle2,
   Flag,
   Download,
+  Lock,
 } from 'lucide-react';
 import { MathText } from '@/components/ui/MathText';
 import { reportQuestion } from '@/services/testEngine';
 import { useAuth } from '@/contexts/AuthContext';
 import { formatChapterName, formatSubjectName } from '@/constants/taxonomy';
+import { getSectionCriteria } from '@/constants/universityCriteria';
 import type { AttemptQuestion } from '@/types/index';
 
 interface QuestionCardProps {
@@ -37,6 +39,9 @@ interface QuestionCardProps {
   isPracticeInstantReveal?: boolean;
   isReviewMode?: boolean;
   isFastNuces?: boolean;
+  university?: string;
+  markingBadge?: string;
+  isPro?: boolean;
   onDownloadPdf?: () => void;
 }
 
@@ -61,6 +66,9 @@ export function QuestionCard({
   isPracticeInstantReveal = false,
   isReviewMode = false,
   isFastNuces = false,
+  university,
+  markingBadge,
+  isPro = false,
   onDownloadPdf,
 }: QuestionCardProps) {
   const { user } = useAuth();
@@ -168,9 +176,18 @@ export function QuestionCard({
 
           <div className="flex items-center gap-2">
             {/* Marking Scheme Badge */}
-            <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)] bg-[var(--surface-2)] px-2.5 py-1 rounded-md border border-[var(--border)]">
-              {isFastNuces ? '−0.25 NEGATIVE MARKING' : '+1.0 / 0.0 NO PENALTY'}
-            </span>
+            {(() => {
+              const secCriteria = getSectionCriteria(university, question.subject);
+              const displayBadge =
+                markingBadge ||
+                secCriteria?.badgeLabel ||
+                (isFastNuces ? '−0.25 NEGATIVE MARKING' : '+1.0 / 0.0 NO PENALTY');
+              return (
+                <span className="font-mono text-[10px] uppercase tracking-wider text-[var(--text-muted)] bg-[var(--surface-2)] px-2.5 py-1 rounded-md border border-[var(--border)]">
+                  {displayBadge}
+                </span>
+              );
+            })()}
 
             {/* Flag bookmark toggle */}
             {!showReview && (
@@ -195,9 +212,13 @@ export function QuestionCard({
                 type="button"
                 onClick={onDownloadPdf}
                 className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)] text-xs font-mono transition-colors cursor-pointer"
-                title="Download test questions as PDF"
+                title={isPro ? 'Download test questions as PDF' : 'Download test questions as PDF (Pro Feature)'}
               >
-                <Download size={13} />
+                {isPro ? (
+                  <Download size={13} />
+                ) : (
+                  <Lock size={12} className="text-amber-500" />
+                )}
                 <span>DOWNLOAD PDF</span>
               </button>
             )}

@@ -2597,6 +2597,60 @@ async function startServer() {
     res.json({ serverTime: Date.now() });
   });
 
+  // ─── PDF DOWNLOAD RATE LIMIT API (1 DOWNLOAD PER HOUR PER USER) ──────
+  app.post("/api/tests/pdf-download-check", async (req, res) => {
+    try {
+      const { uid, email = "", role = "" } = req.body || {};
+      if (!uid) {
+        return res.status(400).json({ error: "Missing uid" });
+      }
+
+      const cleanEmail = String(email).toLowerCase().trim();
+      const cleanRole = String(role).toLowerCase().trim();
+
+      // Superadmins and admins are exempt
+      const superAdmins = ["shsvirtualadmin@gmail.com", "support@boardly.cfd", "jan798408@gmail.com"];
+      const isAdmin = cleanRole === "admin" || cleanRole === "superadmin" || superAdmins.includes(cleanEmail);
+      if (isAdmin) {
+        return res.json({ allowed: true, isAdminExempt: true });
+      }
+
+      const downloadLogPath = path.resolve(__dirname, "./data/pdf_downloads.json");
+      let downloads: Record<string, number> = {};
+      if (fs.existsSync(downloadLogPath)) {
+        try {
+          downloads = JSON.parse(fs.readFileSync(downloadLogPath, "utf-8"));
+        } catch (_) {}
+      }
+
+      const now = Date.now();
+      const lastTime = downloads[uid] || 0;
+      const oneHour = 60 * 60 * 1000;
+
+      if (lastTime && now - lastTime < oneHour) {
+        const remainingMs = oneHour - (now - lastTime);
+        const remainingMinutes = Math.ceil(remainingMs / (60 * 1000));
+        return res.status(429).json({
+          allowed: false,
+          remainingMinutes,
+          message: `Download limit: Pro members can download 1 PDF per hour. Please wait ${remainingMinutes} minute${
+            remainingMinutes === 1 ? "" : "s"
+          } before downloading another test PDF.`,
+        });
+      }
+
+      // Record download
+      downloads[uid] = now;
+      try {
+        fs.writeFileSync(downloadLogPath, JSON.stringify(downloads, null, 2), "utf-8");
+      } catch (_) {}
+
+      return res.json({ allowed: true, downloadedAt: now });
+    } catch (err: any) {
+      return res.status(500).json({ error: err?.message || "Server error" });
+    }
+  });
+
   // Clean questions endpoint with KaTeX control char repair and mathChecked flag
   app.post("/api/clean-questions-for-test", async (req, res) => {
     try {

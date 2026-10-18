@@ -22,7 +22,7 @@ import {
   findChapterSlug,
   formatSubjectName,
 } from '@/constants/taxonomy';
-import { getUniversityCriteria } from '@/constants/universityCriteria';
+import { getUniversityCriteria, getSectionCriteria } from '@/constants/universityCriteria';
 import type { QueryConstraint } from 'firebase/firestore';
 import type { AttemptDoc, AttemptQuestion, Question, QuestionKey } from '@/types/index';
 
@@ -429,11 +429,11 @@ export async function submitAttempt(
     })
   );
 
-  const marking = getUniversityMarking(attempt.university);
-
   let correctCount = 0;
   let wrongCount = 0;
   let unansweredCount = 0;
+  let earnedMarks = 0;
+  let maxMarks = 0;
 
   // Track chapter breakdown by chapter SLUG only
   // Answered definition: Student selected an option in a completed attempt
@@ -446,6 +446,9 @@ export async function submitAttempt(
 
     const chSlug = q.chapter || 'general';
     const subSlug = q.subject || 'general';
+
+    const sectionConfig = getSectionCriteria(attempt.university, subSlug);
+    maxMarks += sectionConfig.correctMarks;
 
     if (!chapterAcc[chSlug]) {
       chapterAcc[chSlug] = { subjectSlug: subSlug, correct: 0, total: 0 };
@@ -469,8 +472,10 @@ export async function submitAttempt(
         correctCount += 1;
         chapterAcc[chSlug].correct += 1;
         isCorrect = true;
+        earnedMarks += sectionConfig.correctMarks;
       } else {
         wrongCount += 1;
+        earnedMarks += sectionConfig.negativePenalty;
       }
     }
 
@@ -492,12 +497,10 @@ export async function submitAttempt(
     };
   });
 
-  // Calculate score with official marking scheme (e.g. FAST negative marking -0.25)
-  const rawScore =
-    correctCount * marking.correctMarks + wrongCount * marking.negativeMarks;
-  const score = Math.max(0, Math.round(rawScore * 100) / 100);
+  // Calculate score with official university & section marking scheme
+  const score = Math.max(0, Math.round(earnedMarks * 100) / 100);
   const percentage =
-    totalQuestions > 0 ? Math.max(0, Math.round((correctCount / totalQuestions) * 100)) : 0;
+    maxMarks > 0 ? Math.max(0, Math.min(100, Math.round((earnedMarks / maxMarks) * 100))) : 0;
 
   // Save completed attempt document
   const docRef = doc(db, 'attempts', attemptId);
@@ -506,6 +509,8 @@ export async function submitAttempt(
     questions: enrichedQuestions,
     userAnswers,
     score,
+    maxMarks,
+    earnedMarks,
     totalQuestions,
     correctAnswers: correctCount,
     wrongAnswers: wrongCount,

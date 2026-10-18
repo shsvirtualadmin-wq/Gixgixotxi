@@ -1,7 +1,11 @@
-export interface SubjectSplitItem {
+export interface SectionCriteria {
   subject: string;
-  count: number;
   name: string;
+  count: number;
+  correctMarks: number;
+  negativePenalty: number;
+  hasPenalty: boolean;
+  badgeLabel: string;
 }
 
 export interface UniversityCriteria {
@@ -11,12 +15,13 @@ export interface UniversityCriteria {
   fullName: string;
   badge: string;
   totalQuestions: number;
+  totalMarks: number;
   durationMinutes: number;
   negativeMarking: string;
   hasNegativeMarking: boolean;
-  negativePenalty: number;
-  correctReward: number;
-  subjectsSplit: SubjectSplitItem[];
+  sections: SectionCriteria[];
+  // Legacy alias for compatibility with code expecting subjectsSplit
+  subjectsSplit: Array<{ subject: string; count: number; name: string }>;
   description: string;
 }
 
@@ -28,39 +33,52 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
     fullName: 'National University of Computer and Emerging Sciences',
     badge: 'CS & Engineering',
     totalQuestions: 120,
+    totalMarks: 120,
     durationMinutes: 120,
     negativeMarking: '−0.25 penalty per wrong answer',
     hasNegativeMarking: true,
-    negativePenalty: -0.25,
-    correctReward: 1.0,
-    subjectsSplit: [
-      { subject: 'mathematics', count: 50, name: 'Advanced Mathematics' },
-      { subject: 'mathematics', count: 20, name: 'Basic Mathematics' },
-      { subject: 'physics', count: 30, name: 'Physics' },
-      { subject: 'english', count: 20, name: 'English Language' },
+    sections: [
+      {
+        subject: 'mathematics',
+        name: 'Advanced Mathematics',
+        count: 50,
+        correctMarks: 1.0,
+        negativePenalty: -0.25,
+        hasPenalty: true,
+        badgeLabel: '+1 / -0.25 NEGATIVE MARKING',
+      },
+      {
+        subject: 'mathematics',
+        name: 'Basic Mathematics',
+        count: 20,
+        correctMarks: 1.0,
+        negativePenalty: -0.25,
+        hasPenalty: true,
+        badgeLabel: '+1 / -0.25 NEGATIVE MARKING',
+      },
+      {
+        subject: 'physics',
+        name: 'Physics',
+        count: 30,
+        correctMarks: 1.0,
+        negativePenalty: -0.25,
+        hasPenalty: true,
+        badgeLabel: '+1 / -0.25 NEGATIVE MARKING',
+      },
+      {
+        subject: 'english',
+        name: 'English Language',
+        count: 20,
+        correctMarks: 1.0,
+        negativePenalty: -0.25,
+        hasPenalty: true,
+        badgeLabel: '+1 / -0.25 NEGATIVE MARKING',
+      },
     ],
-    description: '120 MCQs in 120 minutes with −0.25 negative marking. Heavy emphasis on calculus, vectors, and Newtonian physics.',
-  },
-  {
-    id: 'NUST NET',
-    name: 'NUST NET',
-    shortName: 'NET',
-    fullName: 'National University of Sciences & Technology',
-    badge: 'National Entry Test',
-    totalQuestions: 200,
-    durationMinutes: 180,
-    negativeMarking: 'No negative marking',
-    hasNegativeMarking: false,
-    negativePenalty: 0.0,
-    correctReward: 1.0,
-    subjectsSplit: [
-      { subject: 'mathematics', count: 80, name: 'Mathematics' },
-      { subject: 'physics', count: 60, name: 'Physics' },
-      { subject: 'chemistry', count: 30, name: 'Chemistry / CS' },
-      { subject: 'english', count: 20, name: 'English' },
-      { subject: 'analytical', count: 10, name: 'Intelligence & Logic' },
-    ],
-    description: '200 MCQs in 180 minutes without penalty. Speed is decisive: 54 seconds per question across full FSc syllabus.',
+    get subjectsSplit() {
+      return this.sections.map((s) => ({ subject: s.subject, count: s.count, name: s.name }));
+    },
+    description: '120 questions, 120 marks in 120 minutes with −0.25 negative marking. Heavy emphasis on calculus, vectors, and Newtonian mechanics.',
   },
   {
     id: 'GIKI',
@@ -69,17 +87,66 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
     fullName: 'Ghulam Ishaq Khan Institute of Engineering Sciences and Technology',
     badge: 'Engineering Admission',
     totalQuestions: 80,
+    totalMarks: 200,
     durationMinutes: 120,
+    negativeMarking: '1 mark penalty per wrong answer in Math & Physics only',
+    hasNegativeMarking: true,
+    sections: [
+      {
+        subject: 'mathematics',
+        name: 'Mathematics',
+        count: 30,
+        correctMarks: 3.0,
+        negativePenalty: -1.0,
+        hasPenalty: true,
+        badgeLabel: '+3 / -1',
+      },
+      {
+        subject: 'physics',
+        name: 'Physics',
+        count: 30,
+        correctMarks: 3.0,
+        negativePenalty: -1.0,
+        hasPenalty: true,
+        badgeLabel: '+3 / -1',
+      },
+      {
+        subject: 'english',
+        name: 'English',
+        count: 20,
+        correctMarks: 1.0,
+        negativePenalty: 0.0,
+        hasPenalty: false,
+        badgeLabel: '+1 / 0 NO PENALTY',
+      },
+    ],
+    get subjectsSplit() {
+      return this.sections.map((s) => ({ subject: s.subject, count: s.count, name: s.name }));
+    },
+    description: '80 questions, 200 marks, 120 minutes. Math & Physics (30 Qs each, +3 / -1), English (20 Qs, +1 / 0 NO PENALTY).',
+  },
+  {
+    id: 'NUST NET',
+    name: 'NUST NET',
+    shortName: 'NET',
+    fullName: 'National University of Sciences & Technology',
+    badge: 'National Entry Test',
+    totalQuestions: 200,
+    totalMarks: 200,
+    durationMinutes: 180,
     negativeMarking: 'No negative marking',
     hasNegativeMarking: false,
-    negativePenalty: 0.0,
-    correctReward: 1.0,
-    subjectsSplit: [
-      { subject: 'mathematics', count: 40, name: 'Mathematics' },
-      { subject: 'physics', count: 35, name: 'Physics' },
-      { subject: 'english', count: 5, name: 'English' },
+    sections: [
+      { subject: 'mathematics', name: 'Mathematics', count: 80, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'physics', name: 'Physics', count: 60, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'chemistry', name: 'Chemistry / CS', count: 30, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'english', name: 'English', count: 20, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'analytical', name: 'Intelligence & Logic', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
     ],
-    description: '80 challenging questions in 120 minutes. Tests advanced multi-step derivations in physics mechanics and algebra.',
+    get subjectsSplit() {
+      return this.sections.map((s) => ({ subject: s.subject, count: s.count, name: s.name }));
+    },
+    description: '200 questions, 200 marks in 180 minutes without penalty. Speed is decisive: 54 seconds per question across full intermediate syllabus.',
   },
   {
     id: 'LUMS',
@@ -88,17 +155,19 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
     fullName: 'Lahore University of Management Sciences (SSE / LCAT)',
     badge: 'SSE & Business',
     totalQuestions: 60,
+    totalMarks: 60,
     durationMinutes: 90,
     negativeMarking: 'No negative marking',
     hasNegativeMarking: false,
-    negativePenalty: 0.0,
-    correctReward: 1.0,
-    subjectsSplit: [
-      { subject: 'mathematics', count: 20, name: 'Mathematics' },
-      { subject: 'physics', count: 20, name: 'Physics' },
-      { subject: 'chemistry', count: 20, name: 'Chemistry / Biology' },
+    sections: [
+      { subject: 'mathematics', name: 'Mathematics', count: 20, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'physics', name: 'Physics', count: 20, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'chemistry', name: 'Chemistry / Biology', count: 20, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
     ],
-    description: '60 conceptual aptitude questions in 90 minutes. Focuses on data interpretation, problem solving, and analytical reasoning.',
+    get subjectsSplit() {
+      return this.sections.map((s) => ({ subject: s.subject, count: s.count, name: s.name }));
+    },
+    description: '60 conceptual aptitude questions, 60 marks in 90 minutes. Focuses on data interpretation and problem solving.',
   },
   {
     id: 'NED',
@@ -107,18 +176,20 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
     fullName: 'NED University of Engineering & Technology, Karachi',
     badge: 'Sindh Engineering',
     totalQuestions: 100,
+    totalMarks: 100,
     durationMinutes: 120,
     negativeMarking: 'No negative marking',
     hasNegativeMarking: false,
-    negativePenalty: 0.0,
-    correctReward: 1.0,
-    subjectsSplit: [
-      { subject: 'mathematics', count: 40, name: 'Mathematics' },
-      { subject: 'physics', count: 30, name: 'Physics' },
-      { subject: 'chemistry', count: 20, name: 'Chemistry / CS' },
-      { subject: 'english', count: 10, name: 'English' },
+    sections: [
+      { subject: 'mathematics', name: 'Mathematics', count: 40, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'physics', name: 'Physics', count: 30, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'chemistry', name: 'Chemistry / CS', count: 20, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'english', name: 'English', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
     ],
-    description: '100 MCQs in 120 minutes. Core engineering entrance format following Sindh Board intermediate textbook curriculum.',
+    get subjectsSplit() {
+      return this.sections.map((s) => ({ subject: s.subject, count: s.count, name: s.name }));
+    },
+    description: '100 questions, 100 marks in 120 minutes without penalty following the Sindh Board intermediate curriculum.',
   },
   {
     id: 'MDCAT',
@@ -127,19 +198,21 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
     fullName: 'Medical and Dental College Admission Test (PM&DC)',
     badge: 'Medical & Dental',
     totalQuestions: 200,
+    totalMarks: 200,
     durationMinutes: 210,
     negativeMarking: 'No negative marking',
     hasNegativeMarking: false,
-    negativePenalty: 0.0,
-    correctReward: 1.0,
-    subjectsSplit: [
-      { subject: 'biology', count: 68, name: 'Biology' },
-      { subject: 'chemistry', count: 54, name: 'Chemistry' },
-      { subject: 'physics', count: 54, name: 'Physics' },
-      { subject: 'english', count: 18, name: 'English' },
-      { subject: 'analytical', count: 6, name: 'Logical Reasoning' },
+    sections: [
+      { subject: 'biology', name: 'Biology', count: 68, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'chemistry', name: 'Chemistry', count: 54, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'physics', name: 'Physics', count: 54, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'english', name: 'English', count: 18, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'analytical', name: 'Logical Reasoning', count: 6, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
     ],
-    description: '200 MCQs in 210 minutes (3.5 hours). Comprehensive medical entrance exam with 68 Biology and 54 Chemistry items.',
+    get subjectsSplit() {
+      return this.sections.map((s) => ({ subject: s.subject, count: s.count, name: s.name }));
+    },
+    description: '200 questions, 200 marks in 210 minutes (3.5 hours) with 68 Biology and 54 Chemistry items.',
   },
   {
     id: 'ECAT',
@@ -148,18 +221,20 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
     fullName: 'University of Engineering and Technology Punjab (UET ECAT)',
     badge: 'Punjab Engineering',
     totalQuestions: 100,
+    totalMarks: 400,
     durationMinutes: 100,
     negativeMarking: '−1.0 penalty per wrong answer (+4.0 correct)',
     hasNegativeMarking: true,
-    negativePenalty: -1.0,
-    correctReward: 4.0,
-    subjectsSplit: [
-      { subject: 'mathematics', count: 30, name: 'Mathematics' },
-      { subject: 'physics', count: 30, name: 'Physics' },
-      { subject: 'chemistry', count: 30, name: 'Chemistry / CS' },
-      { subject: 'english', count: 10, name: 'English' },
+    sections: [
+      { subject: 'mathematics', name: 'Mathematics', count: 30, correctMarks: 4.0, negativePenalty: -1.0, hasPenalty: true, badgeLabel: '+4 / -1 NEGATIVE MARKING' },
+      { subject: 'physics', name: 'Physics', count: 30, correctMarks: 4.0, negativePenalty: -1.0, hasPenalty: true, badgeLabel: '+4 / -1 NEGATIVE MARKING' },
+      { subject: 'chemistry', name: 'Chemistry / CS', count: 30, correctMarks: 4.0, negativePenalty: -1.0, hasPenalty: true, badgeLabel: '+4 / -1 NEGATIVE MARKING' },
+      { subject: 'english', name: 'English', count: 10, correctMarks: 4.0, negativePenalty: -1.0, hasPenalty: true, badgeLabel: '+4 / -1 NEGATIVE MARKING' },
     ],
-    description: '100 MCQs in 100 minutes with high-stakes negative marking (+4 for correct, −1 for wrong). Max total marks 400.',
+    get subjectsSplit() {
+      return this.sections.map((s) => ({ subject: s.subject, count: s.count, name: s.name }));
+    },
+    description: '100 questions, 400 marks in 100 minutes with high-stakes negative marking (+4 correct, −1 wrong).',
   },
   {
     id: 'Any',
@@ -168,17 +243,19 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
     fullName: 'Comprehensive Entrance Drill (All Universities)',
     badge: 'Mixed Practice',
     totalQuestions: 30,
+    totalMarks: 30,
     durationMinutes: 30,
     negativeMarking: 'No negative marking',
     hasNegativeMarking: false,
-    negativePenalty: 0.0,
-    correctReward: 1.0,
-    subjectsSplit: [
-      { subject: 'mathematics', count: 10, name: 'Mathematics' },
-      { subject: 'physics', count: 10, name: 'Physics' },
-      { subject: 'chemistry', count: 10, name: 'Chemistry' },
+    sections: [
+      { subject: 'mathematics', name: 'Mathematics', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'physics', name: 'Physics', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'chemistry', name: 'Chemistry', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
     ],
-    description: 'Balanced 30-minute diagnostic drill covering core STEM subjects across all entrance test formats.',
+    get subjectsSplit() {
+      return this.sections.map((s) => ({ subject: s.subject, count: s.count, name: s.name }));
+    },
+    description: 'Balanced 30-minute diagnostic drill covering core intermediate STEM topics across all test formats.',
   },
 ];
 
@@ -201,4 +278,73 @@ export function getUniversityCriteria(uniNameOrId?: string | null): UniversityCr
   });
 
   return found || TARGET_UNIVERSITY_CRITERIA[0];
+}
+
+export function getSectionCriteria(
+  uniNameOrId?: string | null,
+  subjectSlug?: string | null
+): SectionCriteria {
+  const criteria = getUniversityCriteria(uniNameOrId);
+  if (!subjectSlug) {
+    return criteria.sections[0] || {
+      subject: 'general',
+      name: 'General',
+      count: 10,
+      correctMarks: 1.0,
+      negativePenalty: 0.0,
+      hasPenalty: false,
+      badgeLabel: '+1 / 0 NO PENALTY',
+    };
+  }
+
+  const cleanSubject = subjectSlug.trim().toLowerCase();
+  const matched = criteria.sections.find((s) => {
+    const sub = s.subject.toLowerCase();
+    const name = s.name.toLowerCase();
+    return (
+      cleanSubject === sub ||
+      cleanSubject === name ||
+      cleanSubject.includes(sub) ||
+      sub.includes(cleanSubject) ||
+      name.includes(cleanSubject)
+    );
+  });
+
+  if (matched) return matched;
+
+  // Fallback default
+  return {
+    subject: cleanSubject,
+    name: formatSectionSubjectName(cleanSubject),
+    count: 10,
+    correctMarks: 1.0,
+    negativePenalty: criteria.hasNegativeMarking ? -0.25 : 0.0,
+    hasPenalty: criteria.hasNegativeMarking,
+    badgeLabel: criteria.hasNegativeMarking ? '+1 / -0.25 NEGATIVE MARKING' : '+1 / 0 NO PENALTY',
+  };
+}
+
+function formatSectionSubjectName(s: string): string {
+  if (!s) return 'General';
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+export function getUniversityRulesSummary(uniNameOrId?: string | null): string {
+  const c = getUniversityCriteria(uniNameOrId);
+  if (c.id === 'GIKI') {
+    return '80 Questions · 200 Marks · 120 Minutes | Math & Physics: +3 / -1 | English: +1 / 0 (No Penalty)';
+  }
+  if (c.id === 'FAST-NUCES') {
+    return '120 Questions · 120 Marks · 120 Minutes | Marking: +1.0 Correct, −0.25 Penalty per wrong answer';
+  }
+  if (c.id === 'ECAT') {
+    return '100 Questions · 400 Marks · 100 Minutes | Marking: +4.0 Correct, −1.0 Penalty per wrong answer';
+  }
+  if (c.id === 'NUST NET') {
+    return '200 Questions · 200 Marks · 180 Minutes | Standard Marking: +1.0 / 0.0 (No Negative Marking)';
+  }
+  if (c.hasNegativeMarking) {
+    return `${c.totalQuestions} Questions · ${c.totalMarks} Marks · ${c.durationMinutes} Minutes | ${c.negativeMarking}`;
+  }
+  return `${c.totalQuestions} Questions · ${c.totalMarks} Marks · ${c.durationMinutes} Minutes | Standard Marking (+1.0 / 0.0)`;
 }
