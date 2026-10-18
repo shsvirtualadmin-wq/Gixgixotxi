@@ -117,22 +117,20 @@ service cloud.firestore {
         request.resource.data.paid_until == resource.data.paid_until &&
         (!('payments' in request.resource.data) || ('payments' in resource.data && request.resource.data.payments == resource.data.payments)) &&
         (
-          // Path A: Crew Leader updating settings or moderating join requests
+          // Path A: Crew Leader updating settings or moderating join requests & members
           (
             resource.data.leaderId == request.auth.uid &&
             request.resource.data.leaderId == resource.data.leaderId &&
             request.resource.data.code == resource.data.code &&
-            (!('members' in request.resource.data) || ('members' in resource.data && request.resource.data.members == resource.data.members)) &&
-            (!('memberUids' in request.resource.data) || ('memberUids' in resource.data && request.resource.data.memberUids == resource.data.memberUids)) &&
             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'name', 'bio', 'avatarKey', 'avatarVariant', 'joinMode', 'minStreak', 'maxMembers', 'isClosed', 'goalQuestions', 'requests', 'updatedAt'
+              'name', 'bio', 'avatarKey', 'avatarVariant', 'joinMode', 'minStreak', 'maxMembers', 'isClosed', 'isLocked', 'goalQuestions', 'requests', 'members', 'memberUids', 'hasProMember', 'currentQuestions', 'updatedAt'
             ]) &&
             request.resource.data.name is string &&
             request.resource.data.name.size() >= 2 &&
             request.resource.data.name.size() <= 50 &&
             (!('bio' in request.resource.data) || (request.resource.data.bio is string && request.resource.data.bio.size() <= 160)) &&
             (!('maxMembers' in request.resource.data) || (
-              resource.data.tier == 'paid' ? request.resource.data.maxMembers <= 50 : request.resource.data.maxMembers <= 5
+              resource.data.tier == 'paid' ? request.resource.data.maxMembers <= 50 : request.resource.data.maxMembers <= 30
             ))
           ) ||
           // Path B: User submitting or cancelling their join request only (members and memberUids remain unchanged)
@@ -140,6 +138,28 @@ service cloud.firestore {
             (!('members' in request.resource.data) || ('members' in resource.data && request.resource.data.members == resource.data.members)) &&
             (!('memberUids' in request.resource.data) || ('memberUids' in resource.data && request.resource.data.memberUids == resource.data.memberUids)) &&
             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requests', 'updatedAt'])
+          ) ||
+          // Path C: User directly joining (adding self) or leaving (removing self)
+          (
+            request.resource.data.leaderId == resource.data.leaderId &&
+            request.resource.data.code == resource.data.code &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+              'members', 'memberUids', 'requests', 'hasProMember', 'currentQuestions', 'updatedAt'
+            ]) &&
+            request.resource.data.memberUids.size() <= 30 &&
+            (
+              // Joining: User adds their own UID
+              (
+                !(request.auth.uid in resource.data.memberUids) &&
+                request.auth.uid in request.resource.data.memberUids &&
+                (!('isLocked' in resource.data) || resource.data.isLocked != true)
+              ) ||
+              // Leaving: User removes their own UID
+              (
+                request.auth.uid in resource.data.memberUids &&
+                !(request.auth.uid in request.resource.data.memberUids)
+              )
+            )
           )
         )
       );

@@ -11,28 +11,43 @@ if (typeof window !== 'undefined') {
   const buildInfo = typeof __BUILD_ID__ !== 'undefined' ? __BUILD_ID__ : (typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : 'dev');
   console.log(`[Boardly] Initializing client bundle. Build ID: ${buildInfo}`);
   
-  // Unregister any legacy service workers and purge caches to prevent serving stale cached bundles on boardly.cfd
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then((registrations) => {
-      for (const registration of registrations) {
-        registration.unregister().then((unregistered) => {
-          if (unregistered) {
-            console.log('[Boardly] Purged legacy service worker registration');
+  // Safely check and unregister any legacy service workers/caches without throwing in sandboxed iframes
+  try {
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .getRegistrations()
+        .then((registrations) => {
+          for (const registration of registrations) {
+            registration.unregister().catch(() => {});
           }
-        });
-      }
-    }).catch((swErr) => {
-      console.warn('[Boardly] Service worker inspection error:', swErr);
-    });
+        })
+        .catch(() => {});
+    }
+  } catch {
+    // Ignore restricted iframe sandbox security errors
   }
 
-  if ('caches' in window) {
-    window.caches.keys().then((names) => {
-      for (const name of names) {
-        window.caches.delete(name);
-      }
-    }).catch(() => {});
+  try {
+    if ('caches' in window) {
+      window.caches
+        .keys()
+        .then((names) => {
+          for (const name of names) {
+            window.caches.delete(name).catch(() => {});
+          }
+        })
+        .catch(() => {});
+    }
+  } catch {
+    // Ignore restricted iframe sandbox security errors
   }
+
+  // Prevent uncaught cross-origin script error noise from breaking user execution
+  window.addEventListener('error', (event) => {
+    if (event.message === 'Script error.' || !event.filename) {
+      event.preventDefault?.();
+    }
+  });
 
   window.addEventListener('vite:preloadError', (event) => {
     const hasReloaded = sessionStorage.getItem('boardly-preload-reloaded');

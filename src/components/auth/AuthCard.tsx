@@ -1,4 +1,4 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useCallback, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, User, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -59,17 +59,31 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
     clearProfileError();
   }, [initialMode, clearAuthError, clearProfileError]);
 
+  const getDestinationUrl = useCallback(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const redirectParam = searchParams.get('redirect');
+    const pendingCrew = sessionStorage.getItem('pending_join_crew_code');
+
+    if (redirectParam && redirectParam.startsWith('/')) {
+      return redirectParam;
+    }
+    if (pendingCrew) {
+      return `/join/${pendingCrew}`;
+    }
+    return profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
+  }, [profile, getRoleRedirectUrl]);
+
   // Navigate after successful auth (immediate fallback navigation if user is logged in)
   useEffect(() => {
     if (user && !signupSuccess) {
       // Do not block navigation if Firestore profile sync is slow/offline
       if (!profileLoading || profile) {
-        const dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
-        logRedirect('/login', dest, 'AuthCard.tsx (user authenticated -> send straight to dashboard/admin)');
+        const dest = getDestinationUrl();
+        logRedirect('/login', dest, 'AuthCard.tsx (user authenticated -> send to target)');
         navigate(dest, { replace: true });
       }
     }
-  }, [user, profile, profileLoading, signupSuccess, navigate, getRoleRedirectUrl]);
+  }, [user, profile, profileLoading, signupSuccess, navigate, getDestinationUrl]);
 
   // Resend countdown timer
   useEffect(() => {
@@ -91,8 +105,8 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       // ONLY signInWithPopup on user click
       const loggedInUser = await signInWithGoogle();
       if (loggedInUser) {
-        // Immediate explicit navigation to dashboard
-        const dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
+        // Immediate explicit navigation to destination
+        const dest = getDestinationUrl();
         logRedirect('/login', dest, 'AuthCard.tsx (Google sign in explicit)');
         navigate(dest, { replace: true });
       }
