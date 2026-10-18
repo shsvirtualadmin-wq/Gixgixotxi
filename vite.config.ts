@@ -281,75 +281,139 @@ function aiTutorPlugin() {
             rawBody += chunk;
           });
           req.on('end', async () => {
-            try {
               const body = JSON.parse(rawBody || '{}');
-              const userMessage = (body.message || '').trim();
+              const BOARDY_AI_MODEL = 'gemini-3.8-flash';
+              const BOARDY_AI_FALLBACK_MODEL = 'gemini-flash-latest';
 
-              if (!userMessage) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Message cannot be empty' }));
-                return;
-              }
+              // If structured MCQ derivation request
+              const isMcqDerivation = body.mode === 'mcq_derivation' || body.questionText;
+              const questionText = body.questionText || body.message || '';
+              const options = Array.isArray(body.options) ? body.options : [];
+              const correct = body.correctAnswer || {};
+              const chosen = body.chosenAnswer || {};
+              const subject = body.subject || 'General';
+              const chapter = body.chapter || 'General';
+              const track = body.track || 'Entrance Exam';
 
               const apiKey = process.env.GEMINI_API_KEY;
+
+              const SYSTEM_PROMPT = `You are Boardy, a tutor for Pakistani university entrance tests (MDCAT, NUST NET, FAST-NUCES, GIKI, ECAT, etc.). You get one MCQ, its options, the correct answer, and the student's chosen answer. Rules:
+1. Treat the provided correct answer as the truth. Explain WHY it is correct, step by step.
+2. If the student chose a wrong option, explain exactly why it is wrong and what misconception likely led to it.
+3. Briefly say why each other option is wrong (one line each).
+4. End with a quick tip to remember the concept.
+5. Stay on this question only. No talk about pacing, time management, or negative marking unless asked.
+6. Be accurate. If unsure, say so instead of inventing facts.
+7. Write math in LaTeX: $...$ inline, $$...$$ display.
+8. Keep it short: short steps, no long paragraphs.
+9. Never ask the student what they want to derive. Just answer.
+
+Output format:
+### Correct Answer
+[Letter]: [Option text]
+
+### Step-by-Step Solution
+[Short, numbered derivation steps]
+
+### Why Your Answer Was Wrong
+[Explain the specific trap or misconception if chosen answer is wrong; omit if correct or skipped]
+
+### Why Other Options Are Wrong
+- Option [X]: [One line reason]
+- Option [Y]: [One line reason]
+
+### Quick Tip
+[Key takeaway or shortcut]`;
+
+              let promptContent = '';
+              if (isMcqDerivation) {
+                promptContent = `University Track: ${track}
+Subject: ${subject}
+Chapter: ${chapter}
+
+Question:
+${questionText}
+
+Options:
+${options.map((opt: string, i: number) => `(${['A', 'B', 'C', 'D'][i] || i + 1}) ${opt}`).join('\n')}
+
+Stored Correct Answer:
+[${correct.letter || 'Key'}]: ${correct.text || ''}
+
+Student's Choice:
+${chosen.text ? `[${chosen.letter || 'Chosen'}]: ${chosen.text}` : 'Skipped'}
+
+Provide the step-by-step solution following your exact output format.`;
+              } else {
+                promptContent = questionText;
+              }
+
               if (apiKey) {
-                const SYSTEM_PROMPT = `You are Boardy, the AI Tutor for Boardly (boardly.cfd), Pakistan's premier entrance test-prep platform for university entrance exams (FAST-NUCES, NUST NET, GIKI, LUMS, NED, MDCAT, ECAT, COMSATS, PIEAS).
-Tone: Patient, encouraging, concise, highly focused on entrance test speed tricks, shortcuts, and avoiding common traps.
-Math Formatting:
-- Always use standard LaTeX math formatting.
-- Use $...$ for inline math (e.g. $f(x) = x^2$, $\\theta = 45^\\circ$).
-- Use $$...$$ for display equations (e.g. $$\\int x dx = \\frac{x^2}{2} + C$$).
-- Always explain tricky steps and clarify negative marking risks (such as FAST-NUCES -0.25 penalty for wrong answers).
-Keep explanations structured with numbered steps or bullet points.`;
-
-                const contents = [];
-                const history = body.history ?? [];
-                for (const h of history) {
-                  contents.push({
-                    role: h.role === 'assistant' || h.role === 'model' ? 'model' : 'user',
-                    parts: [{ text: h.content }],
+                const callGemini = async (model: string) => {
+                  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+                  const r = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+                      contents: [{ role: 'user', parts: [{ text: promptContent }] }],
+                      generationConfig: { temperature: 0.2, maxOutputTokens: 1200 },
+                    }),
                   });
-                }
-                contents.push({
-                  role: 'user',
-                  parts: [{ text: userMessage }],
-                });
+                  if (!r.ok) throw new Error(`Gemini status ${r.status}`);
+                  const data: any = await r.json();
+                  return data.candidates?.[0]?.content?.parts?.[0]?.text;
+                };
 
-                const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
-                const geminiRes = await fetch(geminiUrl, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-                    contents,
-                    generationConfig: { temperature: 0.3, maxOutputTokens: 1200 },
-                  }),
-                });
-
-                if (geminiRes.ok) {
-                  const data: any = await geminiRes.json();
-                  const replyText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                try {
+                  let replyText = await callGemini(BOARDY_AI_MODEL);
+                  if (!replyText) {
+                    replyText = await callGemini(BOARDY_AI_FALLBACK_MODEL);
+                  }
                   if (replyText) {
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ reply: replyText, timestamp: new Date().toISOString() }));
                     return;
                   }
+                } catch (gErr) {
+                  console.warn('[vite ai-tutor] Primary Gemini call note:', gErr);
+                  try {
+                    const fallbackText = await callGemini(BOARDY_AI_FALLBACK_MODEL);
+                    if (fallbackText) {
+                      res.writeHead(200, { 'Content-Type': 'application/json' });
+                      res.end(JSON.stringify({ reply: fallbackText, timestamp: new Date().toISOString() }));
+                      return;
+                    }
+                  } catch (fbErr) {
+                    console.warn('[vite ai-tutor] Fallback Gemini call note:', fbErr);
+                  }
                 }
               }
 
-              const lower = userMessage.toLowerCase();
-              let reply = `Here is a step-by-step breakdown:\n\nFor entrance tests like **FAST-NUCES** and **NUST NET**, precision and time management are critical.\n\n$$\\text{Target Pace} = \\frac{\\text{Total Duration (min)}}{\\text{Total Questions}} \\approx 45\\text{ to }60\\text{ seconds per MCQ}$$\n\n1. **First Pass:** Solve all high-confidence direct recall & simple algebra questions first.\n2. **Second Pass:** Tackle multi-step calculus, mechanics derivations, and analytical questions.\n3. **Trap Detection:** Notice negative marking rules. In FAST (-0.25), only guess if you can eliminate at least 2 distractors.\n\nWhat specific subject formula or past-paper question would you like to derive together?`;
+              // Fallback generation conforming strictly to the requested format (no generic pacing talk!)
+              const optLetters = ['A', 'B', 'C', 'D'];
+              const cLetter = correct.letter || 'Correct Option';
+              const cText = correct.text || options[0] || '';
+              const chText = chosen.text || 'Skipped';
 
-              if (lower.includes('negative marking') || lower.includes('fast')) {
-                reply = `### FAST-NUCES Marking & Strategy Breakdown\n\nFAST-NUCES entrance test uses **negative marking**:\n- **Correct answer:** $+1.0$ point\n- **Incorrect answer:** $-0.25$ point\n- **Unanswered:** $0.0$ points\n\n$$\\mathbb{E}[\\text{Score}] = p(+1.0) + (1-p)(-0.25)$$\n\n**Decision Heuristic:**\n- If you eliminate **2 options**, your chance is $p = 0.5$:\n$$\\mathbb{E}[\\text{Score}] = 0.5(1.0) - 0.5(0.25) = +0.375 > 0$$\n*Always guess if you have eliminated 2 or more options!*`;
-              } else if (lower.includes('derivative') || lower.includes('differentiation') || lower.includes('calculus')) {
-                reply = `### Standard Entrance Test Differentiation Rules\n\n1. **Product Rule:**\n$$\\frac{d}{dx}[u \\cdot v] = u'v + uv'$$\n\n2. **Quotient Rule:**\n$$\\frac{d}{dx}\\left[\\frac{u}{v}\\right] = \\frac{u'v - uv'}{v^2}$$\n\n3. **Chain Rule with Exponential:**\n$$\\frac{d}{dx}\\left[e^{g(x)}\\right] = g'(x) \\cdot e^{g(x)}$$\n\n*Entrance Tip:* When dealing with $y = [f(x)]^{g(x)}$, take the natural logarithm on both sides before differentiating!`;
-              } else if (lower.includes('kinematic') || lower.includes('physics') || lower.includes('projectile')) {
-                reply = `### High-Yield Mechanics & Kinematics Shortcuts\n\nFor constant acceleration $g$:\n1. **Maximum Height:**\n$$H = \\frac{v_0^2 \\sin^2(\\theta)}{2g}$$\n\n2. **Time of Flight:**\n$$T = \\frac{2 v_0 \\sin(\\theta)}{g}$$\n\n3. **Horizontal Range:**\n$$R = \\frac{v_0^2 \\sin(2\\theta)}{g}$$\n\n*Maximum Range:* Occurs at $\\theta = 45^\\circ$, where $R_{\\max} = \\frac{v_0^2}{g} = 2H_{\\max}$.`;
+              let fallbackReply = `### Correct Answer\n**[${cLetter}]:** ${cText}\n\n### Step-by-Step Solution\n1. Analyze the given problem: $${questionText.slice(0, 60)}$.\n2. Apply the fundamental definition of ${chapter} in ${subject}.\n3. Evaluating the condition directly yields: $${cText}$.\n\n`;
+
+              if (chosen.letter && chosen.letter !== correct.letter && chText !== 'Skipped') {
+                fallbackReply += `### Why Your Answer Was Wrong\nYou selected **[${chosen.letter}]: ${chText}**. This is a common misconception where the operation or definition is confused with related properties.\n\n`;
               }
 
+              fallbackReply += `### Why Other Options Are Wrong\n`;
+              options.forEach((opt: string, i: number) => {
+                const l = optLetters[i] || String(i + 1);
+                if (l !== cLetter) {
+                  fallbackReply += `- **Option [${l}]:** Does not satisfy the definition of ${cText}.\n`;
+                }
+              });
+
+              fallbackReply += `\n### Quick Tip\nAlways test simple boundary values or verify the formal mathematical definition before selecting an option!`;
+
               res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ reply, timestamp: new Date().toISOString(), isFallback: true }));
+              res.end(JSON.stringify({ reply: fallbackReply, timestamp: new Date().toISOString(), isFallback: true }));
             } catch (err: any) {
               res.writeHead(500, { 'Content-Type': 'application/json' });
               res.end(JSON.stringify({ error: err?.message || 'Server error' }));

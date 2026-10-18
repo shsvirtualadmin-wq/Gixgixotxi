@@ -43,14 +43,48 @@ export function TestRunnerPage() {
   const [pdfUpgradeModalOpen, setPdfUpgradeModalOpen] = useState(false);
   const [pdfLimitMessage, setPdfLimitMessage] = useState<string | null>(null);
   const [pdfSuccessMessage, setPdfSuccessMessage] = useState<string | null>(null);
+  const [leaveWarningOpen, setLeaveWarningOpen] = useState(false);
 
   const effectivePlan = useEffectivePlan();
   const isPro = Boolean(effectivePlan.isPro || effectivePlan.isUnlimited || effectivePlan.isSuperAdmin);
   const isAdmin = Boolean(effectivePlan.isSuperAdmin);
+  const isSubjectToDailyLimit = !isPro && !isAdmin;
 
   const autoSubmittedRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number>(Date.now());
+
+  // 0. Leave-Test Interceptor (strict warning only for users subject to daily limits)
+  useEffect(() => {
+    if (!isSubjectToDailyLimit || submitting || loading || !attempt || attempt.status === 'completed') {
+      return;
+    }
+
+    try {
+      window.history.pushState({ inTest: true }, '');
+    } catch (_) {}
+
+    const handlePopState = () => {
+      try {
+        window.history.pushState({ inTest: true }, '');
+      } catch (_) {}
+      setLeaveWarningOpen(true);
+    };
+
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = 'If you leave now, this test will be counted as one of your daily attempts.';
+      return e.returnValue;
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener('popstate', handlePopState);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isSubjectToDailyLimit, submitting, loading, attempt]);
 
   // 1. Initial Load & Start
   useEffect(() => {
@@ -592,6 +626,51 @@ export function TestRunnerPage() {
               >
                 <Sparkles size={14} />
                 <span>Upgrade to Pro</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── LEAVE-TEST MIDWAY WARNING POPUP (Requirement 7) ── */}
+      {leaveWarningOpen && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl sm:rounded-3xl max-w-md w-full p-6 space-y-5 shadow-2xl text-[var(--text)] animate-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center shrink-0">
+                <AlertCircle size={20} />
+              </div>
+              <div>
+                <h3 className="font-heading font-bold text-base sm:text-lg text-[var(--text)]">
+                  Leave Test Session?
+                </h3>
+                <span className="text-[11px] font-mono text-[var(--text-muted)] uppercase tracking-wider">
+                  Test In Progress
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed">
+              If you leave now, this test will be counted as one of your daily attempts.
+            </p>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setLeaveWarningOpen(false)}
+                className="btn-outline px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Stay
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLeaveWarningOpen(false);
+                  navigate('/dashboard/practice', { replace: true });
+                }}
+                className="btn-red px-5 py-2.5 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Leave Test
               </button>
             </div>
           </div>

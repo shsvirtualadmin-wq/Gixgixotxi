@@ -24,6 +24,8 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { getUniversityCriteria, getSectionCriteria } from '@/constants/universityCriteria';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { getBoardyExplanation, type BoardyDerivationResult } from '@/services/boardyAiService';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
 type ReviewFilter = 'all' | 'mistakes' | 'flagged';
@@ -32,6 +34,7 @@ export function TestResultPage() {
   const { attemptId } = useParams<{ attemptId: string }>();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const effectivePlan = useEffectivePlan();
 
   const [attempt, setAttempt] = useState<AttemptDoc | null>(null);
   const [loading, setLoading] = useState(true);
@@ -39,6 +42,7 @@ export function TestResultPage() {
   const [filter, setFilter] = useState<ReviewFilter>('all');
   const [aiExplaining, setAiExplaining] = useState<Record<number, boolean>>({});
   const [aiExplanations, setAiExplanations] = useState<Record<number, string>>({});
+  const [aiStatus, setAiStatus] = useState<Record<number, BoardyDerivationResult['status']>>({});
 
   // Report modal state
   const [reportingQuestionId, setReportingQuestionId] = useState<string | null>(null);
@@ -50,30 +54,23 @@ export function TestResultPage() {
   const handleRequestAiExplanation = async (
     questionIndex: number,
     question: AttemptQuestion,
-    userAns?: number
+    userAns?: number,
+    forceRefresh = false
   ) => {
     setAiExplaining((prev) => ({ ...prev, [questionIndex]: true }));
     try {
-      const prompt = `Explain why the correct answer is "${
-        question.correct !== undefined ? question.options[question.correct] : 'Not specified'
-      }" and why the choice "${
-        userAns !== undefined ? question.options[userAns] : 'Skipped'
-      }" is wrong. Provide a clear derivation with KaTeX math formulas and entrance test speed shortcuts.\n\nQuestion: ${
-        question.q
-      }\nOptions:\n${question.options.map((o, i) => `${['A', 'B', 'C', 'D'][i]}: ${o}`).join('\n')}`;
-
-      const res = await fetch('/api/ai-tutor', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: prompt }),
+      const result = await getBoardyExplanation({
+        question,
+        questionIndex,
+        chosenAnswerIndex: userAns,
+        track: attempt?.university || 'General Entrance Exam',
+        isUnlimited: Boolean(effectivePlan.isUnlimited || effectivePlan.isSuperAdmin),
+        uid: user?.uid,
+        forceRefresh,
       });
 
-      if (res.ok) {
-        const data = (await res.json()) as { reply?: string };
-        if (data.reply) {
-          setAiExplanations((prev) => ({ ...prev, [questionIndex]: data.reply! }));
-        }
-      }
+      setAiExplanations((prev) => ({ ...prev, [questionIndex]: result.explanation }));
+      setAiStatus((prev) => ({ ...prev, [questionIndex]: result.status }));
     } catch (err) {
       console.warn('[TestResultPage] AI explain error:', err);
     } finally {
@@ -224,14 +221,40 @@ export function TestResultPage() {
 
         {(() => {
           const uniCriteria = getUniversityCriteria(attempt.university);
+          const sections = uniCriteria.subjectsSplit || [];
+          const penalizedSections = sections.filter((s) => s.negativePenalty && s.negativePenalty !== 0);
+          const nonPenalizedSections = sections.filter((s) => !s.negativePenalty || s.negativePenalty === 0);
+
+          let markingDetail = '';
           if (uniCriteria.hasNegativeMarking) {
-            return (
-              <p style={{ fontSize: 12, color: 'var(--warning)', background: 'rgba(251, 191, 36, 0.1)', padding: '4px 12px', borderRadius: 999 }}>
-                ⚡ {uniCriteria.name} negative marking applied: {uniCriteria.negativeMarking}
-              </p>
-            );
+            if (penalizedSections.length > 0 && nonPenalizedSections.length > 0) {
+              const penText = penalizedSections.map((s) => s.subject).join(' & ');
+              const nonPenText = nonPenalizedSections.map((s) => s.subject).join(' & ');
+              const pMark = penalizedSections[0].correctMarks;
+              const pPen = penalizedSections[0].negativePenalty;
+              const npMark = nonPenalizedSections[0].correctMarks;
+              markingDetail = `${penText} (+${pMark} / ${pPen}), ${nonPenText} (+${npMark} / 0 NO PENALTY)`;
+            } else {
+              markingDetail = `+${uniCriteria.defaultCorrectMarks} correct / ${uniCriteria.defaultNegativePenalty} penalty per wrong answer (${uniCriteria.negativeMarking})`;
+            }
+          } else {
+            markingDetail = `Standard marking: +${uniCriteria.defaultCorrectMarks} per correct answer (No negative marking)`;
           }
-          return null;
+
+          return (
+            <p
+              style={{
+                fontSize: 12,
+                color: uniCriteria.hasNegativeMarking ? 'var(--warning)' : 'var(--text-muted)',
+                background: uniCriteria.hasNegativeMarking ? 'rgba(251, 191, 36, 0.1)' : 'var(--surface-2)',
+                padding: '4px 14px',
+                borderRadius: 999,
+                border: '1px solid var(--border)',
+              }}
+            >
+              ⚡ {uniCriteria.name} marking scheme: {markingDetail}
+            </p>
+          );
         })()}
 
         {/* Key Metrics Row */}
@@ -489,26 +512,36 @@ export function TestResultPage() {
                             fontSize: 14,
                           }}
                         >
-                          <div
-                            style={{
-                              width: 22,
-                              height: 22,
-                              borderRadius: '50%',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: 11,
-                              fontWeight: 700,
-                              flexShrink: 0,
-                              background: isOptionCorrect
-                                ? 'var(--success)'
-                                : isUserChoice
-                                ? 'var(--danger)'
-                                : 'rgba(255, 255, 255, 0.08)',
-                              color: isOptionCorrect || isUserChoice ? '#ffffff' : 'var(--text-faint)',
-                            }}
-                          >
-                            {isOptionCorrect ? <Check size={13} /> : isUserChoice ? <X size={13} /> : ['A', 'B', 'C', 'D'][optIdx]}
+                          {/* Letter Badge on EVERY option + Check/X marker */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                            <span
+                              style={{
+                                fontSize: 11,
+                                fontWeight: 800,
+                                fontFamily: 'monospace',
+                                padding: '2px 7px',
+                                borderRadius: 4,
+                                background: isOptionCorrect
+                                  ? 'var(--success)'
+                                  : isUserChoice
+                                  ? 'var(--danger)'
+                                  : 'rgba(255, 255, 255, 0.08)',
+                                color: isOptionCorrect || isUserChoice ? '#ffffff' : 'var(--text-faint)',
+                                border: '1px solid var(--border)',
+                              }}
+                            >
+                              {['A', 'B', 'C', 'D'][optIdx] || String(optIdx + 1)}
+                            </span>
+                            {isOptionCorrect && (
+                              <span style={{ color: 'var(--success)', display: 'flex', alignItems: 'center' }}>
+                                <Check size={14} />
+                              </span>
+                            )}
+                            {isUserChoice && !isOptionCorrect && (
+                              <span style={{ color: 'var(--danger)', display: 'flex', alignItems: 'center' }}>
+                                <X size={14} />
+                              </span>
+                            )}
                           </div>
 
                           <div style={{ flex: 1 }}>
@@ -531,8 +564,8 @@ export function TestResultPage() {
                   </div>
                 )}
 
-                {/* Explanation */}
-                {q.explain && (
+                {/* Explanation: ONLY show if saved explanation exists and is not the placeholder */}
+                {q.explain && q.explain.trim().length > 0 && !q.explain.includes('available in the study portal') && (
                   <div
                     style={{
                       padding: '12px 16px',
@@ -551,79 +584,152 @@ export function TestResultPage() {
                   </div>
                 )}
 
-                {/* AI Tutor "Explain This" Button & Box */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                  {!aiExplanations[idx] ? (
-                    <button
-                      onClick={() => handleRequestAiExplanation(idx, q, userAns)}
-                      disabled={aiExplaining[idx]}
-                      style={{
-                        alignSelf: 'flex-start',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        padding: '8px 14px',
-                        borderRadius: 'var(--r-pill)',
-                        border: '1px solid #D71921',
-                        background: 'transparent',
-                        color: 'var(--text)',
-                        fontSize: 12,
-                        fontWeight: 600,
-                        cursor: aiExplaining[idx] ? 'wait' : 'pointer',
-                        transition: 'all 160ms',
-                      }}
-                      className="hover:bg-[#D71921] hover:text-white"
-                    >
-                      {aiExplaining[idx] ? (
-                        <>
-                          <Sparkles size={13} className="animate-spin text-[#D71921]" />
-                          <span>Boardy is deriving solution...</span>
-                        </>
-                      ) : (
-                        <>
-                          <Bot size={14} className="text-[#D71921]" />
-                          <span>Explain this with Boardy AI</span>
-                        </>
-                      )}
-                    </button>
-                  ) : (
-                    <div
-                      style={{
-                        padding: '16px',
-                        borderRadius: 'var(--r-card)',
-                        background: 'var(--surface)',
-                        border: '1px solid #D71921',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 8,
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#D71921', fontSize: 12, fontWeight: 700 }}>
-                          <Bot size={15} />
-                          <span>Boardy AI Step-by-Step Derivation</span>
+                {/* Boardy AI Explanation Box with Safety & Token Awareness */}
+                {(() => {
+                  const hasValidKey =
+                    typeof q.correct === 'number' &&
+                    Array.isArray(q.options) &&
+                    q.correct >= 0 &&
+                    q.correct < q.options.length;
+
+                  if (!hasValidKey) {
+                    return (
+                      <div
+                        style={{
+                          padding: '10px 14px',
+                          borderRadius: 'var(--r-input)',
+                          background: 'var(--surface-2)',
+                          border: '1px solid var(--border)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 10,
+                          fontSize: 12,
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' }}>
+                          <AlertTriangle size={15} className="text-amber-500 shrink-0" />
+                          <span>This question is being reviewed. Correct answer key is being verified.</span>
                         </div>
                         <button
-                          onClick={() => handleRequestAiExplanation(idx, q, userAns)}
-                          disabled={aiExplaining[idx]}
+                          type="button"
+                          onClick={() => setReportingQuestionId(q.id)}
                           style={{
+                            background: 'transparent',
+                            border: '1px solid var(--border)',
+                            borderRadius: 'var(--r-pill)',
+                            padding: '3px 9px',
                             fontSize: 11,
-                            color: 'var(--text-faint)',
+                            color: 'var(--text-muted)',
                             cursor: 'pointer',
-                            display: 'flex',
+                            display: 'inline-flex',
                             alignItems: 'center',
                             gap: 4,
                           }}
                         >
-                          <RotateCcw size={11} /> Re-derive
+                          <Flag size={11} />
+                          <span>Report</span>
                         </button>
                       </div>
-                      <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text)' }}>
-                        <MathText block>{aiExplanations[idx]}</MathText>
-                      </div>
+                    );
+                  }
+
+                  return (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                      {!aiExplanations[idx] ? (
+                        <button
+                          onClick={() => handleRequestAiExplanation(idx, q, userAns, false)}
+                          disabled={aiExplaining[idx]}
+                          style={{
+                            alignSelf: 'flex-start',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            padding: '8px 14px',
+                            borderRadius: 'var(--r-pill)',
+                            border: '1px solid #D71921',
+                            background: 'transparent',
+                            color: 'var(--text)',
+                            fontSize: 12,
+                            fontWeight: 600,
+                            cursor: aiExplaining[idx] ? 'wait' : 'pointer',
+                            transition: 'all 160ms',
+                          }}
+                          className="hover:bg-[#D71921] hover:text-white"
+                        >
+                          {aiExplaining[idx] ? (
+                            <>
+                              <Sparkles size={13} className="animate-spin text-[#D71921]" />
+                              <span>Boardy is deriving solution...</span>
+                            </>
+                          ) : (
+                            <>
+                              <Bot size={14} className="text-[#D71921]" />
+                              <span>Explain this with Boardy AI</span>
+                            </>
+                          )}
+                        </button>
+                      ) : (
+                        <div
+                          style={{
+                            padding: '16px',
+                            borderRadius: 'var(--r-card)',
+                            background: 'var(--surface)',
+                            border: '1px solid #D71921',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: 10,
+                            overflowX: 'hidden',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#D71921', fontSize: 12, fontWeight: 700 }}>
+                              <Bot size={15} />
+                              <span>Boardy AI Step-by-Step Derivation</span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <button
+                                onClick={() => handleRequestAiExplanation(idx, q, userAns, true)}
+                                disabled={aiExplaining[idx]}
+                                style={{
+                                  fontSize: 11,
+                                  color: 'var(--text-faint)',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  background: 'none',
+                                  border: 'none',
+                                }}
+                              >
+                                <RotateCcw size={11} /> Re-derive
+                              </button>
+                              <button
+                                onClick={() => setReportingQuestionId(q.id)}
+                                style={{
+                                  fontSize: 11,
+                                  color: 'var(--text-faint)',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 4,
+                                  background: 'none',
+                                  border: 'none',
+                                }}
+                                title="Report issue with explanation"
+                              >
+                                <Flag size={11} /> Report
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text)' }} className="break-words">
+                            <MathText block>{aiExplanations[idx]}</MathText>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  );
+                })()}
               </div>
             );
           })}

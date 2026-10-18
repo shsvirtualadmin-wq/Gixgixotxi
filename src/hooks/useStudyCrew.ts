@@ -15,7 +15,7 @@ import {
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from './useUserProfile';
-import { isSuperAdminEmailOrRole } from './useEffectivePlan';
+import { isSuperAdminEmailOrRole, clearPlanCache } from './useEffectivePlan';
 import { debugTracker } from '@/utils/debugTracker';
 import { MAX_CREW_MEMBERS } from '@/constants/limits';
 
@@ -65,7 +65,7 @@ export function generateCrewCode(): string {
 }
 
 export function useStudyCrew() {
-  const { user } = useAuth();
+  const { user, updateLocalProfile } = useAuth();
   const { profile } = useUserProfile();
 
   const [crew, setCrew] = useState<CrewDoc | null>(null);
@@ -426,9 +426,19 @@ export function useStudyCrew() {
           };
         });
 
-        // 3. Safe-save pattern: show dashboard immediately, then verify from server
+        // 3. Safe-save pattern: show dashboard immediately, clear cached plan & reflect Pro without refresh
         if (resultingCrew) {
           setCrew(resultingCrew);
+          if (user?.uid) {
+            clearPlanCache(user.uid);
+          }
+          if (updateLocalProfile) {
+            updateLocalProfile({
+              isCrewMember: true,
+              crewId: (resultingCrew as CrewDoc).id,
+              crewName: (resultingCrew as CrewDoc).name,
+            });
+          }
         }
 
         getDocFromServer(crewRef).catch(() => {});

@@ -37,6 +37,7 @@ import {
   findChapterSlug,
   computeContentHash,
 } from '@/constants/taxonomy';
+import { normalizeCorrectAnswer } from './testEngine';
 import { recordCrewPaymentActionServer } from './crewBackend';
 
 // ─── DIAGNOSTIC FIRESTORE ERROR ──────────────────────────────────────────────
@@ -699,6 +700,13 @@ export async function saveQuestion(
   const rand = typeof question.rand === 'number' ? question.rand : Math.random();
   const contentHash = await computeContentHash(qText, options);
 
+  // 2. Validate and standardize correct answer
+  const rawKey = question.correct !== undefined ? question.correct : question.correctAnswer;
+  const resolvedKey = normalizeCorrectAnswer(rawKey, options);
+  if (!resolvedKey) {
+    throw new Error('Validation failed: A valid correct answer matching one of the options is required.');
+  }
+
   // 1. Public question doc in `questions/{qId}` — strictly NO correct or explain!
   const publicDoc: Record<string, unknown> = {
     id: qId,
@@ -725,18 +733,14 @@ export async function saveQuestion(
   await setDoc(doc(db, 'questions', qId), publicDoc, { merge: true });
 
   // 2. Secret key doc in `questionKeys/{qId}`
-  const correctVal = typeof question.correct === 'number'
-    ? question.correct
-    : typeof question.correctAnswer === 'number'
-    ? question.correctAnswer
-    : 0;
   const explainVal = (question.explain || question.explanation || '').trim();
 
   await setDoc(
     doc(db, 'questionKeys', qId),
     {
       id: qId,
-      correct: correctVal,
+      correct: resolvedKey.correctIndex,
+      correctOptionText: resolvedKey.correctText,
       explain: explainVal,
       updatedAt: serverTimestamp(),
     },
@@ -770,6 +774,7 @@ export interface BankHealthStats {
   inactiveCount: number;
   openReportsCount: number;
   duplicatesDetected: number;
+  invalidCorrectCount: number;
 }
 
 export async function fetchBankHealth(): Promise<BankHealthStats> {
@@ -783,6 +788,7 @@ export async function fetchBankHealth(): Promise<BankHealthStats> {
     inactiveCount: 0,
     openReportsCount: 0,
     duplicatesDetected: 0,
+    invalidCorrectCount: 0,
   };
 
   try {
@@ -812,6 +818,17 @@ export async function fetchBankHealth(): Promise<BankHealthStats> {
 
       if (act) result.activeCount++;
       else result.inactiveCount++;
+
+      // Check if options are valid array
+      const opts = Array.isArray(data.options) ? data.options : [];
+      if (opts.length < 2) {
+        result.invalidCorrectCount++;
+      } else if (data.correct === undefined && data.correctAnswer === undefined) {
+        // If neither on doc, check if flagged or empty
+        if (data.needs_repair) {
+          result.invalidCorrectCount++;
+        }
+      }
 
       if (data.contentHash) {
         if (seenHashes.has(data.contentHash)) {

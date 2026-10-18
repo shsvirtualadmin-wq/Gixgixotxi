@@ -1121,50 +1121,75 @@ export function AdminQuestionsPage() {
           </div>
 
           {healthStats ? (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div className="p-4 rounded-[20px] bg-[var(--card)] border border-[var(--border)]">
-                <span className="text-[11px] text-[var(--muted)] uppercase font-semibold">Total Pool</span>
-                <div className="text-[28px] font-dot font-extrabold text-[var(--text)] mt-1">
-                  {healthStats.totalQuestions}
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+                <div className="p-4 rounded-[20px] bg-[var(--card)] border border-[var(--border)]">
+                  <span className="text-[11px] text-[var(--muted)] uppercase font-semibold">Total Pool</span>
+                  <div className="text-[28px] font-dot font-extrabold text-[var(--text)] mt-1">
+                    {healthStats.totalQuestions}
+                  </div>
+                  <span className="text-[11px] text-emerald-400">
+                    {healthStats.activeCount} active · {healthStats.inactiveCount} archived
+                  </span>
                 </div>
-                <span className="text-[11px] text-emerald-400">
-                  {healthStats.activeCount} active · {healthStats.inactiveCount} archived
-                </span>
+
+                <div className="p-4 rounded-[20px] bg-[var(--card)] border border-[var(--border)]">
+                  <span className="text-[11px] text-[var(--muted)] uppercase font-semibold">By Difficulty</span>
+                  <div className="text-[13px] font-heading mt-2 space-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-emerald-400">Easy:</span>
+                      <span className="font-semibold text-[var(--text)]">{healthStats.byDifficulty.easy}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-amber-400">Medium:</span>
+                      <span className="font-semibold text-[var(--text)]">{healthStats.byDifficulty.medium}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-rose-400">Hard:</span>
+                      <span className="font-semibold text-[var(--text)]">{healthStats.byDifficulty.hard}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-[20px] bg-[var(--card)] border border-[var(--border)]">
+                  <span className="text-[11px] text-[var(--muted)] uppercase font-semibold">Open Reports</span>
+                  <div className="text-[28px] font-dot font-extrabold text-[var(--accent)] mt-1">
+                    {healthStats.openReportsCount}
+                  </div>
+                  <span className="text-[11px] text-[var(--muted)]">Student issue submissions</span>
+                </div>
+
+                <div className="p-4 rounded-[20px] bg-[var(--card)] border border-[var(--border)]">
+                  <span className="text-[11px] text-[var(--muted)] uppercase font-semibold">Duplicates</span>
+                  <div className="text-[28px] font-dot font-extrabold text-[var(--text)] mt-1">
+                    {healthStats.duplicatesDetected}
+                  </div>
+                  <span className="text-[11px] text-emerald-400">Identified via contentHash</span>
+                </div>
+
+                <div className={`p-4 rounded-[20px] bg-[var(--card)] border ${healthStats.invalidCorrectCount > 0 ? 'border-amber-500/50 bg-amber-500/5' : 'border-[var(--border)]'}`}>
+                  <span className="text-[11px] text-[var(--muted)] uppercase font-semibold">Key Integrity</span>
+                  <div className={`text-[28px] font-dot font-extrabold mt-1 ${healthStats.invalidCorrectCount > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                    {healthStats.invalidCorrectCount}
+                  </div>
+                  <span className="text-[11px] text-[var(--muted)]">
+                    {healthStats.invalidCorrectCount > 0
+                      ? 'Flagged (hidden from tests)'
+                      : 'All keys verified valid'}
+                  </span>
+                </div>
               </div>
 
-              <div className="p-4 rounded-[20px] bg-[var(--card)] border border-[var(--border)]">
-                <span className="text-[11px] text-[var(--muted)] uppercase font-semibold">By Difficulty</span>
-                <div className="text-[13px] font-heading mt-2 space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-emerald-400">Easy:</span>
-                    <span className="font-semibold text-[var(--text)]">{healthStats.byDifficulty.easy}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-amber-400">Medium:</span>
-                    <span className="font-semibold text-[var(--text)]">{healthStats.byDifficulty.medium}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-rose-400">Hard:</span>
-                    <span className="font-semibold text-[var(--text)]">{healthStats.byDifficulty.hard}</span>
+              {healthStats.invalidCorrectCount > 0 && (
+                <div className="p-4 rounded-[16px] bg-amber-500/10 border border-amber-500/30 flex items-center justify-between gap-3 text-xs text-amber-300">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                    <span>
+                      <strong>{healthStats.invalidCorrectCount} MCQ(s) flagged</strong> with missing or invalid correct answers. The test engine automatically hides them from student tests to protect grading accuracy.
+                    </span>
                   </div>
                 </div>
-              </div>
-
-              <div className="p-4 rounded-[20px] bg-[var(--card)] border border-[var(--border)]">
-                <span className="text-[11px] text-[var(--muted)] uppercase font-semibold">Open Reports</span>
-                <div className="text-[28px] font-dot font-extrabold text-[var(--accent)] mt-1">
-                  {healthStats.openReportsCount}
-                </div>
-                <span className="text-[11px] text-[var(--muted)]">Student issue submissions</span>
-              </div>
-
-              <div className="p-4 rounded-[20px] bg-[var(--card)] border border-[var(--border)]">
-                <span className="text-[11px] text-[var(--muted)] uppercase font-semibold">Duplicates Flagged</span>
-                <div className="text-[28px] font-dot font-extrabold text-[var(--text)] mt-1">
-                  {healthStats.duplicatesDetected}
-                </div>
-                <span className="text-[11px] text-emerald-400">Identified via contentHash</span>
-              </div>
+              )}
             </div>
           ) : (
             <div className="p-6 text-center text-[var(--muted)] font-heading">

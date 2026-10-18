@@ -98,6 +98,71 @@ export function shuffleOptions(options: string[]): {
 }
 
 /**
+ * Normalizes any format of correct answer (index 0..3, letter 'A'..'D', or exact option text)
+ * to a standardized zero-based index and trimmed option text.
+ */
+export function normalizeCorrectAnswer(
+  rawCorrect: unknown,
+  options: string[]
+): { correctIndex: number; correctText: string } | null {
+  if (!Array.isArray(options) || options.length < 2) return null;
+
+  // 1. Direct number index (0 <= idx < options.length)
+  if (typeof rawCorrect === 'number' && Number.isInteger(rawCorrect)) {
+    if (rawCorrect >= 0 && rawCorrect < options.length) {
+      return {
+        correctIndex: rawCorrect,
+        correctText: String(options[rawCorrect] || '').trim(),
+      };
+    }
+  }
+
+  // 2. String representation
+  if (typeof rawCorrect === 'string') {
+    const trimmed = rawCorrect.trim();
+
+    // Check if it's a numeric string e.g. "0", "1", "2", "3" that isn't one of the options
+    const asNum = Number(trimmed);
+    if (
+      !isNaN(asNum) &&
+      Number.isInteger(asNum) &&
+      asNum >= 0 &&
+      asNum < options.length &&
+      !options.includes(trimmed)
+    ) {
+      return {
+        correctIndex: asNum,
+        correctText: String(options[asNum] || '').trim(),
+      };
+    }
+
+    // Check letter e.g. "A", "B", "C", "D"
+    const upper = trimmed.toUpperCase();
+    const letterMap: Record<string, number> = { A: 0, B: 1, C: 2, D: 3 };
+    if (letterMap[upper] !== undefined && letterMap[upper] < options.length && !options.includes(trimmed)) {
+      const idx = letterMap[upper];
+      return {
+        correctIndex: idx,
+        correctText: String(options[idx] || '').trim(),
+      };
+    }
+
+    // Check exact text matching one of the options
+    const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+    const targetNorm = norm(trimmed);
+    const textIdx = options.findIndex((opt) => norm(String(opt || '')) === targetNorm);
+    if (textIdx !== -1) {
+      return {
+        correctIndex: textIdx,
+        correctText: String(options[textIdx] || '').trim(),
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
  * Loads an existing attempt document by ID with fallback for deleted/unavailable questions.
  */
 export async function getAttempt(attemptId: string): Promise<AttemptDoc> {
@@ -414,14 +479,43 @@ export async function submitAttempt(
   const questions = attempt.questions ?? [];
   const totalQuestions = questions.length;
 
-  // 1. Fetch secret answer keys from `questionKeys` collection
-  const questionKeyMap = new Map<string, QuestionKey>();
+  const totalQuestions = questions.length;
+
+  // 1. Fetch secret answer keys from `questionKeys` with fallback to `questions` doc
+  const questionKeyMap = new Map<string, { correct: unknown; explain?: string }>();
   await Promise.all(
     questions.map(async (q) => {
       try {
         const keySnap = await getDoc(doc(db, 'questionKeys', q.id));
         if (keySnap.exists()) {
-          questionKeyMap.set(q.id, { id: keySnap.id, ...keySnap.data() } as QuestionKey);
+          const kData = keySnap.data();
+          questionKeyMap.set(q.id, {
+            correct: kData.correct !== undefined ? kData.correct : kData.correctAnswer,
+            explain: kData.explain || kData.explanation || '',
+          });
+          return;
+        }
+
+        // Fallback: check questions doc in case keys collection didn't have it
+        const qSnap = await getDoc(doc(db, 'questions', q.id));
+        if (qSnap.exists()) {
+          const qData = qSnap.data();
+          if (qData.correct !== undefined || qData.correctAnswer !== undefined) {
+            questionKeyMap.set(q.id, {
+              correct: qData.correct !== undefined ? qData.correct : qData.correctAnswer,
+              explain: qData.explain || qData.explanation || '',
+            });
+            return;
+          }
+        }
+
+        // Fallback to in-memory question doc fields if present
+        const anyQ = q as Record<string, unknown>;
+        if (anyQ.correct !== undefined || anyQ.correctAnswer !== undefined) {
+          questionKeyMap.set(q.id, {
+            correct: anyQ.correct !== undefined ? anyQ.correct : anyQ.correctAnswer,
+            explain: (anyQ.explain as string) || (anyQ.explanation as string) || '',
+          });
         }
       } catch (keyErr) {
         console.warn(`[testEngine] Could not load key for ${q.id}:`, keyErr);
@@ -436,7 +530,6 @@ export async function submitAttempt(
   let maxMarks = 0;
 
   // Track chapter breakdown by chapter SLUG only
-  // Answered definition: Student selected an option in a completed attempt
   const chapterAcc: Record<string, { subjectSlug: string; correct: number; total: number }> = {};
 
   // Enrich questions with answer key for result review
@@ -454,21 +547,53 @@ export async function submitAttempt(
       chapterAcc[chSlug] = { subjectSlug: subSlug, correct: 0, total: 0 };
     }
 
+    // Determine original options array using optionMapping
+    const currentOptions = Array.isArray(q.options) ? q.options : [];
+    let originalOptions: string[] = [...currentOptions];
+    if (Array.isArray(q.optionMapping) && q.optionMapping.length === currentOptions.length) {
+      originalOptions = new Array(currentOptions.length);
+      q.optionMapping.forEach((origIdx, shufIdx) => {
+        originalOptions[origIdx] = currentOptions[shufIdx];
+      });
+    }
+
+    // Robust resolution of correct answer
+    const rawKey = key?.correct;
+    const resolved = normalizeCorrectAnswer(rawKey, originalOptions);
+
+    let correctOriginalIndex = resolved?.correctIndex ?? 0;
+    const correctOptionText = resolved?.correctText || originalOptions[correctOriginalIndex] || '';
+
+    // Calculate position in current shuffled options
+    let correctInShuffledOrder = correctOriginalIndex;
+    if (Array.isArray(q.optionMapping) && q.optionMapping.length > 0) {
+      const mappedPos = q.optionMapping.indexOf(correctOriginalIndex);
+      if (mappedPos !== -1) {
+        correctInShuffledOrder = mappedPos;
+      }
+    }
+
     let isCorrect = false;
-    let originalChoice: number | undefined = undefined;
 
     if (selectedShuffledIndex === undefined || selectedShuffledIndex === null) {
       unansweredCount += 1;
     } else {
-      // Question counts as answered ONLY if student selected an option
       chapterAcc[chSlug].total += 1;
 
-      // Translate shuffled option selection to original index using optionMapping
-      originalChoice = Array.isArray(q.optionMapping)
+      const studentChosenText = currentOptions[selectedShuffledIndex];
+      const origChoice = Array.isArray(q.optionMapping)
         ? q.optionMapping[selectedShuffledIndex]
         : selectedShuffledIndex;
 
-      if (key && originalChoice === key.correct) {
+      // Triple verification: by shuffled index, by original index, and by exact option text
+      const isIndexMatch = selectedShuffledIndex === correctInShuffledOrder;
+      const isOrigIndexMatch = origChoice === correctOriginalIndex;
+      const isTextMatch =
+        Boolean(studentChosenText) &&
+        Boolean(correctOptionText) &&
+        studentChosenText.trim().toLowerCase() === correctOptionText.trim().toLowerCase();
+
+      if (isIndexMatch || isOrigIndexMatch || isTextMatch) {
         correctCount += 1;
         chapterAcc[chSlug].correct += 1;
         isCorrect = true;
@@ -479,21 +604,17 @@ export async function submitAttempt(
       }
     }
 
-    // In review mode, provide the correct index relative to the shuffled options
-    let correctInShuffledOrder: number | undefined = undefined;
-    if (key && Array.isArray(q.optionMapping)) {
-      correctInShuffledOrder = q.optionMapping.indexOf(key.correct);
-    } else if (key) {
-      correctInShuffledOrder = key.correct;
-    }
+    // Stored explanation: ONLY show real saved explanation, never the placeholder!
+    const savedExplain = (key?.explain || '').trim();
 
     return {
       ...q,
       correct: correctInShuffledOrder,
       correctIndex: correctInShuffledOrder,
+      correctOptionText,
       isCorrect,
-      explain: key?.explain || 'Explanation available in the study portal.',
-      explanation: key?.explain || 'Explanation available in the study portal.',
+      explain: savedExplain,
+      explanation: savedExplain,
     };
   });
 
@@ -617,4 +738,134 @@ export async function reportQuestion(params: {
     status: 'open',
     createdAt: serverTimestamp(),
   });
+}
+
+/**
+ * Re-grades an existing attempt document after correcting keys or algorithms.
+ */
+export async function regradeAttempt(attemptId: string): Promise<AttemptDoc> {
+  const attempt = await getAttempt(attemptId);
+  const questions = attempt.questions || [];
+  const userAnswers = attempt.userAnswers || {};
+
+  // Fetch keys with fallback
+  const questionKeyMap = new Map<string, { correct: unknown; explain?: string }>();
+  await Promise.all(
+    questions.map(async (q) => {
+      try {
+        const keySnap = await getDoc(doc(db, 'questionKeys', q.id));
+        if (keySnap.exists()) {
+          const kData = keySnap.data();
+          questionKeyMap.set(q.id, {
+            correct: kData.correct !== undefined ? kData.correct : kData.correctAnswer,
+            explain: kData.explain || kData.explanation || '',
+          });
+          return;
+        }
+        const qSnap = await getDoc(doc(db, 'questions', q.id));
+        if (qSnap.exists()) {
+          const qData = qSnap.data();
+          questionKeyMap.set(q.id, {
+            correct: qData.correct !== undefined ? qData.correct : qData.correctAnswer,
+            explain: qData.explain || qData.explanation || '',
+          });
+        }
+      } catch (err) {
+        console.warn(`[regradeAttempt] key load error for ${q.id}:`, err);
+      }
+    })
+  );
+
+  let correctCount = 0;
+  let wrongCount = 0;
+  let unansweredCount = 0;
+  let earnedMarks = 0;
+  let maxMarks = 0;
+
+  const enrichedQuestions = questions.map((q, idx) => {
+    const selectedShuffledIndex = userAnswers[String(idx)];
+    const key = questionKeyMap.get(q.id);
+    const subSlug = q.subject || 'general';
+    const sectionConfig = getSectionCriteria(attempt.university, subSlug);
+    maxMarks += sectionConfig.correctMarks;
+
+    const currentOptions = Array.isArray(q.options) ? q.options : [];
+    let originalOptions = [...currentOptions];
+    if (Array.isArray(q.optionMapping) && q.optionMapping.length === currentOptions.length) {
+      originalOptions = new Array(currentOptions.length);
+      q.optionMapping.forEach((origIdx, shufIdx) => {
+        originalOptions[origIdx] = currentOptions[shufIdx];
+      });
+    }
+
+    const resolved = normalizeCorrectAnswer(key?.correct, originalOptions);
+    const correctOriginalIndex = resolved?.correctIndex ?? 0;
+    const correctOptionText = resolved?.correctText || originalOptions[correctOriginalIndex] || '';
+
+    let correctInShuffledOrder = correctOriginalIndex;
+    if (Array.isArray(q.optionMapping) && q.optionMapping.length > 0) {
+      const mappedPos = q.optionMapping.indexOf(correctOriginalIndex);
+      if (mappedPos !== -1) {
+        correctInShuffledOrder = mappedPos;
+      }
+    }
+
+    let isCorrect = false;
+    if (selectedShuffledIndex === undefined || selectedShuffledIndex === null) {
+      unansweredCount += 1;
+    } else {
+      const studentChosenText = currentOptions[selectedShuffledIndex];
+      const origChoice = Array.isArray(q.optionMapping)
+        ? q.optionMapping[selectedShuffledIndex]
+        : selectedShuffledIndex;
+
+      const isIndexMatch = selectedShuffledIndex === correctInShuffledOrder;
+      const isOrigIndexMatch = origChoice === correctOriginalIndex;
+      const isTextMatch =
+        Boolean(studentChosenText) &&
+        Boolean(correctOptionText) &&
+        studentChosenText.trim().toLowerCase() === correctOptionText.trim().toLowerCase();
+
+      if (isIndexMatch || isOrigIndexMatch || isTextMatch) {
+        correctCount += 1;
+        isCorrect = true;
+        earnedMarks += sectionConfig.correctMarks;
+      } else {
+        wrongCount += 1;
+        earnedMarks += sectionConfig.negativePenalty;
+      }
+    }
+
+    const savedExplain = (key?.explain || q.explain || '').trim();
+
+    return {
+      ...q,
+      correct: correctInShuffledOrder,
+      correctIndex: correctInShuffledOrder,
+      correctOptionText,
+      isCorrect,
+      explain: savedExplain,
+      explanation: savedExplain,
+    };
+  });
+
+  const score = Math.max(0, Math.round(earnedMarks * 100) / 100);
+  const percentage =
+    maxMarks > 0 ? Math.max(0, Math.min(100, Math.round((earnedMarks / maxMarks) * 100))) : 0;
+
+  const docRef = doc(db, 'attempts', attemptId);
+  const updatedData = {
+    questions: enrichedQuestions,
+    score,
+    maxMarks,
+    earnedMarks,
+    correctAnswers: correctCount,
+    wrongAnswers: wrongCount,
+    unanswered: unansweredCount,
+    percentage,
+    regradedAt: serverTimestamp(),
+  };
+
+  await updateDoc(docRef, updatedData);
+  return { ...attempt, ...updatedData } as AttemptDoc;
 }

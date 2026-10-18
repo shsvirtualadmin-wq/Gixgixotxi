@@ -36,6 +36,14 @@ export function isSuperAdminEmailOrRole(
 // ── In-Memory Plan Cache to Eliminate Flickers ─────────────────────────────
 const planMemoryCache = new Map<string, EffectivePlanResult>();
 
+export function clearPlanCache(uid?: string) {
+  if (uid) {
+    planMemoryCache.delete(uid);
+  } else {
+    planMemoryCache.clear();
+  }
+}
+
 // ── Pure Plan Resolver (used by hook and by /admin/health pure logic tests) ──
 export interface PlanResolverInput {
   email?: string | null;

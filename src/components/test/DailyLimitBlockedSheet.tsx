@@ -17,7 +17,7 @@ export function DailyLimitBlockedSheet({
 }: DailyLimitBlockedSheetProps) {
   const navigate = useNavigate();
   const effectivePlan = useEffectivePlan();
-  const [countdown, setCountdown] = useState('');
+  const [countdownText, setCountdownText] = useState('');
 
   // PKT (UTC+5) Midnight Reset Timer
   useEffect(() => {
@@ -33,15 +33,12 @@ export function DailyLimitBlockedSheet({
       const diffMs = midnight.getTime() - pktNow.getTime();
       const hrs = Math.floor(diffMs / (1000 * 60 * 60));
       const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
 
-      setCountdown(
-        `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
-      );
+      setCountdownText(`Resets in ${hrs} hours ${mins} minutes (at midnight PKT)`);
     }
 
     calculateTimeToPktMidnight();
-    const interval = setInterval(calculateTimeToPktMidnight, 1000);
+    const interval = setInterval(calculateTimeToPktMidnight, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -80,35 +77,28 @@ export function DailyLimitBlockedSheet({
         <div className="space-y-4">
           <div>
             <div className="text-[12px] text-[#888888] uppercase tracking-wider mb-1">
-              Test sessions quota reached
+              Daily quota reached
             </div>
-            <div className="font-dot text-[38px] sm:text-[44px] font-bold text-white tracking-tight leading-none">
-              <span className="text-[#D71921]">{testsUsed}</span>
-              <span className="text-[#444444]"> / {FREE_DAILY_TESTS}</span>
-              <span className="text-sm font-normal text-[#888888] ml-2">tests used</span>
+            <div className="font-dot text-[30px] sm:text-[34px] font-bold text-white tracking-tight leading-none mb-1">
+              You've used all {FREE_DAILY_TESTS} daily attempts.
             </div>
+            <p className="text-[13px] text-[#AAAAAA] leading-relaxed mt-2">
+              Free starter accounts can start up to <strong className="text-white">3 test attempts per calendar day</strong> (Pakistan Standard Time, UTC+5).
+            </p>
           </div>
 
-          <p className="text-[13px] text-[#AAAAAA] leading-relaxed">
-            Free starter accounts can start up to <strong className="text-white">10 tests per day</strong> across all formats (Daily Practice, 10-Minute Sprints, Past Papers, and Drills).
-          </p>
-
           {/* Reset countdown box */}
-          <div className="p-4 rounded-[16px] bg-[#141414] border border-[#222222] flex items-center justify-between">
-            <div>
-              <div className="text-[11px] text-[#888888]">Quota resets at 00:00 PKT</div>
-              <div className="text-[10px] text-[#666666]">Asia/Karachi standard time</div>
-            </div>
-            <div className="text-right">
-              <div className="text-[10px] text-[#888888] uppercase tracking-wider">Time remaining</div>
-              <div className="font-dot text-[18px] font-bold text-white tracking-widest text-[#D71921]">
-                {countdown || 'Calculating...'}
+          <div className="p-3.5 rounded-[16px] bg-[#141414] border border-[#222222] flex items-center justify-between">
+            <div className="text-left">
+              <div className="text-[12px] font-medium text-amber-400">
+                {countdownText || 'Calculating reset time...'}
               </div>
+              <div className="text-[10px] text-[#666666]">Asia/Karachi standard time</div>
             </div>
           </div>
         </div>
 
-        {/* Action Buttons: Upgrade & Join Study Crew */}
+        {/* Action Buttons: Upgrade & Join Study Crew / Buy Crew Pass */}
         <div className="space-y-2.5 pt-2">
           <button
             type="button"
@@ -119,7 +109,7 @@ export function DailyLimitBlockedSheet({
             className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-[14px] bg-[#D71921] hover:bg-[#b0141a] text-white font-semibold text-[13px] transition-all cursor-pointer shadow-lg shadow-red-950/40"
           >
             <Zap size={16} />
-            <span>Upgrade to Pro — Unlimited Access</span>
+            <span>Upgrade to Pro</span>
           </button>
 
           <button
@@ -128,11 +118,22 @@ export function DailyLimitBlockedSheet({
               onClose();
               navigate('/crew');
             }}
-            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-[14px] bg-[#141414] hover:bg-[#1f1f1f] border border-[#2E2E2E] text-white font-semibold text-[13px] transition-all cursor-pointer"
+            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-[14px] bg-[#141414] hover:bg-[#1f1f1f] border border-[#2E2E2E] text-white font-semibold text-[13px] transition-all cursor-pointer text-center"
           >
-            <Users size={16} />
-            <span>Join a Study Crew (Shared Pro Free)</span>
+            <Users size={16} className="shrink-0" />
+            <span>Join a Crew / Buy Crew Pass (PKR 499) to unlock unlimited tests for your whole group</span>
           </button>
+
+          {/* Admin Bypass Button (only visible to admins) */}
+          {effectivePlan.isSuperAdmin && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-2 px-3 rounded-lg border border-dashed border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-xs font-mono font-semibold hover:bg-emerald-500/20 transition-colors"
+            >
+              [Admin Bypass: Ignore Daily Quota]
+            </button>
+          )}
         </div>
       </div>
     </div>
