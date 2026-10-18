@@ -3,7 +3,26 @@ import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { debugTracker } from '@/utils/debugTracker';
+import { isQuotaExhaustedError } from '@/utils/quota';
 import type { UserProfile } from '@/types/index';
+
+function getLocalCachedProfile(uid: string): UserProfile | null {
+  try {
+    const raw = localStorage.getItem(`cached_profile_${uid}`);
+    if (raw) return JSON.parse(raw);
+  } catch {
+    // Ignore storage read errors
+  }
+  return null;
+}
+
+function setLocalCachedProfile(uid: string, profile: UserProfile): void {
+  try {
+    localStorage.setItem(`cached_profile_${uid}`, JSON.stringify(profile));
+  } catch {
+    // Ignore storage write errors
+  }
+}
 
 export interface UserProfileHookResult {
   user: ReturnType<typeof useAuth>['user'];
@@ -45,9 +64,13 @@ export interface UserProfileHookResult {
  */
 export function useUserProfile(): UserProfileHookResult {
   const { user, profile: authProfile, profileLoading: authLoading, updateLocalProfile } = useAuth();
-  const [profile, setProfile] = useState<UserProfile | null>(authProfile ?? null);
-  const [hasReceivedSnapshot, setHasReceivedSnapshot] = useState<boolean>(false);
-  const [docExists, setDocExists] = useState<boolean | null>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(() => {
+    if (authProfile) return authProfile;
+    if (user?.uid) return getLocalCachedProfile(user.uid);
+    return null;
+  });
+  const [hasReceivedSnapshot, setHasReceivedSnapshot] = useState<boolean>(Boolean(profile));
+  const [docExists, setDocExists] = useState<boolean | null>(Boolean(profile));
   const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [fetchDurationMs, setFetchDurationMs] = useState<number | null>(null);
   const [error, setError] = useState<{ code?: string; message: string; path?: string } | null>(null);
@@ -131,9 +154,11 @@ export function useUserProfile(): UserProfileHookResult {
 
         if (snap.exists()) {
           const data = snap.data() as UserProfile;
+          const fullProfile = { ...data, uid: user.uid };
           setDocExists(true);
           setFetchStatus('success');
-          setProfile({ ...data, uid: user.uid });
+          setProfile(fullProfile);
+          setLocalCachedProfile(user.uid, fullProfile);
           updateLocalProfileRef.current(data);
           if (!data.shortId) {
             import('@/utils/shortId').then(({ ensureUserShortId }) => {
@@ -166,15 +191,23 @@ export function useUserProfile(): UserProfileHookResult {
         if (!isSubscribed) return;
         clearTimeout(timeoutTimer);
         const duration = Date.now() - startTime;
-        console.error(`[useUserProfile] Snapshot error on ${path}:`, err);
+        const isQuota = isQuotaExhaustedError(err);
+
+        if (isQuota) {
+          console.warn(`[useUserProfile] Quota limit reached on ${path}. Falling back to cached profile.`);
+        } else {
+          console.error(`[useUserProfile] Snapshot error on ${path}:`, err);
+        }
+
         setFetchDurationMs(duration);
         setHasReceivedSnapshot(true);
-        setFetchStatus('error');
+        setFetchStatus(isQuota ? 'success' : 'error');
         setError({
-          code: err.code,
-          message: err.message,
+          code: isQuota ? 'RESOURCE_EXHAUSTED' : err.code,
+          message: isQuota ? 'Daily database limit reached, using cached profile' : err.message,
           path,
         });
+
         if (err.code === 'permission-denied') {
           debugTracker.recordPlanLog({
             action: 'profile_snapshot',
@@ -184,14 +217,31 @@ export function useUserProfile(): UserProfileHookResult {
           });
         }
         debugTracker.recordUserFetch({
-          status: 'error',
+          status: isQuota ? 'success' : 'error',
           code: err.code,
           message: err.message,
           durationMs: duration,
           updatedAt: Date.now(),
         });
-        if (authProfileRef.current) {
+
+        // Always prioritize cached profile or authProfile so app doesn't break
+        const cached = getLocalCachedProfile(user.uid);
+        if (cached) {
+          setProfile(cached);
+          setDocExists(true);
+        } else if (authProfileRef.current) {
           setProfile(authProfileRef.current);
+          setDocExists(true);
+        } else {
+          setProfile({
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || user.email?.split('@')[0] || 'Student',
+            targetUniversity: 'FAST',
+            role: 'student',
+            plan: 'free',
+          } as UserProfile);
+          setDocExists(true);
         }
       }
     );

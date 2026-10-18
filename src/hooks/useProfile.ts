@@ -1,6 +1,7 @@
 import { doc, onSnapshot } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
 import { db } from '@/lib/firebase';
+import { isQuotaExhaustedError } from '@/utils/quota';
 import type { UserProfile } from '@/types/index';
 
 interface ProfileState {
@@ -10,10 +11,21 @@ interface ProfileState {
 }
 
 export function useProfile(uid: string | null): ProfileState {
-  const [state, setState] = useState<ProfileState>({
-    profile: null,
-    loading: Boolean(uid),
-    error: null,
+  const [state, setState] = useState<ProfileState>(() => {
+    let cached: UserProfile | null = null;
+    if (uid) {
+      try {
+        const raw = localStorage.getItem(`cached_profile_${uid}`);
+        if (raw) cached = JSON.parse(raw);
+      } catch {
+        // Ignore storage read errors
+      }
+    }
+    return {
+      profile: cached,
+      loading: Boolean(uid && !cached),
+      error: null,
+    };
   });
 
   useEffect(() => {
@@ -23,23 +35,42 @@ export function useProfile(uid: string | null): ProfileState {
     }
 
     const path = `users/${uid}`;
-    setState(prev => ({ ...prev, loading: true, error: null }));
 
     const unsubscribe = onSnapshot(
       doc(db, 'users', uid),
       (snap) => {
         if (snap.exists()) {
-          setState({ profile: { uid, ...snap.data() } as UserProfile, loading: false, error: null });
+          const profileData = { uid, ...snap.data() } as UserProfile;
+          try {
+            localStorage.setItem(`cached_profile_${uid}`, JSON.stringify(profileData));
+          } catch {
+            // Ignore storage write errors
+          }
+          setState({ profile: profileData, loading: false, error: null });
         } else {
           setState({ profile: null, loading: false, error: null });
         }
       },
       (err) => {
-        console.error(`[useProfile] Failed to read ${path}:`, err.code, err.message);
+        const isQuota = isQuotaExhaustedError(err);
+        if (isQuota) {
+          console.warn(`[useProfile] Daily quota limit reached on ${path}.`);
+        } else {
+          console.error(`[useProfile] Failed to read ${path}:`, err.code, err.message);
+        }
+
+        let fallback: UserProfile | null = null;
+        try {
+          const raw = localStorage.getItem(`cached_profile_${uid}`);
+          if (raw) fallback = JSON.parse(raw);
+        } catch {
+          // Ignore storage read errors
+        }
+
         setState({
-          profile: null,
+          profile: fallback,
           loading: false,
-          error: { code: err.code, message: err.message, path },
+          error: isQuota ? null : { code: err.code, message: err.message, path },
         });
       }
     );

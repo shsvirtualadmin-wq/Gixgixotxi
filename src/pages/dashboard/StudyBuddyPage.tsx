@@ -112,27 +112,33 @@ export function StudyBuddyPage() {
       where('crewId', '==', crewId)
     );
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const now = Date.now();
-      const list: ActiveBuddy[] = [];
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const now = Date.now();
+        const list: ActiveBuddy[] = [];
 
-      snapshot.forEach((docSnap) => {
-        const data = docSnap.data();
-        // Active if heartbeat received within last 90 seconds
-        if (data.lastActive && now - data.lastActive < 90000) {
-          list.push({
-            uid: data.uid,
-            displayName: data.displayName || 'Squad Member',
-            shortId: data.shortId || data.uid.slice(0, 5),
-            avatarKey: data.avatarKey,
-            lastActive: data.lastActive,
-            questionsSolvedThisSession: data.questionsSolvedThisSession || 0,
-          });
-        }
-      });
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          // Active if heartbeat received within last 90 seconds
+          if (data.lastActive && now - data.lastActive < 90000) {
+            list.push({
+              uid: data.uid,
+              displayName: data.displayName || 'Squad Member',
+              shortId: data.shortId || data.uid.slice(0, 5),
+              avatarKey: data.avatarKey,
+              lastActive: data.lastActive,
+              questionsSolvedThisSession: data.questionsSolvedThisSession || 0,
+            });
+          }
+        });
 
-      setActiveBuddies(list);
-    });
+        setActiveBuddies(list);
+      },
+      (err) => {
+        console.warn('[StudyBuddy] Presence snapshot notice:', err);
+      }
+    );
 
     return () => unsubscribe();
   }, [crewId]);
@@ -147,35 +153,41 @@ export function StudyBuddyPage() {
       limit(25)
     );
 
-    const unsubscribe = onSnapshot(qLogs, (snapshot) => {
-      const logs: StudyBuddyLogItem[] = [];
-      snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        let timeStr = 'Recently';
-        if (d.createdAt?.toDate) {
-          timeStr = d.createdAt.toDate().toLocaleTimeString('en-PK', {
-            hour: '2-digit',
-            minute: '2-digit',
-          });
-        } else if (d.createdAt?.seconds) {
-          timeStr = new Date(d.createdAt.seconds * 1000).toLocaleTimeString('en-PK', {
-            hour: '2-digit',
-            minute: '2-digit',
-          });
-        }
+    const unsubscribe = onSnapshot(
+      qLogs,
+      (snapshot) => {
+        const logs: StudyBuddyLogItem[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          let timeStr = 'Recently';
+          if (d.createdAt?.toDate) {
+            timeStr = d.createdAt.toDate().toLocaleTimeString('en-PK', {
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+          } else if (d.createdAt?.seconds) {
+            timeStr = new Date(d.createdAt.seconds * 1000).toLocaleTimeString('en-PK', {
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+          }
 
-        logs.push({
-          id: docSnap.id,
-          studentName: d.studentName || 'Student',
-          studentShortId: d.studentShortId || '00000',
-          timestamp: timeStr,
-          questionsSolved: d.questionsSolved || 0,
-          topic: d.topic || 'General Practice',
+          logs.push({
+            id: docSnap.id,
+            studentName: d.studentName || 'Student',
+            studentShortId: d.studentShortId || '00000',
+            timestamp: timeStr,
+            questionsSolved: d.questionsSolved || 0,
+            topic: d.topic || 'General Practice',
+          });
         });
-      });
 
-      setSessionLogs(logs);
-    });
+        setSessionLogs(logs);
+      },
+      (err) => {
+        console.warn('[StudyBuddy] Logs snapshot notice:', err);
+      }
+    );
 
     return () => unsubscribe();
   }, [crewId]);
@@ -190,31 +202,37 @@ export function StudyBuddyPage() {
       limit(40)
     );
 
-    const unsubscribe = onSnapshot(qMsgs, (snapshot) => {
-      const msgs: StudyBuddyMessage[] = [];
-      snapshot.forEach((docSnap) => {
-        const d = docSnap.data();
-        let timeStr = 'Now';
-        if (d.createdAt?.toDate) {
-          timeStr = d.createdAt.toDate().toLocaleTimeString('en-PK', {
-            hour: '2-digit',
-            minute: '2-digit',
+    const unsubscribe = onSnapshot(
+      qMsgs,
+      (snapshot) => {
+        const msgs: StudyBuddyMessage[] = [];
+        snapshot.forEach((docSnap) => {
+          const d = docSnap.data();
+          let timeStr = 'Now';
+          if (d.createdAt?.toDate) {
+            timeStr = d.createdAt.toDate().toLocaleTimeString('en-PK', {
+              hour: '2-digit',
+              minute: '2-digit',
+            });
+          }
+
+          msgs.push({
+            id: docSnap.id,
+            senderName: d.senderName || 'Student',
+            senderShortId: d.senderShortId || '00000',
+            senderUid: d.senderUid,
+            text: d.text || '',
+            timestamp: timeStr,
           });
-        }
-
-        msgs.push({
-          id: docSnap.id,
-          senderName: d.senderName || 'Student',
-          senderShortId: d.senderShortId || '00000',
-          senderUid: d.senderUid,
-          text: d.text || '',
-          timestamp: timeStr,
         });
-      });
 
-      // Sort client-side by id or timestamp
-      setMessages(msgs);
-    });
+        // Sort client-side by id or timestamp
+        setMessages(msgs);
+      },
+      (err) => {
+        console.warn('[StudyBuddy] Messages snapshot notice:', err);
+      }
+    );
 
     return () => unsubscribe();
   }, [crewId]);

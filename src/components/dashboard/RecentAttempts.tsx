@@ -21,9 +21,13 @@ interface Props {
   uid: string;
 }
 
+const cachedRecentAttemptsByUid = new Map<string, Attempt[]>();
+
 export function RecentAttempts({ uid }: Props) {
-  const [attempts, setAttempts] = useState<Attempt[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [attempts, setAttempts] = useState<Attempt[]>(() => {
+    return uid && cachedRecentAttemptsByUid.has(uid) ? cachedRecentAttemptsByUid.get(uid)! : [];
+  });
+  const [loading, setLoading] = useState(() => !uid || !cachedRecentAttemptsByUid.has(uid));
 
   useEffect(() => {
     if (!uid) {
@@ -31,22 +35,23 @@ export function RecentAttempts({ uid }: Props) {
       return;
     }
 
+    if (cachedRecentAttemptsByUid.has(uid)) {
+      setAttempts(cachedRecentAttemptsByUid.get(uid)!);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
 
-    // Try both userId and uid queries
-    Promise.all([
-      getDocs(query(collection(db, 'attempts'), where('userId', '==', uid), limit(5))),
-      getDocs(query(collection(db, 'attempts'), where('uid', '==', uid), limit(5))),
-    ])
-      .then(([snapA, snapB]) => {
-        const map = new Map<string, Attempt>();
-        snapA.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() } as Attempt));
-        snapB.docs.forEach(d => map.set(d.id, { id: d.id, ...d.data() } as Attempt));
-        const list = Array.from(map.values());
-        setAttempts(list.slice(0, 5));
+    getDocs(query(collection(db, 'attempts'), where('userId', '==', uid), limit(5)))
+      .then((snap) => {
+        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Attempt));
+        cachedRecentAttemptsByUid.set(uid, list);
+        setAttempts(list);
         setLoading(false);
       })
-      .catch(() => {
+      .catch((err) => {
+        console.warn('[RecentAttempts] Notice reading attempts:', err);
         setLoading(false);
       });
   }, [uid]);
