@@ -14,6 +14,9 @@ import { QuestionPalette } from '@/components/test/QuestionPalette';
 import { ConfirmSubmitModal } from '@/components/test/ConfirmSubmitModal';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/ErrorState';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { exportTestToPdf } from '@/utils/testPdfExporter';
+import { Sparkles, Lock, X, AlertCircle, Check } from 'lucide-react';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
 export function TestRunnerPage() {
@@ -34,6 +37,15 @@ export function TestRunnerPage() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // PDF Download state
+  const [pdfUpgradeModalOpen, setPdfUpgradeModalOpen] = useState(false);
+  const [pdfLimitMessage, setPdfLimitMessage] = useState<string | null>(null);
+  const [pdfSuccessMessage, setPdfSuccessMessage] = useState<string | null>(null);
+
+  const effectivePlan = useEffectivePlan();
+  const isPro = Boolean(effectivePlan.isPro || effectivePlan.isUnlimited || effectivePlan.isSuperAdmin);
+  const isAdmin = Boolean(effectivePlan.isSuperAdmin);
 
   const autoSubmittedRef = useRef(false);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -231,6 +243,59 @@ export function TestRunnerPage() {
     }, 2000);
   }, [flagged, currentIndex, attemptId, userAnswers]);
 
+  // PDF Download Handler with Pro check & Hourly Limit
+  const handleDownloadPdf = useCallback(() => {
+    if (!user) return;
+
+    // 1. Pro check: Only Pro users (or Admin) can download
+    if (!isPro && !isAdmin) {
+      setPdfUpgradeModalOpen(true);
+      return;
+    }
+
+    // 2. Hourly rate limit: 1 download per hour per Pro user (Admin exempt)
+    if (!isAdmin) {
+      const storageKey = `boardly_pdf_dl_${user.uid}`;
+      const lastStr = localStorage.getItem(storageKey);
+      if (lastStr) {
+        const lastTime = Number(lastStr);
+        const elapsed = Date.now() - lastTime;
+        const oneHour = 60 * 60 * 1000;
+        if (elapsed < oneHour) {
+          const remainingMinutes = Math.ceil((oneHour - elapsed) / (60 * 1000));
+          setPdfLimitMessage(
+            `Download limit: Pro members can download 1 PDF per hour. Please wait ${remainingMinutes} minute${
+              remainingMinutes === 1 ? '' : 's'
+            } before downloading another test PDF.`
+          );
+          return;
+        }
+      }
+      localStorage.setItem(storageKey, String(Date.now()));
+    }
+
+    const testTitle = [
+      attempt?.subject && attempt.subject !== 'Any' ? attempt.subject : 'Practice Drill',
+      attempt?.university && attempt.university !== 'Any' ? `(${attempt.university})` : '',
+    ]
+      .filter(Boolean)
+      .join(' ') || 'Boardly Practice Test';
+
+    exportTestToPdf({
+      title: testTitle,
+      university: attempt?.university || 'General Entrance Drill',
+      markingScheme: attempt?.university?.toLowerCase().includes('fast')
+        ? 'FAST Negative Marking (-0.25)'
+        : 'Standard Marking (+1.0 / 0.0)',
+      studentName: user.displayName || 'Candidate',
+      studentEmail: user.email || '',
+      questions,
+    });
+
+    setPdfSuccessMessage('Test PDF downloaded successfully!');
+    setTimeout(() => setPdfSuccessMessage(null), 3500);
+  }, [user, isPro, isAdmin, attempt, questions]);
+
   // 5. Keyboard Navigation
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -374,6 +439,7 @@ export function TestRunnerPage() {
           onNext={() => setCurrentIndex((i) => Math.min(questions.length - 1, i + 1))}
           canPrev={currentIndex > 0}
           canNext={currentIndex < questions.length - 1}
+          onDownloadPdf={handleDownloadPdf}
         />
       </main>
 
@@ -399,6 +465,108 @@ export function TestRunnerPage() {
         flaggedCount={flagged.length}
         secondsRemaining={secondsRemaining}
       />
+
+      {/* Success Notification Toast */}
+      {pdfSuccessMessage && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] text-xs font-semibold shadow-2xl animate-in slide-in-from-bottom duration-200">
+          <Check size={16} className="text-emerald-500 shrink-0" />
+          <span>{pdfSuccessMessage}</span>
+        </div>
+      )}
+
+      {/* Hourly Rate Limit Modal */}
+      {pdfLimitMessage && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-2xl text-[var(--text)] animate-in zoom-in-95 duration-150">
+            <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center">
+              <AlertCircle size={20} />
+            </div>
+            <div>
+              <h3 className="font-heading font-bold text-base text-[var(--text)]">
+                Hourly Download Limit
+              </h3>
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed mt-1.5">
+                {pdfLimitMessage}
+              </p>
+            </div>
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setPdfLimitMessage(null)}
+                className="btn-red px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Understood
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pro Locked State / Upgrade Modal */}
+      {pdfUpgradeModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[var(--surface)] border border-[var(--border)] rounded-3xl max-w-md w-full p-6 sm:p-7 space-y-5 shadow-2xl text-[var(--text)] animate-in zoom-in-95 duration-150">
+            <div className="flex items-start justify-between">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--accent)] flex items-center justify-center shrink-0">
+                <Lock size={22} />
+              </div>
+              <button
+                type="button"
+                onClick={() => setPdfUpgradeModalOpen(false)}
+                className="p-1 rounded-full text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div>
+              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] text-[11px] font-semibold tracking-wide uppercase mb-2">
+                <Sparkles size={12} />
+                <span>Boardly Pro Exclusive</span>
+              </div>
+              <h3 className="font-heading font-bold text-lg sm:text-xl text-[var(--text)]">
+                Unlock PDF Exam Exports
+              </h3>
+              <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed mt-1.5">
+                Download complete, printable entrance test papers with full question stems, 4-choice options, and official answer keys for offline paper practice.
+              </p>
+            </div>
+
+            <div className="p-3.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] space-y-2 text-xs">
+              <div className="flex items-center gap-2 text-[var(--text)]">
+                <Check size={14} className="text-[var(--accent)] shrink-0" />
+                <span>1 Full Test PDF export per hour</span>
+              </div>
+              <div className="flex items-center gap-2 text-[var(--text)]">
+                <Check size={14} className="text-[var(--accent)] shrink-0" />
+                <span>Formatted for crisp standard A4 physical printing</span>
+              </div>
+              <div className="flex items-center gap-2 text-[var(--text)]">
+                <Check size={14} className="text-[var(--accent)] shrink-0" />
+                <span>Includes complete official answer key appendix</span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setPdfUpgradeModalOpen(false)}
+                className="btn-outline px-4 py-2.5 rounded-xl text-xs font-semibold cursor-pointer"
+              >
+                Maybe Later
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard/plans')}
+                className="btn-red px-5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+              >
+                <Sparkles size={14} />
+                <span>Upgrade to Pro</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

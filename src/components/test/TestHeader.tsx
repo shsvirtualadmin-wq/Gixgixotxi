@@ -49,69 +49,55 @@ export function TestHeader({
         borderRadius: 0,
       }}
     >
-      {/* Left: Test title & index */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <div>
-          <h2
-            className="font-display"
-            style={{
-              fontSize: 15,
-              fontWeight: 700,
-              color: 'var(--text)',
-              letterSpacing: '-0.02em',
-              lineHeight: 1.2,
-            }}
-          >
-            {title}
-          </h2>
-          <span style={{ fontSize: 12, color: 'var(--text-faint)' }}>
-            Question {currentIndex + 1} of {totalQuestions}
-          </span>
+      {/* Left: Question counter */}
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="px-3 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] font-mono text-xs font-semibold text-[var(--text)] whitespace-nowrap">
+          Q {currentIndex + 1} <span className="text-[var(--text-muted)]">/ {totalQuestions}</span>
         </div>
       </div>
 
-      {/* Center: Live Server Timer */}
-      {timed && secondsRemaining !== null && (
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '6px 14px',
-            borderRadius: 'var(--r-pill)',
-            background: isDanger
-              ? 'rgba(248, 113, 113, 0.15)'
-              : isWarning
-              ? 'rgba(251, 191, 36, 0.15)'
-              : 'rgba(47, 107, 255, 0.12)',
-            border: `1px solid ${
-              isDanger
+      {/* Center: Title & Timer in a Single Row (never wrapping) */}
+      <div className="flex items-center justify-center gap-2 sm:gap-3 min-w-0 flex-1 px-2">
+        <span
+          className="font-display text-xs sm:text-sm font-bold text-[var(--text)] tracking-tight truncate max-w-[130px] xs:max-w-[180px] sm:max-w-[260px] md:max-w-[340px] whitespace-nowrap"
+          title={title}
+        >
+          {title}
+        </span>
+
+        {timed && secondsRemaining !== null && (
+          <div
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full shrink-0"
+            style={{
+              background: isDanger
+                ? 'rgba(248, 113, 113, 0.15)'
+                : isWarning
+                ? 'rgba(251, 191, 36, 0.15)'
+                : 'rgba(215, 25, 33, 0.08)',
+              border: `1px solid ${
+                isDanger
+                  ? 'var(--danger)'
+                  : isWarning
+                  ? 'var(--warning)'
+                  : 'var(--accent)'
+              }`,
+              color: isDanger
                 ? 'var(--danger)'
                 : isWarning
                 ? 'var(--warning)'
-                : 'rgba(47, 107, 255, 0.3)'
-            }`,
-            color: isDanger
-              ? 'var(--danger)'
-              : isWarning
-              ? 'var(--warning)'
-              : 'var(--brand-2)',
-            animation: isDanger ? 'pulse-glow 1s ease-in-out infinite' : undefined,
-          }}
-        >
-          <Clock size={16} />
-          <span
-            className="tabular-nums"
-            style={{
-              fontSize: 16,
-              fontWeight: 700,
-              letterSpacing: '0.02em',
+                : 'var(--accent)',
+              animation: isDanger ? 'pulse-glow 1s ease-in-out infinite' : undefined,
             }}
           >
-            {formatTime(secondsRemaining)}
-          </span>
-        </div>
-      )}
+            <Clock size={13} className="shrink-0" />
+            <span
+              className="tabular-nums font-mono text-xs sm:text-sm font-bold tracking-wide"
+            >
+              {formatTime(secondsRemaining)}
+            </span>
+          </div>
+        )}
+      </div>
 
       {/* Right: Palette & Submit */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

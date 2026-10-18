@@ -10,6 +10,7 @@ import {
   Loader2,
   CheckCircle2,
   Flag,
+  Download,
 } from 'lucide-react';
 import { MathText } from '@/components/ui/MathText';
 import { reportQuestion } from '@/services/testEngine';
@@ -36,6 +37,7 @@ interface QuestionCardProps {
   isPracticeInstantReveal?: boolean;
   isReviewMode?: boolean;
   isFastNuces?: boolean;
+  onDownloadPdf?: () => void;
 }
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'];
@@ -59,6 +61,7 @@ export function QuestionCard({
   isPracticeInstantReveal = false,
   isReviewMode = false,
   isFastNuces = false,
+  onDownloadPdf,
 }: QuestionCardProps) {
   const { user } = useAuth();
 
@@ -183,6 +186,19 @@ export function QuestionCard({
               >
                 <Bookmark size={13} fill={isFlagged ? 'currentColor' : 'none'} />
                 <span>{isFlagged ? 'FLAGGED' : 'FLAG'}</span>
+              </button>
+            )}
+
+            {/* Download PDF Button right of FLAG button */}
+            {onDownloadPdf && (
+              <button
+                type="button"
+                onClick={onDownloadPdf}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full border border-[var(--border)] bg-[var(--surface-2)] text-[var(--text-muted)] hover:text-[var(--text)] text-xs font-mono transition-colors cursor-pointer"
+                title="Download test questions as PDF"
+              >
+                <Download size={13} />
+                <span>DOWNLOAD PDF</span>
               </button>
             )}
 

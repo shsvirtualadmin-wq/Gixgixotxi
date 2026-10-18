@@ -19,6 +19,7 @@ interface PillNavProps {
   className?: string;
   layoutId?: string;
   activeLabelOnly?: boolean;
+  iconOnly?: boolean;
 }
 
 export function PillNav({
@@ -28,6 +29,7 @@ export function PillNav({
   className = '',
   layoutId = 'pillNavActiveIndicator',
   activeLabelOnly = true,
+  iconOnly = false,
 }: PillNavProps) {
   const location = useLocation();
 
@@ -87,12 +89,12 @@ export function PillNav({
                           {item.icon}
                         </span>
                       )}
-                      {(!activeLabelOnly || active) && (
+                      {!iconOnly && (!activeLabelOnly || active) && (
                         <span className="truncate whitespace-nowrap leading-none text-[11px] sm:text-xs">
                           {item.label}
                         </span>
                       )}
-                      {activeLabelOnly && !active && (
+                      {(iconOnly || (activeLabelOnly && !active)) && (
                         <span className="sr-only">{item.label}</span>
                       )}
                     </span>
@@ -144,12 +146,12 @@ export function PillNav({
                   {item.icon}
                 </span>
               )}
-              {(!activeLabelOnly || isSelected) && (
+              {!iconOnly && (!activeLabelOnly || isSelected) && (
                 <span className="truncate whitespace-nowrap leading-none text-[11px] sm:text-xs">
                   {item.label}
                 </span>
               )}
-              {activeLabelOnly && !isSelected && (
+              {(iconOnly || (activeLabelOnly && !isSelected)) && (
                 <span className="sr-only">{item.label}</span>
               )}
             </span>

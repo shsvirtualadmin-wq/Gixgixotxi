@@ -112,7 +112,7 @@ export function DashboardBottomNav() {
         <PillNav
           items={navItems}
           layoutId="studentBottomNavActive"
-          activeLabelOnly={true}
+          iconOnly={true}
         />
       </div>
 

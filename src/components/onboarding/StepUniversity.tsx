@@ -1,18 +1,6 @@
 import { Button } from '@/components/ui/Button';
 import { Check } from 'lucide-react';
-
-const UNIVERSITIES = [
-  { id: 'FAST-NUCES', label: 'FAST-NUCES', sub: 'NAT Test' },
-  { id: 'NUST-NET', label: 'NUST', sub: 'NET Test' },
-  { id: 'GIKI', label: 'GIKI', sub: 'Entry Test' },
-  { id: 'LUMS', label: 'LUMS', sub: 'LCAT Test' },
-  { id: 'NED', label: 'NED', sub: 'NED Test' },
-  { id: 'COMSATS', label: 'COMSATS', sub: 'Entry Test' },
-  { id: 'PIEAS', label: 'PIEAS', sub: 'Entry Test' },
-  { id: 'UET', label: 'UET', sub: 'ECAT' },
-  { id: 'MDCAT', label: 'MDCAT', sub: 'Medical Test' },
-  { id: 'ECAT', label: 'ECAT', sub: 'Engineering' },
-];
+import { TARGET_UNIVERSITY_CRITERIA } from '@/constants/universityCriteria';
 
 interface StepUniversityProps {
   value: string;
@@ -27,36 +15,48 @@ export function StepUniversity({ value, onChange, onNext }: StepUniversityProps)
         <h2 className="font-display" style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 6 }}>
           What's your <span className="text-gradient">target university?</span>
         </h2>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>We'll personalize your question bank and drills.</p>
+        <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>We'll calibrate your questions, pacing, and negative marking rules.</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-        {UNIVERSITIES.map((u) => {
-          const selected = value === u.id;
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(1, 1fr)', gap: 10, maxHeight: '52vh', overflowY: 'auto', paddingRight: 4 }}>
+        {TARGET_UNIVERSITY_CRITERIA.map((u) => {
+          const selected = value === u.id || value === u.name;
           return (
             <button
               key={u.id}
-              onClick={() => onChange(u.id)}
+              type="button"
+              onClick={() => onChange(u.name)}
               style={{
                 padding: '14px 16px',
                 borderRadius: 'var(--r-card)',
-                border: `2px solid ${selected ? 'var(--brand)' : 'var(--border)'}`,
-                background: selected ? 'rgba(47,107,255,0.12)' : 'var(--surface)',
+                border: `2px solid ${selected ? 'var(--accent)' : 'var(--border)'}`,
+                background: selected ? 'var(--surface-2)' : 'var(--surface)',
                 cursor: 'pointer',
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
+                flexDirection: 'column',
                 gap: 8,
                 transition: 'all 200ms var(--ease-out)',
-                backdropFilter: 'blur(20px)',
                 textAlign: 'left',
               }}
             >
-              <div>
-                <p style={{ fontSize: 14, fontWeight: 700, color: selected ? 'var(--brand)' : 'var(--text)', marginBottom: 2 }}>{u.label}</p>
-                <p style={{ fontSize: 11, color: 'var(--text-faint)' }}>{u.sub}</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <p style={{ fontSize: 14, fontWeight: 700, color: selected ? 'var(--accent)' : 'var(--text)' }}>{u.name}</p>
+                  <span style={{ fontSize: 10, padding: '2px 8px', borderRadius: 9999, border: '1px solid var(--border)', background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
+                    {u.badge}
+                  </span>
+                </div>
+                {selected && <Check size={16} style={{ color: 'var(--accent)', flexShrink: 0 }} />}
               </div>
-              {selected && <Check size={16} style={{ color: 'var(--brand)', flexShrink: 0 }} />}
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', fontSize: 11 }}>
+                <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)', background: 'var(--surface-2)', padding: '2px 6px', borderRadius: 4, border: '1px solid var(--border)' }}>
+                  {u.totalQuestions} MCQs · {u.durationMinutes}m
+                </span>
+                <span style={{ fontWeight: 600, color: u.hasNegativeMarking ? 'var(--accent)' : 'var(--text-muted)' }}>
+                  {u.negativeMarking}
+                </span>
+              </div>
             </button>
           );
         })}
@@ -68,3 +68,5 @@ export function StepUniversity({ value, onChange, onNext }: StepUniversityProps)
     </div>
   );
 }
+
+export default StepUniversity;

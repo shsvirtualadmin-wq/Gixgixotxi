@@ -252,25 +252,19 @@ export function AdminLayout() {
                       />
                     )}
                     <span
-                      className={`relative z-10 flex items-center justify-center gap-1.5 transition-colors max-w-full ${
+                      className={`relative z-10 flex items-center justify-center transition-colors max-w-full ${
                         isActive
-                          ? 'text-white font-semibold text-xs px-2'
+                          ? 'text-white'
                           : 'text-[var(--text-muted)] hover:text-[var(--text)]'
                       }`}
                     >
                       <div className="relative shrink-0 flex items-center justify-center">
-                        <Icon size={18} className={isActive ? 'text-white' : ''} />
+                        <Icon size={20} className={isActive ? 'text-white' : ''} />
                         {isQuestions && (
                           <span className={`absolute -top-0.5 -right-1 w-2 h-2 rounded-full bg-[var(--red)] ring-2 ${isActive ? 'ring-[#D71921]' : 'ring-[var(--nav-bg)]'}`} />
                         )}
                       </div>
-                      {isActive ? (
-                        <span className="truncate whitespace-nowrap leading-none text-[11px] sm:text-xs">
-                          {label}
-                        </span>
-                      ) : (
-                        <span className="sr-only">{label}</span>
-                      )}
+                      <span className="sr-only">{label}</span>
                     </span>
                   </>
                 )}
@@ -302,22 +296,16 @@ export function AdminLayout() {
               />
             )}
             <span
-              className={`relative z-10 flex items-center justify-center gap-1.5 transition-colors max-w-full ${
+              className={`relative z-10 flex items-center justify-center transition-colors max-w-full ${
                 isSecondaryActive
-                  ? 'text-white font-semibold text-xs px-2'
+                  ? 'text-white'
                   : 'text-[var(--text-muted)] hover:text-[var(--text)]'
               }`}
             >
               <div className="relative shrink-0 flex items-center justify-center">
-                <MoreHorizontal size={18} className={isSecondaryActive ? 'text-white' : ''} />
+                <MoreHorizontal size={20} className={isSecondaryActive ? 'text-white' : ''} />
               </div>
-              {isSecondaryActive ? (
-                <span className="truncate whitespace-nowrap leading-none text-[11px] sm:text-xs">
-                  More
-                </span>
-              ) : (
-                <span className="sr-only">More</span>
-              )}
+              <span className="sr-only">More</span>
             </span>
           </button>
         </nav>

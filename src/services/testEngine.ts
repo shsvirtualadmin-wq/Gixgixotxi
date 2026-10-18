@@ -20,7 +20,9 @@ import { robustSaveDoc } from '@/lib/robustSave';
 import {
   findSubjectSlug,
   findChapterSlug,
+  formatSubjectName,
 } from '@/constants/taxonomy';
+import { getUniversityCriteria } from '@/constants/universityCriteria';
 import type { QueryConstraint } from 'firebase/firestore';
 import type { AttemptDoc, AttemptQuestion, Question, QuestionKey } from '@/types/index';
 
@@ -142,6 +144,67 @@ export async function getAttempt(attemptId: string): Promise<AttemptDoc> {
  */
 export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Promise<AttemptQuestion[]> {
   const questionsColl = collection(db, 'questions');
+
+  // Full Mock Test: generate MCQs per the selected university's real paper pattern
+  if (attempt.mode === 'full') {
+    const criteria = getUniversityCriteria(attempt.university);
+    const collectedQuestions: Question[] = [];
+    const seenIds = new Set<string>();
+
+    for (const split of criteria.subjectsSplit) {
+      const subSlug = findSubjectSlug(split.subject) || split.subject.toLowerCase();
+      try {
+        const subQuery = query(
+          questionsColl,
+          where('status', '==', 'published'),
+          where('active', '==', true),
+          where('subject', '==', subSlug),
+          limit(split.count * 2)
+        );
+        const snap = await getDocs(subQuery);
+        if (snap.empty) {
+          throw new Error(
+            `Not enough questions yet for ${formatSubjectName(subSlug)}. Please select another subject or check back soon.`
+          );
+        }
+        const pool = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as Question))
+          .filter((q) => !seenIds.has(q.id));
+
+        const chosen = shuffleArray(pool).slice(0, split.count);
+        chosen.forEach((q) => {
+          seenIds.add(q.id);
+          collectedQuestions.push(q);
+        });
+      } catch (err: unknown) {
+        const msg = (err as { message?: string })?.message;
+        if (msg && msg.includes('Not enough questions yet')) {
+          throw err;
+        }
+        throw new Error(
+          `Not enough questions yet for ${formatSubjectName(subSlug)}. Please select another subject or check back soon.`
+        );
+      }
+    }
+
+    return collectedQuestions.map((q) => {
+      const rawOptions = Array.isArray(q.options) && q.options.length === 4
+        ? q.options
+        : (['A', 'B', 'C', 'D'] as [string, string, string, string]);
+
+      const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
+      return {
+        id: q.id,
+        q: q.q || q.stem || '',
+        options: shuffledOptions,
+        optionMapping,
+        subject: q.subject || 'general',
+        chapter: q.chapter || 'general',
+        difficulty: q.difficulty || 'medium',
+      };
+    });
+  }
+
   const needed = Math.max(1, attempt.totalQuestions || 10);
   const subjectSlug = findSubjectSlug(attempt.subject || '') || (attempt.subject ? attempt.subject.toLowerCase() : undefined);
   const chapterSlug = attempt.chapter ? findChapterSlug(subjectSlug || 'mathematics', attempt.chapter) || attempt.chapter.toLowerCase() : undefined;
