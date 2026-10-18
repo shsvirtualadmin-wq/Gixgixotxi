@@ -13,6 +13,7 @@ import {
   increment,
   arrayUnion,
   Timestamp,
+  documentId,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
@@ -25,6 +26,7 @@ import {
   isSubjectPoolSupported,
 } from '@/constants/taxonomy';
 import { getUniversityCriteria, getSectionCriteria } from '@/constants/universityCriteria';
+import { getSubjectQuestionIds } from './adminService';
 import type { QueryConstraint } from 'firebase/firestore';
 import type { AttemptDoc, AttemptQuestion, Question } from '@/types/index';
 
@@ -223,38 +225,44 @@ export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Pr
       try {
         let pool: Question[] = [];
 
-        // Mathematics reads from dedicated subject pool
+        // Mathematics reads from dedicated subject pool using question index
         if (isSubjectPoolSupported(subSlug)) {
           const poolColl = getSubjectPoolCollection(subSlug);
           try {
-            const mathSnap = await getDocs(
-              query(collection(db, poolColl), where('status', '==', 'published'), limit(split.count * 2))
-            );
-            if (!mathSnap.empty) {
-              pool = mathSnap.docs
-                .map((d) => {
-                  const data = d.data();
-                  return {
-                    id: d.id,
-                    subject: 'mathematics',
-                    chapter: data.topic || data.chapter || 'general',
-                    topic: data.topic || data.chapter || 'general',
-                    difficulty: data.difficulty || 'medium',
-                    q: data.text || data.q || data.question || '',
-                    stem: data.text || data.q || data.question || '',
-                    options: Array.isArray(data.options) ? data.options : ['A', 'B', 'C', 'D'],
-                    tags: Array.isArray(data.tags) ? data.tags : ['entrance'],
-                    status: 'published',
-                    active: true,
-                    rand: Math.random(),
-                    schemaVersion: 1,
-                    contentHash: '',
-                    createdAt: null,
-                    updatedAt: null,
-                    createdBy: '',
-                  } as Question;
-                })
-                .filter((q) => !seenIds.has(q.id));
+            const allIds = await getSubjectQuestionIds(subSlug);
+            if (allIds && allIds.length > 0) {
+              const chosenIds = shuffleArray(allIds.filter((id) => !seenIds.has(id))).slice(0, split.count);
+              if (chosenIds.length > 0) {
+                const chunkSize = 30;
+                for (let i = 0; i < chosenIds.length; i += chunkSize) {
+                  const chunk = chosenIds.slice(i, i + chunkSize);
+                  const mathSnap = await getDocs(
+                    query(collection(db, poolColl), where(documentId(), 'in', chunk))
+                  );
+                  mathSnap.docs.forEach((d) => {
+                    const data = d.data();
+                    pool.push({
+                      id: d.id,
+                      subject: 'mathematics',
+                      chapter: data.topic || data.chapter || 'general',
+                      topic: data.topic || data.chapter || 'general',
+                      difficulty: data.difficulty || 'medium',
+                      q: data.text || data.q || data.question || '',
+                      stem: data.text || data.q || data.question || '',
+                      options: Array.isArray(data.options) ? data.options : ['A', 'B', 'C', 'D'],
+                      tags: Array.isArray(data.tags) ? data.tags : ['entrance'],
+                      status: 'published',
+                      active: true,
+                      rand: Math.random(),
+                      schemaVersion: 1,
+                      contentHash: '',
+                      createdAt: null,
+                      updatedAt: null,
+                      createdBy: '',
+                    } as Question);
+                  });
+                }
+              }
             }
           } catch (mathErr) {
             console.warn('[testEngine] Full mock math pool notice:', mathErr);
@@ -320,60 +328,63 @@ export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Pr
   const needed = Math.max(1, attempt.totalQuestions || 10);
   const subjectSlug = findSubjectSlug(attempt.subject || '') || (attempt.subject ? attempt.subject.toLowerCase() : undefined);
 
-  // Dedicated Mathematics pool: Drills, sprints and tests read from questions_mathematics
+  // Dedicated Mathematics pool: Drills, sprints and tests read from questions_mathematics using question index
   if (subjectSlug && isSubjectPoolSupported(subjectSlug)) {
     try {
       const poolColl = getSubjectPoolCollection(subjectSlug);
-      const mathConstraints: QueryConstraint[] = [
-        where('status', '==', 'published'),
-      ];
-      if (attempt.difficulty && attempt.difficulty !== 'all' && attempt.difficulty !== 'mixed') {
-        mathConstraints.push(where('difficulty', '==', attempt.difficulty.toLowerCase()));
-      }
-      mathConstraints.push(limit(needed * 3));
+      const allIds = await getSubjectQuestionIds(subjectSlug);
+      if (allIds && allIds.length > 0) {
+        // Pick random IDs from index document, then fetch ONLY those N questions
+        const chosenIds = shuffleArray(allIds).slice(0, needed);
+        const poolQuestions: Question[] = [];
+        const chunkSize = 30;
+        for (let i = 0; i < chosenIds.length; i += chunkSize) {
+          const chunk = chosenIds.slice(i, i + chunkSize);
+          const poolSnap = await getDocs(
+            query(collection(db, poolColl), where(documentId(), 'in', chunk))
+          );
+          poolSnap.docs.forEach((d) => {
+            const data = d.data();
+            const qText = data.text || data.q || data.question || '';
+            poolQuestions.push({
+              id: d.id,
+              subject: 'mathematics',
+              chapter: data.topic || data.chapter || 'general',
+              topic: data.topic || data.chapter || 'general',
+              difficulty: data.difficulty || 'medium',
+              q: qText,
+              question: qText,
+              stem: qText,
+              options: Array.isArray(data.options) ? data.options : ['A', 'B', 'C', 'D'],
+              status: data.status || 'published',
+              active: data.active !== false,
+              rand: data.rand ?? Math.random(),
+              schemaVersion: 1,
+              contentHash: data.contentHash || '',
+              createdAt: null,
+              updatedAt: null,
+              createdBy: '',
+            } as Question);
+          });
+        }
 
-      const poolSnap = await getDocs(query(collection(db, poolColl), ...mathConstraints));
-      if (!poolSnap.empty) {
-        const poolQuestions: Question[] = poolSnap.docs.map((d) => {
-          const data = d.data();
-          const qText = data.text || data.q || data.question || '';
-          return {
-            id: d.id,
-            subject: 'mathematics',
-            chapter: data.topic || data.chapter || 'general',
-            topic: data.topic || data.chapter || 'general',
-            difficulty: data.difficulty || 'medium',
-            q: qText,
-            question: qText,
-            stem: qText,
-            options: Array.isArray(data.options) ? data.options : ['A', 'B', 'C', 'D'],
-            status: data.status || 'published',
-            active: data.active !== false,
-            rand: data.rand ?? Math.random(),
-            schemaVersion: 1,
-            contentHash: data.contentHash || '',
-            createdAt: null,
-            updatedAt: null,
-            createdBy: '',
-          } as Question;
-        });
-
-        const chosen = shuffleArray(poolQuestions).slice(0, needed);
-        return chosen.map((q) => {
-          const rawOptions = Array.isArray(q.options) && q.options.length === 4
-            ? q.options
-            : (['A', 'B', 'C', 'D'] as [string, string, string, string]);
-          const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
-          return {
-            id: q.id,
-            q: q.q || q.stem || '',
-            options: shuffledOptions,
-            optionMapping,
-            subject: 'mathematics',
-            chapter: q.chapter || 'general',
-            difficulty: q.difficulty || 'medium',
-          };
-        });
+        if (poolQuestions.length > 0) {
+          return poolQuestions.map((q) => {
+            const rawOptions = Array.isArray(q.options) && q.options.length === 4
+              ? q.options
+              : (['A', 'B', 'C', 'D'] as [string, string, string, string]);
+            const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
+            return {
+              id: q.id,
+              q: q.q || q.stem || '',
+              options: shuffledOptions,
+              optionMapping,
+              subject: 'mathematics',
+              chapter: q.chapter || 'general',
+              difficulty: q.difficulty || 'medium',
+            };
+          });
+        }
       }
     } catch (poolErr) {
       console.warn('[testEngine] Subject pool query notice, falling back to existing bank:', poolErr);

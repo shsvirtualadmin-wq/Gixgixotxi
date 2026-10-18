@@ -25,6 +25,7 @@ import { FREE_DAILY_TESTS } from '@/constants/limits';
 import { startTestSessionWithLimit, DailyTestLimitError } from '@/services/testLimits';
 import { DailyLimitBlockedSheet } from '@/components/test/DailyLimitBlockedSheet';
 import { DashboardErrorBoundary } from '@/components/dashboard/DashboardErrorBoundary';
+import { isQuotaExhaustedError } from '@/utils/quota';
 
 import {
   getAllSubjects,
@@ -36,7 +37,6 @@ import {
   TARGET_UNIVERSITY_CRITERIA,
   getUniversityCriteria,
 } from '@/constants/universityCriteria';
-import type { QueryConstraint } from 'firebase/firestore';
 
 export function PracticePage() {
   const { user, profile, university } = useUserProfile();
@@ -244,60 +244,6 @@ export function PracticePage() {
       title = `${formatSubjectName(subjectSlugToUse)} Drill`;
     }
 
-    // Pre-flight check for sprint & drill
-    if (type !== 'full') {
-      let questionsCount = 0;
-      try {
-        if (subjectSlugToUse && isSubjectPoolSupported(subjectSlugToUse)) {
-          const poolColl = getSubjectPoolCollection(subjectSlugToUse);
-          const poolSnap = await getDocs(
-            query(collection(db, poolColl), where('status', '==', 'published'), limit(count))
-          );
-          questionsCount = poolSnap.size;
-        }
-
-        if (questionsCount === 0) {
-          const questionsColl = collection(db, 'questions');
-          const constraints: QueryConstraint[] = [
-            where('status', '==', 'published'),
-            where('active', '==', true),
-          ];
-
-          if (subjectSlugToUse && subjectSlugToUse !== 'all') {
-            constraints.push(where('subject', '==', subjectSlugToUse));
-          }
-
-          const snap = await getDocs(query(questionsColl, ...constraints, limit(count)));
-          questionsCount = snap.size;
-
-          if (questionsCount === 0 && type !== 'drill') {
-            const generalSnap = await getDocs(
-              query(questionsColl, where('status', '==', 'published'), where('active', '==', true), limit(count))
-            );
-            questionsCount = generalSnap.size;
-          }
-        }
-      } catch (qErr: unknown) {
-        if (import.meta.env.DEV) {
-          console.warn('[PracticePage] Pre-flight query note:', qErr);
-        }
-        questionsCount = 1;
-      }
-
-      if (timedOut) return;
-
-      if (questionsCount === 0) {
-        if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
-        setLaunchError(
-          `Not enough questions yet for ${formatSubjectName(subjectSlugToUse)}. Please choose another subject or check back soon.`
-        );
-        setLaunching(false);
-        setLaunchingType(null);
-        setLaunchStatus(null);
-        return;
-      }
-    }
-
     const newAttemptRef = doc(collection(db, 'attempts'));
     const attemptId = newAttemptRef.id;
 
@@ -344,6 +290,17 @@ export function PracticePage() {
         if (!effectivePlan.isUnlimited && !effectivePlan.isSuperAdmin) {
           setBlockedSheetOpen(true);
         }
+        return;
+      }
+
+      if (isQuotaExhaustedError(startErr)) {
+        setLaunchError('Daily database limit reached, try again later.');
+        return;
+      }
+
+      const msg = (startErr as { message?: string })?.message;
+      if (msg && msg.includes('Not enough questions yet')) {
+        setLaunchError(msg);
         return;
       }
 

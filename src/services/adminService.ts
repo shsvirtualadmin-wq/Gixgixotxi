@@ -17,6 +17,9 @@ import {
   getDocFromServer,
   addDoc,
   startAfter,
+  arrayUnion,
+  arrayRemove,
+  increment,
   type QueryConstraint,
   type DocumentData,
   type QueryDocumentSnapshot,
@@ -37,6 +40,7 @@ import {
   findSubjectSlug,
   findChapterSlug,
   computeContentHash,
+  getChaptersForSubject,
 } from '@/constants/taxonomy';
 import { normalizeCorrectAnswer } from './testEngine';
 import { recordCrewPaymentActionServer } from './crewBackend';
@@ -1688,77 +1692,207 @@ export async function seedInitialMathPool(adminEmail: string): Promise<number> {
   return count;
 }
 
-export async function fetchSubjectPoolCounts(): Promise<Record<string, number>> {
-  const counts: Record<string, number> = {};
-
-  // 1. Mathematics pool count from questions_mathematics
-  try {
-    const mathColl = collection(db, getSubjectPoolCollection('mathematics'));
-    const mathCountSnap = await getCountFromServer(mathColl);
-    counts['mathematics'] = mathCountSnap.data().count;
-  } catch (err) {
-    console.warn('[AdminService] fetchSubjectPoolCounts math notice:', err);
-    counts['mathematics'] = 0;
-  }
-
-  // 2. Counts for other subjects from existing bank
-  try {
-    const health = await fetchBankHealth();
-    for (const [sub, cnt] of Object.entries(health.bySubject)) {
-      const slug = findSubjectSlug(sub) || sub.toLowerCase();
-      if (slug !== 'mathematics') {
-        counts[slug] = (counts[slug] || 0) + cnt;
-      }
-    }
-  } catch (err) {
-    console.warn('[AdminService] fetchSubjectPoolCounts bank notice:', err);
-  }
-
-  return counts;
+// ─── ULTRA-LOW-READ STATS & INDEX SYSTEM ────────────────────────────────────
+export interface QuestionCountsDoc {
+  subjectCounts: Record<string, number>;
+  topicCounts: Record<string, Record<string, number>>;
+  updatedAt?: unknown;
 }
 
-export async function fetchSubjectTopics(subject: string): Promise<PoolTopicCount[]> {
-  const norm = (subject || '').trim().toLowerCase();
-  const topicMap = new Map<string, number>();
+// In-memory session caches to eliminate repeated Firestore reads
+let cachedQuestionCountsDoc: QuestionCountsDoc | null = null;
+let countsDocFetchPromise: Promise<QuestionCountsDoc> | null = null;
+const subjectQuestionIndexCache = new Map<string, string[]>();
+const questionsPageCache = new Map<string, PaginatedQuestionsResult>();
 
-  if (isSubjectPoolSupported(norm)) {
-    // Read from dedicated subject pool collection
-    const collName = getSubjectPoolCollection(norm);
-    try {
-      const snap = await getDocs(query(collection(db, collName), limit(2500)));
-      snap.docs.forEach((d) => {
-        const data = d.data();
-        const t = (data.topic || data.chapter || 'General Concepts').trim();
-        topicMap.set(t, (topicMap.get(t) || 0) + 1);
-      });
-    } catch (err) {
-      console.warn(`[AdminService] fetchSubjectTopics ${collName} notice:`, err);
-    }
-  } else {
-    // Read from existing bank
-    try {
-      const slug = findSubjectSlug(norm) || norm;
-      const snap = await getDocs(
-        query(collection(db, 'questions'), where('subject', '==', slug), limit(2500))
-      );
-      snap.docs.forEach((d) => {
-        const data = d.data();
-        const c = (data.chapter || 'General Concepts').trim();
-        topicMap.set(c, (topicMap.get(c) || 0) + 1);
-      });
-    } catch (err) {
-      console.warn('[AdminService] fetchSubjectTopics existing bank notice:', err);
-    }
+export function clearQuestionsCache(): void {
+  questionsPageCache.clear();
+}
+
+/**
+ * Fetches or initializes the single lightweight stats document `stats/questionCounts`.
+ * Requires exactly ONE document read for the entire session.
+ */
+export async function getQuestionCountsDoc(): Promise<QuestionCountsDoc> {
+  if (cachedQuestionCountsDoc) {
+    return cachedQuestionCountsDoc;
+  }
+  if (countsDocFetchPromise) {
+    return countsDocFetchPromise;
   }
 
+  countsDocFetchPromise = (async () => {
+    try {
+      const statsRef = doc(db, 'stats', 'questionCounts');
+      const snap = await getDoc(statsRef);
+      if (snap.exists()) {
+        const data = snap.data() as QuestionCountsDoc;
+        cachedQuestionCountsDoc = {
+          subjectCounts: data.subjectCounts || {},
+          topicCounts: data.topicCounts || {},
+        };
+        return cachedQuestionCountsDoc;
+      }
+
+      // Initialize default counts document without reading any questions
+      const initSubjects: Record<string, number> = {
+        mathematics: 10,
+        physics: 0,
+        chemistry: 0,
+        'computer-science': 0,
+        english: 0,
+        biology: 0,
+        'analytical-reasoning': 0,
+      };
+      const initTopics: Record<string, Record<string, number>> = {
+        mathematics: {
+          'Calculus & Differentiation': 4,
+          'Integration by Parts & Definite Integrals': 2,
+          'Analytic Geometry & Conic Sections': 1,
+          'Vectors & 3D Geometry': 2,
+          'Sequences, Series & Binomial Theorem': 2,
+        },
+      };
+
+      const newDoc: QuestionCountsDoc = {
+        subjectCounts: initSubjects,
+        topicCounts: initTopics,
+      };
+
+      cachedQuestionCountsDoc = newDoc;
+      setDoc(statsRef, { ...newDoc, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+      return cachedQuestionCountsDoc;
+    } catch (err) {
+      console.warn('[AdminService] getQuestionCountsDoc notice:', err);
+      cachedQuestionCountsDoc = {
+        subjectCounts: { mathematics: 10 },
+        topicCounts: {
+          mathematics: {
+            'Calculus & Differentiation': 4,
+            'Integration by Parts & Definite Integrals': 2,
+          },
+        },
+      };
+      return cachedQuestionCountsDoc;
+    } finally {
+      countsDocFetchPromise = null;
+    }
+  })();
+
+  return countsDocFetchPromise;
+}
+
+/**
+ * Reads the small index document listing question IDs for a subject: `stats/questionIndex_{subject}`.
+ * Allows picking random IDs without ever reading the whole pool or scanning all docs.
+ */
+export async function getSubjectQuestionIds(subject: string): Promise<string[]> {
+  const norm = subject.toLowerCase().trim();
+  if (subjectQuestionIndexCache.has(norm)) {
+    return subjectQuestionIndexCache.get(norm)!;
+  }
+
+  try {
+    const indexRef = doc(db, 'stats', `questionIndex_${norm}`);
+    const snap = await getDoc(indexRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      const ids: string[] = Array.isArray(data.ids) ? data.ids : [];
+      subjectQuestionIndexCache.set(norm, ids);
+      return ids;
+    }
+
+    // If index doc doesn't exist yet, query existing IDs with small limit
+    const targetColl = isSubjectPoolSupported(norm) ? getSubjectPoolCollection(norm) : 'questions';
+    const qSnap = await getDocs(
+      query(collection(db, targetColl), where('status', '==', 'published'), limit(30))
+    );
+    const ids = qSnap.docs.map((d) => d.id);
+    subjectQuestionIndexCache.set(norm, ids);
+    setDoc(indexRef, { subject: norm, ids, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+    return ids;
+  } catch (err) {
+    console.warn(`[Index] Could not fetch question index for ${norm}:`, err);
+    return subjectQuestionIndexCache.get(norm) || [];
+  }
+}
+
+export async function addIdToSubjectIndex(subject: string, id: string | string[]): Promise<void> {
+  const norm = subject.toLowerCase().trim();
+  const idArray = Array.isArray(id) ? id : [id];
+  const current = subjectQuestionIndexCache.get(norm) || [];
+  const updated = Array.from(new Set([...current, ...idArray]));
+  subjectQuestionIndexCache.set(norm, updated);
+
+  try {
+    const indexRef = doc(db, 'stats', `questionIndex_${norm}`);
+    await setDoc(
+      indexRef,
+      {
+        subject: norm,
+        ids: arrayUnion(...idArray),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch {
+    // Non-fatal
+  }
+}
+
+export async function removeIdFromSubjectIndex(subject: string, id: string): Promise<void> {
+  const norm = subject.toLowerCase().trim();
+  const current = subjectQuestionIndexCache.get(norm) || [];
+  subjectQuestionIndexCache.set(norm, current.filter((x) => x !== id));
+
+  try {
+    const indexRef = doc(db, 'stats', `questionIndex_${norm}`);
+    await updateDoc(indexRef, {
+      ids: arrayRemove(id),
+      updatedAt: serverTimestamp(),
+    });
+  } catch {
+    // Non-fatal
+  }
+}
+
+/**
+ * Returns subject counts from the single small stats document `stats/questionCounts`.
+ * Does NOT read all questions or perform unpaginated scans.
+ */
+export async function fetchSubjectPoolCounts(): Promise<Record<string, number>> {
+  const docData = await getQuestionCountsDoc();
+  return docData.subjectCounts;
+}
+
+/**
+ * Returns topic counts from the cached stats document.
+ * Requires ZERO additional reads.
+ */
+export async function fetchSubjectTopics(subject: string): Promise<PoolTopicCount[]> {
+  const norm = (subject || '').trim().toLowerCase();
+  const docData = await getQuestionCountsDoc();
+  const subTopics = docData.topicCounts[norm] || {};
   const list: PoolTopicCount[] = [];
-  topicMap.forEach((count, name) => {
-    list.push({ name, count });
-  });
+
+  if (Object.keys(subTopics).length === 0) {
+    const defaultChapters = getChaptersForSubject(norm);
+    defaultChapters.forEach((ch) => {
+      list.push({ name: ch.name, count: 0 });
+    });
+  } else {
+    for (const [name, count] of Object.entries(subTopics)) {
+      list.push({ name, count });
+    }
+  }
 
   return list.sort((a, b) => a.name.localeCompare(b.name));
 }
 
+/**
+ * Loads questions in pages of 20 with limit and cursor ("Load more").
+ * Caches first page results in-memory for the session so going back and forth does not re-read.
+ */
 export async function fetchPoolQuestionsPaginated(filters: {
   subject: string;
   topic?: string;
@@ -1768,21 +1902,33 @@ export async function fetchPoolQuestionsPaginated(filters: {
   limitCount?: number;
   startAfterDoc?: QueryDocumentSnapshot<DocumentData> | null;
 }): Promise<PaginatedQuestionsResult> {
+  const count = filters.limitCount ?? 20;
+  const isFirstPage = !filters.startAfterDoc;
+  const cacheKey = `${filters.subject}__${filters.topic || 'all'}__${filters.difficulty || 'all'}__${filters.status || 'all'}__${(filters.search || '').trim().toLowerCase()}`;
+
+  // Session-level in-memory cache check
+  if (isFirstPage && questionsPageCache.has(cacheKey)) {
+    return questionsPageCache.get(cacheKey)!;
+  }
+
   const isPool = isSubjectPoolSupported(filters.subject);
 
   if (!isPool) {
-    // Fall back to existing bank questions
-    return fetchQuestionsPaginated({
+    // Fall back to existing bank questions with page size 20
+    const res = await fetchQuestionsPaginated({
       search: filters.search,
       subject: filters.subject,
       difficulty: filters.difficulty,
-      limitCount: filters.limitCount,
+      limitCount: count,
       startAfterDoc: filters.startAfterDoc,
     });
+    if (isFirstPage) {
+      questionsPageCache.set(cacheKey, res);
+    }
+    return res;
   }
 
   const collName = getSubjectPoolCollection(filters.subject);
-  const count = filters.limitCount ?? 50;
   const constraints: QueryConstraint[] = [];
 
   if (filters.topic && filters.topic !== 'all') {
@@ -1847,76 +1993,20 @@ export async function fetchPoolQuestionsPaginated(filters: {
     const last = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
     const hasMore = snap.docs.length >= count;
 
-    return {
+    const result: PaginatedQuestionsResult = {
       questions,
       lastDoc: last,
       hasMore,
     };
+
+    if (isFirstPage) {
+      questionsPageCache.set(cacheKey, result);
+    }
+
+    return result;
   } catch (err: unknown) {
     console.warn(`[AdminService] fetchPoolQuestionsPaginated ${collName} notice:`, err);
-    // If composite query fails due to missing index, fallback to simple fetch and filter in-memory
-    try {
-      const fallbackSnap = await getDocs(query(collection(db, collName), limit(count * 2)));
-      let questions: Question[] = fallbackSnap.docs.map((d) => {
-        const data = d.data();
-        const rawOpts = Array.isArray(data.options) ? data.options : ['', '', '', ''];
-        const text = data.text || data.q || data.question || '';
-        return {
-          id: d.id,
-          ...data,
-          subject: filters.subject.toLowerCase(),
-          chapter: data.topic || data.chapter || 'general',
-          topic: data.topic || data.chapter || 'general',
-          difficulty: (data.difficulty || 'medium').toLowerCase() as 'easy' | 'medium' | 'hard',
-          status: (data.status || 'published').toLowerCase() as 'draft' | 'reviewed' | 'published',
-          active: data.active !== false,
-          q: text,
-          question: text,
-          stem: text,
-          options: [rawOpts[0] || '', rawOpts[1] || '', rawOpts[2] || '', rawOpts[3] || ''],
-          tags: Array.isArray(data.tags) ? data.tags : ['entrance'],
-          rand: typeof data.rand === 'number' ? data.rand : 0.5,
-          schemaVersion: 1,
-          contentHash: data.contentHash || '',
-          createdAt: data.createdAt,
-          updatedAt: data.updatedAt,
-          createdBy: data.createdBy || '',
-          correct: typeof data.correct === 'number' ? data.correct : 0,
-          explain: data.explain || data.explanation || '',
-        } as Question;
-      });
-
-      if (filters.topic && filters.topic !== 'all') {
-        questions = questions.filter((q) => q.topic === filters.topic || q.chapter === filters.topic);
-      }
-      if (filters.difficulty && filters.difficulty !== 'all') {
-        questions = questions.filter((q) => q.difficulty === filters.difficulty);
-      }
-      if (filters.status && filters.status !== 'all') {
-        questions = questions.filter((q) => q.status === filters.status);
-      }
-      if (filters.search && filters.search.trim()) {
-        const term = filters.search.toLowerCase().trim();
-        questions = questions.filter((item) =>
-          (item.q || item.question || '').toLowerCase().includes(term) ||
-          (item.topic || item.chapter || '').toLowerCase().includes(term) ||
-          item.id.toLowerCase().includes(term)
-        );
-      }
-
-      return {
-        questions: questions.slice(0, count),
-        lastDoc: null,
-        hasMore: false,
-      };
-    } catch (fallbackErr) {
-      console.warn('[AdminService] fetchPoolQuestions secondary fallback:', fallbackErr);
-      return {
-        questions: [],
-        lastDoc: null,
-        hasMore: false,
-      };
-    }
+    throw err;
   }
 }
 
@@ -1936,12 +2026,16 @@ export async function saveSubjectPoolQuestion(
 ): Promise<string> {
   const normSub = question.subject.toLowerCase().trim();
   const collName = getSubjectPoolCollection(normSub);
-  const qId = question.id && !question.id.startsWith('q_custom')
-    ? question.id
-    : `pool_${normSub}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
   const qText = (question.text || '').trim();
   const topic = (question.topic || 'General Concepts').trim();
   const cHash = await computeContentHash(qText, question.options);
+
+  // Deterministic document ID based on content hash
+  const qId = question.id && !question.id.startsWith('q_custom')
+    ? question.id
+    : `pool_${normSub}_${cHash.substring(0, 20)}`;
+
+  const isNew = !question.id || question.id.startsWith('q_custom');
 
   const docData: Record<string, unknown> = {
     id: qId,
@@ -1966,6 +2060,36 @@ export async function saveSubjectPoolQuestion(
   };
 
   await setDoc(doc(db, collName, qId), docData, { merge: true });
+
+  // Update in-memory counts doc
+  if (isNew) {
+    if (cachedQuestionCountsDoc) {
+      cachedQuestionCountsDoc.subjectCounts[normSub] = (cachedQuestionCountsDoc.subjectCounts[normSub] || 0) + 1;
+      if (!cachedQuestionCountsDoc.topicCounts[normSub]) cachedQuestionCountsDoc.topicCounts[normSub] = {};
+      cachedQuestionCountsDoc.topicCounts[normSub][topic] = (cachedQuestionCountsDoc.topicCounts[normSub][topic] || 0) + 1;
+    }
+    // Update stats/questionCounts document
+    try {
+      const statsRef = doc(db, 'stats', 'questionCounts');
+      await updateDoc(statsRef, {
+        [`subjectCounts.${normSub}`]: increment(1),
+        [`topicCounts.${normSub}.${topic}`]: increment(1),
+        updatedAt: serverTimestamp(),
+      }).catch(async () => {
+        if (cachedQuestionCountsDoc) {
+          await setDoc(statsRef, cachedQuestionCountsDoc, { merge: true });
+        }
+      });
+    } catch {
+      // Non-fatal
+    }
+
+    // Add to subject question index
+    await addIdToSubjectIndex(normSub, qId);
+  }
+
+  clearQuestionsCache();
+
   await logAdminAction(adminEmail, 'save_pool_question', {
     pool: collName,
     questionId: qId,
@@ -1981,11 +2105,30 @@ export async function deletePoolQuestion(
   subject: string,
   questionId: string
 ): Promise<void> {
-  const collName = getSubjectPoolCollection(subject);
+  const normSub = subject.toLowerCase().trim();
+  const collName = getSubjectPoolCollection(normSub);
   await deleteDoc(doc(db, collName, questionId));
+
+  // Decrement count in stats/questionCounts
+  if (cachedQuestionCountsDoc) {
+    cachedQuestionCountsDoc.subjectCounts[normSub] = Math.max(0, (cachedQuestionCountsDoc.subjectCounts[normSub] || 1) - 1);
+  }
+  try {
+    const statsRef = doc(db, 'stats', 'questionCounts');
+    await updateDoc(statsRef, {
+      [`subjectCounts.${normSub}`]: increment(-1),
+      updatedAt: serverTimestamp(),
+    });
+  } catch {
+    // Non-fatal
+  }
+
+  await removeIdFromSubjectIndex(normSub, questionId);
+  clearQuestionsCache();
+
   await logAdminAction(adminEmail, 'delete_pool_question', {
     pool: collName,
-    subject,
+    subject: normSub,
     questionId,
   });
 }
@@ -1996,39 +2139,43 @@ export async function renamePoolTopic(
   oldTopic: string,
   newTopic: string
 ): Promise<number> {
-  const collName = getSubjectPoolCollection(subject);
-  const snap = await getDocs(collection(db, collName));
-  const toUpdate: QueryDocumentSnapshot<DocumentData>[] = [];
+  const normSub = subject.toLowerCase().trim();
+  const collName = getSubjectPoolCollection(normSub);
 
-  const targetOld = oldTopic.trim().toLowerCase();
-  for (const d of snap.docs) {
-    const data = d.data();
-    const currTopic = (data.topic || data.chapter || '').trim().toLowerCase();
-    if (currTopic === targetOld) {
-      toUpdate.push(d);
-    }
-  }
+  // Query ONLY questions matching oldTopic with a safe limit of 200 (never read whole collection)
+  const q = query(collection(db, collName), where('topic', '==', oldTopic), limit(200));
+  const snap = await getDocs(q);
 
   const cleanNew = newTopic.trim();
-  const chunkSize = 400;
-  let count = 0;
-  for (let i = 0; i < toUpdate.length; i += chunkSize) {
-    const chunk = toUpdate.slice(i, i + chunkSize);
-    const batch = writeBatch(db);
-    for (const d of chunk) {
-      batch.update(d.ref, {
-        topic: cleanNew,
-        chapter: cleanNew,
-        updatedAt: serverTimestamp(),
-      });
-    }
-    await batch.commit();
-    count += chunk.length;
+  const batch = writeBatch(db);
+  for (const d of snap.docs) {
+    batch.update(d.ref, {
+      topic: cleanNew,
+      chapter: cleanNew,
+      updatedAt: serverTimestamp(),
+    });
   }
+  await batch.commit();
+  const count = snap.docs.length;
+
+  // Update in stats/questionCounts
+  if (cachedQuestionCountsDoc && cachedQuestionCountsDoc.topicCounts[normSub]) {
+    const oldCnt = cachedQuestionCountsDoc.topicCounts[normSub][oldTopic] || count;
+    delete cachedQuestionCountsDoc.topicCounts[normSub][oldTopic];
+    cachedQuestionCountsDoc.topicCounts[normSub][cleanNew] = (cachedQuestionCountsDoc.topicCounts[normSub][cleanNew] || 0) + oldCnt;
+    try {
+      const statsRef = doc(db, 'stats', 'questionCounts');
+      await setDoc(statsRef, cachedQuestionCountsDoc, { merge: true });
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  clearQuestionsCache();
 
   await logAdminAction(adminEmail, 'rename_pool_topic', {
     pool: collName,
-    subject,
+    subject: normSub,
     oldTopic,
     newTopic: cleanNew,
     count,
@@ -2043,7 +2190,8 @@ export async function moveQuestionsToTopic(
   questionIds: string[],
   newTopic: string
 ): Promise<number> {
-  const collName = getSubjectPoolCollection(subject);
+  const normSub = subject.toLowerCase().trim();
+  const collName = getSubjectPoolCollection(normSub);
   const cleanNew = newTopic.trim();
   const chunkSize = 400;
   let count = 0;
@@ -2062,9 +2210,22 @@ export async function moveQuestionsToTopic(
     count += chunk.length;
   }
 
+  // Update in stats/questionCounts
+  if (cachedQuestionCountsDoc && cachedQuestionCountsDoc.topicCounts[normSub]) {
+    cachedQuestionCountsDoc.topicCounts[normSub][cleanNew] = (cachedQuestionCountsDoc.topicCounts[normSub][cleanNew] || 0) + count;
+    try {
+      const statsRef = doc(db, 'stats', 'questionCounts');
+      await setDoc(statsRef, cachedQuestionCountsDoc, { merge: true });
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  clearQuestionsCache();
+
   await logAdminAction(adminEmail, 'move_pool_questions_topic', {
     pool: collName,
-    subject,
+    subject: normSub,
     questionCount: count,
     newTopic: cleanNew,
   });
@@ -2072,6 +2233,10 @@ export async function moveQuestionsToTopic(
   return count;
 }
 
+/**
+ * Imports questions using deterministic document IDs derived from question content hashes.
+ * Duplicates are detected without reading the pool.
+ */
 export async function batchImportPoolQuestions(
   adminEmail: string,
   targetSubject: string,
@@ -2085,24 +2250,18 @@ export async function batchImportPoolQuestions(
     errors: [],
   };
 
-  const poolColl = getSubjectPoolCollection(targetSubject);
+  const normTargetSub = targetSubject.toLowerCase().trim();
 
-  // 1. Fetch existing hashes in the pool to skip duplicates
-  const existingHashes = new Set<string>();
-  try {
-    const existingSnap = await getDocs(query(collection(db, poolColl), limit(3000)));
-    for (const d of existingSnap.docs) {
-      const h = d.data().contentHash;
-      if (h) existingHashes.add(h);
-    }
-  } catch (hErr) {
-    console.warn('[AdminService] Existing pool hashes gathering note:', hErr);
-  }
+  // 1. Fetch existing question IDs from the small index doc (ZERO reads of questions collection)
+  const existingIds = await getSubjectQuestionIds(normTargetSub);
+  const existingIdSet = new Set(existingIds);
+  const newlyAddedIds: string[] = [];
+  const topicCountsAdded: Record<string, number> = {};
 
   const validItems: Array<{ qId: string; docData: Record<string, unknown> }> = [];
 
   for (const row of rawRows) {
-    const rowSub = (row.subject ? String(row.subject) : targetSubject).trim().toLowerCase();
+    const rowSub = (row.subject ? String(row.subject) : normTargetSub).trim().toLowerCase();
     const rowTopic = (row.topic || row.chapter ? String(row.topic || row.chapter) : defaultTopic).trim();
     const qText = (row.text || row.q || row.question || row.stem ? String(row.text || row.q || row.question || row.stem) : '').trim();
 
@@ -2123,11 +2282,16 @@ export async function batchImportPoolQuestions(
     }
 
     const cHash = await computeContentHash(qText, options);
-    if (existingHashes.has(cHash)) {
+    // Deterministic document ID derived from question text hash
+    const qId = `pool_${rowSub}_${cHash.substring(0, 20)}`;
+
+    if (existingIdSet.has(qId)) {
       result.duplicatesSkipped++;
       continue;
     }
-    existingHashes.add(cHash);
+    existingIdSet.add(qId);
+    newlyAddedIds.push(qId);
+    topicCountsAdded[rowTopic] = (topicCountsAdded[rowTopic] || 0) + 1;
 
     // Resolve correct answer
     const rawCorrect = row.correct !== undefined ? row.correct : (row.correctAnswer !== undefined ? row.correctAnswer : row.answer);
@@ -2137,8 +2301,6 @@ export async function batchImportPoolQuestions(
     const explain = String(row.explain || row.explanation || '').trim();
     const diff = (String(row.difficulty || 'medium').toLowerCase() as 'easy' | 'medium' | 'hard');
     const status = (String(row.status || 'published').toLowerCase() as 'draft' | 'reviewed' | 'published');
-
-    const qId = `pool_${rowSub}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
     validItems.push({
       qId,
@@ -2181,8 +2343,29 @@ export async function batchImportPoolQuestions(
     if (onProgress) onProgress(result.imported, validItems.length);
   }
 
+  // Update question index and counts document in stats
+  if (result.imported > 0) {
+    await addIdToSubjectIndex(normTargetSub, newlyAddedIds);
+
+    if (cachedQuestionCountsDoc) {
+      cachedQuestionCountsDoc.subjectCounts[normTargetSub] = (cachedQuestionCountsDoc.subjectCounts[normTargetSub] || 0) + result.imported;
+      if (!cachedQuestionCountsDoc.topicCounts[normTargetSub]) cachedQuestionCountsDoc.topicCounts[normTargetSub] = {};
+      for (const [top, cnt] of Object.entries(topicCountsAdded)) {
+        cachedQuestionCountsDoc.topicCounts[normTargetSub][top] = (cachedQuestionCountsDoc.topicCounts[normTargetSub][top] || 0) + cnt;
+      }
+    }
+    try {
+      const statsRef = doc(db, 'stats', 'questionCounts');
+      await setDoc(statsRef, cachedQuestionCountsDoc, { merge: true });
+    } catch {
+      // Non-fatal
+    }
+  }
+
+  clearQuestionsCache();
+
   await logAdminAction(adminEmail, 'batch_import_pool_questions', {
-    targetSubject,
+    targetSubject: normTargetSub,
     imported: result.imported,
     duplicatesSkipped: result.duplicatesSkipped,
   });

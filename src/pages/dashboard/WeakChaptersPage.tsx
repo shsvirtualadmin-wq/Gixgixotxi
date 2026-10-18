@@ -95,7 +95,7 @@ export function WeakChaptersPage() {
         // Fallback check on subject
         if (item.subject && item.subject !== 'General') {
           try {
-            const subSnap = await getDocs(query(questionsColl, where('subject', '==', item.subject), limit(15)));
+            const subSnap = await getDocs(query(questionsColl, where('subject', '==', item.subject), limit(1)));
             questionsCount = subSnap.size;
           } catch {
             questionsCount = 1;

@@ -1,5 +1,6 @@
 import { AlertTriangle, RefreshCw } from 'lucide-react';
 import { auth } from '@/lib/firebase';
+import { isQuotaExhaustedError } from '@/utils/quota';
 
 export interface AdminDiagnosticError {
   code?: string;
@@ -23,6 +24,24 @@ export function AdminDiagnosticBanner({
   retrying = false,
 }: AdminDiagnosticBannerProps) {
   if (!error) return null;
+
+  // Friendly short quota notice when daily read limit is reached:
+  // Do NOT render large red diagnostic box, and do NOT retry automatically
+  if (isQuotaExhaustedError(error)) {
+    return (
+      <div
+        role="alert"
+        className="mb-4 rounded-xl bg-[var(--card)] border border-amber-500/30 text-[var(--text)] px-4 py-3 text-sm flex items-center justify-between gap-3 shadow-xs"
+      >
+        <div className="flex items-center gap-2.5">
+          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+          <span className="font-heading font-medium text-[13px]">
+            Daily database limit reached, try again later
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   const currentUser = auth.currentUser;
   const diagError = error as AdminDiagnosticError;

@@ -23,6 +23,7 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { MathText, validateMath } from '@/components/ui/MathText';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
+import { isQuotaExhaustedError } from '@/utils/quota';
 import {
   saveQuestion,
   deleteQuestion,
@@ -134,6 +135,15 @@ export function AdminQuestionsPage() {
 
   // Filters & Search inside chosen subject/topic
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [search]);
+
   const [difficultyFilter, setDifficultyFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -256,8 +266,8 @@ export function AdminQuestionsPage() {
         topic: selectedTopic !== 'all' ? selectedTopic : undefined,
         difficulty: difficultyFilter !== 'all' ? difficultyFilter : undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined,
-        search,
-        limitCount: 50,
+        search: debouncedSearch,
+        limitCount: 20,
       });
 
       setQuestions(res.questions);
@@ -266,16 +276,19 @@ export function AdminQuestionsPage() {
     } catch (err: unknown) {
       console.warn('Failed to load questions:', err);
       const e = err as Partial<AdminDiagnosticError>;
+      const isQuota = isQuotaExhaustedError(err);
       setError({
-        code: e?.code || 'QUESTIONS_FETCH_FAILED',
-        message: e?.message || `Failed to load questions for ${selectedSubject}.`,
+        code: isQuota ? 'RESOURCE_EXHAUSTED' : (e?.code || 'QUESTIONS_FETCH_FAILED'),
+        message: isQuota
+          ? 'Daily database limit reached, try again later'
+          : (e?.message || `Failed to load questions for ${selectedSubject}.`),
         collection: isSubjectPoolSupported(selectedSubject) ? getSubjectPoolCollection(selectedSubject) : 'questions',
         operation: 'fetchPoolQuestionsPaginated',
       });
     } finally {
       setLoading(false);
     }
-  }, [selectedSubject, selectedTopic, search, difficultyFilter, statusFilter]);
+  }, [selectedSubject, selectedTopic, debouncedSearch, difficultyFilter, statusFilter]);
 
   const loadHealth = useCallback(async () => {
     setHealthLoading(true);
@@ -335,8 +348,8 @@ export function AdminQuestionsPage() {
         topic: selectedTopic !== 'all' ? selectedTopic : undefined,
         difficulty: difficultyFilter !== 'all' ? difficultyFilter : undefined,
         status: statusFilter !== 'all' ? statusFilter : undefined,
-        search,
-        limitCount: 50,
+        search: debouncedSearch,
+        limitCount: 20,
         startAfterDoc: lastDoc,
       });
       setQuestions((prev) => [...prev, ...res.questions]);
