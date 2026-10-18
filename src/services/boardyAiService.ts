@@ -179,7 +179,9 @@ export async function getBoardyExplanation(
           updateDoc(qRef, { cachedAiExplanation: rawReply }).catch(() => {});
         }
       }
-    } catch (_) {}
+    } catch {
+      // Ignore storage/caching errors
+    }
 
     // Consume 1 token for free tier
     if (!isUnlimited && uid) {

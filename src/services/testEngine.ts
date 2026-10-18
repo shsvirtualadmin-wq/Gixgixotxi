@@ -24,7 +24,7 @@ import {
 } from '@/constants/taxonomy';
 import { getUniversityCriteria, getSectionCriteria } from '@/constants/universityCriteria';
 import type { QueryConstraint } from 'firebase/firestore';
-import type { AttemptDoc, AttemptQuestion, Question, QuestionKey } from '@/types/index';
+import type { AttemptDoc, AttemptQuestion, Question } from '@/types/index';
 
 /**
  * University marking configurations for official entrance exams.
@@ -479,8 +479,6 @@ export async function submitAttempt(
   const questions = attempt.questions ?? [];
   const totalQuestions = questions.length;
 
-  const totalQuestions = questions.length;
-
   // 1. Fetch secret answer keys from `questionKeys` with fallback to `questions` doc
   const questionKeyMap = new Map<string, { correct: unknown; explain?: string }>();
   await Promise.all(
@@ -510,7 +508,7 @@ export async function submitAttempt(
         }
 
         // Fallback to in-memory question doc fields if present
-        const anyQ = q as Record<string, unknown>;
+        const anyQ = q as unknown as Record<string, unknown>;
         if (anyQ.correct !== undefined || anyQ.correctAnswer !== undefined) {
           questionKeyMap.set(q.id, {
             correct: anyQ.correct !== undefined ? anyQ.correct : anyQ.correctAnswer,

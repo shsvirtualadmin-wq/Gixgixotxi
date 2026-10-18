@@ -461,7 +461,7 @@ export function useStudyCrew() {
         throw err;
       }
     },
-    [user, profile]
+    [user, profile, updateLocalProfile]
   );
 
   // Leave Crew

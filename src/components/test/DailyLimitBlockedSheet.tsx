@@ -13,7 +13,7 @@ interface DailyLimitBlockedSheetProps {
 export function DailyLimitBlockedSheet({
   isOpen,
   onClose,
-  testsUsed = FREE_DAILY_TESTS,
+  testsUsed: _testsUsed = FREE_DAILY_TESTS,
 }: DailyLimitBlockedSheetProps) {
   const navigate = useNavigate();
   const effectivePlan = useEffectivePlan();

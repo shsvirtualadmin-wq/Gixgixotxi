@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { getUniversityCriteria, getSectionCriteria } from '@/constants/universityCriteria';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
-import { getBoardyExplanation, type BoardyDerivationResult } from '@/services/boardyAiService';
+import { getBoardyExplanation } from '@/services/boardyAiService';
 import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
 type ReviewFilter = 'all' | 'mistakes' | 'flagged';
@@ -42,7 +42,6 @@ export function TestResultPage() {
   const [filter, setFilter] = useState<ReviewFilter>('all');
   const [aiExplaining, setAiExplaining] = useState<Record<number, boolean>>({});
   const [aiExplanations, setAiExplanations] = useState<Record<number, string>>({});
-  const [aiStatus, setAiStatus] = useState<Record<number, BoardyDerivationResult['status']>>({});
 
   // Report modal state
   const [reportingQuestionId, setReportingQuestionId] = useState<string | null>(null);
@@ -70,7 +69,6 @@ export function TestResultPage() {
       });
 
       setAiExplanations((prev) => ({ ...prev, [questionIndex]: result.explanation }));
-      setAiStatus((prev) => ({ ...prev, [questionIndex]: result.status }));
     } catch (err) {
       console.warn('[TestResultPage] AI explain error:', err);
     } finally {
@@ -221,11 +219,13 @@ export function TestResultPage() {
 
         {(() => {
           const uniCriteria = getUniversityCriteria(attempt.university);
-          const sections = uniCriteria.subjectsSplit || [];
+          const sections = uniCriteria.sections || [];
           const penalizedSections = sections.filter((s) => s.negativePenalty && s.negativePenalty !== 0);
           const nonPenalizedSections = sections.filter((s) => !s.negativePenalty || s.negativePenalty === 0);
 
           let markingDetail = '';
+          const defaultCorrect = sections[0]?.correctMarks ?? 1;
+          const defaultPenalty = sections[0]?.negativePenalty ?? 0;
           if (uniCriteria.hasNegativeMarking) {
             if (penalizedSections.length > 0 && nonPenalizedSections.length > 0) {
               const penText = penalizedSections.map((s) => s.subject).join(' & ');
@@ -235,10 +235,10 @@ export function TestResultPage() {
               const npMark = nonPenalizedSections[0].correctMarks;
               markingDetail = `${penText} (+${pMark} / ${pPen}), ${nonPenText} (+${npMark} / 0 NO PENALTY)`;
             } else {
-              markingDetail = `+${uniCriteria.defaultCorrectMarks} correct / ${uniCriteria.defaultNegativePenalty} penalty per wrong answer (${uniCriteria.negativeMarking})`;
+              markingDetail = `+${defaultCorrect} correct / ${defaultPenalty} penalty per wrong answer (${uniCriteria.negativeMarking})`;
             }
           } else {
-            markingDetail = `Standard marking: +${uniCriteria.defaultCorrectMarks} per correct answer (No negative marking)`;
+            markingDetail = `Standard marking: +${defaultCorrect} per correct answer (No negative marking)`;
           }
 
           return (

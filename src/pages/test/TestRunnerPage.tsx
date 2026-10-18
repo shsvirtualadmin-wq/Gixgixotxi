@@ -62,12 +62,16 @@ export function TestRunnerPage() {
 
     try {
       window.history.pushState({ inTest: true }, '');
-    } catch (_) {}
+    } catch {
+      // Ignore history pushState failure in restricted environments
+    }
 
     const handlePopState = () => {
       try {
         window.history.pushState({ inTest: true }, '');
-      } catch (_) {}
+      } catch {
+        // Ignore history pushState failure in restricted environments
+      }
       setLeaveWarningOpen(true);
     };
 
@@ -501,7 +505,7 @@ export function TestRunnerPage() {
           onNext={() => setCurrentIndex((i) => Math.min(questions.length - 1, i + 1))}
           canPrev={currentIndex > 0}
           canNext={currentIndex < questions.length - 1}
-          university={attempt.university}
+          university={attempt.university || undefined}
           isPro={isPro || isAdmin}
           onDownloadPdf={handleDownloadPdf}
         />

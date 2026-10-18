@@ -156,6 +156,7 @@ export interface AttemptDoc {
   userAnswers?: Record<string, number>;
   flagged?: number[];
   score?: number;
+  maxMarks?: number;
   correctAnswers?: number;
   wrongAnswers?: number;
   unanswered?: number;

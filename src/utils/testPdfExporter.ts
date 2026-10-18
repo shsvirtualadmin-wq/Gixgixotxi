@@ -365,7 +365,8 @@ export async function exportTestToPdf({
           if (logoDataUrl) {
             try {
               pdf.saveGraphicsState();
-              pdf.setGState(new pdf.GState({ opacity: 0.07 }));
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              pdf.setGState(new (pdf as any).GState({ opacity: 0.07 }));
               const wmWidth = 110;
               const wmHeight = 110 / 2.146; // ~51.2mm
               const wmX = (pageWidth - wmWidth) / 2;

@@ -281,6 +281,7 @@ function aiTutorPlugin() {
             rawBody += chunk;
           });
           req.on('end', async () => {
+            try {
               const body = JSON.parse(rawBody || '{}');
               const BOARDY_AI_MODEL = 'gemini-3.8-flash';
               const BOARDY_AI_FALLBACK_MODEL = 'gemini-flash-latest';
