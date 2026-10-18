@@ -220,6 +220,57 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ─── DEDICATED SUBJECT QUESTION POOLS ──────────────────────────────────
+    // Separate pool for Mathematics (and generic structure for future subjects).
+    // Students read published questions only, and only admin writes.
+    match /questions_mathematics/{qId} {
+      allow read: if isAdmin() || (
+        isAuthenticated() &&
+        resource.data.status == 'published'
+      );
+      allow write: if isAdmin();
+    }
+
+    match /questions_physics/{qId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
+      allow write: if isAdmin();
+    }
+
+    match /questions_chemistry/{qId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
+      allow write: if isAdmin();
+    }
+
+    match /questions_biology/{qId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
+      allow write: if isAdmin();
+    }
+
+    match /questions_english/{qId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
+      allow write: if isAdmin();
+    }
+
+    match /questions_computer/{qId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
+      allow write: if isAdmin();
+    }
+
+    match /questions_computer_science/{qId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
+      allow write: if isAdmin();
+    }
+
+    match /questions_analytical_reasoning/{qId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
+      allow write: if isAdmin();
+    }
+
+    match /questions_intelligence/{qId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
+      allow write: if isAdmin();
+    }
+
     match /questionKeys/{keyId} {
       allow read: if isAuthenticated() || isAdmin();
       allow write: if isAdmin();

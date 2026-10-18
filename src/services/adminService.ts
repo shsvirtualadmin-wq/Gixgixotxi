@@ -1491,3 +1491,702 @@ export async function fetchUserAttempts(targetUid: string): Promise<Record<strin
     return [];
   }
 }
+
+// ─── DEDICATED SUBJECT QUESTION POOLS ────────────────────────────────────────
+// Generic structure supporting dedicated collections per subject, starting with Mathematics.
+
+export function getSubjectPoolCollection(subject: string): string {
+  const norm = (subject || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+  return `questions_${norm}`;
+}
+
+export function isSubjectPoolSupported(subject: string): boolean {
+  const norm = (subject || '').trim().toLowerCase();
+  return norm === 'mathematics' || norm === 'math' || norm === 'maths';
+}
+
+export interface PoolTopicCount {
+  name: string;
+  count: number;
+}
+
+export interface SubjectCardInfo {
+  slug: string;
+  name: string;
+  isPool: boolean;
+  poolCollection: string;
+  count: number;
+}
+
+export const INITIAL_MATHEMATICS_MCQS = [
+  {
+    topic: 'Calculus & Differentiation',
+    text: 'What is the derivative of $f(x) = \\ln(\\sin(x))$ with respect to $x$ for $\\sin(x) > 0$?',
+    options: ['$\\cot(x)$', '$\\tan(x)$', '$-\\cot(x)$', '$\\frac{1}{\\sin(x)}$'] as [string, string, string, string],
+    correct: 0,
+    explain: 'By the chain rule, $\\frac{d}{dx}[\\ln(\\sin(x))] = \\frac{1}{\\sin(x)} \\cdot \\cos(x) = \\cot(x)$.',
+    difficulty: 'easy' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Calculus & Differentiation',
+    text: 'The function $f(x) = 2x^3 - 9x^2 + 12x + 5$ has a local maximum at $x$ equal to:',
+    options: ['$x = 1$', '$x = 2$', '$x = 3$', '$x = 0$'] as [string, string, string, string],
+    correct: 0,
+    explain: '$f\'(x) = 6x^2 - 18x + 12 = 6(x-1)(x-2) = 0$. $f\'\'(x) = 12x - 18$. At $x = 1$, $f\'\'(1) = -6 < 0$ (local maximum).',
+    difficulty: 'medium' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Integration by Parts & Definite Integrals',
+    text: 'Evaluate the definite integral $\\int_{0}^{1} x e^x \\, dx$:',
+    options: ['$1$', '$e - 1$', '$e - 2$', '$2$'] as [string, string, string, string],
+    correct: 0,
+    explain: 'Using integration by parts $\\int u v\' = uv - \\int u\' v$: with $u = x, v = e^x$, $\\int x e^x dx = [x e^x - e^x]_0^1 = (e - e) - (0 - 1) = 1$.',
+    difficulty: 'medium' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Integration by Parts & Definite Integrals',
+    text: 'The value of $\\int_{0}^{\\pi/2} \\sin^2(x) \\, dx$ is equal to:',
+    options: ['$\\frac{\\pi}{4}$', '$\\frac{\\pi}{2}$', '$1$', '$\\frac{\\pi}{8}$'] as [string, string, string, string],
+    correct: 0,
+    explain: 'Using $\\sin^2(x) = \\frac{1 - \\cos(2x)}{2}$, $\\int_{0}^{\\pi/2} \\frac{1 - \\cos(2x)}{2} dx = [\\frac{x}{2} - \\frac{\\sin(2x)}{4}]_0^{\\pi/2} = \\frac{\\pi}{4}$.',
+    difficulty: 'easy' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Matrices & Determinants',
+    text: 'If $A$ is a non-singular square matrix of order $3 \\times 3$ and $|A| = 4$, then $|\\text{adj}(A)|$ is:',
+    options: ['$16$', '$64$', '$4$', '$12$'] as [string, string, string, string],
+    correct: 0,
+    explain: 'For an $n \\times n$ matrix, $|\\text{adj}(A)| = |A|^{n-1}$. Here $n = 3$, so $|\\text{adj}(A)| = 4^{3-1} = 4^2 = 16$.',
+    difficulty: 'medium' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Matrices & Determinants',
+    text: 'A square matrix $A$ is called skew-symmetric if and only if:',
+    options: ['$A^T = -A$', '$A^T = A$', '$A^{-1} = A^T$', '$A^2 = I$'] as [string, string, string, string],
+    correct: 0,
+    explain: 'By definition, a matrix $A$ is skew-symmetric if its transpose equals its negative, $A^T = -A$.',
+    difficulty: 'easy' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Trigonometry & Complex Numbers',
+    text: 'The modulus and principal argument of the complex number $z = 1 + i\\sqrt{3}$ are:',
+    options: ['$r = 2, \\theta = \\frac{\\pi}{3}$', '$r = 4, \\theta = \\frac{\\pi}{6}$', '$r = 2, \\theta = \\frac{\\pi}{6}$', '$r = \\sqrt{2}, \\theta = \\frac{\\pi}{4}$'] as [string, string, string, string],
+    correct: 0,
+    explain: '$r = \\sqrt{1^2 + (\\sqrt{3})^2} = \\sqrt{4} = 2$. $\\tan(\\theta) = \\frac{\\sqrt{3}}{1} \\implies \\theta = \\frac{\\pi}{3}$.',
+    difficulty: 'easy' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Trigonometry & Complex Numbers',
+    text: 'The period of the trigonometric function $f(x) = \\tan(3x)$ is:',
+    options: ['$\\frac{\\pi}{3}$', '$\\frac{2\\pi}{3}$', '$\\pi$', '$3\\pi$'] as [string, string, string, string],
+    correct: 0,
+    explain: 'The fundamental period of $\\tan(x)$ is $\\pi$. For $\\tan(kx)$, the period is $\\frac{\\pi}{|k|} = \\frac{\\pi}{3}$.',
+    difficulty: 'easy' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Analytic Geometry & Conic Sections',
+    text: 'The equation of the tangent to the parabola $y^2 = 4ax$ at the point $(x_1, y_1)$ is:',
+    options: ['$y y_1 = 2a(x + x_1)$', '$y y_1 = 4a(x + x_1)$', '$x x_1 + y y_1 = a^2$', '$y - y_1 = 4a(x - x_1)$'] as [string, string, string, string],
+    correct: 0,
+    explain: 'Differentiating $y^2 = 4ax$ gives $2y \\frac{dy}{dx} = 4a \\implies m = \\frac{2a}{y_1}$. The point-slope form gives $y - y_1 = \\frac{2a}{y_1}(x - x_1) \\implies y y_1 = 2a(x + x_1)$.',
+    difficulty: 'medium' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Analytic Geometry & Conic Sections',
+    text: 'The eccentricity $e$ of an ellipse satisfies which of the following conditions?',
+    options: ['$0 < e < 1$', '$e = 1$', '$e > 1$', '$e = 0$'] as [string, string, string, string],
+    correct: 0,
+    explain: 'For an ellipse, the eccentricity strictly satisfies $0 < e < 1$. ($e = 1$ is a parabola, $e > 1$ is a hyperbola, $e = 0$ is a circle).',
+    difficulty: 'easy' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Vectors & 3D Geometry',
+    text: 'The angle between two vectors $\\vec{a} = 2\\hat{i} + \\hat{j} - \\hat{k}$ and $\\vec{b} = \\hat{i} - \\hat{j} + \\hat{k}$ is:',
+    options: ['$\\frac{\\pi}{2}$', '$\\frac{\\pi}{4}$', '$\\frac{\\pi}{3}$', '$0$'] as [string, string, string, string],
+    correct: 0,
+    explain: '$\\vec{a} \\cdot \\vec{b} = (2)(1) + (1)(-1) + (-1)(1) = 2 - 1 - 1 = 0$. Since dot product is zero, $\\theta = 90^\\circ = \\frac{\\pi}{2}$.',
+    difficulty: 'easy' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Vectors & 3D Geometry',
+    text: 'If three vectors $\\vec{a}, \\vec{b}, \\vec{c}$ are coplanar, their scalar triple product $[\\vec{a} \\, \\vec{b} \\, \\vec{c}]$ is equal to:',
+    options: ['$0$', '$1$', '$\\vec{a} \\times (\\vec{b} \\times \\vec{c})$', 'Non-zero scalar'] as [string, string, string, string],
+    correct: 0,
+    explain: 'Vectors are coplanar if and only if the volume of the parallelepiped formed by them is zero, so $[\\vec{a} \\, \\vec{b} \\, \\vec{c}] = \\vec{a} \\cdot (\\vec{b} \\times \\vec{c}) = 0$.',
+    difficulty: 'easy' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Sequences, Series & Binomial Theorem',
+    text: 'The sum to infinity of the geometric progression $4, \\frac{4}{3}, \\frac{4}{9}, \\frac{4}{27}, \\dots$ is:',
+    options: ['$6$', '$8$', '$4$', '$12$'] as [string, string, string, string],
+    correct: 0,
+    explain: '$a = 4$ and $r = \\frac{1}{3}$. Since $|r| < 1$, $S_\\infty = \\frac{a}{1 - r} = \\frac{4}{1 - 1/3} = \\frac{4}{2/3} = 6$.',
+    difficulty: 'medium' as const,
+    status: 'published' as const,
+  },
+  {
+    topic: 'Sequences, Series & Binomial Theorem',
+    text: 'The number of terms in the expansion of $(2x + 3y)^{10}$ is:',
+    options: ['$11$', '$10$', '$9$', '$21$'] as [string, string, string, string],
+    correct: 0,
+    explain: 'The number of terms in the binomial expansion of $(a + b)^n$ is always $n + 1$. For $n = 10$, there are $10 + 1 = 11$ terms.',
+    difficulty: 'easy' as const,
+    status: 'published' as const,
+  },
+];
+
+export async function seedInitialMathPool(adminEmail: string): Promise<number> {
+  const collName = getSubjectPoolCollection('mathematics');
+  const snap = await getDocs(query(collection(db, collName), limit(5)));
+  if (!snap.empty) {
+    return 0; // Already seeded
+  }
+
+  const batch = writeBatch(db);
+  let count = 0;
+  for (const item of INITIAL_MATHEMATICS_MCQS) {
+    const qId = `math_${Date.now()}_${count}_${Math.random().toString(36).substring(2, 6)}`;
+    const cHash = await computeContentHash(item.text, item.options);
+    batch.set(doc(db, collName, qId), {
+      id: qId,
+      subject: 'mathematics',
+      topic: item.topic,
+      chapter: item.topic,
+      text: item.text,
+      q: item.text,
+      question: item.text,
+      options: item.options,
+      correct: item.correct,
+      correctAnswer: item.correct,
+      explain: item.explain,
+      explanation: item.explain,
+      difficulty: item.difficulty,
+      status: item.status,
+      active: true,
+      rand: Math.random(),
+      contentHash: cHash,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+      createdBy: adminEmail,
+    });
+    count++;
+  }
+  await batch.commit();
+  await logAdminAction(adminEmail, 'seed_math_pool', { count });
+  return count;
+}
+
+export async function fetchSubjectPoolCounts(): Promise<Record<string, number>> {
+  const counts: Record<string, number> = {};
+
+  // 1. Mathematics pool count from questions_mathematics
+  try {
+    const mathColl = collection(db, getSubjectPoolCollection('mathematics'));
+    const mathCountSnap = await getCountFromServer(mathColl);
+    counts['mathematics'] = mathCountSnap.data().count;
+  } catch (err) {
+    console.warn('[AdminService] fetchSubjectPoolCounts math notice:', err);
+    counts['mathematics'] = 0;
+  }
+
+  // 2. Counts for other subjects from existing bank
+  try {
+    const health = await fetchBankHealth();
+    for (const [sub, cnt] of Object.entries(health.bySubject)) {
+      const slug = findSubjectSlug(sub) || sub.toLowerCase();
+      if (slug !== 'mathematics') {
+        counts[slug] = (counts[slug] || 0) + cnt;
+      }
+    }
+  } catch (err) {
+    console.warn('[AdminService] fetchSubjectPoolCounts bank notice:', err);
+  }
+
+  return counts;
+}
+
+export async function fetchSubjectTopics(subject: string): Promise<PoolTopicCount[]> {
+  const norm = (subject || '').trim().toLowerCase();
+  const topicMap = new Map<string, number>();
+
+  if (isSubjectPoolSupported(norm)) {
+    // Read from dedicated subject pool collection
+    const collName = getSubjectPoolCollection(norm);
+    try {
+      const snap = await getDocs(query(collection(db, collName), limit(2500)));
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        const t = (data.topic || data.chapter || 'General Concepts').trim();
+        topicMap.set(t, (topicMap.get(t) || 0) + 1);
+      });
+    } catch (err) {
+      console.warn(`[AdminService] fetchSubjectTopics ${collName} notice:`, err);
+    }
+  } else {
+    // Read from existing bank
+    try {
+      const slug = findSubjectSlug(norm) || norm;
+      const snap = await getDocs(
+        query(collection(db, 'questions'), where('subject', '==', slug), limit(2500))
+      );
+      snap.docs.forEach((d) => {
+        const data = d.data();
+        const c = (data.chapter || 'General Concepts').trim();
+        topicMap.set(c, (topicMap.get(c) || 0) + 1);
+      });
+    } catch (err) {
+      console.warn('[AdminService] fetchSubjectTopics existing bank notice:', err);
+    }
+  }
+
+  const list: PoolTopicCount[] = [];
+  topicMap.forEach((count, name) => {
+    list.push({ name, count });
+  });
+
+  return list.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function fetchPoolQuestionsPaginated(filters: {
+  subject: string;
+  topic?: string;
+  search?: string;
+  difficulty?: string;
+  status?: string;
+  limitCount?: number;
+  startAfterDoc?: QueryDocumentSnapshot<DocumentData> | null;
+}): Promise<PaginatedQuestionsResult> {
+  const isPool = isSubjectPoolSupported(filters.subject);
+
+  if (!isPool) {
+    // Fall back to existing bank questions
+    return fetchQuestionsPaginated({
+      search: filters.search,
+      subject: filters.subject,
+      difficulty: filters.difficulty,
+      limitCount: filters.limitCount,
+      startAfterDoc: filters.startAfterDoc,
+    });
+  }
+
+  const collName = getSubjectPoolCollection(filters.subject);
+  const count = filters.limitCount ?? 50;
+  const constraints: QueryConstraint[] = [];
+
+  if (filters.topic && filters.topic !== 'all') {
+    constraints.push(where('topic', '==', filters.topic));
+  }
+  if (filters.difficulty && filters.difficulty !== 'all') {
+    constraints.push(where('difficulty', '==', filters.difficulty.toLowerCase()));
+  }
+  if (filters.status && filters.status !== 'all') {
+    constraints.push(where('status', '==', filters.status.toLowerCase()));
+  }
+  if (filters.startAfterDoc) {
+    constraints.push(startAfter(filters.startAfterDoc));
+  }
+  constraints.push(limit(count));
+
+  try {
+    const q = query(collection(db, collName), ...constraints);
+    const snap = await getDocs(q);
+
+    let questions: Question[] = snap.docs.map((d) => {
+      const data = d.data();
+      const rawOpts = Array.isArray(data.options) ? data.options : ['', '', '', ''];
+      const text = data.text || data.q || data.question || '';
+      return {
+        id: d.id,
+        ...data,
+        subject: filters.subject.toLowerCase(),
+        chapter: data.topic || data.chapter || 'general',
+        topic: data.topic || data.chapter || 'general',
+        difficulty: (data.difficulty || 'medium').toLowerCase() as 'easy' | 'medium' | 'hard',
+        status: (data.status || 'published').toLowerCase() as 'draft' | 'reviewed' | 'published',
+        active: data.active !== false,
+        q: text,
+        question: text,
+        stem: text,
+        options: [rawOpts[0] || '', rawOpts[1] || '', rawOpts[2] || '', rawOpts[3] || ''],
+        tags: Array.isArray(data.tags) ? data.tags : ['entrance'],
+        rand: typeof data.rand === 'number' ? data.rand : 0.5,
+        schemaVersion: 1,
+        contentHash: data.contentHash || '',
+        createdAt: data.createdAt,
+        updatedAt: data.updatedAt,
+        createdBy: data.createdBy || '',
+        correct: typeof data.correct === 'number' ? data.correct : (typeof data.correctAnswer === 'number' ? data.correctAnswer : 0),
+        correctAnswer: typeof data.correctAnswer === 'number' ? data.correctAnswer : (typeof data.correct === 'number' ? data.correct : 0),
+        explain: data.explain || data.explanation || '',
+        explanation: data.explanation || data.explain || '',
+      } as Question;
+    });
+
+    if (filters.search && filters.search.trim()) {
+      const term = filters.search.toLowerCase().trim();
+      questions = questions.filter((item) =>
+        (item.q || item.question || '').toLowerCase().includes(term) ||
+        (item.topic || item.chapter || '').toLowerCase().includes(term) ||
+        item.id.toLowerCase().includes(term) ||
+        item.options.some((o) => o.toLowerCase().includes(term))
+      );
+    }
+
+    const last = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
+    const hasMore = snap.docs.length >= count;
+
+    return {
+      questions,
+      lastDoc: last,
+      hasMore,
+    };
+  } catch (err: unknown) {
+    console.warn(`[AdminService] fetchPoolQuestionsPaginated ${collName} notice:`, err);
+    // If composite query fails due to missing index, fallback to simple fetch and filter in-memory
+    try {
+      const fallbackSnap = await getDocs(query(collection(db, collName), limit(count * 2)));
+      let questions: Question[] = fallbackSnap.docs.map((d) => {
+        const data = d.data();
+        const rawOpts = Array.isArray(data.options) ? data.options : ['', '', '', ''];
+        const text = data.text || data.q || data.question || '';
+        return {
+          id: d.id,
+          ...data,
+          subject: filters.subject.toLowerCase(),
+          chapter: data.topic || data.chapter || 'general',
+          topic: data.topic || data.chapter || 'general',
+          difficulty: (data.difficulty || 'medium').toLowerCase() as 'easy' | 'medium' | 'hard',
+          status: (data.status || 'published').toLowerCase() as 'draft' | 'reviewed' | 'published',
+          active: data.active !== false,
+          q: text,
+          question: text,
+          stem: text,
+          options: [rawOpts[0] || '', rawOpts[1] || '', rawOpts[2] || '', rawOpts[3] || ''],
+          tags: Array.isArray(data.tags) ? data.tags : ['entrance'],
+          rand: typeof data.rand === 'number' ? data.rand : 0.5,
+          schemaVersion: 1,
+          contentHash: data.contentHash || '',
+          createdAt: data.createdAt,
+          updatedAt: data.updatedAt,
+          createdBy: data.createdBy || '',
+          correct: typeof data.correct === 'number' ? data.correct : 0,
+          explain: data.explain || data.explanation || '',
+        } as Question;
+      });
+
+      if (filters.topic && filters.topic !== 'all') {
+        questions = questions.filter((q) => q.topic === filters.topic || q.chapter === filters.topic);
+      }
+      if (filters.difficulty && filters.difficulty !== 'all') {
+        questions = questions.filter((q) => q.difficulty === filters.difficulty);
+      }
+      if (filters.status && filters.status !== 'all') {
+        questions = questions.filter((q) => q.status === filters.status);
+      }
+      if (filters.search && filters.search.trim()) {
+        const term = filters.search.toLowerCase().trim();
+        questions = questions.filter((item) =>
+          (item.q || item.question || '').toLowerCase().includes(term) ||
+          (item.topic || item.chapter || '').toLowerCase().includes(term) ||
+          item.id.toLowerCase().includes(term)
+        );
+      }
+
+      return {
+        questions: questions.slice(0, count),
+        lastDoc: null,
+        hasMore: false,
+      };
+    } catch (fallbackErr) {
+      console.warn('[AdminService] fetchPoolQuestions secondary fallback:', fallbackErr);
+      return {
+        questions: [],
+        lastDoc: null,
+        hasMore: false,
+      };
+    }
+  }
+}
+
+export async function saveSubjectPoolQuestion(
+  adminEmail: string,
+  question: {
+    id?: string;
+    subject: string;
+    topic: string;
+    text: string;
+    options: [string, string, string, string];
+    correct: number;
+    explain?: string;
+    difficulty: 'easy' | 'medium' | 'hard';
+    status: 'draft' | 'reviewed' | 'published';
+  }
+): Promise<string> {
+  const normSub = question.subject.toLowerCase().trim();
+  const collName = getSubjectPoolCollection(normSub);
+  const qId = question.id && !question.id.startsWith('q_custom')
+    ? question.id
+    : `pool_${normSub}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const qText = (question.text || '').trim();
+  const topic = (question.topic || 'General Concepts').trim();
+  const cHash = await computeContentHash(qText, question.options);
+
+  const docData: Record<string, unknown> = {
+    id: qId,
+    subject: normSub,
+    topic,
+    chapter: topic,
+    text: qText,
+    q: qText,
+    question: qText,
+    options: question.options,
+    correct: question.correct,
+    correctAnswer: question.correct,
+    explain: (question.explain || '').trim(),
+    explanation: (question.explain || '').trim(),
+    difficulty: question.difficulty,
+    status: question.status,
+    active: true,
+    rand: Math.random(),
+    contentHash: cHash,
+    updatedAt: serverTimestamp(),
+    createdBy: adminEmail,
+  };
+
+  await setDoc(doc(db, collName, qId), docData, { merge: true });
+  await logAdminAction(adminEmail, 'save_pool_question', {
+    pool: collName,
+    questionId: qId,
+    topic,
+    subject: normSub,
+  });
+
+  return qId;
+}
+
+export async function deletePoolQuestion(
+  adminEmail: string,
+  subject: string,
+  questionId: string
+): Promise<void> {
+  const collName = getSubjectPoolCollection(subject);
+  await deleteDoc(doc(db, collName, questionId));
+  await logAdminAction(adminEmail, 'delete_pool_question', {
+    pool: collName,
+    subject,
+    questionId,
+  });
+}
+
+export async function renamePoolTopic(
+  adminEmail: string,
+  subject: string,
+  oldTopic: string,
+  newTopic: string
+): Promise<number> {
+  const collName = getSubjectPoolCollection(subject);
+  const snap = await getDocs(collection(db, collName));
+  const toUpdate: QueryDocumentSnapshot<DocumentData>[] = [];
+
+  const targetOld = oldTopic.trim().toLowerCase();
+  for (const d of snap.docs) {
+    const data = d.data();
+    const currTopic = (data.topic || data.chapter || '').trim().toLowerCase();
+    if (currTopic === targetOld) {
+      toUpdate.push(d);
+    }
+  }
+
+  const cleanNew = newTopic.trim();
+  const chunkSize = 400;
+  let count = 0;
+  for (let i = 0; i < toUpdate.length; i += chunkSize) {
+    const chunk = toUpdate.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+    for (const d of chunk) {
+      batch.update(d.ref, {
+        topic: cleanNew,
+        chapter: cleanNew,
+        updatedAt: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    count += chunk.length;
+  }
+
+  await logAdminAction(adminEmail, 'rename_pool_topic', {
+    pool: collName,
+    subject,
+    oldTopic,
+    newTopic: cleanNew,
+    count,
+  });
+
+  return count;
+}
+
+export async function moveQuestionsToTopic(
+  adminEmail: string,
+  subject: string,
+  questionIds: string[],
+  newTopic: string
+): Promise<number> {
+  const collName = getSubjectPoolCollection(subject);
+  const cleanNew = newTopic.trim();
+  const chunkSize = 400;
+  let count = 0;
+
+  for (let i = 0; i < questionIds.length; i += chunkSize) {
+    const chunk = questionIds.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+    for (const id of chunk) {
+      batch.update(doc(db, collName, id), {
+        topic: cleanNew,
+        chapter: cleanNew,
+        updatedAt: serverTimestamp(),
+      });
+    }
+    await batch.commit();
+    count += chunk.length;
+  }
+
+  await logAdminAction(adminEmail, 'move_pool_questions_topic', {
+    pool: collName,
+    subject,
+    questionCount: count,
+    newTopic: cleanNew,
+  });
+
+  return count;
+}
+
+export async function batchImportPoolQuestions(
+  adminEmail: string,
+  targetSubject: string,
+  defaultTopic: string,
+  rawRows: Array<Record<string, unknown>>,
+  onProgress?: (done: number, total: number) => void
+): Promise<ImportResult> {
+  const result: ImportResult = {
+    imported: 0,
+    duplicatesSkipped: 0,
+    errors: [],
+  };
+
+  const poolColl = getSubjectPoolCollection(targetSubject);
+
+  // 1. Fetch existing hashes in the pool to skip duplicates
+  const existingHashes = new Set<string>();
+  try {
+    const existingSnap = await getDocs(query(collection(db, poolColl), limit(3000)));
+    for (const d of existingSnap.docs) {
+      const h = d.data().contentHash;
+      if (h) existingHashes.add(h);
+    }
+  } catch (hErr) {
+    console.warn('[AdminService] Existing pool hashes gathering note:', hErr);
+  }
+
+  const validItems: Array<{ qId: string; docData: Record<string, unknown> }> = [];
+
+  for (const row of rawRows) {
+    const rowSub = (row.subject ? String(row.subject) : targetSubject).trim().toLowerCase();
+    const rowTopic = (row.topic || row.chapter ? String(row.topic || row.chapter) : defaultTopic).trim();
+    const qText = (row.text || row.q || row.question || row.stem ? String(row.text || row.q || row.question || row.stem) : '').trim();
+
+    let options: [string, string, string, string] = ['', '', '', ''];
+    if (Array.isArray(row.options) && row.options.length >= 4) {
+      options = [String(row.options[0] || ''), String(row.options[1] || ''), String(row.options[2] || ''), String(row.options[3] || '')];
+    } else {
+      const optA = String(row.optionA || row.option_a || row.opt1 || row.a || '').trim();
+      const optB = String(row.optionB || row.option_b || row.opt2 || row.b || '').trim();
+      const optC = String(row.optionC || row.option_c || row.opt3 || row.c || '').trim();
+      const optD = String(row.optionD || row.option_d || row.opt4 || row.d || '').trim();
+      options = [optA, optB, optC, optD];
+    }
+
+    if (!qText || options.some((o) => !o.trim())) {
+      result.errors.push('Row skipped due to empty stem or options.');
+      continue;
+    }
+
+    const cHash = await computeContentHash(qText, options);
+    if (existingHashes.has(cHash)) {
+      result.duplicatesSkipped++;
+      continue;
+    }
+    existingHashes.add(cHash);
+
+    // Resolve correct answer
+    const rawCorrect = row.correct !== undefined ? row.correct : (row.correctAnswer !== undefined ? row.correctAnswer : row.answer);
+    const resolved = normalizeCorrectAnswer(rawCorrect, options);
+    const correctIdx = resolved ? resolved.correctIndex : 0;
+
+    const explain = String(row.explain || row.explanation || '').trim();
+    const diff = (String(row.difficulty || 'medium').toLowerCase() as 'easy' | 'medium' | 'hard');
+    const status = (String(row.status || 'published').toLowerCase() as 'draft' | 'reviewed' | 'published');
+
+    const qId = `pool_${rowSub}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    validItems.push({
+      qId,
+      docData: {
+        id: qId,
+        subject: rowSub,
+        topic: rowTopic,
+        chapter: rowTopic,
+        text: qText,
+        q: qText,
+        question: qText,
+        options,
+        correct: correctIdx,
+        correctAnswer: correctIdx,
+        explain,
+        explanation: explain,
+        difficulty: diff,
+        status,
+        active: true,
+        rand: Math.random(),
+        contentHash: cHash,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        createdBy: adminEmail,
+      },
+    });
+  }
+
+  // Batch insert
+  const chunkSize = 400;
+  for (let i = 0; i < validItems.length; i += chunkSize) {
+    const chunk = validItems.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+    for (const item of chunk) {
+      const targetColl = getSubjectPoolCollection(String(item.docData.subject));
+      batch.set(doc(db, targetColl, item.qId), item.docData);
+    }
+    await batch.commit();
+    result.imported += chunk.length;
+    if (onProgress) onProgress(result.imported, validItems.length);
+  }
+
+  await logAdminAction(adminEmail, 'batch_import_pool_questions', {
+    targetSubject,
+    imported: result.imported,
+    duplicatesSkipped: result.duplicatesSkipped,
+  });
+
+  return result;
+}
+

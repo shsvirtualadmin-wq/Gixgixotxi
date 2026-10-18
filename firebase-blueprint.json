@@ -191,9 +191,31 @@
         "maintenanceMode": { "type": "boolean" },
         "admins": { "type": "array" }
       }
+    },
+    "SubjectPoolQuestion": {
+      "title": "SubjectPoolQuestion",
+      "description": "MCQ record in dedicated subject pool (e.g. questions_mathematics) with topic, stem, options, correct answer, explanation, and status.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "subject": { "type": "string" },
+        "topic": { "type": "string" },
+        "chapter": { "type": "string" },
+        "text": { "type": "string" },
+        "options": { "type": "array" },
+        "correct": { "type": "number" },
+        "explain": { "type": "string" },
+        "difficulty": { "type": "string", "enum": ["easy", "medium", "hard"] },
+        "status": { "type": "string", "enum": ["draft", "reviewed", "published"] }
+      },
+      "required": ["id", "subject", "topic", "text", "options", "difficulty", "status"]
     }
   },
   "firestore": {
+    "/questions_mathematics/{qId}": {
+      "schema": { "$ref": "#/entities/SubjectPoolQuestion" },
+      "description": "Dedicated subject question pool for Mathematics MCQs."
+    },
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "User profiles, roles, plan metadata and daily allowances."

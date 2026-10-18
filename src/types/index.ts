@@ -99,6 +99,33 @@ export interface Question {
 }
 
 /**
+ * Question document stored in dedicated subject pools (e.g. `questions_mathematics/{id}`).
+ * Contains subject, topic/chapter, text, options, correct answer, explanation, difficulty, status.
+ */
+export interface SubjectPoolQuestion {
+  id: string;
+  subject: string;
+  topic: string;
+  chapter?: string;
+  text: string;
+  q?: string;
+  question?: string;
+  options: [string, string, string, string];
+  correctAnswer: number;
+  correct?: number;
+  explanation: string;
+  explain?: string;
+  difficulty: QuestionDifficulty;
+  status: QuestionStatus;
+  active?: boolean;
+  rand?: number;
+  contentHash?: string;
+  createdAt?: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
+  updatedAt?: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
+  createdBy?: string;
+}
+
+/**
  * Secret key document stored in `questionKeys/{id}` with restricted permissions.
  */
 export interface QuestionKey {

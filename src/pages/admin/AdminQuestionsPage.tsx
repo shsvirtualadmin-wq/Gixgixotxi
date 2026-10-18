@@ -16,6 +16,11 @@ import {
   Sparkles,
   Database,
   ExternalLink,
+  ArrowLeft,
+  FolderEdit,
+  Folder,
+  Layers,
+  ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { MathText, validateMath } from '@/components/ui/MathText';
@@ -30,8 +35,20 @@ import {
   batchImportQuestions,
   fetchQuestionReports,
   updateQuestionReportStatus,
+  getSubjectPoolCollection,
+  isSubjectPoolSupported,
+  fetchSubjectPoolCounts,
+  fetchSubjectTopics,
+  fetchPoolQuestionsPaginated,
+  saveSubjectPoolQuestion,
+  deletePoolQuestion,
+  renamePoolTopic,
+  moveQuestionsToTopic,
+  batchImportPoolQuestions,
+  seedInitialMathPool,
   type BankHealthStats,
   type ImportCandidate,
+  type PoolTopicCount,
 } from '@/services/adminService';
 import {
   getAllSubjects,
@@ -102,18 +119,26 @@ export function AdminQuestionsPage() {
   // Active view: 'list' | 'health' | 'reports' | 'import'
   const [activeTab, setActiveTab] = useState<'list' | 'health' | 'reports' | 'import'>('list');
 
+  // Subject Picker state: null means show subject picker first (nothing loads until a subject is chosen)
+  const [selectedSubject, setSelectedSubject] = useState<string | null>(null);
+  const [subjectCounts, setSubjectCounts] = useState<Record<string, number>>({});
+  const [subjectCountsLoading, setSubjectCountsLoading] = useState(false);
+
+  // Topic filter state inside chosen subject
+  const [topics, setTopics] = useState<PoolTopicCount[]>([]);
+  const [selectedTopic, setSelectedTopic] = useState<string>('all');
+  const [topicsLoading, setTopicsLoading] = useState(false);
+
   // Question list state
   const [questions, setQuestions] = useState<Question[]>([]);
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [hasMore, setHasMore] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<AdminDiagnosticError | null>(null);
 
-  // Filters & Search
+  // Filters & Search inside chosen subject/topic
   const [search, setSearch] = useState('');
-  const [subjectFilter, setSubjectFilter] = useState('all');
-  const [chapterFilter, setChapterFilter] = useState('all');
   const [difficultyFilter, setDifficultyFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
 
@@ -130,15 +155,32 @@ export function AdminQuestionsPage() {
   const [reports, setReports] = useState<QuestionReport[]>([]);
   const [reportsLoading, setReportsLoading] = useState(false);
 
+  // Rename topic modal state
+  const [isRenameModalOpen, setIsRenameModalOpen] = useState(false);
+  const [topicToRename, setTopicToRename] = useState<string>('');
+  const [newTopicNameInput, setNewTopicNameInput] = useState<string>('');
+  const [renamingTopic, setRenamingTopic] = useState(false);
+
+  // Move questions to another topic modal state
+  const [isMoveModalOpen, setIsMoveModalOpen] = useState(false);
+  const [targetMoveTopic, setTargetMoveTopic] = useState<string>('');
+  const [targetMoveNewTopic, setTargetMoveNewTopic] = useState<string>('');
+  const [movingQuestions, setMovingQuestions] = useState(false);
+
+  // Seeding initial math pool state
+  const [seedingMath, setSeedingMath] = useState(false);
+
   // Edit / Add Modal state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [modalTab, setModalTab] = useState<'question' | 'key' | 'preview'>('question');
   const [previewTheme, setPreviewTheme] = useState<'light' | 'dark'>('dark');
   const [previewShowKey, setPreviewShowKey] = useState(true);
+  const [isCustomTopicAdd, setIsCustomTopicAdd] = useState(false);
+  const [customTopicNameInput, setCustomTopicNameInput] = useState('');
   const [editingQuestion, setEditingQuestion] = useState<{
     id?: string;
     subject: string;
-    chapter: string;
+    chapter: string; // Used as topic/chapter
     difficulty: 'easy' | 'medium' | 'hard';
     status: 'draft' | 'reviewed' | 'published';
     active: boolean;
@@ -157,15 +199,15 @@ export function AdminQuestionsPage() {
     currentVal: string;
   } | null>(null);
 
-  // New chapter inline creator inside modal
-  const [showNewChapterInput, setShowNewChapterInput] = useState(false);
-  const [newChapterName, setNewChapterName] = useState('');
-
   // Delete modal state
   const [questionToDelete, setQuestionToDelete] = useState<Question | null>(null);
 
   // Import modal / panel state
   const [importSourceType, setImportSourceType] = useState<'csv' | 'json' | 'sheet'>('csv');
+  const [importSubject, setImportSubject] = useState<string>('mathematics');
+  const [importTopic, setImportTopic] = useState<string>('Calculus & Differentiation');
+  const [isCustomImportTopic, setIsCustomImportTopic] = useState(false);
+  const [customImportTopicInput, setCustomImportTopicInput] = useState('');
   const [importText, setImportText] = useState('');
   const [sheetUrl, setSheetUrl] = useState('');
   const [fetchingSheet, setFetchingSheet] = useState(false);
@@ -177,27 +219,53 @@ export function AdminQuestionsPage() {
 
   const subjects = useMemo(() => getAllSubjects(), []);
 
-  // ─── LOAD DATA ──────────────────────────────────────────────────────────────
+  // ─── LOAD SUBJECT COUNTS ────────────────────────────────────────────────────
+  const loadSubjectCounts = useCallback(async () => {
+    setSubjectCountsLoading(true);
+    try {
+      const counts = await fetchSubjectPoolCounts();
+      setSubjectCounts(counts);
+    } catch (err) {
+      console.warn('Failed to load subject counts:', err);
+    } finally {
+      setSubjectCountsLoading(false);
+    }
+  }, []);
+
+  // ─── LOAD TOPICS FOR SELECTED SUBJECT ───────────────────────────────────────
+  const loadTopics = useCallback(async (sub: string) => {
+    setTopicsLoading(true);
+    try {
+      const list = await fetchSubjectTopics(sub);
+      setTopics(list);
+    } catch (err) {
+      console.warn('Failed to load topics:', err);
+    } finally {
+      setTopicsLoading(false);
+    }
+  }, []);
+
+  // ─── LOAD QUESTIONS (ONLY WHEN SUBJECT IS CHOSEN) ───────────────────────────
   const loadData = useCallback(async () => {
+    if (!selectedSubject) {
+      setQuestions([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     setError(null);
     try {
-      const res = await fetchQuestionsPaginated({
+      const res = await fetchPoolQuestionsPaginated({
+        subject: selectedSubject,
+        topic: selectedTopic !== 'all' ? selectedTopic : undefined,
+        difficulty: difficultyFilter !== 'all' ? difficultyFilter : undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
         search,
-        subject: subjectFilter,
-        difficulty: difficultyFilter,
         limitCount: 50,
       });
 
-      let filtered = res.questions;
-      if (chapterFilter !== 'all') {
-        filtered = filtered.filter((q) => q.chapter === chapterFilter);
-      }
-      if (statusFilter !== 'all') {
-        filtered = filtered.filter((q) => q.status === statusFilter);
-      }
-
-      setQuestions(filtered);
+      setQuestions(res.questions);
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
     } catch (err: unknown) {
@@ -205,14 +273,14 @@ export function AdminQuestionsPage() {
       const e = err as Partial<AdminDiagnosticError>;
       setError({
         code: e?.code || 'QUESTIONS_FETCH_FAILED',
-        message: e?.message || 'Failed to load questions from database. Please verify Firestore permissions.',
-        collection: e?.collection || 'questions',
-        operation: e?.operation || 'fetchQuestionsPaginated',
+        message: e?.message || `Failed to load questions for ${selectedSubject}.`,
+        collection: isSubjectPoolSupported(selectedSubject) ? getSubjectPoolCollection(selectedSubject) : 'questions',
+        operation: 'fetchPoolQuestionsPaginated',
       });
     } finally {
       setLoading(false);
     }
-  }, [search, subjectFilter, chapterFilter, difficultyFilter, statusFilter]);
+  }, [selectedSubject, selectedTopic, search, difficultyFilter, statusFilter]);
 
   const loadHealth = useCallback(async () => {
     setHealthLoading(true);
@@ -240,6 +308,21 @@ export function AdminQuestionsPage() {
 
   useEffect(() => {
     if (!user) return;
+    loadSubjectCounts();
+  }, [user, loadSubjectCounts]);
+
+  useEffect(() => {
+    if (!user) return;
+    if (selectedSubject) {
+      loadTopics(selectedSubject);
+    } else {
+      setTopics([]);
+      setSelectedTopic('all');
+    }
+  }, [user, selectedSubject, loadTopics]);
+
+  useEffect(() => {
+    if (!user) return;
     loadData();
   }, [user, loadData]);
 
@@ -249,13 +332,15 @@ export function AdminQuestionsPage() {
   }, [activeTab, loadHealth, loadReports]);
 
   const handleLoadMore = async () => {
-    if (!lastDoc || loadingMore) return;
+    if (!lastDoc || loadingMore || !selectedSubject) return;
     setLoadingMore(true);
     try {
-      const res = await fetchQuestionsPaginated({
+      const res = await fetchPoolQuestionsPaginated({
+        subject: selectedSubject,
+        topic: selectedTopic !== 'all' ? selectedTopic : undefined,
+        difficulty: difficultyFilter !== 'all' ? difficultyFilter : undefined,
+        status: statusFilter !== 'all' ? statusFilter : undefined,
         search,
-        subject: subjectFilter,
-        difficulty: difficultyFilter,
         limitCount: 50,
         startAfterDoc: lastDoc,
       });
@@ -271,12 +356,13 @@ export function AdminQuestionsPage() {
 
   // ─── ADD / EDIT MODAL ───────────────────────────────────────────────────────
   const handleOpenAdd = () => {
-    const firstSubject = subjects[0]?.slug || 'mathematics';
-    const firstChapter = subjects[0]?.chapters[0]?.slug || 'integration-by-parts';
+    const defaultSub = selectedSubject || 'mathematics';
+    const defaultTopic =
+      selectedTopic !== 'all' ? selectedTopic : topics[0]?.name || 'Calculus & Differentiation';
     setEditingQuestion({
       id: undefined,
-      subject: firstSubject,
-      chapter: firstChapter,
+      subject: defaultSub,
+      chapter: defaultTopic,
       difficulty: 'medium',
       status: 'published',
       active: true,
@@ -288,31 +374,47 @@ export function AdminQuestionsPage() {
       correct: 0,
       explain: '',
     });
+    setIsCustomTopicAdd(false);
+    setCustomTopicNameInput('');
     setModalTab('question');
     setIsEditModalOpen(true);
   };
 
   const handleOpenEdit = async (q: Question) => {
-    const keyData = await fetchQuestionKey(q.id);
+    const sub = q.subject || selectedSubject || 'mathematics';
+    let correct = typeof q.correct === 'number' ? q.correct : 0;
+    let explain = q.explain || q.explanation || '';
+
+    // If key not in question doc, check questionKey
+    if (!isSubjectPoolSupported(sub)) {
+      const keyData = await fetchQuestionKey(q.id);
+      if (keyData) {
+        correct = keyData.correct ?? correct;
+        explain = keyData.explain || explain;
+      }
+    }
+
     const rawOpts = q.options && q.options.length >= 4 ? q.options : ['', '', '', ''];
-    const sSlug = findSubjectSlug(q.subject || 'mathematics') || 'mathematics';
-    const cSlug = findChapterSlug(sSlug, q.chapter || '') || '';
+    const sSlug = findSubjectSlug(sub) || sub;
+    const topic = q.topic || q.chapter || 'General Concepts';
 
     setEditingQuestion({
       id: q.id,
       subject: sSlug,
-      chapter: cSlug,
+      chapter: topic,
       difficulty: (q.difficulty || 'medium').toLowerCase() as 'easy' | 'medium' | 'hard',
       status: (q.status || 'published') as 'draft' | 'reviewed' | 'published',
       active: q.active !== false,
-      q: q.q || q.question || '',
+      q: q.q || q.question || q.stem || '',
       options: [rawOpts[0] || '', rawOpts[1] || '', rawOpts[2] || '', rawOpts[3] || ''],
       tags: Array.isArray(q.tags) ? q.tags : ['entrance'],
       source: q.source || '',
       year: q.year || '',
-      correct: keyData?.correct ?? (typeof q.correct === 'number' ? q.correct : 0),
-      explain: keyData?.explain || q.explain || '',
+      correct,
+      explain,
     });
+    setIsCustomTopicAdd(false);
+    setCustomTopicNameInput('');
     setModalTab('question');
     setIsEditModalOpen(true);
   };
@@ -335,27 +437,50 @@ export function AdminQuestionsPage() {
       }
     }
 
+    const finalTopic = (
+      isCustomTopicAdd && customTopicNameInput.trim()
+        ? customTopicNameInput.trim()
+        : editingQuestion.chapter
+    ).trim() || 'General Concepts';
+
     setSavingQuestion(true);
     try {
-      await saveQuestion(user.email, {
-        id: editingQuestion.id,
-        subject: editingQuestion.subject,
-        chapter: editingQuestion.chapter,
-        difficulty: editingQuestion.difficulty,
-        status: editingQuestion.status,
-        active: editingQuestion.active,
-        q: editingQuestion.q,
-        options: editingQuestion.options,
-        tags: editingQuestion.tags,
-        source: editingQuestion.source,
-        year: editingQuestion.year,
-        correct: editingQuestion.correct,
-        explain: editingQuestion.explain,
-      });
+      const isPool = isSubjectPoolSupported(editingQuestion.subject);
+      if (isPool) {
+        await saveSubjectPoolQuestion(user.email, {
+          id: editingQuestion.id,
+          subject: editingQuestion.subject,
+          topic: finalTopic,
+          text: editingQuestion.q,
+          options: editingQuestion.options,
+          correct: editingQuestion.correct,
+          explain: editingQuestion.explain,
+          difficulty: editingQuestion.difficulty,
+          status: editingQuestion.status,
+        });
+      } else {
+        await saveQuestion(user.email, {
+          id: editingQuestion.id,
+          subject: editingQuestion.subject,
+          chapter: finalTopic,
+          difficulty: editingQuestion.difficulty,
+          status: editingQuestion.status,
+          active: editingQuestion.active,
+          q: editingQuestion.q,
+          options: editingQuestion.options,
+          tags: editingQuestion.tags,
+          source: editingQuestion.source,
+          year: editingQuestion.year,
+          correct: editingQuestion.correct,
+          explain: editingQuestion.explain,
+        });
+      }
 
       setIsEditModalOpen(false);
       setEditingQuestion(null);
       await loadData();
+      if (selectedSubject) await loadTopics(selectedSubject);
+      await loadSubjectCounts();
     } catch (err) {
       console.error('Failed to save question:', err);
       alert('Could not save question. Please check permissions and database connectivity.');
@@ -367,11 +492,96 @@ export function AdminQuestionsPage() {
   const handleConfirmDelete = async () => {
     if (!questionToDelete || !user?.email) return;
     try {
-      await deleteQuestion(user.email, questionToDelete.id);
+      const sub = questionToDelete.subject || selectedSubject || 'mathematics';
+      if (isSubjectPoolSupported(sub)) {
+        await deletePoolQuestion(user.email, sub, questionToDelete.id);
+      } else {
+        await deleteQuestion(user.email, questionToDelete.id);
+      }
       setQuestionToDelete(null);
       await loadData();
+      if (selectedSubject) await loadTopics(selectedSubject);
+      await loadSubjectCounts();
     } catch (err) {
       console.error('Failed to delete question:', err);
+    }
+  };
+
+  // ─── RENAME TOPIC HANDLER ───────────────────────────────────────────────────
+  const handleRenameTopic = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user?.email || !selectedSubject || !topicToRename || !newTopicNameInput.trim()) return;
+    setRenamingTopic(true);
+    try {
+      const count = await renamePoolTopic(
+        user.email,
+        selectedSubject,
+        topicToRename,
+        newTopicNameInput.trim()
+      );
+      setBatchSuccessMessage(`Renamed topic to "${newTopicNameInput.trim()}" across ${count} questions.`);
+      setTimeout(() => setBatchSuccessMessage(null), 4000);
+      setIsRenameModalOpen(false);
+      const cleanNew = newTopicNameInput.trim();
+      setTopicToRename('');
+      setNewTopicNameInput('');
+      if (selectedTopic === topicToRename) {
+        setSelectedTopic(cleanNew);
+      }
+      await loadTopics(selectedSubject);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to rename topic:', err);
+      alert('Could not rename topic. Please try again.');
+    } finally {
+      setRenamingTopic(false);
+    }
+  };
+
+  // ─── MOVE QUESTIONS TO TOPIC HANDLER ────────────────────────────────────────
+  const handleMoveQuestions = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanTopic = (targetMoveNewTopic.trim() || targetMoveTopic).trim();
+    if (!user?.email || !selectedSubject || selectedIds.size === 0 || !cleanTopic) return;
+    setMovingQuestions(true);
+    try {
+      const count = await moveQuestionsToTopic(
+        user.email,
+        selectedSubject,
+        Array.from(selectedIds),
+        cleanTopic
+      );
+      setBatchSuccessMessage(`Moved ${count} questions to topic "${cleanTopic}".`);
+      setTimeout(() => setBatchSuccessMessage(null), 4000);
+      setSelectedIds(new Set());
+      setIsMoveModalOpen(false);
+      setTargetMoveTopic('');
+      setTargetMoveNewTopic('');
+      await loadTopics(selectedSubject);
+      await loadData();
+    } catch (err) {
+      console.error('Failed to move questions:', err);
+      alert('Could not move questions. Please try again.');
+    } finally {
+      setMovingQuestions(false);
+    }
+  };
+
+  // ─── SEED INITIAL MATH POOL HANDLER ─────────────────────────────────────────
+  const handleSeedMathPool = async () => {
+    if (!user?.email) return;
+    setSeedingMath(true);
+    try {
+      const count = await seedInitialMathPool(user.email);
+      setBatchSuccessMessage(`Seeded ${count} authentic MCQs into Mathematics pool!`);
+      setTimeout(() => setBatchSuccessMessage(null), 4000);
+      await loadTopics('mathematics');
+      await loadData();
+      await loadSubjectCounts();
+    } catch (err) {
+      console.error('Failed to seed math pool:', err);
+    } finally {
+      setSeedingMath(false);
     }
   };
 
@@ -550,8 +760,14 @@ export function AdminQuestionsPage() {
         return idx !== -1 && row[idx] !== undefined ? row[idx] : '';
       };
 
-      const subject = getCol('subject') || 'mathematics';
-      const chapter = getCol('chapter') || '';
+      const effectiveTopic = (
+        isCustomImportTopic && customImportTopicInput.trim()
+          ? customImportTopicInput.trim()
+          : importTopic
+      ).trim() || 'General Concepts';
+
+      const subject = getCol('subject') || importSubject || 'mathematics';
+      const chapter = getCol('topic') || getCol('chapter') || effectiveTopic;
       const diff = (getCol('difficulty') || 'medium').toLowerCase() as 'easy' | 'medium' | 'hard';
       const q = getCol('question') || getCol('q');
       const optA = getCol('option_a') || getCol('optiona') || getCol('opt1') || '';
@@ -601,14 +817,20 @@ export function AdminQuestionsPage() {
     setDryRunDuplicatesCount(0);
     setImportResult(null);
 
+    const effectiveTopic = (
+      isCustomImportTopic && customImportTopicInput.trim()
+        ? customImportTopicInput.trim()
+        : importTopic
+    ).trim() || 'General Concepts';
+
     try {
       if (importSourceType === 'json') {
         const parsed = JSON.parse(importText);
         const list = Array.isArray(parsed) ? parsed : [parsed];
         candidates = list.map((item) => ({
           question: {
-            subject: item.subject || 'mathematics',
-            chapter: item.chapter || '',
+            subject: item.subject || importSubject || 'mathematics',
+            chapter: item.topic || item.chapter || effectiveTopic,
             difficulty: (item.difficulty || 'medium').toLowerCase(),
             q: item.q || item.question || '',
             options: item.options || ['', '', '', ''],
@@ -699,11 +921,45 @@ export function AdminQuestionsPage() {
     if (dryRunCandidates.length === 0 || !user?.email) return;
     setImportProgress({ current: 0, total: dryRunCandidates.length });
     try {
-      const res = await batchImportQuestions(user.email, dryRunCandidates, (done, total) => {
-        setImportProgress({ current: done, total });
-      });
-      setImportResult({ imported: res.imported, duplicatesSkipped: res.duplicatesSkipped });
+      const effectiveTopic = (
+        isCustomImportTopic && customImportTopicInput.trim()
+          ? customImportTopicInput.trim()
+          : importTopic
+      ).trim() || 'General Concepts';
+
+      const isPool = isSubjectPoolSupported(importSubject);
+      if (isPool) {
+        const rawItems = dryRunCandidates.map((c) => ({
+          subject: c.question.subject || importSubject,
+          topic: c.question.chapter || effectiveTopic,
+          text: c.question.q,
+          options: c.question.options,
+          correct: c.key.correct,
+          explain: c.key.explain,
+          difficulty: c.question.difficulty,
+          status: c.question.status || 'published',
+        }));
+
+        const res = await batchImportPoolQuestions(
+          user.email,
+          importSubject,
+          effectiveTopic,
+          rawItems,
+          (done, total) => {
+            setImportProgress({ current: done, total });
+          }
+        );
+        setImportResult({ imported: res.imported, duplicatesSkipped: res.duplicatesSkipped });
+      } else {
+        const res = await batchImportQuestions(user.email, dryRunCandidates, (done, total) => {
+          setImportProgress({ current: done, total });
+        });
+        setImportResult({ imported: res.imported, duplicatesSkipped: res.duplicatesSkipped });
+      }
+
       await loadData();
+      if (selectedSubject) await loadTopics(selectedSubject);
+      await loadSubjectCounts();
       if (activeTab === 'health') loadHealth();
     } catch (err) {
       console.error('Import failed:', err);
@@ -818,132 +1074,309 @@ export function AdminQuestionsPage() {
 
       {/* ─── TAB 1: QUESTION LIST & BATCH OPERATIONS ────────────────────────── */}
       {activeTab === 'list' && (
-        <div className="space-y-4">
-          <AdminDiagnosticBanner
-            error={error}
-            collectionName="questions"
-            onRetry={loadData}
-            retrying={loading}
-          />
+        <div className="space-y-5">
+          {/* ─── VIEW 1: SUBJECT PICKER (SHOWN FIRST) ─────────────────────────── */}
+          {selectedSubject === null ? (
+            <div className="space-y-5 animate-fadeIn">
+              <div className="p-6 rounded-[24px] bg-[var(--card)] border border-[var(--border)]">
+                <div className="max-w-2xl">
+                  <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-[var(--accent)]/10 text-[var(--accent)] uppercase tracking-wider">
+                    Subject Pools
+                  </span>
+                  <h2 className="text-xl sm:text-2xl font-bold font-heading text-[var(--text)] mt-2">
+                    Select a Subject Pool
+                  </h2>
+                  <p className="text-xs sm:text-sm text-[var(--muted)] mt-1 leading-relaxed">
+                    Choose a subject to manage its dedicated questions and topics. Nothing loads into memory until a subject is selected.
+                  </p>
+                </div>
+              </div>
 
-          {/* Search & Multi-Filter bar */}
-          <div className="p-4 sm:p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3">
-            <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)]">
-              <Search size={16} className="text-[var(--muted)] shrink-0" />
-              <input
-                type="text"
-                placeholder="Search stem, chapter slug, or question ID..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full bg-transparent border-none text-[13px] font-heading text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
+              {/* Subject Cards Grid with Counts */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {subjects.map((sub) => {
+                  const isPool = isSubjectPoolSupported(sub.slug);
+                  const count = subjectCounts[sub.slug] ?? 0;
+
+                  return (
+                    <div
+                      key={sub.slug}
+                      onClick={() => {
+                        setSelectedSubject(sub.slug);
+                        setSelectedTopic('all');
+                      }}
+                      className={`p-5 rounded-[22px] border transition-all cursor-pointer group flex flex-col justify-between gap-4 ${
+                        isPool
+                          ? 'border-[var(--accent)]/60 bg-[var(--surface-2)] hover:border-[var(--accent)] hover:shadow-lg'
+                          : 'border-[var(--border)] bg-[var(--card)] hover:border-[var(--text)] hover:shadow-md'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-heading font-bold text-base text-[var(--text)] group-hover:text-[var(--accent)] transition-colors">
+                              {sub.name}
+                            </h3>
+                            {isPool && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--accent)] text-white uppercase tracking-wider shadow-xs">
+                                Dedicated Pool
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-[var(--muted)] mt-1.5 leading-snug">
+                            {isPool
+                              ? 'Dedicated standalone collection: questions_mathematics'
+                              : `${sub.chapters.length} syllabus topics registered`}
+                          </p>
+                        </div>
+
+                        <div className="w-8 h-8 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--muted)] group-hover:text-[var(--text)] group-hover:border-[var(--text)] transition-colors shrink-0">
+                          <ChevronRight size={16} />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between border-t border-[var(--border)] pt-3 text-xs">
+                        <span className="text-[var(--muted)]">Total Questions:</span>
+                        <span className="font-mono font-bold text-sm text-[var(--text)]">
+                          {subjectCountsLoading ? 'Counting...' : count.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            /* ─── VIEW 2: INSIDE CHOSEN SUBJECT POOL ───────────────────────────── */
+            <div className="space-y-4 animate-fadeIn">
+              <AdminDiagnosticBanner
+                error={error}
+                collectionName={isSubjectPoolSupported(selectedSubject) ? getSubjectPoolCollection(selectedSubject) : 'questions'}
+                onRetry={loadData}
+                retrying={loading}
               />
-            </div>
 
-            <div className="flex items-center gap-2 flex-wrap pt-1 text-[12px] font-heading">
-              {/* Subject Filter */}
-              <div className="flex items-center gap-1">
-                <span className="text-[var(--muted)] text-[11px]">Subject:</span>
-                <select
-                  value={subjectFilter}
-                  onChange={(e) => {
-                    setSubjectFilter(e.target.value);
-                    setChapterFilter('all');
-                  }}
-                  className="px-2.5 py-1 rounded-[8px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--text)] text-[12px]"
-                >
-                  <option value="all">All subjects</option>
-                  {subjects.map((s) => (
-                    <option key={s.slug} value={s.slug}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {/* Subject Pool Header with Back Button */}
+              <div className="p-4 sm:p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-[var(--border)]">
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedSubject(null);
+                        setSelectedTopic('all');
+                        setQuestions([]);
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--border)] bg-[var(--card-2)] hover:bg-[var(--surface-hover)] text-xs font-heading font-semibold text-[var(--text)] transition-colors cursor-pointer"
+                    >
+                      <ArrowLeft size={14} />
+                      <span>Back to Subjects</span>
+                    </button>
 
-              {/* Chapter Filter */}
-              {subjectFilter !== 'all' && (
-                <div className="flex items-center gap-1">
-                  <span className="text-[var(--muted)] text-[11px]">Chapter:</span>
-                  <select
-                    value={chapterFilter}
-                    onChange={(e) => setChapterFilter(e.target.value)}
-                    className="px-2.5 py-1 rounded-[8px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--text)] text-[12px]"
-                  >
-                    <option value="all">All chapters</option>
-                    {getChaptersForSubject(subjectFilter).map((c) => (
-                      <option key={c.slug} value={c.slug}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-bold font-heading text-[var(--text)] capitalize">
+                          {formatSubjectName(selectedSubject)} Pool
+                        </h2>
+                        {isSubjectPoolSupported(selectedSubject) && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[var(--accent)] text-white uppercase tracking-wider">
+                            Dedicated Pool
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[var(--muted)]">
+                        {isSubjectPoolSupported(selectedSubject)
+                          ? `Collection: ${getSubjectPoolCollection(selectedSubject)}`
+                          : 'General Question Bank'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {selectedSubject === 'mathematics' && questions.length === 0 && !loading && (
+                      <button
+                        type="button"
+                        onClick={handleSeedMathPool}
+                        disabled={seedingMath}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-[var(--accent)] bg-[var(--accent)]/10 text-[var(--accent)] text-xs font-heading font-semibold hover:bg-[var(--accent)]/20 transition-all cursor-pointer"
+                      >
+                        <Sparkles size={13} />
+                        <span>{seedingMath ? 'Seeding...' : 'Seed 10 Sample MCQs'}</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
-              )}
 
-              {/* Difficulty */}
-              <div className="flex items-center gap-1">
-                <span className="text-[var(--muted)] text-[11px]">Difficulty:</span>
-                <select
-                  value={difficultyFilter}
-                  onChange={(e) => setDifficultyFilter(e.target.value)}
-                  className="px-2.5 py-1 rounded-[8px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--text)] text-[12px]"
-                >
-                  <option value="all">All levels</option>
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
-              </div>
+                {/* Topic Chips with Counts */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-semibold text-[var(--muted)] uppercase tracking-wider">
+                      Filter by Topic ({topics.length} topics):
+                    </span>
+                    {selectedTopic !== 'all' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTopicToRename(selectedTopic);
+                          setNewTopicNameInput(selectedTopic);
+                          setIsRenameModalOpen(true);
+                        }}
+                        className="flex items-center gap-1 text-[11px] font-semibold text-[var(--accent)] hover:underline cursor-pointer"
+                      >
+                        <FolderEdit size={12} />
+                        <span>Rename "{selectedTopic}"</span>
+                      </button>
+                    )}
+                  </div>
 
-              {/* Status */}
-              <div className="flex items-center gap-1">
-                <span className="text-[var(--muted)] text-[11px]">Status:</span>
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className="px-2.5 py-1 rounded-[8px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--text)] text-[12px]"
-                >
-                  <option value="all">All statuses</option>
-                  <option value="published">Published</option>
-                  <option value="reviewed">Reviewed</option>
-                  <option value="draft">Draft</option>
-                </select>
-              </div>
-            </div>
+                  <div className="flex items-center gap-2 flex-wrap max-h-36 overflow-y-auto pr-1">
+                    {/* All Topics chip */}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedTopic('all')}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-heading transition-all cursor-pointer flex items-center gap-1.5 ${
+                        selectedTopic === 'all'
+                          ? 'bg-[var(--text)] text-[var(--bg)] font-bold shadow-xs'
+                          : 'bg-[var(--card-2)] text-[var(--muted)] hover:text-[var(--text)] border border-[var(--border)]'
+                      }`}
+                    >
+                      <span>All Topics</span>
+                      <span className="text-[10px] opacity-75 font-mono">
+                        ({topics.reduce((acc, t) => acc + t.count, 0)})
+                      </span>
+                    </button>
 
-            {/* Batch actions toolbar if items selected */}
-            {selectedIds.size > 0 && (
-              <div className="mt-2 p-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between flex-wrap gap-2 animate-fadeIn">
-                <div className="text-[12px] font-heading text-[var(--text)] font-semibold">
-                  {selectedIds.size} questions selected
+                    {/* Individual topic chips */}
+                    {topics.map((t) => {
+                      const isChosen = selectedTopic === t.name;
+                      return (
+                        <button
+                          key={t.name}
+                          type="button"
+                          onClick={() => setSelectedTopic(t.name)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-heading transition-all cursor-pointer flex items-center gap-1.5 ${
+                            isChosen
+                              ? 'bg-[var(--accent)] text-white font-bold shadow-xs'
+                              : 'bg-[var(--card-2)] text-[var(--muted)] hover:text-[var(--text)] border border-[var(--border)]'
+                          }`}
+                        >
+                          <span>{t.name}</span>
+                          <span className="text-[10px] opacity-75 font-mono">({t.count})</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleBatchPublish}
-                    disabled={batchActionLoading}
-                    className="px-3 py-1 rounded-[8px] text-[12px] font-heading font-medium bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 transition-colors"
-                  >
-                    Publish selected
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleBatchArchive}
-                    disabled={batchActionLoading}
-                    className="px-3 py-1 rounded-[8px] text-[12px] font-heading font-medium bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30 transition-colors"
-                  >
-                    Archive selected
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedIds(new Set())}
-                    className="px-2 py-1 text-[11px] text-[var(--muted)] hover:text-[var(--text)]"
-                  >
-                    Deselect all
-                  </button>
+
+                {/* Search & Difficulty & Status Filters */}
+                <div className="pt-2 border-t border-[var(--border)] space-y-3">
+                  <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)]">
+                    <Search size={16} className="text-[var(--muted)] shrink-0" />
+                    <input
+                      type="text"
+                      placeholder={`Search in ${formatSubjectName(selectedSubject)}${selectedTopic !== 'all' ? ` · ${selectedTopic}` : ''}...`}
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      className="w-full bg-transparent border-none text-[13px] font-heading text-[var(--text)] placeholder-[var(--muted)] focus:outline-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-3 flex-wrap text-[12px] font-heading">
+                    {/* Difficulty */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[var(--muted)] text-[11px]">Difficulty:</span>
+                      <select
+                        value={difficultyFilter}
+                        onChange={(e) => setDifficultyFilter(e.target.value)}
+                        className="px-2.5 py-1 rounded-[8px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--text)] text-[12px]"
+                      >
+                        <option value="all">All levels</option>
+                        <option value="easy">Easy</option>
+                        <option value="medium">Medium</option>
+                        <option value="hard">Hard</option>
+                      </select>
+                    </div>
+
+                    {/* Status */}
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[var(--muted)] text-[11px]">Status:</span>
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value)}
+                        className="px-2.5 py-1 rounded-[8px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--text)] text-[12px]"
+                      >
+                        <option value="all">All statuses</option>
+                        <option value="published">Published</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="draft">Draft</option>
+                      </select>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={loadData}
+                      disabled={loading}
+                      className="ml-auto text-[11px] text-[var(--muted)] hover:text-[var(--text)] flex items-center gap-1 cursor-pointer"
+                    >
+                      <RefreshCw size={11} className={loading ? 'animate-spin' : ''} />
+                      <span>Refresh Filtered</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* Batch Actions Toolbar when items selected */}
+                {selectedIds.size > 0 && (
+                  <div className="mt-2 p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between flex-wrap gap-2 animate-fadeIn">
+                    <div className="text-[12px] font-heading text-[var(--text)] font-semibold flex items-center gap-2">
+                      <span className="px-2 py-0.5 rounded-full bg-[var(--accent)] text-white text-[11px] font-bold">
+                        {selectedIds.size}
+                      </span>
+                      <span>questions selected</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTargetMoveTopic(topics[0]?.name || 'General Concepts');
+                          setTargetMoveNewTopic('');
+                          setIsMoveModalOpen(true);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] text-[12px] font-heading font-medium bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[var(--text)] transition-colors cursor-pointer"
+                      >
+                        <FolderEdit size={13} />
+                        <span>Move to Topic</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleBatchPublish}
+                        disabled={batchActionLoading}
+                        className="px-3 py-1.5 rounded-[10px] text-[12px] font-heading font-medium bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 border border-emerald-500/30 transition-colors"
+                      >
+                        Publish selected
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleBatchArchive}
+                        disabled={batchActionLoading}
+                        className="px-3 py-1.5 rounded-[10px] text-[12px] font-heading font-medium bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/30 transition-colors"
+                      >
+                        Archive selected
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSelectedIds(new Set())}
+                        className="px-2 py-1 text-[11px] text-[var(--muted)] hover:text-[var(--text)]"
+                      >
+                        Deselect all
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
           {/* Select all row */}
           {questions.length > 0 && (
@@ -1097,10 +1530,12 @@ export function AdminQuestionsPage() {
                   <span>Load More (Next 50)</span>
                 )}
               </button>
-            </div>
-          )}
-        </div>
-      )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    )}
 
       {/* ─── TAB 2: BANK HEALTH METRICS ──────────────────────────────────────── */}
       {activeTab === 'health' && (
@@ -1372,6 +1807,79 @@ export function AdminQuestionsPage() {
             </button>
           </div>
 
+          {/* Destination Subject Pool & Fallback Topic Selection */}
+          <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] space-y-3">
+            <span className="text-xs font-semibold uppercase text-[var(--muted)] tracking-wider block">
+              Destination Subject Pool &amp; Fallback Topic
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                  Target Subject (asks first):
+                </label>
+                <select
+                  value={importSubject}
+                  onChange={(e) => {
+                    const nextSub = e.target.value;
+                    setImportSubject(nextSub);
+                    loadTopics(nextSub);
+                  }}
+                  className="w-full px-3 py-2 rounded-[10px] bg-[var(--card)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                >
+                  {subjects.map((s) => (
+                    <option key={s.slug} value={s.slug}>
+                      {s.name} {isSubjectPoolSupported(s.slug) ? '★ (Dedicated Pool)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-[11px] font-heading text-[var(--muted)]">
+                    Default Topic (used if not in row):
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setIsCustomImportTopic(!isCustomImportTopic)}
+                    className="text-[10px] text-[var(--accent)] hover:underline font-semibold cursor-pointer"
+                  >
+                    {isCustomImportTopic ? 'Pick existing' : '+ Type new topic'}
+                  </button>
+                </div>
+
+                {isCustomImportTopic ? (
+                  <input
+                    type="text"
+                    value={customImportTopicInput}
+                    onChange={(e) => setCustomImportTopicInput(e.target.value)}
+                    placeholder="Enter new topic name..."
+                    className="w-full px-3 py-2 rounded-[10px] bg-[var(--card)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                  />
+                ) : (
+                  <select
+                    value={importTopic}
+                    onChange={(e) => setImportTopic(e.target.value)}
+                    className="w-full px-3 py-2 rounded-[10px] bg-[var(--card)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                  >
+                    {topics.length > 0 ? (
+                      topics.map((t) => (
+                        <option key={t.name} value={t.name}>
+                          {t.name} ({t.count} MCQs)
+                        </option>
+                      ))
+                    ) : (
+                      <option value="General Concepts">General Concepts</option>
+                    )}
+                  </select>
+                )}
+              </div>
+            </div>
+            <p className="text-[11px] text-[var(--muted)] italic">
+              Note: If your CSV rows contain "subject" or "topic"/"chapter" columns, those row values will be preserved. Otherwise, questions will be saved under the chosen subject pool and topic above. Duplicates are skipped on import.
+            </p>
+          </div>
+
           {/* Google Sheet URL form */}
           {importSourceType === 'sheet' && (
             <div className="space-y-3">
@@ -1606,28 +2114,28 @@ export function AdminQuestionsPage() {
               {/* TAB 1: QUESTION CONTENT */}
               {modalTab === 'question' && (
                 <div className="space-y-4 animate-fadeIn">
-                  {/* Subject and Chapter with inline add */}
+                  {/* Subject and Topic (Subject first, then Topic: pick existing or type new) */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
-                        Subject
+                        1. Subject (select first)
                       </label>
                       <select
                         value={editingQuestion.subject}
                         onChange={(e) => {
                           const s = e.target.value;
-                          const chapters = getChaptersForSubject(s);
+                          loadTopics(s);
                           setEditingQuestion({
                             ...editingQuestion,
                             subject: s,
-                            chapter: chapters[0]?.slug || '',
+                            chapter: 'General Concepts',
                           });
                         }}
                         className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
                       >
                         {subjects.map((s) => (
                           <option key={s.slug} value={s.slug}>
-                            {s.name}
+                            {s.name} {isSubjectPoolSupported(s.slug) ? '★ (Dedicated Pool)' : ''}
                           </option>
                         ))}
                       </select>
@@ -1636,45 +2144,44 @@ export function AdminQuestionsPage() {
                     <div>
                       <div className="flex items-center justify-between mb-1">
                         <label className="block text-[11px] font-heading text-[var(--muted)]">
-                          Chapter Slug
+                          2. Topic (pick existing or type new)
                         </label>
                         <button
                           type="button"
-                          onClick={() => setShowNewChapterInput(!showNewChapterInput)}
-                          className="text-[10px] text-[var(--accent)] hover:underline"
+                          onClick={() => setIsCustomTopicAdd(!isCustomTopicAdd)}
+                          className="text-[10px] text-[var(--accent)] hover:underline font-semibold cursor-pointer"
                         >
-                          + New chapter
+                          {isCustomTopicAdd ? 'Pick existing' : '+ Type new topic'}
                         </button>
                       </div>
 
-                      {showNewChapterInput ? (
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="text"
-                            placeholder="New chapter name..."
-                            value={newChapterName}
-                            onChange={(e) => setNewChapterName(e.target.value)}
-                            className="flex-1 px-2.5 py-1.5 rounded-[8px] bg-[var(--card-2)] border border-[var(--border)] text-[12px] text-[var(--text)]"
-                          />
-                          <button
-                            type="button"
-                            onClick={handleCreateNewChapter}
-                            className="px-2.5 py-1.5 rounded-[8px] bg-[var(--text)] text-[var(--bg)] text-[11px] font-bold"
-                          >
-                            Add
-                          </button>
-                        </div>
+                      {isCustomTopicAdd ? (
+                        <input
+                          type="text"
+                          placeholder="Type new topic name..."
+                          value={customTopicNameInput}
+                          onChange={(e) => setCustomTopicNameInput(e.target.value)}
+                          className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                        />
                       ) : (
                         <select
                           value={editingQuestion.chapter}
                           onChange={(e) => setEditingQuestion({ ...editingQuestion, chapter: e.target.value })}
                           className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
                         >
-                          {getChaptersForSubject(editingQuestion.subject).map((c) => (
-                            <option key={c.slug} value={c.slug}>
-                              {c.name} ({c.slug})
-                            </option>
-                          ))}
+                          {topics.length > 0 ? (
+                            topics.map((t) => (
+                              <option key={t.name} value={t.name}>
+                                {t.name} ({t.count} MCQs)
+                              </option>
+                            ))
+                          ) : (
+                            getChaptersForSubject(editingQuestion.subject).map((c) => (
+                              <option key={c.name} value={c.name}>
+                                {c.name}
+                              </option>
+                            ))
+                          )}
                         </select>
                       )}
                     </div>
@@ -2044,11 +2551,154 @@ export function AdminQuestionsPage() {
               <button
                 type="button"
                 onClick={handleConfirmDelete}
-                className="px-4 py-2 rounded-[12px] border border-[var(--red)] bg-[var(--red)] text-white text-[13px] font-heading font-semibold"
+                className="px-4 py-2 rounded-[12px] border border-[var(--red)] bg-[var(--red)] text-white text-[13px] font-heading font-semibold cursor-pointer"
               >
                 Delete Permanently
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── RENAME TOPIC MODAL ─────────────────────────────────────────────── */}
+      {isRenameModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm"
+            onClick={() => setIsRenameModalOpen(false)}
+          />
+          <div className="relative w-full max-w-[420px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+                Rename Topic
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsRenameModalOpen(false)}
+                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="font-heading text-[12px] text-[var(--muted)] leading-relaxed">
+              Renaming topic <strong>"{topicToRename}"</strong> will update all questions in the{' '}
+              <strong className="capitalize">{formatSubjectName(selectedSubject || '')}</strong> pool that currently belong to this topic.
+            </p>
+
+            <form onSubmit={handleRenameTopic} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                  New Topic Name:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={newTopicNameInput}
+                  onChange={(e) => setNewTopicNameInput(e.target.value)}
+                  placeholder="e.g. Sequences, Series & Binomial Theorem"
+                  className="w-full px-3 py-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsRenameModalOpen(false)}
+                  className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={renamingTopic || !newTopicNameInput.trim()}
+                  className="px-4 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                >
+                  {renamingTopic ? 'Updating...' : 'Save & Rename'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MOVE QUESTIONS TO TOPIC MODAL ────────────────────────────────────── */}
+      {isMoveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm"
+            onClick={() => setIsMoveModalOpen(false)}
+          />
+          <div className="relative w-full max-w-[440px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+                Move {selectedIds.size} Questions
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsMoveModalOpen(false)}
+                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="font-heading text-[12px] text-[var(--muted)] leading-relaxed">
+              Select the target topic in <strong className="capitalize">{formatSubjectName(selectedSubject || '')}</strong> to move the {selectedIds.size} selected question(s) into.
+            </p>
+
+            <form onSubmit={handleMoveQuestions} className="space-y-4">
+              <div className="space-y-2">
+                <label className="block text-[11px] font-heading text-[var(--muted)]">
+                  Target Topic:
+                </label>
+
+                {topics.length > 0 && (
+                  <select
+                    value={targetMoveTopic}
+                    onChange={(e) => setTargetMoveTopic(e.target.value)}
+                    className="w-full px-3 py-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                  >
+                    {topics.map((t) => (
+                      <option key={t.name} value={t.name}>
+                        {t.name} ({t.count} MCQs)
+                      </option>
+                    ))}
+                  </select>
+                )}
+
+                <div>
+                  <label className="block text-[10px] font-heading text-[var(--muted)] mb-1">
+                    Or create a new target topic:
+                  </label>
+                  <input
+                    type="text"
+                    value={targetMoveNewTopic}
+                    onChange={(e) => setTargetMoveNewTopic(e.target.value)}
+                    placeholder="Type new topic name..."
+                    className="w-full px-3 py-2 rounded-[10px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsMoveModalOpen(false)}
+                  className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={movingQuestions || (!targetMoveTopic && !targetMoveNewTopic.trim())}
+                  className="px-4 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold hover:opacity-90 disabled:opacity-50 cursor-pointer"
+                >
+                  {movingQuestions ? 'Moving Questions...' : 'Move Questions'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

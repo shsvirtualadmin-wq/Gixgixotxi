@@ -21,6 +21,8 @@ import {
   findSubjectSlug,
   findChapterSlug,
   formatSubjectName,
+  getSubjectPoolCollection,
+  isSubjectPoolSupported,
 } from '@/constants/taxonomy';
 import { getUniversityCriteria, getSectionCriteria } from '@/constants/universityCriteria';
 import type { QueryConstraint } from 'firebase/firestore';
@@ -219,22 +221,67 @@ export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Pr
     for (const split of criteria.subjectsSplit) {
       const subSlug = findSubjectSlug(split.subject) || split.subject.toLowerCase();
       try {
-        const subQuery = query(
-          questionsColl,
-          where('status', '==', 'published'),
-          where('active', '==', true),
-          where('subject', '==', subSlug),
-          limit(split.count * 2)
-        );
-        const snap = await getDocs(subQuery);
-        if (snap.empty) {
+        let pool: Question[] = [];
+
+        // Mathematics reads from dedicated subject pool
+        if (isSubjectPoolSupported(subSlug)) {
+          const poolColl = getSubjectPoolCollection(subSlug);
+          try {
+            const mathSnap = await getDocs(
+              query(collection(db, poolColl), where('status', '==', 'published'), limit(split.count * 2))
+            );
+            if (!mathSnap.empty) {
+              pool = mathSnap.docs
+                .map((d) => {
+                  const data = d.data();
+                  return {
+                    id: d.id,
+                    subject: 'mathematics',
+                    chapter: data.topic || data.chapter || 'general',
+                    topic: data.topic || data.chapter || 'general',
+                    difficulty: data.difficulty || 'medium',
+                    q: data.text || data.q || data.question || '',
+                    stem: data.text || data.q || data.question || '',
+                    options: Array.isArray(data.options) ? data.options : ['A', 'B', 'C', 'D'],
+                    tags: Array.isArray(data.tags) ? data.tags : ['entrance'],
+                    status: 'published',
+                    active: true,
+                    rand: Math.random(),
+                    schemaVersion: 1,
+                    contentHash: '',
+                    createdAt: null,
+                    updatedAt: null,
+                    createdBy: '',
+                  } as Question;
+                })
+                .filter((q) => !seenIds.has(q.id));
+            }
+          } catch (mathErr) {
+            console.warn('[testEngine] Full mock math pool notice:', mathErr);
+          }
+        }
+
+        // Other subjects (or fallback if pool empty) read from existing bank
+        if (pool.length < split.count) {
+          const subQuery = query(
+            questionsColl,
+            where('status', '==', 'published'),
+            where('active', '==', true),
+            where('subject', '==', subSlug),
+            limit(split.count * 2)
+          );
+          const snap = await getDocs(subQuery);
+          const bankPool = snap.docs
+            .map((d) => ({ id: d.id, ...d.data() } as Question))
+            .filter((q) => !seenIds.has(q.id));
+          pool = [...pool, ...bankPool];
+        }
+
+        if (pool.length === 0) {
           throw new Error(
             `Not enough questions yet for ${formatSubjectName(subSlug)}. Please select another subject or check back soon.`
           );
         }
-        const pool = snap.docs
-          .map((d) => ({ id: d.id, ...d.data() } as Question))
-          .filter((q) => !seenIds.has(q.id));
 
         const chosen = shuffleArray(pool).slice(0, split.count);
         chosen.forEach((q) => {
@@ -272,6 +319,67 @@ export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Pr
 
   const needed = Math.max(1, attempt.totalQuestions || 10);
   const subjectSlug = findSubjectSlug(attempt.subject || '') || (attempt.subject ? attempt.subject.toLowerCase() : undefined);
+
+  // Dedicated Mathematics pool: Drills, sprints and tests read from questions_mathematics
+  if (subjectSlug && isSubjectPoolSupported(subjectSlug)) {
+    try {
+      const poolColl = getSubjectPoolCollection(subjectSlug);
+      const mathConstraints: QueryConstraint[] = [
+        where('status', '==', 'published'),
+      ];
+      if (attempt.difficulty && attempt.difficulty !== 'all' && attempt.difficulty !== 'mixed') {
+        mathConstraints.push(where('difficulty', '==', attempt.difficulty.toLowerCase()));
+      }
+      mathConstraints.push(limit(needed * 3));
+
+      const poolSnap = await getDocs(query(collection(db, poolColl), ...mathConstraints));
+      if (!poolSnap.empty) {
+        const poolQuestions: Question[] = poolSnap.docs.map((d) => {
+          const data = d.data();
+          const qText = data.text || data.q || data.question || '';
+          return {
+            id: d.id,
+            subject: 'mathematics',
+            chapter: data.topic || data.chapter || 'general',
+            topic: data.topic || data.chapter || 'general',
+            difficulty: data.difficulty || 'medium',
+            q: qText,
+            question: qText,
+            stem: qText,
+            options: Array.isArray(data.options) ? data.options : ['A', 'B', 'C', 'D'],
+            status: data.status || 'published',
+            active: data.active !== false,
+            rand: data.rand ?? Math.random(),
+            schemaVersion: 1,
+            contentHash: data.contentHash || '',
+            createdAt: null,
+            updatedAt: null,
+            createdBy: '',
+          } as Question;
+        });
+
+        const chosen = shuffleArray(poolQuestions).slice(0, needed);
+        return chosen.map((q) => {
+          const rawOptions = Array.isArray(q.options) && q.options.length === 4
+            ? q.options
+            : (['A', 'B', 'C', 'D'] as [string, string, string, string]);
+          const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
+          return {
+            id: q.id,
+            q: q.q || q.stem || '',
+            options: shuffledOptions,
+            optionMapping,
+            subject: 'mathematics',
+            chapter: q.chapter || 'general',
+            difficulty: q.difficulty || 'medium',
+          };
+        });
+      }
+    } catch (poolErr) {
+      console.warn('[testEngine] Subject pool query notice, falling back to existing bank:', poolErr);
+    }
+  }
+
   const chapterSlug = attempt.chapter ? findChapterSlug(subjectSlug || 'mathematics', attempt.chapter) || attempt.chapter.toLowerCase() : undefined;
 
   const r = Math.random();
@@ -484,6 +592,20 @@ export async function submitAttempt(
   await Promise.all(
     questions.map(async (q) => {
       try {
+        // First check dedicated subject pool if applicable
+        if (q.subject && isSubjectPoolSupported(q.subject)) {
+          const poolColl = getSubjectPoolCollection(q.subject);
+          const poolSnap = await getDoc(doc(db, poolColl, q.id));
+          if (poolSnap.exists()) {
+            const pData = poolSnap.data();
+            questionKeyMap.set(q.id, {
+              correct: pData.correct !== undefined ? pData.correct : pData.correctAnswer,
+              explain: pData.explain || pData.explanation || '',
+            });
+            return;
+          }
+        }
+
         const keySnap = await getDoc(doc(db, 'questionKeys', q.id));
         if (keySnap.exists()) {
           const kData = keySnap.data();
@@ -751,6 +873,19 @@ export async function regradeAttempt(attemptId: string): Promise<AttemptDoc> {
   await Promise.all(
     questions.map(async (q) => {
       try {
+        if (q.subject && isSubjectPoolSupported(q.subject)) {
+          const poolColl = getSubjectPoolCollection(q.subject);
+          const poolSnap = await getDoc(doc(db, poolColl, q.id));
+          if (poolSnap.exists()) {
+            const pData = poolSnap.data();
+            questionKeyMap.set(q.id, {
+              correct: pData.correct !== undefined ? pData.correct : pData.correctAnswer,
+              explain: pData.explain || pData.explanation || '',
+            });
+            return;
+          }
+        }
+
         const keySnap = await getDoc(doc(db, 'questionKeys', q.id));
         if (keySnap.exists()) {
           const kData = keySnap.data();

@@ -32,6 +32,8 @@ import {
   getChaptersForSubject,
   formatSubjectName,
   formatChapterName,
+  isSubjectPoolSupported,
+  getSubjectPoolCollection,
 } from '@/constants/taxonomy';
 import {
   TARGET_UNIVERSITY_CRITERIA,
@@ -268,40 +270,44 @@ export function PracticePage() {
       }
     } else if (type === 'drill') {
       subjectSlugToUse = customConfig?.subject || drillSubject;
-      const selectedChaps = customConfig?.chapters || drillChapters;
-      targetChapterSlug = selectedChaps[0] || 'general';
+      targetChapterSlug = 'general';
       count = customConfig?.count || drillCount || 20;
       duration = count * 60; // 1 min per MCQ
-      const chapName = formatChapterName(subjectSlugToUse, targetChapterSlug);
-      title = selectedChaps.length > 1
-        ? `${formatSubjectName(subjectSlugToUse)} (${selectedChaps.length} Chapters) Drill`
-        : `${chapName} Drill`;
+      title = `${formatSubjectName(subjectSlugToUse)} Drill`;
     }
 
     // Pre-flight check for sprint & drill
     if (type !== 'full') {
       let questionsCount = 0;
       try {
-        const questionsColl = collection(db, 'questions');
-        const constraints: QueryConstraint[] = [
-          where('status', '==', 'published'),
-          where('active', '==', true),
-        ];
-
-        if (type === 'drill' && targetChapterSlug) {
-          constraints.push(where('chapter', '==', targetChapterSlug));
-        } else if (subjectSlugToUse && subjectSlugToUse !== 'all') {
-          constraints.push(where('subject', '==', subjectSlugToUse));
+        if (subjectSlugToUse && isSubjectPoolSupported(subjectSlugToUse)) {
+          const poolColl = getSubjectPoolCollection(subjectSlugToUse);
+          const poolSnap = await getDocs(
+            query(collection(db, poolColl), where('status', '==', 'published'), limit(count))
+          );
+          questionsCount = poolSnap.size;
         }
 
-        const snap = await getDocs(query(questionsColl, ...constraints, limit(count)));
-        questionsCount = snap.size;
+        if (questionsCount === 0) {
+          const questionsColl = collection(db, 'questions');
+          const constraints: QueryConstraint[] = [
+            where('status', '==', 'published'),
+            where('active', '==', true),
+          ];
 
-        if (questionsCount === 0 && type !== 'drill') {
-          const generalSnap = await getDocs(
-            query(questionsColl, where('status', '==', 'published'), where('active', '==', true), limit(count))
-          );
-          questionsCount = generalSnap.size;
+          if (subjectSlugToUse && subjectSlugToUse !== 'all') {
+            constraints.push(where('subject', '==', subjectSlugToUse));
+          }
+
+          const snap = await getDocs(query(questionsColl, ...constraints, limit(count)));
+          questionsCount = snap.size;
+
+          if (questionsCount === 0 && type !== 'drill') {
+            const generalSnap = await getDocs(
+              query(questionsColl, where('status', '==', 'published'), where('active', '==', true), limit(count))
+            );
+            questionsCount = generalSnap.size;
+          }
         }
       } catch (qErr: unknown) {
         if (import.meta.env.DEV) {
@@ -315,9 +321,7 @@ export function PracticePage() {
       if (questionsCount === 0) {
         if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
         setLaunchError(
-          type === 'drill'
-            ? `Not enough questions yet for this chapter. Please choose another chapter or try a 10-Minute Sprint.`
-            : `Not enough questions yet for ${formatSubjectName(subjectSlugToUse)}. Please choose another subject or check back soon.`
+          `Not enough questions yet for ${formatSubjectName(subjectSlugToUse)}. Please choose another subject or check back soon.`
         );
         setLaunching(false);
         setLaunchingType(null);
@@ -801,19 +805,16 @@ export function PracticePage() {
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[var(--accent)]">
-                      Step {drillStep} of 4
+                      Step {drillStep} of 2
                     </span>
                     <span className="text-[10px] text-[var(--muted)]">·</span>
-                    <span className="text-[10px] text-[var(--muted)]">Targeted Chapter Drill</span>
+                    <span className="text-[10px] text-[var(--muted)]">Practice Drill</span>
                   </div>
                   <h3
                     className="text-lg font-bold text-[var(--text)]"
                     style={{ fontFamily: 'var(--font-heading)' }}
                   >
-                    {drillStep === 1 && 'Choose Subject'}
-                    {drillStep === 2 && `Select ${formatSubjectName(drillSubject)} Chapters`}
-                    {drillStep === 3 && 'Questions & Difficulty'}
-                    {drillStep === 4 && 'Confirm & Launch Drill'}
+                    {drillStep === 1 ? 'Choose Subject' : `${formatSubjectName(drillSubject)} Drill Settings`}
                   </h3>
                 </div>
 
@@ -830,7 +831,7 @@ export function PracticePage() {
               {drillStep === 1 && (
                 <div className="space-y-4">
                   <p className="text-xs text-[var(--muted)]">
-                    Pick a subject to drill. In the next step, you will select individual chapters and view real accuracy diagnostics.
+                    Pick a subject to drill. Next, configure your question count and difficulty to start immediately.
                   </p>
 
                   <div className="grid grid-cols-2 gap-2.5">
@@ -842,8 +843,6 @@ export function PracticePage() {
                           type="button"
                           onClick={() => {
                             setDrillSubject(sub.slug);
-                            const firstChapter = sub.chapters[0]?.slug;
-                            setDrillChapters(firstChapter ? [firstChapter] : []);
                             setDrillStep(2);
                           }}
                           className={`p-4 rounded-2xl border text-left flex flex-col justify-between gap-3 transition-all cursor-pointer ${
@@ -857,7 +856,7 @@ export function PracticePage() {
                             <ChevronRight size={14} className="text-[var(--muted)]" />
                           </div>
                           <span className="text-[11px] text-[var(--muted)]">
-                            {sub.chapters.length} Chapters
+                            {isSubjectPoolSupported(sub.slug) ? 'Dedicated Pool' : 'Question Bank'}
                           </span>
                         </button>
                       );
@@ -866,101 +865,25 @@ export function PracticePage() {
                 </div>
               )}
 
-              {/* ── STEP 2: SELECT CHAPTER(S) WITH ACCURACY ── */}
+              {/* ── STEP 2: NUMBER OF MCQS + DIFFICULTY + START ── */}
               {drillStep === 2 && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between text-xs">
-                    <p className="text-[var(--muted)]">
-                      Select one or more chapters. Real accuracy calculated from your completed tests.
-                    </p>
-                    <span className="font-mono text-[11px] font-semibold text-[var(--text)] shrink-0 ml-2">
-                      {drillChapters.length} Selected
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-[50vh] overflow-y-auto pr-1">
-                    {currentSubjectChapters.map((c) => {
-                      const isSelected = drillChapters.includes(c.slug);
-                      return (
-                        <div
-                          key={c.slug}
-                          onClick={() => handleToggleDrillChapter(c.slug)}
-                          className={`p-3 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-2 ${
-                            isSelected
-                              ? 'border-[var(--accent)] bg-[var(--surface-2)] ring-1 ring-[var(--accent)]'
-                              : 'border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-2)]'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div
-                                className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                                  isSelected
-                                    ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
-                                    : 'border-[var(--border)]'
-                                }`}
-                              >
-                                {isSelected && <Check size={10} strokeWidth={3} />}
-                              </div>
-                              <span className="text-xs font-semibold text-[var(--text)] truncate">
-                                {c.name}
-                              </span>
-                            </div>
-
-                            <span
-                              className={`font-doto text-[11px] font-bold shrink-0 ${
-                                c.acc !== null ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
-                              }`}
-                            >
-                              {c.statusLabel}
-                            </span>
-                          </div>
-
-                          <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
-                            <span>{c.totalAnswered > 0 ? `${c.totalAnswered} MCQs tested` : 'Fresh chapter'}</span>
-                            <div className="flex items-center gap-0.5">
-                              {Array.from({ length: 7 }).map((_, i) => (
-                                <span
-                                  key={i}
-                                  className={`w-1 h-1 rounded-full ${
-                                    i < c.dots ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'
-                                  }`}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Navigation between steps */}
-                  <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
+                <div className="space-y-5">
+                  <div className="flex items-center justify-between p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[var(--muted)]">Subject:</span>
+                      <strong className="text-[var(--text)] font-semibold capitalize font-mono text-sm">
+                        {formatSubjectName(drillSubject)}
+                      </strong>
+                    </div>
                     <button
                       type="button"
                       onClick={() => setDrillStep(1)}
-                      className="btn-outline px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer"
+                      className="text-[11px] text-[var(--accent)] hover:underline font-semibold cursor-pointer"
                     >
-                      <ChevronLeft size={14} />
-                      <span>Back to Subjects</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={drillChapters.length === 0}
-                      onClick={() => setDrillStep(3)}
-                      className="btn-red px-5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer disabled:opacity-50"
-                    >
-                      <span>Continue</span>
-                      <ChevronRight size={14} />
+                      Change Subject
                     </button>
                   </div>
-                </div>
-              )}
 
-              {/* ── STEP 3: NUMBER OF MCQS + DIFFICULTY ── */}
-              {drillStep === 3 && (
-                <div className="space-y-5">
                   <div>
                     <label className="block text-xs font-bold text-[var(--text)] uppercase tracking-wider mb-2">
                       Number of Questions:
@@ -1006,72 +929,10 @@ export function PracticePage() {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
+                  <div className="flex items-center justify-between pt-3 border-t border-[var(--border)]">
                     <button
                       type="button"
-                      onClick={() => setDrillStep(2)}
-                      className="btn-outline px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer"
-                    >
-                      <ChevronLeft size={14} />
-                      <span>Back to Chapters</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setDrillStep(4)}
-                      className="btn-red px-5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>Review &amp; Start</span>
-                      <ChevronRight size={14} />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* ── STEP 4: SUMMARY & START DRILL ── */}
-              {drillStep === 4 && (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] space-y-2.5 text-xs">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[var(--muted)]">Subject:</span>
-                      <strong className="text-[var(--text)] font-semibold capitalize font-mono">
-                        {drillSubject}
-                      </strong>
-                    </div>
-
-                    <div className="flex items-start justify-between">
-                      <span className="text-[var(--muted)]">Chapters ({drillChapters.length}):</span>
-                      <div className="text-right max-w-[280px]">
-                        {drillChapters.map((slug) => (
-                          <span
-                            key={slug}
-                            className="inline-block text-[10px] font-mono px-2 py-0.5 rounded-md bg-[var(--surface)] border border-[var(--border)] text-[var(--text)] ml-1 mb-1"
-                          >
-                            {formatChapterName(drillSubject, slug)}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between border-t border-[var(--border)] pt-2">
-                      <span className="text-[var(--muted)]">Questions &amp; Time:</span>
-                      <strong className="text-[var(--text)] font-semibold font-mono">
-                        {drillCount} Questions · {drillCount} Minutes
-                      </strong>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <span className="text-[var(--muted)]">Difficulty &amp; Rules:</span>
-                      <strong className="text-[var(--text)] font-semibold font-mono capitalize">
-                        {drillDifficulty} · Standard (+1.0 / 0.0)
-                      </strong>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between pt-2 border-t border-[var(--border)]">
-                    <button
-                      type="button"
-                      onClick={() => setDrillStep(3)}
+                      onClick={() => setDrillStep(1)}
                       className="btn-outline px-3.5 py-2.5 rounded-xl text-xs font-semibold flex items-center gap-1 cursor-pointer"
                     >
                       <ChevronLeft size={14} />
@@ -1084,7 +945,6 @@ export function PracticePage() {
                         setDrillModalOpen(false);
                         launchTest('drill', {
                           subject: drillSubject,
-                          chapters: drillChapters,
                           count: drillCount,
                           difficulty: drillDifficulty,
                         });

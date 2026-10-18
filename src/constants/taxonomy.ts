@@ -371,3 +371,21 @@ export async function computeContentHash(q: string, options: string[]): Promise<
   }
   return `h_${(hash1 >>> 0).toString(16)}_${(hash2 >>> 0).toString(16)}`;
 }
+
+/**
+ * Returns dedicated Firestore collection name for subject pool (e.g. questions_mathematics).
+ */
+export function getSubjectPoolCollection(subject: string): string {
+  const norm = (subject || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '_');
+  return `questions_${norm}`;
+}
+
+/**
+ * Checks whether a subject has its own separate pool.
+ * Starts with Mathematics. Structure is generic so adding future subjects only requires listing here.
+ */
+export function isSubjectPoolSupported(subject: string): boolean {
+  const norm = (subject || '').trim().toLowerCase();
+  return norm === 'mathematics' || norm === 'math' || norm === 'maths';
+}
+
