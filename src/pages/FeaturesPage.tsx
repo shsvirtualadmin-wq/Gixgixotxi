@@ -64,11 +64,11 @@ const REAL_FEATURES = [
   {
     num: '06',
     icon: <Trophy size={22} />,
-    title: 'Boardly Arena & Live Grand Mocks',
+    title: 'Boardly Arena & Grand Line',
     badge: 'National Testing',
-    desc: 'Scheduled competitive mock sessions (Blitz and Arena) where students across Pakistan solve the same paper simultaneously under strict timers, generating nationwide percentile rankings.',
-    link: '/dashboard/arena',
-    linkText: 'View Live Arena',
+    desc: 'Competitive mock sessions and Grand Line public tests where students across Pakistan solve test papers created by Nakama Captains, generating nationwide percentile rankings.',
+    link: '/grand-line',
+    linkText: 'Explore Grand Line',
   },
   {
     num: '07',

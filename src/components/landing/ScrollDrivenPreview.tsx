@@ -27,9 +27,9 @@ const PREVIEWS = [
   },
   {
     screen: 3 as const,
-    title: 'Live Arena & Blitz',
-    subtitle: 'National synchronized mock',
-    desc: 'Compete in timed Sunday night sessions with national percentiles and instant anti-cheat auto-submission.',
+    title: 'Grand Line & Live Arena',
+    subtitle: 'National tests by Nakama Captains',
+    desc: 'Compete in open test sessions created by student leaders across Pakistan with live percentiles and rankings.',
     icon: Sparkles,
   },
 ];

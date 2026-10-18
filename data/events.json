@@ -1,9 +1,9 @@
 [
   {
-    "id": "event-blitz-01",
-    "type": "blitz",
-    "title": "Boardly Blitz: Fast-Paced Physics Mechanics Drill",
-    "description": "High-intensity 15-minute live speed drill covering Kinematics, Newton's Laws, and Circular Motion.",
+    "id": "event-grandline-01",
+    "type": "grandline",
+    "title": "Grand Line Speed Test: Fast-Paced Physics Mechanics Drill",
+    "description": "High-intensity 15-minute speed drill covering Kinematics, Newton's Laws, and Circular Motion.",
     "tierGating": "all",
     "subject": "Physics",
     "targetClass": "FBISE 11 & Entrance",

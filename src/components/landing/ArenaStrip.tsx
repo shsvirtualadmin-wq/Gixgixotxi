@@ -1,55 +1,36 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowRight, Trophy } from 'lucide-react';
-import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
-import { db } from '../../lib/firebase';
 import { Badge } from '../ui/Badge';
+import { getGlobalGrandLineTopScorers } from '@/services/ambassadorTestService';
 
-interface HonorStudent {
-  rank: string;
+interface TopScorer {
   name: string;
-  city: string;
-  target: string;
-  score: string;
-  percentile: string;
+  score: number;
 }
 
 export function ArenaStrip() {
-  const [honorRoll, setHonorRoll] = useState<HonorStudent[]>([]);
+  const [topScorers, setTopScorers] = useState<TopScorer[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadHonorRoll() {
+    async function load() {
       try {
-        const snap = await getDocs(query(collection(db, 'leaderboard'), orderBy('score', 'desc'), limit(4)));
-        if (!snap.empty) {
-          const list: HonorStudent[] = snap.docs.map((docSnap, i) => {
-            const data = docSnap.data();
-            return {
-              rank: String(i + 1).padStart(2, '0'),
-              name: data.displayName || 'Candidate',
-              city: data.city || 'Pakistan',
-              target: data.university || 'Engineering Track',
-              score: String(data.score ?? 0),
-              percentile: data.percentile ? `${data.percentile}%` : 'Top Rank',
-            };
-          });
-          setHonorRoll(list);
-        } else {
-          setHonorRoll([]);
-        }
+        const list = await getGlobalGrandLineTopScorers(4);
+        setTopScorers(list);
       } catch {
-        setHonorRoll([]);
+        setTopScorers([]);
       } finally {
         setLoading(false);
       }
     }
-    loadHonorRoll();
+    load();
   }, []);
+
   return (
-    <section id="arena" className="landing-section relative">
+    <section id="grand-line" className="landing-section relative">
       <div className="boardly-container">
-        {/* Blitz Banner Card: padding 24px, 1px red border, radius 24px, solid #111 */}
+        {/* Grand Line Banner Card */}
         <div
           className="p-6 sm:p-8 rounded-[24px] bg-[var(--card)] border border-[var(--red)] relative"
           style={{ boxShadow: 'none' }}
@@ -57,12 +38,10 @@ export function ArenaStrip() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 items-center">
             {/* Left Column: Event info */}
             <div className="flex flex-col items-start text-left gap-4">
-              {/* Badge: normal in-flow pill inside card (outlined red, red text, 13px) with red dot inside */}
               <Badge color="red-outline" dot>
-                National Competitive Arena
+                Grand Line
               </Badge>
 
-              {/* Heading in Doto font */}
               <h2
                 className="font-dot text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[var(--text)] tracking-tight leading-tight"
                 style={{
@@ -72,36 +51,22 @@ export function ArenaStrip() {
                   fontSize: 'clamp(24px, 5.5vw, 40px)',
                 }}
               >
-                Boardly Blitz: <span>Sunday 8:00 PM PKT</span>
+                Grand Line: Public Tests by Nakama Captains
               </h2>
 
-              {/* Paragraph */}
               <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed">
-                Compete against thousands of students across Karachi, Lahore, Islamabad, and beyond under strictly synchronized exam timers. See where your aggregate stands before test day.
+                Take tests created by Nakama Captains from across Pakistan. Enter your name and Gmail, take the test, and see where you rank.
               </p>
 
-              {/* Feature items: red dot INSIDE, 12px before text, stacked vertically on mobile */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 text-xs text-[var(--muted)] w-full">
-                <div className="flex items-center gap-3">
-                  <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
-                  <span>Anti-cheat auto-submit timer</span>
-                </div>
-                <div className="flex items-center gap-3">
-                  <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
-                  <span>Campus bragging rights</span>
-                </div>
-              </div>
-
-              {/* Button: full width on mobile, 16px gap */}
               <div className="pt-1 w-full sm:w-auto">
-                <Link to="/signup" className="btn-red w-full sm:w-auto group">
-                  <span>Register for Next Blitz</span>
+                <Link to="/grand-line" className="btn-red w-full sm:w-auto group">
+                  <span>Browse Grand Line</span>
                   <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
                 </Link>
               </div>
             </div>
 
-            {/* Right Column: Honor roll inner card with 16px padding, 24px space on all sides */}
+            {/* Right Column: Live Leaderboard Preview */}
             <div>
               <div className="p-4 rounded-[20px] bg-[var(--card-2)] border border-[var(--border)] flex flex-col gap-3">
                 <div className="flex items-center justify-between text-xs pb-3 border-b border-[var(--border)]">
@@ -110,13 +75,13 @@ export function ArenaStrip() {
                     style={{ fontFamily: 'var(--font-heading)' }}
                   >
                     <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
-                    Sunday Blitz Honor Roll
+                    Grand Line Top Scorers
                   </span>
                   <span
                     className="text-[var(--muted)] text-[13px]"
                     style={{ fontFamily: 'var(--font-heading)' }}
                   >
-                    Live rankings
+                    Live standings
                   </span>
                 </div>
 
@@ -124,39 +89,28 @@ export function ArenaStrip() {
                   <div className="py-8 text-center text-xs text-[var(--muted)]">
                     Loading standings...
                   </div>
-                ) : honorRoll.length > 0 ? (
+                ) : topScorers.length > 0 ? (
                   <div className="flex flex-col gap-2">
-                    {honorRoll.map(student => (
+                    {topScorers.map((student, idx) => (
                       <div
-                        key={student.rank + student.name}
+                        key={idx + student.name}
                         className="px-4 py-3.5 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-between text-xs"
                       >
                         <div className="flex items-center gap-3">
                           <span className="font-doto font-bold text-sm text-[var(--text)] w-6 text-left shrink-0">
-                            {student.rank}
+                            {String(idx + 1).padStart(2, '0')}
                           </span>
-                          <div>
-                            <div
-                              className="font-semibold text-[var(--text)]"
-                              style={{ fontFamily: 'var(--font-heading)' }}
-                            >
-                              {student.name}
-                            </div>
-                            <div className="text-[11px] text-[var(--muted)] mt-0.5">
-                              {student.city} · {student.target}
-                            </div>
+                          <div
+                            className="font-semibold text-[var(--text)]"
+                            style={{ fontFamily: 'var(--font-heading)' }}
+                          >
+                            {student.name}
                           </div>
                         </div>
 
                         <div className="text-right shrink-0">
                           <div className="font-doto font-bold text-sm text-[var(--text)]">
                             {student.score} pts
-                          </div>
-                          <div
-                            className="text-[12px] text-[var(--muted)] font-medium"
-                            style={{ fontFamily: 'var(--font-heading)' }}
-                          >
-                            {student.percentile}
                           </div>
                         </div>
                       </div>
@@ -168,17 +122,17 @@ export function ArenaStrip() {
                       <Trophy size={20} />
                     </div>
                     <div className="text-xs font-semibold text-[var(--text)]">
-                      Rankings Open This Sunday
+                      No attempts yet. Be the first.
                     </div>
                     <p className="text-[11px] text-[var(--muted)] max-w-xs mx-auto">
-                      Rankings update automatically after each Sunday Blitz session at 8:00 PM PKT.
+                      Nakama Captains publish tests on Grand Line anytime.
                     </p>
                   </div>
                 )}
 
                 <div className="pt-1 text-center">
                   <span className="text-[11px] text-[var(--muted)]">
-                    Participant privacy protected via masked initials.
+                    Real-time rankings from public Grand Line test attempts.
                   </span>
                 </div>
               </div>

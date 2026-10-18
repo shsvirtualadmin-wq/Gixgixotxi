@@ -73,10 +73,10 @@
     <priority>0.85</priority>
   </url>
   <url>
-    <loc>https://boardly.cfd/events/blitz</loc>
-    <lastmod>2026-10-11</lastmod>
+    <loc>https://boardly.cfd/grand-line</loc>
+    <lastmod>2026-10-18</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.8</priority>
+    <priority>0.85</priority>
   </url>
   <url>
     <loc>https://boardly.cfd/events/arena</loc>

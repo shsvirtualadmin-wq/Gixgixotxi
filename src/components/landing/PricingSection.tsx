@@ -45,7 +45,7 @@ export function PricingSection() {
                     '5 Boardy AI queries per day',
                     'Full KaTeX formula derivations',
                     'PKT midnight quota reset (Asia/Karachi)',
-                    'Live Blitz Arena participation',
+                    'Grand Line & Arena participation',
                   ].map(feature => (
                     <div key={feature} className="flex items-center gap-3 text-sm text-[var(--muted)]">
                       <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />

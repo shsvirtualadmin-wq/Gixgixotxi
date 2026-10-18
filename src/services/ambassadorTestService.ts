@@ -373,3 +373,31 @@ export function convertToRunnerQuestion(aq: AmbassadorQuestion, index: number): 
     source: 'Ambassador Drill',
   };
 }
+
+/**
+ * Retrieves top scorers across all Grand Line attempts for public landing preview.
+ * Returns only name and score.
+ */
+export async function getGlobalGrandLineTopScorers(limitCount = 4): Promise<Array<{ name: string; score: number }>> {
+  try {
+    const q = query(
+      collection(db, 'ambassador_test_attempts'),
+      limit(limitCount * 3)
+    );
+    const snap = await getDocs(q);
+    if (snap.empty) return [];
+
+    const attempts = snap.docs.map((d) => d.data() as GrandLineAttempt);
+    // Sort by score descending
+    attempts.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+    return attempts.slice(0, limitCount).map((att) => ({
+      name: att.name || 'Anonymous Student',
+      score: att.score || 0,
+    }));
+  } catch (err) {
+    console.warn('[ambassadorTestService] Global top scorers notice:', err);
+    return [];
+  }
+}
+

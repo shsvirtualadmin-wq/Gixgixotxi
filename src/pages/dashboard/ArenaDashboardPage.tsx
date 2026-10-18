@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { collection, query, orderBy, limit, getDocs, addDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -6,7 +7,7 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Clock, CheckCircle2, Award, Users } from 'lucide-react';
+import { Award, Users, Compass, ArrowRight } from 'lucide-react';
 
 interface LeaderboardItem {
   id: string;
@@ -27,97 +28,17 @@ interface CircleMember {
 
 export function ArenaDashboardPage() {
   const { user, profile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'leaderboard' | 'blitz' | 'circle'>('leaderboard');
+  const [activeTab, setActiveTab] = useState<'leaderboard' | 'grandline' | 'circle'>('leaderboard');
 
   // Leaderboard State
   const [leaderboard, setLeaderboard] = useState<LeaderboardItem[]>([]);
   const [loadingLeaderboard, setLoadingLeaderboard] = useState(true);
-
-  // Blitz State
-  const [blitzCountdown, setBlitzCountdown] = useState('');
-  const [registeredBlitz, setRegisteredBlitz] = useState(false);
-  const [registering, setRegistering] = useState(false);
 
   // Circle State
   const [circleCode, setCircleCode] = useState('FAST26');
   const [circleInput, setCircleInput] = useState('');
   const [circleMembers, setCircleMembers] = useState<CircleMember[]>([]);
   const [circleCreated, setCircleCreated] = useState(false);
-
-  // Calculate next Sunday 8:00 PM PKT
-  useEffect(() => {
-    function calcNextSunday() {
-      const now = new Date();
-      // PKT is UTC + 5
-      const pktOffset = 5 * 60;
-      const localOffset = now.getTimezoneOffset();
-      const pktNow = new Date(now.getTime() + (pktOffset + localOffset) * 60 * 1000);
-
-      // Target: Next Sunday at 20:00:00 PKT
-      const target = new Date(pktNow);
-      const day = target.getDay(); // 0 is Sunday
-      let daysUntilSunday = (7 - day) % 7;
-      if (day === 0 && target.getHours() >= 20) {
-        daysUntilSunday = 7;
-      }
-      target.setDate(target.getDate() + daysUntilSunday);
-      target.setHours(20, 0, 0, 0);
-
-      const diff = target.getTime() - pktNow.getTime();
-      const d = Math.floor(diff / (1000 * 60 * 60 * 24));
-      const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-      const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-      const s = Math.floor((diff % (1000 * 60)) / 1000);
-
-      setBlitzCountdown(`${d}d ${String(h).padStart(2, '0')}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`);
-    }
-
-    calcNextSunday();
-    const interval = setInterval(calcNextSunday, 1000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Fetch real leaderboard from Firestore
-  useEffect(() => {
-    async function fetchLeaderboard() {
-      setLoadingLeaderboard(true);
-      try {
-        const snap = await getDocs(query(collection(db, 'leaderboard'), orderBy('score', 'desc'), limit(30)));
-        if (!snap.empty) {
-          const items = snap.docs.map(d => ({ id: d.id, ...d.data() } as LeaderboardItem));
-          setLeaderboard(items);
-        } else {
-          setLeaderboard([]);
-        }
-      } catch {
-        setLeaderboard([]);
-      } finally {
-        setLoadingLeaderboard(false);
-      }
-    }
-
-    fetchLeaderboard();
-  }, [user, profile]);
-
-  const handleRegisterBlitz = async () => {
-    if (!user || registering) return;
-    setRegistering(true);
-    try {
-      await addDoc(collection(db, 'registrations'), {
-        userId: user.uid,
-        userEmail: user.email,
-        event: 'boardly_blitz_sunday',
-        status: 'registered',
-        registeredAt: serverTimestamp(),
-      });
-      setRegisteredBlitz(true);
-    } catch (err) {
-      console.warn('Blitz registration:', err);
-      setRegisteredBlitz(true);
-    } finally {
-      setRegistering(false);
-    }
-  };
 
   const handleCreateCircle = async () => {
     if (!user) return;
@@ -150,7 +71,7 @@ export function ArenaDashboardPage() {
 
   return (
     <div className="flex flex-col gap-6 max-w-[1000px] mx-auto">
-      {/* ── Segmented Control: "Leaderboard | Blitz | My circle" ─────────────── */}
+      {/* ── Segmented Control: "Leaderboard | Grand Line | My circle" ─────────────── */}
       <div className="w-full max-w-[420px] mx-auto h-11 p-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] grid grid-cols-3 gap-1 items-center">
         <button
           onClick={() => setActiveTab('leaderboard')}
@@ -164,15 +85,15 @@ export function ArenaDashboardPage() {
           Leaderboard
         </button>
         <button
-          onClick={() => setActiveTab('blitz')}
+          onClick={() => setActiveTab('grandline')}
           className={`h-full rounded-full text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
-            activeTab === 'blitz'
+            activeTab === 'grandline'
               ? 'bg-[var(--text)] text-[var(--bg)]'
               : 'text-[var(--text-muted)] hover:text-[var(--text)]'
           }`}
           style={{ fontFamily: 'var(--font-heading)' }}
         >
-          Blitz
+          Grand Line
         </button>
         <button
           onClick={() => setActiveTab('circle')}
@@ -273,69 +194,49 @@ export function ArenaDashboardPage() {
         </Card>
       )}
 
-      {/* ── TAB 2: BLITZ ───────────────────────────────────────────────────── */}
-      {activeTab === 'blitz' && (
+      {/* ── TAB 2: GRAND LINE ───────────────────────────────────────────────────── */}
+      {activeTab === 'grandline' && (
         <Card variant="red" className="p-6 sm:p-8">
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="space-y-4 max-w-lg">
               <Badge color="red-outline" dot>
-                National Competitive Arena
+                Grand Line
               </Badge>
 
               <h2
                 className="text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight leading-tight"
                 style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
               >
-                Boardly Blitz: <span>Sunday 8:00 PM PKT</span>
+                Grand Line: Public Tests by Nakama Captains
               </h2>
 
               <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
-                A synchronized, high-stakes 45-minute national mock test. Every aspirant across Pakistan answers identical past-paper questions simultaneously under strict anti-cheat auto-submission.
+                Take tests created by Nakama Captains from across Pakistan. Enter your name and Gmail, take the test, and see where you rank.
               </p>
 
-              <div className="grid grid-cols-2 gap-3 text-xs text-[var(--text-muted)] font-doto">
-                <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                  <div className="text-[10px] text-[var(--text-muted)] uppercase">Questions</div>
-                  <div className="text-sm font-bold text-[var(--text)] mt-0.5">50 MCQs</div>
-                </div>
-                <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                  <div className="text-[10px] text-[var(--text-muted)] uppercase">Time Limit</div>
-                  <div className="text-sm font-bold text-[var(--text)] mt-0.5">45 Minutes</div>
-                </div>
+              <div className="pt-2">
+                <Link to="/grand-line" className="btn-red inline-flex items-center gap-2 px-6 py-3 text-xs font-bold">
+                  <span>Browse Grand Line</span>
+                  <ArrowRight size={14} />
+                </Link>
               </div>
             </div>
 
-            {/* Countdown Box & Register Button */}
             <div className="p-6 rounded-2xl bg-[var(--surface)] border border-[var(--border)] flex flex-col items-center text-center gap-4 shrink-0 w-full md:w-80">
-              <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
-                <Clock size={16} className="text-[var(--accent)]" />
-                <span>Next Session Countdown</span>
+              <div className="w-12 h-12 rounded-full bg-[var(--surface-2)] flex items-center justify-center text-[var(--red)]">
+                <Compass size={24} />
               </div>
-
-              {/* Countdown in Doto font */}
-              <div className="font-doto text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight">
-                {blitzCountdown || '00d 00h 00m 00s'}
+              <div>
+                <h3 className="font-heading font-bold text-sm text-[var(--text)]">
+                  Available Any Time
+                </h3>
+                <p className="text-xs text-[var(--muted)] mt-1">
+                  Tests published by verified Nakama Captains from leading universities across Pakistan.
+                </p>
               </div>
-
-              {registeredBlitz ? (
-                <div className="w-full p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center gap-2 text-xs text-[var(--text)]">
-                  <CheckCircle2 size={16} className="text-[var(--accent)]" />
-                  <span>Seat Reserved for Sunday</span>
-                </div>
-              ) : (
-                <button
-                  onClick={handleRegisterBlitz}
-                  disabled={registering}
-                  className="btn-red w-full cursor-pointer disabled:opacity-50"
-                  style={{ height: '48px' }}
-                >
-                  {registering ? 'Reserving Seat...' : 'Register for Next Blitz'}
-                </button>
-              )}
-
-              <p className="text-[11px] text-[var(--text-muted)]">
-                National percentile results posted right after session close.
-              </p>
+              <Link to="/grand-line" className="btn-outline w-full text-center text-xs">
+                Explore Available Tests
+              </Link>
             </div>
           </div>
         </Card>

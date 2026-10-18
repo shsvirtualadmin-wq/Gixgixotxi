@@ -210,10 +210,10 @@ export function PhoneMockup({
                 {/* Arena Header */}
                 <div className="p-2 rounded-xl bg-[var(--surface-2)] border border-[var(--accent)]">
                   <div className="text-[9px] text-[var(--accent)] font-semibold">
-                    Boardly Blitz Arena
+                    Grand Line Arena
                   </div>
                   <div className="text-xs font-bold text-[var(--text)]">
-                    Sunday 8:00 PM PKT
+                    Public Tests by Captains
                   </div>
                 </div>
 

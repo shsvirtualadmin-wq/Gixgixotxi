@@ -11,9 +11,9 @@ export function ArenaPage() {
           <span className="w-2 h-2 rounded-full bg-[var(--red)]" />
           <Badge color="red">National Competitive League</Badge>
         </div>
-        <h2>Boardly Live Arena &amp; Blitz</h2>
+        <h2>Boardly Live Arena &amp; Grand Line</h2>
         <p>
-          Real-time synchronized entrance exam simulations held every weekend. Experience true test pressure, clock anxiety, and national rankings before the real day.
+          Real-time entrance exam simulations and public Grand Line test papers created by Nakama Captains. Experience true test pressure, clock discipline, and national rankings before the real day.
         </p>
       </div>
 

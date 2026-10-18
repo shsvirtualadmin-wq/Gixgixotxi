@@ -154,7 +154,7 @@ export function TermsPage() {
               </p>
               <ul className="space-y-2 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5">
                 <li>Scrape, extract, crawl, or harvest questions, solutions, or student rosters through automated scripts.</li>
-                <li>Attempt to manipulate live Arena or Blitz leaderboards through bot submissions, answer leaks, or reverse engineering.</li>
+                <li>Attempt to manipulate live Arena or Grand Line leaderboards through bot submissions, answer leaks, or reverse engineering.</li>
                 <li>Share, sell, or publicly re-distribute proprietary question bank compilations.</li>
                 <li>Abuse referral links, promotional codes, or ambassador rewards through fake account creation.</li>
                 <li>Post abusive, harassing, or defamatory comments in support inquiries or review submissions.</li>
