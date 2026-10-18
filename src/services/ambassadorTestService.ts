@@ -8,6 +8,7 @@ import {
   deleteDoc,
   query,
   where,
+  limit,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
@@ -366,9 +367,19 @@ export function convertToRunnerQuestion(aq: AmbassadorQuestion, index: number): 
     chapter: aq.chapter || 'Ambassador Drill',
     difficulty: aq.difficulty || 'medium',
     q: aq.q,
-    options: aq.options,
+    options: (Array.isArray(aq.options) && aq.options.length === 4
+      ? (aq.options as [string, string, string, string])
+      : [aq.options?.[0] || 'A', aq.options?.[1] || 'B', aq.options?.[2] || 'C', aq.options?.[3] || 'D']) as [string, string, string, string],
     correct: aq.correct,
-    explanation: aq.explanation,
+    explain: aq.explanation,
+    status: 'published',
+    active: true,
+    rand: Math.random(),
+    schemaVersion: 1,
+    contentHash: '',
+    createdAt: null,
+    updatedAt: null,
+    createdBy: 'ambassador',
     tags: ['grand-line', 'ambassador-drill'],
     source: 'Ambassador Drill',
   };

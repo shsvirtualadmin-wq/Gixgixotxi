@@ -299,7 +299,8 @@ service cloud.firestore {
     // - Students submit applications for themselves in 'pending' status.
     // - Approval, role promotion, and deletion are Admin-only.
     match /applications/{appId} {
-      allow read: if isAdmin() || (
+      allow list: if isAdmin();
+      allow get: if isAdmin() || (
         isAuthenticated() && (
           (resource != null && resource.data.userId == request.auth.uid) ||
           appId == request.auth.uid
@@ -308,12 +309,16 @@ service cloud.firestore {
       allow create: if isAuthenticated() && (
         appId == request.auth.uid ||
         request.resource.data.userId == request.auth.uid
-      ) && (!('status' in request.resource.data) || request.resource.data.status == 'pending');
+      ) && (
+        !('status' in request.resource.data) ||
+        request.resource.data.status in ['Pending', 'pending']
+      );
       allow update, delete: if isAdmin();
     }
 
     match /captainApplications/{appId} {
-      allow read: if isAdmin() || (
+      allow list: if isAdmin();
+      allow get: if isAdmin() || (
         isAuthenticated() && (
           (resource != null && resource.data.userId == request.auth.uid) ||
           appId == request.auth.uid
@@ -322,7 +327,10 @@ service cloud.firestore {
       allow create: if isAuthenticated() && (
         appId == request.auth.uid ||
         request.resource.data.userId == request.auth.uid
-      ) && (!('status' in request.resource.data) || request.resource.data.status == 'pending');
+      ) && (
+        !('status' in request.resource.data) ||
+        request.resource.data.status in ['Pending', 'pending']
+      );
       allow update, delete: if isAdmin();
     }
 

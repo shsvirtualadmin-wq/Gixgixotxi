@@ -39,6 +39,7 @@ export function CrewDashboardPage() {
     loading,
     error: hookError,
     retry,
+    joinCrewByCode,
     leaveCrew,
     transferLeadership,
     toggleLock,

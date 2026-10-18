@@ -1,6 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 
-export type UserRole = 'student' | 'crew' | 'captain' | 'admin' | 'superadmin';
+export type UserRole = 'student' | 'crew' | 'captain' | 'ambassador' | 'admin' | 'superadmin';
 export type UserPlan = 'free' | 'pro';
 
 export interface UserProfile {
@@ -35,6 +35,7 @@ export interface UserProfile {
   crewStatus?: string;
   crewReferralCode?: string;
   shortId?: string;
+  isCaptain?: boolean;
   isAmbassador?: boolean;
   referrerAmbassadorId?: string;
   referrerAmbassadorUid?: string;
@@ -46,6 +47,8 @@ export interface UserProfile {
   avatarKey?: string | null;
   avatarVariant?: string | null;
   score?: number;
+  totalQuestionsSolved?: number;
+  testsCompleted?: number;
   testDate?: string;
   track?: string;
   onboardingComplete?: boolean;

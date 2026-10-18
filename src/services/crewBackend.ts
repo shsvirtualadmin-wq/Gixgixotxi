@@ -84,8 +84,8 @@ export async function getRankedCrewsServer(options?: {
   const rankedSummaries: PublicCrewSummary[] = allCrews.map((c, index) => {
     const isPaid = c.tier === 'paid' && isCrewPaidActive(c.paid_until);
     const totalQ = (c.members || []).reduce((sum, m) => sum + (Number(m.questionsSolved) || 0), Number(c.currentQuestions) || 0);
-    const accuracy = typeof (c as Record<string, unknown>).accuracy === 'number'
-      ? Number((c as Record<string, unknown>).accuracy)
+    const accuracy = typeof (c as unknown as Record<string, unknown>).accuracy === 'number'
+      ? Number((c as unknown as Record<string, unknown>).accuracy)
       : Math.min(99, Math.max(70, Math.round(76 + ((c.streak || 1) * 3) % 22)));
 
     return {
