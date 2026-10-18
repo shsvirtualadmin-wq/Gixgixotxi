@@ -18,15 +18,12 @@ import {
   ExternalLink,
   ArrowLeft,
   FolderEdit,
-  Folder,
-  Layers,
   ChevronRight,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { MathText, validateMath } from '@/components/ui/MathText';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import {
-  fetchQuestionsPaginated,
   saveQuestion,
   deleteQuestion,
   fetchQuestionKey,
@@ -56,8 +53,6 @@ import {
   formatSubjectName,
   formatChapterName,
   findSubjectSlug,
-  findChapterSlug,
-  addNewChapterToTaxonomy,
   computeContentHash,
 } from '@/constants/taxonomy';
 import type { Question, QuestionReport } from '@/types';
@@ -591,17 +586,6 @@ export function AdminQuestionsPage() {
     const current = activeFocusedInputRef.currentVal;
     const updated = current ? `${current} ${snippet}` : snippet;
     activeFocusedInputRef.setter(updated);
-  };
-
-  // ─── ADD CHAPTER INLINE ─────────────────────────────────────────────────────
-  const handleCreateNewChapter = async () => {
-    if (!newChapterName.trim() || !editingQuestion) return;
-    const res = await addNewChapterToTaxonomy(editingQuestion.subject, newChapterName.trim());
-    if (res.ok) {
-      setEditingQuestion({ ...editingQuestion, chapter: res.slug });
-      setShowNewChapterInput(false);
-      setNewChapterName('');
-    }
   };
 
   // ─── BATCH ACTIONS ──────────────────────────────────────────────────────────
@@ -1242,7 +1226,7 @@ export function AdminQuestionsPage() {
                     >
                       <span>All Topics</span>
                       <span className="text-[10px] opacity-75 font-mono">
-                        ({topics.reduce((acc, t) => acc + t.count, 0)})
+                        ({topicsLoading ? '...' : topics.reduce((acc, t) => acc + t.count, 0)})
                       </span>
                     </button>
 

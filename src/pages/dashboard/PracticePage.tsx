@@ -25,13 +25,10 @@ import { FREE_DAILY_TESTS } from '@/constants/limits';
 import { startTestSessionWithLimit, DailyTestLimitError } from '@/services/testLimits';
 import { DailyLimitBlockedSheet } from '@/components/test/DailyLimitBlockedSheet';
 import { DashboardErrorBoundary } from '@/components/dashboard/DashboardErrorBoundary';
-import { useUserChapterStats } from '@/hooks/useUserChapterStats';
 
 import {
   getAllSubjects,
-  getChaptersForSubject,
   formatSubjectName,
-  formatChapterName,
   isSubjectPoolSupported,
   getSubjectPoolCollection,
 } from '@/constants/taxonomy';
@@ -45,8 +42,6 @@ export function PracticePage() {
   const { user, profile, university } = useUserProfile();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-
-  const { statsMap } = useUserChapterStats(user?.uid);
 
   const allTaxonomySubjects = useMemo(() => getAllSubjects(), []);
   const initialChapterSlug = searchParams.get('chapter') || 'integration-by-parts';
@@ -148,47 +143,6 @@ export function PracticePage() {
     () => getUniversityCriteria(selectedUniversity),
     [selectedUniversity]
   );
-
-  // Chapters with accuracy for currently selected drill subject
-  const currentSubjectChapters = useMemo(() => {
-    const chapters = getChaptersForSubject(drillSubject);
-    return chapters.map((ch) => {
-      const stat = statsMap[ch.slug] || statsMap[ch.name.toLowerCase()];
-      if (!stat || stat.total === 0) {
-        return {
-          slug: ch.slug,
-          name: ch.name,
-          statusLabel: 'Not attempted',
-          acc: null,
-          dots: 0,
-          totalAnswered: 0,
-        };
-      }
-      const dots = Math.max(1, Math.min(7, Math.round((stat.accuracy / 100) * 7)));
-      const statusLabel = stat.notEnoughData
-        ? `${stat.accuracy}% (Needs 3+)`
-        : `${stat.accuracy}% accuracy`;
-      return {
-        slug: ch.slug,
-        name: ch.name,
-        statusLabel,
-        acc: stat.accuracy,
-        dots,
-        totalAnswered: stat.total,
-      };
-    });
-  }, [drillSubject, statsMap]);
-
-  // Toggle chapter selection in Step 2 of Drill
-  const handleToggleDrillChapter = (slug: string) => {
-    setDrillChapters((prev) => {
-      if (prev.includes(slug)) {
-        if (prev.length === 1) return prev; // keep at least one
-        return prev.filter((s) => s !== slug);
-      }
-      return [...prev, slug];
-    });
-  };
 
   // Launch test handler
   const launchTest = async (
@@ -843,6 +797,7 @@ export function PracticePage() {
                           type="button"
                           onClick={() => {
                             setDrillSubject(sub.slug);
+                            setDrillChapters([sub.slug]);
                             setDrillStep(2);
                           }}
                           className={`p-4 rounded-2xl border text-left flex flex-col justify-between gap-3 transition-all cursor-pointer ${
