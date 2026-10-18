@@ -1,9 +1,17 @@
 import { initializeTestEnvironment, assertFails, assertSucceeds } from '@firebase/rules-unit-testing';
 import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 async function runTests() {
   console.log('--- Initializing Firestore Rules Test Environment ---');
-  const rules = fs.readFileSync('firestore.rules', 'utf8');
+  const rulesPath = fs.existsSync(path.resolve(__dirname, 'firestore.rules'))
+    ? path.resolve(__dirname, 'firestore.rules')
+    : path.resolve(__dirname, '../firestore.rules');
+  const rules = fs.readFileSync(rulesPath, 'utf8');
+
   const testEnv = await initializeTestEnvironment({
     projectId: 'gen-lang-client-0365509316',
     firestore: {

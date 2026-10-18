@@ -1,0 +1,14 @@
+{
+  "name": "boardly-firestore-tests",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "firebase emulators:exec --only firestore \"node test-rules.mjs\"",
+    "test:direct": "node test-rules.mjs"
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "3.0.4",
+    "firebase": "10.14.1"
+  }
+}
