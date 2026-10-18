@@ -53,10 +53,10 @@ export function DashboardBottomNav() {
   const role = profile?.role || 'student';
   const displayName = profile?.displayName || user?.displayName || 'Student';
   const initial = (displayName[0] || user?.email?.[0] || 'S').toUpperCase();
-  const isInCrew = Boolean(profile?.crewId || profile?.isCrewMember);
-  const crewLink = isInCrew ? '/crew/my' : '/crew';
+  const isApprovedAmbassador = role === 'crew' || role === 'ambassador' || Boolean(profile?.isAmbassador);
+  const crewLink = '/dashboard/crew';
 
-  // Unified 6-item Student Nav: Daily Practice, Cockpit, Weak Chapters, Streaks, Crew, Menu
+  // Unified Student Nav: Daily Practice, Cockpit, Weak Chapters, Streaks, Crew, [Ambassador], Menu
   const navItems: PillNavItem[] = [
     {
       to: '/dashboard/practice',
@@ -84,6 +84,15 @@ export function DashboardBottomNav() {
       label: 'Crew',
       icon: <Users size={18} />,
     },
+    ...(isApprovedAmbassador
+      ? [
+          {
+            to: '/dashboard/ambassador',
+            label: 'Ambassador',
+            icon: <Award size={18} />,
+          },
+        ]
+      : []),
     {
       id: 'menu',
       label: 'Menu',

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Trophy, Users, Flame, Sparkles, ChevronLeft, ChevronRight, Lock, Unlock, Eye } from 'lucide-react';
+import { Search, Trophy, Flame, Sparkles, ChevronLeft, ChevronRight, Lock, Unlock, Eye } from 'lucide-react';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
 import type { PublicCrewSummary } from '@/types/crew';
 import { fetchCrewLeaderboard } from '@/services/crewService';
@@ -195,14 +195,15 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
                 <div className="flex items-center gap-4 sm:gap-6 shrink-0">
                   <div className="text-right hidden xs:block">
                     <div className="text-sm sm:text-base font-bold font-heading text-[var(--text)]">
-                      {c.score} <span className="text-[10px] text-[var(--muted)] font-normal font-sans">pts</span>
+                      {c.questionsSolved ?? c.score} <span className="text-[10px] text-[var(--muted)] font-normal font-sans">solved</span>
                     </div>
                     <div className="text-[11px] text-[var(--muted)] flex items-center justify-end gap-2 font-mono">
-                      <span className="flex items-center gap-0.5">
-                        <Users size={11} /> {c.memberCount}/{c.maxMembers}
-                      </span>
-                      <span className="flex items-center gap-0.5 text-[#D71921]">
+                      <span className="flex items-center gap-0.5 text-[#D71921] font-semibold">
                         <Flame size={11} /> {c.streak}d
+                      </span>
+                      <span>&bull;</span>
+                      <span className="text-emerald-400 font-semibold">
+                        {c.accuracy ?? 85}% acc
                       </span>
                     </div>
                   </div>

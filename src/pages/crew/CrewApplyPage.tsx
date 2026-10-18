@@ -106,7 +106,7 @@ export function CrewApplyPage() {
               className="text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight"
               style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
             >
-              Apply for Boardly Crew
+              Apply for Boardly Crew Ambassador
             </h1>
             <p className="text-xs sm:text-sm text-[var(--muted)] mt-1.5 leading-relaxed">
               Represent Boardly in your academy or college wing, earn rewards for every enrolled peer, and access the ambassador cockpit.

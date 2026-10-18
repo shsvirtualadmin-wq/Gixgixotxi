@@ -79,6 +79,8 @@ export interface PublicCrewSummary {
   avatarVariant: string;
   rank: number;
   score: number;
+  questionsSolved?: number;
+  accuracy?: number;
   memberCount: number;
   maxMembers: number;
   tier: CrewTier;

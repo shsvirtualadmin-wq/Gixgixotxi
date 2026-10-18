@@ -34,6 +34,13 @@ export interface UserProfile {
   crewName?: string | null;
   crewStatus?: string;
   crewReferralCode?: string;
+  shortId?: string;
+  isAmbassador?: boolean;
+  referrerAmbassadorId?: string;
+  referrerAmbassadorUid?: string;
+  ambassadorBonusWeeks?: number;
+  redeemedBadges?: string[];
+  equippedBadges?: string[];
   streakFreezes?: number;
   streakFreezeActive?: boolean;
   avatarKey?: string | null;

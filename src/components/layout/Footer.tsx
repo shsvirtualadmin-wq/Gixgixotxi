@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Logo } from '@/components/ui/Logo';
+import { GRAND_LINE_NAME } from '@/constants/branding';
 
 export function Footer() {
   const wordmarkContainerRef = useRef<HTMLDivElement>(null);
@@ -132,6 +133,11 @@ export function Footer() {
               <li>
                 <Link to="/pricing" className="hover:text-white hover:underline transition-colors block break-words">
                   Pricing &amp; plans
+                </Link>
+              </li>
+              <li>
+                <Link to="/grand-line/about" className="hover:text-white hover:underline transition-colors block break-words">
+                  {GRAND_LINE_NAME} (Public Mocks)
                 </Link>
               </li>
               <li>

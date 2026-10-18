@@ -28,6 +28,8 @@ import {
 import { auth, db } from '@/lib/firebase';
 import type { UserProfile } from '@/types';
 import { debugTracker } from '@/utils/debugTracker';
+import { deriveFallbackShortId, ensureUserShortId } from '@/utils/shortId';
+import { processAmbassadorReferralOnSignup } from '@/services/referralService';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 const SUPER_ADMIN_EMAIL = 'shsvirtualadmin@gmail.com';
@@ -192,6 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               profileCompleted: isSuperAdminAccount ? true : false,
               onboardingCompleted: isSuperAdminAccount ? true : false,
               streak: 0,
+              shortId: deriveFallbackShortId(firebaseUser.uid),
             };
             tx.set(docRef, {
               ...baseUserDoc,
@@ -200,6 +203,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
             loadedProfile = baseUserDoc;
             createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '').catch(() => {});
+            processAmbassadorReferralOnSignup({
+              newUid: firebaseUser.uid,
+              newEmail: firebaseUser.email ?? '',
+              newName: fallbackName,
+              newShortId: baseUserDoc.shortId || deriveFallbackShortId(firebaseUser.uid),
+            }).catch(() => {});
+            ensureUserShortId(firebaseUser.uid, baseUserDoc.shortId).catch(() => {});
           }
         });
       } catch (txErr: unknown) {

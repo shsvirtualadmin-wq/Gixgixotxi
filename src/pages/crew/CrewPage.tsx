@@ -16,29 +16,9 @@ import {
   Minus,
 } from 'lucide-react';
 import { MAX_CREW_MEMBERS } from '@/constants/limits';
+import { GRAND_LINE_NAME } from '@/constants/branding';
 
-const CREW_STEPS = [
-  {
-    step: '01',
-    title: 'Create or Join with a 6-Character Code',
-    desc: 'Any student can start a study squad in seconds or enter an existing invite code to jump straight into their classmates’ room.',
-  },
-  {
-    step: '02',
-    title: `Squad Up to ${MAX_CREW_MEMBERS} Peers`,
-    desc: `Each study crew accommodates up to ${MAX_CREW_MEMBERS} members, giving your study circle an intimate, focused environment without chaotic spam.`,
-  },
-  {
-    step: '03',
-    title: 'Synchronized Drills & Live Leaderboard',
-    desc: 'Take identical 10-minute sprints and full-length mocks together. Compare question-level derivations, solve times, and net scores.',
-  },
-  {
-    step: '04',
-    title: 'Track Collective Streaks & Milestones',
-    desc: 'Build consistency with shared daily goals and midnight PKT streak counts. Celebrate when squad members hit new aggregate milestones.',
-  },
-];
+
 
 const CREW_FEATURES = [
   {
@@ -58,7 +38,7 @@ const CREW_FEATURES = [
   },
   {
     icon: <Zap size={22} />,
-    title: 'Crew Blitz & Mock Events',
+    title: GRAND_LINE_NAME,
     desc: 'Participate in synchronized competitive drills and track how your squad measures up across Pakistan.',
   },
 ];
@@ -189,37 +169,29 @@ export function CrewPage() {
           </div>
         </div>
 
-        {/* ── 2. How It Works ── */}
+        {/* ── 2. National Crew Leaderboard ── */}
         <div className="space-y-8">
           <div className="section-header">
-            <Badge color="muted">Simple 4-Step Flow</Badge>
-            <h2>How Study Crews Work</h2>
-            <p>Built directly into the student dashboard with zero friction.</p>
+            <Badge color="red">Live Rankings</Badge>
+            <h2>National Crew Leaderboard</h2>
+            <p>
+              Ranked in real time across Pakistan by questions solved, consecutive day streaks, and drill accuracy.
+            </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-            {CREW_STEPS.map((s) => (
-              <Card key={s.step} className="p-6 justify-between">
-                <div className="space-y-3">
-                  <span
-                    className="font-dot text-2xl font-bold text-[var(--red)]"
-                    style={{ fontFamily: 'var(--font-dot)' }}
-                  >
-                    {s.step}
-                  </span>
-                  <h3
-                    className="text-lg font-bold text-[var(--text)]"
-                    style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-                  >
-                    {s.title}
-                  </h3>
-                  <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
-                    {s.desc}
-                  </p>
-                </div>
-              </Card>
-            ))}
-          </div>
+          <PublicLeaderboard
+            currentUser={
+              user
+                ? {
+                    uid: user.uid,
+                    email: user.email || '',
+                    streak: profile?.streak || 0,
+                    score: 0,
+                    crewId: profile?.crewId || null,
+                  }
+                : null
+            }
+          />
         </div>
 
         {/* ── 3. Feature Grid ── */}
@@ -250,31 +222,6 @@ export function CrewPage() {
               </Card>
             ))}
           </div>
-        </div>
-
-        {/* ── National Public Leaderboard ── */}
-        <div className="space-y-8">
-          <div className="section-header">
-            <Badge color="red">Live Rankings</Badge>
-            <h2>National Crew Leaderboard</h2>
-            <p>
-              Real-time Pakistan standings based on cumulative questions solved, streak consistency, and sprint accuracy.
-            </p>
-          </div>
-
-          <PublicLeaderboard
-            currentUser={
-              user
-                ? {
-                    uid: user.uid,
-                    email: user.email || '',
-                    streak: profile?.streak || 0,
-                    score: 0,
-                    crewId: profile?.crewId || null,
-                  }
-                : null
-            }
-          />
         </div>
 
         {/* ── 4. Roles Section ── */}

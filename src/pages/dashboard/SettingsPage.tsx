@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { Sun, Moon, Check, Save } from 'lucide-react';
+import { Sun, Moon, Check, Save, LogOut, Trash2, AlertTriangle, X } from 'lucide-react';
+import { formatStudentId } from '@/utils/shortId';
+import { wipeStudentAccount } from '@/services/userAccountService';
 
 const PAKISTANI_UNIVERSITIES = [
   'FAST-NUCES (CS/SE/AI/DS)',
@@ -24,6 +27,7 @@ const PAKISTANI_UNIVERSITIES = [
 import { useTheme } from '@/hooks/useTheme';
 
 export function SettingsPage() {
+  const navigate = useNavigate();
   const { signOutUser } = useAuth();
   const { user, profile, loading: profileLoading, updateProfileData } = useUserProfile();
 
@@ -33,6 +37,32 @@ export function SettingsPage() {
   const { theme, setTheme: toggleTheme } = useTheme();
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+
+  // Account Deletion & Logout
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const handleLogout = async () => {
+    await signOutUser();
+    navigate('/login');
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!user) return;
+    setDeletingAccount(true);
+    setDeleteError(null);
+    try {
+      await wipeStudentAccount(user.uid);
+      await signOutUser();
+      navigate('/');
+    } catch (err) {
+      console.error('[SettingsPage] Delete account error:', err);
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete account. Please try again.');
+      setDeletingAccount(false);
+    }
+  };
 
   useEffect(() => {
     if (profile) {
@@ -226,19 +256,118 @@ export function SettingsPage() {
             </div>
           </GlassCard>
 
-          {/* Account Details & Sign Out */}
-          <GlassCard style={{ padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div>
-              <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{user?.email}</p>
-              <p style={{ fontSize: 12, color: 'var(--text-faint)', fontFamily: 'monospace' }}>
-                UID: {user?.uid}
-              </p>
+          {/* Account Details & Session Actions */}
+          <GlassCard style={{ padding: '20px 24px' }}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{user?.email}</p>
+                <p className="text-xs font-mono text-[var(--muted)] mt-1 flex items-center gap-1.5">
+                  <span>Student ID:</span>
+                  <span className="font-bold text-[var(--text)] px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)]">
+                    {formatStudentId(profile || user?.uid)}
+                  </span>
+                </p>
+              </div>
+              <div className="flex items-center gap-2.5">
+                <Button
+                  variant="outline"
+                  size="md"
+                  type="button"
+                  onClick={handleLogout}
+                  className="cursor-pointer"
+                >
+                  <LogOut size={15} />
+                  <span>Log Out</span>
+                </Button>
+              </div>
             </div>
-            <Button variant="danger" size="sm" onClick={() => signOutUser()}>
-              Sign Out
-            </Button>
+          </GlassCard>
+
+          {/* Danger Zone: Account Deletion */}
+          <GlassCard style={{ padding: '20px 24px', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h4 className="text-sm font-bold text-red-400 flex items-center gap-2">
+                  <AlertTriangle size={16} />
+                  <span>Danger Zone</span>
+                </h4>
+                <p className="text-xs text-[var(--muted)] mt-1 max-w-md leading-relaxed">
+                  Permanently delete your Boardly student account, test attempts, streaks, and squad data. This action is irreversible.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteModalOpen(true)}
+                className="px-4 py-2.5 rounded-xl border border-red-500/50 hover:bg-red-500/10 text-red-400 hover:text-red-300 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0"
+              >
+                <Trash2 size={14} />
+                <span>Delete My Account</span>
+              </button>
+            </div>
           </GlassCard>
         </form>
+      )}
+
+      {/* Delete Account Confirmation Modal */}
+      {deleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-2xl bg-[var(--card)] border border-red-500/40 p-6 shadow-2xl flex flex-col gap-4">
+            <div className="flex items-start justify-between">
+              <div className="flex items-center gap-2.5 text-red-500">
+                <AlertTriangle size={22} className="shrink-0" />
+                <h3 className="text-lg font-bold font-display text-[var(--text)]">Delete Account Confirmation</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDeleteModalOpen(false)}
+                className="w-8 h-8 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--muted)] hover:text-white"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            <p className="text-xs text-[var(--muted)] leading-relaxed">
+              Are you sure you want to delete your account? All your personal data—including profile settings, test attempts, streak records, crew membership, and ambassador status—will be wiped immediately.
+            </p>
+
+            <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/30 text-[11px] text-red-300">
+              Type <strong className="text-white font-mono">DELETE</strong> below to confirm.
+            </div>
+
+            <input
+              type="text"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value)}
+              placeholder="Type DELETE"
+              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-red-500"
+            />
+
+            {deleteError && (
+              <p className="text-xs text-red-400">{deleteError}</p>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                type="button"
+                onClick={() => setDeleteModalOpen(false)}
+                disabled={deletingAccount}
+              >
+                Cancel
+              </Button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deletingAccount || deleteConfirmText.trim() !== 'DELETE'}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 size={14} />
+                <span>{deletingAccount ? 'Wiping Data...' : 'Yes, Delete My Account'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

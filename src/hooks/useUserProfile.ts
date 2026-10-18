@@ -135,6 +135,11 @@ export function useUserProfile(): UserProfileHookResult {
           setFetchStatus('success');
           setProfile({ ...data, uid: user.uid });
           updateLocalProfileRef.current(data);
+          if (!data.shortId) {
+            import('@/utils/shortId').then(({ ensureUserShortId }) => {
+              ensureUserShortId(user.uid, data.shortId).catch(() => {});
+            });
+          }
           debugTracker.recordUserFetch({
             status: 'success',
             durationMs: duration,

@@ -29,20 +29,13 @@ interface UsageDoc {
   arenaSessions?: number;
 }
 
-interface Milestone {
-  days: number;
-  title: string;
-  badge: string;
-  description: string;
-}
-
-const STREAK_MILESTONES: Milestone[] = [
-  { days: 3, title: 'Ignition', badge: '🔥 Bronze', description: 'Built first 3-day momentum' },
-  { days: 7, title: 'Discipline', badge: '⚡ Silver', description: 'Unbroken full 1-week chain' },
-  { days: 14, title: 'Habit Locked', badge: '🌟 Gold', description: 'Consistent 2-week mastery' },
-  { days: 30, title: 'Exam Titan', badge: '💎 Diamond', description: 'A full month of non-stop prep' },
-  { days: 60, title: 'Merit Champion', badge: '👑 Legend', description: 'Top 1% elite entrance candidate' },
-];
+import {
+  ANIME_STREAK_BADGES,
+  AnimeBadgeEmblem,
+  redeemStreakBadge,
+  toggleEquipBadge,
+  type AnimeBadge,
+} from '@/constants/animeBadges';
 
 export function StreaksPage() {
   const { user } = useAuth();
@@ -52,6 +45,10 @@ export function StreaksPage() {
   const [streak, setStreak] = useState(0);
   const [streakFreezes, setStreakFreezes] = useState(1);
   const [freezeActive, setFreezeActive] = useState(false);
+  const [redeemedBadges, setRedeemedBadges] = useState<string[]>([]);
+  const [equippedBadges, setEquippedBadges] = useState<string[]>([]);
+  const [redeemingBadgeId, setRedeemingBadgeId] = useState<string | null>(null);
+  const [justUnlockedBadge, setJustUnlockedBadge] = useState<AnimeBadge | null>(null);
   const [usageHistory, setUsageHistory] = useState<Record<string, UsageDoc>>({});
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<{
@@ -71,13 +68,15 @@ export function StreaksPage() {
     async function loadStreakData() {
       try {
         setLoading(true);
-        // 1. Get streak & freeze data from user doc
+        // 1. Get streak & freeze & badge data from user doc
         const userDoc = await getDoc(doc(db, 'users', user!.uid));
         if (userDoc.exists()) {
           const data = userDoc.data();
           setStreak(Number(data.streak ?? 0));
           setStreakFreezes(Number(data.streakFreezes ?? 1));
           setFreezeActive(Boolean(data.streakFreezeActive));
+          setRedeemedBadges(Array.isArray(data.redeemedBadges) ? data.redeemedBadges : []);
+          setEquippedBadges(Array.isArray(data.equippedBadges) ? data.equippedBadges : []);
         }
 
         // 2. Get past usage subcollection
@@ -336,41 +335,159 @@ export function StreaksPage() {
             </div>
           </GlassCard>
 
-          {/* ── Milestones & Achievements Row ── */}
+          {/* ── Anime-Style Streak Badges & Redeem System ── */}
           <GlassCard style={{ padding: '24px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-              <Award size={18} className="text-[#D71921]" />
-              <h3 className="font-display" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)' }}>
-                Streak Milestones &amp; Badges
-              </h3>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Award size={20} className="text-[#D71921]" />
+                  <h3 className="font-display text-lg font-bold text-[var(--text)]">
+                    Anime-Style Streak Badges &amp; Rewards
+                  </h3>
+                </div>
+                <p className="text-xs text-[var(--muted)] mt-1">
+                  Hit consecutive study milestones to unlock and redeem mythic emblems. Equip up to 3 on your profile and national leaderboards.
+                </p>
+              </div>
+
+              {/* Equipped Badges Indicator */}
+              <div className="flex items-center gap-2 bg-[var(--surface-2)] border border-[var(--border)] rounded-full px-3 py-1.5 shrink-0">
+                <span className="text-[11px] font-mono text-[var(--muted)]">Equipped:</span>
+                <span className="text-xs font-bold text-[var(--text)] font-mono">
+                  {equippedBadges.length} / 3
+                </span>
+                <div className="flex items-center -space-x-1.5 ml-1">
+                  {equippedBadges.map((bId) => {
+                    const b = ANIME_STREAK_BADGES.find((x) => x.id === bId);
+                    if (!b) return null;
+                    return (
+                      <div key={bId} title={`${b.name} (${b.rewardTitle})`}>
+                        <AnimeBadgeEmblem badge={b} isUnlocked={true} size={24} />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              {STREAK_MILESTONES.map((m) => {
-                const reached = streak >= m.days;
-                const progress = Math.min(Math.round((streak / m.days) * 100), 100);
+            {/* Badges Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {ANIME_STREAK_BADGES.map((b) => {
+                const reached = streak >= b.days;
+                const isRedeemed = redeemedBadges.includes(b.id);
+                const isEquipped = equippedBadges.includes(b.id);
+                const progress = Math.min(Math.round((streak / b.days) * 100), 100);
+
+                const handleRedeem = async () => {
+                  if (!user || !reached || isRedeemed || redeemingBadgeId) return;
+                  setRedeemingBadgeId(b.id);
+                  try {
+                    await redeemStreakBadge(user.uid, b.id);
+                    setRedeemedBadges((prev) => [...prev, b.id]);
+                    setJustUnlockedBadge(b);
+                  } catch (err: unknown) {
+                    alert((err as Error).message || 'Redeem failed');
+                  } finally {
+                    setRedeemingBadgeId(null);
+                  }
+                };
+
+                const handleToggleEquip = async () => {
+                  if (!user || !isRedeemed) return;
+                  try {
+                    const updated = await toggleEquipBadge(user.uid, b.id, equippedBadges);
+                    setEquippedBadges(updated);
+                  } catch (err: unknown) {
+                    alert((err as Error).message || 'Failed to update equipped badges');
+                  }
+                };
 
                 return (
                   <div
-                    key={m.days}
-                    className={`p-3.5 rounded-xl border transition-all ${
-                      reached
-                        ? 'bg-red-500/10 border-[#D71921]/40'
-                        : 'bg-[var(--surface)] border-[var(--border)] opacity-80'
+                    key={b.id}
+                    className={`relative p-4 rounded-2xl border transition-all flex flex-col justify-between overflow-hidden ${
+                      isRedeemed
+                        ? 'bg-[var(--surface-2)]/80 border-[var(--border)] shadow-lg'
+                        : reached
+                        ? 'bg-red-500/10 border-[#D71921]/60 shadow-md ring-1 ring-[#D71921]/30'
+                        : 'bg-[var(--surface)]/40 border-[var(--border)] opacity-60'
                     }`}
                   >
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-xs font-bold text-[var(--text)]">{m.title}</span>
-                      <span className="text-[11px] font-mono text-[var(--text-faint)]">
-                        {m.days} Days
-                      </span>
+                    {/* Top Row: Emblem & Meta */}
+                    <div className="flex items-start gap-3.5">
+                      <AnimeBadgeEmblem
+                        badge={b}
+                        isUnlocked={reached || isRedeemed}
+                        size={56}
+                        className={reached && !isRedeemed ? 'animate-pulse' : ''}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between gap-1">
+                          <span
+                            className="text-[10px] font-mono uppercase font-bold px-2 py-0.5 rounded-full"
+                            style={{
+                              backgroundColor: `${b.accentColor}20`,
+                              color: b.accentColor,
+                              border: `1px solid ${b.accentColor}40`,
+                            }}
+                          >
+                            {b.tierName}
+                          </span>
+                          <span className="text-[11px] font-mono text-[var(--text-faint)]">
+                            {b.days} Days
+                          </span>
+                        </div>
+                        <h4 className="font-display font-bold text-sm text-[var(--text)] mt-1 truncate">
+                          {b.name}
+                        </h4>
+                        <p className="text-[11px] text-[var(--muted)] line-clamp-2 mt-0.5 leading-snug">
+                          {b.lore}
+                        </p>
+                      </div>
                     </div>
-                    <p className="text-[11px] text-[var(--muted)] mb-2">{m.description}</p>
-                    <div className="flex items-center justify-between text-[10px] font-mono">
-                      <span className={reached ? 'text-emerald-400 font-bold' : 'text-[var(--text-faint)]'}>
-                        {reached ? 'UNLOCKED' : `${streak}/${m.days} days`}
+
+                    {/* Reward description tag */}
+                    <div className="mt-3 pt-2.5 border-t border-[var(--border)] flex items-center justify-between gap-2">
+                      <span className="text-[10px] text-[var(--muted)] truncate">
+                        Reward: <strong className="text-[var(--text)]">{b.rewardTitle}</strong>
                       </span>
-                      <span className="text-[var(--text-faint)]">{progress}%</span>
+
+                      {/* Action Button: Redeem / Equip / Locked */}
+                      {isRedeemed ? (
+                        <button
+                          type="button"
+                          onClick={handleToggleEquip}
+                          className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${
+                            isEquipped
+                              ? 'bg-[var(--text)] text-[var(--bg)] border-[var(--text)]'
+                              : 'bg-transparent text-[var(--muted)] border-[var(--border)] hover:text-[var(--text)]'
+                          }`}
+                        >
+                          {isEquipped ? 'Equipped ✓' : 'Equip'}
+                        </button>
+                      ) : reached ? (
+                        <button
+                          type="button"
+                          onClick={handleRedeem}
+                          disabled={redeemingBadgeId === b.id}
+                          className="text-[11px] font-bold px-3 py-1.5 rounded-lg bg-[#D71921] hover:bg-[#b0131a] text-white transition-all shadow-md flex items-center gap-1.5 cursor-pointer ring-2 ring-red-500/50 animate-pulse"
+                        >
+                          <Sparkles size={13} />
+                          {redeemingBadgeId === b.id ? 'Redeeming...' : 'Unlockable — Redeem'}
+                        </button>
+                      ) : (
+                        <div className="flex flex-col items-end gap-1">
+                          <span className="text-[10px] font-mono font-medium text-[var(--muted)]">
+                            {b.days - streak} more {b.days - streak === 1 ? 'day' : 'days'} to unlock
+                          </span>
+                          <div className="w-20 h-1.5 rounded-full bg-[var(--surface-3)] overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-300"
+                              style={{ width: `${progress}%`, backgroundColor: b.accentColor }}
+                            />
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
@@ -491,6 +608,53 @@ export function StreaksPage() {
 
             <Button variant="ghost" size="sm" onClick={() => setShareModalOpen(false)}>
               Close
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Badge Unlock Celebration Modal ── */}
+      {justUnlockedBadge && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="w-full max-w-sm rounded-3xl bg-[var(--card)] border border-[#D71921] p-6 shadow-2xl flex flex-col items-center text-center gap-4 relative overflow-hidden">
+            <div className="absolute inset-0 bg-gradient-to-b from-[#D71921]/15 via-transparent to-transparent pointer-events-none" />
+
+            <div className="w-20 h-20 rounded-full flex items-center justify-center bg-black/50 border border-[#D71921]/40 shadow-xl mt-2 animate-bounce">
+              <AnimeBadgeEmblem badge={justUnlockedBadge} isUnlocked={true} size={72} />
+            </div>
+
+            <div>
+              <span className="text-[10px] font-mono uppercase tracking-widest text-[#D71921] font-bold">
+                ★ Mythic Badge Unlocked ★
+              </span>
+              <h3 className="text-xl font-bold font-display text-[var(--text)] mt-1">
+                {justUnlockedBadge.name}
+              </h3>
+              <p className="text-xs text-[var(--muted)] mt-1 leading-relaxed">
+                {justUnlockedBadge.lore}
+              </p>
+            </div>
+
+            <div className="w-full p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-left">
+              <span className="text-[10px] font-mono uppercase text-[var(--text-faint)] block mb-1">
+                Customization Reward Unlocked:
+              </span>
+              <p className="text-xs font-bold text-[var(--text)] flex items-center gap-1.5">
+                <Sparkles size={14} className="text-[#D71921]" />
+                {justUnlockedBadge.rewardTitle}
+              </p>
+              <p className="text-[11px] text-[var(--muted)] mt-0.5">
+                {justUnlockedBadge.rewardDesc}
+              </p>
+            </div>
+
+            <Button
+              variant="primary"
+              size="md"
+              fullWidth
+              onClick={() => setJustUnlockedBadge(null)}
+            >
+              Equip &amp; Continue
             </Button>
           </div>
         </div>

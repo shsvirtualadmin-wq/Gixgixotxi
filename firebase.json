@@ -8,34 +8,6 @@
     ],
     "rewrites": [
       {
-        "source": "/crew",
-        "destination": "/crew/index.html"
-      },
-      {
-        "source": "/crew/how-it-works",
-        "destination": "/crew/how-it-works/index.html"
-      },
-      {
-        "source": "/crew/perks",
-        "destination": "/crew/perks/index.html"
-      },
-      {
-        "source": "/crew/faq",
-        "destination": "/crew/faq/index.html"
-      },
-      {
-        "source": "/crew/apply",
-        "destination": "/crew/apply/index.html"
-      },
-      {
-        "source": "/crew/**",
-        "destination": "/crew/index.html"
-      },
-      {
-        "source": "/programs/crew",
-        "destination": "/crew/index.html"
-      },
-      {
         "source": "**",
         "destination": "/index.html"
       }

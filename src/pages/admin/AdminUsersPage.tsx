@@ -8,6 +8,7 @@ import {
   backfillMissingDisplayNames,
   getUserDisplayName,
 } from '@/services/adminService';
+import { formatStudentId } from '@/utils/shortId';
 import type { UserProfile } from '@/types';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 
@@ -347,218 +348,200 @@ export function AdminUsersPage() {
           filteredUsers.map((u) => {
             const name = getUserDisplayName(u);
             const initial = name[0].toUpperCase();
-            const isSuper = u.email?.toLowerCase() === 'shsvirtualadmin@gmail.com';
-            const isAdmin = isSuper || u.role === 'admin';
             const isSuspended = !!(u.suspended || u.isSuspended);
             const isPro = u.plan === 'pro' || u.isPremium;
+
+            const studentId = formatStudentId(u);
+            const qSolved = u.totalQuestionsSolved ?? ((u.testsCompleted || 0) * 15);
+            const joinedDate = u.createdAt?.toDate
+              ? u.createdAt.toDate().toLocaleDateString('en-GB')
+              : u.createdAt?.seconds
+              ? new Date(u.createdAt.seconds * 1000).toLocaleDateString('en-GB')
+              : 'Recent';
 
             return (
               <div
                 key={u.uid}
                 onClick={() => setSelectedUser(u)}
-                className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] hover:border-[var(--text)]/40 transition-colors cursor-pointer flex flex-col gap-3.5"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  {/* Avatar: solid surface-2 circle with theme text initial, no gradient */}
-                  <div className="w-10 h-10 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[14px] text-[var(--text)] shrink-0">
-                    {initial}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="font-heading font-semibold text-[14px] text-[var(--text)] truncate">
-                      {name}
-                    </p>
-                    <p className="font-heading text-[12px] text-[var(--muted)] truncate">
-                      {u.email}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Status Pills: role, plan, status */}
-                <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-[var(--border)]/60">
-                  {/* Role pill: Student (grey outline), Admin (white outline), Superadmin (red outline) */}
-                  {isSuper ? (
-                    <span className="text-[11px] font-heading px-2 py-0.5 rounded-full border border-[var(--red)] text-[var(--red)]">
-                      Superadmin
-                    </span>
-                  ) : isAdmin ? (
-                    <span className="text-[11px] font-heading px-2 py-0.5 rounded-full border border-[var(--text)] text-[var(--text)]">
-                      Admin
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] capitalize">
-                      {u.role || 'Student'}
-                    </span>
-                  )}
-
-                  {/* Plan pill */}
-                  <span
-                    className={`text-[11px] font-heading px-2 py-0.5 rounded-full border ${
-                      isPro
-                        ? 'border-[var(--text)] text-[var(--text)]'
-                        : 'border-[var(--border)] text-[var(--muted)]'
-                    }`}
-                  >
-                    {isPro ? 'Pro' : 'Free'}
-                  </span>
-
-                  {/* Status pill */}
-                  <span
-                    className={`text-[11px] font-heading px-2 py-0.5 rounded-full border ${
-                      isSuspended
-                        ? 'border-[var(--red)] text-[var(--red)]'
-                        : 'border-[var(--border)] text-[var(--muted)]'
-                    }`}
-                  >
-                    {isSuspended ? 'Suspended' : 'Active'}
-                  </span>
-
-                  {u.targetUniversity && (
-                    <span className="text-[11px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] truncate max-w-[150px]">
-                      {u.targetUniversity}
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })
-        )}
-      </div>
-
-      {/* ─── USERS LIST: DESKTOP TABLE (hidden md:block) ────────────────────── */}
-      <div className="hidden md:block p-0 rounded-[24px] bg-[var(--card)] border border-[var(--border)] overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="border-b border-[var(--border)] bg-[var(--card-2)]/50 text-[12px] font-heading text-[var(--muted)]">
-              <th className="py-3 px-5 font-medium">User</th>
-              <th className="py-3 px-4 font-medium">Role</th>
-              <th className="py-3 px-4 font-medium">Plan</th>
-              <th className="py-3 px-4 font-medium">Status</th>
-              <th className="py-3 px-4 font-medium">Target campus</th>
-              <th className="py-3 px-5 text-right font-medium">Action</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-[var(--border)] text-[13px] font-heading">
-            {loading ? (
-              Array.from({ length: 6 }).map((_, i) => (
-                <tr key={i}>
-                  <td colSpan={6} className="py-4 px-5">
-                    <div className="h-4 bg-[var(--card-2)] rounded w-3/4 animate-pulse" />
-                  </td>
-                </tr>
-              ))
-            ) : filteredUsers.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="py-12 px-5 text-center text-[var(--muted)]">
-                  <p className="font-heading text-[14px] mb-2">No users match your filters or search criteria.</p>
-                  {(search || roleFilter !== 'all' || planFilter !== 'all' || statusFilter !== 'all') && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSearch('');
-                        setRoleFilter('all');
-                        setPlanFilter('all');
-                        setStatusFilter('all');
-                      }}
-                      className="text-[12px] font-heading px-3 py-1 rounded-full border border-[var(--border)] text-[var(--text)] hover:border-[var(--text)] transition-colors cursor-pointer"
-                    >
-                      Reset all filters
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ) : (
-              filteredUsers.map((u) => {
-                const name = getUserDisplayName(u);
-                const initial = name[0].toUpperCase();
-                const isSuper = u.email?.toLowerCase() === 'shsvirtualadmin@gmail.com';
-                const isAdmin = isSuper || u.role === 'admin';
-                const isSuspended = !!(u.suspended || u.isSuspended);
-                const isPro = u.plan === 'pro' || u.isPremium;
-
-                return (
-                  <tr
-                    key={u.uid}
-                    onClick={() => setSelectedUser(u)}
-                    className="hover:bg-[var(--surface-hover)] cursor-pointer transition-colors"
-                  >
-                    {/* User info */}
-                    <td className="py-3.5 px-5">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[12px] text-[var(--text)] shrink-0">
-                          {initial}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-heading font-semibold text-[13px] text-[var(--text)] truncate">
+                  className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] hover:border-[var(--text)]/40 transition-colors cursor-pointer flex flex-col gap-3.5"
+                >
+                  <div className="flex items-center justify-between gap-3 min-w-0">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-10 h-10 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[14px] text-[var(--text)] shrink-0">
+                        {initial}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="font-heading font-semibold text-[14px] text-[var(--text)] truncate">
                             {name}
                           </p>
-                          <p className="font-heading text-[11px] text-[var(--muted)] truncate">
-                            {u.email}
-                          </p>
+                          <span className="font-mono text-[11px] font-bold text-[#D71921] px-1.5 py-0.2 rounded bg-[var(--surface-2)] border border-[var(--border)]">
+                            {studentId}
+                          </span>
                         </div>
+                        <p className="font-heading text-[12px] text-[var(--muted)] truncate">
+                          {u.email}
+                        </p>
                       </div>
-                    </td>
+                    </div>
 
-                    {/* Role */}
-                    <td className="py-3.5 px-4">
-                      {isSuper ? (
-                        <span className="text-[11px] font-heading px-2 py-0.5 rounded-full border border-[var(--red)] text-[var(--red)]">
-                          Superadmin
-                        </span>
-                      ) : isAdmin ? (
-                        <span className="text-[11px] font-heading px-2 py-0.5 rounded-full border border-[var(--text)] text-[var(--text)]">
-                          Admin
-                        </span>
-                      ) : (
-                        <span className="text-[11px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] capitalize">
-                          {u.role || 'Student'}
+                    <div className="text-right shrink-0">
+                      <span className="font-mono font-bold text-xs text-[var(--text)] block">
+                        {qSolved} MCQs
+                      </span>
+                      <span className="text-[10px] text-[var(--text-faint)] font-mono">
+                        🔥 {u.streak || 0}d streak
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Meta: Track, Joined Date & Status Pills */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-[var(--border)]/60 text-xs">
+                    <div className="flex items-center gap-2 text-[11px] text-[var(--muted)]">
+                      <span className="font-medium text-[var(--text)] truncate max-w-[140px]">
+                        {u.targetUniversity || 'General Prep'}
+                      </span>
+                      <span>·</span>
+                      <span className="font-mono text-[var(--text-faint)]">Joined {joinedDate}</span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {isSuspended && (
+                        <span className="text-[10px] font-heading px-2 py-0.5 rounded-full bg-red-500/10 text-red-500 border border-red-500/20">
+                          Suspended
                         </span>
                       )}
-                    </td>
-
-                    {/* Plan */}
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`text-[11px] font-heading px-2 py-0.5 rounded-full border ${
-                          isPro
-                            ? 'border-[var(--text)] text-[var(--text)]'
-                            : 'border-[var(--border)] text-[var(--muted)]'
-                        }`}
-                      >
+                      <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)] capitalize">
+                        {u.role || 'Student'}
+                      </span>
+                      <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
                         {isPro ? 'Pro' : 'Free'}
                       </span>
-                    </td>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
 
-                    {/* Status */}
-                    <td className="py-3.5 px-4">
-                      <span
-                        className={`text-[11px] font-heading px-2 py-0.5 rounded-full border ${
-                          isSuspended
-                            ? 'border-[var(--red)] text-[var(--red)]'
-                            : 'border-[var(--border)] text-[var(--muted)]'
-                        }`}
-                      >
-                        {isSuspended ? 'Suspended' : 'Active'}
-                      </span>
-                    </td>
-
-                    {/* Target campus */}
-                    <td className="py-3.5 px-4 text-[var(--muted)] text-[12px]">
-                      {u.targetUniversity || '—'}
-                    </td>
-
-                    {/* Action link */}
-                    <td className="py-3.5 px-5 text-right">
-                      <span className="text-[12px] text-[var(--text)] hover:underline">
-                        Edit
-                      </span>
+        {/* ─── USERS LIST: DESKTOP TABLE (hidden md:block) ────────────────────── */}
+        <div className="hidden md:block p-0 rounded-[24px] bg-[var(--card)] border border-[var(--border)] overflow-hidden">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-[var(--border)] bg-[var(--card-2)]/50 text-[12px] font-heading text-[var(--muted)]">
+                <th className="py-3 px-5 font-medium">Student</th>
+                <th className="py-3 px-4 font-medium">Short ID</th>
+                <th className="py-3 px-4 font-medium">Email</th>
+                <th className="py-3 px-4 font-medium">University Track</th>
+                <th className="py-3 px-4 font-medium">Questions Solved</th>
+                <th className="py-3 px-4 font-medium">Streak</th>
+                <th className="py-3 px-4 font-medium">Joined Date</th>
+                <th className="py-3 px-5 text-right font-medium">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border)] text-[13px] font-heading">
+              {loading ? (
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={i}>
+                    <td colSpan={8} className="py-4 px-5">
+                      <div className="h-4 bg-[var(--card-2)] rounded w-3/4 animate-pulse" />
                     </td>
                   </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+                ))
+              ) : filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="py-12 px-5 text-center text-[var(--muted)]">
+                    <p className="font-heading text-[14px] mb-2">No users match your filters or search criteria.</p>
+                    {(search || roleFilter !== 'all' || planFilter !== 'all' || statusFilter !== 'all') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSearch('');
+                          setRoleFilter('all');
+                          setPlanFilter('all');
+                          setStatusFilter('all');
+                        }}
+                        className="text-[12px] font-heading px-3 py-1 rounded-full border border-[var(--border)] text-[var(--text)] hover:border-[var(--text)] transition-colors cursor-pointer"
+                      >
+                        Reset all filters
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ) : (
+                filteredUsers.map((u) => {
+                  const name = getUserDisplayName(u);
+                  const initial = name[0].toUpperCase();
+                  const studentId = formatStudentId(u);
+                  const qSolved = u.totalQuestionsSolved ?? ((u.testsCompleted || 0) * 15);
+                  const joinedDate = u.createdAt?.toDate
+                    ? u.createdAt.toDate().toLocaleDateString('en-GB')
+                    : u.createdAt?.seconds
+                    ? new Date(u.createdAt.seconds * 1000).toLocaleDateString('en-GB')
+                    : 'Recent';
+
+                  return (
+                    <tr
+                      key={u.uid}
+                      onClick={() => setSelectedUser(u)}
+                      className="hover:bg-[var(--surface-hover)] cursor-pointer transition-colors"
+                    >
+                      {/* 1. Student Name */}
+                      <td className="py-3.5 px-5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center font-heading font-bold text-[12px] text-[var(--text)] shrink-0">
+                            {initial}
+                          </div>
+                          <span className="font-heading font-semibold text-[13px] text-[var(--text)] truncate max-w-[140px]">
+                            {name}
+                          </span>
+                        </div>
+                      </td>
+
+                      {/* 2. Short Student ID */}
+                      <td className="py-3.5 px-4 font-mono font-bold text-[#D71921] text-xs">
+                        {studentId}
+                      </td>
+
+                      {/* 3. Email */}
+                      <td className="py-3.5 px-4 text-[12px] text-[var(--muted)]">
+                        {u.email}
+                      </td>
+
+                      {/* 4. University Track */}
+                      <td className="py-3.5 px-4 text-[12px] text-[var(--text)]">
+                        {u.targetUniversity || 'General Prep'}
+                      </td>
+
+                      {/* 5. Total Questions Solved */}
+                      <td className="py-3.5 px-4 font-mono font-bold text-[13px] text-[var(--text)]">
+                        {qSolved.toLocaleString()} MCQs
+                      </td>
+
+                      {/* 6. Streak */}
+                      <td className="py-3.5 px-4 font-mono text-[12px] text-[var(--text)]">
+                        🔥 {u.streak || 0}d
+                      </td>
+
+                      {/* 7. Joined Date */}
+                      <td className="py-3.5 px-4 text-[12px] font-mono text-[var(--text-faint)]">
+                        {joinedDate}
+                      </td>
+
+                      {/* 8. Action */}
+                      <td className="py-3.5 px-5 text-right">
+                        <span className="text-[12px] text-[var(--text)] hover:underline">
+                          Edit
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
 
       {hasMore && (
         <div className="flex justify-center pt-2 pb-4">

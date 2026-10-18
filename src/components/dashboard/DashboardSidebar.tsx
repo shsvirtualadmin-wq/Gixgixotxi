@@ -141,9 +141,9 @@ export function DashboardSidebar() {
           </NavLink>
         )}
 
-        {/* Study Squads */}
+        {/* Study Squads / Crew */}
         <NavLink
-          to={profile?.crewId || profile?.isCrewMember ? '/crew/my' : '/crew'}
+          to="/dashboard/crew"
           className={({ isActive }) =>
             `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
               isActive
@@ -154,7 +154,7 @@ export function DashboardSidebar() {
           style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
         >
           <Users size={18} />
-          <span>Study Squads</span>
+          <span>Crew</span>
         </NavLink>
 
         {/* 5. Plans & Upgrade */}
@@ -180,10 +180,10 @@ export function DashboardSidebar() {
           )}
         </NavLink>
 
-        {/* Ambassadorship roles if active */}
-        {role === 'crew' && (
+        {/* Ambassadorship role if approved */}
+        {(role === 'crew' || role === 'ambassador' || Boolean(profile?.isAmbassador)) && (
           <NavLink
-            to="/crew"
+            to="/dashboard/ambassador"
             className={({ isActive }) =>
               `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
                 isActive
@@ -193,7 +193,7 @@ export function DashboardSidebar() {
             }
           >
             <Award size={18} />
-            <span>Crew Hub</span>
+            <span>Ambassador</span>
           </NavLink>
         )}
 
