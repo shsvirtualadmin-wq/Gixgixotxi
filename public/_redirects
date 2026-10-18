@@ -23,5 +23,8 @@
 /events/arena /index.html 200
 /grand-line /index.html 200
 /grand-line/* /index.html 200
+/nakama-captains /index.html 200
+/nakama-captains/* /index.html 200
 /assets/* /assets/:splat 404
 /* /index.html 200
+

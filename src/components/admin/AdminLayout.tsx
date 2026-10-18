@@ -7,7 +7,6 @@ import {
   Database,
   FileCheck2,
   CreditCard,
-  MessageSquare,
   Terminal,
   MoreHorizontal,
   LogOut,
@@ -17,12 +16,14 @@ import {
   ShieldAlert,
   ArrowLeft,
   Activity,
+  Award,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Button } from '@/components/ui/Button';
 import { Logo } from '@/components/ui/Logo';
 import { motion } from 'framer-motion';
+import { NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 
 interface AdminNavItem {
   to: string;
@@ -35,13 +36,13 @@ const PRIMARY_NAV: AdminNavItem[] = [
   { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/admin/users', label: 'Users', icon: Users },
   { to: '/admin/crews', label: 'Crews', icon: Shield },
+  { to: '/admin/captains', label: NAKAMA_CAPTAINS_NAME, icon: Award },
   { to: '/admin/questions', label: 'Questions', icon: Database },
 ];
 
 const SECONDARY_NAV: AdminNavItem[] = [
   { to: '/admin/applications', label: 'Applications', icon: FileCheck2 },
   { to: '/admin/payments', label: 'Payments', icon: CreditCard },
-  { to: '/admin/reviews', label: 'Reviews', icon: MessageSquare },
   { to: '/admin/audit-logs', label: 'Audit log', icon: Terminal },
   { to: '/admin/health', label: 'Health & Tests', icon: Activity },
 ];

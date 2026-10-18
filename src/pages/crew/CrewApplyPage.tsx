@@ -5,6 +5,7 @@ import { db } from '@/lib/firebase';
 import { CheckCircle2, ArrowLeft } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Card } from '@/components/ui/Card';
+import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 
 export function CrewApplyPage() {
   const { user } = useAuth();
@@ -101,15 +102,15 @@ export function CrewApplyPage() {
       ) : (
         <Card className="p-6 sm:p-8">
           <div>
-            <span className="badge-pill mb-3">Ambassador Program</span>
+            <span className="badge-pill mb-3">Leadership Program</span>
             <h1
               className="text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight"
               style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
             >
-              Apply for Boardly Crew Ambassador
+              Apply for {NAKAMA_CAPTAIN_SINGULAR}
             </h1>
             <p className="text-xs sm:text-sm text-[var(--muted)] mt-1.5 leading-relaxed">
-              Represent Boardly in your academy or college wing, earn rewards for every enrolled peer, and access the ambassador cockpit.
+              Lead your crew, organize mock sessions, earn weekly Pro rewards for every student you bring, and climb the national leaderboard.
             </p>
           </div>
 
@@ -235,7 +236,7 @@ export function CrewApplyPage() {
               className="btn-red w-full mt-2 cursor-pointer disabled:opacity-50"
               style={{ height: '52px' }}
             >
-              {submitting ? 'Submitting Application...' : 'Submit Crew Application'}
+              {submitting ? 'Submitting Application...' : `Submit ${NAKAMA_CAPTAIN_SINGULAR} Application`}
             </button>
           </form>
         </Card>

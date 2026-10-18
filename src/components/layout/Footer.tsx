@@ -111,7 +111,7 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Platform -> /features, /crew, /pricing, /reviews, /contact */}
+          {/* Platform -> /features, /crew, /pricing, /nakama-captains, /grand-line/about, /contact */}
           <div className="min-w-0">
             <h4
               className="text-sm font-bold text-white mb-4"
@@ -136,13 +136,13 @@ export function Footer() {
                 </Link>
               </li>
               <li>
-                <Link to="/grand-line/about" className="hover:text-white hover:underline transition-colors block break-words">
-                  {GRAND_LINE_NAME} (Public Mocks)
+                <Link to="/nakama-captains" className="hover:text-white hover:underline transition-colors block break-words">
+                  Nakama Captains
                 </Link>
               </li>
               <li>
-                <Link to="/reviews" className="hover:text-white hover:underline transition-colors block break-words">
-                  Student reviews
+                <Link to="/grand-line/about" className="hover:text-white hover:underline transition-colors block break-words">
+                  {GRAND_LINE_NAME} (Public Mocks)
                 </Link>
               </li>
               <li>

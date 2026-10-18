@@ -188,6 +188,7 @@ export async function getAmbassadorDashboardData(ambassadorUid: string): Promise
     referralsList = snap.docs.map((d) => {
       const data = d.data();
       let rawMs = 0;
+      let dateJoined = 'Recent';
       if (data.signedUpAt?.toDate) {
         const dObj = data.signedUpAt.toDate();
         dateJoined = dObj.toLocaleDateString('en-GB');
@@ -238,3 +239,123 @@ export async function getAmbassadorDashboardData(ambassadorUid: string): Promise
     referralsList,
   };
 }
+
+export interface CaptainAdminSummary {
+  captainUid: string;
+  captainName: string;
+  captainEmail: string;
+  captainShortId: string;
+  captainCode: string;
+  targetUniversity?: string;
+  totalReferrals: number;
+  bonusWeeksEarned: number;
+  referredStudents: AmbassadorReferralItem[];
+}
+
+/**
+ * Loads all Nakama Captains with their referral counts and list of students brought.
+ * Used exclusively by the Super-Admin Portal.
+ */
+export async function getAllCaptainsAdminData(): Promise<CaptainAdminSummary[]> {
+  try {
+    // 1. Fetch all captains from users collection
+    const usersSnap = await getDocs(collection(db, 'users'));
+    const captainMap = new Map<string, CaptainAdminSummary>();
+
+    usersSnap.docs.forEach((d) => {
+      const data = d.data() as UserProfile & { isCaptain?: boolean; isAmbassador?: boolean; ambassadorBonusWeeks?: number };
+      const isCap =
+        data.role === 'captain' ||
+        data.role === 'ambassador' ||
+        Boolean(data.isCaptain) ||
+        Boolean(data.isAmbassador);
+
+      if (isCap) {
+        const uid = d.id;
+        const shortId = data.shortId || uid.slice(0, 5);
+        const code = data.crewReferralCode || shortId;
+        captainMap.set(uid, {
+          captainUid: uid,
+          captainName: data.displayName || data.email?.split('@')[0] || 'Captain',
+          captainEmail: data.email || '',
+          captainShortId: shortId,
+          captainCode: code,
+          targetUniversity: data.targetUniversity || 'General Campus',
+          totalReferrals: 0,
+          bonusWeeksEarned: Number(data.ambassadorBonusWeeks || 0),
+          referredStudents: [],
+        });
+      }
+    });
+
+    // 2. Query all referrals from referrals collection
+    const refsSnap = await getDocs(collection(db, 'referrals'));
+    refsSnap.docs.forEach((d) => {
+      const data = d.data();
+      const referrerUid = data.referrerUid as string | undefined;
+      const referrerShortId = data.referrerShortId as string | undefined;
+      const referrerCode = data.referrerCode as string | undefined;
+
+      // Find matching captain
+      let targetCaptain: CaptainAdminSummary | undefined;
+      if (referrerUid && captainMap.has(referrerUid)) {
+        targetCaptain = captainMap.get(referrerUid);
+      } else {
+        // Fallback match by shortId or code
+        for (const cap of captainMap.values()) {
+          if (
+            (referrerShortId && cap.captainShortId === referrerShortId) ||
+            (referrerCode && cap.captainCode === referrerCode)
+          ) {
+            targetCaptain = cap;
+            break;
+          }
+        }
+      }
+
+      let dateJoined = 'Recent';
+      if (data.signedUpAt?.toDate) {
+        dateJoined = data.signedUpAt.toDate().toLocaleDateString('en-GB');
+      } else if (data.signedUpAt?.seconds) {
+        dateJoined = new Date(data.signedUpAt.seconds * 1000).toLocaleDateString('en-GB');
+      }
+
+      const studentItem: AmbassadorReferralItem = {
+        id: d.id,
+        studentName: data.referredName || data.referredEmail?.split('@')[0] || 'Student',
+        studentShortId: data.referredShortId || d.id.slice(0, 5),
+        studentUid: data.referredUserId || d.id,
+        studentEmail: data.referredEmail,
+        dateJoined,
+        track: data.track || 'FAST / NUST Prep',
+      };
+
+      if (targetCaptain) {
+        // Avoid duplicate counting of the exact same student
+        const exists = targetCaptain.referredStudents.some(
+          (s) => s.studentUid === studentItem.studentUid || s.id === studentItem.id
+        );
+        if (!exists) {
+          targetCaptain.referredStudents.push(studentItem);
+        }
+      }
+    });
+
+    // Calculate final totals and sort by total referrals descending
+    const list = Array.from(captainMap.values()).map((cap) => {
+      const actualCount = cap.referredStudents.length;
+      return {
+        ...cap,
+        totalReferrals: Math.max(actualCount, cap.bonusWeeksEarned),
+        bonusWeeksEarned: Math.max(actualCount, cap.bonusWeeksEarned),
+      };
+    });
+
+    list.sort((a, b) => b.totalReferrals - a.totalReferrals);
+    return list;
+  } catch (err) {
+    console.warn('[referralService] Error fetching admin captains data:', err);
+    return [];
+  }
+}
+

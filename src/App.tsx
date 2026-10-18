@@ -52,11 +52,13 @@ const FeaturesPage = lazyWithRetry(() => import('./pages/FeaturesPage'));
 const CrewPage = lazyWithRetry(() => import('./pages/crew/CrewPage'));
 const ArenaPage = lazyWithRetry(() => import('./pages/ArenaPage'));
 const PricingPage = lazyWithRetry(() => import('./pages/PricingPage'));
-const ReviewsPage = lazyWithRetry(() => import('./pages/ReviewsPage'));
+const NakamaCaptainsPage = lazyWithRetry(() => import('./pages/NakamaCaptainsPage'));
+const GrandLinePage = lazyWithRetry(() => import('./pages/GrandLinePage'));
+const GrandLineAboutPage = lazyWithRetry(() => import('./pages/GrandLineAboutPage'));
+const GrandLineTestRunnerPage = lazyWithRetry(() => import('./pages/GrandLineTestRunnerPage'));
 const PrivacyPage = lazyWithRetry(() => import('./pages/PrivacyPage'));
 const TermsPage = lazyWithRetry(() => import('./pages/TermsPage'));
 const ContactPage = lazyWithRetry(() => import('./pages/ContactPage'));
-const NotFoundPage = lazyWithRetry(() => import('./pages/NotFoundPage'));
 
 // Auth pages (lazy with retry) — use AuthLayout ONLY, NO public Navbar or Footer
 const LoginPage = lazyWithRetry(() => import('./pages/LoginPage'));
@@ -118,8 +120,8 @@ const JoinCrewPage = lazyWithRetry(() =>
 const CrewApplyPage = lazyWithRetry(() =>
   import('./pages/crew/CrewApplyPage').then(m => ({ default: m.CrewApplyPage }))
 );
-const CaptainDashboardPage = lazyWithRetry(() =>
-  import('./pages/captain/CaptainDashboardPage').then(m => ({ default: m.CaptainDashboardPage }))
+const AmbassadorDashboardPage = lazyWithRetry(() =>
+  import('./pages/dashboard/AmbassadorDashboardPage').then(m => ({ default: m.AmbassadorDashboardPage }))
 );
 const CaptainApplyPage = lazyWithRetry(() =>
   import('./pages/captain/CaptainApplyPage').then(m => ({ default: m.CaptainApplyPage }))
@@ -144,8 +146,8 @@ const AdminApplicationsPage = lazyWithRetry(() =>
 const AdminPaymentsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminPaymentsPage').then(m => ({ default: m.AdminPaymentsPage }))
 );
-const AdminReviewsPage = lazyWithRetry(() =>
-  import('./pages/admin/AdminReviewsPage').then(m => ({ default: m.AdminReviewsPage }))
+const AdminCaptainsPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminCaptainsPage').then(m => ({ default: m.AdminCaptainsPage }))
 );
 const AdminAuditLogsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminAuditLogsPage').then(m => ({ default: m.AdminAuditLogsPage }))
@@ -194,7 +196,7 @@ function AppInner() {
           <Route path="questions" element={<AdminQuestionsPage />} />
           <Route path="applications" element={<AdminApplicationsPage />} />
           <Route path="payments" element={<AdminPaymentsPage />} />
-          <Route path="reviews" element={<AdminReviewsPage />} />
+          <Route path="captains" element={<AdminCaptainsPage />} />
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
           <Route path="crews" element={<AdminCrewsPage />} />
           <Route path="health" element={<AdminHealthPage />} />
@@ -214,7 +216,8 @@ function AppInner() {
           <Route path="merit-meter" element={<PlaceholderPage title="Merit Meter" />} />
           <Route path="study-circles" element={<PlaceholderPage title="Study Circles" />} />
           <Route path="crew" element={<CrewDashboardPage />} />
-          <Route path="reviews" element={<PlaceholderPage title="Reviews" />} />
+          <Route path="captain" element={<AmbassadorDashboardPage />} />
+          <Route path="ambassador" element={<Navigate to="/dashboard/captain" replace />} />
           <Route path="plans" element={<PlansBillingPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<SettingsPage />} />
@@ -235,7 +238,11 @@ function AppInner() {
         {/* Onboarding — uses OnboardingShell */}
         <Route path="/onboarding" element={<OnboardingPage />} />
 
-        {/* Crew & Captain Standalone Portals — independent shells, NO public Navbar or Footer */}
+        {/* Grand Line Test Runner — full-screen distraction-free, NO Navbar or Footer */}
+        <Route path="/grand-line/test/:testId" element={<GrandLineTestRunnerPage />} />
+
+        {/* Crew Standalone Portal — keeps bottom navigation bar, NO public top Navbar/Footer */}
+        <Route path="/crew" element={<CrewPage />} />
         <Route path="/crew/my" element={<CrewDashboardPage />} />
         <Route path="/crew/dashboard" element={<CrewDashboardPage />} />
         <Route path="/crews" element={<Navigate to="/crew" replace />} />
@@ -243,24 +250,32 @@ function AppInner() {
         <Route path="/join/:code" element={<JoinCrewPage />} />
         <Route path="/join" element={<Navigate to="/crew" replace />} />
         <Route path="/dashboard/crew" element={<CrewDashboardPage />} />
-        <Route path="/captain" element={<CaptainDashboardPage />} />
+
+        {/* Nakama Captain Portals */}
+        <Route path="/captain" element={<Navigate to="/dashboard/captain" replace />} />
+        <Route path="/captain/dashboard" element={<Navigate to="/dashboard/captain" replace />} />
         <Route path="/captain/apply" element={<CaptainApplyPage />} />
         <Route path="/captain/leaderboard" element={<CaptainLeaderboardPage />} />
+        <Route path="/nakama-captain" element={<Navigate to="/nakama-captains" replace />} />
+        <Route path="/crew-ambassador" element={<Navigate to="/nakama-captains" replace />} />
+        <Route path="/ambassador" element={<Navigate to="/nakama-captains" replace />} />
 
         {/* Public Marketing routes ONLY (wrapped by PublicLayout with Navbar + Footer) */}
         <Route element={<PublicLayout />}>
           <Route path="/" element={<LandingPage />} />
           <Route path="/features" element={<FeaturesPage />} />
-          <Route path="/crew" element={<CrewPage />} />
           <Route path="/arena" element={<ArenaPage />} />
           <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/reviews" element={<ReviewsPage />} />
+          <Route path="/nakama-captains" element={<NakamaCaptainsPage />} />
+          <Route path="/grand-line" element={<GrandLinePage />} />
+          <Route path="/grand-line/about" element={<GrandLineAboutPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/contact" element={<ContactPage />} />
-          {/* Clean 404 Page for any unmatched public routes */}
-          <Route path="*" element={<NotFoundPage />} />
         </Route>
+
+        {/* Global Catch-all fallback: redirect unknown routes to home page */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
     {import.meta.env.DEV && <DebugPanel />}

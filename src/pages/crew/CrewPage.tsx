@@ -16,7 +16,8 @@ import {
   Minus,
 } from 'lucide-react';
 import { MAX_CREW_MEMBERS } from '@/constants/limits';
-import { GRAND_LINE_NAME } from '@/constants/branding';
+import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME, NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
+import { DashboardBottomNav } from '@/components/dashboard/DashboardBottomNav';
 
 
 
@@ -52,18 +53,18 @@ const CREW_ROLES = [
     actionLink: '/dashboard/crew',
   },
   {
-    badge: 'Official Ambassador',
-    title: 'Boardly Crew Ambassador',
-    desc: 'Student ambassadors representing Boardly and SHS Virtual Academy across colleges and coaching centers. Review applications are vetted directly by academy coordinators.',
-    actionText: 'Apply for Crew Program',
-    actionLink: '/crew/apply',
+    badge: 'Official Leadership',
+    title: NAKAMA_CAPTAIN_SINGULAR,
+    desc: 'Student leaders who assemble squads, publish entrance tests on Grand Line, earn weekly Pro rewards, and gain certificates and internship pathways with SHS Virtual Academy.',
+    actionText: `Apply as ${NAKAMA_CAPTAIN_SINGULAR}`,
+    actionLink: '/captain/apply',
   },
   {
     badge: 'Campus Lead',
-    title: 'Campus Captain',
+    title: 'Study Squad Captain',
     desc: 'Student leadership role with dedicated referral code tracking, student onboarding metrics, and campus leaderboard standing.',
-    actionText: 'Apply as Campus Captain',
-    actionLink: '/captain/apply',
+    actionText: `Explore ${NAKAMA_CAPTAINS_NAME}`,
+    actionLink: '/nakama-captains',
   },
 ];
 
@@ -85,8 +86,8 @@ const CREW_FAQS = [
     a: 'To maintain meaningful squad commitment and accurate leaderboards, each student can only belong to one active study crew at a time. You can leave your current squad at any time to join another.',
   },
   {
-    q: 'What is the difference between Crew Ambassador and Campus Captain?',
-    a: 'Crew Ambassadors represent Boardly at local colleges to organize study sessions and share test prep best practices. Campus Captains lead regional student referrals and coordinate campus-wide mock events.',
+    q: `What is the role of a ${NAKAMA_CAPTAIN_SINGULAR}?`,
+    a: `A ${NAKAMA_CAPTAIN_SINGULAR} commands their study squad, publishes timed test drills on Grand Line, and earns extra Pro access extensions for every student they onboard.`,
   },
 ];
 
@@ -138,15 +139,15 @@ export function CrewPage() {
               </Link>
             ) : (
               <Link to="/login?redirect=/crew/my" className="btn-red" style={{ height: '52px' }}>
-                Sign In to Join / Create Squad
+                Create or Join a Crew
               </Link>
             )}
-            <Link to="/crew/apply" className="btn-outline" style={{ height: '52px' }}>
-              Apply as Crew Ambassador
+            <Link to="/captain/apply" className="btn-outline" style={{ height: '52px' }}>
+              Apply as {NAKAMA_CAPTAIN_SINGULAR}
             </Link>
           </div>
 
-          {/* Quick Join Bar */}
+          {/* 6-character Crew Code Quick Join Input */}
           <div className="max-w-md mx-auto pt-4">
             <form onSubmit={handleJoinByCode} className="flex items-center gap-2">
               <input
@@ -155,12 +156,12 @@ export function CrewPage() {
                 onChange={(e) => setInviteCodeInput(e.target.value.toUpperCase())}
                 placeholder="Enter 6-char crew code (e.g. CRW123)"
                 maxLength={8}
-                className="flex-1 rounded-full px-4 py-3 bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] uppercase tracking-wider"
+                className="flex-1 rounded-full px-4 py-3 bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] uppercase tracking-wider text-center font-mono font-bold"
                 style={{ height: '52px' }}
               />
               <button
                 type="submit"
-                className="btn-outline shrink-0 px-5 text-sm"
+                className="btn-red shrink-0 px-6 text-sm font-bold cursor-pointer"
                 style={{ height: '52px' }}
               >
                 Join
@@ -319,12 +320,15 @@ export function CrewPage() {
             <Link to="/signup" className="btn-red" style={{ height: '52px' }}>
               Create Your Free Account
             </Link>
-            <Link to="/crew/apply" className="btn-outline" style={{ height: '52px' }}>
-              Become a Crew Ambassador
+            <Link to="/captain/apply" className="btn-outline" style={{ height: '52px' }}>
+              Become a {NAKAMA_CAPTAIN_SINGULAR}
             </Link>
           </div>
         </div>
       </div>
+
+      {/* Fixed bottom navigation bar (icons only) */}
+      <DashboardBottomNav />
     </>
   );
 }

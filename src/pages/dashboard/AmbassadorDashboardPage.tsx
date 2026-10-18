@@ -39,7 +39,7 @@ import {
   type AmbassadorQuestion,
   type GrandLineAttempt,
 } from '@/services/ambassadorTestService';
-import { GRAND_LINE_NAME } from '@/constants/branding';
+import { GRAND_LINE_NAME, NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 
 const SUBJECT_OPTIONS = [
   { value: 'mathematics', label: 'Mathematics' },
@@ -117,7 +117,7 @@ export function AmbassadorDashboardPage() {
 
   const shortId = stats?.shortId || profile?.shortId || user?.uid.slice(0, 5) || '00000';
   const referralLink = `${window.location.origin}/signup?ref=${shortId}`;
-  const shareMessage = `Join Boardly — Pakistan's #1 Entrance Exam Prep Platform (FAST, NUST, MDCAT, GIKI, ECAT)! Use my official Ambassador code #${shortId} or link to register: ${referralLink}`;
+  const shareMessage = `Join Boardly — Pakistan's #1 Entrance Exam Prep Platform (FAST, NUST, MDCAT, GIKI, ECAT)! Use my official ${NAKAMA_CAPTAIN_SINGULAR} code #${shortId} or link to register: ${referralLink}`;
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(referralLink);
@@ -294,7 +294,7 @@ export function AmbassadorDashboardPage() {
         questions: selectedSlice,
         isPublic,
         creatorUid: user.uid,
-        creatorName: profile?.displayName || user.displayName || 'Ambassador',
+        creatorName: profile?.displayName || user.displayName || NAKAMA_CAPTAIN_SINGULAR,
         creatorShortId: shortId,
         creatorEmail: user.email || '',
       });
@@ -357,7 +357,7 @@ export function AmbassadorDashboardPage() {
           </span>
         </div>
         <h1 className="font-display text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight">
-          Crew Ambassador Cockpit
+          {NAKAMA_CAPTAIN_SINGULAR} Cockpit
         </h1>
         <p className="text-xs sm:text-sm text-[var(--muted)] mt-1">
           Represent Boardly across colleges and coaching circles. Share your unique invite ID, track referred students in real-time, earn bonus Pro weeks, and author public {GRAND_LINE_NAME} mocks.
@@ -413,7 +413,7 @@ export function AmbassadorDashboardPage() {
               <span className="text-2xl font-display font-bold text-[var(--text)]">
                 #{stats?.rank ?? 1}
               </span>
-              <span className="text-[10px] text-[var(--text-faint)] block mt-0.5">Among Ambassadors</span>
+              <span className="text-[10px] text-[var(--text-faint)] block mt-0.5">Among Captains</span>
             </GlassCard>
           </div>
 
@@ -545,7 +545,7 @@ export function AmbassadorDashboardPage() {
                 <div className="flex items-center gap-2">
                   <FileText size={18} className="text-[#D71921]" />
                   <h3 className="text-base sm:text-lg font-bold text-[var(--text)] font-display">
-                    Ambassador Test Creator
+                    Captain Test Creator
                   </h3>
                 </div>
                 <p className="text-xs text-[var(--muted)] mt-1 max-w-xl leading-relaxed">
@@ -646,7 +646,7 @@ export function AmbassadorDashboardPage() {
           <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl bg-[var(--card)] border border-[var(--border)] p-6 shadow-2xl flex flex-col gap-4">
             <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
               <div>
-                <h3 className="text-lg font-bold font-display text-[var(--text)]">Create Ambassador Test</h3>
+                <h3 className="text-lg font-bold font-display text-[var(--text)]">Create Captain Test</h3>
                 <p className="text-xs text-[var(--muted)]">Separate from main MCQ bank. Will not overwrite academy questions.</p>
               </div>
               <button
@@ -729,7 +729,7 @@ export function AmbassadorDashboardPage() {
                       checked={!isPublic}
                       onChange={() => setIsPublic(false)}
                     />
-                    <span>Private (Ambassador Tab Only)</span>
+                    <span>Private (Captain Tab Only)</span>
                   </label>
                 </div>
               </div>

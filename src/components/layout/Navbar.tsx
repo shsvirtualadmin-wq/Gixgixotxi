@@ -4,11 +4,12 @@ import { Menu, X, Moon, Sun } from 'lucide-react';
 import { Logo } from '@/components/ui/Logo';
 import { useTheme } from '@/hooks/useTheme';
 
-import { GRAND_LINE_NAME } from '@/constants/branding';
+import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 
 const NAV_LINKS = [
   { to: '/features', label: 'Features' },
   { to: '/crew', label: 'Crew' },
+  { to: '/nakama-captains', label: NAKAMA_CAPTAINS_NAME },
   { to: '/pricing', label: 'Pricing' },
   { to: '/grand-line', label: GRAND_LINE_NAME },
   { to: '/contact', label: 'Contact' },

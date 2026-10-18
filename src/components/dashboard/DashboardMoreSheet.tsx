@@ -1,12 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { X, FileText, BarChart3, Users, Star, CreditCard, Zap } from 'lucide-react';
+import { X, FileText, BarChart3, Users, CreditCard, Zap } from 'lucide-react';
 import { useEffect } from 'react';
 
 const MORE_ITEMS = [
   { to: '/dashboard/past-papers', label: 'Past Papers', icon: FileText },
   { to: '/dashboard/merit-meter', label: 'Merit Meter', icon: BarChart3 },
   { to: '/dashboard/study-circles', label: 'Study Circles', icon: Users },
-  { to: '/dashboard/reviews', label: 'Reviews', icon: Star },
   { to: '/dashboard/plans', label: 'Plans', icon: CreditCard },
 ];
 

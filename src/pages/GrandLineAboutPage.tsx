@@ -10,14 +10,14 @@ import {
   Award,
   Zap,
 } from 'lucide-react';
-import { GRAND_LINE_NAME } from '@/constants/branding';
+import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME, NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 
 export function GrandLineAboutPage() {
   return (
     <>
       <PageMeta
         title={`${GRAND_LINE_NAME} — Public Mock Tests & Drills | Boardly`}
-        description={`Learn how ${GRAND_LINE_NAME} works: open entrance exam mock tests authored by Boardly Crew Ambassadors, with real-time Pakistan leaderboards.`}
+        description={`Learn how ${GRAND_LINE_NAME} works: open entrance exam mock tests authored by ${NAKAMA_CAPTAINS_NAME}, with real-time Pakistan leaderboards.`}
       />
 
       <div className="pt-28 pb-20 boardly-container page-enter space-y-16">
@@ -31,7 +31,7 @@ export function GrandLineAboutPage() {
             Welcome to {GRAND_LINE_NAME}
           </h1>
           <p className="text-base sm:text-lg text-[var(--muted)] leading-relaxed">
-            The proving grounds for Pakistan's university entrance exams. High-yield, timed mock tests authored by official Boardly Crew Ambassadors that any student or visitor can challenge.
+            The proving grounds for Pakistan's university entrance exams. High-yield, timed mock tests authored by official {NAKAMA_CAPTAINS_NAME} that any student or visitor can challenge.
           </p>
 
           <div className="pt-3 flex flex-wrap items-center justify-center gap-4">
@@ -39,8 +39,8 @@ export function GrandLineAboutPage() {
               <span>Browse Tests</span>
               <ArrowRight size={16} />
             </Link>
-            <Link to="/crew/apply" className="btn-outline" style={{ height: '52px' }}>
-              Apply as Crew Ambassador
+            <Link to="/captain/apply" className="btn-outline" style={{ height: '52px' }}>
+              Apply as {NAKAMA_CAPTAIN_SINGULAR}
             </Link>
           </div>
         </div>
@@ -55,7 +55,7 @@ export function GrandLineAboutPage() {
               1. What is {GRAND_LINE_NAME}?
             </h3>
             <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
-              {GRAND_LINE_NAME} is an open testing sea where student ambassadors publish verified question sets across Mathematics, Physics, Chemistry, Biology, CS, and Analytical reasoning. Anyone across Pakistan can take them to test their readiness.
+              {GRAND_LINE_NAME} is an open testing sea where {NAKAMA_CAPTAINS_NAME} publish verified question sets across Mathematics, Physics, Chemistry, Biology, CS, and Analytical reasoning. Anyone across Pakistan can take them to test their readiness.
             </p>
           </Card>
 
@@ -88,10 +88,10 @@ export function GrandLineAboutPage() {
               <Award size={20} />
             </div>
             <h3 className="text-lg font-bold text-[var(--text)] font-heading">
-              4. How Ambassadors Publish
+              4. How Captains Publish
             </h3>
             <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
-              Approved Crew Ambassadors use the built-in CSV Test Creator in their Ambassador Cockpit to draft and validate tests of 10, 20, 30, 40, or 50 questions. Questions remain isolated from the main MCQ bank and can be published, edited, or unpublished at any time.
+              Approved {NAKAMA_CAPTAINS_NAME} use the built-in CSV Test Creator in their Captain Cockpit to draft and validate tests of 10, 20, 30, 40, or 50 questions. Questions remain isolated from the main MCQ bank and can be published, edited, or unpublished at any time.
             </p>
           </Card>
         </div>

@@ -12,6 +12,7 @@ import { DottedRingProgress } from '@/components/ui/DottedRingProgress';
 import { DotRowStreak } from '@/components/ui/DotRowStreak';
 import { QrCodeSvg } from '@/components/crew/QrCodeSvg';
 import { Card } from '@/components/ui/Card';
+import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 import {
   Copy,
   Check,
@@ -51,9 +52,28 @@ export function CrewDashboardPage() {
   const [transferModalOpen, setTransferModalOpen] = useState(false);
   const [selectedNewLeader, setSelectedNewLeader] = useState<string>('');
   const [leaderboardTab, setLeaderboardTab] = useState<'weekly' | 'alltime'>('weekly');
+  const [quickCodeInput, setQuickCodeInput] = useState('');
+  const [quickJoinLoading, setQuickJoinLoading] = useState(false);
+  const [quickJoinError, setQuickJoinError] = useState<string | null>(null);
 
   const isLeader = Boolean(crew && user && crew.leaderId === user.uid);
   const joinUrl = crew ? `https://boardly.cfd/join/${crew.code}` : '';
+
+  const handleQuickJoin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const code = quickCodeInput.trim().toUpperCase();
+    if (!code) return;
+    setQuickJoinLoading(true);
+    setQuickJoinError(null);
+    try {
+      await joinCrewByCode(code);
+      retry();
+    } catch (err: unknown) {
+      setQuickJoinError((err as Error).message || 'Failed to join crew with this code.');
+    } finally {
+      setQuickJoinLoading(false);
+    }
+  };
 
   const handleCopyCode = () => {
     if (!crew?.code) return;
@@ -141,7 +161,7 @@ export function CrewDashboardPage() {
   // State A: Not in a crew -> In-app leaderboard replaces old Join/Create screen
   if (!crew) {
     return (
-      <div className="max-w-4xl mx-auto py-8 px-4 sm:px-6 space-y-6">
+      <div className="max-w-4xl mx-auto py-6 px-4 sm:px-6 space-y-6">
         <div>
           <Link
             to="/dashboard"
@@ -151,14 +171,66 @@ export function CrewDashboardPage() {
             <span>Return to Dashboard</span>
           </Link>
           <h1 className="font-display text-2xl sm:text-3xl font-bold text-white tracking-tight">
-            Study Squads &amp; Leaderboard
+            Study Crews &amp; National Leaderboard
           </h1>
           <p className="text-sm text-[var(--muted)] mt-1">
-            Join a squad, climb the national leaderboard, or assemble your own squad. Free for up to 5 members, or Large Crew (30 members) with shared Pro access.
+            Collaborate in study squads, track streaks together, and prepare for entrance exams across Pakistan.
           </p>
         </div>
 
-        {user && (
+        {/* ── 3 In-Dashboard Actions ── */}
+        <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] shadow-md space-y-4">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  const el = document.getElementById('leaderboard-crews-view');
+                  if (el) el.scrollIntoView({ behavior: 'smooth' });
+                }}
+                className="btn-red text-xs sm:text-sm px-4 py-2.5 rounded-xl font-bold flex items-center gap-2 cursor-pointer"
+              >
+                <span>Create or Join a Crew</span>
+              </button>
+
+              <Link
+                to="/captain/apply"
+                className="btn-outline text-xs sm:text-sm px-4 py-2.5 rounded-xl font-semibold flex items-center gap-2"
+              >
+                <span>Apply as {NAKAMA_CAPTAIN_SINGULAR}</span>
+              </Link>
+            </div>
+
+            {/* Action 3: 6-char Crew Code Input + Join Button */}
+            <form onSubmit={handleQuickJoin} className="flex items-center gap-2 max-w-sm w-full sm:w-auto">
+              <input
+                type="text"
+                value={quickCodeInput}
+                onChange={(e) => setQuickCodeInput(e.target.value.toUpperCase())}
+                placeholder="6-char code (e.g. CRW123)"
+                maxLength={8}
+                className="flex-1 sm:w-44 px-3.5 py-2 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-white placeholder-[var(--muted)] uppercase tracking-wider font-mono text-center font-bold focus:outline-none focus:border-[var(--red)]"
+              />
+              <button
+                type="submit"
+                disabled={quickJoinLoading || !quickCodeInput.trim()}
+                className="btn-red text-xs px-4 py-2 rounded-xl font-bold disabled:opacity-50 cursor-pointer shrink-0"
+              >
+                {quickJoinLoading ? 'Joining...' : 'Join'}
+              </button>
+            </form>
+          </div>
+
+          {quickJoinError && (
+            <div className="p-3 rounded-xl bg-red-950/40 border border-[#D71921] text-[#D71921] text-xs flex items-center gap-2">
+              <AlertCircle size={15} className="shrink-0" />
+              <span>{quickJoinError}</span>
+            </div>
+          )}
+        </div>
+
+        <div id="leaderboard-crews-view">
+          {user && (
           <InAppLeaderboard
             currentUser={{
               uid: user.uid,
@@ -173,6 +245,7 @@ export function CrewDashboardPage() {
             onCrewJoined={retry}
           />
         )}
+        </div>
       </div>
     );
   }

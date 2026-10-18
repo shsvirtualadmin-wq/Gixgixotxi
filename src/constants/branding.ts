@@ -5,6 +5,9 @@
 export const GRAND_LINE_NAME = 'Grand Line';
 export const GRAND_LINE_TAGLINE = 'National Public Mocks & Competitive Drills';
 
+export const NAKAMA_CAPTAINS_NAME = 'Nakama Captains';
+export const NAKAMA_CAPTAIN_SINGULAR = 'Nakama Captain';
+
 export const OFFICIAL_SUPPORT_EMAIL = 'support@boardly.cfd';
 export const SUPER_ADMIN_EMAIL = 'shsvirtualadmin@gmail.com';
 

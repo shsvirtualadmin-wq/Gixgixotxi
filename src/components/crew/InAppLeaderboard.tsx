@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Search, Plus, Trophy, Sparkles, Lock, Unlock, Eye, AlertCircle, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Search, Plus, Trophy, Sparkles, Lock, Unlock, Eye, AlertCircle, ChevronLeft, ChevronRight, Flame } from 'lucide-react';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
 import type { PublicCrewSummary } from '@/types/crew';
 import { fetchCrewLeaderboard, joinCrew, cancelJoinRequest } from '@/services/crewService';
@@ -31,6 +31,7 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
   const [search, setSearch] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'open' | 'request' | 'eligible'>('all');
+  const [sortBy, setSortBy] = useState<'questions' | 'streak' | 'accuracy'>('questions');
   const [page, setPage] = useState(1);
   const limit = 20;
 
@@ -132,23 +133,29 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
     }
   };
 
-  // Filter crews based on active tab
-  const filteredCrews = crews.filter((c) => {
-    const eligibilityResult = evaluateUserEligibility(
-      c,
-      {
-        uid: currentUser.uid,
-        streak: currentUser.streak,
-        crewId: currentUser.crewId,
-      }
-    );
-    const eligibility = eligibilityResult.state;
+  // Filter and sort crews based on active tab and sort criterion
+  const filteredCrews = [...crews]
+    .filter((c) => {
+      const eligibilityResult = evaluateUserEligibility(
+        c,
+        {
+          uid: currentUser.uid,
+          streak: currentUser.streak,
+          crewId: currentUser.crewId,
+        }
+      );
+      const eligibility = eligibilityResult.state;
 
-    if (filter === 'open') return c.joinMode === 'direct' && !c.isClosed;
-    if (filter === 'request') return c.joinMode === 'request' && !c.isClosed;
-    if (filter === 'eligible') return eligibility === 'eligible';
-    return true;
-  });
+      if (filter === 'open') return c.joinMode === 'direct' && !c.isClosed;
+      if (filter === 'request') return c.joinMode === 'request' && !c.isClosed;
+      if (filter === 'eligible') return eligibility === 'eligible';
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'streak') return (b.streak || 0) - (a.streak || 0);
+      if (sortBy === 'accuracy') return (b.accuracy ?? 85) - (a.accuracy ?? 85);
+      return (b.questionsSolved ?? b.score ?? 0) - (a.questionsSolved ?? a.score ?? 0);
+    });
 
   const totalPages = Math.max(1, Math.ceil(totalCount / limit));
 
@@ -158,13 +165,13 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-[#0A0A0A] border border-[rgba(255,255,255,0.12)] shadow-sm">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold font-heading text-white">Pakistan Squad Leaderboard</h2>
+            <h2 className="text-xl font-bold font-heading text-white">National Crew Leaderboard</h2>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/10 text-white">
               Live DB
             </span>
           </div>
           <p className="text-xs text-[rgba(255,255,255,0.65)]">
-            Explore active study squads, review join conditions, or launch your own crew.
+            All registered study crews across Pakistan, ranked by questions solved, streak, and drill accuracy.
           </p>
         </div>
 
@@ -185,8 +192,8 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
         </div>
       )}
 
-      {/* Filter Tabs and Search Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+      {/* Filter Tabs, Sort Options and Search Bar */}
+      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
         {/* Filters */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {([
@@ -210,12 +217,37 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
           ))}
         </div>
 
+        {/* Sort Options: Questions Solved, Streak, Accuracy */}
+        <div className="flex items-center gap-1.5 text-xs text-[rgba(255,255,255,0.6)]">
+          <span className="hidden sm:inline font-heading text-[11px] text-[rgba(255,255,255,0.4)]">Rank:</span>
+          {(
+            [
+              { id: 'questions', label: 'Questions' },
+              { id: 'streak', label: 'Streak' },
+              { id: 'accuracy', label: 'Accuracy' },
+            ] as const
+          ).map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setSortBy(s.id)}
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                sortBy === s.id
+                  ? 'bg-[#D71921] text-white font-bold'
+                  : 'bg-[#141414] text-[rgba(255,255,255,0.6)] hover:text-white border border-[rgba(255,255,255,0.08)]'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
         {/* Search */}
-        <div className="relative w-full sm:w-64">
+        <div className="relative w-full md:w-60">
           <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgba(255,255,255,0.4)]" />
           <input
             type="text"
-            placeholder="Search squads..."
+            placeholder="Search crews..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3.5 py-1.5 rounded-lg bg-[#141414] border border-[rgba(255,255,255,0.12)] text-xs text-white placeholder-[rgba(255,255,255,0.3)] focus:outline-none focus:border-[#D71921]"
@@ -329,14 +361,19 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
 
                 {/* Right Side: Score, Eligibility Badge & Actions */}
                 <div className="flex items-center justify-between sm:justify-end gap-3 sm:gap-4 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-[rgba(255,255,255,0.06)]">
-                  {/* Score */}
+                  {/* Score & Metrics: Solved, Streak, Accuracy */}
                   <div className="text-left sm:text-right">
                     <div className="text-sm font-bold font-heading text-white">
-                      {c.score} <span className="text-[10px] text-[rgba(255,255,255,0.5)] font-normal font-sans">pts</span>
+                      {c.questionsSolved ?? c.score} <span className="text-[10px] text-[rgba(255,255,255,0.5)] font-normal font-sans">solved</span>
                     </div>
-                    <div className="text-[11px] text-[rgba(255,255,255,0.5)] flex items-center sm:justify-end gap-2 font-mono">
-                      <span>{c.memberCount}/{c.maxMembers}</span>
-                      <span className="text-[#D71921]">{c.streak}d</span>
+                    <div className="text-[11px] text-[rgba(255,255,255,0.6)] flex items-center sm:justify-end gap-2 font-mono">
+                      <span className="flex items-center gap-0.5 text-[#D71921] font-semibold">
+                        <Flame size={11} /> {c.streak}d
+                      </span>
+                      <span>&bull;</span>
+                      <span className="text-emerald-400 font-semibold">
+                        {c.accuracy ?? 85}% acc
+                      </span>
                     </div>
                   </div>
 

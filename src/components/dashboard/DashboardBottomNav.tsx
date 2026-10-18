@@ -53,10 +53,10 @@ export function DashboardBottomNav() {
   const role = profile?.role || 'student';
   const displayName = profile?.displayName || user?.displayName || 'Student';
   const initial = (displayName[0] || user?.email?.[0] || 'S').toUpperCase();
-  const isApprovedAmbassador = role === 'crew' || role === 'ambassador' || Boolean(profile?.isAmbassador);
+  const isApprovedCaptain = role === 'captain' || role === 'ambassador' || Boolean(profile?.isCaptain) || Boolean(profile?.isAmbassador);
   const crewLink = '/dashboard/crew';
 
-  // Unified Student Nav: Daily Practice, Cockpit, Weak Chapters, Streaks, Crew, [Ambassador], Menu
+  // Unified Student Nav: Daily Practice, Cockpit, Weak Chapters, Streaks, Crew, [Captain], Menu
   const navItems: PillNavItem[] = [
     {
       to: '/dashboard/practice',
@@ -84,11 +84,11 @@ export function DashboardBottomNav() {
       label: 'Crew',
       icon: <Users size={18} />,
     },
-    ...(isApprovedAmbassador
+    ...(isApprovedCaptain
       ? [
           {
-            to: '/dashboard/ambassador',
-            label: 'Ambassador',
+            to: '/dashboard/captain',
+            label: 'Captain',
             icon: <Award size={18} />,
           },
         ]
@@ -285,29 +285,15 @@ export function DashboardBottomNav() {
                 </div>
               </button>
 
-              {role === 'crew' && (
+              {isApprovedCaptain && (
                 <button
                   type="button"
-                  onClick={() => handleNav('/crew')}
+                  onClick={() => handleNav('/dashboard/captain')}
                   className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
                 >
                   <div className="flex items-center gap-3">
-                    <Award size={18} className="text-[var(--muted)]" />
-                    <span>Crew Ambassador Hub</span>
-                  </div>
-                  <ChevronRight size={14} className="text-[var(--muted)]" />
-                </button>
-              )}
-
-              {role === 'captain' && (
-                <button
-                  type="button"
-                  onClick={() => handleNav('/captain')}
-                  className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <Award size={18} className="text-[var(--muted)]" />
-                    <span>Campus Captain Hub</span>
+                    <Award size={18} className="text-[#D71921]" />
+                    <span>Nakama Captains Hub</span>
                   </div>
                   <ChevronRight size={14} className="text-[var(--muted)]" />
                 </button>
