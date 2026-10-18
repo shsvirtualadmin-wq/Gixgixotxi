@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, query, orderBy, limit, getDocs, addDoc, doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, query, orderBy, limit, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Card } from '@/components/ui/Card';
@@ -39,6 +39,79 @@ export function ArenaDashboardPage() {
   const [circleInput, setCircleInput] = useState('');
   const [circleMembers, setCircleMembers] = useState<CircleMember[]>([]);
   const [circleCreated, setCircleCreated] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    async function fetchLeaderboardData() {
+      try {
+        const q = query(collection(db, 'users'), orderBy('score', 'desc'), limit(15));
+        const snap = await getDocs(q);
+        if (!isMounted) return;
+
+        if (!snap.empty) {
+          const items: LeaderboardItem[] = snap.docs.map((d) => {
+            const data = d.data();
+            return {
+              id: d.id,
+              uid: d.id,
+              displayName: data.displayName || data.name || 'Anonymous Student',
+              university: data.targetUniversity || 'Top Tier University',
+              city: data.city || 'Pakistan',
+              score: typeof data.score === 'number' ? data.score : 0,
+              streak: typeof data.streak === 'number' ? data.streak : 0,
+            };
+          });
+          setLeaderboard(items);
+        } else {
+          // Fallback sample aspirants
+          const sampleLeaderboard: LeaderboardItem[] = [
+            { id: '1', uid: 'sample-1', displayName: 'Hamza A.', university: 'FAST-NUCES (CS)', city: 'Lahore', score: 1840, streak: 14 },
+            { id: '2', uid: 'sample-2', displayName: 'Ayesha K.', university: 'NUST (SEECS)', city: 'Islamabad', score: 1720, streak: 9 },
+            { id: '3', uid: 'sample-3', displayName: 'Bilal R.', university: 'GIKI (AI)', city: 'Topi', score: 1610, streak: 7 },
+            { id: '4', uid: 'sample-4', displayName: 'Zainab T.', university: 'UET Lahore', city: 'Faisalabad', score: 1490, streak: 5 },
+            { id: '5', uid: 'sample-5', displayName: 'Mustafa S.', university: 'NED Karachi', city: 'Karachi', score: 1380, streak: 4 },
+          ];
+          if (user && profile) {
+            sampleLeaderboard.splice(2, 0, {
+              id: user.uid,
+              uid: user.uid,
+              displayName: profile.displayName || user.displayName || 'You',
+              university: profile.targetUniversity || 'Entrance Aspirant',
+              city: 'You',
+              score: profile.score || 1650,
+              streak: profile.streak || 1,
+            });
+          }
+          setLeaderboard(sampleLeaderboard);
+        }
+      } catch (err) {
+        console.warn('Failed to load leaderboard, using default list:', err);
+        const fallbackList: LeaderboardItem[] = [
+          { id: '1', uid: 'sample-1', displayName: 'Hamza A.', university: 'FAST-NUCES (CS)', city: 'Lahore', score: 1840, streak: 14 },
+          { id: '2', uid: 'sample-2', displayName: 'Ayesha K.', university: 'NUST (SEECS)', city: 'Islamabad', score: 1720, streak: 9 },
+          { id: '3', uid: 'sample-3', displayName: 'Bilal R.', university: 'GIKI (AI)', city: 'Topi', score: 1610, streak: 7 },
+        ];
+        if (user && profile) {
+          fallbackList.push({
+            id: user.uid,
+            uid: user.uid,
+            displayName: profile.displayName || user.displayName || 'You',
+            university: profile.targetUniversity || 'Entrance Aspirant',
+            city: 'You',
+            score: profile.score || 1650,
+            streak: profile.streak || 1,
+          });
+        }
+        setLeaderboard(fallbackList);
+      } finally {
+        if (isMounted) setLoadingLeaderboard(false);
+      }
+    }
+    fetchLeaderboardData();
+    return () => {
+      isMounted = false;
+    };
+  }, [user, profile]);
 
   const handleCreateCircle = async () => {
     if (!user) return;
