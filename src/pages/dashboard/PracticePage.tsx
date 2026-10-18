@@ -197,16 +197,30 @@ export function PracticePage() {
         const questionsColl = collection(db, 'questions');
         for (const split of criteria.subjectsSplit) {
           const subSlug = split.subject.toLowerCase();
-          const qSnap = await getDocs(
-            query(
-              questionsColl,
-              where('status', '==', 'published'),
-              where('active', '==', true),
-              where('subject', '==', subSlug),
-              limit(1)
-            )
-          );
-          if (qSnap.empty) {
+          let hasQuestions = false;
+
+          if (isSubjectPoolSupported(subSlug)) {
+            const poolColl = getSubjectPoolCollection(subSlug);
+            const poolSnap = await getDocs(
+              query(collection(db, poolColl), where('status', '==', 'published'), limit(1))
+            );
+            hasQuestions = !poolSnap.empty;
+          }
+
+          if (!hasQuestions) {
+            const qSnap = await getDocs(
+              query(
+                questionsColl,
+                where('status', '==', 'published'),
+                where('active', '==', true),
+                where('subject', '==', subSlug),
+                limit(1)
+              )
+            );
+            hasQuestions = !qSnap.empty;
+          }
+
+          if (!hasQuestions) {
             if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
             setLaunchError(
               `Not enough questions yet for ${formatSubjectName(subSlug)}. Please choose another subject or check back soon.`
