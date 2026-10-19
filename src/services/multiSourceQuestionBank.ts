@@ -180,10 +180,10 @@ export async function getMultiSourceSubjectQuestionIds(subject: string): Promise
         }
         sourceIndexCache.get(source.id)!.set(norm, rawIds);
 
-        recordSourceSuccess(source.id);
+        recordSourceSuccess(source.id, `reading question_index/${norm}`);
         rawIds.forEach((rawId) => compoundIds.push(formatQuestionCompoundId(source.id, rawId)));
       } catch (err) {
-        recordSourceFailure(source.id, err);
+        recordSourceFailure(source.id, err, `reading question_index/${norm}`);
         // Continue serving other sources
       }
     })
@@ -351,15 +351,16 @@ export async function getMultiSourceQuestionCounts(): Promise<AggregatedCounts> 
                 sumTopics[sub][top] = (sumTopics[sub][top] || 0) + Number(cnt || 0);
               }
             }
-            recordSourceSuccess(source.id);
+            recordSourceSuccess(source.id, 'reading stats/questionCounts');
           } else {
             // Initialize document on new source if empty
             if (source.id === 'legacy') {
               sumSubjects.mathematics = (sumSubjects.mathematics || 0) + 10;
             }
+            recordSourceSuccess(source.id, 'reading stats/questionCounts (empty)');
           }
         } catch (err) {
-          recordSourceFailure(source.id, err);
+          recordSourceFailure(source.id, err, 'reading stats/questionCounts');
         }
       })
     );
@@ -502,9 +503,9 @@ export async function fetchMultiSourcePoolQuestions(
           }
         }
 
-        recordSourceSuccess(source.id);
+        recordSourceSuccess(source.id, `querying ${poolColl}`);
       } catch (err) {
-        recordSourceFailure(source.id, err);
+        recordSourceFailure(source.id, err, `querying ${poolColl}`);
       }
     })
   );

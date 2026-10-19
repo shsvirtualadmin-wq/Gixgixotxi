@@ -31,6 +31,9 @@ import {
   unlockBank1,
   lockBank1,
   subscribeFailingSources,
+  subscribeBankSourceHealth,
+  checkAllBankSourcesHealth,
+  type SourceHealthDiagnostic,
 } from '@/config/questionBankSources';
 import { parseQuestionCompoundId } from '@/services/multiSourceQuestionBank';
 import { MathText, validateMath } from '@/components/ui/MathText';
@@ -248,11 +251,31 @@ export function AdminQuestionsPage() {
   const [unlockError, setUnlockError] = useState<string | null>(null);
   const [unlockLoading, setUnlockLoading] = useState(false);
 
-  // Source health failure listener
-  const [failingSources, setFailingSources] = useState<{ id: string; name: string; error?: string }[]>([]);
+  // Source health failure and diagnostic listeners
+  const [failingSources, setFailingSources] = useState<{ id: string; name: string; error?: string; errorCode?: string }[]>([]);
+  const [bankSourceDiagnostics, setBankSourceDiagnostics] = useState<SourceHealthDiagnostic[]>([]);
+  const [probingBankHealth, setProbingBankHealth] = useState(false);
+
   useEffect(() => {
-    return subscribeFailingSources(setFailingSources);
+    const unsubFailing = subscribeFailingSources(setFailingSources);
+    const unsubDiag = subscribeBankSourceHealth(setBankSourceDiagnostics);
+    return () => {
+      unsubFailing();
+      unsubDiag();
+    };
   }, []);
+
+  const handleProbeBankSources = async () => {
+    setProbingBankHealth(true);
+    try {
+      const results = await checkAllBankSourcesHealth();
+      setBankSourceDiagnostics(results);
+    } catch (err) {
+      console.warn('Bank sources probe error:', err);
+    } finally {
+      setProbingBankHealth(false);
+    }
+  };
 
   const [pageIndex, setPageIndex] = useState(0);
 
@@ -1189,19 +1212,33 @@ export function AdminQuestionsPage() {
         </button>
       </div>
 
-      {/* Failing source banner (Requirement 6: Admin sees small banner naming the failing source) */}
+      {/* Failing source banner (Requirement 6: Admin sees small banner naming the failing source and error code) */}
       {failingSources.length > 0 && (
         <div className="p-3.5 rounded-[14px] bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-heading flex items-center justify-between gap-3 animate-fadeIn">
           <div className="flex items-center gap-2">
             <AlertTriangle size={16} className="text-rose-400 shrink-0" />
-            <span>
-              <strong>Bank Source Issue:</strong> Failing source(s):{' '}
-              <span className="font-semibold text-white underline decoration-rose-400">
-                {failingSources.map((s) => `${s.name} (${s.id})`).join(', ')}
-              </span>
-              . The app continues serving and fetching questions from all other active bank sources.
-            </span>
+            <div>
+              <div>
+                <strong>Bank Source Issue:</strong> Failing source(s):{' '}
+                <span className="font-semibold text-white underline decoration-rose-400">
+                  {failingSources.map((s) => `${s.name} (${s.id}${s.errorCode ? ` · ${s.errorCode}` : ''})`).join(', ')}
+                </span>
+                . The app continues serving questions from other active sources without interruption.
+              </div>
+              {failingSources[0]?.error && (
+                <div className="text-[11px] text-rose-300/80 mt-0.5 font-mono">
+                  Error: {failingSources[0].error}
+                </div>
+              )}
+            </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setActiveTab('health')}
+            className="px-2.5 py-1 rounded-[8px] bg-rose-500/20 text-rose-200 border border-rose-500/40 text-[11px] font-semibold hover:bg-rose-500/30 shrink-0 cursor-pointer"
+          >
+            Diagnostics
+          </button>
         </div>
       )}
 
@@ -1699,6 +1736,141 @@ export function AdminQuestionsPage() {
               <span>Refresh Metrics</span>
             </button>
           </div>
+
+          {/* ─── MULTI-SOURCE QUESTION BANK CONNECTIVITY & DIAGNOSTICS (TASK 6) ──── */}
+          {ENABLE_MULTI_SOURCE_BANK && (
+            <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <h3 className="text-[15px] font-bold font-heading text-[var(--text)] flex items-center gap-2">
+                    <Database size={16} className="text-[var(--accent)]" />
+                    <span>Multi-Source Question Banks Status (Dual-Project Quota)</span>
+                  </h3>
+                  <p className="text-[12px] text-[var(--muted)]">
+                    Real-time connectivity, latency, and Firestore permission checks across all active databases.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleProbeBankSources}
+                  disabled={probingBankHealth}
+                  className="px-3 py-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--card-2)] hover:bg-[var(--surface-hover)] text-[12px] font-heading font-semibold text-[var(--text)] flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw size={12} className={probingBankHealth ? 'animate-spin' : ''} />
+                  <span>{probingBankHealth ? 'Testing Connections…' : 'Probe Bank Sources Now'}</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {bankSourceDiagnostics.map((diag) => {
+                  const isLegacy = diag.id === 'legacy';
+                  const isHealthy = diag.healthy;
+                  return (
+                    <div
+                      key={diag.id}
+                      className={`p-4 rounded-[18px] border transition-all ${
+                        isHealthy
+                          ? 'bg-emerald-500/5 border-emerald-500/20'
+                          : 'bg-rose-500/5 border-rose-500/30'
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-heading font-bold text-[14px] text-[var(--text)]">
+                              {diag.name}
+                            </span>
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--card-2)] border border-[var(--border)] text-[var(--muted)]">
+                              {diag.id}
+                            </span>
+                          </div>
+                          <span className="text-[11px] text-[var(--muted)]">
+                            {isLegacy
+                              ? 'Primary Master Bank · Auth, Users, Crews & Questions'
+                              : 'Secondary Read-Only Bank · Extra Free Daily Quota (boardly-8c0cd)'}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[11px] font-heading font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
+                            isHealthy
+                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                              : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                          }`}
+                        >
+                          <span
+                            className={`w-1.5 h-1.5 rounded-full ${
+                              isHealthy ? 'bg-emerald-400' : 'bg-rose-400 animate-pulse'
+                            }`}
+                          />
+                          <span>{isHealthy ? 'Healthy / Active' : 'Issue Detected'}</span>
+                        </span>
+                      </div>
+
+                      {/* Diagnostic details if failing */}
+                      {!isHealthy ? (
+                        <div className="mt-3 pt-3 border-t border-rose-500/20 space-y-2 text-xs">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[11px] text-rose-300 font-semibold">Error Code:</span>
+                            <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-200 border border-rose-500/40">
+                              {diag.errorCode || 'unknown'}
+                            </span>
+                          </div>
+
+                          {diag.operation && (
+                            <div className="text-[11px] text-[var(--muted)]">
+                              <span className="text-white/60">Operation:</span>{' '}
+                              <span className="font-mono text-white/80">{diag.operation}</span>
+                            </div>
+                          )}
+
+                          {diag.errorMessage && (
+                            <div className="p-2.5 rounded-[10px] bg-rose-950/40 border border-rose-500/30 text-rose-200 text-[11px] font-mono break-all">
+                              {diag.errorMessage}
+                            </div>
+                          )}
+
+                          {/* Actionable guidance */}
+                          <div className="p-3 rounded-[12px] bg-[var(--card)] border border-[var(--border)] text-[11px] text-[var(--muted)] space-y-1">
+                            <span className="font-semibold text-amber-300 block">
+                              Diagnostic Explanation & Quick Fix:
+                            </span>
+                            {diag.errorCode === 'permission-denied' && (
+                              <p className="text-[11px] leading-relaxed">
+                                Users log in on the main project, so their requests to{' '}
+                                <code className="text-white font-mono">boardly-8c0cd</code> are unauthenticated.
+                                Firestore rules on <code className="text-white font-mono">boardly-8c0cd</code> must allow
+                                public reads for questions (
+                                <code className="text-emerald-400 font-mono">allow read: if true;</code> or{' '}
+                                <code className="text-emerald-400 font-mono">allow read: if poolName.matches('questions_.*');</code>
+                                ).
+                              </p>
+                            )}
+                            {diag.errorCode === 'not-found' && (
+                              <p className="text-[11px] leading-relaxed">
+                                The requested collection or database does not exist in the project. Check that the
+                                default database is created.
+                              </p>
+                            )}
+                            {diag.errorCode === 'resource-exhausted' && (
+                              <p className="text-[11px] leading-relaxed">
+                                Daily quota limit reached for this project. The app is serving traffic from the other
+                                bank.
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-3 pt-2 border-t border-emerald-500/20 flex items-center justify-between text-[11px] text-emerald-400/80">
+                          <span>Connection verified & operational</span>
+                          {diag.latencyMs !== undefined && <span>{diag.latencyMs}ms latency</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {healthStats ? (
             <div className="space-y-4">

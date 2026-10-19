@@ -83,8 +83,6 @@ export const bank1Auth: Auth = getAuth(bank1App);
 export const bank1Db: Firestore = (() => {
   try {
     return initializeFirestore(bank1App, {
-      experimentalForceLongPolling: true,
-      useFetchStreams: false,
       localCache: memoryLocalCache(),
       ignoreUndefinedProperties: true,
     });
@@ -92,6 +90,11 @@ export const bank1Db: Firestore = (() => {
     return getFirestore(bank1App);
   }
 })();
+
+if (typeof window !== 'undefined') {
+  (window as unknown as { bank1Db?: Firestore; bank1App?: unknown }).bank1Db = bank1Db;
+  (window as unknown as { bank1Db?: Firestore; bank1App?: unknown }).bank1App = bank1App;
+}
 
 /**
  * Returns all active bank sources
@@ -140,55 +143,198 @@ export function getDefaultWriteSource(): ActiveBankSource {
   return sources.find((s) => s.isDefaultWrite) || sources[0];
 }
 
-// ─── SOURCE HEALTH TRACKING ──────────────────────────────────────────────────
-const failingSourceMap = new Map<string, string>();
-const healthListeners = new Set<(failing: { id: string; name: string; error?: string }[]) => void>();
+// ─── SOURCE HEALTH TRACKING & DETAILED ERROR DIAGNOSTICS ─────────────────────
+export interface SourceHealthDiagnostic {
+  id: string;
+  name: string;
+  healthy: boolean;
+  errorCode?: string; // 'permission-denied' | 'not-found' | 'unauthenticated' | 'resource-exhausted' | 'failed-precondition' | etc.
+  errorMessage?: string;
+  operation?: string;
+  lastChecked: Date;
+  latencyMs?: number;
+}
 
-export function recordSourceFailure(sourceId: string, error?: unknown): void {
+export function extractFirestoreErrorCode(error: unknown): string {
+  if (!error) return 'unknown';
+  const e = error as { code?: string; message?: string; status?: string };
+  if (typeof e.code === 'string') {
+    return e.code.replace('firestore/', '').toLowerCase();
+  }
+  if (typeof e.status === 'string') {
+    return e.status.toLowerCase().replace('_', '-');
+  }
+  const msg = (e.message || String(error)).toLowerCase();
+  if (msg.includes('permission-denied') || msg.includes('missing or insufficient permissions')) {
+    return 'permission-denied';
+  }
+  if (msg.includes('resource-exhausted') || msg.includes('quota')) {
+    return 'resource-exhausted';
+  }
+  if (msg.includes('unauthenticated')) {
+    return 'unauthenticated';
+  }
+  if (msg.includes('not-found') || msg.includes('not found')) {
+    return 'not-found';
+  }
+  if (msg.includes('failed-precondition') || msg.includes('requires an index')) {
+    return 'failed-precondition';
+  }
+  if (msg.includes('unavailable') || msg.includes('network') || msg.includes('failed to fetch')) {
+    return 'unavailable';
+  }
+  return 'unknown-error';
+}
+
+const sourceHealthMap = new Map<string, SourceHealthDiagnostic>();
+const healthListeners = new Set<(diagnostics: SourceHealthDiagnostic[]) => void>();
+
+export function recordSourceFailure(sourceId: string, error?: unknown, operation?: string): void {
+  const code = extractFirestoreErrorCode(error);
   const errMsg = (error as { message?: string })?.message || String(error || 'Unknown error');
-  failingSourceMap.set(sourceId, errMsg);
+  const src = getBankSource(sourceId);
+
+  // Log real Firestore error code and message to browser console
+  console.error(
+    `[Bank Source Health: ${sourceId}] ${operation ? `${operation} ` : ''}failed with code [${code}]: ${errMsg}`,
+    error
+  );
+
+  sourceHealthMap.set(sourceId, {
+    id: sourceId,
+    name: src?.name || sourceId,
+    healthy: false,
+    errorCode: code,
+    errorMessage: errMsg,
+    operation,
+    lastChecked: new Date(),
+  });
   notifyHealthListeners();
 }
 
-export function recordSourceSuccess(sourceId: string): void {
-  if (failingSourceMap.has(sourceId)) {
-    failingSourceMap.delete(sourceId);
+export function recordSourceSuccess(sourceId: string, operation?: string, latencyMs?: number): void {
+  const existing = sourceHealthMap.get(sourceId);
+  if (!existing || !existing.healthy) {
+    const src = getBankSource(sourceId);
+    sourceHealthMap.set(sourceId, {
+      id: sourceId,
+      name: src?.name || sourceId,
+      healthy: true,
+      operation,
+      lastChecked: new Date(),
+      latencyMs,
+    });
     notifyHealthListeners();
   }
 }
 
-export function getFailingSources(): { id: string; name: string; error?: string }[] {
-  const list: { id: string; name: string; error?: string }[] = [];
-  for (const [id, error] of failingSourceMap.entries()) {
-    const src = getBankSource(id);
-    list.push({
-      id,
-      name: src?.name || id,
-      error,
-    });
+export function getAllBankSourceHealth(): SourceHealthDiagnostic[] {
+  const sources = getBankSources();
+  return sources.map((src) => {
+    const current = sourceHealthMap.get(src.id);
+    if (current) return current;
+    return {
+      id: src.id,
+      name: src.name,
+      healthy: true,
+      lastChecked: new Date(),
+    };
+  });
+}
+
+export function getFailingSources(): { id: string; name: string; error?: string; errorCode?: string }[] {
+  const failing: { id: string; name: string; error?: string; errorCode?: string }[] = [];
+  for (const item of getAllBankSourceHealth()) {
+    if (!item.healthy) {
+      failing.push({
+        id: item.id,
+        name: item.name,
+        error: item.errorMessage,
+        errorCode: item.errorCode,
+      });
+    }
   }
-  return list;
+  return failing;
 }
 
 function notifyHealthListeners() {
-  const failing = getFailingSources();
+  const diagnostics = getAllBankSourceHealth();
   healthListeners.forEach((listener) => {
     try {
-      listener(failing);
+      listener(diagnostics);
     } catch {
-      // Ignore listener error
+      // Ignore listener errors
     }
   });
 }
 
 export function subscribeFailingSources(
-  callback: (failing: { id: string; name: string; error?: string }[]) => void
+  callback: (failing: { id: string; name: string; error?: string; errorCode?: string }[]) => void
+): () => void {
+  const notify = () => callback(getFailingSources());
+  healthListeners.add(notify);
+  notify();
+  return () => {
+    healthListeners.delete(notify);
+  };
+}
+
+export function subscribeBankSourceHealth(
+  callback: (diagnostics: SourceHealthDiagnostic[]) => void
 ): () => void {
   healthListeners.add(callback);
-  callback(getFailingSources());
+  callback(getAllBankSourceHealth());
   return () => {
     healthListeners.delete(callback);
   };
+}
+
+/**
+ * Actively probes all bank sources with a lightweight query to test real-time connectivity and permissions
+ */
+export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnostic[]> {
+  const sources = getBankSources();
+  const results: SourceHealthDiagnostic[] = [];
+
+  for (const src of sources) {
+    const startTime = Date.now();
+    try {
+      // 1. Probe subject pool: check if collection read works
+      const { collection, getDocs, limit, query, doc, getDoc } = await import('firebase/firestore');
+      const testColl = collection(src.db, 'questions_mathematics');
+      await getDocs(query(testColl, limit(1)));
+
+      // 2. Probe stats document read
+      const statsRef = doc(src.db, 'stats', 'questionCounts');
+      await getDoc(statsRef);
+
+      const latencyMs = Date.now() - startTime;
+      recordSourceSuccess(src.id, 'probe check', latencyMs);
+      results.push({
+        id: src.id,
+        name: src.name,
+        healthy: true,
+        lastChecked: new Date(),
+        latencyMs,
+      });
+    } catch (err) {
+      const code = extractFirestoreErrorCode(err);
+      const errMsg = (err as { message?: string })?.message || String(err || 'Unknown error');
+      recordSourceFailure(src.id, err, 'probe check');
+      results.push({
+        id: src.id,
+        name: src.name,
+        healthy: false,
+        errorCode: code,
+        errorMessage: errMsg,
+        operation: 'probe query on questions_mathematics / stats',
+        lastChecked: new Date(),
+        latencyMs: Date.now() - startTime,
+      });
+    }
+  }
+
+  return results;
 }
 
 // ─── BANK 1 DEDICATED ADMIN AUTH (IN-MEMORY SESSION) ────────────────────────
@@ -205,10 +351,11 @@ export function getBank1AdminUser(): User | null {
 
 export async function unlockBank1(email: string, pass: string): Promise<User> {
   const cred = await signInWithEmailAndPassword(bank1Auth, email.trim(), pass);
-  recordSourceSuccess('bank1');
+  recordSourceSuccess('bank1', 'admin unlock');
   return cred.user;
 }
 
 export async function lockBank1(): Promise<void> {
   await signOut(bank1Auth);
 }
+

@@ -271,6 +271,20 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Dynamic match for all subject pools (questions_<subject>)
+    match /{poolName}/{docId} {
+      allow read: if poolName.matches('questions_.*') && (
+        isAdmin() || (isAuthenticated() && resource.data.status == 'published')
+      );
+      allow write: if poolName.matches('questions_.*') && isAdmin();
+    }
+
+    // Question IDs index per subject for fast random ID selection in drills & sprints
+    match /question_index/{subject} {
+      allow read: if isAuthenticated() || isAdmin();
+      allow write: if isAdmin();
+    }
+
     match /questionKeys/{keyId} {
       allow read: if isAuthenticated() || isAdmin();
       allow write: if isAdmin();
