@@ -679,7 +679,21 @@ export async function submitAttempt(
     const chSlug = q.chapter || 'general';
     const subSlug = q.subject || 'general';
 
-    const sectionConfig = getSectionCriteria(attempt.university, subSlug);
+    const isSprint =
+      attempt.mode === 'sprint' ||
+      (attempt.title && attempt.title.toLowerCase().includes('sprint')) ||
+      (attempt.university && attempt.university.toLowerCase().includes('sprint'));
+    const sectionConfig = isSprint
+      ? {
+          correctMarks: 1.0,
+          negativePenalty: 0.0,
+          hasPenalty: false,
+          subject: subSlug,
+          name: 'Sprint',
+          count: 10,
+          badgeLabel: '+1.0 / 0.0 NO PENALTY',
+        }
+      : getSectionCriteria(attempt.university, subSlug);
     maxMarks += sectionConfig.correctMarks;
 
     if (!chapterAcc[chSlug]) {

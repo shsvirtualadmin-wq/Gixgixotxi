@@ -610,17 +610,45 @@ nav[aria-label="Main Navigation"] .boardly-brand-logo,
 }
 
 .katex-display-box {
-  overflow-x: auto;
-  max-width: 100%;
+  overflow-x: auto !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
   -webkit-overflow-scrolling: touch;
 }
 
-.katex-display-box::-webkit-scrollbar {
+.katex-inline-math {
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  vertical-align: middle;
+  -webkit-overflow-scrolling: touch;
+}
+
+.katex-root-block {
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.katex-display-box::-webkit-scrollbar,
+.katex-inline-math::-webkit-scrollbar,
+.katex-root-block::-webkit-scrollbar {
   height: 4px;
 }
-.katex-display-box::-webkit-scrollbar-thumb {
+.katex-display-box::-webkit-scrollbar-thumb,
+.katex-inline-math::-webkit-scrollbar-thumb,
+.katex-root-block::-webkit-scrollbar-thumb {
   background: var(--border);
   border-radius: 4px;
+}
+
+/* App-wide horizontal overflow prevention */
+html,
+body,
+#root {
+  max-width: 100vw;
+  overflow-x: hidden;
 }
 
 

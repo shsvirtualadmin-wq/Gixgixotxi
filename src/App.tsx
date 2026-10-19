@@ -45,6 +45,7 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
 }
 
 import { ScrollToTop } from './components/ui/ScrollToTop';
+import { WallpaperBackground } from './components/WallpaperBackground';
 
 // Public pages (lazy with retry)
 const LandingPage = lazyWithRetry(() => import('./pages/LandingPage'));
@@ -175,6 +176,7 @@ function AppInner() {
 
   return (
     <DashboardErrorBoundary fallbackTitle="Boardly encountered an issue">
+      <WallpaperBackground />
       <ScrollToTop />
       <Suspense fallback={<PageLoader />}>
       <Routes>

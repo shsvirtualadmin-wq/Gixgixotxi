@@ -1001,18 +1001,26 @@ export async function batchImportMultiSourceQuestions(
 
   const source = getBankSource(targetSourceId) || getDefaultWriteSource();
   const normSub = findSubjectSlug(targetSubject) || targetSubject.toLowerCase().trim();
-  const collName = getSubjectPoolCollection(normSub);
 
-  // 1. Fetch all existing question hashes across all sources to prevent cross-source duplicates
-  const existingHashes = new Set<string>();
-  const existingIds = await getMultiSourceSubjectQuestionIds(normSub);
-  existingIds.forEach((cid) => {
-    const { docId } = parseQuestionCompoundId(cid);
-    existingHashes.add(docId);
-  });
+  // Map of existing IDs per subject
+  const existingHashesBySubject = new Map<string, Set<string>>();
+  const getSubjectHashes = async (sub: string) => {
+    if (!existingHashesBySubject.has(sub)) {
+      const set = new Set<string>();
+      const ids = await getMultiSourceSubjectQuestionIds(sub);
+      ids.forEach((cid) => {
+        const { docId } = parseQuestionCompoundId(cid);
+        set.add(docId);
+      });
+      existingHashesBySubject.set(sub, set);
+    }
+    return existingHashesBySubject.get(sub)!;
+  };
 
   const validItems: Array<{
     docId: string;
+    subject: string;
+    collName: string;
     topic: string;
     publicDoc: Record<string, unknown>;
     keyDoc: Record<string, unknown>;
@@ -1020,8 +1028,19 @@ export async function batchImportMultiSourceQuestions(
 
   for (const row of rawRows) {
     const qText = (row.text || row.q || row.question || row.stem ? String(row.text || row.q || row.question || row.stem) : '').trim();
+    
+    // Determine each row's own subject pool (never ignore row's subject column)
+    const rowSubjectRaw =
+      row.subject ||
+      row.Subject ||
+      row.SUBJECT ||
+      row.course ||
+      row.discipline;
+    const rowSub = (rowSubjectRaw ? findSubjectSlug(String(rowSubjectRaw)) : null) || normSub;
+    const rowCollName = getSubjectPoolCollection(rowSub);
+
     const rawTopic = String(row.topic || row.chapter || defaultTopic || 'General Concepts');
-    const rowTopic = normalizeTopicName(normSub, rawTopic);
+    const rowTopic = normalizeTopicName(rowSub, rawTopic);
 
     let options: [string, string, string, string] = ['', '', '', ''];
     if (Array.isArray(row.options) && row.options.length >= 4) {
@@ -1040,13 +1059,14 @@ export async function batchImportMultiSourceQuestions(
     }
 
     const cHash = await computeContentHash(qText, options);
-    const docId = `pool_${normSub}_${cHash.substring(0, 20)}`;
+    const docId = `pool_${rowSub}_${cHash.substring(0, 20)}`;
 
-    if (existingHashes.has(docId)) {
+    const subjectHashes = await getSubjectHashes(rowSub);
+    if (subjectHashes.has(docId)) {
       result.duplicatesSkipped++;
       continue;
     }
-    existingHashes.add(docId);
+    subjectHashes.add(docId);
 
     // Resolve correct index (0..3)
     let correctIdx = 0;
@@ -1067,10 +1087,12 @@ export async function batchImportMultiSourceQuestions(
 
     validItems.push({
       docId,
+      subject: rowSub,
+      collName: rowCollName,
       topic: rowTopic,
       publicDoc: {
         id: docId,
-        subject: normSub,
+        subject: rowSub,
         topic: rowTopic,
         chapter: rowTopic,
         text: qText,
@@ -1101,7 +1123,6 @@ export async function batchImportMultiSourceQuestions(
 
   // Ensure stats/questionCounts exists on target source
   const statsRef = doc(source.db, 'stats', 'questionCounts');
-  const indexRef = doc(source.db, 'question_index', normSub);
   try {
     const statsSnap = await getDoc(statsRef);
     if (!statsSnap.exists()) {
@@ -1111,49 +1132,273 @@ export async function batchImportMultiSourceQuestions(
     // Non-fatal
   }
 
-  // Batch insert into target source (up to 100 items = 200 docs + index + stats per batch)
+  // Batch insert into target source (up to 100 items per batch)
   const chunkSize = 100;
   for (let i = 0; i < validItems.length; i += chunkSize) {
     const chunk = validItems.slice(i, i + chunkSize);
     const batch = writeBatch(source.db);
-    const chunkDocIds: string[] = [];
-    const chunkTopicCounts: Record<string, number> = {};
 
+    // Group chunk items by subject so each row's subject pool and stats are updated correctly
+    const subGroups = new Map<string, typeof chunk>();
     chunk.forEach((item) => {
-      batch.set(doc(source.db, collName, item.docId), item.publicDoc);
-      batch.set(doc(source.db, 'questionKeys', item.docId), item.keyDoc);
-      chunkDocIds.push(item.docId);
-      chunkTopicCounts[item.topic] = (chunkTopicCounts[item.topic] || 0) + 1;
+      const list = subGroups.get(item.subject) || [];
+      list.push(item);
+      subGroups.set(item.subject, list);
     });
 
-    // Update target source's question_index in the same batch
-    batch.set(
-      indexRef,
-      {
-        subject: normSub,
-        ids: arrayUnion(...chunkDocIds),
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-
-    // Update target source's stats/questionCounts in the same batch
     const statsUpdates: Record<string, unknown> = {
-      [`subjectCounts.${normSub}`]: increment(chunk.length),
       updatedAt: serverTimestamp(),
     };
-    for (const [top, cnt] of Object.entries(chunkTopicCounts)) {
-      statsUpdates[`topicCounts.${normSub}.${top}`] = increment(cnt);
-    }
-    batch.set(statsRef, statsUpdates, { merge: true });
 
+    for (const [subKey, subItems] of subGroups.entries()) {
+      const subDocIds: string[] = [];
+      const subTopicCounts: Record<string, number> = {};
+
+      subItems.forEach((item) => {
+        batch.set(doc(source.db, item.collName, item.docId), item.publicDoc);
+        batch.set(doc(source.db, 'questionKeys', item.docId), item.keyDoc);
+        subDocIds.push(item.docId);
+        subTopicCounts[item.topic] = (subTopicCounts[item.topic] || 0) + 1;
+      });
+
+      // Update question_index for subKey
+      const subIndexRef = doc(source.db, 'question_index', subKey);
+      batch.set(
+        subIndexRef,
+        {
+          subject: subKey,
+          ids: arrayUnion(...subDocIds),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      // Accumulate stats updates for subKey
+      statsUpdates[`subjectCounts.${subKey}`] = increment(subItems.length);
+      for (const [top, cnt] of Object.entries(subTopicCounts)) {
+        statsUpdates[`topicCounts.${subKey}.${top}`] = increment(cnt);
+      }
+    }
+
+    batch.set(statsRef, statsUpdates, { merge: true });
     await batch.commit();
+
     result.imported += chunk.length;
     if (onProgress) onProgress(result.imported, validItems.length);
   }
 
   clearMultiSourceCache();
   return result;
+}
+
+// ─── 5B. FIX MISFILED QUESTIONS ──────────────────────────────────────────────
+export interface MisfiledQuestionCandidate {
+  id: string;
+  docId: string;
+  sourceId: string;
+  currentPoolSubject: string;
+  proposedSubject: string;
+  stem: string;
+  topic: string;
+  reason: string;
+}
+
+export interface FixMisfiledResult {
+  fixedCount: number;
+  fixed: Array<{
+    id: string;
+    oldSubject: string;
+    newSubject: string;
+    stem: string;
+    reason: string;
+  }>;
+}
+
+export async function scanMisfiledQuestions(): Promise<MisfiledQuestionCandidate[]> {
+  const candidates: MisfiledQuestionCandidate[] = [];
+  const sources = getBankSources();
+
+  const englishRegex = /\b(obfuscate|synonym|antonym|closest in meaning|meaning of the word|correct preposition|preposition|grammatically correct|correct spelling|idiom|vocabulary|passive voice|direct speech|conjunction)\b/i;
+  const physicsRegex = /\b(mercury droplet|surface tension|terminal velocity|capacitance|acceleration due to gravity|magnetic field|magnetic flux|electric potential|carnot engine|half-life|refractive index|projectile motion|coulomb's law|coulomb|isothermal|adiabatic|kinetic energy of|momentum of a|angstrom|diffraction grating)\b/i;
+  const chemistryRegex = /\b(molarity|molality|periodic table|oxidation state|electronegativity|hydrocarbon|alkene|alkane|alkyne|chemical equilibrium|buffer solution|atomic radius|ionization energy|avogadro|stoichiometry)\b/i;
+
+  const coreSubjects = ['mathematics', 'physics', 'chemistry', 'english'];
+
+  for (const src of sources) {
+    for (const poolSub of coreSubjects) {
+      const collName = getSubjectPoolCollection(poolSub);
+      try {
+        const snap = await getDocs(collection(src.db, collName));
+        snap.forEach((d) => {
+          const data = d.data();
+          const docId = d.id;
+          const compoundId = `${src.id}:${docId}`;
+          const stem = String(data.text || data.q || data.stem || data.question || '');
+          const rawTopic = String(data.topic || data.chapter || '');
+          const explicitSubject = data.subject ? findSubjectSlug(String(data.subject)) : null;
+
+          let proposedSub: string | null = null;
+          let reason = '';
+
+          // 1. Explicit subject mismatch
+          if (explicitSubject && explicitSubject !== poolSub && coreSubjects.includes(explicitSubject)) {
+            proposedSub = explicitSubject;
+            reason = `Document carries subject "${explicitSubject}" but was filed into ${poolSub} pool`;
+          }
+          // 2. Misfiled inside mathematics
+          else if (poolSub === 'mathematics') {
+            if (englishRegex.test(stem) || englishRegex.test(rawTopic)) {
+              proposedSub = 'english';
+              reason = `English vocabulary/grammar terms ("${stem.match(englishRegex)?.[0] || 'English'}") misfiled in mathematics pool`;
+            } else if (physicsRegex.test(stem) || physicsRegex.test(rawTopic)) {
+              proposedSub = 'physics';
+              reason = `Physics concepts ("${stem.match(physicsRegex)?.[0] || 'Physics'}") misfiled in mathematics pool`;
+            } else if (chemistryRegex.test(stem) || chemistryRegex.test(rawTopic)) {
+              proposedSub = 'chemistry';
+              reason = `Chemistry concepts ("${stem.match(chemistryRegex)?.[0] || 'Chemistry'}") misfiled in mathematics pool`;
+            }
+          }
+          // 3. Misfiled inside physics
+          else if (poolSub === 'physics') {
+            if (englishRegex.test(stem)) {
+              proposedSub = 'english';
+              reason = `English vocabulary terms misfiled in physics pool`;
+            } else if (chemistryRegex.test(stem)) {
+              proposedSub = 'chemistry';
+              reason = `Chemistry concepts misfiled in physics pool`;
+            }
+          }
+          // 4. Misfiled inside english
+          else if (poolSub === 'english') {
+            if (physicsRegex.test(stem)) {
+              proposedSub = 'physics';
+              reason = `Physics concepts misfiled in english pool`;
+            }
+          }
+
+          if (proposedSub && proposedSub !== poolSub) {
+            candidates.push({
+              id: compoundId,
+              docId,
+              sourceId: src.id,
+              currentPoolSubject: poolSub,
+              proposedSubject: proposedSub,
+              stem: stem.slice(0, 120),
+              topic: rawTopic,
+              reason,
+            });
+          }
+        });
+      } catch (err) {
+        console.warn(`[scanMisfiledQuestions] Pool read note for ${src.id}/${collName}:`, err);
+      }
+    }
+  }
+
+  return candidates;
+}
+
+export async function fixMisfiledQuestions(
+  candidates: MisfiledQuestionCandidate[],
+  adminEmail: string
+): Promise<FixMisfiledResult> {
+  const fixed: FixMisfiledResult['fixed'] = [];
+
+  for (const item of candidates) {
+    const src = getBankSource(item.sourceId);
+    if (!src) continue;
+
+    const oldColl = getSubjectPoolCollection(item.currentPoolSubject);
+    const newColl = getSubjectPoolCollection(item.proposedSubject);
+
+    const oldDocRef = doc(src.db, oldColl, item.docId);
+    const oldSnap = await getDoc(oldDocRef);
+    if (!oldSnap.exists()) continue;
+
+    const data = oldSnap.data();
+    const oldKeyRef = doc(src.db, 'questionKeys', item.docId);
+    const keySnap = await getDoc(oldKeyRef);
+    const keyData = keySnap.exists() ? keySnap.data() : null;
+
+    // Generate new document ID with correct subject prefix
+    const cHash = data.contentHash || item.docId.replace(/^pool_[a-z]+_/, '') || Math.random().toString(36).substring(2);
+    const newDocId = `pool_${item.proposedSubject}_${cHash.substring(0, 20)}`;
+    const newTopic = normalizeTopicName(item.proposedSubject, data.topic || data.chapter || 'General Concepts');
+
+    const newPublicDoc = {
+      ...data,
+      id: newDocId,
+      subject: item.proposedSubject,
+      topic: newTopic,
+      chapter: newTopic,
+      updatedAt: serverTimestamp(),
+      updatedBy: adminEmail,
+    };
+
+    const newKeyDoc = keyData
+      ? { ...keyData, id: newDocId, updatedAt: serverTimestamp() }
+      : { id: newDocId, correct: data.correct ?? 0, updatedAt: serverTimestamp() };
+
+    const batch = writeBatch(src.db);
+
+    // 1. Create in new collection & new key
+    batch.set(doc(src.db, newColl, newDocId), newPublicDoc);
+    batch.set(doc(src.db, 'questionKeys', newDocId), newKeyDoc);
+
+    // 2. Delete from old collection & old key
+    batch.delete(oldDocRef);
+    if (item.docId !== newDocId) {
+      batch.delete(oldKeyRef);
+    }
+
+    // 3. Update indices atomically
+    const oldIndexRef = doc(src.db, 'question_index', item.currentPoolSubject);
+    batch.set(
+      oldIndexRef,
+      {
+        subject: item.currentPoolSubject,
+        ids: arrayRemove(item.docId),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    const newIndexRef = doc(src.db, 'question_index', item.proposedSubject);
+    batch.set(
+      newIndexRef,
+      {
+        subject: item.proposedSubject,
+        ids: arrayUnion(newDocId),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    // 4. Update stats/questionCounts atomically
+    const statsRef = doc(src.db, 'stats', 'questionCounts');
+    const oldTopic = String(data.topic || 'General Concepts');
+    const statsUpdates: Record<string, unknown> = {
+      [`subjectCounts.${item.currentPoolSubject}`]: increment(-1),
+      [`topicCounts.${item.currentPoolSubject}.${oldTopic}`]: increment(-1),
+      [`subjectCounts.${item.proposedSubject}`]: increment(1),
+      [`topicCounts.${item.proposedSubject}.${newTopic}`]: increment(1),
+      updatedAt: serverTimestamp(),
+    };
+    batch.set(statsRef, statsUpdates, { merge: true });
+
+    await batch.commit();
+
+    fixed.push({
+      id: item.id,
+      oldSubject: item.currentPoolSubject,
+      newSubject: item.proposedSubject,
+      stem: item.stem,
+      reason: item.reason,
+    });
+  }
+
+  clearMultiSourceCache();
+  return { fixedCount: fixed.length, fixed };
 }
 
 // ─── 6. REBUILD COUNTS & INDEX (COUNT AGGREGATION SYSTEM) ─────────────────────

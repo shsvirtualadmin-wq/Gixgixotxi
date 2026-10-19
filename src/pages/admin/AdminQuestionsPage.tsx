@@ -43,6 +43,10 @@ import {
   parseQuestionCompoundId,
   rebuildCountsAndIndex,
   type RebuildCountsResult,
+  scanMisfiledQuestions,
+  fixMisfiledQuestions,
+  type MisfiledQuestionCandidate,
+  type FixMisfiledResult,
 } from '@/services/multiSourceQuestionBank';
 import { MathText, validateMath } from '@/components/ui/MathText';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
@@ -310,6 +314,54 @@ export function AdminQuestionsPage() {
     } finally {
       setRebuildingCounts(false);
     }
+  };
+
+  // Misfiled questions state
+  const [isMisfiledModalOpen, setIsMisfiledModalOpen] = useState(false);
+  const [scanningMisfiled, setScanningMisfiled] = useState(false);
+  const [misfiledCandidates, setMisfiledCandidates] = useState<MisfiledQuestionCandidate[]>([]);
+  const [fixingMisfiled, setFixingMisfiled] = useState(false);
+  const [fixMisfiledResult, setFixMisfiledResult] = useState<FixMisfiledResult | null>(null);
+  const [misfiledError, setMisfiledError] = useState<string | null>(null);
+
+  const handleScanMisfiled = async () => {
+    setScanningMisfiled(true);
+    setMisfiledError(null);
+    setFixMisfiledResult(null);
+    try {
+      const list = await scanMisfiledQuestions();
+      setMisfiledCandidates(list);
+    } catch (err: unknown) {
+      setMisfiledError((err as { message?: string })?.message || 'Failed to scan misfiled questions');
+    } finally {
+      setScanningMisfiled(false);
+    }
+  };
+
+  const handleApplyFixMisfiled = async () => {
+    if (!user?.email || misfiledCandidates.length === 0) return;
+    setFixingMisfiled(true);
+    setMisfiledError(null);
+    try {
+      const res = await fixMisfiledQuestions(misfiledCandidates, user.email);
+      setFixMisfiledResult(res);
+      setMisfiledCandidates([]);
+      await loadSubjectCounts();
+      if (selectedSubject) await loadTopics(selectedSubject);
+      await loadData();
+    } catch (err: unknown) {
+      setMisfiledError((err as { message?: string })?.message || 'Failed to move misfiled questions');
+    } finally {
+      setFixingMisfiled(false);
+    }
+  };
+
+  // "Needs review" filter state for questions containing reasoning residue
+  const [needsReviewOnly, setNeedsReviewOnly] = useState(false);
+
+  const containsReasoningResidue = (explain?: string, text?: string): boolean => {
+    const combined = `${explain || ''} ${text || ''}`;
+    return /\b(wait|re-evaluating|let's set)\b/i.test(combined);
   };
 
   const [pageIndex, setPageIndex] = useState(0);
@@ -761,12 +813,17 @@ export function AdminQuestionsPage() {
     activeFocusedInputRef.setter(updated);
   };
 
+  const displayedQuestions = useMemo(() => {
+    if (!needsReviewOnly) return questions;
+    return questions.filter((q) => containsReasoningResidue(q.explain || q.explanation, q.q || q.question));
+  }, [questions, needsReviewOnly]);
+
   // ─── BATCH ACTIONS ──────────────────────────────────────────────────────────
   const toggleSelectAll = () => {
-    if (selectedIds.size === questions.length) {
+    if (selectedIds.size === displayedQuestions.length && displayedQuestions.length > 0) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(questions.map((q) => q.id)));
+      setSelectedIds(new Set(displayedQuestions.map((q) => q.id)));
     }
   };
 
@@ -1234,6 +1291,20 @@ export function AdminQuestionsPage() {
 
           <button
             type="button"
+            onClick={() => {
+              setMisfiledError(null);
+              setIsMisfiledModalOpen(true);
+              handleScanMisfiled();
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors cursor-pointer"
+            title="Scan for questions placed in the wrong subject pool and move them with confirmation"
+          >
+            <FolderEdit size={14} className={scanningMisfiled ? 'animate-spin' : ''} />
+            <span>Fix misfiled questions</span>
+          </button>
+
+          <button
+            type="button"
             onClick={loadData}
             disabled={loading}
             className="flex items-center gap-1.5 px-3 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
@@ -1568,6 +1639,19 @@ export function AdminQuestionsPage() {
                       </select>
                     </div>
 
+                    {/* "Needs review" filter for reasoning artifact detection */}
+                    <label className="flex items-center gap-1.5 px-2.5 py-1 rounded-[8px] bg-[var(--card-2)] border border-[var(--border)] text-[var(--text)] text-[12px] cursor-pointer hover:border-[var(--brand)] transition-colors select-none" title="Filter questions whose explanation contains 'Wait', 'Re-evaluating' or 'let\'s set'">
+                      <input
+                        type="checkbox"
+                        checked={needsReviewOnly}
+                        onChange={(e) => setNeedsReviewOnly(e.target.checked)}
+                        className="rounded border-[var(--border)] accent-[var(--accent)] cursor-pointer"
+                      />
+                      <span className={needsReviewOnly ? 'text-amber-500 font-semibold' : 'text-[var(--text)]'}>
+                        Needs review
+                      </span>
+                    </label>
+
                     <button
                       type="button"
                       onClick={loadData}
@@ -1635,18 +1719,21 @@ export function AdminQuestionsPage() {
               </div>
 
           {/* Select all row */}
-          {questions.length > 0 && (
+          {displayedQuestions.length > 0 && (
             <div className="flex items-center justify-between px-2 text-[12px] font-heading text-[var(--muted)]">
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <input
                   type="checkbox"
-                  checked={selectedIds.size === questions.length && questions.length > 0}
+                  checked={selectedIds.size === displayedQuestions.length && displayedQuestions.length > 0}
                   onChange={toggleSelectAll}
                   className="rounded border-[var(--border)] accent-[var(--accent)]"
                 />
-                <span>Select all visible ({questions.length})</span>
+                <span>Select all visible ({displayedQuestions.length})</span>
               </label>
-              <span>Showing {questions.length} questions</span>
+              <span>
+                Showing {displayedQuestions.length} questions
+                {needsReviewOnly && ' (filtered for reasoning residue)'}
+              </span>
             </div>
           )}
 
@@ -1660,17 +1747,20 @@ export function AdminQuestionsPage() {
                   <div className="h-10 bg-[var(--card-2)] rounded w-full" />
                 </div>
               ))
-            ) : questions.length === 0 ? (
+            ) : displayedQuestions.length === 0 ? (
               <div className="p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center">
                 <p className="font-heading text-[14px] text-[var(--muted)]">
-                  No questions found matching your filter criteria.
+                  {needsReviewOnly
+                    ? 'No questions found with reasoning residue ("Wait", "Re-evaluating", or "let\'s set"). All clean!'
+                    : 'No questions found matching your filter criteria.'}
                 </p>
               </div>
             ) : (
-              questions.map((q) => {
+              displayedQuestions.map((q) => {
                 const stem = q.q || q.question || 'Untitled question';
                 const options = q.options || [];
                 const isSelected = selectedIds.has(q.id);
+                const hasReasoningResidue = containsReasoningResidue(q.explain || q.explanation, q.q || q.question);
 
                 return (
                   <div
@@ -1699,6 +1789,15 @@ export function AdminQuestionsPage() {
                         <span className="text-[11px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
                           {q.difficulty}
                         </span>
+                        {hasReasoningResidue && (
+                          <span
+                            className="text-[10px] font-heading px-2 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-500 font-bold flex items-center gap-1"
+                            title="Explanation or stem contains reasoning artifact ('Wait', 'Re-evaluating', or 'let\'s set')"
+                          >
+                            <AlertTriangle size={10} />
+                            <span>Needs review</span>
+                          </span>
+                        )}
                         <span
                           className={`text-[10px] font-heading px-2 py-0.5 rounded-full uppercase tracking-wider font-bold ${
                             q.status === 'published'
@@ -3415,6 +3514,181 @@ export function AdminQuestionsPage() {
                 >
                   <RefreshCw size={14} className={rebuildingCounts ? 'animate-spin' : ''} />
                   <span>{rebuildingCounts ? 'Rebuilding...' : 'Run Rebuild & Sync'}</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── FIX MISFILED QUESTIONS MODAL ────────────────────────────────────── */}
+      {isMisfiledModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[24px] p-6 max-w-3xl w-full max-h-[90vh] overflow-y-auto space-y-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-[var(--border)]">
+              <div>
+                <div className="flex items-center gap-2">
+                  <FolderEdit size={18} className={`text-[var(--accent)] ${scanningMisfiled || fixingMisfiled ? 'animate-spin' : ''}`} />
+                  <h3 className="font-heading font-bold text-base text-[var(--text)]">
+                    Fix Misfiled Questions
+                  </h3>
+                </div>
+                <p className="font-heading text-xs text-[var(--muted)] mt-1">
+                  Scans question pools across active banks for subject mismatches (e.g. English vocabulary or Physics formulas misfiled into Mathematics). Moves them atomically, updates indexes, and adjusts stats/questionCounts.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMisfiledModalOpen(false)}
+                disabled={scanningMisfiled || fixingMisfiled}
+                className="p-1 rounded-lg text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {misfiledError && (
+              <div className="p-3.5 rounded-[14px] bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-heading flex items-center gap-2">
+                <AlertTriangle size={16} className="text-rose-400 shrink-0" />
+                <span>{misfiledError}</span>
+              </div>
+            )}
+
+            {scanningMisfiled && (
+              <div className="p-8 rounded-[18px] bg-[var(--card-2)] border border-[var(--border)] text-center space-y-3">
+                <RefreshCw size={28} className="animate-spin mx-auto text-[var(--accent)]" />
+                <p className="font-heading font-semibold text-sm text-[var(--text)]">
+                  Scanning question pools across all banks...
+                </p>
+                <p className="font-heading text-xs text-[var(--muted)] max-w-md mx-auto">
+                  Inspecting stems, topics, and explicit metadata to detect misfiled questions across active question sources.
+                </p>
+              </div>
+            )}
+
+            {fixingMisfiled && (
+              <div className="p-8 rounded-[18px] bg-[var(--card-2)] border border-[var(--border)] text-center space-y-3">
+                <RefreshCw size={28} className="animate-spin mx-auto text-emerald-400" />
+                <p className="font-heading font-semibold text-sm text-[var(--text)]">
+                  Relocating questions & syncing indices...
+                </p>
+                <p className="font-heading text-xs text-[var(--muted)] max-w-md mx-auto">
+                  Moving documents to canonical collections, updating question_index arrays, and committing stats/questionCounts atomically.
+                </p>
+              </div>
+            )}
+
+            {fixMisfiledResult && !fixingMisfiled && (
+              <div className="space-y-4">
+                <div className="p-4 rounded-[16px] bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-2.5">
+                  <CheckCircle2 size={18} className="shrink-0" />
+                  <span className="font-heading text-sm font-semibold">
+                    Successfully relocated {fixMisfiledResult.fixedCount} misfiled question{fixMisfiledResult.fixedCount === 1 ? '' : 's'}!
+                  </span>
+                </div>
+
+                <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] space-y-2">
+                  <h4 className="font-heading font-semibold text-xs text-[var(--text)] uppercase tracking-wider">
+                    Relocation Confirmation Summary
+                  </h4>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {fixMisfiledResult.fixed.map((item, idx) => (
+                      <div key={idx} className="p-2.5 rounded-lg bg-[var(--card)] border border-[var(--border)] text-xs font-heading space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-[11px] text-[var(--muted)] truncate">{item.id}</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                            {formatSubjectName(item.oldSubject)} → {formatSubjectName(item.newSubject)}
+                          </span>
+                        </div>
+                        <p className="text-[var(--text)] font-medium line-clamp-1">"{item.stem}"</p>
+                        <p className="text-[11px] text-[var(--muted)]">{item.reason}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!scanningMisfiled && !fixingMisfiled && !fixMisfiledResult && (
+              <>
+                {misfiledCandidates.length === 0 ? (
+                  <div className="p-8 rounded-[18px] bg-[var(--card-2)] border border-[var(--border)] text-center space-y-3">
+                    <CheckCircle2 size={32} className="mx-auto text-emerald-400" />
+                    <p className="font-heading font-semibold text-sm text-[var(--text)]">
+                      No misfiled questions detected!
+                    </p>
+                    <p className="font-heading text-xs text-[var(--muted)] max-w-md mx-auto">
+                      All questions across your active bank sources are currently filed in their correct subject pools.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleScanMisfiled}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs font-heading font-medium text-[var(--text)] cursor-pointer"
+                    >
+                      <RefreshCw size={12} />
+                      <span>Re-scan Question Pools</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-heading font-semibold text-[var(--text)]">
+                        Detected Misfiled Questions ({misfiledCandidates.length})
+                      </span>
+                      <span className="text-[11px] font-heading text-amber-500 font-medium">
+                        Requires confirmation before moving
+                      </span>
+                    </div>
+
+                    <div className="space-y-2.5 max-h-72 overflow-y-auto">
+                      {misfiledCandidates.map((c, i) => (
+                        <div
+                          key={i}
+                          className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-amber-500/30 flex flex-col gap-1.5"
+                        >
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="font-mono text-[11px] text-[var(--muted)]">{c.id}</span>
+                            <div className="flex items-center gap-1.5 text-xs font-heading">
+                              <span className="px-2 py-0.5 rounded-full bg-rose-500/15 text-rose-400 border border-rose-500/30 text-[11px]">
+                                Current: {formatSubjectName(c.currentPoolSubject)}
+                              </span>
+                              <span>→</span>
+                              <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-semibold text-[11px]">
+                                Target: {formatSubjectName(c.proposedSubject)}
+                              </span>
+                            </div>
+                          </div>
+                          <p className="font-heading text-xs font-medium text-[var(--text)] line-clamp-2">
+                            "{c.stem}"
+                          </p>
+                          <p className="font-heading text-[11px] text-[var(--muted)]">
+                            Reason: {c.reason}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+              <button
+                type="button"
+                onClick={() => setIsMisfiledModalOpen(false)}
+                disabled={scanningMisfiled || fixingMisfiled}
+                className="px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer disabled:opacity-50"
+              >
+                {fixMisfiledResult ? 'Close' : 'Cancel'}
+              </button>
+              {misfiledCandidates.length > 0 && !fixingMisfiled && !fixMisfiledResult && (
+                <button
+                  type="button"
+                  onClick={handleApplyFixMisfiled}
+                  className="px-4 py-2 rounded-[12px] bg-[var(--accent)] hover:opacity-90 text-white font-heading font-semibold text-[13px] transition-opacity cursor-pointer flex items-center gap-2"
+                >
+                  <FolderEdit size={14} />
+                  <span>Confirm and Move ({misfiledCandidates.length})</span>
                 </button>
               )}
             </div>

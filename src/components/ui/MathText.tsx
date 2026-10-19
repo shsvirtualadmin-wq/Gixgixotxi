@@ -202,7 +202,7 @@ function renderMathSegment(seg: ParsedSegment, index: number, prefix: string) {
     return (
       <span
         key={`${prefix}-disp-${index}`}
-        className="katex-display-box block my-2.5 overflow-x-auto max-w-full text-center py-1 scrollbar-none"
+        className="katex-display-box block my-2.5 overflow-x-auto max-w-full min-w-0 text-center py-1 scrollbar-none"
         style={{ WebkitOverflowScrolling: 'touch' }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
@@ -212,7 +212,8 @@ function renderMathSegment(seg: ParsedSegment, index: number, prefix: string) {
   return (
     <span
       key={`${prefix}-inline-${index}`}
-      className="katex-inline-math inline leading-none align-baseline"
+      className="katex-inline-math inline leading-none align-baseline max-w-full min-w-0 overflow-x-auto"
+      style={{ WebkitOverflowScrolling: 'touch' }}
       dangerouslySetInnerHTML={{ __html: html }}
     />
   );
@@ -345,14 +346,14 @@ export function MathText({ children, text, className = '', block = false, style 
 
   if (block) {
     return (
-      <div className={`katex-root-block max-w-full overflow-x-hidden ${className}`} style={baseStyle}>
+      <div className={`katex-root-block max-w-full min-w-0 overflow-x-auto ${className}`} style={baseStyle}>
         {renderedContent}
       </div>
     );
   }
 
   return (
-    <span className={`katex-root-inline ${className}`} style={baseStyle}>
+    <span className={`katex-root-inline max-w-full min-w-0 ${className}`} style={baseStyle}>
       {renderedContent}
     </span>
   );

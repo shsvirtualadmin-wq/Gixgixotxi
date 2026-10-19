@@ -25,6 +25,8 @@ const PAKISTANI_UNIVERSITIES = [
 ];
 
 import { useTheme } from '@/hooks/useTheme';
+import { useWallpaper, WALLPAPERS } from '@/hooks/useWallpaper';
+import { WallpaperThumbnail } from '@/components/WallpaperBackground';
 
 export function SettingsPage() {
   const navigate = useNavigate();
@@ -35,6 +37,7 @@ export function SettingsPage() {
   const [targetUniversity, setTargetUniversity] = useState('');
   const [targetTestDate, setTargetTestDate] = useState('');
   const { theme, setTheme: toggleTheme } = useTheme();
+  const { wallpaper: currentWallpaper, setWallpaper } = useWallpaper();
   const [saving, setSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
@@ -165,6 +168,61 @@ export function SettingsPage() {
                 <span>Nothing Light</span>
                 {theme === 'light' && <Check size={16} className="text-[#D71921]" />}
               </button>
+            </div>
+
+            {/* Background Wallpaper Picker (Original artwork inspired by style reference) */}
+            <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
+                <div>
+                  <h4 className="font-display" style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                    Background Wallpaper
+                  </h4>
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                    Original dark artwork: concentric arcs, deep red glow, and dot matrix. Saved locally.
+                  </p>
+                </div>
+                <span style={{ fontSize: 11, fontFamily: 'var(--font-dot)', padding: '2px 8px', borderRadius: 9999, background: 'var(--surface-2)', border: '1px solid var(--border)', color: '#D71921', fontWeight: 700 }}>
+                  {WALLPAPERS.find((w) => w.id === currentWallpaper)?.name || 'Crimson Arc'}
+                </span>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+                {WALLPAPERS.map((item) => {
+                  const isSelected = currentWallpaper === item.id;
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setWallpaper(item.id)}
+                      style={{
+                        padding: 12,
+                        borderRadius: 16,
+                        border: isSelected ? '2px solid #D71921' : '1px solid var(--border)',
+                        background: isSelected ? 'var(--surface-2)' : 'var(--surface)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                        textAlign: 'left',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      <WallpaperThumbnail id={item.id} selected={isSelected} />
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                            {item.name}
+                          </span>
+                          {isSelected && <Check size={14} className="text-[#D71921]" />}
+                        </div>
+                        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.35 }}>
+                          {item.description}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </GlassCard>
 

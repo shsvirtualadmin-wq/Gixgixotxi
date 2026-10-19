@@ -358,36 +358,55 @@ Provide the step-by-step solution following your exact output format.`;
                     body: JSON.stringify({
                       system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
                       contents: [{ role: 'user', parts: [{ text: promptContent }] }],
-                      generationConfig: { temperature: 0.2, maxOutputTokens: 1200 },
+                      generationConfig: {
+                        temperature: 0.2,
+                        maxOutputTokens: 1500,
+                        thinkingConfig: { thinkingBudget: 1024 },
+                      },
                     }),
                   });
-                  if (!r.ok) throw new Error(`Gemini status ${r.status}`);
+                  if (!r.ok) {
+                    const errBody = await r.text();
+                    console.error(`[vite ai-tutor] Gemini API error (${model}): status ${r.status}`, errBody);
+                    let parsedReason = `Gemini status ${r.status}`;
+                    try {
+                      const parsed = JSON.parse(errBody);
+                      parsedReason = parsed?.error?.message || parsedReason;
+                    } catch {}
+                    const err: any = new Error(parsedReason);
+                    err.status = r.status;
+                    err.reason = parsedReason;
+                    throw err;
+                  }
                   const data: any = await r.json();
                   return data.candidates?.[0]?.content?.parts?.[0]?.text;
                 };
 
                 try {
-                  let replyText = await callGemini(BOARDY_AI_MODEL);
-                  if (!replyText) {
-                    replyText = await callGemini(BOARDY_AI_FALLBACK_MODEL);
-                  }
+                  const replyText = await callGemini(BOARDY_AI_MODEL);
                   if (replyText) {
                     res.writeHead(200, { 'Content-Type': 'application/json' });
                     res.end(JSON.stringify({ reply: replyText, timestamp: new Date().toISOString() }));
                     return;
                   }
-                } catch (gErr) {
-                  console.warn('[vite ai-tutor] Primary Gemini call note:', gErr);
-                  try {
-                    const fallbackText = await callGemini(BOARDY_AI_FALLBACK_MODEL);
-                    if (fallbackText) {
-                      res.writeHead(200, { 'Content-Type': 'application/json' });
-                      res.end(JSON.stringify({ reply: fallbackText, timestamp: new Date().toISOString() }));
-                      return;
-                    }
-                  } catch (fbErr) {
-                    console.warn('[vite ai-tutor] Fallback Gemini call note:', fbErr);
-                  }
+                } catch (gErr: any) {
+                  console.error('[vite ai-tutor] Boardly AI error:', gErr?.status, gErr?.reason || gErr?.message);
+                  res.writeHead(gErr?.status || 500, { 'Content-Type': 'application/json' });
+                  res.end(
+                    JSON.stringify({
+                      error: gErr?.reason || gErr?.message || 'AI generation failed',
+                      status: gErr?.status || 500,
+                      code:
+                        gErr?.status === 429
+                          ? 'RATE_LIMIT'
+                          : gErr?.status === 400 || gErr?.status === 401 || gErr?.status === 403
+                          ? 'BAD_KEY'
+                          : gErr?.status === 503
+                          ? 'MODEL_UNAVAILABLE'
+                          : 'AI_ERROR',
+                    })
+                  );
+                  return;
                 }
               }
 

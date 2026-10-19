@@ -148,49 +148,18 @@ export function TestResultPage() {
   });
 
   return (
-    <div
-      style={{
-        maxWidth: 860,
-        margin: '0 auto',
-        padding: '2.5rem 1.25rem 5rem',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 24,
-      }}
-    >
+    <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 py-6 sm:py-10 pb-20 flex flex-col gap-6 min-w-0 max-w-full overflow-x-hidden">
       {/* Hero Scorecard */}
-      <div
-        className="glass glass-animated-border"
-        style={{
-          borderRadius: 'var(--r-hero)',
-          padding: '2.5rem 2rem',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          textAlign: 'center',
-          gap: 16,
-        }}
-      >
-        <span
-          style={{
-            fontSize: 12,
-            fontWeight: 700,
-            textTransform: 'uppercase',
-            letterSpacing: '0.1em',
-            color: 'var(--brand-2)',
-          }}
-        >
+      <div className="glass glass-animated-border rounded-3xl p-4 sm:p-8 flex flex-col items-center text-center gap-4 w-full max-w-full min-w-0">
+        <span className="text-xs font-bold uppercase tracking-widest text-[var(--brand-2)] break-words max-w-full text-center px-2">
           Session Complete · {attempt.subject ?? 'Practice Drill'}
         </span>
 
         {/* Big percentage & score */}
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+        <div className="flex items-baseline justify-center gap-3 flex-wrap max-w-full">
           <span
-            className="font-display tabular-nums"
+            className="font-display tabular-nums text-5xl sm:text-7xl font-extrabold leading-none"
             style={{
-              fontSize: 'clamp(48px, 8vw, 72px)',
-              fontWeight: 800,
-              lineHeight: 1,
               background:
                 percentage >= 70
                   ? 'linear-gradient(135deg, #34D399, #10B981)'
@@ -204,12 +173,12 @@ export function TestResultPage() {
           >
             {percentage}%
           </span>
-          <span style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-muted)' }}>
+          <span className="text-xl sm:text-2xl font-bold text-[var(--text-muted)]">
             ({score} / {attempt.maxMarks || total})
           </span>
         </div>
 
-        <p style={{ fontSize: 15, color: 'var(--text-muted)', maxWidth: 440 }}>
+        <p className="text-sm sm:text-base text-[var(--text-muted)] max-w-md break-words px-2 leading-relaxed">
           {percentage >= 75
             ? 'Outstanding performance! You are on track for top entrance test percentiles.'
             : percentage >= 50
@@ -218,6 +187,18 @@ export function TestResultPage() {
         </p>
 
         {(() => {
+          const isSprint =
+            attempt.mode === 'sprint' ||
+            (attempt.title && attempt.title.toLowerCase().includes('sprint')) ||
+            (attempt.university && attempt.university.toLowerCase().includes('sprint'));
+          if (isSprint) {
+            return (
+              <p className="text-xs text-[var(--text-muted)] bg-[var(--surface-2)] px-3.5 py-1.5 rounded-2xl sm:rounded-full border border-[var(--border)] max-w-full break-words text-center leading-relaxed">
+                ⚡ 10-Minute Sprint marking scheme: Standard (+1.0 / 0.0) · No negative marking
+              </p>
+            );
+          }
+
           const uniCriteria = getUniversityCriteria(attempt.university);
           const sections = uniCriteria.sections || [];
           const penalizedSections = sections.filter((s) => s.negativePenalty && s.negativePenalty !== 0);
@@ -243,60 +224,47 @@ export function TestResultPage() {
 
           return (
             <p
-              style={{
-                fontSize: 12,
-                color: uniCriteria.hasNegativeMarking ? 'var(--warning)' : 'var(--text-muted)',
-                background: uniCriteria.hasNegativeMarking ? 'rgba(251, 191, 36, 0.1)' : 'var(--surface-2)',
-                padding: '4px 14px',
-                borderRadius: 999,
-                border: '1px solid var(--border)',
-              }}
+              className={`text-xs px-3.5 py-1.5 rounded-2xl sm:rounded-full border border-[var(--border)] max-w-full break-words text-center leading-relaxed ${
+                uniCriteria.hasNegativeMarking ? 'text-[var(--warning)] bg-amber-500/10' : 'text-[var(--text-muted)] bg-[var(--surface-2)]'
+              }`}
             >
               ⚡ {uniCriteria.name} marking scheme: {markingDetail}
             </p>
           );
         })()}
 
-        {/* Key Metrics Row */}
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
-            gap: 12,
-            width: '100%',
-            maxWidth: 600,
-            marginTop: 8,
-          }}
-        >
-          <div className="glass" style={{ borderRadius: 'var(--r-input)', padding: '12px' }}>
-            <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--success)' }}>{correctCount}</p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Correct</p>
+        {/* Key Metrics Row: 2-column grid on mobile, 4-column on desktop */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-xl mt-2 min-w-0">
+          <div className="glass rounded-xl p-3 min-w-0 text-center">
+            <p className="text-xl sm:text-2xl font-extrabold text-[var(--success)]">{correctCount}</p>
+            <p className="text-xs text-[var(--text-faint)] mt-0.5">Correct</p>
           </div>
 
-          <div className="glass" style={{ borderRadius: 'var(--r-input)', padding: '12px' }}>
-            <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--danger)' }}>{wrongCount}</p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Incorrect</p>
+          <div className="glass rounded-xl p-3 min-w-0 text-center">
+            <p className="text-xl sm:text-2xl font-extrabold text-[var(--danger)]">{wrongCount}</p>
+            <p className="text-xs text-[var(--text-faint)] mt-0.5">Incorrect</p>
           </div>
 
-          <div className="glass" style={{ borderRadius: 'var(--r-input)', padding: '12px' }}>
-            <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-faint)' }}>{unansweredCount}</p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Skipped</p>
+          <div className="glass rounded-xl p-3 min-w-0 text-center">
+            <p className="text-xl sm:text-2xl font-extrabold text-[var(--text-faint)]">{unansweredCount}</p>
+            <p className="text-xs text-[var(--text-faint)] mt-0.5">Skipped</p>
           </div>
 
-          <div className="glass" style={{ borderRadius: 'var(--r-input)', padding: '12px' }}>
-            <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)' }}>
+          <div className="glass rounded-xl p-3 min-w-0 text-center">
+            <p className="text-xl sm:text-2xl font-extrabold text-[var(--text)]">
               {formatTime(attempt.timeTakenSeconds)}
             </p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Time Spent</p>
+            <p className="text-xs text-[var(--text-faint)] mt-0.5">Time Spent</p>
           </div>
         </div>
 
-        {/* Action CTAs */}
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 12 }}>
+        {/* Action CTAs: stacked full-width on mobile */}
+        <div className="flex flex-col sm:flex-row w-full sm:w-auto gap-3 mt-3">
           <Button
             variant="primary"
             size="md"
             onClick={() => navigate('/dashboard/practice')}
+            className="w-full sm:w-auto justify-center"
             style={{ gap: 8 }}
           >
             <BookOpen size={16} />
@@ -307,6 +275,7 @@ export function TestResultPage() {
             variant="secondary"
             size="md"
             onClick={() => navigate('/dashboard')}
+            className="w-full sm:w-auto justify-center"
             style={{ gap: 8 }}
           >
             <span>Overview Dashboard</span>
@@ -316,28 +285,19 @@ export function TestResultPage() {
       </div>
 
       {/* Review Section */}
-      <div>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: 12,
-            marginBottom: 16,
-          }}
-        >
+      <div className="min-w-0 max-w-full">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 min-w-0 max-w-full">
           <div>
-            <h3 className="font-display" style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}>
+            <h3 className="font-display text-lg sm:text-xl font-bold text-[var(--text)]">
               Question Breakdown
             </h3>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>
+            <p className="text-xs sm:text-sm text-[var(--text-muted)]">
               Detailed step-by-step solutions with KaTeX derivations
             </p>
           </div>
 
           {/* Filter Pills */}
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="flex items-center gap-1.5 flex-wrap max-w-full">
             {(
               [
                 { id: 'all', label: `All (${questions.length})` },
@@ -350,17 +310,11 @@ export function TestResultPage() {
                 <button
                   key={tab.id}
                   onClick={() => setFilter(tab.id)}
-                  style={{
-                    padding: '5px 12px',
-                    borderRadius: 'var(--r-pill)',
-                    fontSize: 12,
-                    fontWeight: active ? 600 : 400,
-                    cursor: 'pointer',
-                    border: `1px solid ${active ? 'var(--brand)' : 'var(--border)'}`,
-                    background: active ? 'rgba(47, 107, 255, 0.15)' : 'var(--surface)',
-                    color: active ? 'var(--brand)' : 'var(--text-muted)',
-                    transition: 'all 160ms',
-                  }}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-colors border ${
+                    active
+                      ? 'border-[var(--brand)] bg-[var(--brand)]/15 text-[var(--brand)] font-semibold'
+                      : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]'
+                  }`}
                 >
                   {tab.label}
                 </button>
@@ -370,7 +324,7 @@ export function TestResultPage() {
         </div>
 
         {/* Question Cards List */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="flex flex-col gap-4 min-w-0 max-w-full">
           {filteredQuestions.map(({ q, idx }) => {
             const userAns = userAnswers[String(idx)];
             const isCorrect = userAns === q.correct;
@@ -382,60 +336,58 @@ export function TestResultPage() {
             return (
               <div
                 key={q.id || idx}
-                className="glass"
-                style={{
-                  borderRadius: 'var(--r-card)',
-                  padding: '1.5rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 16,
-                  borderLeft: isCorrect
-                    ? '4px solid var(--success)'
+                className={`glass rounded-2xl p-4 sm:p-6 flex flex-col gap-4 min-w-0 max-w-full overflow-hidden ${
+                  isCorrect
+                    ? 'border-l-4 border-l-[var(--success)]'
                     : isSkipped
-                    ? '4px solid var(--text-faint)'
-                    : '4px solid var(--danger)',
-                }}
+                    ? 'border-l-4 border-l-[var(--text-faint)]'
+                    : 'border-l-4 border-l-[var(--danger)]'
+                }`}
               >
                 {/* Header */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                <div className="flex items-center justify-between flex-wrap gap-2 min-w-0 max-w-full">
+                  <div className="flex items-center gap-2 flex-wrap min-w-0">
+                    <span className="text-xs sm:text-sm font-bold text-[var(--text)]">
                       Question {idx + 1}
                     </span>
                     {q.subject && (
-                      <span style={{ fontSize: 11, color: 'var(--text-faint)', background: 'var(--surface)', padding: '2px 8px', borderRadius: 999 }}>
+                      <span className="text-[11px] text-[var(--text-faint)] bg-[var(--surface)] px-2 py-0.5 rounded-full border border-[var(--border)]">
                         {q.subject}
                       </span>
                     )}
                     {isItemFlagged && (
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, color: 'var(--warning)' }}>
+                      <span className="inline-flex items-center gap-1 text-[11px] text-amber-500">
                         <Bookmark size={11} fill="currentColor" /> Flagged
                       </span>
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div className="flex items-center gap-2 flex-wrap">
                     {(() => {
+                      const isSprint =
+                        attempt.mode === 'sprint' ||
+                        (attempt.title && attempt.title.toLowerCase().includes('sprint')) ||
+                        (attempt.university && attempt.university.toLowerCase().includes('sprint'));
                       const secCrit = getSectionCriteria(attempt.university, q.subject);
-                      const correctLabel = `+${secCrit.correctMarks}`;
-                      const penaltyLabel = secCrit.hasPenalty ? `${secCrit.negativePenalty}` : '0';
+                      const correctLabel = '+1.0';
+                      const penaltyLabel = isSprint ? '0' : (secCrit.hasPenalty ? `${secCrit.negativePenalty}` : '0');
 
                       if (isCorrect) {
                         return (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--success)', fontSize: 12, fontWeight: 700 }}>
+                          <span className="inline-flex items-center gap-1 text-[var(--success)] text-xs font-bold">
                             <CheckCircle size={14} /> Correct ({correctLabel})
                           </span>
                         );
                       }
                       if (isSkipped) {
                         return (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--text-faint)', fontSize: 12 }}>
+                          <span className="inline-flex items-center gap-1 text-[var(--text-faint)] text-xs">
                             <Clock size={14} /> Skipped (0)
                           </span>
                         );
                       }
                       return (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: 'var(--danger)', fontSize: 12, fontWeight: 700 }}>
+                        <span className="inline-flex items-center gap-1 text-[var(--danger)] text-xs font-bold">
                           <XCircle size={14} /> Incorrect ({penaltyLabel})
                         </span>
                       );
@@ -444,18 +396,7 @@ export function TestResultPage() {
                     <button
                       type="button"
                       onClick={() => setReportingQuestionId(q.id)}
-                      style={{
-                        background: 'transparent',
-                        border: '1px solid var(--border)',
-                        borderRadius: 'var(--r-pill)',
-                        padding: '3px 9px',
-                        fontSize: 11,
-                        color: 'var(--text-muted)',
-                        cursor: 'pointer',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        gap: 4,
-                      }}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full border border-[var(--border)] text-[11px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
                       title="Report issue with this question"
                     >
                       <Flag size={11} />
@@ -466,95 +407,71 @@ export function TestResultPage() {
 
                 {/* Question Stem or Deleted note */}
                 {isUnavailable ? (
-                  <div style={{ padding: '12px 16px', borderRadius: 'var(--r-input)', background: 'var(--surface-hover)', border: '1px solid var(--border)', fontSize: 13, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <div className="p-3 sm:p-4 rounded-xl bg-[var(--surface-hover)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text-muted)] flex items-center gap-2 min-w-0 max-w-full break-words">
                     <AlertTriangle size={16} className="text-[var(--accent)] shrink-0" />
                     <span>Question no longer available in the question bank. Your test score remains intact.</span>
                   </div>
                 ) : (
-                  <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text)', lineHeight: 1.6 }}>
+                  <div className="text-sm sm:text-base font-semibold text-[var(--text)] leading-relaxed min-w-0 max-w-full break-words overflow-x-auto">
                     <MathText block>{q.q || q.stem || ''}</MathText>
                   </div>
                 )}
 
                 {/* Options Review */}
                 {!isUnavailable && Array.isArray(q.options) && q.options.length > 0 && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  <div className="flex flex-col gap-2 min-w-0 max-w-full">
                     {q.options.map((optText, optIdx) => {
                       const isOptionCorrect = optIdx === q.correct;
                       const isUserChoice = optIdx === userAns;
 
-                      let bg = 'var(--surface)';
-                      let border = '1px solid var(--border)';
-                      let textColor = 'var(--text-muted)';
-
+                      let optClasses = 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)]';
                       if (isOptionCorrect) {
-                        bg = 'rgba(52, 211, 153, 0.12)';
-                        border = '1px solid var(--success)';
-                        textColor = 'var(--text)';
+                        optClasses = 'border-[var(--success)] bg-emerald-500/10 text-[var(--text)]';
                       } else if (isUserChoice && !isOptionCorrect) {
-                        bg = 'rgba(248, 113, 113, 0.12)';
-                        border = '1px solid var(--danger)';
-                        textColor = 'var(--text)';
+                        optClasses = 'border-[var(--danger)] bg-red-500/10 text-[var(--text)]';
                       }
 
                       return (
                         <div
                           key={optIdx}
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 12,
-                            padding: '10px 14px',
-                            borderRadius: 'var(--r-input)',
-                            background: bg,
-                            border,
-                            color: textColor,
-                            fontSize: 14,
-                          }}
+                          className={`flex items-center gap-3 p-2.5 sm:p-3 rounded-xl border text-xs sm:text-sm min-w-0 max-w-full break-words ${optClasses}`}
                         >
                           {/* Letter Badge on EVERY option + Check/X marker */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+                          <div className="flex items-center gap-1.5 shrink-0">
                             <span
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 800,
-                                fontFamily: 'monospace',
-                                padding: '2px 7px',
-                                borderRadius: 4,
-                                background: isOptionCorrect
-                                  ? 'var(--success)'
+                              className={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded border border-[var(--border)] ${
+                                isOptionCorrect
+                                  ? 'bg-[var(--success)] text-white'
                                   : isUserChoice
-                                  ? 'var(--danger)'
-                                  : 'rgba(255, 255, 255, 0.08)',
-                                color: isOptionCorrect || isUserChoice ? '#ffffff' : 'var(--text-faint)',
-                                border: '1px solid var(--border)',
-                              }}
+                                  ? 'bg-[var(--danger)] text-white'
+                                  : 'bg-white/10 text-[var(--text-faint)]'
+                              }`}
                             >
                               {['A', 'B', 'C', 'D'][optIdx] || String(optIdx + 1)}
                             </span>
                             {isOptionCorrect && (
-                              <span style={{ color: 'var(--success)', display: 'flex', alignItems: 'center' }}>
+                              <span className="text-[var(--success)]">
                                 <Check size={14} />
                               </span>
                             )}
                             {isUserChoice && !isOptionCorrect && (
-                              <span style={{ color: 'var(--danger)', display: 'flex', alignItems: 'center' }}>
+                              <span className="text-[var(--danger)]">
                                 <X size={14} />
                               </span>
                             )}
                           </div>
 
-                          <div style={{ flex: 1 }}>
+                          <div className="flex-1 min-w-0 break-words overflow-x-auto">
                             <MathText>{optText}</MathText>
                           </div>
 
                           {isOptionCorrect && (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--success)' }}>
+                            <span className="text-[10px] sm:text-[11px] font-bold text-[var(--success)] shrink-0 hidden xs:inline">
                               Correct Answer
                             </span>
                           )}
                           {isUserChoice && !isOptionCorrect && (
-                            <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--danger)' }}>
+                            <span className="text-[10px] sm:text-[11px] font-bold text-[var(--danger)] shrink-0 hidden xs:inline">
                               Your Choice
                             </span>
                           )}
@@ -566,18 +483,8 @@ export function TestResultPage() {
 
                 {/* Explanation: ONLY show if saved explanation exists and is not the placeholder */}
                 {q.explain && q.explain.trim().length > 0 && !q.explain.includes('available in the study portal') && (
-                  <div
-                    style={{
-                      padding: '12px 16px',
-                      borderRadius: 'var(--r-input)',
-                      background: 'var(--surface-hover)',
-                      border: '1px solid var(--border)',
-                      fontSize: 13,
-                      lineHeight: 1.6,
-                      color: 'var(--text)',
-                    }}
-                  >
-                    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>
+                  <div className="p-3 sm:p-4 rounded-xl bg-[var(--surface-hover)] border border-[var(--border)] text-xs sm:text-sm leading-relaxed text-[var(--text)] min-w-0 max-w-full break-words overflow-x-auto">
+                    <p className="text-[10px] sm:text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wider mb-1">
                       Standard Solution
                     </p>
                     <MathText block>{q.explain}</MathText>
@@ -594,38 +501,15 @@ export function TestResultPage() {
 
                   if (!hasValidKey) {
                     return (
-                      <div
-                        style={{
-                          padding: '10px 14px',
-                          borderRadius: 'var(--r-input)',
-                          background: 'var(--surface-2)',
-                          border: '1px solid var(--border)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 10,
-                          fontSize: 12,
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-muted)' }}>
+                      <div className="p-2.5 sm:p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between gap-2.5 text-xs min-w-0 max-w-full">
+                        <div className="flex items-center gap-2 text-[var(--text-muted)] min-w-0">
                           <AlertTriangle size={15} className="text-amber-500 shrink-0" />
-                          <span>This question is being reviewed. Correct answer key is being verified.</span>
+                          <span className="truncate">This question is being reviewed. Correct answer key is being verified.</span>
                         </div>
                         <button
                           type="button"
                           onClick={() => setReportingQuestionId(q.id)}
-                          style={{
-                            background: 'transparent',
-                            border: '1px solid var(--border)',
-                            borderRadius: 'var(--r-pill)',
-                            padding: '3px 9px',
-                            fontSize: 11,
-                            color: 'var(--text-muted)',
-                            cursor: 'pointer',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 4,
-                          }}
+                          className="px-2.5 py-1 rounded-full border border-[var(--border)] text-[11px] text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer shrink-0 inline-flex items-center gap-1"
                         >
                           <Flag size={11} />
                           <span>Report</span>
@@ -635,27 +519,12 @@ export function TestResultPage() {
                   }
 
                   return (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div className="flex flex-col gap-2.5 min-w-0 max-w-full">
                       {!aiExplanations[idx] ? (
                         <button
                           onClick={() => handleRequestAiExplanation(idx, q, userAns, false)}
                           disabled={aiExplaining[idx]}
-                          style={{
-                            alignSelf: 'flex-start',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 8,
-                            padding: '8px 14px',
-                            borderRadius: 'var(--r-pill)',
-                            border: '1px solid #D71921',
-                            background: 'transparent',
-                            color: 'var(--text)',
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: aiExplaining[idx] ? 'wait' : 'pointer',
-                            transition: 'all 160ms',
-                          }}
-                          className="hover:bg-[#D71921] hover:text-white"
+                          className="self-start inline-flex items-center gap-2 px-3.5 py-2 rounded-full border border-[#D71921] bg-transparent text-[var(--text)] text-xs font-semibold cursor-pointer hover:bg-[#D71921] hover:text-white transition-colors disabled:cursor-wait max-w-full"
                         >
                           {aiExplaining[idx] ? (
                             <>
@@ -670,59 +539,30 @@ export function TestResultPage() {
                           )}
                         </button>
                       ) : (
-                        <div
-                          style={{
-                            padding: '16px',
-                            borderRadius: 'var(--r-card)',
-                            background: 'var(--surface)',
-                            border: '1px solid #D71921',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            gap: 10,
-                            overflowX: 'hidden',
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#D71921', fontSize: 12, fontWeight: 700 }}>
+                        <div className="p-3 sm:p-4 rounded-2xl bg-[var(--surface)] border border-[#D71921] flex flex-col gap-2.5 min-w-0 max-w-full overflow-hidden">
+                          <div className="flex items-center justify-between flex-wrap gap-2">
+                            <div className="flex items-center gap-1.5 text-[#D71921] text-xs font-bold">
                               <Bot size={15} />
                               <span>Boardy AI Step-by-Step Derivation</span>
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div className="flex items-center gap-2">
                               <button
                                 onClick={() => handleRequestAiExplanation(idx, q, userAns, true)}
                                 disabled={aiExplaining[idx]}
-                                style={{
-                                  fontSize: 11,
-                                  color: 'var(--text-faint)',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                  background: 'none',
-                                  border: 'none',
-                                }}
+                                className="text-xs text-[var(--text-faint)] hover:text-[var(--text)] cursor-pointer flex items-center gap-1 disabled:opacity-50"
                               >
                                 <RotateCcw size={11} /> Re-derive
                               </button>
                               <button
                                 onClick={() => setReportingQuestionId(q.id)}
-                                style={{
-                                  fontSize: 11,
-                                  color: 'var(--text-faint)',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  gap: 4,
-                                  background: 'none',
-                                  border: 'none',
-                                }}
+                                className="text-xs text-[var(--text-faint)] hover:text-[var(--text)] cursor-pointer flex items-center gap-1"
                                 title="Report issue with explanation"
                               >
                                 <Flag size={11} /> Report
                               </button>
                             </div>
                           </div>
-                          <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text)' }} className="break-words">
+                          <div className="text-xs sm:text-sm leading-relaxed text-[var(--text)] break-words min-w-0 max-w-full overflow-x-auto">
                             <MathText block>{aiExplanations[idx]}</MathText>
                           </div>
                         </div>

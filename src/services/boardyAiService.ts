@@ -13,6 +13,9 @@ export const BOARDY_AI_MODEL = 'gemini-3.8-flash';
 export const BOARDY_AI_FALLBACK_MODEL = 'gemini-flash-latest';
 export const FREE_DAILY_AI_TOKENS = 5;
 
+// In-memory cache to guarantee successful explanations are never re-fetched
+const explanationMemoryCache = new Map<string, string>();
+
 export interface BoardyDerivationParams {
   question: AttemptQuestion;
   questionIndex: number;
@@ -105,12 +108,21 @@ export async function getBoardyExplanation(
 
   // 2. Caching check: If not forceRefresh, check for existing cached explanation
   if (!forceRefresh) {
-    // Check question document cachedAiExplanation
+    const memoryCached = explanationMemoryCache.get(cacheKey);
+    if (memoryCached && memoryCached.trim().length > 20) {
+      return {
+        explanation: memoryCached,
+        cached: true,
+        status: 'success',
+      };
+    }
+
     const existingCache =
       (question as { cachedAiExplanation?: string }).cachedAiExplanation ||
       localStorage.getItem(cacheKey);
 
     if (existingCache && existingCache.trim().length > 20) {
+      explanationMemoryCache.set(cacheKey, existingCache);
       return {
         explanation: existingCache,
         cached: true,
@@ -133,43 +145,88 @@ export async function getBoardyExplanation(
     }
   }
 
-  // 4. Request from backend `/api/ai-tutor` with full context
-  try {
+  // 4. Request from backend `/api/ai-tutor` with retry & exponential backoff
+  const requestPayload = {
+    mode: 'mcq_derivation',
+    questionText: question.q || question.stem || '',
+    options,
+    correctAnswer: {
+      index: correctIdx,
+      letter: ['A', 'B', 'C', 'D'][correctIdx] || 'A',
+      text: correctOptionText,
+    },
+    chosenAnswer: {
+      index: chosenAnswerIndex,
+      letter:
+        chosenAnswerIndex !== undefined && chosenAnswerIndex !== null
+          ? ['A', 'B', 'C', 'D'][chosenAnswerIndex]
+          : undefined,
+      text: chosenOptionText,
+    },
+    subject: question.subject || 'General',
+    chapter: question.chapter || 'General',
+    track,
+  };
+
+interface ServiceHttpError extends Error {
+  status?: number;
+  code?: string;
+  reason?: string;
+}
+
+  const executeCall = async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const offErr: ServiceHttpError = new Error('Client is offline');
+      offErr.status = 0;
+      offErr.code = 'OFFLINE';
+      throw offErr;
+    }
+
     const res = await fetch('/api/ai-tutor', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mode: 'mcq_derivation',
-        questionText: question.q || question.stem || '',
-        options,
-        correctAnswer: {
-          index: correctIdx,
-          letter: ['A', 'B', 'C', 'D'][correctIdx] || 'A',
-          text: correctOptionText,
-        },
-        chosenAnswer: {
-          index: chosenAnswerIndex,
-          letter: chosenAnswerIndex !== undefined && chosenAnswerIndex !== null ? ['A', 'B', 'C', 'D'][chosenAnswerIndex] : undefined,
-          text: chosenOptionText,
-        },
-        subject: question.subject || 'General',
-        chapter: question.chapter || 'General',
-        track,
-      }),
+      body: JSON.stringify(requestPayload),
     });
 
     if (!res.ok) {
-      throw new Error(`AI service returned status ${res.status}`);
+      let errData: Record<string, string | number> = {};
+      try {
+        errData = (await res.json()) as Record<string, string | number>;
+      } catch {
+        // non-json body
+      }
+      const errMsg = String(errData.error || `AI service returned status ${res.status}`);
+      const err: ServiceHttpError = new Error(errMsg);
+      err.status = res.status;
+      err.code = String(
+        errData.code || (res.status === 429 ? 'RATE_LIMIT' : res.status === 503 ? 'MODEL_UNAVAILABLE' : 'SERVER_ERROR')
+      );
+      err.reason = errMsg;
+      throw err;
     }
 
     const data = (await res.json()) as { reply?: string; explanation?: string };
     const rawReply = data.reply || data.explanation || '';
-
     if (!rawReply || rawReply.trim().length === 0) {
       throw new Error('Empty reply received from AI tutor.');
     }
+    return rawReply;
+  };
 
-    // Cache the explanation locally and on question doc if id exists
+  try {
+    let rawReply = '';
+    try {
+      rawReply = await executeCall();
+    } catch (firstErr: unknown) {
+      const fe = firstErr as ServiceHttpError;
+      console.warn('[boardyAiService] First derivation attempt failed, retrying with backoff:', fe?.status, fe?.message);
+      // Backoff 1200ms before retry
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      rawReply = await executeCall();
+    }
+
+    // Cache the explanation locally and in memory
+    explanationMemoryCache.set(cacheKey, rawReply);
     try {
       localStorage.setItem(cacheKey, rawReply);
       if (question.id) {
@@ -197,14 +254,41 @@ export async function getBoardyExplanation(
       tokensUsed: used,
       remainingTokens: remaining,
     };
-  } catch (err) {
-    console.warn('[boardyAiService] Derivation error:', err);
+  } catch (err: unknown) {
+    const errorObj = err as ServiceHttpError;
+    const status = errorObj?.status ?? (typeof navigator !== 'undefined' && !navigator.onLine ? 0 : 500);
+    const reason = errorObj?.reason || errorObj?.message || 'Unknown network error';
+    const code = errorObj?.code;
+
+    // Log the real error (status code and reason) to the console
+    console.error('[boardyAiService] Derivation failure:', {
+      statusCode: status,
+      reason,
+      code,
+      questionId: question.id,
+      timestamp: new Date().toISOString(),
+    });
+
+    // Provide student with a specific, helpful message
+    let studentMessage = 'Could not generate step-by-step solution right now. Tap "Re-derive" to try again.';
+
+    if (code === 'OFFLINE' || (typeof navigator !== 'undefined' && !navigator.onLine) || reason.includes('Failed to fetch')) {
+      studentMessage = 'You appear to be offline. Please check your internet connection and tap "Re-derive".';
+    } else if (status === 429 || code === 'RATE_LIMIT' || reason.includes('429') || reason.toLowerCase().includes('quota') || reason.toLowerCase().includes('rate limit')) {
+      studentMessage = 'Boardy AI rate limit reached. Please wait a few moments and tap "Re-derive".';
+    } else if (status === 401 || status === 403 || code === 'BAD_KEY' || reason.toLowerCase().includes('api key') || reason.toLowerCase().includes('unauthenticated')) {
+      studentMessage = 'AI service authentication error. Please contact academic support.';
+    } else if (status === 503 || status === 500 || code === 'MODEL_UNAVAILABLE' || reason.toLowerCase().includes('unavailable') || reason.toLowerCase().includes('overloaded')) {
+      studentMessage = 'Boardy AI is temporarily unavailable. Please tap "Re-derive" in a few seconds.';
+    } else {
+      studentMessage = `Could not generate step-by-step solution (${reason}). Tap "Re-derive" to retry.`;
+    }
+
     return {
-      explanation:
-        'Could not generate step-by-step solution right now. Please check your internet connection and try "Re-derive" in a moment.',
+      explanation: studentMessage,
       cached: false,
       status: 'error',
-      error: err instanceof Error ? err.message : 'Unknown error',
+      error: reason,
     };
   }
 }

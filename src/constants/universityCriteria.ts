@@ -257,11 +257,38 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
     },
     description: 'Balanced 30-minute diagnostic drill covering core intermediate STEM topics across all test formats.',
   },
+  {
+    id: 'Standard Sprint',
+    name: '10-Minute Sprint',
+    shortName: 'Sprint',
+    fullName: '10-Minute Rapid Sprint',
+    badge: 'Rapid Fire',
+    totalQuestions: 10,
+    totalMarks: 10,
+    durationMinutes: 10,
+    negativeMarking: 'No negative marking (+1.0 / 0.0)',
+    hasNegativeMarking: false,
+    sections: [
+      { subject: 'mathematics', name: 'Mathematics', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1.0 / 0.0 NO PENALTY' },
+      { subject: 'physics', name: 'Physics', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1.0 / 0.0 NO PENALTY' },
+      { subject: 'chemistry', name: 'Chemistry', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1.0 / 0.0 NO PENALTY' },
+      { subject: 'english', name: 'English', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1.0 / 0.0 NO PENALTY' },
+    ],
+    get subjectsSplit() {
+      return this.sections.map((s) => ({ subject: s.subject, count: s.count, name: s.name }));
+    },
+    description: '10 rapid-fire questions in 10 minutes with Standard (+1.0 / 0.0) scoring.',
+  },
 ];
 
 export function getUniversityCriteria(uniNameOrId?: string | null): UniversityCriteria {
   if (!uniNameOrId) return TARGET_UNIVERSITY_CRITERIA[0];
   const query = uniNameOrId.trim().toLowerCase();
+
+  if (query.includes('sprint')) {
+    const sprintCrit = TARGET_UNIVERSITY_CRITERIA.find((c) => c.id === 'Standard Sprint');
+    if (sprintCrit) return sprintCrit;
+  }
 
   const found = TARGET_UNIVERSITY_CRITERIA.find((c) => {
     const id = c.id.toLowerCase();

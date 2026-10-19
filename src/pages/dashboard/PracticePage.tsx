@@ -183,7 +183,7 @@ export function PracticePage() {
     let title = '10-Minute Sprint';
     let subjectSlugToUse = 'mathematics';
     let targetChapterSlug = 'general';
-    const targetUni = selectedUniversity === 'Any' ? 'FAST-NUCES' : selectedUniversity;
+    const targetUni = type === 'sprint' ? 'Standard Sprint' : (selectedUniversity === 'Any' ? 'FAST-NUCES' : selectedUniversity);
 
     if (type === 'full') {
       const criteria = currentUniversityCriteria;

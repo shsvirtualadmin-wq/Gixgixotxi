@@ -57,8 +57,19 @@ import {
   parseQuestionCompoundId,
   rebuildCountsAndIndex,
   type RebuildCountsResult,
+  scanMisfiledQuestions,
+  fixMisfiledQuestions,
+  type MisfiledQuestionCandidate,
+  type FixMisfiledResult,
 } from './multiSourceQuestionBank';
-export { rebuildCountsAndIndex, type RebuildCountsResult };
+export {
+  rebuildCountsAndIndex,
+  type RebuildCountsResult,
+  scanMisfiledQuestions,
+  fixMisfiledQuestions,
+  type MisfiledQuestionCandidate,
+  type FixMisfiledResult,
+};
 import { getDefaultWriteSource } from '@/config/questionBankSources';
 
 // ─── DIAGNOSTIC FIRESTORE ERROR ──────────────────────────────────────────────
