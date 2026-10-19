@@ -27,9 +27,13 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   ENABLE_MULTI_SOURCE_BANK,
   getBankSources,
+  getBankSource,
+  BANK_SOURCE_CONFIGS,
   isBank1Unlocked,
-  unlockBank1,
-  lockBank1,
+  isBank2Unlocked,
+  isBankUnlocked,
+  unlockBankSource,
+  lockBankSource,
   subscribeFailingSources,
   subscribeBankSourceHealth,
   checkAllBankSourcesHealth,
@@ -237,15 +241,18 @@ export function AdminQuestionsPage() {
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [importResult, setImportResult] = useState<{ imported: number; duplicatesSkipped: number } | null>(null);
 
-  // Multi-source bank state
+  // Multi-source bank state (defaults to Beta Bank: bank2)
   const bankSources = useMemo(() => getBankSources(), []);
-  const [selectedSaveSource, setSelectedSaveSource] = useState<string>('bank1');
-  const [importTargetSource, setImportTargetSource] = useState<string>('bank1');
-  const [editingQuestionSourceId, setEditingQuestionSourceId] = useState<string>('bank1');
+  const [selectedSaveSource, setSelectedSaveSource] = useState<string>('bank2');
+  const [importTargetSource, setImportTargetSource] = useState<string>('bank2');
+  const [editingQuestionSourceId, setEditingQuestionSourceId] = useState<string>('bank2');
 
-  // Bank 1 dedicated auth unlock state
-  const [isBank1UnlockedState, setIsBank1UnlockedState] = useState<boolean>(isBank1Unlocked());
-  const [unlockModalOpen, setUnlockModalOpen] = useState(false);
+  // Dedicated auth unlock states per bank (Alpha Bank & Beta Bank)
+  const [bankUnlockStates, setBankUnlockStates] = useState<{ [id: string]: boolean }>({
+    bank1: isBank1Unlocked(),
+    bank2: isBank2Unlocked(),
+  });
+  const [unlockModalTarget, setUnlockModalTarget] = useState<string | null>(null);
   const [unlockEmail, setUnlockEmail] = useState('');
   const [unlockPassword, setUnlockPassword] = useState('');
   const [unlockError, setUnlockError] = useState<string | null>(null);
@@ -426,8 +433,8 @@ export function AdminQuestionsPage() {
 
   // ─── ADD / EDIT MODAL ───────────────────────────────────────────────────────
   const handleOpenAdd = () => {
-    setSelectedSaveSource('bank1');
-    setEditingQuestionSourceId('bank1');
+    setSelectedSaveSource('bank2');
+    setEditingQuestionSourceId('bank2');
     const defaultSub = selectedSubject || 'mathematics';
     const defaultTopic =
       selectedTopic !== 'all' ? selectedTopic : topics[0]?.name || 'Calculus & Differentiation';
@@ -500,8 +507,9 @@ export function AdminQuestionsPage() {
     if (!editingQuestion || !user?.email) return;
 
     const targetSource = editingQuestion.id ? editingQuestionSourceId : selectedSaveSource;
-    if (ENABLE_MULTI_SOURCE_BANK && targetSource === 'bank1' && !isBank1Unlocked()) {
-      setUnlockModalOpen(true);
+    if (ENABLE_MULTI_SOURCE_BANK && (targetSource === 'bank1' || targetSource === 'bank2') && !isBankUnlocked(targetSource)) {
+      setUnlockError(null);
+      setUnlockModalTarget(targetSource);
       return;
     }
 
@@ -593,8 +601,9 @@ export function AdminQuestionsPage() {
   const handleConfirmDelete = async () => {
     if (!questionToDelete || !user?.email) return;
     const qSource = questionToDelete.sourceId || parseQuestionCompoundId(questionToDelete.id).sourceId || 'legacy';
-    if (ENABLE_MULTI_SOURCE_BANK && qSource === 'bank1' && !isBank1Unlocked()) {
-      setUnlockModalOpen(true);
+    if (ENABLE_MULTI_SOURCE_BANK && (qSource === 'bank1' || qSource === 'bank2') && !isBankUnlocked(qSource)) {
+      setUnlockError(null);
+      setUnlockModalTarget(qSource);
       return;
     }
     try {
@@ -619,18 +628,20 @@ export function AdminQuestionsPage() {
       setUnlockError('Please enter both email and password.');
       return;
     }
+    const targetId = unlockModalTarget || 'bank2';
+    const targetBank = getBankSource(targetId);
     setUnlockLoading(true);
     setUnlockError(null);
     try {
-      await unlockBank1(unlockEmail.trim(), unlockPassword);
-      setIsBank1UnlockedState(true);
+      await unlockBankSource(targetId, unlockEmail.trim(), unlockPassword);
+      setBankUnlockStates((prev) => ({ ...prev, [targetId]: true }));
       setUnlockPassword('');
-      setUnlockModalOpen(false);
-      setBatchSuccessMessage('Question Bank 1 unlocked successfully for this session!');
+      setUnlockModalTarget(null);
+      setBatchSuccessMessage(`${targetBank?.name || targetId} unlocked successfully for this session!`);
       setTimeout(() => setBatchSuccessMessage(null), 3500);
     } catch (err: unknown) {
       const e = err as { message?: string };
-      setUnlockError(e?.message || 'Invalid Bank 1 admin credentials. Check your email and password.');
+      setUnlockError(e?.message || `Invalid ${targetBank?.name || 'Bank'} admin credentials. Check your email and password.`);
     } finally {
       setUnlockLoading(false);
     }
@@ -1038,8 +1049,9 @@ export function AdminQuestionsPage() {
   const handleExecuteImport = async () => {
     if (dryRunCandidates.length === 0 || !user?.email) return;
 
-    if (ENABLE_MULTI_SOURCE_BANK && importTargetSource === 'bank1' && !isBank1Unlocked()) {
-      setUnlockModalOpen(true);
+    if (ENABLE_MULTI_SOURCE_BANK && (importTargetSource === 'bank1' || importTargetSource === 'bank2') && !isBankUnlocked(importTargetSource)) {
+      setUnlockError(null);
+      setUnlockModalTarget(importTargetSource);
       return;
     }
 
@@ -1110,25 +1122,51 @@ export function AdminQuestionsPage() {
 
         <div className="flex items-center gap-2 flex-wrap">
           {ENABLE_MULTI_SOURCE_BANK && (
-            <button
-              type="button"
-              onClick={() => {
-                if (isBank1UnlockedState) {
-                  lockBank1().then(() => setIsBank1UnlockedState(false));
-                } else {
-                  setUnlockModalOpen(true);
-                }
-              }}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-[12px] border text-[13px] font-heading font-semibold transition-colors cursor-pointer ${
-                isBank1UnlockedState
-                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
-                  : 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
-              }`}
-              title={isBank1UnlockedState ? 'Bank 1 editing unlocked. Click to lock session.' : 'Click to unlock Bank 1 editing for this session'}
-            >
-              {isBank1UnlockedState ? <Unlock size={14} /> : <Lock size={14} />}
-              <span>{isBank1UnlockedState ? 'Bank 1 Unlocked' : 'Unlock Bank 1'}</span>
-            </button>
+            <>
+              {/* Alpha Bank Unlock */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (bankUnlockStates.bank1) {
+                    lockBankSource('bank1').then(() => setBankUnlockStates((prev) => ({ ...prev, bank1: false })));
+                  } else {
+                    setUnlockError(null);
+                    setUnlockModalTarget('bank1');
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-[12px] border text-[13px] font-heading font-semibold transition-colors cursor-pointer ${
+                  bankUnlockStates.bank1
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                    : 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                }`}
+                title={bankUnlockStates.bank1 ? 'Alpha Bank editing unlocked. Click to lock session.' : 'Click to unlock Alpha Bank editing for this session'}
+              >
+                {bankUnlockStates.bank1 ? <Unlock size={14} /> : <Lock size={14} />}
+                <span>{bankUnlockStates.bank1 ? 'Alpha Bank Unlocked' : 'Unlock Alpha Bank'}</span>
+              </button>
+
+              {/* Beta Bank Unlock */}
+              <button
+                type="button"
+                onClick={() => {
+                  if (bankUnlockStates.bank2) {
+                    lockBankSource('bank2').then(() => setBankUnlockStates((prev) => ({ ...prev, bank2: false })));
+                  } else {
+                    setUnlockError(null);
+                    setUnlockModalTarget('bank2');
+                  }
+                }}
+                className={`flex items-center gap-1.5 px-3 py-2 rounded-[12px] border text-[13px] font-heading font-semibold transition-colors cursor-pointer ${
+                  bankUnlockStates.bank2
+                    ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                    : 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                }`}
+                title={bankUnlockStates.bank2 ? 'Beta Bank editing unlocked. Click to lock session.' : 'Click to unlock Beta Bank editing for this session'}
+              >
+                {bankUnlockStates.bank2 ? <Unlock size={14} /> : <Lock size={14} />}
+                <span>{bankUnlockStates.bank2 ? 'Beta Bank Unlocked' : 'Unlock Beta Bank'}</span>
+              </button>
+            </>
           )}
 
           <button
@@ -1221,7 +1259,7 @@ export function AdminQuestionsPage() {
               <div>
                 <strong>Bank Source Issue:</strong> Failing source(s):{' '}
                 <span className="font-semibold text-white underline decoration-rose-400">
-                  {failingSources.map((s) => `${s.name} (${s.id}${s.errorCode ? ` · ${s.errorCode}` : ''})`).join(', ')}
+                  {failingSources.map((s) => `${s.name}${s.errorCode ? ` [${s.errorCode}]` : ''}`).join(', ')}
                 </span>
                 . The app continues serving questions from other active sources without interruption.
               </div>
@@ -1709,7 +1747,7 @@ export function AdminQuestionsPage() {
                     <span>Loading more questions…</span>
                   </>
                 ) : (
-                  <span>Load More (Next 50)</span>
+                  <span>Load More (Next 20)</span>
                 )}
               </button>
               </div>
@@ -1744,10 +1782,10 @@ export function AdminQuestionsPage() {
                 <div>
                   <h3 className="text-[15px] font-bold font-heading text-[var(--text)] flex items-center gap-2">
                     <Database size={16} className="text-[var(--accent)]" />
-                    <span>Multi-Source Question Banks Status (Dual-Project Quota)</span>
+                    <span>Multi-Source Question Banks Status (Triple-Project Quota)</span>
                   </h3>
                   <p className="text-[12px] text-[var(--muted)]">
-                    Real-time connectivity, latency, and Firestore permission checks across all active databases.
+                    Real-time connectivity, latency, Firestore permissions, and MCQ counts across Core Bank, Alpha Bank, and Beta Bank.
                   </p>
                 </div>
                 <button
@@ -1761,110 +1799,96 @@ export function AdminQuestionsPage() {
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {bankSourceDiagnostics.map((diag) => {
-                  const isLegacy = diag.id === 'legacy';
                   const isHealthy = diag.healthy;
+                  let subtitle = 'Core Bank · AI Studio Master Project';
+                  if (diag.id === 'bank1') {
+                    subtitle = 'Alpha Bank · Extra Daily Quota (boardly-8c0cd)';
+                  } else if (diag.id === 'bank2') {
+                    subtitle = 'Beta Bank · Default Save Target (boardly-2)';
+                  }
+
                   return (
                     <div
                       key={diag.id}
-                      className={`p-4 rounded-[18px] border transition-all ${
+                      className={`p-4 rounded-[18px] border transition-all flex flex-col justify-between ${
                         isHealthy
                           ? 'bg-emerald-500/5 border-emerald-500/20'
                           : 'bg-rose-500/5 border-rose-500/30'
                       }`}
                     >
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-heading font-bold text-[14px] text-[var(--text)]">
-                              {diag.name}
-                            </span>
-                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--card-2)] border border-[var(--border)] text-[var(--muted)]">
-                              {diag.id}
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-heading font-bold text-[14px] text-[var(--text)]">
+                                {diag.name}
+                              </span>
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--card-2)] border border-[var(--border)] text-[var(--muted)]">
+                                {diag.id}
+                              </span>
+                            </div>
+                            <span className="text-[11px] text-[var(--muted)] line-clamp-1 mt-0.5">
+                              {subtitle}
                             </span>
                           </div>
-                          <span className="text-[11px] text-[var(--muted)]">
-                            {isLegacy
-                              ? 'Primary Master Bank · Auth, Users, Crews & Questions'
-                              : 'Secondary Read-Only Bank · Extra Free Daily Quota (boardly-8c0cd)'}
+                          <span
+                            className={`text-[10px] font-heading font-bold px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1 ${
+                              isHealthy
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                            }`}
+                          >
+                            <span
+                              className={`w-1.5 h-1.5 rounded-full ${
+                                isHealthy ? 'bg-emerald-400' : 'bg-rose-400 animate-pulse'
+                              }`}
+                            />
+                            <span>{isHealthy ? 'Healthy' : 'Failing'}</span>
                           </span>
                         </div>
-                        <span
-                          className={`text-[11px] font-heading font-bold px-2.5 py-0.5 rounded-full flex items-center gap-1 ${
-                            isHealthy
-                              ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                              : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
-                          }`}
-                        >
-                          <span
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              isHealthy ? 'bg-emerald-400' : 'bg-rose-400 animate-pulse'
-                            }`}
-                          />
-                          <span>{isHealthy ? 'Healthy / Active' : 'Issue Detected'}</span>
-                        </span>
+
+                        {/* Question Count */}
+                        <div className="mt-3.5 p-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between">
+                          <span className="text-[11px] font-heading text-[var(--muted)]">Question Count:</span>
+                          <span className="font-dot text-[15px] font-bold text-[var(--text)]">
+                            {diag.questionCount !== undefined ? `${diag.questionCount.toLocaleString()} MCQs` : '0 MCQs'}
+                          </span>
+                        </div>
+
+                        {/* Diagnostic details if failing */}
+                        {!isHealthy && (
+                          <div className="mt-3 pt-3 border-t border-rose-500/20 space-y-2 text-xs">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-[11px] text-rose-300 font-semibold">Error:</span>
+                              <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-200 border border-rose-500/40">
+                                {diag.errorCode || 'unknown'}
+                              </span>
+                            </div>
+
+                            {diag.operation && (
+                              <div className="text-[11px] text-[var(--muted)]">
+                                <span className="text-white/60">Op:</span>{' '}
+                                <span className="font-mono text-white/80">{diag.operation}</span>
+                              </div>
+                            )}
+
+                            {diag.errorMessage && (
+                              <div className="p-2 rounded-[8px] bg-rose-950/40 border border-rose-500/30 text-rose-200 text-[10px] font-mono break-all line-clamp-2">
+                                {diag.errorMessage}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
 
-                      {/* Diagnostic details if failing */}
-                      {!isHealthy ? (
-                        <div className="mt-3 pt-3 border-t border-rose-500/20 space-y-2 text-xs">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-[11px] text-rose-300 font-semibold">Error Code:</span>
-                            <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-200 border border-rose-500/40">
-                              {diag.errorCode || 'unknown'}
-                            </span>
-                          </div>
-
-                          {diag.operation && (
-                            <div className="text-[11px] text-[var(--muted)]">
-                              <span className="text-white/60">Operation:</span>{' '}
-                              <span className="font-mono text-white/80">{diag.operation}</span>
-                            </div>
-                          )}
-
-                          {diag.errorMessage && (
-                            <div className="p-2.5 rounded-[10px] bg-rose-950/40 border border-rose-500/30 text-rose-200 text-[11px] font-mono break-all">
-                              {diag.errorMessage}
-                            </div>
-                          )}
-
-                          {/* Actionable guidance */}
-                          <div className="p-3 rounded-[12px] bg-[var(--card)] border border-[var(--border)] text-[11px] text-[var(--muted)] space-y-1">
-                            <span className="font-semibold text-amber-300 block">
-                              Diagnostic Explanation & Quick Fix:
-                            </span>
-                            {diag.errorCode === 'permission-denied' && (
-                              <p className="text-[11px] leading-relaxed">
-                                Users log in on the main project, so their requests to{' '}
-                                <code className="text-white font-mono">boardly-8c0cd</code> are unauthenticated.
-                                Firestore rules on <code className="text-white font-mono">boardly-8c0cd</code> must allow
-                                public reads for questions (
-                                <code className="text-emerald-400 font-mono">allow read: if true;</code> or{' '}
-                                <code className="text-emerald-400 font-mono">allow read: if poolName.matches('questions_.*');</code>
-                                ).
-                              </p>
-                            )}
-                            {diag.errorCode === 'not-found' && (
-                              <p className="text-[11px] leading-relaxed">
-                                The requested collection or database does not exist in the project. Check that the
-                                default database is created.
-                              </p>
-                            )}
-                            {diag.errorCode === 'resource-exhausted' && (
-                              <p className="text-[11px] leading-relaxed">
-                                Daily quota limit reached for this project. The app is serving traffic from the other
-                                bank.
-                              </p>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="mt-3 pt-2 border-t border-emerald-500/20 flex items-center justify-between text-[11px] text-emerald-400/80">
-                          <span>Connection verified & operational</span>
-                          {diag.latencyMs !== undefined && <span>{diag.latencyMs}ms latency</span>}
-                        </div>
-                      )}
+                      <div className="mt-3 pt-2 border-t border-[var(--border)] flex items-center justify-between text-[11px] text-[var(--muted)]">
+                        <span>{isHealthy ? 'Operational' : 'Isolated'}</span>
+                        {diag.latencyMs !== undefined && (
+                          <span className="font-mono text-[10px]">{diag.latencyMs}ms</span>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -2196,7 +2220,7 @@ export function AdminQuestionsPage() {
             {ENABLE_MULTI_SOURCE_BANK && (
               <div className="pt-2 border-t border-[var(--border)]">
                 <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
-                  Save to Question Bank Source (defaults to bank1):
+                  Save to Question Bank Source (defaults to Beta Bank):
                 </label>
                 <select
                   value={importTargetSource}
@@ -2205,7 +2229,7 @@ export function AdminQuestionsPage() {
                 >
                   {bankSources.map((source) => (
                     <option key={source.id} value={source.id}>
-                      {source.name} {source.id === 'bank1' ? '★ (Default)' : ''}
+                      {source.name} {source.id === 'bank2' ? '★ (Default)' : ''}
                     </option>
                   ))}
                 </select>
@@ -2475,7 +2499,7 @@ export function AdminQuestionsPage() {
                         >
                           {bankSources.map((source) => (
                             <option key={source.id} value={source.id}>
-                              {source.name} {source.id === 'bank1' ? '★ (Default)' : ''}
+                              {source.name} {source.id === 'bank2' ? '★ (Default)' : ''}
                             </option>
                           ))}
                         </select>
@@ -3072,94 +3096,106 @@ export function AdminQuestionsPage() {
         </div>
       )}
 
-      {/* ─── UNLOCK QUESTION BANK 1 AUTH MODAL (Requirement 9) ────────────────── */}
-      {unlockModalOpen && (
+      {/* ─── UNLOCK DEDICATED AUTH MODAL (Alpha Bank / Beta Bank) ────────────────── */}
+      {unlockModalTarget && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div
             className="fixed inset-0 bg-black/75 backdrop-blur-sm"
-            onClick={() => setUnlockModalOpen(false)}
+            onClick={() => setUnlockModalTarget(null)}
           />
           <div className="relative w-full max-w-[440px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl animate-fadeIn">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
-                  <Lock size={16} />
-                </div>
-                <div>
-                  <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
-                    Unlock Question Bank 1
-                  </h3>
-                  <p className="text-[11px] text-[var(--muted)]">Project: boardly-8c0cd</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setUnlockModalOpen(false)}
-                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)]"
-              >
-                <X size={18} />
-              </button>
-            </div>
+            {(() => {
+              const targetBank = getBankSource(unlockModalTarget);
+              const bankName = targetBank?.name || (unlockModalTarget === 'bank1' ? 'Alpha Bank' : 'Beta Bank');
+              const projectId =
+                BANK_SOURCE_CONFIGS.find((b) => b.id === unlockModalTarget)?.firebaseConfig?.projectId ||
+                (unlockModalTarget === 'bank1' ? 'boardly-8c0cd' : 'boardly-2');
 
-            <p className="font-heading text-[12px] text-[var(--muted)] leading-relaxed">
-              Writing to or editing <strong>Question Bank 1</strong> requires a separate admin sign-in to its dedicated Firebase Auth instance. This authentication is kept in-memory for this session only; passwords are never stored.
-            </p>
+              return (
+                <>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                        <Lock size={16} />
+                      </div>
+                      <div>
+                        <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+                          Unlock {bankName}
+                        </h3>
+                        <p className="text-[11px] text-[var(--muted)] font-mono">Project: {projectId}</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUnlockModalTarget(null)}
+                      className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)]"
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
 
-            {unlockError && (
-              <div className="p-3 rounded-[12px] bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
-                <AlertTriangle size={14} className="shrink-0" />
-                <span>{unlockError}</span>
-              </div>
-            )}
+                  <p className="font-heading text-[12px] text-[var(--muted)] leading-relaxed">
+                    Writing to or editing <strong>{bankName}</strong> requires a separate admin sign-in to its dedicated Firebase Auth instance. This authentication is kept in-memory for this session only; passwords are never stored.
+                  </p>
 
-            <form onSubmit={handleUnlockSubmit} className="space-y-3 pt-1">
-              <div>
-                <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
-                  Bank 1 Admin Email:
-                </label>
-                <input
-                  type="email"
-                  required
-                  value={unlockEmail}
-                  onChange={(e) => setUnlockEmail(e.target.value)}
-                  placeholder="admin@boardly.app"
-                  className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
-                  autoFocus
-                />
-              </div>
+                  {unlockError && (
+                    <div className="p-3 rounded-[12px] bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                      <AlertTriangle size={14} className="shrink-0" />
+                      <span>{unlockError}</span>
+                    </div>
+                  )}
 
-              <div>
-                <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
-                  Bank 1 Admin Password:
-                </label>
-                <input
-                  type="password"
-                  required
-                  value={unlockPassword}
-                  onChange={(e) => setUnlockPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
-                />
-              </div>
+                  <form onSubmit={handleUnlockSubmit} className="space-y-3 pt-1">
+                    <div>
+                      <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                        {bankName} Admin Email:
+                      </label>
+                      <input
+                        type="email"
+                        required
+                        value={unlockEmail}
+                        onChange={(e) => setUnlockEmail(e.target.value)}
+                        placeholder="admin@boardly.app"
+                        className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                        autoFocus
+                      />
+                    </div>
 
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setUnlockModalOpen(false)}
-                  className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={unlockLoading}
-                  className="px-4 py-2 rounded-[12px] border border-amber-500/50 bg-amber-500 hover:bg-amber-600 text-black text-[13px] font-heading font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
-                >
-                  <Unlock size={14} />
-                  <span>{unlockLoading ? 'Authenticating…' : 'Unlock Editing'}</span>
-                </button>
-              </div>
-            </form>
+                    <div>
+                      <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                        {bankName} Admin Password:
+                      </label>
+                      <input
+                        type="password"
+                        required
+                        value={unlockPassword}
+                        onChange={(e) => setUnlockPassword(e.target.value)}
+                        placeholder="••••••••••••"
+                        className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setUnlockModalTarget(null)}
+                        className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={unlockLoading}
+                        className="px-4 py-2 rounded-[12px] border border-amber-500/50 bg-amber-500 hover:bg-amber-600 text-black text-[13px] font-heading font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Unlock size={14} />
+                        <span>{unlockLoading ? 'Authenticating…' : `Unlock ${bankName}`}</span>
+                      </button>
+                    </div>
+                  </form>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

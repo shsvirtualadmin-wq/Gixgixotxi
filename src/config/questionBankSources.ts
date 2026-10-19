@@ -39,24 +39,41 @@ export const bank1Config = {
   appId: '1:535423466069:web:4f874c8b619463bdd372dc',
 };
 
+export const bank2Config = {
+  apiKey: 'AIzaSyCsQHbcAC2Lf1J0iKau7oaRGu3iYbcZCmM',
+  authDomain: 'boardly-2.firebaseapp.com',
+  projectId: 'boardly-2',
+  storageBucket: 'boardly-2.firebasestorage.app',
+  messagingSenderId: '569279973107',
+  appId: '1:569279973107:web:15c5bd7f739112a7b99986',
+};
+
 /**
- * Adding a third source later only requires adding one entry to this list!
+ * Adding a third source only requires adding its entry to this list!
  */
 export const BANK_SOURCE_CONFIGS: BankSourceConfig[] = [
   {
     id: 'legacy',
-    name: 'Legacy Bank (Main)',
-    description: 'Existing Boardly Firestore database',
+    name: 'Core Bank',
+    description: 'Primary Master Bank (AI Studio)',
     isDefaultWrite: false,
     requiresDedicatedAuth: false,
   },
   {
     id: 'bank1',
-    name: 'Question Bank 1',
+    name: 'Alpha Bank',
     description: 'Secondary Question Bank (boardly-8c0cd)',
-    isDefaultWrite: true,
+    isDefaultWrite: false,
     requiresDedicatedAuth: true,
     firebaseConfig: bank1Config,
+  },
+  {
+    id: 'bank2',
+    name: 'Beta Bank',
+    description: 'Tertiary Question Bank (boardly-2)',
+    isDefaultWrite: true,
+    requiresDedicatedAuth: true,
+    firebaseConfig: bank2Config,
   },
 ];
 
@@ -68,18 +85,25 @@ export interface ActiveBankSource {
   auth?: Auth;
   isDefaultWrite: boolean;
   requiresDedicatedAuth: boolean;
+  firebaseConfig?: {
+    apiKey: string;
+    authDomain: string;
+    projectId: string;
+    storageBucket: string;
+    messagingSenderId: string;
+    appId: string;
+  };
 }
 
 // Initialize bank1 app and Firestore instance
-function getBank1App() {
-  const existing = getApps().find((a) => a.name === 'bank1');
+function getNamedBankApp(name: string, config: typeof bank1Config) {
+  const existing = getApps().find((a) => a.name === name);
   if (existing) return existing;
-  return initializeApp(bank1Config, 'bank1');
+  return initializeApp(config, name);
 }
 
-const bank1App = getBank1App();
+const bank1App = getNamedBankApp('bank1', bank1Config);
 export const bank1Auth: Auth = getAuth(bank1App);
-
 export const bank1Db: Firestore = (() => {
   try {
     return initializeFirestore(bank1App, {
@@ -91,9 +115,26 @@ export const bank1Db: Firestore = (() => {
   }
 })();
 
+// Initialize bank2 app and Firestore instance (Beta Bank, project boardly-2)
+const bank2App = getNamedBankApp('bank2', bank2Config);
+export const bank2Auth: Auth = getAuth(bank2App);
+export const bank2Db: Firestore = (() => {
+  try {
+    return initializeFirestore(bank2App, {
+      localCache: memoryLocalCache(),
+      ignoreUndefinedProperties: true,
+    });
+  } catch {
+    return getFirestore(bank2App);
+  }
+})();
+
 if (typeof window !== 'undefined') {
-  (window as unknown as { bank1Db?: Firestore; bank1App?: unknown }).bank1Db = bank1Db;
-  (window as unknown as { bank1Db?: Firestore; bank1App?: unknown }).bank1App = bank1App;
+  const win = window as unknown as Record<string, unknown>;
+  win.bank1Db = bank1Db;
+  win.bank1App = bank1App;
+  win.bank2Db = bank2Db;
+  win.bank2App = bank2App;
 }
 
 /**
@@ -104,8 +145,8 @@ export function getBankSources(): ActiveBankSource[] {
     return [
       {
         id: 'legacy',
-        name: 'Legacy Bank (Main)',
-        description: 'Existing Boardly Firestore database',
+        name: 'Core Bank',
+        description: 'Primary Master Bank (AI Studio)',
         db: legacyDb,
         isDefaultWrite: true,
         requiresDedicatedAuth: false,
@@ -116,20 +157,31 @@ export function getBankSources(): ActiveBankSource[] {
   return [
     {
       id: 'legacy',
-      name: 'Legacy Bank (Main)',
-      description: 'Existing Boardly Firestore database',
+      name: 'Core Bank',
+      description: 'Primary Master Bank (AI Studio)',
       db: legacyDb,
       isDefaultWrite: false,
       requiresDedicatedAuth: false,
     },
     {
       id: 'bank1',
-      name: 'Question Bank 1',
+      name: 'Alpha Bank',
       description: 'Secondary Question Bank (boardly-8c0cd)',
       db: bank1Db,
       auth: bank1Auth,
+      isDefaultWrite: false,
+      requiresDedicatedAuth: true,
+      firebaseConfig: bank1Config,
+    },
+    {
+      id: 'bank2',
+      name: 'Beta Bank',
+      description: 'Tertiary Question Bank (boardly-2)',
+      db: bank2Db,
+      auth: bank2Auth,
       isDefaultWrite: true,
       requiresDedicatedAuth: true,
+      firebaseConfig: bank2Config,
     },
   ];
 }
@@ -148,6 +200,7 @@ export interface SourceHealthDiagnostic {
   id: string;
   name: string;
   healthy: boolean;
+  questionCount?: number;
   errorCode?: string; // 'permission-denied' | 'not-found' | 'unauthenticated' | 'resource-exhausted' | 'failed-precondition' | etc.
   errorMessage?: string;
   operation?: string;
@@ -193,6 +246,7 @@ export function recordSourceFailure(sourceId: string, error?: unknown, operation
   const code = extractFirestoreErrorCode(error);
   const errMsg = (error as { message?: string })?.message || String(error || 'Unknown error');
   const src = getBankSource(sourceId);
+  const existing = sourceHealthMap.get(sourceId);
 
   // Log real Firestore error code and message to browser console
   console.error(
@@ -204,28 +258,35 @@ export function recordSourceFailure(sourceId: string, error?: unknown, operation
     id: sourceId,
     name: src?.name || sourceId,
     healthy: false,
+    questionCount: existing?.questionCount ?? 0,
     errorCode: code,
     errorMessage: errMsg,
     operation,
     lastChecked: new Date(),
+    latencyMs: existing?.latencyMs,
   });
   notifyHealthListeners();
 }
 
-export function recordSourceSuccess(sourceId: string, operation?: string, latencyMs?: number): void {
+export function recordSourceSuccess(
+  sourceId: string,
+  operation?: string,
+  latencyMs?: number,
+  questionCount?: number
+): void {
   const existing = sourceHealthMap.get(sourceId);
-  if (!existing || !existing.healthy) {
-    const src = getBankSource(sourceId);
-    sourceHealthMap.set(sourceId, {
-      id: sourceId,
-      name: src?.name || sourceId,
-      healthy: true,
-      operation,
-      lastChecked: new Date(),
-      latencyMs,
-    });
-    notifyHealthListeners();
-  }
+  const src = getBankSource(sourceId);
+  const qCount = questionCount !== undefined ? questionCount : existing?.questionCount;
+  sourceHealthMap.set(sourceId, {
+    id: sourceId,
+    name: src?.name || sourceId,
+    healthy: true,
+    questionCount: qCount,
+    operation,
+    lastChecked: new Date(),
+    latencyMs: latencyMs !== undefined ? latencyMs : existing?.latencyMs,
+  });
+  notifyHealthListeners();
 }
 
 export function getAllBankSourceHealth(): SourceHealthDiagnostic[] {
@@ -237,6 +298,7 @@ export function getAllBankSourceHealth(): SourceHealthDiagnostic[] {
       id: src.id,
       name: src.name,
       healthy: true,
+      questionCount: 0,
       lastChecked: new Date(),
     };
   });
@@ -290,7 +352,7 @@ export function subscribeBankSourceHealth(
 }
 
 /**
- * Actively probes all bank sources with a lightweight query to test real-time connectivity and permissions
+ * Actively probes all bank sources with a lightweight query to test real-time connectivity, permissions, and question counts
  */
 export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnostic[]> {
   const sources = getBankSources();
@@ -299,21 +361,37 @@ export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnosti
   for (const src of sources) {
     const startTime = Date.now();
     try {
-      // 1. Probe subject pool: check if collection read works
       const { collection, getDocs, limit, query, doc, getDoc } = await import('firebase/firestore');
+
+      // 1. Probe subject pool: check if collection read works
       const testColl = collection(src.db, 'questions_mathematics');
       await getDocs(query(testColl, limit(1)));
 
-      // 2. Probe stats document read
+      // 2. Probe stats document read & compute total question counts
       const statsRef = doc(src.db, 'stats', 'questionCounts');
-      await getDoc(statsRef);
+      const statsSnap = await getDoc(statsRef);
+      let count = 0;
+      if (statsSnap.exists()) {
+        const data = statsSnap.data();
+        const subCounts = (data.subjectCounts || {}) as Record<string, number>;
+        count = Object.values(subCounts).reduce((acc, curr) => acc + (Number(curr) || 0), 0);
+      } else if (src.id === 'legacy') {
+        // Fallback probe for legacy bank questions collection
+        try {
+          const qSnap = await getDocs(query(collection(src.db, 'questions'), limit(10)));
+          count = qSnap.size;
+        } catch {
+          // Non-fatal
+        }
+      }
 
       const latencyMs = Date.now() - startTime;
-      recordSourceSuccess(src.id, 'probe check', latencyMs);
+      recordSourceSuccess(src.id, 'probe check', latencyMs, count);
       results.push({
         id: src.id,
         name: src.name,
         healthy: true,
+        questionCount: count,
         lastChecked: new Date(),
         latencyMs,
       });
@@ -321,10 +399,12 @@ export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnosti
       const code = extractFirestoreErrorCode(err);
       const errMsg = (err as { message?: string })?.message || String(err || 'Unknown error');
       recordSourceFailure(src.id, err, 'probe check');
+      const existing = sourceHealthMap.get(src.id);
       results.push({
         id: src.id,
         name: src.name,
         healthy: false,
+        questionCount: existing?.questionCount ?? 0,
         errorCode: code,
         errorMessage: errMsg,
         operation: 'probe query on questions_mathematics / stats',
@@ -337,9 +417,10 @@ export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnosti
   return results;
 }
 
-// ─── BANK 1 DEDICATED ADMIN AUTH (IN-MEMORY SESSION) ────────────────────────
-// Passwords are NEVER stored. Auth session is maintained in memory by Firebase Auth.
+// ─── DEDICATED ADMIN AUTH (IN-MEMORY SESSION) ───────────────────────────────
+// Passwords are NEVER stored. Auth sessions are maintained in memory by Firebase Auth.
 
+// ─── ALPHA BANK (bank1, boardly-8c0cd)
 export function isBank1Unlocked(): boolean {
   if (!ENABLE_MULTI_SOURCE_BANK) return true;
   return Boolean(bank1Auth.currentUser);
@@ -357,5 +438,45 @@ export async function unlockBank1(email: string, pass: string): Promise<User> {
 
 export async function lockBank1(): Promise<void> {
   await signOut(bank1Auth);
+}
+
+// ─── BETA BANK (bank2, boardly-2)
+export function isBank2Unlocked(): boolean {
+  if (!ENABLE_MULTI_SOURCE_BANK) return true;
+  return Boolean(bank2Auth.currentUser);
+}
+
+export function getBank2AdminUser(): User | null {
+  return bank2Auth.currentUser;
+}
+
+export async function unlockBank2(email: string, pass: string): Promise<User> {
+  const cred = await signInWithEmailAndPassword(bank2Auth, email.trim(), pass);
+  recordSourceSuccess('bank2', 'admin unlock');
+  return cred.user;
+}
+
+export async function lockBank2(): Promise<void> {
+  await signOut(bank2Auth);
+}
+
+// ─── UNIFIED UNLOCK HELPERS (Supports all sources)
+export function isBankUnlocked(sourceId: string): boolean {
+  if (!ENABLE_MULTI_SOURCE_BANK) return true;
+  if (sourceId === 'legacy') return true;
+  if (sourceId === 'bank1') return isBank1Unlocked();
+  if (sourceId === 'bank2') return isBank2Unlocked();
+  return true;
+}
+
+export async function unlockBankSource(sourceId: string, email: string, pass: string): Promise<User> {
+  if (sourceId === 'bank1') return unlockBank1(email, pass);
+  if (sourceId === 'bank2') return unlockBank2(email, pass);
+  throw new Error(`Bank source ${sourceId} does not require dedicated auth unlock.`);
+}
+
+export async function lockBankSource(sourceId: string): Promise<void> {
+  if (sourceId === 'bank1') return lockBank1();
+  if (sourceId === 'bank2') return lockBank2();
 }
 

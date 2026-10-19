@@ -341,8 +341,11 @@ export async function getMultiSourceQuestionCounts(): Promise<AggregatedCounts> 
             const subCounts = (data.subjectCounts || {}) as Record<string, number>;
             const topCounts = (data.topicCounts || {}) as Record<string, Record<string, number>>;
 
+            let srcCount = 0;
             for (const [sub, cnt] of Object.entries(subCounts)) {
-              sumSubjects[sub] = (sumSubjects[sub] || 0) + Number(cnt || 0);
+              const n = Number(cnt || 0);
+              sumSubjects[sub] = (sumSubjects[sub] || 0) + n;
+              srcCount += n;
             }
 
             for (const [sub, topics] of Object.entries(topCounts)) {
@@ -351,13 +354,18 @@ export async function getMultiSourceQuestionCounts(): Promise<AggregatedCounts> 
                 sumTopics[sub][top] = (sumTopics[sub][top] || 0) + Number(cnt || 0);
               }
             }
-            recordSourceSuccess(source.id, 'reading stats/questionCounts');
+            recordSourceSuccess(source.id, 'reading stats/questionCounts', undefined, srcCount);
           } else {
             // Initialize document on new source if empty
             if (source.id === 'legacy') {
               sumSubjects.mathematics = (sumSubjects.mathematics || 0) + 10;
             }
-            recordSourceSuccess(source.id, 'reading stats/questionCounts (empty)');
+            recordSourceSuccess(
+              source.id,
+              'reading stats/questionCounts (empty)',
+              undefined,
+              source.id === 'legacy' ? 10 : 0
+            );
           }
         } catch (err) {
           recordSourceFailure(source.id, err, 'reading stats/questionCounts');
