@@ -39,7 +39,11 @@ import {
   checkAllBankSourcesHealth,
   type SourceHealthDiagnostic,
 } from '@/config/questionBankSources';
-import { parseQuestionCompoundId } from '@/services/multiSourceQuestionBank';
+import {
+  parseQuestionCompoundId,
+  rebuildCountsAndIndex,
+  type RebuildCountsResult,
+} from '@/services/multiSourceQuestionBank';
 import { MathText, validateMath } from '@/components/ui/MathText';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import { isQuotaExhaustedError } from '@/utils/quota';
@@ -281,6 +285,30 @@ export function AdminQuestionsPage() {
       console.warn('Bank sources probe error:', err);
     } finally {
       setProbingBankHealth(false);
+    }
+  };
+
+  // Rebuild counts & index state
+  const [isRebuildModalOpen, setIsRebuildModalOpen] = useState(false);
+  const [rebuildingCounts, setRebuildingCounts] = useState(false);
+  const [rebuildResult, setRebuildResult] = useState<RebuildCountsResult | null>(null);
+  const [rebuildError, setRebuildError] = useState<string | null>(null);
+
+  const handleRunRebuild = async () => {
+    if (!user?.email) return;
+    setRebuildingCounts(true);
+    setRebuildError(null);
+    try {
+      const res = await rebuildCountsAndIndex(user.email);
+      setRebuildResult(res);
+      await loadSubjectCounts();
+      if (selectedSubject) await loadTopics(selectedSubject);
+      await loadData();
+    } catch (err: unknown) {
+      const msg = (err as { message?: string })?.message || 'Failed to rebuild counts & index.';
+      setRebuildError(msg);
+    } finally {
+      setRebuildingCounts(false);
     }
   };
 
@@ -1189,6 +1217,19 @@ export function AdminQuestionsPage() {
           >
             <Upload size={14} />
             <span>Import CSV / Sheet</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setRebuildError(null);
+              setIsRebuildModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading font-medium text-[var(--text)] transition-colors cursor-pointer"
+            title="Recomputes counts with Firestore count() aggregation, rebuilds question_index for every subject and bank, and writes stats/questionCounts"
+          >
+            <RefreshCw size={14} className={rebuildingCounts ? 'animate-spin' : ''} />
+            <span>Rebuild counts & index</span>
           </button>
 
           <button
@@ -3196,6 +3237,187 @@ export function AdminQuestionsPage() {
                 </>
               );
             })()}
+          </div>
+        </div>
+      )}
+      {/* ─── REBUILD COUNTS & INDEX MODAL ────────────────────────────────────── */}
+      {isRebuildModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-[var(--card)] border border-[var(--border)] rounded-[24px] p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto space-y-5 shadow-2xl">
+            <div className="flex items-start justify-between gap-3 pb-3 border-b border-[var(--border)]">
+              <div>
+                <div className="flex items-center gap-2">
+                  <RefreshCw size={18} className={`text-[var(--accent)] ${rebuildingCounts ? 'animate-spin' : ''}`} />
+                  <h3 className="font-heading font-bold text-base text-[var(--text)]">
+                    Rebuild Counts & Index
+                  </h3>
+                </div>
+                <p className="font-heading text-xs text-[var(--muted)] mt-1">
+                  Recomputes question counts using Firestore <code className="font-mono text-[var(--text)]">count()</code> aggregation (zero full reads), rebuilds <code className="font-mono text-[var(--text)]">question_index/&lt;subject&gt;</code> for every bank and subject, normalizes all topic names, and updates <code className="font-mono text-[var(--text)]">stats/questionCounts</code>.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsRebuildModalOpen(false)}
+                disabled={rebuildingCounts}
+                className="p-1 rounded-lg text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {rebuildError && (
+              <div className="p-3.5 rounded-[14px] bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-heading flex items-center gap-2">
+                <AlertTriangle size={16} className="text-rose-400 shrink-0" />
+                <span>{rebuildError}</span>
+              </div>
+            )}
+
+            {rebuildingCounts && (
+              <div className="p-6 rounded-[18px] bg-[var(--card-2)] border border-[var(--border)] text-center space-y-3">
+                <RefreshCw size={28} className="animate-spin mx-auto text-[var(--accent)]" />
+                <p className="font-heading font-semibold text-sm text-[var(--text)]">
+                  Recomputing counts & rebuilding indexes...
+                </p>
+                <p className="font-heading text-xs text-[var(--muted)] max-w-md mx-auto">
+                  Performing Firestore count() aggregations across active banks (Core Bank, Alpha Bank, Beta Bank) and syncing stats/questionCounts.
+                </p>
+              </div>
+            )}
+
+            {rebuildResult && !rebuildingCounts && (
+              <div className="space-y-4">
+                <div className="p-4 rounded-[16px] bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center gap-2.5">
+                  <CheckCircle2 size={18} className="shrink-0" />
+                  <span className="font-heading text-sm font-semibold">
+                    Rebuild completed successfully! Counts and indexes are now in sync.
+                  </span>
+                </div>
+
+                {/* Total Questions Comparison Card */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)]">
+                    <span className="font-heading text-[11px] text-[var(--muted)] uppercase tracking-wider block">
+                      Total Questions (Before)
+                    </span>
+                    <span className="font-dot text-2xl font-bold text-[var(--muted)] mt-1 block">
+                      {rebuildResult.before.totalQuestions.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)]">
+                    <span className="font-heading text-[11px] text-[var(--muted)] uppercase tracking-wider block">
+                      Total Questions (After)
+                    </span>
+                    <span className="font-dot text-2xl font-bold text-emerald-400 mt-1 block">
+                      {rebuildResult.after.totalQuestions.toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="p-3.5 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] col-span-2 sm:col-span-1">
+                    <span className="font-heading text-[11px] text-[var(--muted)] uppercase tracking-wider block">
+                      Difference
+                    </span>
+                    <span className="font-dot text-2xl font-bold text-[var(--text)] mt-1 block">
+                      {rebuildResult.after.totalQuestions - rebuildResult.before.totalQuestions >= 0 ? '+' : ''}
+                      {(rebuildResult.after.totalQuestions - rebuildResult.before.totalQuestions).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Active Banks Breakdown */}
+                <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] space-y-2.5">
+                  <h4 className="font-heading font-semibold text-xs text-[var(--text)] uppercase tracking-wider">
+                    Bank Sources Breakdown
+                  </h4>
+                  <div className="space-y-1.5 text-xs font-heading">
+                    {Object.keys({ ...rebuildResult.before.bankBreakdown, ...rebuildResult.after.bankBreakdown }).map((bankId) => {
+                      const beforeCount = rebuildResult.before.bankBreakdown[bankId] ?? 0;
+                      const afterCount = rebuildResult.after.bankBreakdown[bankId] ?? 0;
+                      const diff = afterCount - beforeCount;
+                      const bankObj = bankSources.find((b) => b.id === bankId);
+                      const bankLabel = bankObj ? `${bankObj.name} (${bankId})` : bankId;
+
+                      return (
+                        <div key={bankId} className="flex items-center justify-between p-2 rounded-lg bg-[var(--card)] border border-[var(--border)]">
+                          <span className="font-medium text-[var(--text)]">{bankLabel}</span>
+                          <div className="flex items-center gap-2 font-mono text-[11px]">
+                            <span className="text-[var(--muted)]">{beforeCount}</span>
+                            <span className="text-[var(--muted)]">→</span>
+                            <span className="font-bold text-emerald-400">{afterCount}</span>
+                            {diff !== 0 && (
+                              <span className="text-[10px] text-emerald-400/80">({diff > 0 ? `+${diff}` : diff})</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Subjects Breakdown */}
+                <div className="p-4 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] space-y-2.5">
+                  <h4 className="font-heading font-semibold text-xs text-[var(--text)] uppercase tracking-wider">
+                    Questions by Subject (Sum across all banks)
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-heading">
+                    {Object.keys({ ...rebuildResult.before.subjectCounts, ...rebuildResult.after.subjectCounts }).map((sub) => {
+                      const beforeCount = rebuildResult.before.subjectCounts[sub] ?? 0;
+                      const afterCount = rebuildResult.after.subjectCounts[sub] ?? 0;
+                      const diff = afterCount - beforeCount;
+
+                      return (
+                        <div key={sub} className="flex items-center justify-between p-2 rounded-lg bg-[var(--card)] border border-[var(--border)]">
+                          <span className="text-[var(--text)] capitalize">{formatSubjectName(sub)}</span>
+                          <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                            <span className="text-[var(--muted)]">{beforeCount}</span>
+                            <span className="text-[var(--muted)]">→</span>
+                            <span className="font-bold text-[var(--text)]">{afterCount}</span>
+                            {diff !== 0 && (
+                              <span className="text-[10px] text-emerald-400">({diff > 0 ? `+${diff}` : diff})</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Details Log */}
+                {rebuildResult.details.length > 0 && (
+                  <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)] space-y-1">
+                    <span className="font-heading text-[10px] text-[var(--muted)] uppercase tracking-wider block">
+                      Execution Log
+                    </span>
+                    {rebuildResult.details.map((d, i) => (
+                      <p key={i} className="font-mono text-[11px] text-[var(--muted)]">
+                        • {d}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border)]">
+              <button
+                type="button"
+                onClick={() => setIsRebuildModalOpen(false)}
+                disabled={rebuildingCounts}
+                className="px-4 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer disabled:opacity-50"
+              >
+                {rebuildResult ? 'Close' : 'Cancel'}
+              </button>
+              {!rebuildResult && (
+                <button
+                  type="button"
+                  onClick={handleRunRebuild}
+                  disabled={rebuildingCounts}
+                  className="px-4 py-2 rounded-[12px] bg-[var(--text)] text-[var(--bg)] font-heading font-semibold text-[13px] hover:opacity-90 transition-opacity disabled:opacity-50 cursor-pointer flex items-center gap-2"
+                >
+                  <RefreshCw size={14} className={rebuildingCounts ? 'animate-spin' : ''} />
+                  <span>{rebuildingCounts ? 'Rebuilding...' : 'Run Rebuild & Sync'}</span>
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

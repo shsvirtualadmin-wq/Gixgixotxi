@@ -335,6 +335,184 @@ export async function addAdminChapter(
 
 export const addNewChapterToTaxonomy = addAdminChapter;
 
+// Standard acronyms to keep in uppercase during Title Case conversion
+const ACRONYMS = new Set(['CS', 'IT', 'DSA', 'SQL', 'DBMS', 'DNA', 'RNA', 'ATP', '3D', '2D', 'FSC', 'FAST', 'NET', 'MCAT', 'ECAT', 'MDCAT']);
+
+/**
+ * Normalizes topic names on import & entry:
+ * - Handles case, hyphens, underscores, "&" vs "and", plurals/singulars, extra whitespace
+ * - Maps aliases to canonical topics (e.g. "Integration" -> "Integration by Parts & Definite Integrals", "Permutation And Combination" -> "Permutations & Combinations")
+ * - If nothing matches, automatically creates and registers the clean topic name so chips include every topic found in the data.
+ */
+export function normalizeTopicName(subjectInput: string, rawTopic: string): string {
+  if (!rawTopic || !rawTopic.trim()) {
+    return 'General Concepts';
+  }
+
+  const sSlug = findSubjectSlug(subjectInput) || (subjectInput ? subjectInput.toLowerCase().trim() : 'mathematics');
+  const cleanInput = rawTopic
+    .trim()
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  // Simplified key for fuzzy comparison
+  const compKey = cleanInput
+    .toLowerCase()
+    .replace(/\band\b/g, '&')
+    .replace(/[^\w\s&]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Singularize key for plural tolerance
+  const singularKey = compKey
+    .replace(/\bpermutations\b/g, 'permutation')
+    .replace(/\bcombinations\b/g, 'combination')
+    .replace(/\bderivatives\b/g, 'derivative')
+    .replace(/\bintegrals\b/g, 'integral')
+    .replace(/\bmatrices\b/g, 'matrix')
+    .replace(/\bvectors\b/g, 'vector')
+    .replace(/\bsequences\b/g, 'sequence')
+    .replace(/\bnumbers\b/g, 'number')
+    .replace(/\bsections\b/g, 'section')
+    .replace(/\bidentities\b/g, 'identity');
+
+  // 1. Math canonical aliases
+  if (sSlug === 'mathematics' || sSlug === 'math' || sSlug === 'maths') {
+    if (singularKey.includes('integration') || singularKey.includes('integral')) {
+      return 'Integration by Parts & Definite Integrals';
+    }
+    if (singularKey.includes('calculus') || singularKey.includes('derivative') || singularKey.includes('differentiation') || singularKey.includes('limit')) {
+      return 'Calculus & Differentiation';
+    }
+    if (singularKey.includes('permutation') || singularKey.includes('combination')) {
+      return 'Permutations & Combinations';
+    }
+    if (singularKey.includes('matrix') || singularKey.includes('determinant')) {
+      return 'Matrices & Determinants';
+    }
+    if (singularKey.includes('conic') || singularKey.includes('analytic geometry') || singularKey.includes('parabola') || singularKey.includes('ellipse') || singularKey.includes('hyperbola') || singularKey.includes('circle')) {
+      return 'Analytic Geometry & Conic Sections';
+    }
+    if (singularKey.includes('vector') || singularKey.includes('3d geometry')) {
+      return 'Vectors & 3D Geometry';
+    }
+    if (singularKey.includes('trigonometry') || singularKey.includes('trig') || singularKey.includes('complex number')) {
+      return 'Trigonometry & Complex Numbers';
+    }
+    if (singularKey.includes('sequence') || singularKey.includes('series') || singularKey.includes('binomial')) {
+      return 'Sequences, Series & Binomial Theorem';
+    }
+    if (singularKey.includes('probability')) {
+      return 'Probability & Statistics';
+    }
+  }
+
+  // 2. Physics aliases
+  if (sSlug === 'physics') {
+    if (singularKey.includes('electromagnet') || singularKey.includes('induction')) {
+      return 'Electromagnetism & Induction';
+    }
+    if (singularKey.includes('work') && singularKey.includes('energy')) {
+      return 'Work, Energy & Power';
+    }
+    if (singularKey.includes('nuclear') || singularKey.includes('quantum') || singularKey.includes('atomic')) {
+      return 'Nuclear & Quantum Physics';
+    }
+    if (singularKey.includes('kinematic') || singularKey.includes('dynamic') || singularKey.includes('motion')) {
+      return 'Kinematics & Dynamics';
+    }
+    if (singularKey.includes('wave') || singularKey.includes('oscillation')) {
+      return 'Waves & Oscillations';
+    }
+    if (singularKey.includes('thermodynamic') || singularKey.includes('heat')) {
+      return 'Thermodynamics';
+    }
+    if (singularKey.includes('current') || singularKey.includes('electricity') || singularKey.includes('circuit')) {
+      return 'Current Electricity';
+    }
+    if (singularKey.includes('rotation') || singularKey.includes('circular')) {
+      return 'Circular & Rotational Motion';
+    }
+  }
+
+  // 3. Chemistry aliases
+  if (sSlug === 'chemistry') {
+    if (singularKey.includes('aldehyde') || singularKey.includes('ketone') || singularKey.includes('carbonyl')) {
+      return 'Aldehydes & Ketones';
+    }
+    if (singularKey.includes('equilibrium')) {
+      return 'Chemical Equilibrium';
+    }
+    if (singularKey.includes('electrochem')) {
+      return 'Electrochemistry';
+    }
+    if (singularKey.includes('atomic structure')) {
+      return 'Atomic Structure';
+    }
+    if (singularKey.includes('bonding')) {
+      return 'Chemical Bonding';
+    }
+    if (singularKey.includes('hydrocarbon') || singularKey.includes('organic')) {
+      return 'Hydrocarbons & Organic Chemistry';
+    }
+    if (singularKey.includes('thermochem')) {
+      return 'Thermochemistry';
+    }
+    if (singularKey.includes('solution') || singularKey.includes('colloid')) {
+      return 'Solutions & Colloids';
+    }
+  }
+
+  // 4. English aliases
+  if (sSlug === 'english') {
+    if (singularKey.includes('sentence correction') || singularKey.includes('grammar')) {
+      return 'Sentence Correction & Grammar';
+    }
+    if (singularKey.includes('vocab') || singularKey.includes('synonym') || singularKey.includes('antonym')) {
+      return 'Vocabulary & Synonyms';
+    }
+    if (singularKey.includes('comprehension') || singularKey.includes('passage')) {
+      return 'Reading Comprehension';
+    }
+    if (singularKey.includes('preposition') || singularKey.includes('idiom')) {
+      return 'Prepositions & Idiomatic Phrases';
+    }
+  }
+
+  // 5. Check existing taxonomy chapters for this subject
+  const existingChapters = getChaptersForSubject(sSlug);
+  for (const ch of existingChapters) {
+    const chKey = ch.name.toLowerCase().replace(/\band\b/g, '&').replace(/[^\w\s&]/g, '').trim();
+    if (chKey === compKey || chKey === singularKey) {
+      return ch.name;
+    }
+    if (chKey.includes(singularKey) || singularKey.includes(chKey)) {
+      return ch.name;
+    }
+  }
+
+  // 6. Clean Auto-Formatting into Title Case with standard &
+  const words = cleanInput.split(/\s+/);
+  const titleCased = words
+    .map((w, idx) => {
+      const lower = w.toLowerCase();
+      const upper = w.toUpperCase();
+      if (ACRONYMS.has(upper)) return upper;
+      if (lower === 'and' || lower === '&') return '&';
+      if (idx > 0 && (lower === 'of' || lower === 'in' || lower === 'the' || lower === 'by' || lower === 'for' || lower === 'to')) {
+        return lower;
+      }
+      return w.charAt(0).toUpperCase() + w.slice(1).toLowerCase();
+    })
+    .join(' ');
+
+  // Automatically add newly discovered topic to subject chapters so it's registered everywhere
+  addAdminChapter(sSlug, titleCased).catch(() => {});
+
+  return titleCased;
+}
+
+
 /**
  * Computes deterministic content hash of question text + options for duplicate detection.
  */

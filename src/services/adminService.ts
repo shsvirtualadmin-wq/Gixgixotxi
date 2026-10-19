@@ -55,7 +55,10 @@ import {
   batchImportMultiSourceQuestions,
   fetchMultiSourceQuestionKey,
   parseQuestionCompoundId,
+  rebuildCountsAndIndex,
+  type RebuildCountsResult,
 } from './multiSourceQuestionBank';
+export { rebuildCountsAndIndex, type RebuildCountsResult };
 import { getDefaultWriteSource } from '@/config/questionBankSources';
 
 // ─── DIAGNOSTIC FIRESTORE ERROR ──────────────────────────────────────────────
@@ -287,7 +290,7 @@ export async function fetchAdminStats(): Promise<AdminStats> {
       pendingCrewCount,
       pendingPaymentsCount,
       pendingReviewsCount,
-      ...subjectCountsList
+      multiSourceCounts,
     ] = await Promise.all([
       safeCount(usersCol),
       safeCount(questionsCol),
@@ -298,19 +301,34 @@ export async function fetchAdminStats(): Promise<AdminStats> {
       safeCount(query(collection(db, 'crewApplications'), where('status', '==', 'pending'))),
       safeCount(query(collection(db, 'paymentRequests'), where('status', '==', 'pending'))),
       safeCount(query(collection(db, 'reviews'), where('status', '==', 'pending'))),
-      ...CORE_SUBJECTS.map((subj) => safeCount(query(questionsCol, where('subject', '==', subj)))),
+      getMultiSourceQuestionCounts(),
     ]);
 
+    // Subject cards must sum all active banks (Core Bank, Alpha Bank, Beta Bank)
+    const msSubjects = multiSourceCounts?.subjectCounts || {};
     const subjectCounts: Record<string, number> = {};
-    CORE_SUBJECTS.forEach((subj, idx) => {
-      subjectCounts[subj] = subjectCountsList[idx] ?? 0;
-    });
 
-    let totalQ = questionsTotal;
-    const subjectSum = Object.values(subjectCounts).reduce((a, b) => a + b, 0);
-    if (totalQ === 0 && subjectSum > 0) {
-      totalQ = subjectSum;
-    }
+    await Promise.all(
+      CORE_SUBJECTS.map(async (subj) => {
+        const slug = findSubjectSlug(subj) || subj.toLowerCase().trim();
+        let count = (msSubjects[slug] || 0) + (msSubjects[subj] || 0);
+        // Fallback if stats document hadn't been rebuilt yet
+        if (count === 0 && questionsTotal > 0) {
+          try {
+            count = await safeCount(
+              query(questionsCol, where('subject', 'in', [subj, slug, subj.toLowerCase(), subj.toUpperCase()]))
+            );
+          } catch {
+            // fallback
+          }
+        }
+        subjectCounts[subj] = count;
+        subjectCounts[slug] = count;
+      })
+    );
+
+    const multiSourceTotal = Object.values(msSubjects).reduce((a, b) => a + Number(b || 0), 0);
+    const totalQ = Math.max(questionsTotal, multiSourceTotal);
 
     // Questions solved estimate based on recorded attempts and active streaks
     const totalQuestionsSolved = Math.max(attemptsTotal * 15, usersTotal * 12);
@@ -2143,15 +2161,15 @@ export async function saveSubjectPoolQuestion(
     // Update stats/questionCounts document
     try {
       const statsRef = doc(db, 'stats', 'questionCounts');
-      await updateDoc(statsRef, {
-        [`subjectCounts.${normSub}`]: increment(1),
-        [`topicCounts.${normSub}.${topic}`]: increment(1),
-        updatedAt: serverTimestamp(),
-      }).catch(async () => {
-        if (cachedQuestionCountsDoc) {
-          await setDoc(statsRef, cachedQuestionCountsDoc, { merge: true });
-        }
-      });
+      await setDoc(
+        statsRef,
+        {
+          [`subjectCounts.${normSub}`]: increment(1),
+          [`topicCounts.${normSub}.${topic}`]: increment(1),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
     } catch {
       // Non-fatal
     }
@@ -2196,10 +2214,14 @@ export async function deletePoolQuestion(
   }
   try {
     const statsRef = doc(db, 'stats', 'questionCounts');
-    await updateDoc(statsRef, {
-      [`subjectCounts.${normSub}`]: increment(-1),
-      updatedAt: serverTimestamp(),
-    });
+    await setDoc(
+      statsRef,
+      {
+        [`subjectCounts.${normSub}`]: increment(-1),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   } catch {
     // Non-fatal
   }

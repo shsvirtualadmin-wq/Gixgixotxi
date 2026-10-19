@@ -1,32 +1,24 @@
 import {
   doc,
   getDoc,
-  getDocs,
   updateDoc,
   collection,
-  query,
-  where,
-  orderBy,
-  limit,
   serverTimestamp,
   setDoc,
   increment,
   arrayUnion,
   Timestamp,
-  documentId,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { getPKTDateKey } from '@/hooks/usePKTDate';
 import { robustSaveDoc } from '@/lib/robustSave';
 import {
   findSubjectSlug,
-  findChapterSlug,
   formatSubjectName,
   getSubjectPoolCollection,
   isSubjectPoolSupported,
 } from '@/constants/taxonomy';
 import { getUniversityCriteria, getSectionCriteria } from '@/constants/universityCriteria';
-import { getSubjectQuestionIds } from './adminService';
 import {
   ENABLE_MULTI_SOURCE_BANK,
   getMultiSourceSubjectQuestionIds,
@@ -34,8 +26,7 @@ import {
   fetchMultiSourcePoolQuestions,
   fetchMultiSourceQuestionKey,
 } from './multiSourceQuestionBank';
-import type { QueryConstraint } from 'firebase/firestore';
-import type { AttemptDoc, AttemptQuestion, Question } from '@/types/index';
+import type { AttemptDoc, AttemptQuestion } from '@/types/index';
 
 /**
  * University marking configurations for official entrance exams.
@@ -213,375 +204,326 @@ export async function getAttempt(attemptId: string): Promise<AttemptDoc> {
   } as AttemptDoc;
 }
 
+// ─── SEEN QUESTIONS TRACKING (PER STUDENT & LOCALSTORAGE + COMPACT END WRITE) ──
+const SEEN_STORAGE_PREFIX = 'boardly_seen_questions_';
+
+// In-memory fallback cache for Node environments or private browsing
+const memorySeenCache = new Map<string, Record<string, string[]>>();
+
+export function getStudentSeenQuestions(studentId: string, subjectSlug: string): string[] {
+  const sKey = subjectSlug.toLowerCase();
+  if (typeof window === 'undefined' || !window.localStorage) {
+    const mem = memorySeenCache.get(studentId || 'guest');
+    return mem?.[sKey] || [];
+  }
+  try {
+    const key = `${SEEN_STORAGE_PREFIX}${studentId || 'guest'}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    const list = parsed[subjectSlug.toLowerCase()];
+    return Array.isArray(list) ? list : [];
+  } catch {
+    return [];
+  }
+}
+
+export function recordStudentSeenQuestions(studentId: string, subjectSlug: string, newSeenIds: string[]): void {
+  if (!newSeenIds.length) return;
+  const sKey = subjectSlug.toLowerCase();
+  const sid = studentId || 'guest';
+
+  // Always update in-memory cache
+  if (!memorySeenCache.has(sid)) {
+    memorySeenCache.set(sid, {});
+  }
+  const mem = memorySeenCache.get(sid)!;
+  const curMem = mem[sKey] || [];
+  const memSet = new Set(curMem);
+  const toAddMem = newSeenIds.filter((id) => !memSet.has(id));
+  mem[sKey] = [...curMem, ...toAddMem];
+
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const key = `${SEEN_STORAGE_PREFIX}${sid}`;
+    const raw = localStorage.getItem(key);
+    const parsed = raw ? JSON.parse(raw) : {};
+    const existing: string[] = Array.isArray(parsed[sKey]) ? parsed[sKey] : [];
+    const seenSet = new Set(existing);
+    const toAdd = newSeenIds.filter((id) => !seenSet.has(id));
+    parsed[sKey] = [...existing, ...toAdd];
+    localStorage.setItem(key, JSON.stringify(parsed));
+  } catch {
+    // Ignore quota errors
+  }
+}
+
+export function resetStudentSeenQuestions(studentId: string, subjectSlug: string): void {
+  const sKey = subjectSlug.toLowerCase();
+  const sid = studentId || 'guest';
+  const mem = memorySeenCache.get(sid);
+  if (mem) {
+    delete mem[sKey];
+  }
+
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    const key = `${SEEN_STORAGE_PREFIX}${sid}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    delete parsed[sKey];
+    localStorage.setItem(key, JSON.stringify(parsed));
+  } catch {
+    // Ignore
+  }
+}
+
+export async function persistSeenQuestionsToFirestore(studentId: string, subjectSlug: string, seenIds: string[]): Promise<void> {
+  if (!studentId || studentId === 'guest' || !seenIds.length) return;
+  try {
+    const userRef = doc(db, 'users', studentId);
+    await setDoc(
+      userRef,
+      {
+        [`seenQuestions.${subjectSlug.toLowerCase()}`]: arrayUnion(...seenIds),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch {
+    // Non-blocking
+  }
+}
+
 /**
- * Fetches questions from Firestore using index-friendly `rand` queries.
- * Queries ONLY status == "published" && active == true.
- * Never loads the whole question bank into memory.
+ * Selects random unseen question IDs from question_index across all active banks.
+ * - Excludes seen questions
+ * - Resets seen questions only when unseen runs out
+ * - If pool has fewer unseen than needed, fills with least recently seen and returns a notice
+ * - Prevents duplicates by honoring globalExcludedIds within the same test
+ */
+export async function selectUnseenQuestionsForSubject(
+  studentId: string,
+  subjectSlug: string,
+  needed: number,
+  globalExcludedIds: Set<string> = new Set()
+): Promise<{ selectedCompoundIds: string[]; notice?: string }> {
+  const normSub = findSubjectSlug(subjectSlug) || subjectSlug.toLowerCase();
+  let allIds = await getMultiSourceSubjectQuestionIds(normSub);
+
+  // Fallback: If question_index was completely empty on this subject, fallback to query published
+  if (!allIds || allIds.length === 0) {
+    try {
+      const fallbackQs = await fetchMultiSourcePoolQuestions(normSub, { limitPerSource: Math.max(needed * 2, 40) });
+      allIds = fallbackQs.map((q) => q.id);
+    } catch {
+      allIds = [];
+    }
+  }
+
+  // Filter out any questions already selected for other sections of this same test
+  const availableIds = allIds.filter((id) => !globalExcludedIds.has(id));
+
+  if (availableIds.length === 0) {
+    return { selectedCompoundIds: [] };
+  }
+
+  const seenList = getStudentSeenQuestions(studentId, normSub);
+  const seenSet = new Set(seenList);
+
+  // Unseen in this pool
+  let unseenIds = availableIds.filter((id) => !seenSet.has(id));
+
+  // Reset seen list only when unseen questions run out
+  if (unseenIds.length === 0 && availableIds.length > 0) {
+    resetStudentSeenQuestions(studentId, normSub);
+    unseenIds = [...availableIds];
+  }
+
+  let chosenIds: string[] = [];
+  let notice: string | undefined = undefined;
+
+  if (unseenIds.length >= needed) {
+    chosenIds = shuffleArray(unseenIds).slice(0, needed);
+  } else {
+    // Take all unseen questions
+    chosenIds = shuffleArray(unseenIds);
+    const deficit = needed - chosenIds.length;
+    const chosenSet = new Set(chosenIds);
+
+    // Least recently seen: items in seenList from the beginning (oldest seen first)
+    const lrsCandidates = seenList.filter((id) => availableIds.includes(id) && !chosenSet.has(id));
+    const fillFromSeen = lrsCandidates.slice(0, deficit);
+    chosenIds = [...chosenIds, ...fillFromSeen];
+
+    // If total available distinct IDs in database is less than needed, take whatever is available
+    if (chosenIds.length < needed) {
+      const remaining = availableIds.filter((id) => !chosenIds.includes(id));
+      chosenIds = [...chosenIds, ...remaining.slice(0, needed - chosenIds.length)];
+    }
+
+    if (fillFromSeen.length > 0) {
+      notice = `Serving ${fillFromSeen.length} least recently seen questions to complete your ${needed}-question practice.`;
+    }
+  }
+
+  // Record chosen IDs in student's localStorage seen tracking
+  recordStudentSeenQuestions(studentId, normSub, chosenIds);
+
+  return { selectedCompoundIds: chosenIds, notice };
+}
+
+/**
+ * Fetches questions for an attempt:
+ * - Full Mock: respects university criteria split (Advanced Math 50, Basic Math 20, Physics 30, English 20) with NO duplicates inside one test
+ * - 10-Minute Sprint & Drills: picks random IDs from question_index across all active banks, excluding seen questions
+ * - Minimal Firestore reads: fetches ONLY the selected document IDs
  */
 export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Promise<AttemptQuestion[]> {
-  const questionsColl = collection(db, 'questions');
+  const studentId = attempt.userId || 'guest';
 
-  // Full Mock Test: generate MCQs per the selected university's real paper pattern
+  // ─── 1. FULL MOCK TEST ──────────────────────────────────────────────────────
   if (attempt.mode === 'full') {
     const criteria = getUniversityCriteria(attempt.university);
-    const collectedQuestions: Question[] = [];
-    const seenIds = new Set<string>();
+    const globalExcludedIds = new Set<string>();
+    const sectionSelectedQuestions: AttemptQuestion[] = [];
 
     for (const split of criteria.subjectsSplit) {
       const subSlug = findSubjectSlug(split.subject) || split.subject.toLowerCase();
-      try {
-        let pool: Question[] = [];
+      const countNeeded = split.count;
 
-        // Multi-source question index selection
-        if (ENABLE_MULTI_SOURCE_BANK) {
-          try {
-            const allIds = await getMultiSourceSubjectQuestionIds(subSlug);
-            if (allIds && allIds.length > 0) {
-              const chosenIds = shuffleArray(allIds.filter((id) => !seenIds.has(id))).slice(0, split.count);
-              if (chosenIds.length > 0) {
-                const fetched = await fetchMultiSourceQuestionsByIds(chosenIds, subSlug);
-                pool.push(...fetched);
-              }
-            }
-          } catch (msErr) {
-            console.warn('[testEngine] Multi-source full mock pool notice:', msErr);
-          }
-          if (pool.length < split.count) {
-            try {
-              const fallbackQs = await fetchMultiSourcePoolQuestions(subSlug, { limitPerSource: split.count * 2 });
-              const unseen = fallbackQs.filter((q) => !seenIds.has(q.id));
-              pool = [...pool, ...unseen];
-            } catch (fbErr) {
-              console.warn('[testEngine] Multi-source fallback pool notice:', fbErr);
-            }
-          }
-        } else if (isSubjectPoolSupported(subSlug)) {
-          const poolColl = getSubjectPoolCollection(subSlug);
-          try {
-            const allIds = await getSubjectQuestionIds(subSlug);
-            if (allIds && allIds.length > 0) {
-              const chosenIds = shuffleArray(allIds.filter((id) => !seenIds.has(id))).slice(0, split.count);
-              if (chosenIds.length > 0) {
-                const chunkSize = 30;
-                for (let i = 0; i < chosenIds.length; i += chunkSize) {
-                  const chunk = chosenIds.slice(i, i + chunkSize);
-                  const mathSnap = await getDocs(
-                    query(collection(db, poolColl), where(documentId(), 'in', chunk))
-                  );
-                  mathSnap.docs.forEach((d) => {
-                    const data = d.data();
-                    pool.push({
-                      id: d.id,
-                      subject: 'mathematics',
-                      chapter: data.topic || data.chapter || 'general',
-                      topic: data.topic || data.chapter || 'general',
-                      difficulty: data.difficulty || 'medium',
-                      q: data.text || data.q || data.question || '',
-                      stem: data.text || data.q || data.question || '',
-                      options: Array.isArray(data.options) ? data.options : ['A', 'B', 'C', 'D'],
-                      tags: Array.isArray(data.tags) ? data.tags : ['entrance'],
-                      status: 'published',
-                      active: true,
-                      rand: Math.random(),
-                      schemaVersion: 1,
-                      contentHash: '',
-                      createdAt: null,
-                      updatedAt: null,
-                      createdBy: '',
-                    } as Question);
-                  });
-                }
-              }
-            }
-          } catch (mathErr) {
-            console.warn('[testEngine] Full mock math pool notice:', mathErr);
-          }
-        }
+      const { selectedCompoundIds, notice } = await selectUnseenQuestionsForSubject(
+        studentId,
+        subSlug,
+        countNeeded,
+        globalExcludedIds
+      );
 
-        // Other subjects (or fallback if pool empty) read from existing bank
-        if (pool.length < split.count) {
-          const subQuery = query(
-            questionsColl,
-            where('status', '==', 'published'),
-            where('active', '==', true),
-            where('subject', '==', subSlug),
-            limit(split.count * 2)
-          );
-          const snap = await getDocs(subQuery);
-          const bankPool = snap.docs
-            .map((d) => ({ id: d.id, ...d.data() } as Question))
-            .filter((q) => !seenIds.has(q.id));
-          pool = [...pool, ...bankPool];
-        }
+      // Add to global exclusion set so NO subsequent section (e.g. Basic Math after Advanced Math) duplicates questions!
+      selectedCompoundIds.forEach((id) => globalExcludedIds.add(id));
 
-        if (pool.length === 0) {
-          throw new Error(
-            `Not enough questions yet for ${formatSubjectName(subSlug)}. Please select another subject or check back soon.`
-          );
-        }
+      if (notice && import.meta.env.DEV) {
+        console.info(`[Full Mock - ${split.name}] ${notice}`);
+      }
 
-        const chosen = shuffleArray(pool).slice(0, split.count);
-        chosen.forEach((q) => {
-          seenIds.add(q.id);
-          collectedQuestions.push(q);
+      if (selectedCompoundIds.length > 0) {
+        const fetchedQuestions = await fetchMultiSourceQuestionsByIds(selectedCompoundIds, subSlug);
+
+        // Convert to AttemptQuestion with shuffled options and mapping
+        fetchedQuestions.forEach((q) => {
+          const rawOptions = Array.isArray(q.options) && q.options.length === 4
+            ? q.options
+            : (['A', 'B', 'C', 'D'] as [string, string, string, string]);
+          const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
+          sectionSelectedQuestions.push({
+            id: q.id,
+            q: q.q || q.stem || '',
+            stem: q.q || q.stem || '',
+            options: shuffledOptions,
+            optionMapping,
+            subject: q.subject || subSlug,
+            chapter: q.chapter || split.name || 'general',
+            difficulty: q.difficulty || 'medium',
+          });
         });
-      } catch (err: unknown) {
-        const msg = (err as { message?: string })?.message;
-        if (msg && msg.includes('Not enough questions yet')) {
-          throw err;
-        }
-        throw new Error(
-          `Not enough questions yet for ${formatSubjectName(subSlug)}. Please select another subject or check back soon.`
-        );
       }
     }
 
-    return collectedQuestions.map((q) => {
-      const rawOptions = Array.isArray(q.options) && q.options.length === 4
-        ? q.options
-        : (['A', 'B', 'C', 'D'] as [string, string, string, string]);
+    if (sectionSelectedQuestions.length === 0) {
+      throw new Error('Not enough questions available across banks to generate this test. Please try again soon.');
+    }
 
-      const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
-      return {
-        id: q.id,
-        q: q.q || q.stem || '',
-        options: shuffledOptions,
-        optionMapping,
-        subject: q.subject || 'general',
-        chapter: q.chapter || 'general',
-        difficulty: q.difficulty || 'medium',
-      };
-    });
+    return sectionSelectedQuestions;
   }
 
+  // ─── 2. 10-MINUTE SPRINT & DRILLS ───────────────────────────────────────────
   const needed = Math.max(1, attempt.totalQuestions || 10);
-  const subjectSlug = findSubjectSlug(attempt.subject || '') || (attempt.subject ? attempt.subject.toLowerCase() : undefined);
+  const subjectSlug = findSubjectSlug(attempt.subject || '') || (attempt.subject ? attempt.subject.toLowerCase() : 'mathematics');
 
-  // Multi-source question index selection for drills, sprints and tests
-  if (ENABLE_MULTI_SOURCE_BANK && subjectSlug) {
-    try {
-      const allIds = await getMultiSourceSubjectQuestionIds(subjectSlug);
-      if (allIds && allIds.length > 0) {
-        // Pick random IDs from index document, then fetch ONLY those N questions from the right source
-        const chosenIds = shuffleArray(allIds).slice(0, needed);
-        const poolQuestions = await fetchMultiSourceQuestionsByIds(chosenIds, subjectSlug);
-        if (poolQuestions.length > 0) {
-          return poolQuestions.map((q) => {
-            const rawOptions = Array.isArray(q.options) && q.options.length === 4
-              ? q.options
-              : (['A', 'B', 'C', 'D'] as [string, string, string, string]);
-            const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
-            return {
-              id: q.id,
-              q: q.q || q.stem || '',
-              stem: q.q || q.stem || '',
-              options: shuffledOptions,
-              optionMapping,
-              subject: q.subject || subjectSlug,
-              chapter: q.chapter || 'general',
-              difficulty: q.difficulty || 'medium',
-            };
-          });
-        }
-      }
-    } catch (msErr) {
-      console.warn('[testEngine] Multi-source drill index query notice, falling back:', msErr);
-    }
-  } else if (subjectSlug && isSubjectPoolSupported(subjectSlug)) {
-    try {
-      const poolColl = getSubjectPoolCollection(subjectSlug);
-      const allIds = await getSubjectQuestionIds(subjectSlug);
-      if (allIds && allIds.length > 0) {
-        // Pick random IDs from index document, then fetch ONLY those N questions
-        const chosenIds = shuffleArray(allIds).slice(0, needed);
-        const poolQuestions: Question[] = [];
-        const chunkSize = 30;
-        for (let i = 0; i < chosenIds.length; i += chunkSize) {
-          const chunk = chosenIds.slice(i, i + chunkSize);
-          const poolSnap = await getDocs(
-            query(collection(db, poolColl), where(documentId(), 'in', chunk))
-          );
-          poolSnap.docs.forEach((d) => {
-            const data = d.data();
-            const qText = data.text || data.q || data.question || '';
-            poolQuestions.push({
-              id: d.id,
-              subject: 'mathematics',
-              chapter: data.topic || data.chapter || 'general',
-              topic: data.topic || data.chapter || 'general',
-              difficulty: data.difficulty || 'medium',
-              q: qText,
-              question: qText,
-              stem: qText,
-              options: Array.isArray(data.options) ? data.options : ['A', 'B', 'C', 'D'],
-              status: data.status || 'published',
-              active: data.active !== false,
-              rand: data.rand ?? Math.random(),
-              schemaVersion: 1,
-              contentHash: data.contentHash || '',
-              createdAt: null,
-              updatedAt: null,
-              createdBy: '',
-            } as Question);
-          });
-        }
+  const { selectedCompoundIds, notice } = await selectUnseenQuestionsForSubject(
+    studentId,
+    subjectSlug,
+    needed
+  );
 
-        if (poolQuestions.length > 0) {
-          return poolQuestions.map((q) => {
-            const rawOptions = Array.isArray(q.options) && q.options.length === 4
-              ? q.options
-              : (['A', 'B', 'C', 'D'] as [string, string, string, string]);
-            const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
-            return {
-              id: q.id,
-              q: q.q || q.stem || '',
-              options: shuffledOptions,
-              optionMapping,
-              subject: 'mathematics',
-              chapter: q.chapter || 'general',
-              difficulty: q.difficulty || 'medium',
-            };
-          });
-        }
-      }
-    } catch (poolErr) {
-      console.warn('[testEngine] Subject pool query notice, falling back to existing bank:', poolErr);
+  if (notice && import.meta.env.DEV) {
+    console.info(`[Sprint - ${subjectSlug}] ${notice}`);
+  }
+
+  if (selectedCompoundIds.length > 0) {
+    const fetched = await fetchMultiSourceQuestionsByIds(selectedCompoundIds, subjectSlug);
+    if (fetched.length > 0) {
+      return fetched.map((q) => {
+        const rawOptions = Array.isArray(q.options) && q.options.length === 4
+          ? q.options
+          : (['A', 'B', 'C', 'D'] as [string, string, string, string]);
+        const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
+        return {
+          id: q.id,
+          q: q.q || q.stem || '',
+          stem: q.q || q.stem || '',
+          options: shuffledOptions,
+          optionMapping,
+          subject: q.subject || subjectSlug,
+          chapter: q.chapter || 'general',
+          difficulty: q.difficulty || 'medium',
+        };
+      });
     }
   }
 
-  const chapterSlug = attempt.chapter ? findChapterSlug(subjectSlug || 'mathematics', attempt.chapter) || attempt.chapter.toLowerCase() : undefined;
+  throw new Error(`Not enough questions found for ${formatSubjectName(subjectSlug)}. Please rebuild index or check back soon.`);
+}
 
-  const r = Math.random();
-  const collectedMap = new Map<string, Question>();
+/**
+ * Console test: Runs 5 consecutive 10-minute sprints and prints how many unique question IDs appeared.
+ */
+export async function testRunFiveSprints(subject = 'mathematics'): Promise<{
+  totalDelivered: number;
+  uniqueCount: number;
+  repeats: number;
+  sprints: Array<{ sprint: number; ids: string[] }>;
+}> {
+  console.log(`%c[Sprint Test] Running 5 consecutive 10-minute sprints for "${subject}"...`, 'color: #3b82f6; font-weight: bold;');
+  const testUserId = `test-runner-${Date.now()}`;
+  const results: Array<{ sprint: number; ids: string[] }> = [];
+  const allIds: string[] = [];
 
-  if (import.meta.env.DEV) {
-    console.log('[Firestore Index Notice] Querying questions with parameters:', {
-      status: 'published',
-      active: true,
-      subject: subjectSlug,
-      chapter: chapterSlug,
-      randAnchor: r,
-      limit: needed,
-    });
+  for (let sprintNum = 1; sprintNum <= 5; sprintNum++) {
+    const { selectedCompoundIds, notice } = await selectUnseenQuestionsForSubject(testUserId, subject, 10);
+    results.push({ sprint: sprintNum, ids: selectedCompoundIds });
+    allIds.push(...selectedCompoundIds);
     console.log(
-      `[Firestore Index] Required composite index: questions collection: status (Asc), active (Asc), subject (Asc)${
-        chapterSlug ? ', chapter (Asc)' : ''
-      }, rand (Asc)`
+      `%c[Sprint ${sprintNum}] Delivered ${selectedCompoundIds.length} MCQs${notice ? ` (${notice})` : ''}:`,
+      'color: #10b981;',
+      selectedCompoundIds
     );
   }
 
-  // Helper query executor
-  async function runQuery(operator: '>=' | '<', limitCount: number) {
-    try {
-      const constraints: QueryConstraint[] = [
-        where('status', '==', 'published'),
-        where('active', '==', true),
-      ];
+  const uniqueSet = new Set(allIds);
+  const repeats = allIds.length - uniqueSet.size;
 
-      if (subjectSlug && subjectSlug !== 'all' && subjectSlug !== 'general') {
-        constraints.push(where('subject', '==', subjectSlug));
-      }
+  console.log(
+    `%c[Sprint Test Results] Total Delivered: ${allIds.length} | Unique Questions: ${uniqueSet.size} | Repeat Count: ${repeats}`,
+    'color: #8b5cf6; font-weight: bold; font-size: 14px;'
+  );
 
-      if (chapterSlug && chapterSlug !== 'all') {
-        constraints.push(where('chapter', '==', chapterSlug));
-      }
+  // Clean up test runner in localStorage
+  resetStudentSeenQuestions(testUserId, subject);
 
-      constraints.push(where('rand', operator, r));
-      constraints.push(orderBy('rand', 'asc'));
-      constraints.push(limit(limitCount));
-
-      const q = query(questionsColl, ...constraints);
-      const snap = await getDocs(q);
-
-      snap.docs.forEach((d) => {
-        if (!collectedMap.has(d.id)) {
-          collectedMap.set(d.id, { id: d.id, ...d.data() } as Question);
-        }
-      });
-    } catch (err: unknown) {
-      if (import.meta.env.DEV) {
-        console.warn(`[testEngine] Query with rand ${operator} notice:`, err);
-      }
-    }
-  }
-
-  // 1. First pass: rand >= r
-  await runQuery('>=', needed * 2);
-
-  // 2. Wrap-around pass: rand < r if we still need more questions
-  if (collectedMap.size < needed) {
-    await runQuery('<', needed * 2);
-  }
-
-  // 3. Fallback: if chapter query yielded fewer questions, loosen chapter constraint
-  if (collectedMap.size < needed && chapterSlug) {
-    try {
-      const looseQuery = query(
-        questionsColl,
-        where('status', '==', 'published'),
-        where('active', '==', true),
-        ...(subjectSlug && subjectSlug !== 'all' && subjectSlug !== 'general' ? [where('subject', '==', subjectSlug)] : []),
-        limit(needed)
-      );
-      const snap = await getDocs(looseQuery);
-      snap.docs.forEach((d) => {
-        if (!collectedMap.has(d.id)) {
-          collectedMap.set(d.id, { id: d.id, ...d.data() } as Question);
-        }
-      });
-    } catch (err) {
-      if (import.meta.env.DEV) {
-        console.warn('[testEngine] Loosened chapter query note:', err);
-      }
-    }
-  }
-
-  // 4. Final fallback: general published & active questions
-  if (collectedMap.size < needed) {
-    try {
-      const generalQ = query(
-        questionsColl,
-        where('status', '==', 'published'),
-        where('active', '==', true),
-        limit(needed * 2)
-      );
-      const snap = await getDocs(generalQ);
-      snap.docs.forEach((d) => {
-        if (!collectedMap.has(d.id)) {
-          collectedMap.set(d.id, { id: d.id, ...d.data() } as Question);
-        }
-      });
-    } catch (err) {
-      if (import.meta.env.DEV) {
-        console.warn('[testEngine] General pool fallback note:', err);
-      }
-    }
-  }
-
-  const rawList = Array.from(collectedMap.values());
-  const randomized = shuffleArray(rawList).slice(0, needed);
-
-  // Convert to AttemptQuestion with shuffled options and optionMapping.
-  // Note: NEVER include correct answer or explanation here!
-  return randomized.map((q) => {
-    const rawOptions = Array.isArray(q.options) && q.options.length === 4
-      ? q.options
-      : (['A', 'B', 'C', 'D'] as [string, string, string, string]);
-
-    const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
-
-    return {
-      id: q.id,
-      q: q.q || q.stem || '',
-      stem: q.q || q.stem || '',
-      options: shuffledOptions,
-      optionMapping,
-      subject: q.subject || 'general',
-      chapter: q.chapter || 'general',
-      difficulty: q.difficulty || 'medium',
-    };
-  });
+  return {
+    totalDelivered: allIds.length,
+    uniqueCount: uniqueSet.size,
+    repeats,
+    sprints: results,
+  };
 }
+
+if (typeof window !== 'undefined') {
+  (window as unknown as Record<string, unknown>).testRunFiveSprints = testRunFiveSprints;
+}
+
 
 /**
  * Initializes and starts an attempt document with timer.
@@ -902,6 +844,24 @@ export async function submitAttempt(
     }
   } catch (streakErr) {
     console.warn('[testEngine] Streak update notice:', streakErr);
+  }
+
+  // 5. Compact write for seen questions to Firestore at test completion
+  try {
+    if (uid && uid !== 'guest') {
+      const bySubject: Record<string, string[]> = {};
+      for (const q of questions) {
+        if (!q.id) continue;
+        const sSlug = findSubjectSlug(q.subject || '') || (q.subject || 'mathematics').toLowerCase();
+        if (!bySubject[sSlug]) bySubject[sSlug] = [];
+        bySubject[sSlug].push(q.id);
+      }
+      for (const [sub, qIds] of Object.entries(bySubject)) {
+        await persistSeenQuestionsToFirestore(uid, sub, qIds);
+      }
+    }
+  } catch (seenErr) {
+    console.warn('[testEngine] Seen questions write notice:', seenErr);
   }
 
   return {

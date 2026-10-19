@@ -4,8 +4,6 @@ import {
   getDoc,
   getDocs,
   setDoc,
-  updateDoc,
-  deleteDoc,
   query,
   where,
   limit,
@@ -15,6 +13,7 @@ import {
   increment,
   arrayUnion,
   arrayRemove,
+  getCountFromServer,
 } from 'firebase/firestore';
 import {
   ENABLE_MULTI_SOURCE_BANK,
@@ -30,6 +29,9 @@ import {
   getSubjectPoolCollection,
   computeContentHash,
   getChaptersForSubject,
+  findSubjectSlug,
+  normalizeTopicName,
+  formatSubjectName,
 } from '@/constants/taxonomy';
 import type { Question, QuestionDifficulty, QuestionStatus } from '@/types';
 
@@ -144,25 +146,30 @@ export async function getMultiSourceSubjectQuestionIds(subject: string): Promise
           }
         }
 
-        // If index doc does not exist yet on this source, query small initial set and write index doc
+        // If index doc does not exist yet on this source, query complete set of IDs and write index doc
         if (rawIds.length === 0) {
           const targetColl = getSubjectPoolCollection(norm);
+          const subVariants = Array.from(new Set([norm, formatSubjectName(norm), norm.toLowerCase(), norm.toUpperCase()]));
           try {
             const poolSnap = await getDocs(
-              query(collection(source.db, targetColl), where('status', '==', 'published'), limit(40))
+              query(collection(source.db, targetColl), limit(3000))
             );
             if (!poolSnap.empty) {
               rawIds = poolSnap.docs.map((d) => d.id);
-            } else if (source.id === 'legacy') {
+            }
+            if (source.id === 'legacy' || source.id === 'bank1') {
               const legacySnap = await getDocs(
                 query(
                   collection(source.db, 'questions'),
-                  where('status', '==', 'published'),
-                  where('subject', '==', norm),
-                  limit(40)
+                  where('subject', 'in', subVariants),
+                  limit(3000)
                 )
               );
-              rawIds = legacySnap.docs.map((d) => d.id);
+              legacySnap.docs.forEach((d) => {
+                if (!rawIds.includes(d.id)) {
+                  rawIds.push(d.id);
+                }
+              });
             }
             if (rawIds.length > 0) {
               setDoc(indexRef, { subject: norm, ids: rawIds, updatedAt: serverTimestamp() }, { merge: true }).catch(
@@ -317,6 +324,7 @@ export async function fetchMultiSourceQuestionsByIds(
 // ─── 5. MULTI-SOURCE COUNTS (SUM OF stats/questionCounts) ───────────────────
 /**
  * Sums subjectCounts and topicCounts across all working sources' stats/questionCounts documents.
+ * Correctly parses both nested map structures and flat dotted keys.
  */
 export async function getMultiSourceQuestionCounts(): Promise<AggregatedCounts> {
   if (sessionAggregatedCounts) {
@@ -336,35 +344,62 @@ export async function getMultiSourceQuestionCounts(): Promise<AggregatedCounts> 
         try {
           const statsRef = doc(source.db, 'stats', 'questionCounts');
           const snap = await getDoc(statsRef);
+          let srcCount = 0;
+
           if (snap.exists()) {
             const data = snap.data();
             const subCounts = (data.subjectCounts || {}) as Record<string, number>;
             const topCounts = (data.topicCounts || {}) as Record<string, Record<string, number>>;
 
-            let srcCount = 0;
+            // 1. Process nested subjectCounts
             for (const [sub, cnt] of Object.entries(subCounts)) {
               const n = Number(cnt || 0);
-              sumSubjects[sub] = (sumSubjects[sub] || 0) + n;
+              const canonSub = findSubjectSlug(sub) || sub.toLowerCase().trim();
+              sumSubjects[canonSub] = (sumSubjects[canonSub] || 0) + n;
               srcCount += n;
             }
 
+            // 2. Process nested topicCounts with normalization
             for (const [sub, topics] of Object.entries(topCounts)) {
-              if (!sumTopics[sub]) sumTopics[sub] = {};
+              const canonSub = findSubjectSlug(sub) || sub.toLowerCase().trim();
+              if (!sumTopics[canonSub]) sumTopics[canonSub] = {};
               for (const [top, cnt] of Object.entries(topics || {})) {
-                sumTopics[sub][top] = (sumTopics[sub][top] || 0) + Number(cnt || 0);
+                const canonTop = normalizeTopicName(canonSub, top);
+                sumTopics[canonSub][canonTop] = (sumTopics[canonSub][canonTop] || 0) + Number(cnt || 0);
               }
             }
+
+            // 3. Fallback: unpack any flat dotted keys from previous migrations e.g. "topicCounts.mathematics.Calculus"
+            for (const [k, v] of Object.entries(data)) {
+              if (k.startsWith('topicCounts.') && typeof v === 'number') {
+                const parts = k.split('.');
+                if (parts.length >= 3) {
+                  const sub = parts[1];
+                  const top = parts.slice(2).join('.');
+                  const canonSub = findSubjectSlug(sub) || sub.toLowerCase().trim();
+                  const canonTop = normalizeTopicName(canonSub, top);
+                  if (!sumTopics[canonSub]) sumTopics[canonSub] = {};
+                  // Only add if not already captured in nested map
+                  if (!topCounts[sub]?.[top]) {
+                    sumTopics[canonSub][canonTop] = (sumTopics[canonSub][canonTop] || 0) + Number(v || 0);
+                  }
+                }
+              } else if (k.startsWith('subjectCounts.') && typeof v === 'number') {
+                const sub = k.split('.')[1];
+                const canonSub = findSubjectSlug(sub) || sub.toLowerCase().trim();
+                if (!subCounts[sub]) {
+                  sumSubjects[canonSub] = (sumSubjects[canonSub] || 0) + Number(v || 0);
+                }
+              }
+            }
+
             recordSourceSuccess(source.id, 'reading stats/questionCounts', undefined, srcCount);
           } else {
-            // Initialize document on new source if empty
-            if (source.id === 'legacy') {
-              sumSubjects.mathematics = (sumSubjects.mathematics || 0) + 10;
-            }
             recordSourceSuccess(
               source.id,
               'reading stats/questionCounts (empty)',
               undefined,
-              source.id === 'legacy' ? 10 : 0
+              0
             );
           }
         } catch (err) {
@@ -386,24 +421,38 @@ export async function getMultiSourceQuestionCounts(): Promise<AggregatedCounts> 
 export async function fetchMultiSourceSubjectTopics(
   subject: string
 ): Promise<{ name: string; count: number }[]> {
-  const norm = (subject || '').trim().toLowerCase();
+  const norm = findSubjectSlug(subject) || (subject || '').trim().toLowerCase();
   const countsDoc = await getMultiSourceQuestionCounts();
   const subTopics = countsDoc.topicCounts[norm] || {};
-  const list: { name: string; count: number }[] = [];
+  const topicMap = new Map<string, number>();
 
-  if (Object.keys(subTopics).length === 0) {
-    const defaultChapters = getChaptersForSubject(norm);
-    defaultChapters.forEach((ch) => {
-      list.push({ name: ch.name, count: 0 });
-    });
-  } else {
-    for (const [name, count] of Object.entries(subTopics)) {
-      list.push({ name, count });
-    }
+  // 1. Seed all default taxonomy chapters for this subject (starting at count 0)
+  const defaultChapters = getChaptersForSubject(norm);
+  defaultChapters.forEach((ch) => {
+    topicMap.set(ch.name, 0);
+  });
+
+  // 2. Add or update counts from database stats (using normalized topic names)
+  for (const [name, count] of Object.entries(subTopics)) {
+    const canonName = normalizeTopicName(norm, name);
+    const existing = topicMap.get(canonName) || 0;
+    topicMap.set(canonName, existing + Number(count || 0));
   }
 
-  return list.sort((a, b) => a.name.localeCompare(b.name));
+  // 3. Convert to array
+  const list: { name: string; count: number }[] = [];
+  topicMap.forEach((count, name) => {
+    list.push({ name, count });
+  });
+
+  // Sort: topics with questions first, then canonical default chapters
+  return list.sort((a, b) => {
+    if (a.count > 0 && b.count === 0) return -1;
+    if (a.count === 0 && b.count > 0) return 1;
+    return a.name.localeCompare(b.name);
+  });
 }
+
 
 // ─── 2. READ SUBJECT POOL (MERGED & DEDUPLICATED BY HASH) ────────────────────
 /**
@@ -691,6 +740,20 @@ export async function saveMultiSourceQuestion(
       ? cleanDocId
       : `pool_${normSub}_${cHash.substring(0, 20)}`;
 
+  // If editing an existing question, inspect old topic to update counts accurately
+  let oldTopic: string | null = null;
+  if (!isNew) {
+    try {
+      const existingSnap = await getDoc(doc(source.db, collName, finalDocId));
+      if (existingSnap.exists()) {
+        const exData = existingSnap.data();
+        oldTopic = normalizeTopicName(normSub, exData.topic || exData.chapter || '');
+      }
+    } catch {
+      // Non-fatal
+    }
+  }
+
   const docData: Record<string, unknown> = {
     id: finalDocId,
     subject: normSub,
@@ -717,12 +780,21 @@ export async function saveMultiSourceQuestion(
     docData.createdAt = serverTimestamp();
   }
 
-  // 1. Write to target source's subject pool
-  await setDoc(doc(source.db, collName, finalDocId), docData, { merge: true });
+  // Ensure stats/questionCounts document exists so batch update succeeds safely
+  const statsRef = doc(source.db, 'stats', 'questionCounts');
+  const indexRef = doc(source.db, 'question_index', normSub);
+  const poolDocRef = doc(source.db, collName, finalDocId);
+  const keyDocRef = doc(source.db, 'questionKeys', finalDocId);
 
-  // 2. Also write secret key doc to target source's questionKeys
-  await setDoc(
-    doc(source.db, 'questionKeys', finalDocId),
+  // Execute question write, key write, question_index, and stats/questionCounts in the SAME BATCH
+  const batch = writeBatch(source.db);
+
+  // 1. Write question doc
+  batch.set(poolDocRef, docData, { merge: true });
+
+  // 2. Write key doc
+  batch.set(
+    keyDocRef,
     {
       id: finalDocId,
       correct: question.correct,
@@ -732,44 +804,41 @@ export async function saveMultiSourceQuestion(
     { merge: true }
   );
 
-  // 3. Update question_index/<subject> and stats/questionCounts on target source
+  // 3. Update question_index and stats/questionCounts in same batch
   if (isNew) {
-    try {
-      const indexRef = doc(source.db, 'question_index', normSub);
-      await setDoc(
-        indexRef,
-        {
-          subject: normSub,
-          ids: arrayUnion(finalDocId),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } catch {
-      // Non-fatal
-    }
+    batch.set(
+      indexRef,
+      {
+        subject: normSub,
+        ids: arrayUnion(finalDocId),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
 
-    try {
-      const statsRef = doc(source.db, 'stats', 'questionCounts');
-      await updateDoc(statsRef, {
+    batch.set(
+      statsRef,
+      {
         [`subjectCounts.${normSub}`]: increment(1),
         [`topicCounts.${normSub}.${topic}`]: increment(1),
         updatedAt: serverTimestamp(),
-      }).catch(async () => {
-        await setDoc(
-          statsRef,
-          {
-            subjectCounts: { [normSub]: 1 },
-            topicCounts: { [normSub]: { [topic]: 1 } },
-            updatedAt: serverTimestamp(),
-          },
-          { merge: true }
-        );
-      });
-    } catch {
-      // Non-fatal
-    }
+      },
+      { merge: true }
+    );
+  } else if (oldTopic && oldTopic !== topic) {
+    // Topic changed on edit: adjust counts
+    batch.set(
+      statsRef,
+      {
+        [`topicCounts.${normSub}.${oldTopic}`]: increment(-1),
+        [`topicCounts.${normSub}.${topic}`]: increment(1),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
   }
+
+  await batch.commit();
 
   clearMultiSourceCache();
 
@@ -781,7 +850,7 @@ export async function saveMultiSourceQuestion(
 }
 
 /**
- * Deletes question from the specific source it came from.
+ * Deletes question from the specific source it came from, updating question_index and stats in the SAME BATCH.
  */
 export async function deleteMultiSourceQuestion(
   _adminEmail: string,
@@ -790,40 +859,71 @@ export async function deleteMultiSourceQuestion(
 ): Promise<void> {
   const { sourceId, docId } = parseQuestionCompoundId(compoundId);
   const source = getBankSource(sourceId) || getDefaultWriteSource();
-  const normSub = subject.toLowerCase().trim();
+  const normSub = findSubjectSlug(subject) || subject.toLowerCase().trim();
   const collName = getSubjectPoolCollection(normSub);
 
-  // Delete from source pool & questionKeys
-  await deleteDoc(doc(source.db, collName, docId));
-  await deleteDoc(doc(source.db, 'questionKeys', docId)).catch(() => {});
-
-  // Remove from source index
+  // Read existing doc to get exact topic for decrementing
+  let existingTopic = 'General Concepts';
   try {
-    const indexRef = doc(source.db, 'question_index', normSub);
-    await updateDoc(indexRef, {
+    const existingSnap = await getDoc(doc(source.db, collName, docId));
+    if (existingSnap.exists()) {
+      const data = existingSnap.data();
+      existingTopic = normalizeTopicName(normSub, data.topic || data.chapter || 'General Concepts');
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  const statsRef = doc(source.db, 'stats', 'questionCounts');
+  const indexRef = doc(source.db, 'question_index', normSub);
+  const poolDocRef = doc(source.db, collName, docId);
+  const keyDocRef = doc(source.db, 'questionKeys', docId);
+
+  try {
+    const statsSnap = await getDoc(statsRef);
+    if (!statsSnap.exists()) {
+      await setDoc(statsRef, { subjectCounts: {}, topicCounts: {}, updatedAt: serverTimestamp() });
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  const batch = writeBatch(source.db);
+
+  // 1. Delete question doc
+  batch.delete(poolDocRef);
+
+  // 2. Delete key doc
+  batch.delete(keyDocRef);
+
+  // 3. Remove docId from question_index in same batch
+  batch.set(
+    indexRef,
+    {
       ids: arrayRemove(docId),
       updatedAt: serverTimestamp(),
-    });
-  } catch {
-    // Non-fatal
-  }
+    },
+    { merge: true }
+  );
 
-  // Decrement on source stats
-  try {
-    const statsRef = doc(source.db, 'stats', 'questionCounts');
-    await updateDoc(statsRef, {
+  // 4. Decrement subject and topic counts in same batch
+  batch.set(
+    statsRef,
+    {
       [`subjectCounts.${normSub}`]: increment(-1),
+      [`topicCounts.${normSub}.${existingTopic}`]: increment(-1),
       updatedAt: serverTimestamp(),
-    });
-  } catch {
-    // Non-fatal
-  }
+    },
+    { merge: true }
+  );
+
+  await batch.commit();
 
   clearMultiSourceCache();
 }
 
 /**
- * Moves questions to a new topic on the source each question came from.
+ * Moves questions to a new topic on the source each question came from, updating stats in the same batch.
  */
 export async function moveMultiSourceQuestionsToTopic(
   _adminEmail: string,
@@ -831,9 +931,9 @@ export async function moveMultiSourceQuestionsToTopic(
   compoundIds: string[],
   newTopic: string
 ): Promise<number> {
-  const normSub = subject.toLowerCase().trim();
+  const normSub = findSubjectSlug(subject) || subject.toLowerCase().trim();
   const collName = getSubjectPoolCollection(normSub);
-  const cleanNew = newTopic.trim();
+  const cleanNew = normalizeTopicName(normSub, newTopic);
 
   // Group by sourceId
   const bySource = new Map<string, string[]>();
@@ -849,7 +949,7 @@ export async function moveMultiSourceQuestionsToTopic(
     const source = getBankSource(sourceId);
     if (!source) continue;
 
-    const chunkSize = 400;
+    const chunkSize = 200;
     for (let i = 0; i < docIds.length; i += chunkSize) {
       const chunk = docIds.slice(i, i + chunkSize);
       const batch = writeBatch(source.db);
@@ -860,23 +960,20 @@ export async function moveMultiSourceQuestionsToTopic(
           updatedAt: serverTimestamp(),
         });
       });
-      await batch.commit();
-      totalMoved += chunk.length;
-    }
 
-    // Update topic counts on source stats doc
-    try {
+      // Update topic counts on source stats doc in same batch
       const statsRef = doc(source.db, 'stats', 'questionCounts');
-      await setDoc(
+      batch.set(
         statsRef,
         {
-          [`topicCounts.${normSub}.${cleanNew}`]: increment(docIds.length),
+          [`topicCounts.${normSub}.${cleanNew}`]: increment(chunk.length),
           updatedAt: serverTimestamp(),
         },
         { merge: true }
       );
-    } catch {
-      // Non-fatal
+
+      await batch.commit();
+      totalMoved += chunk.length;
     }
   }
 
@@ -886,7 +983,7 @@ export async function moveMultiSourceQuestionsToTopic(
 
 /**
  * Imports CSV questions into the selected target source.
- * Skips duplicates against ALL sources by the hashed ID.
+ * Normalizes topic names, maps aliases, and updates question_index and stats in the same batch.
  */
 export async function batchImportMultiSourceQuestions(
   adminEmail: string,
@@ -903,7 +1000,7 @@ export async function batchImportMultiSourceQuestions(
   };
 
   const source = getBankSource(targetSourceId) || getDefaultWriteSource();
-  const normSub = targetSubject.toLowerCase().trim();
+  const normSub = findSubjectSlug(targetSubject) || targetSubject.toLowerCase().trim();
   const collName = getSubjectPoolCollection(normSub);
 
   // 1. Fetch all existing question hashes across all sources to prevent cross-source duplicates
@@ -914,13 +1011,17 @@ export async function batchImportMultiSourceQuestions(
     existingHashes.add(docId);
   });
 
-  const validItems: Array<{ docId: string; publicDoc: Record<string, unknown>; keyDoc: Record<string, unknown> }> = [];
-  const newlyAddedDocIds: string[] = [];
-  const topicCountsAdded: Record<string, number> = {};
+  const validItems: Array<{
+    docId: string;
+    topic: string;
+    publicDoc: Record<string, unknown>;
+    keyDoc: Record<string, unknown>;
+  }> = [];
 
   for (const row of rawRows) {
     const qText = (row.text || row.q || row.question || row.stem ? String(row.text || row.q || row.question || row.stem) : '').trim();
-    const rowTopic = (row.topic || row.chapter ? String(row.topic || row.chapter) : defaultTopic).trim();
+    const rawTopic = String(row.topic || row.chapter || defaultTopic || 'General Concepts');
+    const rowTopic = normalizeTopicName(normSub, rawTopic);
 
     let options: [string, string, string, string] = ['', '', '', ''];
     if (Array.isArray(row.options) && row.options.length >= 4) {
@@ -946,8 +1047,6 @@ export async function batchImportMultiSourceQuestions(
       continue;
     }
     existingHashes.add(docId);
-    newlyAddedDocIds.push(docId);
-    topicCountsAdded[rowTopic] = (topicCountsAdded[rowTopic] || 0) + 1;
 
     // Resolve correct index (0..3)
     let correctIdx = 0;
@@ -968,6 +1067,7 @@ export async function batchImportMultiSourceQuestions(
 
     validItems.push({
       docId,
+      topic: rowTopic,
       publicDoc: {
         id: docId,
         subject: normSub,
@@ -999,55 +1099,272 @@ export async function batchImportMultiSourceQuestions(
     });
   }
 
-  // Batch insert into target source (400 ops per batch)
-  const chunkSize = 200;
+  // Ensure stats/questionCounts exists on target source
+  const statsRef = doc(source.db, 'stats', 'questionCounts');
+  const indexRef = doc(source.db, 'question_index', normSub);
+  try {
+    const statsSnap = await getDoc(statsRef);
+    if (!statsSnap.exists()) {
+      await setDoc(statsRef, { subjectCounts: {}, topicCounts: {}, updatedAt: serverTimestamp() });
+    }
+  } catch {
+    // Non-fatal
+  }
+
+  // Batch insert into target source (up to 100 items = 200 docs + index + stats per batch)
+  const chunkSize = 100;
   for (let i = 0; i < validItems.length; i += chunkSize) {
     const chunk = validItems.slice(i, i + chunkSize);
     const batch = writeBatch(source.db);
+    const chunkDocIds: string[] = [];
+    const chunkTopicCounts: Record<string, number> = {};
+
     chunk.forEach((item) => {
       batch.set(doc(source.db, collName, item.docId), item.publicDoc);
       batch.set(doc(source.db, 'questionKeys', item.docId), item.keyDoc);
+      chunkDocIds.push(item.docId);
+      chunkTopicCounts[item.topic] = (chunkTopicCounts[item.topic] || 0) + 1;
     });
+
+    // Update target source's question_index in the same batch
+    batch.set(
+      indexRef,
+      {
+        subject: normSub,
+        ids: arrayUnion(...chunkDocIds),
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    // Update target source's stats/questionCounts in the same batch
+    const statsUpdates: Record<string, unknown> = {
+      [`subjectCounts.${normSub}`]: increment(chunk.length),
+      updatedAt: serverTimestamp(),
+    };
+    for (const [top, cnt] of Object.entries(chunkTopicCounts)) {
+      statsUpdates[`topicCounts.${normSub}.${top}`] = increment(cnt);
+    }
+    batch.set(statsRef, statsUpdates, { merge: true });
+
     await batch.commit();
     result.imported += chunk.length;
     if (onProgress) onProgress(result.imported, validItems.length);
   }
 
-  // Update target source's question_index and stats document
-  if (result.imported > 0) {
-    try {
-      const indexRef = doc(source.db, 'question_index', normSub);
-      await setDoc(
-        indexRef,
-        {
-          subject: normSub,
-          ids: arrayUnion(...newlyAddedDocIds),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } catch {
-      // Non-fatal
-    }
-
-    try {
-      const statsRef = doc(source.db, 'stats', 'questionCounts');
-      await setDoc(
-        statsRef,
-        {
-          [`subjectCounts.${normSub}`]: increment(result.imported),
-          ...Object.fromEntries(
-            Object.entries(topicCountsAdded).map(([top, cnt]) => [`topicCounts.${normSub}.${top}`, increment(cnt)])
-          ),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } catch {
-      // Non-fatal
-    }
-  }
-
   clearMultiSourceCache();
   return result;
 }
+
+// ─── 6. REBUILD COUNTS & INDEX (COUNT AGGREGATION SYSTEM) ─────────────────────
+export interface RebuildCountsResult {
+  before: {
+    totalQuestions: number;
+    subjectCounts: Record<string, number>;
+    bankBreakdown: Record<string, number>;
+  };
+  after: {
+    totalQuestions: number;
+    subjectCounts: Record<string, number>;
+    bankBreakdown: Record<string, number>;
+  };
+  details: string[];
+}
+
+/**
+ * Recomputes question counts with Firestore count() aggregation (not full reads),
+ * rebuilds question_index for every subject and bank, and writes stats/questionCounts.
+ * Displays before/after numbers.
+ */
+export async function rebuildCountsAndIndex(_adminEmail: string): Promise<RebuildCountsResult> {
+  // 1. Snapshot Before counts
+  const beforeCountsDoc = await getMultiSourceQuestionCounts();
+  const beforeSubjectCounts: Record<string, number> = { ...beforeCountsDoc.subjectCounts };
+  const beforeBankBreakdown: Record<string, number> = {};
+  const sources = getBankSources();
+
+  for (const src of sources) {
+    try {
+      const snap = await getDoc(doc(src.db, 'stats', 'questionCounts'));
+      if (snap.exists()) {
+        const sc = snap.data().subjectCounts || {};
+        beforeBankBreakdown[src.id] = Object.values(sc).reduce((a: number, b: unknown) => a + Number(b || 0), 0);
+      } else {
+        beforeBankBreakdown[src.id] = 0;
+      }
+    } catch {
+      beforeBankBreakdown[src.id] = 0;
+    }
+  }
+
+  const beforeTotal = Object.values(beforeSubjectCounts).reduce((a, b) => a + b, 0);
+
+  const subjects = [
+    'mathematics',
+    'physics',
+    'chemistry',
+    'computer-science',
+    'english',
+    'biology',
+    'analytical-reasoning',
+  ];
+
+  const details: string[] = [];
+
+  // 2. Rebuild each bank
+  for (const src of sources) {
+    const bankSubjects: Record<string, number> = {};
+    const bankTopics: Record<string, Record<string, number>> = {};
+
+    for (const sub of subjects) {
+      bankTopics[sub] = {};
+      const poolColl = getSubjectPoolCollection(sub);
+      const docIdsSet = new Set<string>();
+      const subVariants = Array.from(new Set([sub, formatSubjectName(sub), sub.toLowerCase(), sub.toUpperCase()]));
+
+      // 2a. Check dedicated pool: questions_${sub}
+      try {
+        const poolRef = collection(src.db, poolColl);
+        // Use count() aggregation
+        const countSnap = await getCountFromServer(poolRef);
+        const aggCount = countSnap.data().count;
+
+        if (aggCount > 0) {
+          const docsSnap = await getDocs(query(poolRef, limit(5000)));
+          docsSnap.docs.forEach((d) => {
+            docIdsSet.add(d.id);
+            const data = d.data();
+            const rawTopic = data.topic || data.chapter || 'General Concepts';
+            const canonTopic = normalizeTopicName(sub, rawTopic);
+            bankTopics[sub][canonTopic] = (bankTopics[sub][canonTopic] || 0) + 1;
+          });
+        }
+      } catch {
+        // Non-fatal if collection doesn't exist
+      }
+
+      // 2b. Also check general questions collection (for legacy and bank1)
+      if (src.id === 'legacy' || src.id === 'bank1') {
+        try {
+          const mainRef = collection(src.db, 'questions');
+          const mainCountSnap = await getCountFromServer(
+            query(mainRef, where('subject', 'in', subVariants))
+          );
+          if (mainCountSnap.data().count > 0) {
+            const mainDocsSnap = await getDocs(
+              query(mainRef, where('subject', 'in', subVariants), limit(5000))
+            );
+            mainDocsSnap.docs.forEach((d) => {
+              // Avoid duplicate count if doc already counted in pool
+              if (!docIdsSet.has(d.id)) {
+                docIdsSet.add(d.id);
+                const data = d.data();
+                const rawTopic = data.topic || data.chapter || 'General Concepts';
+                const canonTopic = normalizeTopicName(sub, rawTopic);
+                bankTopics[sub][canonTopic] = (bankTopics[sub][canonTopic] || 0) + 1;
+              }
+            });
+          }
+        } catch {
+          // Non-fatal
+        }
+      }
+
+      // Ensure default taxonomy chapters exist in topic map (starting at count 0 if none)
+      const defaultChapters = getChaptersForSubject(sub);
+      defaultChapters.forEach((ch) => {
+        if (bankTopics[sub][ch.name] === undefined) {
+          bankTopics[sub][ch.name] = 0;
+        }
+      });
+
+      const totalSubCount = docIdsSet.size;
+      bankSubjects[sub] = totalSubCount;
+
+      // 2c. Write question_index/<subject> with updated list of document IDs
+      try {
+        const indexRef = doc(src.db, 'question_index', sub);
+        await setDoc(
+          indexRef,
+          {
+            subject: sub,
+            ids: Array.from(docIdsSet),
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        if (src.id === 'legacy') {
+          const legIndexRef = doc(src.db, 'stats', `questionIndex_${sub}`);
+          await setDoc(
+            legIndexRef,
+            {
+              subject: sub,
+              ids: Array.from(docIdsSet),
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          ).catch(() => {});
+        }
+      } catch (idxErr) {
+        console.warn(`[Rebuild] Could not update question_index/${sub} on ${src.id}:`, idxErr);
+      }
+    }
+
+    // 2d. Write stats/questionCounts document for this bank
+    try {
+      const statsRef = doc(src.db, 'stats', 'questionCounts');
+      await setDoc(statsRef, {
+        subjectCounts: bankSubjects,
+        topicCounts: bankTopics,
+        updatedAt: serverTimestamp(),
+      });
+      const totalBankQ = Object.values(bankSubjects).reduce((a, b) => a + b, 0);
+      details.push(
+        `${src.name} (${src.id}): Indexed ${totalBankQ} questions across ${subjects.length} subjects.`
+      );
+    } catch (statsErr) {
+      console.warn(`[Rebuild] Could not update stats/questionCounts on ${src.id}:`, statsErr);
+    }
+  }
+
+  // 3. Clear all caches
+  clearMultiSourceCache();
+  clearQuestionsCache();
+
+  // 4. Fetch fresh aggregated after stats
+  const afterCountsDoc = await getMultiSourceQuestionCounts();
+  const afterSubjectCounts: Record<string, number> = { ...afterCountsDoc.subjectCounts };
+  const afterBankBreakdown: Record<string, number> = {};
+
+  for (const src of sources) {
+    try {
+      const snap = await getDoc(doc(src.db, 'stats', 'questionCounts'));
+      if (snap.exists()) {
+        const sc = snap.data().subjectCounts || {};
+        afterBankBreakdown[src.id] = Object.values(sc).reduce((a: number, b: unknown) => a + Number(b || 0), 0);
+      } else {
+        afterBankBreakdown[src.id] = 0;
+      }
+    } catch {
+      afterBankBreakdown[src.id] = 0;
+    }
+  }
+
+  const afterTotal = Object.values(afterSubjectCounts).reduce((a, b) => a + b, 0);
+
+  return {
+    before: {
+      totalQuestions: beforeTotal,
+      subjectCounts: beforeSubjectCounts,
+      bankBreakdown: beforeBankBreakdown,
+    },
+    after: {
+      totalQuestions: afterTotal,
+      subjectCounts: afterSubjectCounts,
+      bankBreakdown: afterBankBreakdown,
+    },
+    details,
+  };
+}
+

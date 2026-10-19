@@ -334,7 +334,7 @@ export function AdminOverviewPage() {
 
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-7 gap-2.5">
           {CORE_SUBJECTS.map((subj) => {
-            const count = stats?.subjectCounts?.[subj] ?? 0;
+            const count = stats?.subjectCounts?.[subj] ?? stats?.subjectCounts?.[subj.toLowerCase()] ?? 0;
             return (
               <div
                 key={subj}
