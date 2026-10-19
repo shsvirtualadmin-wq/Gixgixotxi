@@ -236,6 +236,7 @@ export function CrewDashboardPage() {
           <InAppLeaderboard
             currentUser={{
               uid: user.uid,
+              email: user.email || '',
               displayName: sanitizeStudentDisplayName(profile?.displayName || user.displayName, profile?.shortId || user.uid),
               streak: profile?.streak || 0,
               score: profile?.score || 0,

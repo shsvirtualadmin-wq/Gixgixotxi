@@ -235,6 +235,8 @@ export async function executeJoinCrewServer(params: {
     }
 
     const crew = { id: crewSnap.id, ...crewSnap.data() } as CrewDoc;
+    const currentMemberCount = (crew.members || []).length;
+    const isPaid = crew.tier === 'paid';
 
     // 3. Re-evaluate eligibility strictly on the server
     const userStreak = Number(userData.streak ?? user.streak) || 0;

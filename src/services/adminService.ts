@@ -403,6 +403,7 @@ export async function fetchUsersPaginated(options?: {
   startAfterDoc?: QueryDocumentSnapshot<DocumentData> | null;
   role?: string;
   plan?: string;
+  searchQuery?: string;
 }): Promise<PaginatedUsersResult> {
   const startTime = performance.now();
   const ref = collection(db, 'users');
@@ -430,7 +431,17 @@ export async function fetchUsersPaginated(options?: {
       ),
     ]);
 
-    const users = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+    let users = snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserProfile));
+    if (options?.searchQuery) {
+      const qLower = options.searchQuery.toLowerCase().trim();
+      users = users.filter((u) =>
+        (u.email && u.email.toLowerCase().includes(qLower)) ||
+        (u.displayName && u.displayName.toLowerCase().includes(qLower)) ||
+        (u.name && u.name.toLowerCase().includes(qLower)) ||
+        (u.shortId && u.shortId.toLowerCase().includes(qLower)) ||
+        (u.uid && u.uid.toLowerCase().includes(qLower))
+      );
+    }
     const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
     const hasMore = snap.docs.length >= count;
     const queryTimeMs = Math.round(performance.now() - startTime);

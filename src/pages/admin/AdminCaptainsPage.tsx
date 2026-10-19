@@ -485,7 +485,7 @@ export function AdminCaptainsPage() {
                       <div className="text-[10px] text-[var(--muted)] font-mono">{st.studentEmail}</div>
                     </div>
                     <span className="text-[10px] text-[var(--muted)] font-mono">
-                      {st.registeredAt ? new Date(st.registeredAt).toLocaleDateString() : 'Active'}
+                      {st.dateJoined ? new Date(st.dateJoined).toLocaleDateString() : 'Active'}
                     </span>
                   </div>
                 ))

@@ -275,6 +275,7 @@ export interface PaymentRequest {
   userId: string;
   userEmail?: string;
   displayName?: string;
+  userName?: string;
   amount: number;
   plan: 'pro' | 'large_crew' | string;
   crewId?: string | null;
