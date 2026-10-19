@@ -17,6 +17,7 @@ import {
   ArrowLeft,
   Activity,
   Award,
+  Coins,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -41,6 +42,7 @@ const PRIMARY_NAV: AdminNavItem[] = [
 ];
 
 const SECONDARY_NAV: AdminNavItem[] = [
+  { to: '/admin/kobans', label: 'Kobans', icon: Coins },
   { to: '/admin/applications', label: 'Applications', icon: FileCheck2 },
   { to: '/admin/payments', label: 'Payments', icon: CreditCard },
   { to: '/admin/audit-logs', label: 'Audit log', icon: Terminal },

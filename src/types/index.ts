@@ -341,3 +341,34 @@ export interface CrewApplication {
   approvedBy?: string;
   rejectionReason?: string;
 }
+
+export interface WalletLedgerEntry {
+  id: string;
+  type: 'grant' | 'deduction' | 'purchase' | 'captain_allotment';
+  amount: number;
+  balanceAfter?: number;
+  reason?: string;
+  itemId?: string;
+  itemName?: string;
+  adminEmail?: string;
+  monthKey?: string;
+  timestamp: Timestamp | { seconds: number } | string | null | unknown;
+}
+
+export interface KobanRequest {
+  id: string;
+  userId: string;
+  userEmail?: string;
+  userName?: string;
+  amount: number;
+  pkrAmount: number;
+  transactionId: string;
+  paymentMethod: string;
+  status: 'pending' | 'approved' | 'rejected';
+  note?: string;
+  createdAt: Timestamp | { seconds: number } | string | null | unknown;
+  approvedAt?: Timestamp | { seconds: number } | string | null | unknown;
+  approvedBy?: string;
+  grantedAmount?: number;
+  rejectionReason?: string;
+}

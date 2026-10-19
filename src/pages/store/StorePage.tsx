@@ -1,4 +1,5 @@
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
@@ -7,7 +8,19 @@ import { KobanIcon, KobanAmount } from '@/components/koban/KobanIcon';
 import { COSMETICS_CATALOG, type CosmeticItem } from '@/data/cosmeticsCatalog';
 import { CosmeticFrame, CosmeticNameplate, CosmeticEffect } from '@/components/koban/CosmeticRenderers';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
-import { Plus, Check, ArrowRight, Zap, Info } from 'lucide-react';
+import { GetKobansModal } from '@/components/koban/GetKobansModal';
+import { CoinBurstEffect } from '@/components/koban/CoinBurstEffect';
+import {
+  Plus,
+  Check,
+  ArrowRight,
+  Zap,
+  Info,
+  Loader2,
+  X,
+  AlertCircle,
+  Sparkles,
+} from 'lucide-react';
 import type { CosmeticType } from '@/types';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
@@ -15,11 +28,29 @@ export function StorePage() {
   const { user } = useAuth();
   const { profile } = useUserProfile();
   const navigate = useNavigate();
-  const { balance, owned, equipped, equipCosmetic } = useWallet();
+  const location = useLocation();
+  const { balance, owned, equipped, equipCosmetic, purchaseCosmetic } = useWallet();
 
   const [activeTab, setActiveTab] = useState<'all' | CosmeticType>('all');
   const [equippingId, setEquippingId] = useState<string | null>(null);
   const [equipSuccess, setEquipSuccess] = useState<string | null>(null);
+
+  // Purchase state
+  const [pendingPurchaseItem, setPendingPurchaseItem] = useState<CosmeticItem | null>(null);
+  const [purchasing, setPurchasing] = useState(false);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  const [showCoinBurst, setShowCoinBurst] = useState(false);
+
+  // Get Kobans modal state
+  const [isGetKobansOpen, setIsGetKobansOpen] = useState(false);
+  const [getKobansInitialAmount, setGetKobansInitialAmount] = useState<number>(1000);
+
+  // Open Get Kobans modal if path is /store/get-kobans
+  useEffect(() => {
+    if (location.pathname === '/store/get-kobans') {
+      setIsGetKobansOpen(true);
+    }
+  }, [location.pathname]);
 
   const isLoggedIn = Boolean(user?.uid);
   const cleanDisplayName = sanitizeStudentDisplayName(
@@ -50,14 +81,181 @@ export function StorePage() {
     }
   };
 
+  const handleInitiateBuy = (item: CosmeticItem) => {
+    if (!isLoggedIn) {
+      navigate('/login?redirect=/store');
+      return;
+    }
+
+    if (balance < item.priceKobans) {
+      // Prompt Get Kobans modal with the required amount rounded up to multiple of 10
+      const deficit = item.priceKobans - balance;
+      const targetAmount = Math.max(500, Math.ceil(deficit / 10) * 10);
+      setGetKobansInitialAmount(targetAmount);
+      setIsGetKobansOpen(true);
+      return;
+    }
+
+    setPurchaseError(null);
+    setPendingPurchaseItem(item);
+  };
+
+  const handleConfirmPurchase = async () => {
+    if (!pendingPurchaseItem) return;
+    setPurchasing(true);
+    setPurchaseError(null);
+
+    try {
+      await purchaseCosmetic(pendingPurchaseItem);
+      const boughtItem = pendingPurchaseItem;
+      setPendingPurchaseItem(null);
+      setShowCoinBurst(true);
+      setEquipSuccess(`Unlocked ${boughtItem.name}! Tap 'Equip' to wear it on your profile.`);
+      setTimeout(() => setEquipSuccess(null), 3500);
+    } catch (err: unknown) {
+      setPurchaseError((err as Error).message || 'Purchase failed');
+    } finally {
+      setPurchasing(false);
+    }
+  };
+
   return (
-    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pb-24">
+    <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pb-24 overflow-x-hidden">
       <PageMeta
         title="Boardly Store & Kobans — Custom Cosmetics & Anime Aesthetics"
         description="Browse exclusive dot-matrix avatar frames, animated nameplates, and aura effects. Powered by the Kobans economy."
       />
 
-      <div className="boardly-container max-w-5xl mx-auto px-4 sm:px-6 pt-6 sm:pt-10 space-y-8">
+      {/* Coin Burst Animation */}
+      <CoinBurstEffect active={showCoinBurst} onComplete={() => setShowCoinBurst(false)} />
+
+      {/* Get Kobans Modal */}
+      <GetKobansModal
+        isOpen={isGetKobansOpen}
+        onClose={() => {
+          setIsGetKobansOpen(false);
+          if (location.pathname === '/store/get-kobans') {
+            navigate('/store', { replace: true });
+          }
+        }}
+        initialAmount={getKobansInitialAmount}
+      />
+
+      {/* Confirm Purchase Modal */}
+      {pendingPurchaseItem && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="relative w-full max-w-sm bg-[var(--card)] border border-[var(--border)] rounded-3xl p-6 shadow-2xl space-y-5 animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <div className="flex items-center gap-2">
+                <Sparkles size={18} className="text-[#FFD66B]" />
+                <h3 className="font-heading font-extrabold text-base text-[var(--text)]">
+                  Confirm Purchase
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPendingPurchaseItem(null)}
+                className="text-[var(--muted)] hover:text-white"
+                title="Cancel"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Item Preview */}
+            <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center gap-3">
+              <div className="w-14 h-14 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0 overflow-hidden">
+                {pendingPurchaseItem.type === 'frame' && (
+                  <CosmeticFrame itemId={pendingPurchaseItem.id} size={48}>
+                    <MatrixAvatar avatarKey="skull-01" variant="red-on-black" size={38} />
+                  </CosmeticFrame>
+                )}
+                {pendingPurchaseItem.type === 'nameplate' && (
+                  <div className="scale-75">
+                    <CosmeticNameplate itemId={pendingPurchaseItem.id} name="Sample" />
+                  </div>
+                )}
+                {pendingPurchaseItem.type === 'effect' && (
+                  <CosmeticEffect itemId={pendingPurchaseItem.id} size={48}>
+                    <MatrixAvatar avatarKey="skull-01" variant="red-on-black" size={36} />
+                  </CosmeticEffect>
+                )}
+              </div>
+
+              <div className="min-w-0">
+                <h4 className="font-heading font-bold text-sm text-[var(--text)] truncate">
+                  {pendingPurchaseItem.name}
+                </h4>
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <KobanAmount value={pendingPurchaseItem.priceKobans} iconSize={14} className="text-xs text-[#FFD66B]" />
+                  <span className="text-[10px] text-[var(--muted)] font-mono">
+                    (PKR {Math.round(pendingPurchaseItem.priceKobans / 10)})
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Balance Calculation */}
+            <div className="space-y-1.5 text-xs font-mono p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+              <div className="flex justify-between text-[var(--muted)]">
+                <span>Current Balance:</span>
+                <span className="font-bold text-[var(--text)]">{balance.toLocaleString()} Kobans</span>
+              </div>
+              <div className="flex justify-between text-[var(--muted)]">
+                <span>Item Price:</span>
+                <span className="font-bold text-[#FFD66B]">-{pendingPurchaseItem.priceKobans.toLocaleString()} Kobans</span>
+              </div>
+              <div className="flex justify-between pt-1 border-t border-[var(--border)] font-bold">
+                <span className="text-[var(--text)]">New Balance:</span>
+                <span className="text-emerald-400">
+                  {(balance - pendingPurchaseItem.priceKobans).toLocaleString()} Kobans
+                </span>
+              </div>
+            </div>
+
+            {purchaseError && (
+              <div className="p-3 rounded-xl bg-red-950/40 border border-red-500 text-red-300 text-xs flex items-center gap-2">
+                <AlertCircle size={14} className="shrink-0" />
+                <span>{purchaseError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={() => setPendingPurchaseItem(null)}
+                className="btn-outline flex-1 py-2.5 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={purchasing}
+                onClick={handleConfirmPurchase}
+                className="btn-red flex-1 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm disabled:opacity-50"
+              >
+                {purchasing ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Unlock Item</span>
+                    <ArrowRight size={14} />
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="boardly-container max-w-5xl mx-auto px-4 sm:px-6 pt-6 sm:pt-10 space-y-6 sm:space-y-8">
         {/* ─── STORE HEADER ─────────────────────────────────────────────────── */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-[var(--border)]">
           <div className="space-y-1.5">
@@ -83,13 +281,17 @@ export function StorePage() {
                   <span className="text-[10px] text-[var(--muted)] font-heading uppercase tracking-wider">Your Balance</span>
                   <KobanAmount value={balance} iconSize={18} className="text-sm sm:text-base text-[#FFD66B]" />
                 </div>
-                <Link
-                  to="/store/get-kobans"
-                  className="btn-red text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 shadow-sm"
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGetKobansInitialAmount(1000);
+                    setIsGetKobansOpen(true);
+                  }}
+                  className="btn-red text-xs px-3.5 py-2 rounded-xl font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
                 >
                   <Plus size={14} />
                   <span>Get Kobans</span>
-                </Link>
+                </button>
               </div>
             ) : (
               <Link
@@ -104,8 +306,8 @@ export function StorePage() {
         </div>
 
         {/* ─── LIVE PREVIEW BANNER ─────────────────────────────────────────── */}
-        <div className="p-5 rounded-2xl bg-gradient-to-r from-[rgba(215,25,33,0.08)] via-[rgba(232,163,23,0.06)] to-transparent border border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-4 min-w-0">
+        <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[rgba(215,25,33,0.08)] via-[rgba(232,163,23,0.06)] to-transparent border border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-4 min-w-0 w-full sm:w-auto">
             <div className="relative shrink-0">
               <CosmeticEffect itemId={equipped.effect || 'none'} size={68}>
                 <CosmeticFrame itemId={equipped.frame || 'none'} size={68}>
@@ -118,7 +320,7 @@ export function StorePage() {
               </CosmeticEffect>
             </div>
             <div className="min-w-0 space-y-1">
-              <span className="text-[11px] text-[var(--muted)] uppercase font-heading font-semibold">Your Equipped Loadout</span>
+              <span className="text-[11px] text-[var(--muted)] uppercase font-heading font-semibold block">Your Equipped Loadout</span>
               <CosmeticNameplate
                 itemId={equipped.nameplate || 'none'}
                 name={cleanDisplayName}
@@ -128,7 +330,7 @@ export function StorePage() {
             </div>
           </div>
 
-          <div className="text-xs text-[var(--muted)] text-center sm:text-right font-heading">
+          <div className="text-xs text-[var(--muted)] text-center sm:text-right font-heading shrink-0">
             <span className="block text-[var(--text)] font-semibold">Instant Leaderboard Sync</span>
             <span>Visible to all students in squads &amp; rankings</span>
           </div>
@@ -169,11 +371,12 @@ export function StorePage() {
           {filteredItems.map((item) => {
             const isOwned = owned.includes(item.id);
             const isEquipped = equipped[item.type] === item.id;
+            const hasEnoughKobans = balance >= item.priceKobans;
 
             return (
               <div
                 key={item.id}
-                className={`p-5 rounded-2xl bg-[var(--card)] border transition-all flex flex-col justify-between gap-4 relative overflow-hidden ${
+                className={`p-4 sm:p-5 rounded-2xl bg-[var(--card)] border transition-all flex flex-col justify-between gap-4 relative overflow-hidden ${
                   isEquipped
                     ? 'border-[#D71920] shadow-[0_0_12px_rgba(215,25,33,0.2)]'
                     : isOwned
@@ -181,7 +384,7 @@ export function StorePage() {
                     : 'border-[var(--border)] hover:border-[rgba(232,163,23,0.5)]'
                 }`}
               >
-                {/* Rarity and Animation Badges */}
+                {/* Rarity and Badges */}
                 <div className="flex items-center justify-between gap-2">
                   <span
                     className={`text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full border ${
@@ -217,19 +420,19 @@ export function StorePage() {
                 </div>
 
                 {/* Interactive Preview Canvas */}
-                <div className="h-32 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center p-3 relative overflow-hidden">
+                <div className="h-28 sm:h-32 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center p-3 relative overflow-hidden">
                   {item.type === 'frame' && (
-                    <CosmeticFrame itemId={item.id} size={76}>
+                    <CosmeticFrame itemId={item.id} size={74}>
                       <MatrixAvatar
                         avatarKey={profile?.avatarKey || 'skull-01'}
                         variant={profile?.avatarVariant || 'red-on-black'}
-                        size={58}
+                        size={56}
                       />
                     </CosmeticFrame>
                   )}
 
                   {item.type === 'nameplate' && (
-                    <div className="scale-110">
+                    <div className="scale-105 sm:scale-110">
                       <CosmeticNameplate
                         itemId={item.id}
                         name={cleanDisplayName}
@@ -240,11 +443,11 @@ export function StorePage() {
                   )}
 
                   {item.type === 'effect' && (
-                    <CosmeticEffect itemId={item.id} size={84}>
+                    <CosmeticEffect itemId={item.id} size={82}>
                       <MatrixAvatar
                         avatarKey={profile?.avatarKey || 'skull-01'}
                         variant={profile?.avatarVariant || 'red-on-black'}
-                        size={56}
+                        size={54}
                       />
                     </CosmeticEffect>
                   )}
@@ -253,10 +456,10 @@ export function StorePage() {
                 {/* Details */}
                 <div className="space-y-1">
                   <div className="flex items-center justify-between">
-                    <h3 className="font-heading font-bold text-base text-[var(--text)]">{item.name}</h3>
+                    <h3 className="font-heading font-bold text-sm sm:text-base text-[var(--text)]">{item.name}</h3>
                     <KobanAmount value={item.priceKobans} iconSize={16} className="text-[#FFD66B]" />
                   </div>
-                  <p className="text-xs text-[var(--muted)] leading-relaxed">{item.description}</p>
+                  <p className="text-xs text-[var(--muted)] leading-relaxed line-clamp-2">{item.description}</p>
                 </div>
 
                 {/* Action CTA */}
@@ -285,13 +488,23 @@ export function StorePage() {
                     >
                       {equippingId === item.id ? 'Saving...' : isEquipped ? 'Unequip' : 'Equip'}
                     </button>
-                  ) : (
-                    <Link
-                      to="/store/get-kobans"
-                      className="btn-red text-xs px-4 py-1.5 rounded-xl font-bold flex items-center gap-1.5 shadow-sm"
+                  ) : hasEnoughKobans ? (
+                    <button
+                      type="button"
+                      onClick={() => handleInitiateBuy(item)}
+                      className="btn-red text-xs px-4 py-1.5 rounded-xl font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
                     >
-                      <span>Buy Item</span>
-                    </Link>
+                      <span>Buy for {item.priceKobans.toLocaleString()}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => handleInitiateBuy(item)}
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-[#E8A317]/15 border border-[#E8A317]/40 text-[#FFD66B] hover:bg-[#E8A317]/25 transition-all flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Plus size={13} />
+                      <span>Get Kobans</span>
+                    </button>
                   )}
                 </div>
               </div>
@@ -300,8 +513,8 @@ export function StorePage() {
         </div>
 
         {/* ─── KOBAN NOTE ──────────────────────────────────────────────────── */}
-        <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--muted)] flex items-center gap-2.5">
-          <Info size={16} className="text-[#E8A317] shrink-0" />
+        <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--muted)] flex items-start sm:items-center gap-2.5">
+          <Info size={16} className="text-[#E8A317] shrink-0 mt-0.5 sm:mt-0" />
           <span>
             Kobans are for cosmetic profile customization only and are non-refundable. Standard rate: 10 Kobans = PKR 1. Minimum purchase is 500 Kobans (PKR 50).
           </span>

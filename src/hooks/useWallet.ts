@@ -125,6 +125,24 @@ export function useWallet() {
     [user?.uid]
   );
 
+  /**
+   * Purchases a cosmetic item via transactional balance deduction and ledger writing.
+   */
+  const purchaseCosmetic = useCallback(
+    async (item: import('@/data/cosmeticsCatalog').CosmeticItem) => {
+      if (!user?.uid) throw new Error('Must be logged in to purchase cosmetics');
+      const { purchaseCosmeticItem } = await import('@/services/kobanService');
+      const result = await purchaseCosmeticItem(user.uid, item);
+      setWallet((prev) => ({
+        ...prev,
+        balance: result.newBalance,
+        owned: prev.owned.includes(item.id) ? prev.owned : [...prev.owned, item.id],
+      }));
+      return result;
+    },
+    [user?.uid]
+  );
+
   return {
     wallet,
     balance: wallet.balance,
@@ -132,5 +150,6 @@ export function useWallet() {
     equipped: wallet.equipped,
     loading,
     equipCosmetic,
+    purchaseCosmetic,
   };
 }
