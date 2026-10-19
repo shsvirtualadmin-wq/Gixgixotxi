@@ -90,6 +90,7 @@ export interface Question {
   createdAt: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
   updatedAt: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
   createdBy: string;
+  sourceId?: string;
   // Legacy optional fields for backward compatibility
   topic?: string;
   stem?: string;

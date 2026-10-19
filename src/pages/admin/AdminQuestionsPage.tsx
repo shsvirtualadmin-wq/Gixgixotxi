@@ -19,8 +19,20 @@ import {
   ArrowLeft,
   FolderEdit,
   ChevronRight,
+  Lock,
+  Unlock,
+  AlertTriangle,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  ENABLE_MULTI_SOURCE_BANK,
+  getBankSources,
+  isBank1Unlocked,
+  unlockBank1,
+  lockBank1,
+  subscribeFailingSources,
+} from '@/config/questionBankSources';
+import { parseQuestionCompoundId } from '@/services/multiSourceQuestionBank';
 import { MathText, validateMath } from '@/components/ui/MathText';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
 import { isQuotaExhaustedError } from '@/utils/quota';
@@ -222,6 +234,28 @@ export function AdminQuestionsPage() {
   const [importProgress, setImportProgress] = useState<{ current: number; total: number } | null>(null);
   const [importResult, setImportResult] = useState<{ imported: number; duplicatesSkipped: number } | null>(null);
 
+  // Multi-source bank state
+  const bankSources = useMemo(() => getBankSources(), []);
+  const [selectedSaveSource, setSelectedSaveSource] = useState<string>('bank1');
+  const [importTargetSource, setImportTargetSource] = useState<string>('bank1');
+  const [editingQuestionSourceId, setEditingQuestionSourceId] = useState<string>('bank1');
+
+  // Bank 1 dedicated auth unlock state
+  const [isBank1UnlockedState, setIsBank1UnlockedState] = useState<boolean>(isBank1Unlocked());
+  const [unlockModalOpen, setUnlockModalOpen] = useState(false);
+  const [unlockEmail, setUnlockEmail] = useState('');
+  const [unlockPassword, setUnlockPassword] = useState('');
+  const [unlockError, setUnlockError] = useState<string | null>(null);
+  const [unlockLoading, setUnlockLoading] = useState(false);
+
+  // Source health failure listener
+  const [failingSources, setFailingSources] = useState<{ id: string; name: string; error?: string }[]>([]);
+  useEffect(() => {
+    return subscribeFailingSources(setFailingSources);
+  }, []);
+
+  const [pageIndex, setPageIndex] = useState(0);
+
   const subjects = useMemo(() => getAllSubjects(), []);
 
   // ─── LOAD SUBJECT COUNTS ────────────────────────────────────────────────────
@@ -260,6 +294,7 @@ export function AdminQuestionsPage() {
 
     setLoading(true);
     setError(null);
+    setPageIndex(0);
     try {
       const res = await fetchPoolQuestionsPaginated({
         subject: selectedSubject,
@@ -268,6 +303,7 @@ export function AdminQuestionsPage() {
         status: statusFilter !== 'all' ? statusFilter : undefined,
         search: debouncedSearch,
         limitCount: 20,
+        pageIndex: 0,
       });
 
       setQuestions(res.questions);
@@ -340,9 +376,11 @@ export function AdminQuestionsPage() {
   }, [activeTab, loadHealth, loadReports]);
 
   const handleLoadMore = async () => {
-    if (!lastDoc || loadingMore || !selectedSubject) return;
+    if (loadingMore || !selectedSubject) return;
+    if (!ENABLE_MULTI_SOURCE_BANK && !lastDoc) return;
     setLoadingMore(true);
     try {
+      const nextIdx = pageIndex + 1;
       const res = await fetchPoolQuestionsPaginated({
         subject: selectedSubject,
         topic: selectedTopic !== 'all' ? selectedTopic : undefined,
@@ -351,19 +389,22 @@ export function AdminQuestionsPage() {
         search: debouncedSearch,
         limitCount: 20,
         startAfterDoc: lastDoc,
+        pageIndex: nextIdx,
       });
       setQuestions((prev) => [...prev, ...res.questions]);
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
+      setPageIndex(nextIdx);
     } catch (err: unknown) {
       console.warn('Failed to load more questions:', err);
-    } finally {
       setLoadingMore(false);
     }
   };
 
   // ─── ADD / EDIT MODAL ───────────────────────────────────────────────────────
   const handleOpenAdd = () => {
+    setSelectedSaveSource('bank1');
+    setEditingQuestionSourceId('bank1');
     const defaultSub = selectedSubject || 'mathematics';
     const defaultTopic =
       selectedTopic !== 'all' ? selectedTopic : topics[0]?.name || 'Calculus & Differentiation';
@@ -389,6 +430,10 @@ export function AdminQuestionsPage() {
   };
 
   const handleOpenEdit = async (q: Question) => {
+    const qSource = q.sourceId || parseQuestionCompoundId(q.id).sourceId || 'legacy';
+    setEditingQuestionSourceId(qSource);
+    setSelectedSaveSource(qSource);
+
     const sub = q.subject || selectedSubject || 'mathematics';
     let correct = typeof q.correct === 'number' ? q.correct : 0;
     let explain = q.explain || q.explanation || '';
@@ -431,6 +476,12 @@ export function AdminQuestionsPage() {
     e.preventDefault();
     if (!editingQuestion || !user?.email) return;
 
+    const targetSource = editingQuestion.id ? editingQuestionSourceId : selectedSaveSource;
+    if (ENABLE_MULTI_SOURCE_BANK && targetSource === 'bank1' && !isBank1Unlocked()) {
+      setUnlockModalOpen(true);
+      return;
+    }
+
     // Validate math
     const qMathVal = validateMath(editingQuestion.q);
     if (!qMathVal.ok) {
@@ -453,35 +504,53 @@ export function AdminQuestionsPage() {
 
     setSavingQuestion(true);
     try {
-      const isPool = isSubjectPoolSupported(editingQuestion.subject);
-      if (isPool) {
-        await saveSubjectPoolQuestion(user.email, {
-          id: editingQuestion.id,
-          subject: editingQuestion.subject,
-          topic: finalTopic,
-          text: editingQuestion.q,
-          options: editingQuestion.options,
-          correct: editingQuestion.correct,
-          explain: editingQuestion.explain,
-          difficulty: editingQuestion.difficulty,
-          status: editingQuestion.status,
-        });
+      if (ENABLE_MULTI_SOURCE_BANK) {
+        await saveSubjectPoolQuestion(
+          user.email,
+          {
+            id: editingQuestion.id,
+            subject: editingQuestion.subject,
+            topic: finalTopic,
+            text: editingQuestion.q,
+            options: editingQuestion.options,
+            correct: editingQuestion.correct,
+            explain: editingQuestion.explain,
+            difficulty: editingQuestion.difficulty,
+            status: editingQuestion.status,
+          },
+          targetSource
+        );
       } else {
-        await saveQuestion(user.email, {
-          id: editingQuestion.id,
-          subject: editingQuestion.subject,
-          chapter: finalTopic,
-          difficulty: editingQuestion.difficulty,
-          status: editingQuestion.status,
-          active: editingQuestion.active,
-          q: editingQuestion.q,
-          options: editingQuestion.options,
-          tags: editingQuestion.tags,
-          source: editingQuestion.source,
-          year: editingQuestion.year,
-          correct: editingQuestion.correct,
-          explain: editingQuestion.explain,
-        });
+        const isPool = isSubjectPoolSupported(editingQuestion.subject);
+        if (isPool) {
+          await saveSubjectPoolQuestion(user.email, {
+            id: editingQuestion.id,
+            subject: editingQuestion.subject,
+            topic: finalTopic,
+            text: editingQuestion.q,
+            options: editingQuestion.options,
+            correct: editingQuestion.correct,
+            explain: editingQuestion.explain,
+            difficulty: editingQuestion.difficulty,
+            status: editingQuestion.status,
+          });
+        } else {
+          await saveQuestion(user.email, {
+            id: editingQuestion.id,
+            subject: editingQuestion.subject,
+            chapter: finalTopic,
+            difficulty: editingQuestion.difficulty,
+            status: editingQuestion.status,
+            active: editingQuestion.active,
+            q: editingQuestion.q,
+            options: editingQuestion.options,
+            tags: editingQuestion.tags,
+            source: editingQuestion.source,
+            year: editingQuestion.year,
+            correct: editingQuestion.correct,
+            explain: editingQuestion.explain,
+          });
+        }
       }
 
       setIsEditModalOpen(false);
@@ -489,9 +558,10 @@ export function AdminQuestionsPage() {
       await loadData();
       if (selectedSubject) await loadTopics(selectedSubject);
       await loadSubjectCounts();
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Failed to save question:', err);
-      alert('Could not save question. Please check permissions and database connectivity.');
+      const msg = (err as { message?: string })?.message || 'Could not save question. Please check permissions and database connectivity.';
+      alert(msg);
     } finally {
       setSavingQuestion(false);
     }
@@ -499,9 +569,14 @@ export function AdminQuestionsPage() {
 
   const handleConfirmDelete = async () => {
     if (!questionToDelete || !user?.email) return;
+    const qSource = questionToDelete.sourceId || parseQuestionCompoundId(questionToDelete.id).sourceId || 'legacy';
+    if (ENABLE_MULTI_SOURCE_BANK && qSource === 'bank1' && !isBank1Unlocked()) {
+      setUnlockModalOpen(true);
+      return;
+    }
     try {
       const sub = questionToDelete.subject || selectedSubject || 'mathematics';
-      if (isSubjectPoolSupported(sub)) {
+      if (ENABLE_MULTI_SOURCE_BANK || isSubjectPoolSupported(sub)) {
         await deletePoolQuestion(user.email, sub, questionToDelete.id);
       } else {
         await deleteQuestion(user.email, questionToDelete.id);
@@ -512,6 +587,29 @@ export function AdminQuestionsPage() {
       await loadSubjectCounts();
     } catch (err) {
       console.error('Failed to delete question:', err);
+    }
+  };
+
+  const handleUnlockSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!unlockEmail.trim() || !unlockPassword) {
+      setUnlockError('Please enter both email and password.');
+      return;
+    }
+    setUnlockLoading(true);
+    setUnlockError(null);
+    try {
+      await unlockBank1(unlockEmail.trim(), unlockPassword);
+      setIsBank1UnlockedState(true);
+      setUnlockPassword('');
+      setUnlockModalOpen(false);
+      setBatchSuccessMessage('Question Bank 1 unlocked successfully for this session!');
+      setTimeout(() => setBatchSuccessMessage(null), 3500);
+    } catch (err: unknown) {
+      const e = err as { message?: string };
+      setUnlockError(e?.message || 'Invalid Bank 1 admin credentials. Check your email and password.');
+    } finally {
+      setUnlockLoading(false);
     }
   };
 
@@ -916,6 +1014,12 @@ export function AdminQuestionsPage() {
 
   const handleExecuteImport = async () => {
     if (dryRunCandidates.length === 0 || !user?.email) return;
+
+    if (ENABLE_MULTI_SOURCE_BANK && importTargetSource === 'bank1' && !isBank1Unlocked()) {
+      setUnlockModalOpen(true);
+      return;
+    }
+
     setImportProgress({ current: 0, total: dryRunCandidates.length });
     try {
       const effectiveTopic = (
@@ -925,7 +1029,7 @@ export function AdminQuestionsPage() {
       ).trim() || 'General Concepts';
 
       const isPool = isSubjectPoolSupported(importSubject);
-      if (isPool) {
+      if (ENABLE_MULTI_SOURCE_BANK || isPool) {
         const rawItems = dryRunCandidates.map((c) => ({
           subject: c.question.subject || importSubject,
           topic: c.question.chapter || effectiveTopic,
@@ -944,7 +1048,8 @@ export function AdminQuestionsPage() {
           rawItems,
           (done, total) => {
             setImportProgress({ current: done, total });
-          }
+          },
+          ENABLE_MULTI_SOURCE_BANK ? importTargetSource : undefined
         );
         setImportResult({ imported: res.imported, duplicatesSkipped: res.duplicatesSkipped });
       } else {
@@ -981,10 +1086,32 @@ export function AdminQuestionsPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {ENABLE_MULTI_SOURCE_BANK && (
+            <button
+              type="button"
+              onClick={() => {
+                if (isBank1UnlockedState) {
+                  lockBank1().then(() => setIsBank1UnlockedState(false));
+                } else {
+                  setUnlockModalOpen(true);
+                }
+              }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-[12px] border text-[13px] font-heading font-semibold transition-colors cursor-pointer ${
+                isBank1UnlockedState
+                  ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
+                  : 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+              }`}
+              title={isBank1UnlockedState ? 'Bank 1 editing unlocked. Click to lock session.' : 'Click to unlock Bank 1 editing for this session'}
+            >
+              {isBank1UnlockedState ? <Unlock size={14} /> : <Lock size={14} />}
+              <span>{isBank1UnlockedState ? 'Bank 1 Unlocked' : 'Unlock Bank 1'}</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={handleOpenAdd}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold hover:opacity-90 transition-opacity"
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold hover:opacity-90 transition-opacity cursor-pointer"
           >
             <Plus size={15} />
             <span>Add MCQ</span>
@@ -993,7 +1120,7 @@ export function AdminQuestionsPage() {
           <button
             type="button"
             onClick={() => setActiveTab('import')}
-            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] border text-[13px] font-heading transition-colors ${
+            className={`flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] border text-[13px] font-heading transition-colors cursor-pointer ${
               activeTab === 'import'
                 ? 'border-[var(--text)] bg-[var(--card-2)] text-[var(--text)] font-semibold'
                 : 'border-[var(--border)] bg-[var(--card)] text-[var(--muted)] hover:text-[var(--text)]'
@@ -1007,7 +1134,7 @@ export function AdminQuestionsPage() {
             type="button"
             onClick={loadData}
             disabled={loading}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-2 rounded-[12px] bg-[var(--card)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
           >
             <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
             <span className="hidden sm:inline">Refresh</span>
@@ -1061,6 +1188,22 @@ export function AdminQuestionsPage() {
           ) : null}
         </button>
       </div>
+
+      {/* Failing source banner (Requirement 6: Admin sees small banner naming the failing source) */}
+      {failingSources.length > 0 && (
+        <div className="p-3.5 rounded-[14px] bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-heading flex items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-rose-400 shrink-0" />
+            <span>
+              <strong>Bank Source Issue:</strong> Failing source(s):{' '}
+              <span className="font-semibold text-white underline decoration-rose-400">
+                {failingSources.map((s) => `${s.name} (${s.id})`).join(', ')}
+              </span>
+              . The app continues serving and fetching questions from all other active bank sources.
+            </span>
+          </div>
+        </div>
+      )}
 
       {batchSuccessMessage && (
         <div className="p-3.5 rounded-[12px] bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-sm flex items-center gap-2">
@@ -1452,6 +1595,11 @@ export function AdminQuestionsPage() {
                         {q.active === false && (
                           <span className="text-[10px] font-heading px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
                             Archived
+                          </span>
+                        )}
+                        {ENABLE_MULTI_SOURCE_BANK && (
+                          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--accent)] font-semibold bg-[var(--accent)]/5">
+                            {q.sourceId || parseQuestionCompoundId(q.id).sourceId}
                           </span>
                         )}
                       </div>
@@ -1872,6 +2020,26 @@ export function AdminQuestionsPage() {
                 )}
               </div>
             </div>
+
+            {ENABLE_MULTI_SOURCE_BANK && (
+              <div className="pt-2 border-t border-[var(--border)]">
+                <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                  Save to Question Bank Source (defaults to bank1):
+                </label>
+                <select
+                  value={importTargetSource}
+                  onChange={(e) => setImportTargetSource(e.target.value)}
+                  className="w-full px-3 py-2 rounded-[10px] bg-[var(--card)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                >
+                  {bankSources.map((source) => (
+                    <option key={source.id} value={source.id}>
+                      {source.name} {source.id === 'bank1' ? '★ (Default)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <p className="text-[11px] text-[var(--muted)] italic">
               Note: If your CSV rows contain "subject" or "topic"/"chapter" columns, those row values will be preserved. Otherwise, questions will be saved under the chosen subject pool and topic above. Duplicates are skipped on import.
             </p>
@@ -2111,6 +2279,38 @@ export function AdminQuestionsPage() {
               {/* TAB 1: QUESTION CONTENT */}
               {modalTab === 'question' && (
                 <div className="space-y-4 animate-fadeIn">
+                  {/* Bank Source Destination Selector (Requirement 7 & 8) */}
+                  {ENABLE_MULTI_SOURCE_BANK && (
+                    <div className="p-3 rounded-[14px] bg-[var(--card-2)] border border-[var(--border)]">
+                      <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                        Save to Question Bank Source:
+                      </label>
+                      {editingQuestion.id ? (
+                        <div className="flex items-center justify-between text-[12px] font-heading text-[var(--text)]">
+                          <span>
+                            Editing existing question on source:{' '}
+                            <strong className="text-[var(--accent)]">
+                              {bankSources.find((s) => s.id === editingQuestionSourceId)?.name || editingQuestionSourceId}
+                            </strong>
+                          </span>
+                          <span className="text-[11px] text-[var(--muted)]">(Preserves source of origin)</span>
+                        </div>
+                      ) : (
+                        <select
+                          value={selectedSaveSource}
+                          onChange={(e) => setSelectedSaveSource(e.target.value)}
+                          className="w-full px-3 py-2 rounded-[10px] bg-[var(--card)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                        >
+                          {bankSources.map((source) => (
+                            <option key={source.id} value={source.id}>
+                              {source.name} {source.id === 'bank1' ? '★ (Default)' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </div>
+                  )}
+
                   {/* Subject and Topic (Subject first, then Topic: pick existing or type new) */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
@@ -2693,6 +2893,98 @@ export function AdminQuestionsPage() {
                   className="px-4 py-2 rounded-[12px] border border-[var(--text)] bg-[var(--text)] text-[var(--bg)] text-[13px] font-heading font-semibold hover:opacity-90 disabled:opacity-50 cursor-pointer"
                 >
                   {movingQuestions ? 'Moving Questions...' : 'Move Questions'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── UNLOCK QUESTION BANK 1 AUTH MODAL (Requirement 9) ────────────────── */}
+      {unlockModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm"
+            onClick={() => setUnlockModalOpen(false)}
+          />
+          <div className="relative w-full max-w-[440px] rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl animate-fadeIn">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+                  <Lock size={16} />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-[16px] text-[var(--text)]">
+                    Unlock Question Bank 1
+                  </h3>
+                  <p className="text-[11px] text-[var(--muted)]">Project: boardly-8c0cd</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUnlockModalOpen(false)}
+                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="font-heading text-[12px] text-[var(--muted)] leading-relaxed">
+              Writing to or editing <strong>Question Bank 1</strong> requires a separate admin sign-in to its dedicated Firebase Auth instance. This authentication is kept in-memory for this session only; passwords are never stored.
+            </p>
+
+            {unlockError && (
+              <div className="p-3 rounded-[12px] bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs flex items-center gap-2">
+                <AlertTriangle size={14} className="shrink-0" />
+                <span>{unlockError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleUnlockSubmit} className="space-y-3 pt-1">
+              <div>
+                <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                  Bank 1 Admin Email:
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={unlockEmail}
+                  onChange={(e) => setUnlockEmail(e.target.value)}
+                  placeholder="admin@boardly.app"
+                  className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-heading text-[var(--muted)] mb-1">
+                  Bank 1 Admin Password:
+                </label>
+                <input
+                  type="password"
+                  required
+                  value={unlockPassword}
+                  onChange={(e) => setUnlockPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  className="w-full px-3 py-2 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setUnlockModalOpen(false)}
+                  className="px-3.5 py-2 rounded-[12px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={unlockLoading}
+                  className="px-4 py-2 rounded-[12px] border border-amber-500/50 bg-amber-500 hover:bg-amber-600 text-black text-[13px] font-heading font-bold transition-all disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                >
+                  <Unlock size={14} />
+                  <span>{unlockLoading ? 'Authenticating…' : 'Unlock Editing'}</span>
                 </button>
               </div>
             </form>

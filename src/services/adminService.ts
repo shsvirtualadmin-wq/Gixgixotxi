@@ -44,6 +44,19 @@ import {
 } from '@/constants/taxonomy';
 import { normalizeCorrectAnswer } from './testEngine';
 import { recordCrewPaymentActionServer } from './crewBackend';
+import {
+  ENABLE_MULTI_SOURCE_BANK,
+  getMultiSourceQuestionCounts,
+  fetchMultiSourceSubjectTopics,
+  fetchMultiSourceQuestionsPaginated,
+  saveMultiSourceQuestion,
+  deleteMultiSourceQuestion,
+  moveMultiSourceQuestionsToTopic,
+  batchImportMultiSourceQuestions,
+  fetchMultiSourceQuestionKey,
+  parseQuestionCompoundId,
+} from './multiSourceQuestionBank';
+import { getDefaultWriteSource } from '@/config/questionBankSources';
 
 // ─── DIAGNOSTIC FIRESTORE ERROR ──────────────────────────────────────────────
 export class AdminFirestoreError extends Error {
@@ -779,6 +792,21 @@ export async function fetchQuestions(filters: {
 }
 
 export async function fetchQuestionKey(questionId: string): Promise<QuestionKey | null> {
+  if (ENABLE_MULTI_SOURCE_BANK) {
+    try {
+      const msKey = await fetchMultiSourceQuestionKey(questionId);
+      if (msKey) {
+        return {
+          id: questionId,
+          correct: typeof msKey.correct === 'number' ? msKey.correct : 0,
+          explain: msKey.explain || '',
+        } as QuestionKey;
+      }
+    } catch {
+      // Fallback
+    }
+  }
+
   try {
     const snap = await getDocFromServer(doc(db, 'questionKeys', questionId));
     if (snap.exists()) {
@@ -1861,6 +1889,10 @@ export async function removeIdFromSubjectIndex(subject: string, id: string): Pro
  * Does NOT read all questions or perform unpaginated scans.
  */
 export async function fetchSubjectPoolCounts(): Promise<Record<string, number>> {
+  if (ENABLE_MULTI_SOURCE_BANK) {
+    const docData = await getMultiSourceQuestionCounts();
+    return docData.subjectCounts;
+  }
   const docData = await getQuestionCountsDoc();
   return docData.subjectCounts;
 }
@@ -1870,6 +1902,9 @@ export async function fetchSubjectPoolCounts(): Promise<Record<string, number>> 
  * Requires ZERO additional reads.
  */
 export async function fetchSubjectTopics(subject: string): Promise<PoolTopicCount[]> {
+  if (ENABLE_MULTI_SOURCE_BANK) {
+    return await fetchMultiSourceSubjectTopics(subject);
+  }
   const norm = (subject || '').trim().toLowerCase();
   const docData = await getQuestionCountsDoc();
   const subTopics = docData.topicCounts[norm] || {};
@@ -1901,14 +1936,36 @@ export async function fetchPoolQuestionsPaginated(filters: {
   status?: string;
   limitCount?: number;
   startAfterDoc?: QueryDocumentSnapshot<DocumentData> | null;
+  pageIndex?: number;
 }): Promise<PaginatedQuestionsResult> {
   const count = filters.limitCount ?? 20;
-  const isFirstPage = !filters.startAfterDoc;
-  const cacheKey = `${filters.subject}__${filters.topic || 'all'}__${filters.difficulty || 'all'}__${filters.status || 'all'}__${(filters.search || '').trim().toLowerCase()}`;
+  const isFirstPage = !filters.startAfterDoc && !filters.pageIndex;
+  const cacheKey = `${filters.subject}__${filters.topic || 'all'}__${filters.difficulty || 'all'}__${filters.status || 'all'}__${(filters.search || '').trim().toLowerCase()}__p${filters.pageIndex || 0}`;
 
   // Session-level in-memory cache check
   if (isFirstPage && questionsPageCache.has(cacheKey)) {
     return questionsPageCache.get(cacheKey)!;
+  }
+
+  if (ENABLE_MULTI_SOURCE_BANK) {
+    const res = await fetchMultiSourceQuestionsPaginated({
+      subject: filters.subject,
+      topic: filters.topic,
+      search: filters.search,
+      difficulty: filters.difficulty,
+      status: filters.status,
+      pageIndex: filters.pageIndex || 0,
+      pageSize: count,
+    });
+    const result: PaginatedQuestionsResult = {
+      questions: res.questions,
+      lastDoc: null,
+      hasMore: res.hasMore,
+    };
+    if (isFirstPage) {
+      questionsPageCache.set(cacheKey, result);
+    }
+    return result;
   }
 
   const isPool = isSubjectPoolSupported(filters.subject);
@@ -2022,8 +2079,23 @@ export async function saveSubjectPoolQuestion(
     explain?: string;
     difficulty: 'easy' | 'medium' | 'hard';
     status: 'draft' | 'reviewed' | 'published';
-  }
+  },
+  sourceId?: string
 ): Promise<string> {
+  if (ENABLE_MULTI_SOURCE_BANK) {
+    const targetSource =
+      sourceId ||
+      (question.id ? parseQuestionCompoundId(question.id).sourceId : getDefaultWriteSource().id);
+    const res = await saveMultiSourceQuestion(adminEmail, targetSource, question);
+    await logAdminAction(adminEmail, 'save_pool_question', {
+      sourceId: res.sourceId,
+      questionId: res.compoundId,
+      topic: question.topic,
+      subject: question.subject,
+    });
+    return res.compoundId;
+  }
+
   const normSub = question.subject.toLowerCase().trim();
   const collName = getSubjectPoolCollection(normSub);
   const qText = (question.text || '').trim();
@@ -2105,6 +2177,15 @@ export async function deletePoolQuestion(
   subject: string,
   questionId: string
 ): Promise<void> {
+  if (ENABLE_MULTI_SOURCE_BANK) {
+    await deleteMultiSourceQuestion(adminEmail, subject, questionId);
+    await logAdminAction(adminEmail, 'delete_pool_question', {
+      subject,
+      questionId,
+    });
+    return;
+  }
+
   const normSub = subject.toLowerCase().trim();
   const collName = getSubjectPoolCollection(normSub);
   await deleteDoc(doc(db, collName, questionId));
@@ -2190,6 +2271,16 @@ export async function moveQuestionsToTopic(
   questionIds: string[],
   newTopic: string
 ): Promise<number> {
+  if (ENABLE_MULTI_SOURCE_BANK) {
+    const count = await moveMultiSourceQuestionsToTopic(adminEmail, subject, questionIds, newTopic);
+    await logAdminAction(adminEmail, 'move_pool_questions_topic', {
+      subject,
+      questionCount: count,
+      newTopic,
+    });
+    return count;
+  }
+
   const normSub = subject.toLowerCase().trim();
   const collName = getSubjectPoolCollection(normSub);
   const cleanNew = newTopic.trim();
@@ -2242,8 +2333,28 @@ export async function batchImportPoolQuestions(
   targetSubject: string,
   defaultTopic: string,
   rawRows: Array<Record<string, unknown>>,
-  onProgress?: (done: number, total: number) => void
+  onProgress?: (done: number, total: number) => void,
+  targetSourceId?: string
 ): Promise<ImportResult> {
+  if (ENABLE_MULTI_SOURCE_BANK) {
+    const srcId = targetSourceId || getDefaultWriteSource().id;
+    const res = await batchImportMultiSourceQuestions(
+      adminEmail,
+      srcId,
+      targetSubject,
+      defaultTopic,
+      rawRows,
+      onProgress
+    );
+    await logAdminAction(adminEmail, 'batch_import_pool_questions', {
+      sourceId: srcId,
+      targetSubject,
+      imported: res.imported,
+      duplicatesSkipped: res.duplicatesSkipped,
+    });
+    return res;
+  }
+
   const result: ImportResult = {
     imported: 0,
     duplicatesSkipped: 0,

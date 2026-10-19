@@ -27,6 +27,13 @@ import {
 } from '@/constants/taxonomy';
 import { getUniversityCriteria, getSectionCriteria } from '@/constants/universityCriteria';
 import { getSubjectQuestionIds } from './adminService';
+import {
+  ENABLE_MULTI_SOURCE_BANK,
+  getMultiSourceSubjectQuestionIds,
+  fetchMultiSourceQuestionsByIds,
+  fetchMultiSourcePoolQuestions,
+  fetchMultiSourceQuestionKey,
+} from './multiSourceQuestionBank';
 import type { QueryConstraint } from 'firebase/firestore';
 import type { AttemptDoc, AttemptQuestion, Question } from '@/types/index';
 
@@ -225,8 +232,30 @@ export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Pr
       try {
         let pool: Question[] = [];
 
-        // Mathematics reads from dedicated subject pool using question index
-        if (isSubjectPoolSupported(subSlug)) {
+        // Multi-source question index selection
+        if (ENABLE_MULTI_SOURCE_BANK) {
+          try {
+            const allIds = await getMultiSourceSubjectQuestionIds(subSlug);
+            if (allIds && allIds.length > 0) {
+              const chosenIds = shuffleArray(allIds.filter((id) => !seenIds.has(id))).slice(0, split.count);
+              if (chosenIds.length > 0) {
+                const fetched = await fetchMultiSourceQuestionsByIds(chosenIds, subSlug);
+                pool.push(...fetched);
+              }
+            }
+          } catch (msErr) {
+            console.warn('[testEngine] Multi-source full mock pool notice:', msErr);
+          }
+          if (pool.length < split.count) {
+            try {
+              const fallbackQs = await fetchMultiSourcePoolQuestions(subSlug, { limitPerSource: split.count * 2 });
+              const unseen = fallbackQs.filter((q) => !seenIds.has(q.id));
+              pool = [...pool, ...unseen];
+            } catch (fbErr) {
+              console.warn('[testEngine] Multi-source fallback pool notice:', fbErr);
+            }
+          }
+        } else if (isSubjectPoolSupported(subSlug)) {
           const poolColl = getSubjectPoolCollection(subSlug);
           try {
             const allIds = await getSubjectQuestionIds(subSlug);
@@ -328,8 +357,37 @@ export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Pr
   const needed = Math.max(1, attempt.totalQuestions || 10);
   const subjectSlug = findSubjectSlug(attempt.subject || '') || (attempt.subject ? attempt.subject.toLowerCase() : undefined);
 
-  // Dedicated Mathematics pool: Drills, sprints and tests read from questions_mathematics using question index
-  if (subjectSlug && isSubjectPoolSupported(subjectSlug)) {
+  // Multi-source question index selection for drills, sprints and tests
+  if (ENABLE_MULTI_SOURCE_BANK && subjectSlug) {
+    try {
+      const allIds = await getMultiSourceSubjectQuestionIds(subjectSlug);
+      if (allIds && allIds.length > 0) {
+        // Pick random IDs from index document, then fetch ONLY those N questions from the right source
+        const chosenIds = shuffleArray(allIds).slice(0, needed);
+        const poolQuestions = await fetchMultiSourceQuestionsByIds(chosenIds, subjectSlug);
+        if (poolQuestions.length > 0) {
+          return poolQuestions.map((q) => {
+            const rawOptions = Array.isArray(q.options) && q.options.length === 4
+              ? q.options
+              : (['A', 'B', 'C', 'D'] as [string, string, string, string]);
+            const { shuffledOptions, optionMapping } = shuffleOptions(rawOptions);
+            return {
+              id: q.id,
+              q: q.q || q.stem || '',
+              stem: q.q || q.stem || '',
+              options: shuffledOptions,
+              optionMapping,
+              subject: q.subject || subjectSlug,
+              chapter: q.chapter || 'general',
+              difficulty: q.difficulty || 'medium',
+            };
+          });
+        }
+      }
+    } catch (msErr) {
+      console.warn('[testEngine] Multi-source drill index query notice, falling back:', msErr);
+    }
+  } else if (subjectSlug && isSubjectPoolSupported(subjectSlug)) {
     try {
       const poolColl = getSubjectPoolCollection(subjectSlug);
       const allIds = await getSubjectQuestionIds(subjectSlug);
@@ -603,6 +661,14 @@ export async function submitAttempt(
   await Promise.all(
     questions.map(async (q) => {
       try {
+        if (ENABLE_MULTI_SOURCE_BANK) {
+          const msKey = await fetchMultiSourceQuestionKey(q.id, q.subject);
+          if (msKey) {
+            questionKeyMap.set(q.id, msKey);
+            return;
+          }
+        }
+
         // First check dedicated subject pool if applicable
         if (q.subject && isSubjectPoolSupported(q.subject)) {
           const poolColl = getSubjectPoolCollection(q.subject);
