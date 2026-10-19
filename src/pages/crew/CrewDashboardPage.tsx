@@ -13,6 +13,7 @@ import { DotRowStreak } from '@/components/ui/DotRowStreak';
 import { QrCodeSvg } from '@/components/crew/QrCodeSvg';
 import { Card } from '@/components/ui/Card';
 import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import {
   Copy,
   Check,
@@ -235,8 +236,7 @@ export function CrewDashboardPage() {
           <InAppLeaderboard
             currentUser={{
               uid: user.uid,
-              email: user.email || '',
-              displayName: profile?.displayName || user.displayName || user.email?.split('@')[0] || 'Student',
+              displayName: sanitizeStudentDisplayName(profile?.displayName || user.displayName, profile?.shortId || user.uid),
               streak: profile?.streak || 0,
               score: profile?.score || 0,
               crewId: null,
@@ -512,7 +512,7 @@ export function CrewDashboardPage() {
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-                          {m.displayName}
+                          {sanitizeStudentDisplayName(m.displayName, m.uid)}
                         </span>
                         {isMemLeader && (
                           <span style={{ fontSize: 9, background: '#D71921', color: 'white', padding: '1px 5px', borderRadius: 999 }}>
@@ -530,7 +530,6 @@ export function CrewDashboardPage() {
                           </span>
                         )}
                       </div>
-                      <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>{m.email}</span>
                     </div>
                   </div>
 
@@ -693,7 +692,7 @@ export function CrewDashboardPage() {
                 .filter((m) => m.uid !== user?.uid)
                 .map((m) => (
                   <option key={m.uid} value={m.uid}>
-                    {m.displayName} ({m.email})
+                    {sanitizeStudentDisplayName(m.displayName, m.uid)}
                   </option>
                 ))}
             </select>

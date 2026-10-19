@@ -4,6 +4,7 @@ import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { debugTracker } from '@/utils/debugTracker';
 import { isQuotaExhaustedError } from '@/utils/quota';
+import { syncPublicProfile } from '@/services/publicProfileService';
 import type { UserProfile } from '@/types/index';
 
 function getLocalCachedProfile(uid: string): UserProfile | null {
@@ -360,9 +361,18 @@ export function useUserProfile(): UserProfileHookResult {
 
       // 2. Perform merge write to Firestore
       await setDoc(doc(db, 'users', user.uid), safePayload, { merge: true });
+
+      // 3. Sync public-safe fields to publicProfiles/{uid}
+      syncPublicProfile(user.uid, {
+        ...(profile || {}),
+        ...safePayload,
+      }).catch((err) => {
+        console.warn('[useUserProfile] syncPublicProfile failed:', err);
+      });
+
       console.log(`[useUserProfile] Wrote profile update to ${path}:`, safePayload);
     },
-    [user?.uid]
+    [user?.uid, profile]
   );
 
   return {

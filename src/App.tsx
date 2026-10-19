@@ -60,6 +60,7 @@ const GrandLineTestRunnerPage = lazyWithRetry(() => import('./pages/GrandLineTes
 const PrivacyPage = lazyWithRetry(() => import('./pages/PrivacyPage'));
 const TermsPage = lazyWithRetry(() => import('./pages/TermsPage'));
 const ContactPage = lazyWithRetry(() => import('./pages/ContactPage'));
+const StorePage = lazyWithRetry(() => import('./pages/store/StorePage'));
 
 // Auth pages (lazy with retry) — use AuthLayout ONLY, NO public Navbar or Footer
 const LoginPage = lazyWithRetry(() => import('./pages/LoginPage'));
@@ -274,6 +275,8 @@ function AppInner() {
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          <Route path="/store" element={<StorePage />} />
+          <Route path="/store/get-kobans" element={<StorePage />} />
         </Route>
 
         {/* Global Catch-all fallback: redirect unknown routes to home page */}

@@ -52,6 +52,40 @@ export interface UserProfile {
   testDate?: string;
   track?: string;
   onboardingComplete?: boolean;
+  equipped?: EquippedCosmetics;
+}
+
+export type CosmeticType = 'effect' | 'frame' | 'nameplate';
+export type CosmeticRarity = 'common' | 'rare' | 'epic' | 'legendary';
+
+export interface EquippedCosmetics {
+  effect?: string | null;
+  frame?: string | null;
+  nameplate?: string | null;
+}
+
+/**
+ * Publicly readable student profile stored at `publicProfiles/{uid}`.
+ * Strictly contains NO email, NO phone number, and NO financial/payment data.
+ */
+export interface PublicProfile {
+  uid: string;
+  displayName: string;
+  avatarKey?: string | null;
+  avatarVariant?: string | null;
+  photoURL?: string | null;
+  crewId?: string | null;
+  crewName?: string | null;
+  role?: UserRole | string;
+  equipped?: EquippedCosmetics;
+  publicStats?: {
+    streak?: number;
+    score?: number;
+    testsCompleted?: number;
+    totalQuestionsSolved?: number;
+  };
+  shortId?: string;
+  updatedAt?: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
 }
 
 export interface PlaceholderReview {
@@ -95,8 +129,11 @@ export interface Question {
   topic?: string;
   stem?: string;
   question?: string;
+  text?: string;
   correct?: number;
+  correctAnswer?: number;
   explain?: string;
+  explanation?: string;
 }
 
 /**

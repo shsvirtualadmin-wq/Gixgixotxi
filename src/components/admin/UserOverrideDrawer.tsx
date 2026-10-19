@@ -20,6 +20,7 @@ import {
 import { MatrixAvatar } from '@/lib/matrixAvatars';
 import { fetchCrewDetails, removeMemberFromCrew } from '@/services/crewService';
 import { isCrewPaidActive } from '@/services/crewBackend';
+import { maskEmail } from '@/utils/privacy';
 import type { CrewDoc } from '@/types/crew';
 import { Timestamp } from 'firebase/firestore';
 
@@ -82,7 +83,8 @@ export function UserOverrideDrawer({
   onClose,
   onSuccess,
 }: UserOverrideDrawerProps) {
-  const isSuperAdmin = adminEmail.toLowerCase() === 'shsvirtualadmin@gmail.com';
+  const adminEmailLower = adminEmail.toLowerCase().trim();
+  const isSuperAdmin = adminEmailLower === 'shsvirtualadmin@gmail.com' || adminEmailLower === 'support@boardly.cfd';
 
   const [role, setRole] = useState<UserRole>('student');
   const [plan, setPlan] = useState<UserPlan>('free');
@@ -293,7 +295,7 @@ export function UserOverrideDrawer({
                 {displayName}
               </h2>
               <p className="font-heading text-[12px] text-[var(--muted)] truncate">
-                {user.email}
+                {isSuperAdmin ? user.email : maskEmail(user.email)}
               </p>
             </div>
           </div>

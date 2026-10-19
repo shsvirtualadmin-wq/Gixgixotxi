@@ -9,6 +9,7 @@ import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 const NAV_LINKS = [
   { to: '/features', label: 'Features' },
   { to: '/crew', label: 'Crew' },
+  { to: '/store', label: 'Store' },
   { to: '/nakama-captains', label: NAKAMA_CAPTAINS_NAME },
   { to: '/pricing', label: 'Pricing' },
   { to: '/grand-line', label: GRAND_LINE_NAME },

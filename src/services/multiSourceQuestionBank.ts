@@ -14,6 +14,7 @@ import {
   arrayUnion,
   arrayRemove,
   getCountFromServer,
+  type QueryConstraint,
 } from 'firebase/firestore';
 import {
   ENABLE_MULTI_SOURCE_BANK,
@@ -34,6 +35,7 @@ import {
   formatSubjectName,
 } from '@/constants/taxonomy';
 import type { Question, QuestionDifficulty, QuestionStatus } from '@/types';
+import { clearQuestionsCache } from './adminService';
 
 // ─── COMPOUND ID HELPERS ────────────────────────────────────────────────────
 export function parseQuestionCompoundId(
@@ -479,7 +481,7 @@ export async function fetchMultiSourcePoolQuestions(
     sources.map(async (source) => {
       try {
         // Query pool collection
-        const qConstraints = [limit(limitCount)];
+        const qConstraints: QueryConstraint[] = [limit(limitCount)];
         if (options?.difficulty && options.difficulty !== 'all') {
           qConstraints.unshift(where('difficulty', '==', options.difficulty.toLowerCase()));
         }

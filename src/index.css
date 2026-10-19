@@ -651,4 +651,27 @@ body,
   overflow-x: hidden;
 }
 
+/* ===== KOBAN HERO SHINE ANIMATION ===== */
+@keyframes koban-shine {
+  0% {
+    transform: translateX(-50px) rotate(25deg);
+  }
+  30% {
+    transform: translateX(80px) rotate(25deg);
+  }
+  100% {
+    transform: translateX(80px) rotate(25deg);
+  }
+}
+
+.koban-shine-sweep {
+  animation: koban-shine 4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .koban-shine-sweep {
+    animation: none !important;
+  }
+}
+
 

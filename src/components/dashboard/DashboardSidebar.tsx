@@ -17,6 +17,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { Logo } from '@/components/ui/Logo';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 import { useTheme } from '@/hooks/useTheme';
 
@@ -35,8 +36,9 @@ export function DashboardSidebar() {
 
   const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
-  const displayName = profile?.displayName || user?.displayName || 'Student';
-  const initial = (displayName[0] || user?.email?.[0] || 'S').toUpperCase();
+  const rawDisplayName = profile?.displayName || user?.displayName || 'Student';
+  const displayName = sanitizeStudentDisplayName(rawDisplayName, profile?.shortId || user?.uid);
+  const initial = (displayName[0] || 'S').toUpperCase();
 
   return (
     <aside
@@ -247,7 +249,7 @@ export function DashboardSidebar() {
               {displayName}
             </p>
             <p className="font-heading text-[10px] text-[var(--muted)] truncate">
-              {user?.email}
+              {isPro ? 'Pro Member' : 'Free Starter'}
             </p>
           </div>
         </div>

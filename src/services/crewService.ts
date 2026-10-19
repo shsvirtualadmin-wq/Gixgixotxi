@@ -30,6 +30,7 @@ import {
 } from './crewBackend';
 import { DEFAULT_CREW_PRICING } from '../config/crewPricing';
 import { isValidAvatar } from '../lib/matrixAvatarsData';
+import { sanitizeStudentDisplayName } from '../utils/privacy';
 
 export {
   computeCrewScore,
@@ -155,10 +156,10 @@ export async function createNewCrew(params: {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
 
+  const cleanCreatorName = sanitizeStudentDisplayName(creator.displayName, creator.uid);
   const leaderMember: CrewMember = {
     uid: creator.uid,
-    displayName: creator.displayName || creator.email.split('@')[0],
-    email: creator.email,
+    displayName: cleanCreatorName,
     joinedAt: new Date().toISOString(),
     role: 'leader',
     activeToday: true,
@@ -178,7 +179,7 @@ export async function createNewCrew(params: {
     avatarKey,
     avatarVariant,
     leaderId: creator.uid,
-    leaderName: creator.displayName || creator.email.split('@')[0],
+    leaderName: cleanCreatorName,
     tier,
     paid_until: tier === 'paid' ? new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() : null,
     joinMode,

@@ -209,6 +209,55 @@
         "status": { "type": "string", "enum": ["draft", "reviewed", "published"] }
       },
       "required": ["id", "subject", "topic", "text", "options", "difficulty", "status"]
+    },
+    "PublicProfile": {
+      "title": "PublicProfile",
+      "description": "Sanitized student profile visible on leaderboards, squads, and public surfaces. Contains NO email, phone, or payment fields.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "avatarKey": { "type": "string" },
+        "avatarVariant": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "crewId": { "type": "string" },
+        "crewName": { "type": "string" },
+        "role": { "type": "string" },
+        "shortId": { "type": "string" },
+        "equipped": { "type": "object" },
+        "publicStats": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "displayName"]
+    },
+    "Wallet": {
+      "title": "Wallet",
+      "description": "Student Koban wallet with balance, owned cosmetics array, and currently equipped items.",
+      "type": "object",
+      "properties": {
+        "balance": { "type": "number" },
+        "owned": { "type": "array" },
+        "equipped": { "type": "object" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["balance", "owned", "equipped"]
+    },
+    "KobanRequest": {
+      "title": "KobanRequest",
+      "description": "Student request to purchase Kobans via JazzCash or EasyPaisa manual payment slip.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "amountKobans": { "type": "number" },
+        "amountPkr": { "type": "number" },
+        "transactionId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "createdAt": { "type": "string" },
+        "reviewedAt": { "type": "string" },
+        "reviewedBy": { "type": "string" }
+      },
+      "required": ["userId", "amountKobans", "amountPkr", "transactionId", "status"]
     }
   },
   "firestore": {
@@ -219,6 +268,18 @@
     "/users/{userId}": {
       "schema": { "$ref": "#/entities/User" },
       "description": "User profiles, roles, plan metadata and daily allowances."
+    },
+    "/publicProfiles/{userId}": {
+      "schema": { "$ref": "#/entities/PublicProfile" },
+      "description": "Publicly readable sanitized user profiles for leaderboards and crew rosters."
+    },
+    "/wallets/{userId}": {
+      "schema": { "$ref": "#/entities/Wallet" },
+      "description": "Student Koban balance and owned cosmetics inventory."
+    },
+    "/kobanRequests/{requestId}": {
+      "schema": { "$ref": "#/entities/KobanRequest" },
+      "description": "Pending and reviewed Koban top-up purchase requests."
     },
     "/reviews/{reviewId}": {
       "schema": { "$ref": "#/entities/Review" },

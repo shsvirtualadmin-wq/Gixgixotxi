@@ -16,12 +16,17 @@ import {
   Target,
   User,
   Users,
+  Menu,
+  ShoppingBag,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { PillNav, type PillNavItem } from '@/components/ui/PillNav';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useTheme } from '@/hooks/useTheme';
+import { useWallet } from '@/hooks/useWallet';
+import { KobanChip } from '@/components/koban/KobanIcon';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 export function DashboardBottomNav() {
   const { isAdmin, signOutUser } = useAuth();
@@ -49,10 +54,12 @@ export function DashboardBottomNav() {
   };
 
   const effectivePlan = useEffectivePlan();
+  const { balance: kobanBalance, loading: walletLoading } = useWallet();
   const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
-  const displayName = profile?.displayName || user?.displayName || 'Student';
-  const initial = (displayName[0] || user?.email?.[0] || 'S').toUpperCase();
+  const rawDisplayName = profile?.displayName || user?.displayName || 'Student';
+  const cleanDisplayName = sanitizeStudentDisplayName(rawDisplayName, profile?.shortId || user?.uid);
+  const initial = cleanDisplayName[0]?.toUpperCase() || 'S';
   const isApprovedCaptain = role === 'captain' || role === 'ambassador' || Boolean(profile?.isCaptain) || Boolean(profile?.isAmbassador);
   const crewLink = '/dashboard/crew';
 
@@ -96,15 +103,7 @@ export function DashboardBottomNav() {
     {
       id: 'menu',
       label: 'Menu',
-      icon: (
-        <div className="w-6 h-6 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-[10px] font-bold text-[var(--text)] relative shrink-0">
-          <span>{initial}</span>
-          <span
-            className="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--accent)] ring-1 ring-[var(--surface)]"
-            title="Menu & Account"
-          />
-        </div>
-      ),
+      icon: <Menu size={18} />,
       onClick: () => setIsMenuOpen(true),
     },
   ];
@@ -143,6 +142,7 @@ export function DashboardBottomNav() {
             <div className="md:hidden w-10 h-1 bg-[var(--border)] rounded-full mx-auto -mt-1 mb-1 pointer-events-none" />
 
             {/* Header: User Summary */}
+            {/* Header: User Summary (Privacy Protected - No Email Displayed) */}
             <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border)]">
               <div className="flex items-center gap-3 min-w-0">
                 <div className="w-11 h-11 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-[15px] font-heading font-bold text-[var(--text)] shrink-0">
@@ -158,10 +158,7 @@ export function DashboardBottomNav() {
                 </div>
                 <div className="min-w-0">
                   <p className="font-heading font-bold text-base text-[var(--text)] truncate">
-                    {displayName}
-                  </p>
-                  <p className="font-heading text-xs text-[var(--muted)] truncate">
-                    {user?.email}
+                    {cleanDisplayName}
                   </p>
                   <div className="flex items-center gap-1.5 mt-1">
                     <span
@@ -195,33 +192,30 @@ export function DashboardBottomNav() {
               </button>
             </div>
 
-            {/* ── SUPERADMIN PORTAL (Visible ONLY for admins) ───────────────── */}
-            {isAdmin && (
-              <button
-                type="button"
-                onClick={() => handleNav('/admin')}
-                className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl bg-[rgba(239,68,68,0.08)] border border-[var(--red)] text-[var(--red)] transition-all hover:bg-[rgba(239,68,68,0.14)] text-left cursor-pointer"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[var(--red)] text-white flex items-center justify-center shrink-0">
-                    <Shield size={16} />
-                  </div>
-                  <div>
-                    <p className="font-heading font-bold text-sm sm:text-base">
-                      Superadmin Portal
-                    </p>
-                    <p className="font-heading text-xs text-[var(--muted)]">
-                      Manage users, question bank, approvals &amp; audit log
-                    </p>
-                  </div>
-                </div>
-                <ChevronRight size={16} className="text-[var(--red)]" />
-              </button>
-            )}
-
             {/* Navigation links in drawer */}
             <div className="space-y-1.5">
-              {/* Dynamic menu button: Profile if completed, Target Exam & Profile Setup if incomplete */}
+              {/* 1. Boardly Store (with Kobans balance chip) */}
+              <button
+                type="button"
+                onClick={() => handleNav('/store')}
+                className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[rgba(232,163,23,0.3)] bg-[rgba(232,163,23,0.06)] hover:bg-[rgba(232,163,23,0.12)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[rgba(232,163,23,0.15)] flex items-center justify-center text-[#E8A317] shrink-0">
+                    <ShoppingBag size={17} />
+                  </div>
+                  <div>
+                    <span className="font-bold">Boardly Store</span>
+                    <p className="text-[11px] text-[var(--muted)]">Cosmetics, frames &amp; effects</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <KobanChip balance={kobanBalance} loading={walletLoading} />
+                  <ChevronRight size={14} className="text-[var(--muted)]" />
+                </div>
+              </button>
+
+              {/* 2. Profile */}
               {profile?.profileCompleted || profile?.onboardingCompleted ? (
                 <button
                   type="button"
@@ -248,6 +242,7 @@ export function DashboardBottomNav() {
                 </button>
               )}
 
+              {/* 3. Plans & Upgrade */}
               <button
                 type="button"
                 onClick={() => handleNav('/dashboard/plans')}
@@ -267,24 +262,7 @@ export function DashboardBottomNav() {
                 </div>
               </button>
 
-              {/* Study Crew for all students */}
-              <button
-                type="button"
-                onClick={() => handleNav(crewLink)}
-                className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
-              >
-                <div className="flex items-center gap-3">
-                  <Users size={18} className="text-[var(--muted)]" />
-                  <span>Study Crew &amp; Squads</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <span className="text-[10px] font-heading px-2 py-0.5 rounded-full border border-[var(--border)] text-[var(--muted)]">
-                    Up to 30
-                  </span>
-                  <ChevronRight size={14} className="text-[var(--muted)]" />
-                </div>
-              </button>
-
+              {/* 4. Nakama Captains Hub (if captain) */}
               {isApprovedCaptain && (
                 <button
                   type="button"
@@ -296,6 +274,30 @@ export function DashboardBottomNav() {
                     <span>Nakama Captains Hub</span>
                   </div>
                   <ChevronRight size={14} className="text-[var(--muted)]" />
+                </button>
+              )}
+
+              {/* 5. Superadmin Portal (Visible ONLY for superadmin/admin) */}
+              {isAdmin && (
+                <button
+                  type="button"
+                  onClick={() => handleNav('/admin')}
+                  className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl bg-[rgba(239,68,68,0.08)] border border-[var(--red)] text-[var(--red)] transition-all hover:bg-[rgba(239,68,68,0.14)] text-left cursor-pointer mt-1"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[var(--red)] text-white flex items-center justify-center shrink-0">
+                      <Shield size={16} />
+                    </div>
+                    <div>
+                      <p className="font-heading font-bold text-sm sm:text-base">
+                        Superadmin Portal
+                      </p>
+                      <p className="font-heading text-xs text-[var(--muted)]">
+                        Manage users, question bank, approvals &amp; audit log
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight size={16} className="text-[var(--red)]" />
                 </button>
               )}
             </div>

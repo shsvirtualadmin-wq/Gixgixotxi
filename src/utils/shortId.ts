@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs, limit, doc, updateDoc } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db } from '../lib/firebase';
 
 /**
  * Short Numeric ID Generator (5-digit, automatically escalates to 6-digit if space is saturated).

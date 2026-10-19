@@ -131,6 +131,16 @@ export function Footer() {
                 </Link>
               </li>
               <li>
+                <Link to="/store" className="hover:text-white hover:underline transition-colors block break-words">
+                  Boardly Store
+                </Link>
+              </li>
+              <li>
+                <Link to="/kobans" className="hover:text-white hover:underline transition-colors block break-words">
+                  About Kobans
+                </Link>
+              </li>
+              <li>
                 <Link to="/pricing" className="hover:text-white hover:underline transition-colors block break-words">
                   Pricing &amp; plans
                 </Link>

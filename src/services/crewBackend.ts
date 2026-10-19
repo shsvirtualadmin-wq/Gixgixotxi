@@ -18,6 +18,7 @@ import type {
   CrewPaymentRecord,
 } from '../types/crew';
 import { DEFAULT_CREW_PRICING } from '../config/crewPricing';
+import { sanitizeStudentDisplayName } from '../utils/privacy';
 
 /**
  * Derives real crew score strictly from DB members' activity, streaks, and solved questions.
@@ -247,9 +248,10 @@ export async function executeJoinCrewServer(params: {
       throw new Error(eligibility.reason || 'You are not eligible to join this crew.');
     }
 
-    // Check 6th member constraint against paid_until:
-    const currentMemberCount = crew.members?.length || 0;
-    const isPaid = crew.tier === 'paid' && isCrewPaidActive(crew.paid_until);
+    // Hard cap: maximum 30 members for any crew
+    if (currentMemberCount >= 30) {
+      throw new Error('This crew has reached the maximum allowed capacity of 30 members.');
+    }
 
     if (currentMemberCount >= DEFAULT_CREW_PRICING.freeMemberLimit && !isPaid) {
       throw new Error(
@@ -259,10 +261,10 @@ export async function executeJoinCrewServer(params: {
 
     // 4. Handle Direct Join vs Request Mode
     if (crew.joinMode === 'direct') {
+      const cleanName = sanitizeStudentDisplayName(user.displayName, user.uid);
       const newMember: CrewMember = {
         uid: user.uid,
-        displayName: user.displayName || user.email.split('@')[0],
-        email: user.email,
+        displayName: cleanName,
         joinedAt: new Date().toISOString(),
         role: 'member',
         activeToday: true,
@@ -308,11 +310,11 @@ export async function executeJoinCrewServer(params: {
       };
     } else {
       // Request Mode: create pending request
+      const cleanReqName = sanitizeStudentDisplayName(user.displayName, user.uid);
       const newRequest: CrewJoinRequest = {
         id: `req_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         userId: user.uid,
-        userEmail: user.email,
-        displayName: user.displayName || user.email.split('@')[0],
+        displayName: cleanReqName,
         avatarKey: user.avatarKey || 'skull-01',
         avatarVariant: user.avatarVariant || 'red-on-black',
         streak: userStreak,

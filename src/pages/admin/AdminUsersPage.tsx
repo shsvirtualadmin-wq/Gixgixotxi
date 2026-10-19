@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, RefreshCw, UserCheck, Loader2 } from 'lucide-react';
+import { Search, RefreshCw, UserCheck, Loader2, Shield } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserOverrideDrawer } from '@/components/admin/UserOverrideDrawer';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
@@ -8,7 +8,9 @@ import {
   backfillMissingDisplayNames,
   getUserDisplayName,
 } from '@/services/adminService';
+import { backfillAllPublicProfiles } from '@/services/publicProfileService';
 import { formatStudentId } from '@/utils/shortId';
+import { maskEmail } from '@/utils/privacy';
 import type { UserProfile } from '@/types';
 import type { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 
@@ -35,6 +37,35 @@ export function AdminUsersPage() {
   // Backfill names state
   const [backfilling, setBackfilling] = useState(false);
   const [backfillMessage, setBackfillMessage] = useState<string | null>(null);
+
+  // Backfill public profiles state
+  const [backfillingProfiles, setBackfillingProfiles] = useState(false);
+  const [backfillProfilesMessage, setBackfillProfilesMessage] = useState<string | null>(null);
+
+  const emailLower = user?.email?.toLowerCase().trim() || '';
+  const isSuperAdmin = Boolean(
+    emailLower === 'shsvirtualadmin@gmail.com' ||
+    emailLower === 'support@boardly.cfd' ||
+    user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
+  );
+
+  const handleBackfillPublicProfiles = async () => {
+    setBackfillingProfiles(true);
+    setBackfillProfilesMessage(null);
+    try {
+      const res = await backfillAllPublicProfiles();
+      setBackfillProfilesMessage(
+        `Successfully synced ${res.backfilled} / ${res.totalUsers} student profiles to publicProfiles.`
+      );
+    } catch (err: unknown) {
+      console.error('Backfill public profiles error:', err);
+      setBackfillProfilesMessage(
+        'Failed to backfill public profiles: ' + (err instanceof Error ? err.message : String(err))
+      );
+    } finally {
+      setBackfillingProfiles(false);
+    }
+  };
 
   const loadUsers = useCallback(async () => {
     if (cachedAdminUsers.length === 0) {
@@ -174,6 +205,17 @@ export function AdminUsersPage() {
         <div className="flex items-center gap-2 flex-wrap">
           <button
             type="button"
+            onClick={handleBackfillPublicProfiles}
+            disabled={backfillingProfiles}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50 cursor-pointer"
+            title="Batch backfill student public profiles for privacy protection"
+          >
+            <Shield size={14} className={backfillingProfiles ? 'animate-spin text-[#D71921]' : 'text-[#D71921]'} />
+            <span>{backfillingProfiles ? 'Syncing profiles...' : 'Backfill public profiles'}</span>
+          </button>
+
+          <button
+            type="button"
             onClick={handleBackfillNames}
             disabled={backfilling}
             className="flex items-center gap-1.5 px-3.5 py-2 rounded-[12px] bg-transparent hover:bg-[var(--surface-hover)] border border-[var(--border)] text-[12px] sm:text-[13px] font-heading text-[var(--text)] transition-colors disabled:opacity-50"
@@ -201,6 +243,22 @@ export function AdminUsersPage() {
         onRetry={loadUsers}
         retrying={loading}
       />
+
+      {backfillProfilesMessage && (
+        <div className="p-3 rounded-[16px] bg-[rgba(215,25,33,0.08)] border border-[var(--red)]/40 text-[13px] font-heading text-[var(--text)] flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Shield size={15} className="text-[#D71921] shrink-0" />
+            <span>{backfillProfilesMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setBackfillProfilesMessage(null)}
+            className="text-[var(--muted)] hover:text-[var(--text)] text-[12px] cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {backfillMessage && (
         <div className="p-3 rounded-[16px] bg-[var(--card-2)] border border-[var(--border)] text-[13px] font-heading text-[var(--text)] flex items-center justify-between">
@@ -380,7 +438,7 @@ export function AdminUsersPage() {
                           </span>
                         </div>
                         <p className="font-heading text-[12px] text-[var(--muted)] truncate">
-                          {u.email}
+                          {isSuperAdmin ? u.email : maskEmail(u.email)}
                         </p>
                       </div>
                     </div>
@@ -506,7 +564,7 @@ export function AdminUsersPage() {
 
                       {/* 3. Email */}
                       <td className="py-3.5 px-4 text-[12px] text-[var(--muted)]">
-                        {u.email}
+                        {isSuperAdmin ? u.email : maskEmail(u.email)}
                       </td>
 
                       {/* 4. University Track */}

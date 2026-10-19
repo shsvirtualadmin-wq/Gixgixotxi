@@ -5,6 +5,8 @@ import { MatrixAvatar } from '@/lib/matrixAvatars';
 import type { PublicCrewSummary, CrewDoc } from '@/types/crew';
 import { fetchCrewDetails } from '@/services/crewService';
 
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
+
 interface CrewDetailsModalProps {
   summary: PublicCrewSummary;
   onClose: () => void;
@@ -61,10 +63,12 @@ export const CrewDetailsModal: React.FC<CrewDetailsModalProps> = ({
 
   const isUserMember = currentUser && currentUser.crewId === summary.id;
   const isInOtherCrew = currentUser && currentUser.crewId && currentUser.crewId !== summary.id;
-  const isCrewFull = summary.memberCount >= summary.maxMembers;
+  const maxAllowed = Math.min(summary.maxMembers || 30, 30);
+  const isCrewFull = summary.memberCount >= maxAllowed;
   const streakNeeded = summary.minStreak;
   const userStreak = currentUser?.streak || 0;
   const meetsStreak = userStreak >= streakNeeded;
+  const cleanLeaderName = sanitizeStudentDisplayName(summary.leaderName);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
@@ -97,7 +101,7 @@ export const CrewDetailsModal: React.FC<CrewDetailsModalProps> = ({
               )}
             </div>
             <p className="text-xs text-[rgba(255,255,255,0.65)] font-mono">
-              Code: <strong className="text-white uppercase tracking-wider">{summary.code}</strong> • Led by {summary.leaderName}
+              Code: <strong className="text-white uppercase tracking-wider">{summary.code}</strong> • Led by {cleanLeaderName}
             </p>
             {summary.bio ? (
               <p className="text-xs text-[rgba(255,255,255,0.8)] pt-1 leading-relaxed">{summary.bio}</p>
@@ -173,14 +177,25 @@ export const CrewDetailsModal: React.FC<CrewDetailsModalProps> = ({
           </div>
         </div>
 
-        {/* Public Top Members List */}
+        {/* Member Roster (Visible ONLY to verified crew members; non-members see privacy notice) */}
         <div className="space-y-3">
           <div className="text-xs font-semibold text-[rgba(255,255,255,0.9)] flex items-center justify-between">
             <span>Roster &amp; Member Activity</span>
-            <span className="text-[11px] text-[rgba(255,255,255,0.5)]">Privacy-protected public view</span>
+            <span className="text-[11px] text-[rgba(255,255,255,0.5)]">
+              {isUserMember ? 'Squad Member View' : 'Members Only'}
+            </span>
           </div>
 
-          {loading ? (
+          {!isUserMember ? (
+            <div className="p-4 rounded-xl bg-[#121212] border border-[rgba(255,255,255,0.08)] text-center text-xs text-[rgba(255,255,255,0.65)] space-y-1.5">
+              <p className="font-semibold text-white flex items-center justify-center gap-1.5">
+                <Shield size={14} className="text-[#D71921]" /> Member List Private
+              </p>
+              <p className="text-[11px] text-[rgba(255,255,255,0.5)] max-w-sm mx-auto">
+                In accordance with Boardly Privacy Policies, individual member rosters are visible only to accepted squad members. Join this crew to collaborate and study together!
+              </p>
+            </div>
+          ) : loading ? (
             <div className="space-y-2">
               {[1, 2, 3].map((i) => (
                 <div key={i} className="h-10 rounded-lg bg-[#141414] animate-pulse" />
@@ -202,7 +217,7 @@ export const CrewDetailsModal: React.FC<CrewDetailsModalProps> = ({
                     />
                     <div>
                       <div className="text-xs font-medium text-white flex items-center gap-1.5">
-                        <span>{m.displayName || 'Member'}</span>
+                        <span>{sanitizeStudentDisplayName(m.displayName, m.uid)}</span>
                         {m.role === 'leader' && (
                           <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#D71921] text-white font-bold">
                             LEADER
@@ -224,7 +239,7 @@ export const CrewDetailsModal: React.FC<CrewDetailsModalProps> = ({
             </div>
           ) : (
             <div className="p-4 rounded-xl bg-[#141414] text-center text-xs text-[rgba(255,255,255,0.5)]">
-              No public member details found.
+              No member details found.
             </div>
           )}
         </div>

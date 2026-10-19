@@ -24,30 +24,35 @@ service cloud.firestore {
           request.auth.token.email == 'support@boardly.cfd'
         )) ||
         ('role' in request.auth.token && (
-          request.auth.token.role == 'admin' ||
           request.auth.token.role == 'superadmin'
         )) ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
+      );
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        isSuperAdmin() ||
+        ('role' in request.auth.token && request.auth.token.role in ['admin', 'superadmin']) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'superadmin'])
       );
     }
 
-    function isAdmin() {
-      return isSuperAdmin();
-    }
-
     // ─── USERS COLLECTION ───────────────────────────────────────────────────
     // Protects student profile records.
-    // - Users read their own profile; admins can list and read all profiles.
+    // - Enforces strict privacy: ONLY the owner and the superadmin may read users/{userId}.
+    // - Non-superadmins (including normal admins and crew leaders) are forbidden from reading users/{userId}.
     // - Users create profile on signup only with base privileges (role: 'student', plan: 'free', status: 'active').
-    // - Users update profile preferences (name, target exam, test date, track, avatar, streak counters),
-    //   but can NEVER escalate privileges (role, plan, paid_until, isPremium, planExpiresAt, status, suspended).
+    // - Users update profile preferences, but can NEVER escalate privileges.
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin();
+      allow read: if isOwner(userId) || isSuperAdmin();
+      allow list: if isSuperAdmin();
 
-      allow create: if isAdmin() || (
+      allow create: if isSuperAdmin() || (
         isOwner(userId) &&
         (!('role' in request.resource.data) || request.resource.data.role in ['student', 'user']) &&
         (!('plan' in request.resource.data) || request.resource.data.plan in ['free', 'starter']) &&
@@ -60,7 +65,7 @@ service cloud.firestore {
         (!('isSuspended' in request.resource.data) || request.resource.data.isSuspended == false)
       );
 
-      allow update: if isAdmin() || (
+      allow update: if isSuperAdmin() || (
         isOwner(userId) &&
         // Privilege & financial protection: cannot modify role, plan, tier, or status
         (!('role' in request.resource.data) || ('role' in resource.data && request.resource.data.role == resource.data.role)) &&
@@ -75,17 +80,73 @@ service cloud.firestore {
         (!('isSuspended' in request.resource.data) || ('isSuspended' in resource.data && request.resource.data.isSuspended == resource.data.isSuspended))
       );
 
-      allow delete: if isAdmin();
+      allow delete: if isSuperAdmin();
 
       // Subcollection: Daily Practice & AI Tutor usage limits (PKT timezone keyed)
       match /usage/{dateKey} {
-        allow read, write: if isOwner(userId) || isAdmin();
+        allow read, write: if isOwner(userId) || isSuperAdmin();
       }
 
       // Subcollection: Chapter-level diagnostic performance stats
       match /chapterStats/{chapterId} {
-        allow read, write: if isOwner(userId) || isAdmin();
+        allow read, write: if isOwner(userId) || isSuperAdmin();
       }
+    }
+
+    // ─── PUBLIC PROFILES COLLECTION ──────────────────────────────────────────
+    // Strictly sanitized public identity for leaderboards, crew lists, and profile views.
+    // Contains ONLY public data: displayName, avatar, crewId, equipped cosmetics, public stats.
+    // Explicitly FORBIDS storing any PII: email, phone, or payment/billing fields.
+    match /publicProfiles/{userId} {
+      allow read: if true;
+      allow list: if true;
+
+      allow create, update: if isSuperAdmin() || (
+        isOwner(userId) &&
+        !('email' in request.resource.data) &&
+        !('phone' in request.resource.data) &&
+        !('payments' in request.resource.data) &&
+        !('paid_until' in request.resource.data) &&
+        !('billing' in request.resource.data)
+      );
+
+      allow delete: if isSuperAdmin();
+    }
+
+    // ─── KOBANS WALLETS & LEDGER ────────────────────────────────────────────
+    match /wallets/{userId} {
+      allow read: if isOwner(userId) || isSuperAdmin();
+
+      allow create: if isSuperAdmin() || (
+        isOwner(userId) &&
+        request.resource.data.balance == 0 &&
+        request.resource.data.owned.size() == 0
+      );
+
+      allow update: if isSuperAdmin() || (
+        isOwner(userId) &&
+        // Student can NEVER raise their own balance:
+        request.resource.data.balance <= resource.data.balance &&
+        // Cannot remove previously owned items
+        resource.data.owned.toSet().difference(request.resource.data.owned.toSet()).size() == 0
+      );
+
+      allow delete: if isSuperAdmin();
+
+      match /ledger/{entryId} {
+        allow read: if isOwner(userId) || isSuperAdmin();
+        allow create: if isOwner(userId) || isSuperAdmin();
+        allow update, delete: if isSuperAdmin();
+      }
+    }
+
+    match /kobanRequests/{requestId} {
+      allow read: if isSuperAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+      allow list: if isSuperAdmin() || isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'pending';
+      allow update, delete: if isSuperAdmin();
     }
 
     // ─── STUDY CREWS (SQUADS / CIRCLES) ───────────────────────────────────────

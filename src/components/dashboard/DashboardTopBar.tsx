@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, CreditCard, LogOut, Sun, Moon, Shield, Award } from 'lucide-react';
+import { User, CreditCard, LogOut, Sun, Moon, Shield, Award, ShoppingBag } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { Logo } from '@/components/ui/Logo';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
-
 import { useTheme } from '@/hooks/useTheme';
+import { useWallet } from '@/hooks/useWallet';
+import { KobanChip } from '@/components/koban/KobanIcon';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 interface Props {
   sidebarCollapsed?: boolean;
@@ -40,8 +42,10 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   };
 
   const effectivePlan = useEffectivePlan();
+  const { balance: kobanBalance } = useWallet();
   const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
+  const cleanName = sanitizeStudentDisplayName(profile?.displayName || user?.displayName, profile?.shortId || user?.uid);
 
   return (
     <header
@@ -90,6 +94,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
         </button>
 
         {/* Avatar Menu Container */}
+        {/* Avatar Dropdown Menu */}
         <div className="relative" ref={menuRef}>
           <button
             onClick={() => setMenuOpen(!menuOpen)}
@@ -104,7 +109,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                 className="w-full h-full rounded-full object-cover"
               />
             ) : (
-              (user?.displayName?.[0] || user?.email?.[0] || 'S').toUpperCase()
+              (cleanName[0] || 'S').toUpperCase()
             )}
           </button>
 
@@ -113,18 +118,15 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
             <div
               className="absolute right-0 mt-2 w-64 rounded-2xl bg-[var(--card)] border border-[var(--border)] p-2 shadow-xl z-50 flex flex-col gap-1"
             >
-              {/* User summary header */}
+              {/* User summary header (No Email) */}
               <div className="p-3 border-b border-[var(--border)]">
                 <div
                   className="font-bold text-sm text-[var(--text)] truncate"
                   style={{ fontFamily: 'var(--font-heading)' }}
                 >
-                  {user?.displayName || 'Student Aspirant'}
+                  {cleanName}
                 </div>
-                <div className="text-xs text-[var(--muted)] truncate mt-0.5">
-                  {user?.email}
-                </div>
-                <div className="mt-2 flex items-center gap-1.5">
+                <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                   <span
                     className={`badge-pill text-[11px] px-2 py-0.5 ${
                       isPro ? 'badge-pill-red' : ''
@@ -145,6 +147,18 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
               </div>
 
               {/* Menu items */}
+              <Link
+                to="/store"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center justify-between px-3 py-2.5 rounded-xl text-xs sm:text-sm text-[var(--text)] hover:bg-[var(--card-2)] transition-colors"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                <div className="flex items-center gap-2.5">
+                  <ShoppingBag size={16} className="text-[#E8A317]" />
+                  <span>Boardly Store</span>
+                </div>
+                <KobanChip balance={kobanBalance} />
+              </Link>
               {profile?.profileCompleted || profile?.onboardingCompleted ? (
                 <Link
                   to="/dashboard/profile"
