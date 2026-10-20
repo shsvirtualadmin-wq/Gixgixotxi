@@ -10,6 +10,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { Award, Users, Compass, ArrowRight } from 'lucide-react';
+import { useProfileModal } from '@/contexts/ProfileModalContext';
 
 interface LeaderboardItem {
   id: string;
@@ -38,6 +39,7 @@ interface CircleMember {
 
 export function ArenaDashboardPage() {
   const { user, profile } = useAuth();
+  const { openProfile } = useProfileModal();
   const { equipped: myEquipped } = useWallet();
   const [activeTab, setActiveTab] = useState<'leaderboard' | 'grandline' | 'circle'>('leaderboard');
 
@@ -234,11 +236,13 @@ export function ArenaDashboardPage() {
                 return (
                   <div
                     key={item.id}
-                    className={`p-3.5 sm:p-4 rounded-2xl flex items-center justify-between transition-colors ${
+                    onClick={() => openProfile(item.uid)}
+                    className={`p-3.5 sm:p-4 rounded-2xl flex items-center justify-between transition-colors cursor-pointer hover:border-red-600/50 ${
                       isCurrentUser
                         ? 'bg-[var(--surface-2)] border-2 border-[var(--accent)] shadow-sm'
                         : 'bg-[var(--surface)] border border-[var(--border)]'
                     }`}
+                    title="View student profile"
                   >
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                       {/* Rank in Doto font */}

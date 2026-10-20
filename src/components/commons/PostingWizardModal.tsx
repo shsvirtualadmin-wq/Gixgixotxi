@@ -19,7 +19,7 @@ import {
   Filter,
   MessageSquare,
 } from 'lucide-react';
-import { COMMONS_POST_TYPES, type CommonsPostType, type CommonsFileAttachment } from '@/types/commons';
+import { COMMONS_POST_TYPES, COMMONS_POST_TYPES_LIST, type CommonsPostType, type CommonsFileAttachment } from '@/types/commons';
 import { SYLLABUS_MAP, COMMONS_TARGET_OPTIONS, getAllChaptersForSubject } from '@/constants/syllabusMap';
 import { createCommonsPost, isExecutableFile } from '@/services/commonsService';
 
@@ -233,7 +233,14 @@ export function PostingWizardModal({
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
-                {COMMONS_POST_TYPES.map((typeMeta) => {
+                {(Array.isArray(COMMONS_POST_TYPES_LIST)
+                  ? COMMONS_POST_TYPES_LIST
+                  : Array.isArray(COMMONS_POST_TYPES)
+                  ? (COMMONS_POST_TYPES as any)
+                  : COMMONS_POST_TYPES && typeof COMMONS_POST_TYPES === 'object'
+                  ? Object.values(COMMONS_POST_TYPES)
+                  : []
+                ).map((typeMeta) => {
                   const isSelected = selectedType === typeMeta.type;
                   return (
                     <button
@@ -438,7 +445,7 @@ export function PostingWizardModal({
                           onChange={(e) => handleSubjectChange(e.target.value)}
                           className="w-full text-xs bg-neutral-900 border border-neutral-700 rounded-lg p-2 text-neutral-200 focus:outline-none focus:border-red-600"
                         >
-                          {SYLLABUS_MAP.map((s) => (
+                          {Object.values(SYLLABUS_MAP).map((s) => (
                             <option key={s.id} value={s.id}>
                               {s.name}
                             </option>
@@ -547,8 +554,66 @@ export function PostingWizardModal({
               {/* ══════════════════════════════════════════════════════════════════
                   BELOW THAT: CONSENT CHECKBOX(ES), THEN THE PUBLISH BUTTON
                  ══════════════════════════════════════════════════════════════════ */}
-              <div className="space-y-2.5 pt-3 border-t border-neutral-800/80">
-                {/* Consent Checkbox 1: Academic & Guidelines */}
+              {/* ══════════════════════════════════════════════════════════════════
+                  VISIBILITY OPTION (PUBLIC OR ANONYMOUS)
+                 ══════════════════════════════════════════════════════════════════ */}
+              <div className="space-y-2 pt-3 border-t border-neutral-800/80">
+                <label className="text-xs font-semibold text-neutral-200 block">Post visibility</label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsAnonymous(false)}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      !isAnonymous
+                        ? 'border-red-600 bg-red-950/20 shadow-sm'
+                        : 'border-neutral-800 bg-neutral-900/60 hover:border-neutral-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div
+                        className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                          !isAnonymous ? 'border-red-500 bg-red-600' : 'border-neutral-600'
+                        }`}
+                      >
+                        {!isAnonymous && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <span className="text-xs font-bold text-neutral-100">Post publicly</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-400 pl-5.5 leading-snug">
+                      Public posts show your name and appear on your profile.
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAnonymous(true)}
+                    className={`p-3 rounded-xl border text-left transition-all ${
+                      isAnonymous
+                        ? 'border-red-600 bg-red-950/20 shadow-sm'
+                        : 'border-neutral-800 bg-neutral-900/60 hover:border-neutral-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      <div
+                        className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                          isAnonymous ? 'border-red-500 bg-red-600' : 'border-neutral-600'
+                        }`}
+                      >
+                        {isAnonymous && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                      </div>
+                      <span className="text-xs font-bold text-neutral-100">Post anonymously</span>
+                    </div>
+                    <p className="text-[11px] text-neutral-400 pl-5.5 leading-snug">
+                      Anonymous posts show no name and never appear on your profile.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* ══════════════════════════════════════════════════════════════════
+                  CONSENT CHECKBOX & PUBLISH
+                 ══════════════════════════════════════════════════════════════════ */}
+              <div className="pt-2">
                 <label className="flex items-start gap-2.5 cursor-pointer group">
                   <input
                     type="checkbox"
@@ -558,19 +623,6 @@ export function PostingWizardModal({
                   />
                   <span className="text-xs text-neutral-300 leading-snug">
                     I confirm this material complies with Boardly Community Guidelines, is intended for peer academic learning, and does not contain unauthorized exam leaks.
-                  </span>
-                </label>
-
-                {/* Consent Checkbox 2: Anonymous posting option */}
-                <label className="flex items-start gap-2.5 cursor-pointer group">
-                  <input
-                    type="checkbox"
-                    checked={isAnonymous}
-                    onChange={(e) => setIsAnonymous(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-red-600 focus:ring-red-500 focus:ring-offset-0 cursor-pointer accent-red-600"
-                  />
-                  <span className="text-xs text-neutral-300 leading-snug">
-                    <span className="font-semibold text-neutral-200">Post anonymously</span> — hide my public name and avatar from classmates (a randomized scholar alias will be shown).
                   </span>
                 </label>
               </div>

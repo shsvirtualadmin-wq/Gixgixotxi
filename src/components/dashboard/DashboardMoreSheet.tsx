@@ -1,8 +1,13 @@
-import { NavLink } from 'react-router-dom';
-import { X, FileText, BarChart3, Users, CreditCard, Zap } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { X, FileText, BarChart3, Users, CreditCard, Zap, User } from 'lucide-react';
 import { useEffect } from 'react';
+import { useUserProfile } from '@/hooks/useUserProfile';
+import { useWallet } from '@/hooks/useWallet';
+import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 const MORE_ITEMS = [
+  { to: '/dashboard/profile', label: 'My Profile', icon: User },
   { to: '/dashboard/past-papers', label: 'Past Papers', icon: FileText },
   { to: '/dashboard/merit-meter', label: 'Merit Meter', icon: BarChart3 },
   { to: '/dashboard/study-circles', label: 'Study Circles', icon: Users },
@@ -16,6 +21,11 @@ interface Props {
 }
 
 export function DashboardMoreSheet({ open, onClose, currentPath: _currentPath }: Props) {
+  const { user, profile } = useUserProfile();
+  const { equipped } = useWallet();
+  const navigate = useNavigate();
+  const rawDisplayName = profile?.displayName || user?.displayName || 'Student';
+  const cleanName = sanitizeStudentDisplayName(rawDisplayName, profile?.shortId || user?.uid);
   useEffect(() => {
     if (open) {
       document.body.style.overflow = 'hidden';
@@ -81,6 +91,44 @@ export function DashboardMoreSheet({ open, onClose, currentPath: _currentPath }:
             <X size={16} />
           </button>
         </div>
+
+        {/* User Summary Header (Clicking opens own profile) */}
+        <button
+          type="button"
+          onClick={() => {
+            onClose();
+            navigate('/dashboard/profile');
+          }}
+          className="flex items-center gap-3 p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] hover:border-red-600/50 transition-colors cursor-pointer text-left w-full mb-1 group"
+          title="Open your profile"
+        >
+          <AvatarFrame itemId={equipped?.frame || 'none'} size={44}>
+            <AvatarPicture
+              avatarId={equipped?.avatar}
+              avatarKey={profile?.avatarKey}
+              variant={profile?.avatarVariant}
+              seed={user?.uid}
+              size={34}
+            />
+          </AvatarFrame>
+          <div className="min-w-0">
+            {equipped?.nameplate ? (
+              <Nameplate
+                itemId={equipped.nameplate}
+                name={cleanName}
+                shortId={profile?.shortId || (user?.uid ? user.uid.slice(0, 5) : '00000')}
+                roleBadge={profile?.role === 'captain' ? 'CAPTAIN' : undefined}
+              />
+            ) : (
+              <p className="font-heading font-bold text-sm text-[var(--text)] group-hover:text-red-400 transition-colors truncate">
+                {cleanName}
+              </p>
+            )}
+            <p className="text-[11px] text-[var(--text-muted)] font-mono">
+              View &amp; Edit Profile →
+            </p>
+          </div>
+        </button>
 
         {MORE_ITEMS.map(({ to, label, icon: Icon }) => (
           <NavLink

@@ -226,8 +226,8 @@ export async function createCommonsPost(params: {
 
   if (params.isAnonymous) {
     publicAuthorUid = null;
-    authorAlias = generateAnonymousAlias();
-    publicAuthorName = authorAlias;
+    authorAlias = undefined;
+    publicAuthorName = 'Anonymous';
     publicAuthorAvatar = null;
   }
 
@@ -252,11 +252,10 @@ export async function createCommonsPost(params: {
     target: params.target,
     tags: params.tags.map((t) => t.trim().toLowerCase()).filter(Boolean),
     files: params.files,
-    isAnonymous: params.isAnonymous,
+    isAnonymous: Boolean(params.isAnonymous),
     authorUid: publicAuthorUid,
     authorName: publicAuthorName,
     authorAvatar: publicAuthorAvatar,
-    ...(authorAlias ? { authorAlias } : {}),
     upvotes: 0,
     commentCount: 0,
     saveCount: 0,
@@ -272,15 +271,17 @@ export async function createCommonsPost(params: {
     authorUid: currentUser.uid,
     authorEmail: currentUser.email || undefined,
     authorName: currentUser.displayName || 'Student',
-    isAnonymous: params.isAnonymous,
+    isAnonymous: Boolean(params.isAnonymous),
     createdAt: now,
   };
 
   const batch = writeBatch(db);
   batch.set(postRef, publicData);
-  // Author & superadmin private audit doc
-  const privateRef = doc(db, 'postPrivate', postId);
-  batch.set(privateRef, privateData);
+  // Author & admin private audit doc (postsPrivate and postPrivate)
+  const postsPrivateRef = doc(db, 'postsPrivate', postId);
+  batch.set(postsPrivateRef, privateData);
+  const postPrivateRef = doc(db, 'postPrivate', postId);
+  batch.set(postPrivateRef, privateData);
 
   await batch.commit();
   await recordPostUsage(currentUser.uid);
@@ -641,5 +642,171 @@ export async function deleteCommonsPost(postId: string, userUid: string, isAdmin
   if (privateSnap.exists()) {
     batch.delete(privateRef);
   }
+  const postsPrivateRef = doc(db, 'postsPrivate', postId);
+  batch.delete(postsPrivateRef);
+  await batch.commit();
+}
+
+/**
+ * Fetch a user's PUBLIC posts only (isAnonymous == false).
+ * Enforces privacy: Anonymous posts never appear here.
+ */
+export async function fetchUserPublicPosts(
+  authorUid: string,
+  lastVisibleDoc?: DocumentSnapshot | null,
+  pageSize = 10
+): Promise<{ posts: CommonsPost[]; lastDoc: DocumentSnapshot | null; hasMore: boolean }> {
+  if (!authorUid) return { posts: [], lastDoc: null, hasMore: false };
+
+  try {
+    let q = query(
+      collection(db, 'commonsPosts'),
+      where('authorUid', '==', authorUid),
+      where('isAnonymous', '==', false),
+      orderBy('createdAt', 'desc'),
+      limit(pageSize + 1)
+    );
+
+    if (lastVisibleDoc) {
+      q = query(
+        collection(db, 'commonsPosts'),
+        where('authorUid', '==', authorUid),
+        where('isAnonymous', '==', false),
+        orderBy('createdAt', 'desc'),
+        startAfter(lastVisibleDoc),
+        limit(pageSize + 1)
+      );
+    }
+
+    const snap = await getDocs(q);
+    const docs = snap.docs;
+    const hasMore = docs.length > pageSize;
+    const returnDocs = hasMore ? docs.slice(0, pageSize) : docs;
+    const lastDoc = returnDocs.length > 0 ? returnDocs[returnDocs.length - 1] : null;
+
+    const posts: CommonsPost[] = returnDocs.map((d) => ({
+      id: d.id,
+      ...(d.data() as Omit<CommonsPost, 'id'>),
+      isAnonymous: Boolean(d.data().isAnonymous),
+    }));
+
+    return { posts, lastDoc, hasMore };
+  } catch (err) {
+    console.warn('[commonsService] fetchUserPublicPosts warning:', err);
+    return { posts: [], lastDoc: null, hasMore: false };
+  }
+}
+
+/**
+ * Fetch OWN posts (both public and anonymous created by this user).
+ */
+export async function fetchUserOwnPosts(
+  userUid: string,
+  lastVisibleDoc?: DocumentSnapshot | null,
+  pageSize = 10
+): Promise<{ posts: CommonsPost[]; lastDoc: DocumentSnapshot | null; hasMore: boolean }> {
+  if (!userUid) return { posts: [], lastDoc: null, hasMore: false };
+
+  try {
+    // 1. Fetch public posts created by this user
+    const publicQ = query(
+      collection(db, 'commonsPosts'),
+      where('authorUid', '==', userUid),
+      orderBy('createdAt', 'desc'),
+      limit(50)
+    );
+    const publicSnap = await getDocs(publicQ);
+    const postMap = new Map<string, CommonsPost>();
+
+    publicSnap.docs.forEach((d) => {
+      postMap.set(d.id, {
+        id: d.id,
+        ...(d.data() as Omit<CommonsPost, 'id'>),
+        isAnonymous: Boolean(d.data().isAnonymous),
+      });
+    });
+
+    // 2. Fetch anonymous posts created by this user from postsPrivate
+    try {
+      const privQ = query(
+        collection(db, 'postsPrivate'),
+        where('authorUid', '==', userUid),
+        where('isAnonymous', '==', true),
+        limit(50)
+      );
+      const privSnap = await getDocs(privQ);
+      for (const pDoc of privSnap.docs) {
+        if (!postMap.has(pDoc.id)) {
+          const postDoc = await getDoc(doc(db, 'commonsPosts', pDoc.id));
+          if (postDoc.exists()) {
+            postMap.set(postDoc.id, {
+              id: postDoc.id,
+              ...(postDoc.data() as Omit<CommonsPost, 'id'>),
+              isAnonymous: true,
+            });
+          }
+        }
+      }
+    } catch (privErr) {
+      console.warn('[commonsService] Error fetching private anonymous posts:', privErr);
+    }
+
+    // Sort all by createdAt desc
+    const allPosts = Array.from(postMap.values()).sort((a, b) => {
+      const tA = (a.createdAt as any)?.seconds ? (a.createdAt as any).seconds * 1000 : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+      const tB = (b.createdAt as any)?.seconds ? (b.createdAt as any).seconds * 1000 : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+      return tB - tA;
+    });
+
+    const paginated = allPosts.slice(0, pageSize);
+    return {
+      posts: paginated,
+      lastDoc: null,
+      hasMore: allPosts.length > pageSize,
+    };
+  } catch (err) {
+    console.warn('[commonsService] fetchUserOwnPosts warning:', err);
+    return { posts: [], lastDoc: null, hasMore: false };
+  }
+}
+
+/**
+ * Switch a post between public and anonymous.
+ * Switching to anonymous removes it from public profile immediately.
+ */
+export async function togglePostAnonymity(
+  postId: string,
+  user: { uid: string; displayName?: string | null; photoURL?: string | null },
+  makeAnonymous: boolean
+): Promise<void> {
+  const postRef = doc(db, 'commonsPosts', postId);
+  const postsPrivateRef = doc(db, 'postsPrivate', postId);
+  const postPrivateRef = doc(db, 'postPrivate', postId);
+
+  const now = serverTimestamp();
+  const batch = writeBatch(db);
+
+  if (makeAnonymous) {
+    batch.update(postRef, {
+      isAnonymous: true,
+      authorUid: null,
+      authorName: 'Anonymous',
+      authorAvatar: null,
+      updatedAt: now,
+    });
+    batch.set(postsPrivateRef, { authorUid: user.uid, isAnonymous: true, updatedAt: now }, { merge: true });
+    batch.set(postPrivateRef, { authorUid: user.uid, isAnonymous: true, updatedAt: now }, { merge: true });
+  } else {
+    batch.update(postRef, {
+      isAnonymous: false,
+      authorUid: user.uid,
+      authorName: user.displayName || 'Student',
+      authorAvatar: user.photoURL || null,
+      updatedAt: now,
+    });
+    batch.set(postsPrivateRef, { authorUid: user.uid, isAnonymous: false, updatedAt: now }, { merge: true });
+    batch.set(postPrivateRef, { authorUid: user.uid, isAnonymous: false, updatedAt: now }, { merge: true });
+  }
+
   await batch.commit();
 }

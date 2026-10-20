@@ -53,6 +53,11 @@ export interface UserProfile {
   track?: string;
   onboardingComplete?: boolean;
   equipped?: EquippedCosmetics;
+  rankTitle?: string;
+  bio?: string;
+  accent?: string;
+  pinnedBadges?: string[];
+  pinnedStamps?: string[];
 }
 
 export type CosmeticType = 'effect' | 'frame' | 'nameplate' | 'avatar' | 'banner';
@@ -104,6 +109,9 @@ export interface PublicProfile {
   followersCount: number;
   followingCount: number;
   lastActiveAt: Timestamp | { seconds: number; nanoseconds?: number } | string | null;
+  rankTitle?: string;
+  pinnedBadges?: string[];
+  pinnedStamps?: string[];
 
   // Optional legacy fields for backward compatibility
   shortId?: string;

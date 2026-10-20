@@ -13,11 +13,39 @@ import {
 import { db } from '../lib/firebase';
 import { sanitizeStudentDisplayName } from '../utils/privacy';
 import { deriveFallbackShortId } from '../utils/shortId';
+import { calculateRankTitle } from '../config/rankLadder';
 import type { PublicProfile, UserProfile } from '../types';
 
-// In-memory cache for public profiles to prevent repetitive reads
+// In-memory cache + sessionStorage for public profiles (5 min TTL)
 const publicProfileCache = new Map<string, { profile: PublicProfile; fetchedAt: number }>();
-const CACHE_TTL_MS = 60 * 1000; // 1 minute TTL
+const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes TTL
+
+function getSessionCachedProfile(uid: string): { profile: PublicProfile; fetchedAt: number } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = sessionStorage.getItem(`boardly_pub_prof_${uid}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.profile) {
+      return parsed;
+    }
+  } catch (_e) {
+    // Ignore storage access errors
+  }
+  return null;
+}
+
+function setSessionCachedProfile(uid: string, profile: PublicProfile) {
+  if (typeof window === 'undefined') return;
+  try {
+    sessionStorage.setItem(
+      `boardly_pub_prof_${uid}`,
+      JSON.stringify({ profile, fetchedAt: Date.now() })
+    );
+  } catch (_e) {
+    // Ignore storage quota/security errors
+  }
+}
 
 /**
  * Synchronizes a user's sanitized public information into `publicProfiles/{uid}`.
@@ -29,57 +57,62 @@ export async function syncPublicProfile(
 ): Promise<PublicProfile> {
   if (!uid) throw new Error('Cannot sync public profile: missing UID');
 
+  const p = profileData as Record<string, any>;
   const existingCached = publicProfileCache.get(uid)?.profile;
-  const shortCode = (profileData.studentId as string) || (profileData.shortId as string) || existingCached?.studentId || deriveFallbackShortId(uid);
+  const shortCode = (p.studentId as string) || (p.shortId as string) || existingCached?.studentId || deriveFallbackShortId(uid);
   const cleanDisplayName = sanitizeStudentDisplayName(
-    (profileData.displayName as string) || (profileData.name as string) || existingCached?.displayName,
+    (p.displayName as string) || (p.name as string) || existingCached?.displayName,
     shortCode
   );
 
-  const equipped = (profileData.equipped as Record<string, unknown>) || existingCached?.equipped || {};
-  const frame = (profileData.frame as string) || (equipped.frame as string) || existingCached?.frame || null;
-  const nameplate = (profileData.nameplate as string) || (equipped.nameplate as string) || existingCached?.nameplate || null;
-  const effectId = (profileData.effectId as string) || (equipped.effect as string) || existingCached?.effectId || null;
-  const avatar = (profileData.avatar as string) || (equipped.avatar as string) || (profileData.photoURL as string) || (profileData.avatarKey as string) || existingCached?.avatar || null;
-  const banner = (profileData.banner as string) || existingCached?.banner || null;
+  const equipped = (p.equipped as Record<string, unknown>) || existingCached?.equipped || {};
+  const frame = (p.frame as string) || (equipped.frame as string) || existingCached?.frame || null;
+  const nameplate = (p.nameplate as string) || (equipped.nameplate as string) || existingCached?.nameplate || null;
+  const effectId = (p.effectId as string) || (equipped.effect as string) || existingCached?.effectId || null;
+  const avatar = (p.avatar as string) || (equipped.avatar as string) || (p.photoURL as string) || (p.avatarKey as string) || existingCached?.avatar || null;
+  const banner = (p.banner as string) || existingCached?.banner || null;
 
-  const rawBadges = profileData.badges ?? profileData.equippedBadges ?? existingCached?.badges ?? [];
+  const rawBadges = p.badges ?? p.equippedBadges ?? existingCached?.badges ?? [];
   const badges: string[] = Array.isArray(rawBadges) ? rawBadges.map(String) : [];
 
-  const rawBio = typeof profileData.bio === 'string' ? profileData.bio.trim() : (existingCached?.bio || '');
+  const rawBio = typeof p.bio === 'string' ? p.bio.trim() : (existingCached?.bio || '');
   const bio = rawBio.slice(0, 160);
 
-  const rawStatus = typeof profileData.status === 'string' ? profileData.status.trim() : (existingCached?.status || '');
+  const rawStatus = typeof p.status === 'string' ? p.status.trim() : (existingCached?.status || '');
   const status = rawStatus.slice(0, 40);
 
-  const accent = (profileData.accent as string) || existingCached?.accent || '#E11D48';
-  const crewName = (profileData.crewName as string) ?? (existingCached?.crewName || null);
-  const memberSince = (profileData.memberSince as any) || (profileData.createdAt as any) || existingCached?.memberSince || serverTimestamp();
-  const lastActiveAt = (profileData.lastActiveAt as any) || serverTimestamp();
+  const accent = (p.accent as string) || existingCached?.accent || '#E11D48';
+  const crewName = (p.crewName as string) ?? (existingCached?.crewName || null);
+  const memberSince = (p.memberSince as any) || (p.createdAt as any) || existingCached?.memberSince || serverTimestamp();
+  const lastActiveAt = (p.lastActiveAt as any) || serverTimestamp();
 
-  const inputStats = (profileData.stats as Record<string, unknown>) || (profileData.publicStats as Record<string, unknown>) || existingCached?.stats || {};
-  const streak = Number(inputStats.streak ?? profileData.streak ?? 0);
-  const longestStreak = Number(inputStats.longestStreak ?? profileData.longestStreak ?? streak);
-  const mcqs = Number(inputStats.mcqs ?? inputStats.mcqsSolved ?? inputStats.totalQuestionsSolved ?? profileData.totalQuestionsSolved ?? 0);
-  const accuracy = Number(inputStats.accuracy ?? profileData.accuracy ?? 0);
+  const inputStats = (p.stats as Record<string, unknown>) || (p.publicStats as Record<string, unknown>) || existingCached?.stats || {};
+  const streak = Number(inputStats.streak ?? p.streak ?? 0);
+  const longestStreak = Number(inputStats.longestStreak ?? p.longestStreak ?? streak);
+  const mcqs = Number(inputStats.mcqs ?? inputStats.mcqsSolved ?? inputStats.totalQuestionsSolved ?? p.totalQuestionsSolved ?? 0);
+  const accuracy = Number(inputStats.accuracy ?? p.accuracy ?? 0);
 
   const stats = {
     streak,
     longestStreak,
     mcqs,
     accuracy,
-    score: Number(inputStats.score ?? profileData.score ?? 0),
-    testsCompleted: Number(inputStats.testsCompleted ?? profileData.testsCompleted ?? 0),
+    score: Number(inputStats.score ?? p.score ?? 0),
+    testsCompleted: Number(inputStats.testsCompleted ?? p.testsCompleted ?? 0),
     totalQuestionsSolved: mcqs,
     mcqsSolved: mcqs,
   };
 
-  const followersCount = typeof profileData.followersCount === 'number'
-    ? profileData.followersCount
+  const followersCount = typeof p.followersCount === 'number'
+    ? p.followersCount
     : (existingCached?.followersCount ?? 0);
-  const followingCount = typeof profileData.followingCount === 'number'
-    ? profileData.followingCount
+  const followingCount = typeof p.followingCount === 'number'
+    ? p.followingCount
     : (existingCached?.followingCount ?? 0);
+
+  const rankTitle = (p.rankTitle as string) || calculateRankTitle(mcqs, streak);
+  const pinnedBadges = Array.isArray(p.pinnedBadges) ? p.pinnedBadges : (existingCached?.pinnedBadges || []);
+  const pinnedStamps = Array.isArray(p.pinnedStamps) ? p.pinnedStamps : (existingCached?.pinnedStamps || []);
 
   // Strictly contains NO email and NO phone
   const safePublicDoc: PublicProfile = {
@@ -101,6 +134,9 @@ export async function syncPublicProfile(
     followersCount,
     followingCount,
     lastActiveAt,
+    rankTitle,
+    pinnedBadges,
+    pinnedStamps,
 
     // Legacy compatibility fields
     shortId: shortCode,
@@ -122,6 +158,7 @@ export async function syncPublicProfile(
   try {
     await setDoc(doc(db, 'publicProfiles', uid), safePublicDoc, { merge: true });
     publicProfileCache.set(uid, { profile: safePublicDoc, fetchedAt: Date.now() });
+    setSessionCachedProfile(uid, safePublicDoc);
   } catch (err) {
     console.warn(`[publicProfile] Failed to sync publicProfiles/${uid}:`, err);
   }
@@ -130,10 +167,59 @@ export async function syncPublicProfile(
 }
 
 /**
- * Reads a single public profile from `publicProfiles/{uid}`.
- * Fallbacks to a sanitized default if not yet created.
+ * Updates a user's profile atomically in BOTH users/{uid} and publicProfiles/{uid} via a Firestore batch write.
  */
-export async function getPublicProfile(uid: string): Promise<PublicProfile> {
+export async function updateProfileAtomic(
+  uid: string,
+  updates: {
+    displayName: string;
+    bio: string;
+    status: string;
+    accent: string;
+  }
+): Promise<PublicProfile> {
+  if (!uid) throw new Error('Missing UID for profile update');
+
+  const userRef = doc(db, 'users', uid);
+  const pubRef = doc(db, 'publicProfiles', uid);
+
+  const cleanUpdates = {
+    displayName: updates.displayName.trim().slice(0, 40),
+    bio: updates.bio.trim().slice(0, 160),
+    status: updates.status.trim().slice(0, 40),
+    accent: updates.accent || '#D71921',
+    updatedAt: serverTimestamp(),
+  };
+
+  const batch = writeBatch(db);
+  batch.update(userRef, cleanUpdates);
+  batch.set(pubRef, cleanUpdates, { merge: true });
+
+  await batch.commit();
+
+  // Invalidate cache immediately
+  publicProfileCache.delete(uid);
+  if (typeof window !== 'undefined') {
+    try {
+      sessionStorage.removeItem(`boardly_pub_prof_${uid}`);
+    } catch (_e) {
+      // Ignore storage errors on cache clear
+    }
+  }
+
+  // Sync and return fresh public profile
+  const fresh = await syncPublicProfile(uid, cleanUpdates);
+  return fresh;
+}
+
+/**
+ * Reads a single public profile from `publicProfiles/{uid}`.
+ * Cached for 5 minutes in sessionStorage with background revalidation.
+ * Offline resilient: returns cached version if network fails.
+ */
+export async function getPublicProfile(uid: string, forceFresh = false): Promise<PublicProfile | null> {
+  if (!uid) return null;
+
   const fallbackShortId = deriveFallbackShortId(uid || 'guest');
   const fallback: PublicProfile = {
     uid: uid || 'guest',
@@ -148,7 +234,7 @@ export async function getPublicProfile(uid: string): Promise<PublicProfile> {
     badges: [],
     bio: '',
     status: '',
-    accent: '#E11D48',
+    accent: '#D71921',
     memberSince: null,
     crewName: null,
     stats: {
@@ -175,60 +261,91 @@ export async function getPublicProfile(uid: string): Promise<PublicProfile> {
     role: 'student',
   };
 
-  if (!uid) {
-    return fallback;
-  }
+  // 1. Check in-memory or sessionStorage cache
+  if (!forceFresh) {
+    const memCached = publicProfileCache.get(uid);
+    const sessionCached = getSessionCachedProfile(uid);
+    const cachedItem = memCached || sessionCached;
 
-  const cached = publicProfileCache.get(uid);
-  if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
-    return cached.profile;
-  }
-
-  try {
-    const snap = await getDoc(doc(db, 'publicProfiles', uid));
-    if (snap.exists()) {
-      const data = snap.data() as Partial<PublicProfile>;
-      const studentId = data.studentId || data.shortId || fallbackShortId;
-      const cleanDisplayName = sanitizeStudentDisplayName(data.displayName || fallback.displayName, studentId);
-
-      const resolvedStats = data.stats || {
-        streak: Number(data.publicStats?.streak || 0),
-        longestStreak: Number(data.publicStats?.longestStreak || data.publicStats?.streak || 0),
-        mcqs: Number(data.publicStats?.mcqs || data.publicStats?.totalQuestionsSolved || 0),
-        accuracy: Number(data.publicStats?.accuracy || 0),
-      };
-
-      const resolvedProfile: PublicProfile = {
-        ...fallback,
-        ...data,
-        uid,
-        displayName: cleanDisplayName,
-        studentId,
-        avatar: data.avatar ?? (data.equipped?.avatar || data.photoURL || data.avatarKey || null),
-        banner: data.banner ?? null,
-        frame: data.frame ?? (data.equipped?.frame || null),
-        nameplate: data.nameplate ?? (data.equipped?.nameplate || null),
-        effectId: data.effectId ?? (data.equipped?.effect || null),
-        badges: Array.isArray(data.badges) ? data.badges : (Array.isArray(data.equippedBadges) ? data.equippedBadges : []),
-        bio: typeof data.bio === 'string' ? data.bio.slice(0, 160) : '',
-        status: typeof data.status === 'string' ? data.status.slice(0, 40) : '',
-        accent: data.accent || '#E11D48',
-        memberSince: data.memberSince ?? null,
-        crewName: data.crewName ?? null,
-        stats: resolvedStats,
-        followersCount: Number(data.followersCount || 0),
-        followingCount: Number(data.followingCount || 0),
-        lastActiveAt: data.lastActiveAt ?? null,
-      };
-
-      publicProfileCache.set(uid, { profile: resolvedProfile, fetchedAt: Date.now() });
-      return resolvedProfile;
+    if (cachedItem) {
+      const isFresh = Date.now() - cachedItem.fetchedAt < CACHE_TTL_MS;
+      if (isFresh) {
+        // Trigger background revalidation
+        setTimeout(() => {
+          fetchPublicProfileFromNetwork(uid, fallback).catch(() => {});
+        }, 150);
+        return cachedItem.profile;
+      }
     }
-  } catch (err) {
-    console.warn(`[publicProfile] Could not fetch publicProfiles/${uid}:`, err);
   }
 
-  return fallback;
+  // 2. Fetch fresh from network
+  try {
+    const fresh = await fetchPublicProfileFromNetwork(uid, fallback);
+    return fresh;
+  } catch (err) {
+    console.warn(`[publicProfile] Network fetch failed for ${uid}:`, err);
+    // Offline resilience: return stale cached profile if available
+    const stale = publicProfileCache.get(uid)?.profile || getSessionCachedProfile(uid)?.profile;
+    if (stale) {
+      return stale;
+    }
+    // Return null if not found
+    return null;
+  }
+}
+
+async function fetchPublicProfileFromNetwork(
+  uid: string,
+  fallback: PublicProfile
+): Promise<PublicProfile | null> {
+  const fallbackShortId = deriveFallbackShortId(uid || 'guest');
+  const snap = await getDoc(doc(db, 'publicProfiles', uid));
+
+  if (!snap.exists()) {
+    return null;
+  }
+
+  const data = snap.data() as Partial<PublicProfile>;
+  const studentId = data.studentId || data.shortId || fallbackShortId;
+  const cleanDisplayName = sanitizeStudentDisplayName(data.displayName || fallback.displayName, studentId);
+
+  const resolvedStats = data.stats || {
+    streak: Number(data.publicStats?.streak || 0),
+    longestStreak: Number(data.publicStats?.longestStreak || data.publicStats?.streak || 0),
+    mcqs: Number(data.publicStats?.mcqs || data.publicStats?.totalQuestionsSolved || 0),
+    accuracy: Number(data.publicStats?.accuracy || 0),
+  };
+
+  const resolvedProfile: PublicProfile = {
+    ...fallback,
+    ...data,
+    uid,
+    displayName: cleanDisplayName,
+    studentId,
+    avatar: data.avatar ?? (data.equipped?.avatar || data.photoURL || data.avatarKey || null),
+    banner: data.banner ?? null,
+    frame: data.frame ?? (data.equipped?.frame || null),
+    nameplate: data.nameplate ?? (data.equipped?.nameplate || null),
+    effectId: data.effectId ?? (data.equipped?.effect || null),
+    badges: Array.isArray(data.badges) ? data.badges : (Array.isArray(data.equippedBadges) ? data.equippedBadges : []),
+    bio: typeof data.bio === 'string' ? data.bio.slice(0, 160) : '',
+    status: typeof data.status === 'string' ? data.status.slice(0, 40) : '',
+    accent: data.accent || '#D71921',
+    memberSince: data.memberSince ?? null,
+    crewName: data.crewName ?? null,
+    stats: resolvedStats,
+    followersCount: Number(data.followersCount || 0),
+    followingCount: Number(data.followingCount || 0),
+    lastActiveAt: data.lastActiveAt ?? null,
+    rankTitle: (data as any)?.rankTitle || calculateRankTitle(resolvedStats.mcqs, resolvedStats.streak),
+    pinnedBadges: Array.isArray((data as any)?.pinnedBadges) ? (data as any).pinnedBadges : [],
+    pinnedStamps: Array.isArray((data as any)?.pinnedStamps) ? (data as any).pinnedStamps : [],
+  };
+
+  publicProfileCache.set(uid, { profile: resolvedProfile, fetchedAt: Date.now() });
+  setSessionCachedProfile(uid, resolvedProfile);
+  return resolvedProfile;
 }
 
 /**
@@ -277,7 +394,32 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
       const fallback: PublicProfile = {
         uid,
         displayName: `Student #${deriveFallbackShortId(uid)}`,
+        studentId: deriveFallbackShortId(uid),
         shortId: deriveFallbackShortId(uid),
+        avatar: null,
+        banner: null,
+        frame: null,
+        nameplate: null,
+        effectId: null,
+        badges: [],
+        bio: '',
+        status: '',
+        accent: '#E11D48',
+        memberSince: null,
+        crewName: null,
+        stats: {
+          streak: 0,
+          longestStreak: 0,
+          mcqs: 0,
+          accuracy: 0,
+          score: 0,
+          testsCompleted: 0,
+          totalQuestionsSolved: 0,
+          mcqsSolved: 0,
+        },
+        followersCount: 0,
+        followingCount: 0,
+        lastActiveAt: null,
         role: 'student',
       };
       result.set(uid, fallback);

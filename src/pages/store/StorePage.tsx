@@ -291,7 +291,11 @@ export function StorePage() {
         {/* ─── EQUIPPED LOADOUT CARD (Uses shared AvatarFrame, AvatarPicture, Nameplate) ──── */}
         {isLoggedIn && (
           <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[rgba(215,25,33,0.08)] via-[rgba(232,163,23,0.06)] to-transparent border border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-4 min-w-0 w-full sm:w-auto">
+            <Link
+              to="/dashboard/profile"
+              className="flex items-center gap-4 min-w-0 w-full sm:w-auto hover:opacity-85 transition-opacity cursor-pointer group"
+              title="Open your profile"
+            >
               <div className="relative shrink-0">
                 <CosmeticEffect itemId={equipped.effect || 'none'} size={68}>
                   <AvatarFrame itemId={equipped.frame || 'none'} size={68}>
@@ -306,8 +310,8 @@ export function StorePage() {
                 </CosmeticEffect>
               </div>
               <div className="min-w-0 space-y-1">
-                <span className="text-[11px] text-[var(--muted)] uppercase font-heading font-semibold block">
-                  Your Equipped Loadout
+                <span className="text-[11px] text-[var(--muted)] uppercase font-heading font-semibold block group-hover:text-red-400 transition-colors">
+                  Your Equipped Loadout · View Profile →
                 </span>
                 <Nameplate
                   itemId={equipped.nameplate || 'none'}
@@ -316,7 +320,7 @@ export function StorePage() {
                   roleBadge={profile?.role === 'captain' ? 'CAPTAIN' : undefined}
                 />
               </div>
-            </div>
+            </Link>
 
             <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
               <button

@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { AuthProvider } from './contexts/AuthContext';
+import { ProfileModalProvider, ProfileModalHost } from './contexts/ProfileModalContext';
 import { useReferralCapture } from './hooks/useReferral';
 import { AdminGuard } from './components/admin/AdminGuard';
 import { AdminLayout } from './components/admin/AdminLayout';
@@ -299,6 +300,7 @@ function AppInner() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Suspense>
+    <ProfileModalHost />
     {import.meta.env.DEV && <DebugPanel />}
     </DashboardErrorBoundary>
   );
@@ -307,7 +309,9 @@ function AppInner() {
 export function App() {
   return (
     <AuthProvider>
-      <AppInner />
+      <ProfileModalProvider>
+        <AppInner />
+      </ProfileModalProvider>
     </AuthProvider>
   );
 }

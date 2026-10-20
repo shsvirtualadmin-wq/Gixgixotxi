@@ -119,7 +119,12 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
               className="absolute right-0 mt-2 w-64 rounded-2xl bg-[var(--card)] border border-[var(--border)] p-2 shadow-xl z-50 flex flex-col gap-1"
             >
               {/* User summary header (No Email) */}
-              <div className="p-3 border-b border-[var(--border)] space-y-1">
+              <Link
+                to="/dashboard/profile"
+                onClick={() => setMenuOpen(false)}
+                className="block p-3 border-b border-[var(--border)] space-y-1 hover:bg-[var(--surface-hover)] rounded-t-xl transition-colors cursor-pointer group"
+                title="View your profile"
+              >
                 {equipped?.nameplate ? (
                   <Nameplate
                     itemId={equipped.nameplate}
@@ -129,7 +134,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                   />
                 ) : (
                   <div
-                    className="font-bold text-sm text-[var(--text)] truncate"
+                    className="font-bold text-sm text-[var(--text)] group-hover:text-red-400 transition-colors truncate"
                     style={{ fontFamily: 'var(--font-heading)' }}
                   >
                     {cleanName}
@@ -153,7 +158,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                     </span>
                   )}
                 </div>
-              </div>
+              </Link>
 
               {/* Menu items */}
               <Link

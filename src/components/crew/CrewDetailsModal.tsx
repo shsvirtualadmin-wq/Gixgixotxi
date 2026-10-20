@@ -7,6 +7,7 @@ import type { PublicCrewSummary, CrewDoc } from '@/types/crew';
 import { fetchCrewDetails } from '@/services/crewService';
 
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { useProfileModal } from '@/contexts/ProfileModalContext';
 
 interface CrewDetailsModalProps {
   summary: PublicCrewSummary;
@@ -34,6 +35,7 @@ export const CrewDetailsModal: React.FC<CrewDetailsModalProps> = ({
   const [details, setDetails] = React.useState<CrewDoc | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [copiedLink, setCopiedLink] = React.useState(false);
+  const { openProfile } = useProfileModal();
 
   React.useEffect(() => {
     let active = true;
@@ -207,7 +209,12 @@ export const CrewDetailsModal: React.FC<CrewDetailsModalProps> = ({
               {details.members.map((m) => (
                 <div
                   key={m.uid}
-                  className="flex items-center justify-between p-2 rounded-lg bg-[#121212] border border-[rgba(255,255,255,0.06)]"
+                  onClick={() => {
+                    onClose();
+                    openProfile(m.uid);
+                  }}
+                  className="flex items-center justify-between p-2 rounded-lg bg-[#121212] border border-[rgba(255,255,255,0.06)] hover:border-red-600/50 cursor-pointer transition-colors"
+                  title="View student profile"
                 >
                   <div className="flex items-center gap-2.5">
                     <AvatarFrame itemId={m.equipped?.frame || 'none'} size={34}>

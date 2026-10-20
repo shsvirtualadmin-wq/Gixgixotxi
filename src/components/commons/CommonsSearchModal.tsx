@@ -12,6 +12,7 @@ interface CommonsSearchModalProps {
   onSelectPost: (post: CommonsPost) => void;
   onOpenComments: (post: CommonsPost) => void;
   onOpenReport: (post: CommonsPost) => void;
+  onOpenUserProfile?: (uid: string) => void;
 }
 
 export function CommonsSearchModal({
@@ -22,6 +23,7 @@ export function CommonsSearchModal({
   onSelectPost,
   onOpenComments,
   onOpenReport,
+  onOpenUserProfile,
 }: CommonsSearchModalProps) {
   const [activeTab, setActiveTab] = useState<'posts' | 'people'>('posts');
   const [searchQuery, setSearchQuery] = useState('');
@@ -147,7 +149,12 @@ export function CommonsSearchModal({
                   {peopleResults.map((u) => (
                     <div
                       key={u.uid}
-                      className="flex items-center justify-between py-3 px-2 hover:bg-neutral-900/50 rounded-xl transition-colors"
+                      onClick={() => {
+                        onClose();
+                        onOpenUserProfile?.(u.uid);
+                      }}
+                      className="flex items-center justify-between py-3 px-2 hover:bg-neutral-900/60 rounded-xl transition-colors cursor-pointer group"
+                      title="View student profile"
                     >
                       <div className="flex items-center gap-3">
                         {u.avatarUrl ? (

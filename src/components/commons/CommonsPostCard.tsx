@@ -16,9 +16,12 @@ import {
   Sparkles,
   MoreVertical,
   Trash2,
+  User,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import type { CommonsPost, CommonsFileAttachment } from '@/types/commons';
-import { COMMONS_POST_TYPES } from '@/types/commons';
+import { COMMONS_POST_TYPES, getCommonsPostTypeMeta } from '@/types/commons';
 import { togglePostVote, toggleSavePost } from '@/services/commonsService';
 
 interface CommonsPostCardProps {
@@ -28,6 +31,8 @@ interface CommonsPostCardProps {
   onOpenComments: (post: CommonsPost) => void;
   onOpenReport: (post: CommonsPost) => void;
   onDeletePost?: (postId: string) => void;
+  onAuthorClick?: (authorUid: string) => void;
+  onToggleAnonymity?: (post: CommonsPost) => void;
 }
 
 export function CommonsPostCard({
@@ -37,6 +42,8 @@ export function CommonsPostCard({
   onOpenComments,
   onOpenReport,
   onDeletePost,
+  onAuthorClick,
+  onToggleAnonymity,
 }: CommonsPostCardProps) {
   const [upvotes, setUpvotes] = useState(post.upvotes || 0);
   const [hasVoted, setHasVoted] = useState(false);
@@ -46,7 +53,7 @@ export function CommonsPostCard({
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const typeMeta = COMMONS_POST_TYPES[post.type] || COMMONS_POST_TYPES.notes;
+  const typeMeta = getCommonsPostTypeMeta(post.type);
 
   const handleVote = async () => {
     if (!currentUserId || voting) return;
@@ -119,30 +126,59 @@ export function CommonsPostCard({
         <div className="flex items-center gap-2.5 min-w-0">
           {/* Author avatar */}
           {post.isAnonymous ? (
-            <div className="w-8 h-8 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-xs font-mono text-neutral-400 shrink-0">
-              ?
+            <div className="w-8 h-8 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-neutral-400 shrink-0">
+              <User size={15} />
             </div>
           ) : post.authorAvatar ? (
-            <img
-              src={post.authorAvatar}
-              alt={post.authorName}
-              className="w-8 h-8 rounded-full border border-neutral-700 object-cover shrink-0"
-            />
+            <button
+              type="button"
+              onClick={() => post.authorUid && onAuthorClick?.(post.authorUid)}
+              disabled={!onAuthorClick || !post.authorUid}
+              className={`w-8 h-8 rounded-full border border-neutral-700 overflow-hidden shrink-0 ${
+                onAuthorClick && post.authorUid ? 'cursor-pointer hover:border-red-500 transition-colors' : ''
+              }`}
+            >
+              <img
+                src={post.authorAvatar}
+                alt={post.authorName}
+                className="w-full h-full object-cover"
+              />
+            </button>
           ) : (
-            <div className="w-8 h-8 rounded-full bg-red-950/60 border border-red-800/60 flex items-center justify-center text-xs font-bold text-red-300 shrink-0">
-              {post.authorName.charAt(0).toUpperCase()}
-            </div>
+            <button
+              type="button"
+              onClick={() => post.authorUid && onAuthorClick?.(post.authorUid)}
+              disabled={!onAuthorClick || !post.authorUid}
+              className={`w-8 h-8 rounded-full bg-red-950/60 border border-red-800/60 flex items-center justify-center text-xs font-bold text-red-300 shrink-0 ${
+                onAuthorClick && post.authorUid ? 'cursor-pointer hover:border-red-500 transition-colors' : ''
+              }`}
+            >
+              {(post.authorName || 'S').charAt(0).toUpperCase()}
+            </button>
           )}
 
           {/* Author details */}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-neutral-100 truncate">
-                {post.authorName}
-              </span>
-              {post.isAnonymous && (
-                <span className="text-[10px] font-mono tracking-wider uppercase text-amber-400/90 bg-amber-950/40 border border-amber-800/40 px-1.5 py-0.2 rounded">
-                  ANON
+              {post.isAnonymous ? (
+                <span className="text-sm font-semibold text-neutral-200 truncate">
+                  Anonymous
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => post.authorUid && onAuthorClick?.(post.authorUid)}
+                  disabled={!onAuthorClick || !post.authorUid}
+                  className={`text-sm font-semibold text-neutral-100 truncate text-left ${
+                    onAuthorClick && post.authorUid ? 'hover:text-red-400 hover:underline cursor-pointer' : ''
+                  }`}
+                >
+                  {post.authorName || 'Student'}
+                </button>
+              )}
+              {post.isAnonymous && isAuthor && (
+                <span className="text-[10px] font-mono tracking-wider uppercase text-amber-400 bg-amber-950/50 border border-amber-800/50 px-1.5 py-0.2 rounded">
+                  Anonymous
                 </span>
               )}
             </div>
@@ -178,9 +214,32 @@ export function CommonsPostCard({
 
             {menuOpen && (
               <div
-                className="absolute right-0 top-8 z-20 w-44 rounded-xl border border-neutral-800 bg-neutral-900/95 py-1.5 shadow-xl backdrop-blur-md"
+                className="absolute right-0 top-8 z-20 w-48 rounded-xl border border-neutral-800 bg-neutral-900/95 py-1.5 shadow-xl backdrop-blur-md"
                 onMouseLeave={() => setMenuOpen(false)}
               >
+                {/* Author switch public / anonymous */}
+                {isAuthor && onToggleAnonymity && (
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      onToggleAnonymity(post);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-neutral-300 hover:bg-neutral-800/70 text-left transition-colors"
+                  >
+                    {post.isAnonymous ? (
+                      <>
+                        <Eye size={14} className="text-emerald-400 shrink-0" />
+                        <span>Switch to public</span>
+                      </>
+                    ) : (
+                      <>
+                        <EyeOff size={14} className="text-amber-400 shrink-0" />
+                        <span>Switch to anonymous</span>
+                      </>
+                    )}
+                  </button>
+                )}
+
                 <button
                   onClick={() => {
                     setMenuOpen(false);

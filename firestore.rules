@@ -746,8 +746,9 @@ service cloud.firestore {
 
     // ─── BOARDLY COMMONS: STUDY RESOURCE EXCHANGE ────────────────────────────
     match /commonsPosts/{postId} {
-      // Public study resource exchange: anyone can browse posts; hidden posts filtered in client/query
-      allow read: if true;
+      // Public study resource exchange: anyone can browse posts
+      // Any query for a user's posts must only return isAnonymous == false
+      allow read: if resource == null || resource.data.isAnonymous == false || resource.data.authorUid == null;
 
       // Authenticated students can create posts; anonymous posts MUST have authorUid == null
       allow create: if isAuthenticated() && (
@@ -755,17 +756,25 @@ service cloud.firestore {
         (request.resource.data.isAnonymous == false && request.resource.data.authorUid == request.auth.uid)
       );
 
-      // Update allowed for superadmin, post author, or counter increments (votes, comments, reports, saves)
+      // Update allowed for superadmin, post author, author switching anonymity, or counter increments
       allow update: if isSuperAdmin() || (
         isAuthenticated() && (
           resource.data.authorUid == request.auth.uid ||
+          (resource.data.isAnonymous == true && exists(/databases/$(database)/documents/postsPrivate/$(postId)) && get(/databases/$(database)/documents/postsPrivate/$(postId)).data.authorUid == request.auth.uid) ||
+          (resource.data.isAnonymous == true && exists(/databases/$(database)/documents/postPrivate/$(postId)) && get(/databases/$(database)/documents/postPrivate/$(postId)).data.authorUid == request.auth.uid) ||
           // Counter updates allowed for peer interactions
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes', 'commentCount', 'saveCount', 'reportCount', 'isHidden', 'updatedAt'])
         )
       );
 
       // Delete allowed for superadmin or author
-      allow delete: if isSuperAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+      allow delete: if isSuperAdmin() || (
+        isAuthenticated() && (
+          resource.data.authorUid == request.auth.uid ||
+          (resource.data.isAnonymous == true && exists(/databases/$(database)/documents/postsPrivate/$(postId)) && get(/databases/$(database)/documents/postsPrivate/$(postId)).data.authorUid == request.auth.uid) ||
+          (resource.data.isAnonymous == true && exists(/databases/$(database)/documents/postPrivate/$(postId)) && get(/databases/$(database)/documents/postPrivate/$(postId)).data.authorUid == request.auth.uid)
+        )
+      );
 
       // Subcollection: Peer votes (1 vote per user doc)
       match /votes/{userId} {
@@ -782,11 +791,19 @@ service cloud.firestore {
     }
 
     // Private author audit records for Commons (for moderation & privacy guarantee)
-    // Strictly readable ONLY by the author and superadmin
-    match /postPrivate/{postId} {
-      allow read: if isSuperAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+    // Strictly readable ONLY by the author and admins
+    match /postsPrivate/{postId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+      allow list: if isAdmin() || (isAuthenticated() && request.query.limit <= 100);
       allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
-      allow update, delete: if isSuperAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+    }
+
+    match /postPrivate/{postId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+      allow list: if isAdmin() || (isAuthenticated() && request.query.limit <= 100);
+      allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
+      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
     }
 
     // Moderation report tickets

@@ -18,10 +18,12 @@ import { CommonsSearchModal } from '@/components/commons/CommonsSearchModal';
 import { fetchCommonsPosts, deleteCommonsPost } from '@/services/commonsService';
 import type { CommonsPost } from '@/types/commons';
 import { Link } from 'react-router-dom';
+import { useProfileModal } from '@/contexts/ProfileModalContext';
 
 export function CommonsFeedPage() {
   const { user, profile } = useUserProfile();
   const { isAdmin } = useAuth();
+  const { openProfile } = useProfileModal();
 
   // Feed Options: Only "Following" and "All"
   const [feedTab, setFeedTab] = useState<'following' | 'all'>('all');
@@ -234,6 +236,7 @@ export function CommonsFeedPage() {
               onOpenComments={(p) => setCommentsPost(p)}
               onOpenReport={(p) => setReportPost(p)}
               onDeletePost={handleDeletePost}
+              onAuthorClick={(authorUid) => openProfile(authorUid)}
             />
           ))
         )}
@@ -262,7 +265,7 @@ export function CommonsFeedPage() {
             uid: user.uid,
             email: user.email,
             displayName: profile?.displayName || user.displayName,
-            photoURL: profile?.avatarUrl || user.photoURL,
+            photoURL: profile?.photoURL || user.photoURL,
           }}
         />
       )}
@@ -276,7 +279,7 @@ export function CommonsFeedPage() {
             ? {
                 uid: user.uid,
                 displayName: profile?.displayName || user.displayName,
-                photoURL: profile?.avatarUrl || user.photoURL,
+                photoURL: profile?.photoURL || user.photoURL,
               }
             : null
         }
@@ -302,6 +305,10 @@ export function CommonsFeedPage() {
         onOpenReport={(p) => {
           setSearchModalOpen(false);
           setReportPost(p);
+        }}
+        onOpenUserProfile={(uid) => {
+          setSearchModalOpen(false);
+          openProfile(uid);
         }}
       />
     </div>

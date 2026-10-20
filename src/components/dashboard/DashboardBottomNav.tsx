@@ -145,7 +145,15 @@ export function DashboardBottomNav() {
 
             {/* Header: User Summary (Privacy Protected - No Email Displayed) */}
             <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border)]">
-              <div className="flex items-center gap-3 min-w-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  navigate('/dashboard/profile');
+                }}
+                className="flex items-center gap-3 min-w-0 text-left hover:opacity-85 transition-opacity cursor-pointer group"
+                title="View your profile"
+              >
                 <AvatarFrame itemId={equipped?.frame || 'none'} size={48}>
                   <AvatarPicture
                     avatarId={equipped?.avatar}
@@ -164,7 +172,7 @@ export function DashboardBottomNav() {
                       roleBadge={role === 'captain' ? 'CAPTAIN' : undefined}
                     />
                   ) : (
-                    <p className="font-heading font-bold text-base text-[var(--text)] truncate">
+                    <p className="font-heading font-bold text-base text-[var(--text)] group-hover:text-red-400 transition-colors truncate">
                       {cleanDisplayName}
                     </p>
                   )}
@@ -189,7 +197,7 @@ export function DashboardBottomNav() {
                     )}
                   </div>
                 </div>
-              </div>
+              </button>
 
               <button
                 type="button"

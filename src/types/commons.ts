@@ -75,6 +75,24 @@ export const COMMONS_POST_TYPES: Record<CommonsPostType, CommonsPostTypeMeta> = 
   },
 };
 
+export const COMMONS_POST_TYPES_LIST: CommonsPostTypeMeta[] = Object.values(COMMONS_POST_TYPES);
+
+export function getCommonsPostTypeMeta(type?: string | null): CommonsPostTypeMeta {
+  if (type && COMMONS_POST_TYPES && typeof COMMONS_POST_TYPES === 'object' && (COMMONS_POST_TYPES as Record<string, CommonsPostTypeMeta>)[type]) {
+    return (COMMONS_POST_TYPES as Record<string, CommonsPostTypeMeta>)[type];
+  }
+  return (
+    COMMONS_POST_TYPES?.notes || {
+      type: 'notes',
+      label: 'Class & Prep Notes',
+      badgeLabel: 'Notes',
+      iconName: 'BookOpen',
+      color: '#D71921',
+      description: 'Comprehensive handwritten or typed study summaries & chapter notes',
+    }
+  );
+}
+
 export interface CommonsFileAttachment {
   name: string;
   size: number;
