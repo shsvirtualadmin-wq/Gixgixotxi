@@ -10,6 +10,7 @@ import { useWallet } from '@/hooks/useWallet';
 import { KobanChip } from '@/components/koban/KobanIcon';
 import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { useProfileModal } from '@/contexts/ProfileModalContext';
 
 interface Props {
   sidebarCollapsed?: boolean;
@@ -18,6 +19,7 @@ interface Props {
 export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) {
   const { signOutUser, isAdmin } = useAuth();
   const { user, profile } = useUserProfile();
+  const { openProfile } = useProfileModal();
   const navigate = useNavigate();
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -119,10 +121,12 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
               className="absolute right-0 mt-2 w-64 rounded-2xl bg-[var(--card)] border border-[var(--border)] p-2 shadow-xl z-50 flex flex-col gap-1"
             >
               {/* User summary header (No Email) */}
-              <Link
-                to="/dashboard/profile"
-                onClick={() => setMenuOpen(false)}
-                className="block p-3 border-b border-[var(--border)] space-y-1 hover:bg-[var(--surface-hover)] rounded-t-xl transition-colors cursor-pointer group"
+              <div
+                onClick={() => {
+                  setMenuOpen(false);
+                  openProfile();
+                }}
+                className="p-3 border-b border-[var(--border)] space-y-1 cursor-pointer hover:bg-[var(--card-2)] transition-colors rounded-t-xl"
                 title="View your profile"
               >
                 {equipped?.nameplate ? (
@@ -134,7 +138,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                   />
                 ) : (
                   <div
-                    className="font-bold text-sm text-[var(--text)] group-hover:text-red-400 transition-colors truncate"
+                    className="font-bold text-sm text-[var(--text)] truncate"
                     style={{ fontFamily: 'var(--font-heading)' }}
                   >
                     {cleanName}
@@ -158,7 +162,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                     </span>
                   )}
                 </div>
-              </Link>
+              </div>
 
               {/* Menu items */}
               <Link

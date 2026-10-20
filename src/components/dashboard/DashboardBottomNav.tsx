@@ -29,10 +29,12 @@ import { useWallet } from '@/hooks/useWallet';
 import { KobanChip } from '@/components/koban/KobanIcon';
 import { AvatarPicture, AvatarFrame, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { useProfileModal } from '@/contexts/ProfileModalContext';
 
 export function DashboardBottomNav() {
   const { isAdmin, signOutUser } = useAuth();
   const { user, profile } = useUserProfile();
+  const { openProfile } = useProfileModal();
   const navigate = useNavigate();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -109,16 +111,12 @@ export function DashboardBottomNav() {
     },
   ];
 
-  const isProfilePage = location.pathname.startsWith('/dashboard/profile');
-
   return (
     <>
       {/* ─── FIXED UNIFIED PILL BOTTOM NAVIGATION ────────────────────────────── */}
       <div
-        className={`fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[520px] z-40 transition-all duration-300 ease-out ${
-          isMenuOpen || isProfilePage
-            ? 'pointer-events-none opacity-0 invisible translate-y-6 scale-95'
-            : 'pointer-events-auto opacity-100 translate-y-0 scale-100'
+        className={`fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[520px] z-40 transition-opacity duration-150 ${
+          isMenuOpen ? 'pointer-events-none opacity-0 invisible' : 'pointer-events-auto opacity-100'
         }`}
         aria-label="Student Navigation Bar"
       >
@@ -149,14 +147,12 @@ export function DashboardBottomNav() {
 
             {/* Header: User Summary (Privacy Protected - No Email Displayed) */}
             <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border)]">
-              <button
-                type="button"
+              <div
                 onClick={() => {
                   setIsMenuOpen(false);
-                  navigate('/dashboard/profile');
+                  openProfile();
                 }}
-                className="flex items-center gap-3 min-w-0 text-left hover:opacity-85 transition-opacity cursor-pointer group"
-                title="View your profile"
+                className="flex items-center gap-3 min-w-0 cursor-pointer hover:opacity-85 transition-opacity"
               >
                 <AvatarFrame itemId={equipped?.frame || 'none'} size={48}>
                   <AvatarPicture
@@ -176,7 +172,7 @@ export function DashboardBottomNav() {
                       roleBadge={role === 'captain' ? 'CAPTAIN' : undefined}
                     />
                   ) : (
-                    <p className="font-heading font-bold text-base text-[var(--text)] group-hover:text-red-400 transition-colors truncate">
+                    <p className="font-heading font-bold text-base text-[var(--text)] truncate">
                       {cleanDisplayName}
                     </p>
                   )}
@@ -201,7 +197,7 @@ export function DashboardBottomNav() {
                     )}
                   </div>
                 </div>
-              </button>
+              </div>
 
               <button
                 type="button"

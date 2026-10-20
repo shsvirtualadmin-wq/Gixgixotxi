@@ -3,7 +3,7 @@ import { doc, getDoc, setDoc, serverTimestamp, runTransaction } from 'firebase/f
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { syncPublicProfile } from '@/services/publicProfileService';
-import type { EquippedCosmetics, CosmeticType } from '@/types';
+import type { EquippedCosmetics } from '@/types';
 
 export interface WalletDoc {
   balance: number;
@@ -20,7 +20,6 @@ const DEFAULT_WALLET: WalletDoc = {
     frame: null,
     nameplate: null,
     avatar: null,
-    banner: null,
   },
 };
 
@@ -104,7 +103,7 @@ export function useWallet() {
    * Mirrors immediately to publicProfiles/{uid} for leaderboards and crew views.
    */
   const equipCosmetic = useCallback(
-    async (type: CosmeticType, itemId: string | null) => {
+    async (type: 'effect' | 'frame' | 'nameplate' | 'avatar' | 'banner', itemId: string | null) => {
       if (!user?.uid) throw new Error('Must be logged in to equip cosmetics');
       const current = walletRef.current;
 

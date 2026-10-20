@@ -39,8 +39,8 @@ interface CircleMember {
 
 export function ArenaDashboardPage() {
   const { user, profile } = useAuth();
-  const { openProfile } = useProfileModal();
   const { equipped: myEquipped } = useWallet();
+  const { openProfile } = useProfileModal();
   const [activeTab, setActiveTab] = useState<'leaderboard' | 'grandline' | 'circle'>('leaderboard');
 
   // Leaderboard State
@@ -237,12 +237,12 @@ export function ArenaDashboardPage() {
                   <div
                     key={item.id}
                     onClick={() => openProfile(item.uid)}
-                    className={`p-3.5 sm:p-4 rounded-2xl flex items-center justify-between transition-colors cursor-pointer hover:border-red-600/50 ${
+                    className={`p-3.5 sm:p-4 rounded-2xl flex items-center justify-between transition-colors cursor-pointer hover:border-[var(--red)] ${
                       isCurrentUser
                         ? 'bg-[var(--surface-2)] border-2 border-[var(--accent)] shadow-sm'
                         : 'bg-[var(--surface)] border border-[var(--border)]'
                     }`}
-                    title="View student profile"
+                    title={isCurrentUser ? 'View your profile' : `View ${item.displayName}'s profile`}
                   >
                     <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                       {/* Rank in Doto font */}

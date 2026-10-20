@@ -3,6 +3,7 @@ import { Search, X, User, BookOpen, Flame, ArrowRight } from 'lucide-react';
 import type { CommonsPost, CommonsUserPreview } from '@/types/commons';
 import { searchPeople } from '@/services/commonsService';
 import { CommonsPostCard } from './CommonsPostCard';
+import { useProfileModal } from '@/contexts/ProfileModalContext';
 
 interface CommonsSearchModalProps {
   isOpen: boolean;
@@ -12,7 +13,6 @@ interface CommonsSearchModalProps {
   onSelectPost: (post: CommonsPost) => void;
   onOpenComments: (post: CommonsPost) => void;
   onOpenReport: (post: CommonsPost) => void;
-  onOpenUserProfile?: (uid: string) => void;
 }
 
 export function CommonsSearchModal({
@@ -23,8 +23,8 @@ export function CommonsSearchModal({
   onSelectPost,
   onOpenComments,
   onOpenReport,
-  onOpenUserProfile,
 }: CommonsSearchModalProps) {
+  const { openProfile } = useProfileModal();
   const [activeTab, setActiveTab] = useState<'posts' | 'people'>('posts');
   const [searchQuery, setSearchQuery] = useState('');
   const [peopleResults, setPeopleResults] = useState<CommonsUserPreview[]>([]);
@@ -151,10 +151,9 @@ export function CommonsSearchModal({
                       key={u.uid}
                       onClick={() => {
                         onClose();
-                        onOpenUserProfile?.(u.uid);
+                        openProfile(u.uid);
                       }}
-                      className="flex items-center justify-between py-3 px-2 hover:bg-neutral-900/60 rounded-xl transition-colors cursor-pointer group"
-                      title="View student profile"
+                      className="flex items-center justify-between py-3 px-2 hover:bg-neutral-900/50 rounded-xl transition-colors cursor-pointer group"
                     >
                       <div className="flex items-center gap-3">
                         {u.avatarUrl ? (

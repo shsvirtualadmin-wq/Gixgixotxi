@@ -1,0 +1,298 @@
+import React, { useState } from 'react';
+import { X, Sparkles, ShoppingBag, Check } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { ACCENT_PRESETS, DefaultDotMatrixBanner } from '@/components/koban/artwork/bannerArtwork';
+import { AvatarPicture, AvatarFrame } from '@/components/koban/CosmeticRenderers';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import type { PublicProfile } from '@/types';
+
+interface EditProfileSheetProps {
+  isOpen: boolean;
+  onClose: () => void;
+  profile: PublicProfile;
+  onSave: (updates: {
+    displayName: string;
+    bio: string;
+    status: string;
+    accent: string;
+  }) => Promise<void>;
+}
+
+export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
+  isOpen,
+  onClose,
+  profile,
+  onSave,
+}) => {
+  const navigate = useNavigate();
+
+  const [displayName, setDisplayName] = useState(profile.displayName || '');
+  const [bio, setBio] = useState(profile.bio || '');
+  const [status, setStatus] = useState(profile.status || '');
+  const [accent, setAccent] = useState(profile.accent || '#D71921');
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!isOpen) return null;
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!displayName.trim()) {
+      setError('Display name cannot be empty.');
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const cleanName = sanitizeStudentDisplayName(
+        displayName.trim(),
+        profile.studentId || profile.shortId || profile.uid.slice(0, 5)
+      );
+      const cleanBio = bio.trim().slice(0, 160);
+      const cleanStatus = status.trim().slice(0, 40);
+
+      await onSave({
+        displayName: cleanName,
+        bio: cleanBio,
+        status: cleanStatus,
+        accent,
+      });
+      onClose();
+    } catch (err: any) {
+      console.warn('[EditProfileSheet] failed to save profile:', err);
+      setError(err?.message || 'Failed to save changes. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[160] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/65 backdrop-blur-sm animate-fade-in">
+      <div
+        className="w-full sm:max-w-xl bg-[var(--card)] border-t sm:border border-[var(--border)] sm:rounded-2xl flex flex-col max-h-[92vh] sm:max-h-[85vh] shadow-2xl overflow-hidden"
+        style={{ borderRadius: '24px 24px 0 0' }}
+      >
+        {/* Header */}
+        <div className="p-4 border-b border-[var(--border)] flex items-center justify-between shrink-0">
+          <div>
+            <h2 className="font-heading font-bold text-base text-[var(--text)]">Edit Profile</h2>
+            <p className="text-xs text-[var(--muted)]">Customize your student card and appearance</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+            aria-label="Close"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Form Body with Live Preview */}
+        <form onSubmit={handleSave} className="p-5 overflow-y-auto flex-1 flex flex-col gap-6">
+          {error && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs">
+              {error}
+            </div>
+          )}
+
+          {/* ── LIVE PREVIEW OF CARD ── */}
+          <div className="flex flex-col gap-2">
+            <span className="text-xs font-mono font-semibold text-[var(--muted)] uppercase tracking-wider">
+              Live Card Preview
+            </span>
+            <div className="w-full rounded-2xl overflow-hidden border border-[var(--border)] bg-[var(--card-2)] shadow-sm">
+              {/* Preview Banner */}
+              <div className="relative h-24 w-full overflow-hidden">
+                <DefaultDotMatrixBanner accentColor={accent} />
+              </div>
+
+              {/* Preview Avatar & Details */}
+              <div className="px-4 pb-4 -mt-7 flex flex-col gap-2">
+                <div className="flex items-end justify-between">
+                  <div className="p-1 rounded-full bg-[var(--card-2)]">
+                    <AvatarFrame itemId={profile.frame || profile.equipped?.frame || 'none'} size={52}>
+                      <AvatarPicture
+                        avatarId={profile.avatar}
+                        avatarKey={profile.avatarKey}
+                        variant={profile.avatarVariant}
+                        size={44}
+                      />
+                    </AvatarFrame>
+                  </div>
+                  <span
+                    className="font-mono text-[10px] px-2 py-0.5 rounded-full border"
+                    style={{ borderColor: accent, color: accent }}
+                  >
+                    Preview
+                  </span>
+                </div>
+
+                <div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-heading font-bold text-sm text-[var(--text)]">
+                      {displayName || 'Student'}
+                    </span>
+                    <span className="font-mono text-[11px] text-[var(--muted)]">
+                      #{profile.studentId || profile.shortId || profile.uid.slice(0, 5)}
+                    </span>
+                  </div>
+
+                  {status && (
+                    <p className="text-xs text-[var(--muted)] mt-0.5 italic">
+                      "{status}"
+                    </p>
+                  )}
+
+                  {bio && (
+                    <p className="text-xs text-[var(--text)] mt-1 line-clamp-2">
+                      {bio}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── FORM FIELDS ── */}
+          <div className="flex flex-col gap-4">
+            {/* Display Name */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-heading font-semibold text-[var(--text)]">
+                Display Name
+              </label>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                maxLength={40}
+                placeholder="Student"
+                className="w-full h-11 px-3.5 rounded-xl bg-[var(--input-bg,var(--card-2))] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
+              />
+              <span className="text-[10px] text-[var(--muted)] font-mono">
+                Plain text only. Emails and URLs are strictly prohibited.
+              </span>
+            </div>
+
+            {/* Status Line (max 40 chars) */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-heading font-semibold text-[var(--text)]">
+                  Short Status Line
+                </label>
+                <span className="font-mono text-[10px] text-[var(--muted)]">
+                  {status.length}/40
+                </span>
+              </div>
+              <input
+                type="text"
+                value={status}
+                onChange={(e) => setStatus(e.target.value.slice(0, 40))}
+                maxLength={40}
+                placeholder="e.g. Grinding organic chemistry"
+                className="w-full h-11 px-3.5 rounded-xl bg-[var(--input-bg,var(--card-2))] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
+              />
+            </div>
+
+            {/* Bio (max 160 chars) */}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-heading font-semibold text-[var(--text)]">
+                  About Me (Bio)
+                </label>
+                <span className="font-mono text-[10px] text-[var(--muted)]">
+                  {bio.length}/160
+                </span>
+              </div>
+              <textarea
+                value={bio}
+                onChange={(e) => setBio(e.target.value.slice(0, 160))}
+                maxLength={160}
+                rows={3}
+                placeholder="Share your exam target or favorite subject. Links will never be clickable."
+                className="w-full p-3 rounded-xl bg-[var(--input-bg,var(--card-2))] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors resize-none"
+              />
+            </div>
+
+            {/* Accent Color (8 presets) */}
+            <div className="flex flex-col gap-2">
+              <label className="text-xs font-heading font-semibold text-[var(--text)]">
+                Accent Color (8 Presets)
+              </label>
+              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
+                {ACCENT_PRESETS.map((preset) => {
+                  const isSelected = accent === preset.hex;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => setAccent(preset.hex)}
+                      title={preset.label}
+                      className="h-10 rounded-xl border flex items-center justify-center transition-all cursor-pointer relative"
+                      style={{
+                        backgroundColor: preset.hex,
+                        borderColor: isSelected ? '#FFFFFF' : 'transparent',
+                        transform: isSelected ? 'scale(1.08)' : 'scale(1)',
+                      }}
+                    >
+                      {isSelected && (
+                        <Check size={16} className="text-white drop-shadow-md" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Link to Store Loadout */}
+            <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <ShoppingBag size={18} className="text-[#E8A317]" />
+                <div className="flex flex-col">
+                  <span className="font-heading font-semibold text-xs text-[var(--text)]">
+                    Equip Cosmetics
+                  </span>
+                  <span className="text-[11px] text-[var(--muted)]">
+                    Change frame, nameplate, effect, and picture in the store
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  navigate('/store');
+                }}
+                className="h-9 px-3 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold text-[var(--text)] hover:bg-[var(--card)] transition-colors cursor-pointer whitespace-nowrap"
+              >
+                Boardly Store
+              </button>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="pt-2 flex items-center justify-end gap-3 shrink-0">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isSaving}
+              className="h-11 px-5 rounded-xl border border-[var(--border)] text-xs font-heading font-semibold text-[var(--text)] hover:bg-[var(--card-2)] transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="h-11 px-6 rounded-xl bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors cursor-pointer flex items-center gap-2"
+            >
+              {isSaving ? 'Saving...' : 'Save Profile'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};

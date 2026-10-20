@@ -14,6 +14,7 @@ import { QrCodeSvg } from '@/components/crew/QrCodeSvg';
 import { Card } from '@/components/ui/Card';
 import { NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { useProfileModal } from '@/contexts/ProfileModalContext';
 import {
   Copy,
   Check,
@@ -34,6 +35,7 @@ import {
 export function CrewDashboardPage() {
   const { user } = useAuth();
   const { profile } = useUserProfile();
+  const { openProfile } = useProfileModal();
   const navigate = useNavigate();
   const {
     crew,
@@ -480,6 +482,8 @@ export function CrewDashboardPage() {
               return (
                 <div
                   key={m.uid}
+                  onClick={() => openProfile(m.uid)}
+                  className="cursor-pointer transition-all hover:scale-[1.01]"
                   style={{
                     padding: '10px 14px',
                     borderRadius: 'var(--r-input)',
@@ -489,6 +493,7 @@ export function CrewDashboardPage() {
                     alignItems: 'center',
                     justifyContent: 'space-between',
                   }}
+                  title={`View ${m.displayName}'s profile`}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     {/* Rank Badge */}

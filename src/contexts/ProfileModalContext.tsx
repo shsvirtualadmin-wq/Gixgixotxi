@@ -1,101 +1,95 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { ProfileView } from '@/components/profile/ProfileView';
 
 interface ProfileModalContextType {
-  activeProfileUid: string | null;
-  isOpen: boolean;
-  openProfile: (uid: string) => void;
+  openProfile: (uid?: string | null) => void;
   closeProfile: () => void;
+  isOpen: boolean;
+  activeUid: string | null;
 }
 
 const ProfileModalContext = createContext<ProfileModalContextType>({
-  activeProfileUid: null,
-  isOpen: false,
   openProfile: () => {},
   closeProfile: () => {},
+  isOpen: false,
+  activeUid: null,
 });
 
 export const useProfileModal = () => useContext(ProfileModalContext);
 
 export const ProfileModalProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeProfileUid, setActiveProfileUid] = useState<string | null>(null);
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeUid, setActiveUid] = useState<string | null>(null);
 
-  const openProfile = useCallback((uid: string) => {
-    if (!uid) return;
-    setActiveProfileUid(uid);
-    // Push history state so back button/gesture on mobile closes the modal
-    if (typeof window !== 'undefined') {
-      window.history.pushState({ profileModal: true, uid }, '');
-    }
+  const openProfile = useCallback((uid?: string | null) => {
+    setActiveUid(uid || null);
+    setIsOpen(true);
+    // Push history state so mobile back gesture closes modal
+    window.history.pushState({ profileModal: true }, '');
   }, []);
 
   const closeProfile = useCallback(() => {
-    setActiveProfileUid(null);
-    if (typeof window !== 'undefined' && window.history.state?.profileModal) {
+    setIsOpen(false);
+    setActiveUid(null);
+    if (window.history.state?.profileModal) {
       window.history.back();
     }
   }, []);
 
-  // Listen to popstate for back button/gesture
+  // Listen for browser / mobile back gesture (popstate)
   useEffect(() => {
-    const handlePopState = () => {
-      if (activeProfileUid) {
-        setActiveProfileUid(null);
+    const handlePopState = (e: PopStateEvent) => {
+      if (isOpen) {
+        setIsOpen(false);
+        setActiveUid(null);
       }
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [activeProfileUid]);
+  }, [isOpen]);
+
+  // Lock body scroll when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
 
   return (
-    <ProfileModalContext.Provider
-      value={{
-        activeProfileUid,
-        isOpen: Boolean(activeProfileUid),
-        openProfile,
-        closeProfile,
-      }}
-    >
+    <ProfileModalContext.Provider value={{ openProfile, closeProfile, isOpen, activeUid }}>
       {children}
     </ProfileModalContext.Provider>
   );
 };
 
 export const ProfileModalHost: React.FC = () => {
-  const { activeProfileUid, closeProfile, openProfile } = useProfileModal();
-  if (!activeProfileUid) return null;
+  const { isOpen, closeProfile, activeUid } = useProfileModal();
+
+  if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[120]">
-      {/* Dynamic import or direct ProfileView */}
-      <ProfileViewModalContent
-        uid={activeProfileUid}
-        onClose={closeProfile}
-        onOpenUserProfile={openProfile}
+    <div className="fixed inset-0 z-[140] flex items-center justify-center p-0 sm:p-4 bg-black/65 backdrop-blur-sm animate-fade-in overflow-hidden">
+      {/* Backdrop on desktop */}
+      <div
+        onClick={closeProfile}
+        className="absolute inset-0 hidden sm:block bg-black/40 backdrop-blur-xs"
       />
+
+      {/* Modal Container: Full-screen on mobile, centered dialog max-w-560px on desktop */}
+      <div
+        className="relative z-10 w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-[560px] bg-[var(--background)] sm:rounded-3xl shadow-2xl overflow-y-auto scrollbar-none flex flex-col"
+      >
+        <ProfileView
+          targetUid={activeUid}
+          isFullPage={false}
+          onClose={closeProfile}
+        />
+      </div>
     </div>
   );
 };
-
-// Lazy or direct component
-import { ProfileView } from '@/components/profile/ProfileView';
-
-function ProfileViewModalContent({
-  uid,
-  onClose,
-  onOpenUserProfile,
-}: {
-  uid: string;
-  onClose: () => void;
-  onOpenUserProfile: (uid: string) => void;
-}) {
-  return (
-    <ProfileView
-      targetUid={uid}
-      mode="auto"
-      isEmbedded={false}
-      onClose={onClose}
-      onOpenUserProfile={onOpenUserProfile}
-    />
-  );
-}
-

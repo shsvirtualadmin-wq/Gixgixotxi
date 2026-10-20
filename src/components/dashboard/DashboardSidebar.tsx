@@ -23,11 +23,13 @@ import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { useTheme } from '@/hooks/useTheme';
 import { useWallet } from '@/hooks/useWallet';
 import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
+import { useProfileModal } from '@/contexts/ProfileModalContext';
 
 export function DashboardSidebar() {
   const { isAdmin, signOutUser } = useAuth();
   const { user, profile } = useUserProfile();
   const { equipped } = useWallet();
+  const { openProfile } = useProfileModal();
   const navigate = useNavigate();
   const effectivePlan = useEffectivePlan();
 
@@ -235,7 +237,11 @@ export function DashboardSidebar() {
 
       {/* Footer: User summary, Theme Toggle & Sign Out */}
       <div className="p-3 border-t border-[var(--border)] bg-[var(--card)] flex flex-col gap-2">
-        <div className="flex items-center gap-2.5 p-2 rounded-xl bg-[var(--card-2)] border border-[var(--border)] overflow-hidden">
+        <div
+          onClick={() => openProfile()}
+          className="flex items-center gap-2.5 p-2 rounded-xl bg-[var(--card-2)] border border-[var(--border)] overflow-hidden cursor-pointer hover:border-[var(--red)] transition-colors group"
+          title="View profile"
+        >
           <div className="shrink-0">
             <AvatarFrame itemId={equipped?.frame || 'none'} size={38}>
               <AvatarPicture
