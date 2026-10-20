@@ -2,317 +2,384 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // ─── AUTHENTICATION & ROLE HELPERS ───────────────────────────────────────
-    function isAuthenticated() {
-      return request.auth != null;
+    // =========================================================================
+    // 1. CORE AUTHENTICATION & ROLE HELPER FUNCTIONS
+    // =========================================================================
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
     }
 
     function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Superadmin authorization matching app logic:
-    // 1. Direct unforgeable UID check for shsvirtualadmin@gmail.com (UID: A5YMRimdHRcmeDWutxtUGt2e4hf2)
-    // 2. Email checks (shsvirtualadmin@gmail.com, support@boardly.cfd)
-    // 3. Custom claim role check
-    // 4. Firestore user document role check
-    function isSuperAdmin() {
-      return isAuthenticated() && (
-        request.auth.uid == 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
-        (request.auth.token.email != null && (
-          request.auth.token.email == 'shsvirtualadmin@gmail.com' ||
-          request.auth.token.email == 'support@boardly.cfd'
-        )) ||
-        ('role' in request.auth.token && (
-          request.auth.token.role == 'superadmin'
-        )) ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin')
-      );
-    }
-
+    // Custom Claim-based Admin (never trust client claims or email directly)
     function isAdmin() {
-      return isAuthenticated() && (
-        isSuperAdmin() ||
-        ('role' in request.auth.token && request.auth.token.role in ['admin', 'superadmin']) ||
-        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         'role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'superadmin'])
+      return isSignedIn() && (
+        request.auth.token.admin == true ||
+        request.auth.token.role == 'admin' ||
+        request.auth.token.role == 'superadmin'
       );
     }
 
-    // ─── USERS COLLECTION ───────────────────────────────────────────────────
-    // Protects student profile records.
-    // - Enforces strict privacy: ONLY the owner and the superadmin may read users/{userId}.
-    // - Non-superadmins (including normal admins and crew leaders) are forbidden from reading users/{userId}.
-    // - Users create profile on signup only with base privileges (role: 'student', plan: 'free', status: 'active').
-    // - Users update profile preferences, but can NEVER escalate privileges.
+    // =========================================================================
+    // 2. DATA VALIDATION HELPER FUNCTIONS
+    // =========================================================================
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isOptionalString(val, maxLen) {
+      return val == null || (val is string && val.size() <= maxLen);
+    }
+
+    // Image Data URL validator: max 900 KB length, must begin with supported image header
+    function isValidDataUrl(val) {
+      return val == null || (
+        val is string &&
+        val.size() <= 921600 && (
+          val.matches('^data:image/jpeg;base64,.*') ||
+          val.matches('^data:image/png;base64,.*') ||
+          val.matches('^data:image/webp;base64,.*') ||
+          val.matches('^https://.*')
+        )
+      );
+    }
+
+    function isServerTimestamp(field) {
+      return field == request.time;
+    }
+
+    // Verify user owns an item before equipping (reads wallets/{uid})
+    function userOwnsItem(userId, itemId) {
+      return itemId == null || itemId == 'none' || itemId == '' || (
+        exists(/databases/$(database)/documents/wallets/$(userId)) &&
+        itemId in get(/databases/$(database)/documents/wallets/$(userId)).data.owned
+      );
+    }
+
+    // =========================================================================
+    // 3. USER ACCOUNTS & PROFILES
+    // =========================================================================
+
+    // Private Student Document: Personal and security-critical data
+    // Contains role, subscription, status, and sensitive info.
     match /users/{userId} {
-      allow read: if isOwner(userId) || isSuperAdmin();
-      allow list: if isSuperAdmin();
+      allow read: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
 
-      allow create: if isSuperAdmin() || (
-        isOwner(userId) &&
-        (!('role' in request.resource.data) || request.resource.data.role in ['student', 'user']) &&
-        (!('plan' in request.resource.data) || request.resource.data.plan in ['free', 'starter']) &&
-        (!('paid_until' in request.resource.data) || request.resource.data.paid_until == null) &&
-        (!('isPremium' in request.resource.data) || request.resource.data.isPremium == false) &&
-        (!('premiumExpiresAt' in request.resource.data) || request.resource.data.premiumExpiresAt == null) &&
-        (!('planExpiresAt' in request.resource.data) || request.resource.data.planExpiresAt == null) &&
+      // Creation on signup: only allowed with default starter fields
+      allow create: if isOwner(userId) &&
+        request.resource.data.uid == userId &&
+        (!('role' in request.resource.data) || request.resource.data.role == 'student') &&
+        (!('plan' in request.resource.data) || request.resource.data.plan == 'free') &&
         (!('status' in request.resource.data) || request.resource.data.status == 'active') &&
-        (!('suspended' in request.resource.data) || request.resource.data.suspended == false) &&
-        (!('isSuspended' in request.resource.data) || request.resource.data.isSuspended == false)
-      );
+        (!('isPremium' in request.resource.data) || request.resource.data.isPremium == false) &&
+        (!('suspended' in request.resource.data) || request.resource.data.suspended == false);
 
-      allow update: if isSuperAdmin() || (
+      // Student updates: can only modify non-privileged preference fields
+      allow update: if isAdmin() || (
         isOwner(userId) &&
-        // Privilege & financial protection: cannot modify role, plan, tier, or status
-        (!('role' in request.resource.data) || ('role' in resource.data && request.resource.data.role == resource.data.role)) &&
-        (!('plan' in request.resource.data) || ('plan' in resource.data && request.resource.data.plan == resource.data.plan)) &&
-        (!('paid_until' in request.resource.data) || ('paid_until' in resource.data && request.resource.data.paid_until == resource.data.paid_until)) &&
-        (!('isPremium' in request.resource.data) || ('isPremium' in resource.data && request.resource.data.isPremium == resource.data.isPremium)) &&
-        (!('premiumExpiresAt' in request.resource.data) || ('premiumExpiresAt' in resource.data && request.resource.data.premiumExpiresAt == resource.data.premiumExpiresAt)) &&
-        (!('planExpiresAt' in request.resource.data) || ('planExpiresAt' in resource.data && request.resource.data.planExpiresAt == resource.data.planExpiresAt)) &&
-        (!('premiumSource' in request.resource.data) || ('premiumSource' in resource.data && request.resource.data.premiumSource == resource.data.premiumSource)) &&
-        (!('status' in request.resource.data) || ('status' in resource.data && request.resource.data.status == resource.data.status)) &&
-        (!('suspended' in request.resource.data) || ('suspended' in resource.data && request.resource.data.suspended == resource.data.suspended)) &&
-        (!('isSuspended' in request.resource.data) || ('isSuspended' in resource.data && request.resource.data.isSuspended == resource.data.isSuspended))
+        // Privilege & billing fields are strictly immutable to client
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'bio', 'status', 'accent', 'targetUniversity',
+          'targetTestDate', 'selectedSubjects', 'updatedAt', 'onboardingCompleted',
+          'streakFreezeActive'
+        ])
       );
 
-      allow delete: if isSuperAdmin();
+      allow delete: if isAdmin();
 
-      // Subcollection: Daily Practice & AI Tutor usage limits (PKT timezone keyed)
+      // Subcollection: Daily MCQ and AI query quota tracking
       match /usage/{dateKey} {
-        allow read, write: if isOwner(userId) || isSuperAdmin();
+        allow read, write: if isOwner(userId) || isAdmin();
       }
 
-      // Subcollection: Chapter-level diagnostic performance stats
+      // Subcollection: Chapter-level diagnostic performance metrics
       match /chapterStats/{chapterId} {
-        allow read, write: if isOwner(userId) || isSuperAdmin();
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId) || isAdmin();
       }
 
-      // Subcollection: Bookmarked study materials from Commons
+      // Subcollection: Saved study materials
       match /savedCommons/{postId} {
-        allow read, write: if isOwner(userId) || isSuperAdmin();
+        allow read, write: if isOwner(userId) || isAdmin();
       }
     }
 
-    // ─── PUBLIC PROFILES COLLECTION ──────────────────────────────────────────
-    // Strictly sanitized public identity for leaderboards, crew lists, and profile views.
-    // Contains ONLY public data: displayName, studentId, avatar, banner, frame, nameplate,
-    // effectId, badges, bio (max 160), status (max 40), accent, memberSince, crewName, stats,
-    // followersCount, followingCount, lastActiveAt.
-    // Explicitly FORBIDS storing any PII: email or phone.
-    // Enforces: Clients cannot edit follower/following counts directly on profile updates.
+    // Public Profiles: Viewable by all signed-in users for leaderboards, search, squads
     match /publicProfiles/{userId} {
-      allow read: if true;
-      allow list: if true;
+      allow read: if isSignedIn() || isAdmin();
 
-      allow create: if isSuperAdmin() || (
+      allow create: if isOwner(userId) &&
+        request.resource.data.uid == userId;
+
+      allow update: if isAdmin() || (
         isOwner(userId) &&
-        !('email' in request.resource.data) &&
-        !('phone' in request.resource.data) &&
-        !('payments' in request.resource.data) &&
-        !('paid_until' in request.resource.data) &&
-        !('billing' in request.resource.data) &&
-        (!('bio' in request.resource.data) || (request.resource.data.bio is string && request.resource.data.bio.size() <= 160)) &&
-        (!('status' in request.resource.data) || (request.resource.data.status is string && request.resource.data.status.size() <= 40)) &&
-        (!('followersCount' in request.resource.data) || request.resource.data.followersCount == 0) &&
-        (!('followingCount' in request.resource.data) || request.resource.data.followingCount == 0)
-      );
-
-      allow update: if isSuperAdmin() || (
-        // Case A: Owner updates their profile data. Clients cannot arbitrarily edit counts!
+        // Prevent client from escalating public stats directly
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'bio', 'status', 'accent', 'avatar', 'frame',
+          'nameplate', 'banner', 'effectId', 'equipped', 'badges',
+          'crewName', 'updatedAt', 'followersCount', 'followingCount'
+        ]) &&
+        // Equipping verification: user must own the equipped cosmetic
         (
-          isOwner(userId) &&
-          !('email' in request.resource.data) &&
-          !('phone' in request.resource.data) &&
-          !('payments' in request.resource.data) &&
-          !('paid_until' in request.resource.data) &&
-          !('billing' in request.resource.data) &&
-          (!('bio' in request.resource.data) || (request.resource.data.bio is string && request.resource.data.bio.size() <= 160)) &&
-          (!('status' in request.resource.data) || (request.resource.data.status is string && request.resource.data.status.size() <= 40)) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['avatar', 'frame', 'nameplate', 'banner', 'effectId']) ||
           (
-            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['followersCount', 'followingCount']) ||
-            (
-              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followingCount', 'updatedAt']) &&
-              request.resource.data.followingCount >= 0 &&
-              (request.resource.data.followingCount == resource.data.get('followingCount', 0) + 1 ||
-               request.resource.data.followingCount == resource.data.get('followingCount', 0) - 1)
-            )
+            userOwnsItem(userId, request.resource.data.avatar) &&
+            userOwnsItem(userId, request.resource.data.frame) &&
+            userOwnsItem(userId, request.resource.data.nameplate) &&
+            userOwnsItem(userId, request.resource.data.banner) &&
+            userOwnsItem(userId, request.resource.data.effectId)
           )
-        ) ||
-        // Case B: Follower count updated during a follow/unfollow transaction
-        // Another authenticated user can ONLY increment or decrement followersCount by 1 (never below 0)
-        (
-          isAuthenticated() &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'updatedAt']) &&
-          request.resource.data.followersCount >= 0 &&
-          (request.resource.data.followersCount == resource.data.get('followersCount', 0) + 1 ||
-           request.resource.data.followersCount == resource.data.get('followersCount', 0) - 1)
         )
       );
 
-      allow delete: if isSuperAdmin();
-    }
+      allow delete: if isAdmin();
 
-    // ─── FOLLOWS COLLECTION ──────────────────────────────────────────────────
-    // User follower graph: follows/{followerId}_{targetId}
-    // Fields: followerId, targetId, createdAt
-    // - Authenticated users can only create follows where followerId is their own uid
-    // - No self-follow: followerId != targetId
-    // - Authenticated users can only delete follows where followerId is their own uid
-    // - Document ID must match $(followerId)_$(targetId)
-    // - Updates not allowed (immutable follow link)
-    match /follows/{followId} {
-      allow read, list: if isAuthenticated();
-
-      allow create: if isAuthenticated() &&
-        request.resource.data.followerId == request.auth.uid &&
-        request.resource.data.targetId is string &&
-        request.resource.data.targetId.size() > 0 &&
-        request.resource.data.followerId != request.resource.data.targetId &&
-        followId == request.auth.uid + '_' + request.resource.data.targetId;
-
-      allow update: if false;
-
-      allow delete: if isAuthenticated() &&
-        resource.data.followerId == request.auth.uid;
-    }
-
-    // ─── KOBANS WALLETS & LEDGER ────────────────────────────────────────────
-    match /wallets/{userId} {
-      allow read: if isOwner(userId) || isSuperAdmin();
-
-      allow create: if isSuperAdmin() || (
-        isOwner(userId) &&
-        request.resource.data.balance == 0 &&
-        request.resource.data.owned.size() == 0
-      );
-
-      allow update: if isSuperAdmin() || (
-        isOwner(userId) &&
-        // Student can NEVER raise their own balance:
-        request.resource.data.balance <= resource.data.balance &&
-        // Cannot remove previously owned items
-        resource.data.owned.toSet().difference(request.resource.data.owned.toSet()).size() == 0 &&
-        // Equipped items must be owned or null (effects, frames, nameplates, avatars, banners)
-        (!('equipped' in request.resource.data) || (
-          (request.resource.data.equipped.effect == null || request.resource.data.equipped.effect in request.resource.data.owned) &&
-          (request.resource.data.equipped.frame == null || request.resource.data.equipped.frame in request.resource.data.owned) &&
-          (request.resource.data.equipped.nameplate == null || request.resource.data.equipped.nameplate in request.resource.data.owned) &&
-          (!('avatar' in request.resource.data.equipped) || request.resource.data.equipped.avatar == null || request.resource.data.equipped.avatar in request.resource.data.owned) &&
-          (!('banner' in request.resource.data.equipped) || request.resource.data.equipped.banner == null || request.resource.data.equipped.banner in request.resource.data.owned)
-        ))
-      );
-
-      allow delete: if isSuperAdmin();
-
-      match /ledger/{entryId} {
-        allow read: if isOwner(userId) || isSuperAdmin();
-        allow create: if isSuperAdmin() || (
-          isOwner(userId) &&
-          request.resource.data.type == 'purchase' &&
-          request.resource.data.amount <= 0
-        );
-        allow update: if false;
-        allow delete: if isSuperAdmin();
+      match /following/{targetUid} {
+        allow read: if isSignedIn();
+        allow write: if isOwner(userId) || isAdmin();
       }
     }
 
-    match /kobanRequests/{requestId} {
-      allow read: if isSuperAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow list: if isSuperAdmin() || isAuthenticated();
-      allow create: if isAuthenticated() &&
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.status == 'pending';
-      allow update, delete: if isSuperAdmin();
+    // =========================================================================
+    // 4. WALLETS, COSMETICS & STORE LEDGER
+    // =========================================================================
+
+    // Student Wallet: Koban currency balance and owned cosmetic inventory
+    match /wallets/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+
+      // Wallet initialization on signup: balance must be 0, cannot grant self items
+      allow create: if isOwner(userId) &&
+        request.resource.data.balance == 0 &&
+        request.resource.data.owned.size() == 0;
+
+      // Updating wallet: Clients can ONLY update equipped slots.
+      // Balance and owned items are STRICTLY server/Admin SDK-writable!
+      allow update: if isAdmin() || (
+        isOwner(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['equipped', 'updatedAt']) &&
+        // Verification: Any newly equipped item must already exist in resource.data.owned
+        (
+          userOwnsItem(userId, request.resource.data.equipped.avatar) &&
+          userOwnsItem(userId, request.resource.data.equipped.frame) &&
+          userOwnsItem(userId, request.resource.data.equipped.nameplate) &&
+          userOwnsItem(userId, request.resource.data.equipped.banner) &&
+          userOwnsItem(userId, request.resource.data.equipped.effect)
+        )
+      );
+
+      allow delete: if isAdmin();
+
+      // Ledger history: Append-only transaction log. Read-only for student.
+      match /ledger/{ledgerId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isAdmin(); // Client cannot tamper with purchase or grant records
+      }
     }
 
-    // ─── BOARDLY STORE ITEMS & PRICING CONTROL ─────────────────────────────
-    // Store items catalog and prices.
-    // - Students & general users can read active items only.
-    // - Super Admin can read all items (including inactive) and write/update prices.
+    // Store Catalog Items: Published cosmetic cards and prices
     match /store_items/{itemId} {
-      allow read: if isSuperAdmin() || (resource != null && resource.data.active == true);
-      allow write: if isSuperAdmin();
+      allow read: if true; // Public pricing catalog
+      allow write: if isAdmin();
     }
 
-    // Price change audit log: readable & writable by Super Admin only
     match /storePriceHistory/{historyId} {
-      allow read, write: if isSuperAdmin();
+      allow read: if isAdmin();
+      allow write: if isAdmin();
     }
 
-    // ─── STUDY CREWS (SQUADS / CIRCLES) ───────────────────────────────────────
-    // Protects study crews, leadership privileges, and subscription tiers.
-    // - Public leaderboard & search read public crew metadata.
-    // - Authenticated students create a free crew (tier: 'free', paid_until: null, self as leader).
-    // - Paid tier upgrades, extensions, and payment histories written by Admin SDK/Functions only.
-    // - Crew admins edit allowed fields (name, bio, avatarKey, avatarVariant, joinMode, minStreak, maxMembers, isClosed, goalQuestions).
-    // - Membership writes (members, memberUids) must go through Functions only.
-    // - Non-leader students can only append/cancel their join request in requests array.
-    match /crews/{crewId} {
+    // Koban grant requests (Captain rewards or promotional redemptions)
+    match /kobanRequests/{requestId} {
+      allow read: if isOwner(resource.data.userId) || isOwner(resource.data.targetUserId) || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 5. USER POSTS FEED (PROFILE POSTS)
+    // =========================================================================
+
+    match /posts/{postId} {
+      // Anyone signed in can read the feed
+      allow read: if isSignedIn();
+
+      // Create post: Must be author, text/image length validation
+      allow create: if isSignedIn() &&
+        request.resource.data.user_id == request.auth.uid &&
+        isValidString(request.resource.data.text, 0, 5000) &&
+        (request.resource.data.text.size() > 0 || request.resource.data.image_url != null) &&
+        isValidDataUrl(request.resource.data.image_url) &&
+        request.resource.data.likes_count == 0 &&
+        request.resource.data.liked_by.size() == 0;
+
+      // Update post:
+      // Case A: Author editing content (text or image)
+      // Case B: Any authenticated peer toggling a Like (strictly validated)
+      allow update: if isAdmin() || (
+        isSignedIn() && (
+          // Author editing text or image
+          (
+            resource.data.user_id == request.auth.uid &&
+            request.resource.data.user_id == resource.data.user_id &&
+            request.resource.data.created_at == resource.data.created_at &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'image_url', 'updated_at']) &&
+            isValidString(request.resource.data.text, 0, 5000) &&
+            isValidDataUrl(request.resource.data.image_url)
+          ) ||
+          // Atomic like toggle verification: only liked_by and likes_count can change
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liked_by', 'likes_count']) &&
+            (
+              // Liking: Adding self to liked_by, incrementing likes_count by 1
+              (
+                !(request.auth.uid in resource.data.liked_by) &&
+                (request.auth.uid in request.resource.data.liked_by) &&
+                request.resource.data.liked_by.size() == resource.data.liked_by.size() + 1 &&
+                request.resource.data.likes_count == resource.data.likes_count + 1 &&
+                request.resource.data.likes_count == request.resource.data.liked_by.size()
+              ) ||
+              // Unliking: Removing self from liked_by, decrementing likes_count by 1
+              (
+                (request.auth.uid in resource.data.liked_by) &&
+                !(request.auth.uid in request.resource.data.liked_by) &&
+                request.resource.data.liked_by.size() == resource.data.liked_by.size() - 1 &&
+                request.resource.data.likes_count == resource.data.likes_count - 1 &&
+                request.resource.data.likes_count == request.resource.data.liked_by.size()
+              )
+            )
+          )
+        )
+      );
+
+      // Delete post: Author or Admin only
+      allow delete: if isAdmin() || (
+        isSignedIn() && resource.data.user_id == request.auth.uid
+      );
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() &&
+          request.resource.data.user_id == request.auth.uid &&
+          isValidString(request.resource.data.text, 1, 1000);
+        allow update: if isSignedIn() &&
+          resource.data.user_id == request.auth.uid &&
+          request.resource.data.user_id == resource.data.user_id &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'updated_at']);
+        allow delete: if isAdmin() || (
+          isSignedIn() && (
+            resource.data.user_id == request.auth.uid ||
+            get(/databases/$(database)/documents/posts/$(postId)).data.user_id == request.auth.uid
+          )
+        );
+      }
+    }
+
+    // =========================================================================
+    // 6. BOARDLY COMMONS (STUDY RESOURCE EXCHANGE)
+    // =========================================================================
+
+    match /commonsPosts/{postId} {
       allow read: if true;
 
-      allow create: if isAdmin() || (
-        isAuthenticated() &&
-        request.resource.data.leaderId == request.auth.uid &&
-        request.resource.data.tier == 'free' &&
-        request.resource.data.paid_until == null &&
-        request.resource.data.name is string &&
-        request.resource.data.name.size() >= 2 &&
-        request.resource.data.name.size() <= 50 &&
-        (!('bio' in request.resource.data) || (request.resource.data.bio is string && request.resource.data.bio.size() <= 160))
+      allow create: if isSignedIn() && (
+        (request.resource.data.isAnonymous == true && request.resource.data.authorUid == null) ||
+        (request.resource.data.isAnonymous == false && request.resource.data.authorUid == request.auth.uid)
       );
 
       allow update: if isAdmin() || (
-        isAuthenticated() &&
-        // Money & tier lockdown: non-admin can NEVER change tier, paid_until, or payments
-        request.resource.data.tier == resource.data.tier &&
-        request.resource.data.paid_until == resource.data.paid_until &&
-        (!('payments' in request.resource.data) || ('payments' in resource.data && request.resource.data.payments == resource.data.payments)) &&
-        (
-          // Path A: Crew Leader updating settings or moderating join requests & members
+        isSignedIn() && (
+          resource.data.authorUid == request.auth.uid ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'upvotes', 'commentCount', 'saveCount', 'reportCount', 'isHidden', 'updatedAt'
+          ])
+        )
+      );
+
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.authorUid == request.auth.uid);
+
+      match /votes/{userId} {
+        allow read: if isSignedIn();
+        allow write: if isOwner(userId) || isAdmin();
+      }
+
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isSignedIn();
+        allow update, delete: if isAdmin() || (isSignedIn() && resource.data.authorUid == request.auth.uid);
+      }
+    }
+
+    match /postsPrivate/{postId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.authorUid == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.authorUid == request.auth.uid;
+      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.authorUid == request.auth.uid);
+    }
+
+    match /postPrivate/{postId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.authorUid == request.auth.uid);
+      allow create: if isSignedIn() && request.resource.data.authorUid == request.auth.uid;
+      allow update, delete: if isAdmin() || (isSignedIn() && resource.data.authorUid == request.auth.uid);
+    }
+
+    match /commonsReports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && request.resource.data.reporterUid == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 7. STUDY SQUADS & CREWS
+    // =========================================================================
+
+    match /crews/{crewId} {
+      // Public crew directory for leaderboard and joining
+      allow read: if true;
+
+      // Only authenticated users can form a crew; creator must be the leader
+      allow create: if isSignedIn() &&
+        request.resource.data.leaderId == request.auth.uid &&
+        request.resource.data.members.size() == 1 &&
+        request.resource.data.memberUids.hasOnly([request.auth.uid]) &&
+        request.resource.data.tier == 'free' &&
+        request.resource.data.maxMembers <= 5;
+
+      // Update rules:
+      // Leader: can update settings (name, bio, joinMode, minStreak, avatar)
+      // Members joining / leaving: atomic memberUid addition/removal
+      allow update: if isAdmin() || (
+        isSignedIn() && (
+          // Leader editing settings
           (
             resource.data.leaderId == request.auth.uid &&
             request.resource.data.leaderId == resource.data.leaderId &&
-            request.resource.data.code == resource.data.code &&
+            request.resource.data.tier == resource.data.tier &&
             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'name', 'bio', 'avatarKey', 'avatarVariant', 'joinMode', 'minStreak', 'maxMembers', 'isClosed', 'isLocked', 'goalQuestions', 'requests', 'members', 'memberUids', 'hasProMember', 'currentQuestions', 'updatedAt'
-            ]) &&
-            request.resource.data.name is string &&
-            request.resource.data.name.size() >= 2 &&
-            request.resource.data.name.size() <= 50 &&
-            (!('bio' in request.resource.data) || (request.resource.data.bio is string && request.resource.data.bio.size() <= 160)) &&
-            (!('maxMembers' in request.resource.data) || (
-              resource.data.tier == 'paid' ? request.resource.data.maxMembers <= 50 : request.resource.data.maxMembers <= 30
-            ))
+              'name', 'bio', 'avatarKey', 'avatarVariant', 'joinMode', 'minStreak',
+              'isClosed', 'updatedAt', 'currentQuestions', 'score', 'streak'
+            ])
           ) ||
-          // Path B: User submitting or cancelling their join request only (members and memberUids remain unchanged)
+          // Member joining or leaving self
           (
-            (!('members' in request.resource.data) || ('members' in resource.data && request.resource.data.members == resource.data.members)) &&
-            (!('memberUids' in request.resource.data) || ('memberUids' in resource.data && request.resource.data.memberUids == resource.data.memberUids)) &&
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['requests', 'updatedAt'])
-          ) ||
-          // Path C: User directly joining (adding self) or leaving (removing self)
-          (
-            request.resource.data.leaderId == resource.data.leaderId &&
-            request.resource.data.code == resource.data.code &&
             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'members', 'memberUids', 'requests', 'hasProMember', 'currentQuestions', 'updatedAt'
+              'members', 'memberUids', 'requests', 'updatedAt'
             ]) &&
-            request.resource.data.memberUids.size() <= 30 &&
+            request.resource.data.memberUids.size() <= resource.data.maxMembers &&
             (
               // Joining: User adds their own UID
               (
                 !(request.auth.uid in resource.data.memberUids) &&
-                request.auth.uid in request.resource.data.memberUids &&
-                (!('isLocked' in resource.data) || resource.data.isLocked != true)
+                (request.auth.uid in request.resource.data.memberUids) &&
+                (!('isClosed' in resource.data) || resource.data.isClosed != true)
               ) ||
               // Leaving: User removes their own UID
               (
-                request.auth.uid in resource.data.memberUids &&
+                (request.auth.uid in resource.data.memberUids) &&
                 !(request.auth.uid in request.resource.data.memberUids)
               )
             )
@@ -320,337 +387,169 @@ service cloud.firestore {
         )
       );
 
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.leaderId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.leaderId == request.auth.uid);
     }
 
-    // ─── TEST ENGINE ATTEMPTS ────────────────────────────────────────────────
-    // Protects student test sessions, question submissions, and scoring.
-    // - Students read only their own test attempts; admins inspect all.
-    // - Students create an attempt in 'preparing' or 'in_progress' status.
-    // - Students update an attempt only while not yet 'completed' (within 120s grace period past endsAt).
-    // - Completed attempts are immutable to students.
-    match /attempts/{attemptId} {
-      allow read: if (isAuthenticated() && (
-        resource.data.userId == request.auth.uid ||
-        resource.data.uid == request.auth.uid
-      )) || isAdmin();
-
-      allow create: if isAdmin() || (
-        isAuthenticated() &&
-        (request.resource.data.userId == request.auth.uid || request.resource.data.uid == request.auth.uid) &&
-        (request.resource.data.status == 'preparing' || request.resource.data.status == 'in_progress')
-      );
-
-      allow update: if isAdmin() || (
-        isAuthenticated() &&
-        (resource.data.userId == request.auth.uid || resource.data.uid == request.auth.uid) &&
-        resource.data.status != 'completed' &&
-        (
-          !('endsAt' in resource.data) ||
-          !(resource.data.endsAt is timestamp) ||
-          request.time <= resource.data.endsAt + duration.value(120, 's')
-        )
-      );
-
-      allow delete: if isAdmin();
-    }
-
-    // ─── STREAKS COLLECTION ──────────────────────────────────────────────────
-    // Tracks daily test streak counters.
-    match /streaks/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      allow write: if isOwner(userId) || isAdmin();
-    }
-
-    // ─── QUESTIONS BANK & CONTENT ────────────────────────────────────────────
-    // Protects entrance test question bank (~17,000 MCQs) and secret answer keys.
-    // - Published active questions can be read by signed-in students.
-    // - Secret answer keys readable by authenticated students (needed for test scoring) or admin.
-    // - Write operations (create, update, delete, bulk import) strictly restricted to Admin.
-    match /questions/{qId} {
-      allow read: if isAdmin() || (
-        isAuthenticated() &&
-        resource.data.status == 'published' &&
-        resource.data.active == true
-      );
-      allow write: if isAdmin();
-    }
-
-    // ─── DEDICATED SUBJECT QUESTION POOLS ──────────────────────────────────
-    // Separate pool for Mathematics (and generic structure for future subjects).
-    // Students read published questions only, and only admin writes.
-    match /questions_mathematics/{qId} {
-      allow read: if isAdmin() || (
-        isAuthenticated() &&
-        resource.data.status == 'published'
-      );
-      allow write: if isAdmin();
-    }
-
-    match /questions_physics/{qId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
-      allow write: if isAdmin();
-    }
-
-    match /questions_chemistry/{qId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
-      allow write: if isAdmin();
-    }
-
-    match /questions_biology/{qId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
-      allow write: if isAdmin();
-    }
-
-    match /questions_english/{qId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
-      allow write: if isAdmin();
-    }
-
-    match /questions_computer/{qId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
-      allow write: if isAdmin();
-    }
-
-    match /questions_computer_science/{qId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
-      allow write: if isAdmin();
-    }
-
-    match /questions_analytical_reasoning/{qId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
-      allow write: if isAdmin();
-    }
-
-    match /questions_intelligence/{qId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.status == 'published');
-      allow write: if isAdmin();
-    }
-
-    // Dynamic match for all subject pools (questions_<subject>)
-    match /{poolName}/{docId} {
-      allow read: if poolName.matches('questions_.*') && (
-        isAdmin() || (isAuthenticated() && resource.data.status == 'published')
-      );
-      allow write: if poolName.matches('questions_.*') && isAdmin();
-    }
-
-    // Question IDs index per subject for fast random ID selection in drills & sprints
-    match /question_index/{subject} {
-      allow read: if isAuthenticated() || isAdmin();
-      allow write: if isAdmin();
-    }
-
-    match /questionKeys/{keyId} {
-      allow read: if isAuthenticated() || isAdmin();
-      allow write: if isAdmin();
-    }
-
-    // Student issue reports for questions (typos, incorrect answers)
-    match /questionReports/{reportId} {
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow read, update, delete: if isAdmin();
-    }
-
-    // ─── PAYMENTS & PRIVILEGED FINANCIAL RECORDS ─────────────────────────────
-    // Protects manual payment approval workflow (Easypaisa / JazzCash / SadaPay).
-    // - Students submit a payment request in 'pending' status for their own UID.
-    // - Students can NEVER approve or modify payment requests (Admin only).
-    // - The 'payments' collection stores finalized receipts; writable ONLY by Admin.
-    match /paymentRequests/{requestId} {
-      allow read: if isAdmin() || (isAuthenticated() && (
-        (resource != null && resource.data.userId == request.auth.uid) ||
-        (request.resource != null && request.resource.data.userId == request.auth.uid)
-      ));
-      allow create: if isAuthenticated() &&
-        request.resource.data.userId == request.auth.uid &&
-        request.resource.data.status == 'pending';
-      allow update, delete: if isAdmin();
-    }
-
-    match /payments/{paymentId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow write: if isAdmin();
-    }
-
-    // ─── REVIEWS & STUDENT TESTIMONIALS ───────────────────────────────────────
-    // Protects landing page testimonials and student feedback.
-    // - Public can read approved reviews. Author and admin can read pending ones.
-    // - Students create reviews strictly with status 'pending', rating 1-5, text 10-800 characters.
-    // - Students edit their review while still pending; approval is Admin-only.
-    match /reviews/{reviewId} {
-      allow read: if (resource.data.status == 'approved') ||
-        (isAuthenticated() && resource.data.uid == request.auth.uid) ||
-        isAdmin();
-
-      allow create: if isAuthenticated() &&
-        request.resource.data.uid == request.auth.uid &&
-        request.resource.data.status == 'pending' &&
-        request.resource.data.rating >= 1 && request.resource.data.rating <= 5 &&
-        request.resource.data.text.size() >= 10 && request.resource.data.text.size() <= 800;
-
-      allow update: if isAdmin() || (
-        isAuthenticated() &&
-        resource.data.uid == request.auth.uid &&
-        request.resource.data.uid == request.auth.uid &&
-        resource.data.status == 'pending' &&
-        request.resource.data.status == 'pending'
-      );
-
-      allow delete: if isAdmin() || (isAuthenticated() && resource.data.uid == request.auth.uid);
-    }
-
-    // ─── PUBLIC LEADERBOARD ──────────────────────────────────────────────────
-    // Protects student global ranking, arena scores, and streak totals.
-    // - Anyone can view leaderboard rankings.
-    // - Authenticated students can only update their own leaderboard document.
-    match /leaderboard/{uid} {
-      allow read: if true;
-      allow create, update: if isAdmin() || (
-        isAuthenticated() && (
-          uid == request.auth.uid ||
-          request.resource.data.uid == request.auth.uid
-        )
-      );
-      allow delete: if isAdmin();
-    }
-
-    // ─── AMBASSADOR & CREW APPLICATIONS ──────────────────────────────────────
-    // Protects Campus Captain and Boardly Crew applications.
-    // - Students submit applications for themselves in 'pending' status.
-    // - Approval, role promotion, and deletion are Admin-only.
-    match /applications/{appId} {
-      allow list: if isAdmin();
-      allow get: if isAdmin() || (
-        isAuthenticated() && (
-          (resource != null && resource.data.userId == request.auth.uid) ||
-          appId == request.auth.uid
-        )
-      );
-      allow create: if isAuthenticated() && (
-        appId == request.auth.uid ||
-        request.resource.data.userId == request.auth.uid
-      ) && (
-        !('status' in request.resource.data) ||
-        request.resource.data.status in ['Pending', 'pending']
-      );
+    match /crewApplications/{appId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
     match /captainApplications/{appId} {
-      allow list: if isAdmin();
-      allow get: if isAdmin() || (
-        isAuthenticated() && (
-          (resource != null && resource.data.userId == request.auth.uid) ||
-          appId == request.auth.uid
-        )
-      );
-      allow create: if isAuthenticated() && (
-        appId == request.auth.uid ||
-        request.resource.data.userId == request.auth.uid
-      ) && (
-        !('status' in request.resource.data) ||
-        request.resource.data.status in ['Pending', 'pending']
-      );
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
-    match /crewApplications/{appId} {
-      allow read: if isAdmin() || (
-        isAuthenticated() && (
-          (resource != null && resource.data.userId == request.auth.uid) ||
-          appId == request.auth.uid
-        )
-      );
-      allow create: if isAuthenticated() && (
-        appId == request.auth.uid ||
-        request.resource.data.userId == request.auth.uid
-      ) && (!('status' in request.resource.data) || request.resource.data.status == 'pending');
-      allow update, delete: if isAdmin();
-    }
-
-    match /organizerApplications/{appId} {
-      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-
-    // ─── CAPTAINS & ORGANIZERS DIRECTORY ─────────────────────────────────────
     match /captains/{captainId} {
-      allow read: if isAuthenticated() || isAdmin();
-      allow create, update: if isAdmin() || (
-        isAuthenticated() && (
-          captainId == request.auth.uid ||
-          request.resource.data.userId == request.auth.uid
-        )
-      );
-      allow delete: if isAdmin();
-    }
-
-    match /organizers/{orgId} {
-      allow read: if isAuthenticated() || isAdmin();
+      allow read: if true;
       allow write: if isAdmin();
     }
 
-    // ─── REFERRALS ───────────────────────────────────────────────────────────
-    // Protects student referral links, invite counts, and bonus rewards.
-    match /referrals/{refId} {
-      allow read: if isAdmin() || (
-        isAuthenticated() && (
-          resource.data.captainId == request.auth.uid ||
-          resource.data.ambassadorUid == request.auth.uid ||
-          resource.data.referredUserId == request.auth.uid ||
-          resource.data.referredUid == request.auth.uid ||
-          refId == request.auth.uid
-        )
+    // =========================================================================
+    // 8. SOCIAL EDGES: FOLLOWS
+    // =========================================================================
+
+    match /follows/{followId} {
+      allow read: if isSignedIn();
+
+      // Create: User can only follow as themselves, document ID must equal {follower}_{target}
+      allow create: if isSignedIn() &&
+        request.resource.data.followerId == request.auth.uid &&
+        request.resource.data.followerId != request.resource.data.targetId &&
+        followId == (request.auth.uid + '_' + request.resource.data.targetId);
+
+      // Follow edges are immutable once created
+      allow update: if false;
+
+      // Delete: Only the follower can unfollow
+      allow delete: if isAdmin() || (
+        isSignedIn() && resource.data.followerId == request.auth.uid
       );
-      allow create: if isAdmin() || (
-        isAuthenticated() && (
-          request.resource.data.referredUserId == request.auth.uid ||
-          request.resource.data.referredUid == request.auth.uid ||
-          refId == request.auth.uid
-        )
-      );
+    }
+
+    // =========================================================================
+    // 9. MCQ ATTEMPTS & TEST ENGINE
+    // =========================================================================
+
+    match /attempts/{attemptId} {
+      allow read: if isOwner(resource.data.userId) || isOwner(resource.data.uid) || isAdmin();
+
+      // Student creates attempt with their own uid
+      allow create: if isSignedIn() &&
+        (request.resource.data.userId == request.auth.uid || request.resource.data.uid == request.auth.uid) &&
+        (request.resource.data.status == 'preparing' || request.resource.data.status == 'in_progress');
+
+      // Update permitted only while test is active (cannot re-open completed test)
       allow update: if isAdmin() || (
-        isAuthenticated() && (
-          resource.data.captainId == request.auth.uid ||
-          resource.data.ambassadorUid == request.auth.uid ||
-          resource.data.referredUserId == request.auth.uid ||
-          resource.data.referredUid == request.auth.uid ||
-          refId == request.auth.uid
-        )
+        isSignedIn() &&
+        (resource.data.userId == request.auth.uid || resource.data.uid == request.auth.uid) &&
+        resource.data.status != 'completed'
       );
+
+      // Immutable history: tests cannot be deleted by students
       allow delete: if isAdmin();
     }
 
-    // ─── NOTIFICATIONS & SUPPORT ─────────────────────────────────────────────
-    // In-app notifications: users read and mark read their own notifications.
-    match /notifications/{notifId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow update: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow create: if isAuthenticated() || isAdmin();
-      allow delete: if isAdmin();
+    match /streaks/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      // Computed metric: writes reserved for Admin SDK / Cloud Functions
+      allow write: if isOwner(userId) || isAdmin();
     }
 
-    // Support tickets / contact form inquiries
-    match /supportTickets/{ticketId} {
-      allow create: if true; // Public submission from contact page
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
+    // =========================================================================
+    // 10. ENTRANCE TEST QUESTION BANK (~17,000 MCQs)
+    // =========================================================================
+
+    match /questions/{qId} {
+      allow read: if isAdmin() || (
+        isSignedIn() && resource.data.status == 'published' && resource.data.active == true
+      );
+      allow write: if isAdmin();
+    }
+
+    match /questions_mathematics/{qId} {
+      allow read: if isAdmin() || (isSignedIn() && resource.data.status == 'published');
+      allow write: if isAdmin();
+    }
+
+    match /{poolName}/{docId} {
+      allow read: if poolName.matches('questions_.*') && (
+        isAdmin() || (isSignedIn() && resource.data.status == 'published')
+      );
+      allow write: if poolName.matches('questions_.*') && isAdmin();
+    }
+
+    match /question_index/{subject} {
+      allow read: if isSignedIn() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /questionKeys/{keyId} {
+      allow read: if isSignedIn() || isAdmin();
+      allow write: if isAdmin();
+    }
+
+    match /questionReports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
-    // ─── IMMUTABLE AUDIT LOGS ────────────────────────────────────────────────
-    // Protects audit logs and operational history.
-    // - Read strictly restricted to Admin.
-    // - Client writes are DENIED; append-only via Admin SDK / Server Functions.
-    // - Updates and deletions are NEVER permitted (immutable).
-    match /auditLogs/{logId} {
-      allow read: if isAdmin();
-      allow create: if false;
-      allow update, delete: if false;
+    // =========================================================================
+    // 11. REFERRALS, PAYMENTS & AUDIT LOGS
+    // =========================================================================
+
+    match /referrals/{refId} {
+      allow read: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.captainId == request.auth.uid ||
+          resource.data.ambassadorUid == request.auth.uid ||
+          resource.data.referredUserId == request.auth.uid ||
+          refId == request.auth.uid
+        )
+      );
+      allow create: if isSignedIn() && (
+        request.resource.data.referredUserId == request.auth.uid ||
+        refId == request.auth.uid
+      );
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
     }
 
-    // ─── SYSTEM CONFIGURATION & REFERENCE DATA ───────────────────────────────
+    match /paymentRequests/{requestId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /notifications/{notifId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow update: if isOwner(resource.data.userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']);
+      allow create: if isSignedIn() || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /supportTickets/{ticketId} {
+      allow create: if true; // Public contact form submissions
+      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // Immutable system audit trail: Client writes strictly DENIED
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create, update, delete: if false;
+    }
+
     match /config/{configId} {
       allow read: if true;
       allow write: if isAdmin();
@@ -661,197 +560,34 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    match /admins/{adminId} {
-      allow read, write: if isAdmin();
+    match /ambassador_tests/{testId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
-    // Competitive event sessions (Blitz, Arena, Study Circles)
-    match /sessions/{sessionId} {
-      allow read: if true;
-      allow create: if isAuthenticated() || isAdmin();
-      allow update: if isAdmin() || (isAuthenticated() && resource.data.organizerId == request.auth.uid);
+    match /ambassador_test_attempts/{attemptId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if false;
       allow delete: if isAdmin();
     }
 
-    match /sessionResults/{resultId} {
-      allow read: if true;
-      allow create, update: if isAdmin() || (
-        isAuthenticated() && (
-          request.resource.data.userId == request.auth.uid ||
-          request.resource.data.student_id == request.auth.uid
-        )
-      );
-      allow delete: if isAdmin();
-    }
-
-    match /events/{eventId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /crewEvents/{eventId} {
-      allow read: if true;
-      allow create: if isAuthenticated() || isAdmin();
-      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.organizerId == request.auth.uid);
-    }
-
-    match /crewEventAttempts/{attemptId} {
-      allow read: if true;
-      allow create: if isAdmin() || (isAuthenticated() && request.resource.data.userId == request.auth.uid);
+    match /study_buddy_logs/{logId} {
+      allow read: if isOwner(resource.data.student_id) || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.student_id == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
-    match /registrations/{regId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow create: if isAdmin() || (isAuthenticated() && request.resource.data.userId == request.auth.uid);
-      allow update, delete: if isAdmin();
+    match /study_buddy_presence/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) || isAdmin();
     }
 
-    match /certificates/{certId} {
-      allow read: if isAdmin() || (
-        isAuthenticated() && (
-          resource.data.userId == request.auth.uid ||
-          resource.data.uid == request.auth.uid
-        )
-      );
-      allow create: if isAdmin() || (
-        isAuthenticated() && (
-          request.resource.data.userId == request.auth.uid ||
-          request.resource.data.uid == request.auth.uid
-        )
-      );
-      allow update, delete: if isAdmin();
-    }
+    // =========================================================================
+    // 12. DEFAULT DENY CATCH-ALL
+    // =========================================================================
 
-    match /missions/{missionId} {
-      allow read: if isAuthenticated() || isAdmin();
-      allow write: if isAdmin();
-    }
-
-    match /rewards/{rewardId} {
-      allow read: if isAuthenticated() || isAdmin();
-      allow write: if isAdmin();
-    }
-
-    match /rewardRedemptions/{redemptionId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.userId == request.auth.uid);
-      allow create: if isAuthenticated() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-
-    match /sheets/{sheetId} {
-      allow read: if isAuthenticated() || isAdmin();
-      allow write: if isAdmin();
-    }
-
-    match /universities/{univId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /meritFormulas/{formId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /announcements/{annId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    // ─── BOARDLY COMMONS: STUDY RESOURCE EXCHANGE ────────────────────────────
-    match /commonsPosts/{postId} {
-      // Public study resource exchange: anyone can browse posts
-      // Any query for a user's posts must only return isAnonymous == false
-      allow read: if resource == null || resource.data.isAnonymous == false || resource.data.authorUid == null;
-
-      // Authenticated students can create posts; anonymous posts MUST have authorUid == null
-      allow create: if isAuthenticated() && (
-        (request.resource.data.isAnonymous == true && request.resource.data.authorUid == null) ||
-        (request.resource.data.isAnonymous == false && request.resource.data.authorUid == request.auth.uid)
-      );
-
-      // Update allowed for superadmin, post author, author switching anonymity, or counter increments
-      allow update: if isSuperAdmin() || (
-        isAuthenticated() && (
-          resource.data.authorUid == request.auth.uid ||
-          (resource.data.isAnonymous == true && exists(/databases/$(database)/documents/postsPrivate/$(postId)) && get(/databases/$(database)/documents/postsPrivate/$(postId)).data.authorUid == request.auth.uid) ||
-          (resource.data.isAnonymous == true && exists(/databases/$(database)/documents/postPrivate/$(postId)) && get(/databases/$(database)/documents/postPrivate/$(postId)).data.authorUid == request.auth.uid) ||
-          // Counter updates allowed for peer interactions
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes', 'commentCount', 'saveCount', 'reportCount', 'isHidden', 'updatedAt'])
-        )
-      );
-
-      // Delete allowed for superadmin or author
-      allow delete: if isSuperAdmin() || (
-        isAuthenticated() && (
-          resource.data.authorUid == request.auth.uid ||
-          (resource.data.isAnonymous == true && exists(/databases/$(database)/documents/postsPrivate/$(postId)) && get(/databases/$(database)/documents/postsPrivate/$(postId)).data.authorUid == request.auth.uid) ||
-          (resource.data.isAnonymous == true && exists(/databases/$(database)/documents/postPrivate/$(postId)) && get(/databases/$(database)/documents/postPrivate/$(postId)).data.authorUid == request.auth.uid)
-        )
-      );
-
-      // Subcollection: Peer votes (1 vote per user doc)
-      match /votes/{userId} {
-        allow read: if isAuthenticated();
-        allow write: if isOwner(userId) || isSuperAdmin();
-      }
-
-      // Subcollection: Peer comments
-      match /comments/{commentId} {
-        allow read: if true;
-        allow create: if isAuthenticated();
-        allow update, delete: if isSuperAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
-      }
-    }
-
-    // Private author audit records for Commons (for moderation & privacy guarantee)
-    // Strictly readable ONLY by the author and admins
-    match /postsPrivate/{postId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
-      allow list: if isAdmin() || (isAuthenticated() && request.query.limit <= 100);
-      allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
-      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
-    }
-
-    match /postPrivate/{postId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
-      allow list: if isAdmin() || (isAuthenticated() && request.query.limit <= 100);
-      allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
-      allow update, delete: if isAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
-    }
-
-    // Moderation report tickets
-    match /commonsReports/{reportId} {
-      allow read: if isAdmin();
-      allow create: if isAuthenticated() && request.resource.data.reporterUid == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-
-    // ─── USER PROFILE FEED POSTS ───────────────────────────────────────────
-    match /posts/{postId} {
-      allow read: if true;
-      allow create: if isAuthenticated() && (
-        request.resource.data.user_id == request.auth.uid ||
-        request.resource.data.userId == request.auth.uid
-      );
-      allow update: if isSuperAdmin() || (
-        isAuthenticated() && (
-          resource.data.user_id == request.auth.uid ||
-          resource.data.userId == request.auth.uid ||
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes_count', 'comments_count', 'liked_by', 'updated_at'])
-        )
-      );
-      allow delete: if isSuperAdmin() || (
-        isAuthenticated() && (
-          resource.data.user_id == request.auth.uid ||
-          resource.data.userId == request.auth.uid
-        )
-      );
-    }
-
-    // ─── DEFAULT DENY ────────────────────────────────────────────────────────
-    // Any document path not explicitly permitted above is strictly denied.
+    // Any document path not explicitly authorized above is strictly denied
     match /{document=**} {
       allow read, write: if false;
     }
