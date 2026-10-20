@@ -4,10 +4,10 @@ import { MatrixAvatar } from '@/lib/matrixAvatars';
 import { PFP_ARTWORK_MAP } from './artwork/pfpArtwork';
 import { FrameRenderer } from './artwork/frameArtwork';
 import { NameplateRenderer } from './artwork/plateArtwork';
-import { EffectAvatarRenderer, ProfileCardEffect } from './artwork/effectArtwork';
+import { EffectAvatarRenderer, ProfileCardEffect, ProfileEffectCardPreview } from './artwork/effectArtwork';
 
-// Re-export ProfileCardEffect for convenience
-export { ProfileCardEffect };
+// Re-export ProfileCardEffect and ProfileEffectCardPreview for convenience
+export { ProfileCardEffect, ProfileEffectCardPreview };
 
 interface BaseCosmeticProps {
   itemId: string;
@@ -17,20 +17,16 @@ interface BaseCosmeticProps {
   forceStatic?: boolean;
 }
 
-// Global active nameplate tracking to cap simultaneously animated nameplates in long lists
-let activeAnimatedNameplateCount = 0;
-const MAX_ANIMATED_NAMEPLATES = 10;
 
 /**
  * Hook to determine if cosmetic should execute animations:
  * 1. Must be marked animated: true in catalog (single source of truth)
- * 2. Element must be visible in viewport via IntersectionObserver
- * 3. If nameplate, must respect the 10-item simultaneous animation cap
+ * 2. If forceStatic is true, immediately return false
+ * 3. Element is observed for viewport presence (defaults to true for instant render)
  */
-function useCosmeticAnimation(itemId: string, isNameplate = false, forceStatic = false) {
+function useCosmeticAnimation(itemId: string, _isNameplate = false, forceStatic = false) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [isVisible, setIsVisible] = useState(false);
-  const [hasNameplateSlot, setHasNameplateSlot] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
 
   const item = getCosmeticById(itemId);
   // Catalog animated flag is the single source of truth
@@ -51,36 +47,19 @@ function useCosmeticAnimation(itemId: string, isNameplate = false, forceStatic =
     const observer = new IntersectionObserver(
       (entries) => {
         const entry = entries[0];
-        const visible = Boolean(entry?.isIntersecting);
-        setIsVisible(visible);
-
-        if (isNameplate) {
-          if (visible && activeAnimatedNameplateCount < MAX_ANIMATED_NAMEPLATES) {
-            activeAnimatedNameplateCount++;
-            setHasNameplateSlot(true);
-          } else if (!visible) {
-            if (hasNameplateSlot) {
-              activeAnimatedNameplateCount = Math.max(0, activeAnimatedNameplateCount - 1);
-              setHasNameplateSlot(false);
-            }
-          }
-        }
+        setIsVisible(Boolean(entry?.isIntersecting));
       },
-      { threshold: 0.05, rootMargin: '60px' }
+      { threshold: 0.05, rootMargin: '100px' }
     );
 
     observer.observe(el);
 
     return () => {
       observer.disconnect();
-      if (isNameplate && hasNameplateSlot) {
-        activeAnimatedNameplateCount = Math.max(0, activeAnimatedNameplateCount - 1);
-      }
     };
-  }, [isCatalogAnimated, isNameplate, hasNameplateSlot]);
+  }, [isCatalogAnimated]);
 
-  // For nameplates, both visibility and cap slot must be satisfied
-  const canAnimate = isCatalogAnimated && isVisible && (!isNameplate || hasNameplateSlot);
+  const canAnimate = isCatalogAnimated && isVisible;
 
   return { containerRef, canAnimate, isCatalogAnimated };
 }

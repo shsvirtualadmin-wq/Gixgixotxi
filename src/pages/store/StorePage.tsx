@@ -11,6 +11,7 @@ import {
   AvatarFrame,
   Nameplate,
   CosmeticEffect,
+  ProfileEffectCardPreview,
 } from '@/components/koban/CosmeticRenderers';
 import { GetKobansModal } from '@/components/koban/GetKobansModal';
 import { CoinBurstEffect } from '@/components/koban/CoinBurstEffect';
@@ -634,21 +635,21 @@ export function StorePage() {
                     {/* Preview Canvas */}
                     <div className="h-28 rounded-xl bg-[var(--surface-2)] flex items-center justify-center p-2 relative overflow-hidden">
                       {item.type === 'avatar' && (
-                        <div className="w-16 h-16 rounded-xl overflow-hidden shadow-sm">
+                        <div className="w-16 h-16 rounded-xl overflow-hidden shadow-md shrink-0">
                           <AvatarPicture avatarId={item.id} size={64} />
                         </div>
                       )}
 
                       {item.type === 'frame' && (
-                        <AvatarFrame itemId={item.id} size={64}>
-                          <AvatarPicture
-                            avatarId={equipped.avatar}
-                            avatarKey={profile?.avatarKey || 'skull-01'}
-                            variant={profile?.avatarVariant || 'red-on-black'}
-                            seed={user?.uid}
-                            size={48}
-                          />
-                        </AvatarFrame>
+                        <div className="p-2 overflow-visible flex items-center justify-center shrink-0">
+                          <AvatarFrame itemId={item.id} size={72}>
+                            <div className="w-full h-full rounded-full bg-gradient-to-b from-[#27272A] to-[#09090B] flex items-center justify-center shadow-inner">
+                              <svg viewBox="0 0 24 24" className="w-4 h-4 text-zinc-500 fill-current opacity-60">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+                              </svg>
+                            </div>
+                          </AvatarFrame>
+                        </div>
                       )}
 
                       {item.type === 'nameplate' && (
@@ -658,15 +659,9 @@ export function StorePage() {
                       )}
 
                       {item.type === 'effect' && (
-                        <CosmeticEffect itemId={item.id} size={70}>
-                          <AvatarPicture
-                            avatarId={equipped.avatar}
-                            avatarKey={profile?.avatarKey || 'skull-01'}
-                            variant={profile?.avatarVariant || 'red-on-black'}
-                            seed={user?.uid}
-                            size={44}
-                          />
-                        </CosmeticEffect>
+                        <div className="w-full h-full p-1">
+                          <ProfileEffectCardPreview itemId={item.id} compact={true} />
+                        </div>
                       )}
                     </div>
 
@@ -778,20 +773,20 @@ export function StorePage() {
 
                       <div className="h-24 rounded-xl bg-[var(--surface-2)] flex items-center justify-center p-2 overflow-hidden">
                         {item.type === 'avatar' && (
-                          <div className="w-14 h-14 rounded-xl overflow-hidden shadow-sm">
+                          <div className="w-14 h-14 rounded-xl overflow-hidden shadow-sm shrink-0">
                             <AvatarPicture avatarId={item.id} size={56} />
                           </div>
                         )}
                         {item.type === 'frame' && (
-                          <AvatarFrame itemId={item.id} size={56}>
-                            <AvatarPicture
-                              avatarId={equipped.avatar}
-                              avatarKey={profile?.avatarKey}
-                              variant={profile?.avatarVariant}
-                              seed={user?.uid}
-                              size={42}
-                            />
-                          </AvatarFrame>
+                          <div className="p-2 overflow-visible flex items-center justify-center shrink-0">
+                            <AvatarFrame itemId={item.id} size={64}>
+                              <div className="w-full h-full rounded-full bg-gradient-to-b from-[#27272A] to-[#09090B] flex items-center justify-center shadow-inner">
+                                <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-zinc-500 fill-current opacity-60">
+                                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+                                </svg>
+                              </div>
+                            </AvatarFrame>
+                          </div>
                         )}
                         {item.type === 'nameplate' && (
                           <div className="w-full flex items-center justify-center overflow-hidden px-1">
@@ -799,9 +794,9 @@ export function StorePage() {
                           </div>
                         )}
                         {item.type === 'effect' && (
-                          <CosmeticEffect itemId={item.id} size={60}>
-                            <AvatarPicture avatarKey={profile?.avatarKey} variant={profile?.avatarVariant} size={36} />
-                          </CosmeticEffect>
+                          <div className="w-full h-full p-1">
+                            <ProfileEffectCardPreview itemId={item.id} compact={true} />
+                          </div>
                         )}
                       </div>
 
@@ -864,27 +859,27 @@ export function StorePage() {
               </div>
 
               {/* Live Preview Canvas on Student's Loadout */}
-              <div className="h-40 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center p-4 relative overflow-hidden">
+              <div className="h-44 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center p-4 relative overflow-hidden">
                 {selectedDetailItem.type === 'avatar' && (
-                  <AvatarFrame itemId={equipped.frame || 'none'} size={92}>
-                    <AvatarPicture avatarId={selectedDetailItem.id} size={72} />
-                  </AvatarFrame>
+                  <div className="w-24 h-24 rounded-2xl overflow-hidden shadow-xl border border-[var(--border)]">
+                    <AvatarPicture avatarId={selectedDetailItem.id} size={96} />
+                  </div>
                 )}
 
                 {selectedDetailItem.type === 'frame' && (
-                  <AvatarFrame itemId={selectedDetailItem.id} size={92}>
-                    <AvatarPicture
-                      avatarId={equipped.avatar}
-                      avatarKey={profile?.avatarKey || 'skull-01'}
-                      variant={profile?.avatarVariant || 'red-on-black'}
-                      seed={user?.uid}
-                      size={72}
-                    />
-                  </AvatarFrame>
+                  <div className="p-4 overflow-visible flex items-center justify-center">
+                    <AvatarFrame itemId={selectedDetailItem.id} size={96}>
+                      <div className="w-full h-full rounded-full bg-gradient-to-b from-[#27272A] to-[#09090B] flex items-center justify-center shadow-inner">
+                        <svg viewBox="0 0 24 24" className="w-6 h-6 text-zinc-500 fill-current opacity-60">
+                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm0 14.2c-2.5 0-4.71-1.28-6-3.22.03-1.99 4-3.08 6-3.08 1.99 0 5.97 1.09 6 3.08-1.29 1.94-3.5 3.22-6 3.22z"/>
+                        </svg>
+                      </div>
+                    </AvatarFrame>
+                  </div>
                 )}
 
                 {selectedDetailItem.type === 'nameplate' && (
-                  <div className="w-full max-w-xs mx-auto flex items-center justify-center overflow-hidden px-2">
+                  <div className="w-full max-w-sm mx-auto flex items-center justify-center overflow-hidden px-2">
                     <Nameplate
                       itemId={selectedDetailItem.id}
                       name={cleanDisplayName}
@@ -896,17 +891,9 @@ export function StorePage() {
                 )}
 
                 {selectedDetailItem.type === 'effect' && (
-                  <CosmeticEffect itemId={selectedDetailItem.id} size={100}>
-                    <AvatarFrame itemId={equipped.frame || 'none'} size={76}>
-                      <AvatarPicture
-                        avatarId={equipped.avatar}
-                        avatarKey={profile?.avatarKey || 'skull-01'}
-                        variant={profile?.avatarVariant || 'red-on-black'}
-                        seed={user?.uid}
-                        size={58}
-                      />
-                    </AvatarFrame>
-                  </CosmeticEffect>
+                  <div className="w-full max-w-sm h-36">
+                    <ProfileEffectCardPreview itemId={selectedDetailItem.id} />
+                  </div>
                 )}
               </div>
 

@@ -21,15 +21,16 @@ interface PfpSvgProps {
 export const PfpCrimsonRonin: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => (
   <svg viewBox="0 0 256 256" className={`w-full h-full block ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
-      <radialGradient id="cr-bg" cx="50%" cy="40%" r="65%">
+      <radialGradient id="cr-bg" cx="50%" cy="35%" r="70%">
         <stop offset="0%" stopColor="#2A080C" />
-        <stop offset="70%" stopColor="#120406" />
+        <stop offset="65%" stopColor="#120406" />
         <stop offset="100%" stopColor="#050102" />
       </radialGradient>
-      <radialGradient id="cr-moon" cx="45%" cy="45%" r="55%">
-        <stop offset="0%" stopColor="#FF4D4D" />
-        <stop offset="60%" stopColor="#DC2626" />
-        <stop offset="100%" stopColor="#7F1D1D" />
+      <radialGradient id="cr-moon" cx="40%" cy="40%" r="60%">
+        <stop offset="0%" stopColor="#FFA4A4" />
+        <stop offset="35%" stopColor="#EF4444" />
+        <stop offset="75%" stopColor="#B91C1C" />
+        <stop offset="100%" stopColor="#450A0A" />
       </radialGradient>
       <linearGradient id="cr-mist" x1="0" y1="0" x2="0" y2="1">
         <stop offset="0%" stopColor="#7F1D1D" stopOpacity="0" />
@@ -41,47 +42,40 @@ export const PfpCrimsonRonin: React.FC<PfpSvgProps> = ({ canAnimate = true, clas
     {/* Layer 2: Giant Crimson Blood Moon with breathing pulse */}
     <circle
       cx="128"
-      cy="110"
-      r="72"
+      cy="105"
+      r="68"
       fill="url(#cr-moon)"
-      className={canAnimate ? 'origin-center animate-[pulse_5s_ease-in-out_infinite]' : ''}
+      style={canAnimate ? { animation: 'koban-pulse-glow 5s ease-in-out infinite' } : undefined}
     />
-    {/* Layer 3: Moon Aura */}
-    <circle cx="128" cy="110" r="82" stroke="#EF4444" strokeWidth="1.5" strokeOpacity="0.35" />
-    {/* Layer 4: Distant Mountain Silhouettes */}
-    <path d="M-10 200L45 145L110 185L170 135L266 210V256H-10Z" fill="#0D0304" opacity="0.85" />
-    <path d="M40 215L95 170L150 205L210 160L270 215V256H40Z" fill="#180507" opacity="0.7" />
-    {/* Layer 5: Ground Ridge */}
-    <path d="M0 215C50 210 100 220 150 215C200 210 230 218 256 220V256H0Z" fill="#0A0203" />
-    {/* Layer 6: Torii / Flagpole in distance */}
-    <path d="M195 160V195M215 160V195M190 167H220M192 173H218" stroke="#3F0E14" strokeWidth="2" />
-    {/* Layer 7: Lone Ronin Silhouette */}
-    <g transform="translate(100, 115)">
-      {/* Straw Jingasa / Kasa Hat */}
-      <path d="M8 42C18 36 38 36 48 42L28 26L8 42Z" fill="#040102" />
+    <circle cx="128" cy="105" r="76" stroke="#EF4444" strokeWidth="1.5" strokeOpacity="0.3" />
+    {/* Layer 3: Distant Mountain Jagged Silhouettes */}
+    <path d="M-10 195L45 145L105 180L165 135L266 205V256H-10Z" fill="#0D0304" opacity="0.9" />
+    <path d="M35 210L90 168L145 200L205 158L270 210V256H35Z" fill="#1A0609" opacity="0.75" />
+    {/* Layer 4: Lone Ronin Silhouette */}
+    <g transform="translate(100, 110)">
+      {/* Straw Jingasa Kasa Hat */}
+      <path d="M6 44C18 36 38 36 50 44L28 26L6 44Z" fill="#050102" />
       {/* Head & Neck */}
-      <circle cx="28" cy="46" r="6" fill="#040102" />
+      <circle cx="28" cy="48" r="6" fill="#050102" />
       {/* Kimono & Haori */}
-      <path d="M14 52C20 49 36 49 42 52L48 95H8L14 52Z" fill="#040102" />
-      {/* Scarf / Cloth flutter */}
-      <path
-        d="M20 54C10 58 6 68 0 74C8 70 14 62 18 57Z"
-        fill="#991B1B"
-        className={canAnimate ? 'origin-top-right animate-[pulse_2.5s_ease-in-out_infinite]' : ''}
-      />
+      <path d="M14 54C20 50 36 50 42 54L48 95H8L14 54Z" fill="#050102" />
+      {/* Scarf / Cloth flutter with sway */}
+      <g style={canAnimate ? { animation: 'koban-lantern-sway 2.5s ease-in-out infinite', transformOrigin: '20px 56px' } : undefined}>
+        <path d="M20 56C8 60 4 72 -2 80C8 74 14 65 18 58Z" fill="#DC2626" />
+      </g>
       {/* Sheathed Katana Slanted */}
-      <line x1="38" y1="58" x2="62" y2="88" stroke="#1C0507" strokeWidth="3" strokeLinecap="round" />
-      <line x1="34" y1="52" x2="40" y2="60" stroke="#F87171" strokeWidth="2.5" strokeLinecap="round" />
+      <line x1="38" y1="60" x2="64" y2="92" stroke="#2B070B" strokeWidth="3.5" strokeLinecap="round" />
+      <line x1="34" y1="54" x2="40" y2="62" stroke="#F87171" strokeWidth="2.5" strokeLinecap="round" />
     </g>
-    {/* Layer 8: Atmospheric Mist Gradient */}
-    <rect y="180" width="256" height="76" fill="url(#cr-mist)" />
-    {/* Layer 9: Drifting Red Embers & Sakura Petals */}
-    <g className={canAnimate ? 'animate-[pulse_3s_ease-in-out_infinite]' : ''}>
-      <circle cx="45" cy="80" r="2" fill="#FCA5A5" opacity="0.8" />
-      <circle cx="85" cy="50" r="1.5" fill="#EF4444" opacity="0.9" />
-      <circle cx="210" cy="95" r="2.5" fill="#F87171" opacity="0.75" />
-      <circle cx="175" cy="65" r="1.8" fill="#FCA5A5" opacity="0.85" />
-      <circle cx="60" cy="140" r="2" fill="#DC2626" opacity="0.7" />
+    {/* Layer 5: Atmospheric Mist Gradient */}
+    <rect y="175" width="256" height="81" fill="url(#cr-mist)" />
+    {/* Layer 6: Drifting Red Embers Rising Looping */}
+    <g style={canAnimate ? { animation: 'koban-ember-rise 2.8s ease-out infinite' } : undefined}>
+      <circle cx="45" cy="80" r="2.5" fill="#FCA5A5" opacity="0.9" />
+      <circle cx="85" cy="50" r="1.8" fill="#EF4444" opacity="0.95" />
+      <circle cx="210" cy="95" r="3" fill="#F87171" opacity="0.85" />
+      <circle cx="175" cy="65" r="2" fill="#FCA5A5" opacity="0.9" />
+      <circle cx="60" cy="140" r="2.2" fill="#DC2626" opacity="0.8" />
     </g>
   </svg>
 );
@@ -90,7 +84,7 @@ export const PfpCrimsonRonin: React.FC<PfpSvgProps> = ({ canAnimate = true, clas
 export const PfpSakuraKitsune: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => (
   <svg viewBox="0 0 256 256" className={`w-full h-full block ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
     <defs>
-      <radialGradient id="sk-bg" cx="50%" cy="50%" r="70%">
+      <radialGradient id="sk-bg" cx="50%" cy="45%" r="75%">
         <stop offset="0%" stopColor="#3B0764" />
         <stop offset="60%" stopColor="#1E1B4B" />
         <stop offset="100%" stopColor="#090514" />
@@ -101,13 +95,12 @@ export const PfpSakuraKitsune: React.FC<PfpSvgProps> = ({ canAnimate = true, cla
       </linearGradient>
     </defs>
     <rect width="256" height="256" fill="url(#sk-bg)" />
-    {/* Soft Moon */}
-    <circle cx="128" cy="120" r="85" fill="#581C87" opacity="0.3" />
-    <circle cx="128" cy="120" r="70" fill="#701A75" opacity="0.25" />
-    {/* Twig Cherry Branches */}
-    <path d="M0 40Q60 30 110 70T220 50" stroke="#2E1065" strokeWidth="4" strokeLinecap="round" />
+    {/* Soft Moon Halo */}
+    <circle cx="128" cy="115" r="80" fill="#701A75" opacity="0.35" />
+    {/* Cherry Branches Silhouette */}
+    <path d="M0 35Q60 25 110 65T220 45" stroke="#2E1065" strokeWidth="4" strokeLinecap="round" />
     {/* Kitsune Mask (Central Emblem) */}
-    <g transform="translate(68, 48)">
+    <g transform="translate(68, 44)">
       {/* Ears */}
       <polygon points="15,40 35,0 55,35" fill="#FDF2F8" stroke="#E11D48" strokeWidth="2.5" />
       <polygon points="25,35 35,10 47,32" fill="#E11D48" />
@@ -118,15 +111,14 @@ export const PfpSakuraKitsune: React.FC<PfpSvgProps> = ({ canAnimate = true, cla
       {/* Eye Slits with Glowing violet pulse */}
       <path d="M30 78C38 74 46 80 50 85C42 85 34 83 30 78Z" fill="#701A75" />
       <path d="M90 78C82 74 74 80 70 85C78 85 86 83 90 78Z" fill="#701A75" />
-      <circle cx="40" cy="81" r="2.5" fill="#C084FC" className={canAnimate ? 'animate-[pulse_2s_ease-in-out_infinite]' : ''} />
-      <circle cx="80" cy="81" r="2.5" fill="#C084FC" className={canAnimate ? 'animate-[pulse_2s_ease-in-out_infinite]' : ''} />
+      <circle cx="40" cy="81" r="3" fill="#C084FC" style={canAnimate ? { animation: 'koban-pulse-glow 2.2s ease-in-out infinite' } : undefined} />
+      <circle cx="80" cy="81" r="3" fill="#C084FC" style={canAnimate ? { animation: 'koban-pulse-glow 2.2s ease-in-out infinite' } : undefined} />
       {/* Vermilion Facial Markings */}
       <path d="M60 92L60 112" stroke="#E11D48" strokeWidth="3" strokeLinecap="round" />
       <path d="M22 65C30 62 40 66 45 70" stroke="#E11D48" strokeWidth="2.5" strokeLinecap="round" />
       <path d="M98 65C90 62 80 66 75 70" stroke="#E11D48" strokeWidth="2.5" strokeLinecap="round" />
-      <path d="M24 95C32 98 42 96 46 90" stroke="#E11D48" strokeWidth="2" strokeLinecap="round" />
-      <path d="M96 95C88 98 78 96 74 90" stroke="#E11D48" strokeWidth="2" strokeLinecap="round" />
-      {/* Nose & Whiskers */}
+      <path d="M24 95C32 98 42 96 46 90" stroke="#E11D48" strokeWidth="2.5" strokeLinecap="round" />
+      <path d="M96 95C88 98 78 96 74 90" stroke="#E11D48" strokeWidth="2.5" strokeLinecap="round" />
       <circle cx="60" cy="120" r="3" fill="#BE123C" />
       {/* Red Cord and Tassels */}
       <path d="M12 90C-5 110 5 140 10 160" stroke="#BE123C" strokeWidth="2" />
@@ -135,11 +127,11 @@ export const PfpSakuraKitsune: React.FC<PfpSvgProps> = ({ canAnimate = true, cla
       <circle cx="110" cy="162" r="3.5" fill="#F59E0B" />
     </g>
     {/* Swirling Sakura Petals (animated drift) */}
-    <g className={canAnimate ? 'origin-center animate-[spin_12s_linear_infinite]' : ''}>
-      <path d="M40 70C46 64 54 68 52 74C46 80 38 76 40 70Z" fill="#F472B6" opacity="0.9" />
-      <path d="M210 110C216 104 224 108 222 114C216 120 208 116 210 110Z" fill="#FB7185" opacity="0.85" />
-      <path d="M70 210C76 204 84 208 82 214C76 220 68 216 70 210Z" fill="#F472B6" opacity="0.95" />
-      <path d="M180 190C186 184 194 188 192 194C186 200 178 196 180 190Z" fill="#FDA4AF" opacity="0.8" />
+    <g style={canAnimate ? { animation: 'koban-petal-fall 4s ease-in-out infinite' } : undefined}>
+      <path d="M40 70C46 64 54 68 52 74C46 80 38 76 40 70Z" fill="#F472B6" opacity="0.95" />
+      <path d="M210 110C216 104 224 108 222 114C216 120 208 116 210 110Z" fill="#FB7185" opacity="0.9" />
+      <path d="M70 170C76 164 84 168 82 174C76 180 68 176 70 170Z" fill="#F472B6" opacity="0.95" />
+      <path d="M180 150C186 144 194 148 192 154C186 160 178 156 180 150Z" fill="#FDA4AF" opacity="0.85" />
     </g>
   </svg>
 );
@@ -154,7 +146,7 @@ export const PfpWaterfallDragon: React.FC<PfpSvgProps> = ({ canAnimate = true, c
         <stop offset="100%" stopColor="#031E2E" />
       </linearGradient>
       <linearGradient id="wd-flow" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.8" />
+        <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.85" />
         <stop offset="100%" stopColor="#E0F2FE" stopOpacity="0.95" />
       </linearGradient>
       <linearGradient id="wd-dragon" x1="0" y1="0" x2="1" y2="1">
@@ -167,9 +159,15 @@ export const PfpWaterfallDragon: React.FC<PfpSvgProps> = ({ canAnimate = true, c
     {/* Craggy Cliffs */}
     <path d="M0 0H60L45 120L75 256H0Z" fill="#031E2E" />
     <path d="M256 0H196L211 110L181 256H256Z" fill="#031E2E" />
-    {/* Cascading Waterfall with ripple glow */}
+    {/* Cascading Waterfall */}
     <rect x="75" y="0" width="106" height="256" fill="url(#wd-flow)" opacity="0.65" />
-    <g stroke="#FFFFFF" strokeWidth="1.2" opacity="0.6">
+    {/* Waterfall Rapids motion */}
+    <g
+      stroke="#FFFFFF"
+      strokeWidth="1.5"
+      opacity="0.75"
+      style={canAnimate ? { animation: 'koban-grid-scroll 1.8s linear infinite' } : undefined}
+    >
       <line x1="90" y1="0" x2="90" y2="256" strokeDasharray="12 18" />
       <line x1="110" y1="0" x2="110" y2="256" strokeDasharray="16 22" />
       <line x1="128" y1="0" x2="128" y2="256" strokeDasharray="20 15" />
@@ -182,16 +180,29 @@ export const PfpWaterfallDragon: React.FC<PfpSvgProps> = ({ canAnimate = true, c
       stroke="url(#wd-dragon)"
       strokeWidth="20"
       strokeLinecap="round"
-      className={canAnimate ? 'animate-[pulse_4s_ease-in-out_infinite]' : ''}
+      style={canAnimate ? { animation: 'koban-pulse-glow 4s ease-in-out infinite' } : undefined}
     />
-    {/* Dragon Spines & Whiskers */}
-    <g stroke="#F0F9FF" strokeWidth="2.5" strokeLinecap="round">
+    {/* Dragon Spines & Whiskers with sway */}
+    <g
+      stroke="#F0F9FF"
+      strokeWidth="2.5"
+      strokeLinecap="round"
+      style={canAnimate ? { animation: 'koban-lantern-sway 3s ease-in-out infinite', transformOrigin: '125px 35px' } : undefined}
+    >
       <path d="M125 35L145 15M125 35L150 28" />
       <path d="M115 30C100 15 85 20 80 30" />
-      <circle cx="120" cy="32" r="2.5" fill="#FBBF24" />
+      <circle cx="120" cy="32" r="3" fill="#FBBF24" />
     </g>
-    {/* Mist and foam splash at bottom */}
-    <ellipse cx="128" cy="245" rx="70" ry="16" fill="#BAE6FD" opacity="0.75" />
+    {/* Mist and foam splash with ripple */}
+    <ellipse
+      cx="128"
+      cy="245"
+      rx="70"
+      ry="16"
+      fill="#BAE6FD"
+      opacity="0.8"
+      style={canAnimate ? { animation: 'koban-water-ripple 2.8s ease-in-out infinite' } : undefined}
+    />
   </svg>
 );
 
@@ -207,30 +218,25 @@ export const PfpMistToriiGate: React.FC<PfpSvgProps> = ({ canAnimate = true, cla
     </defs>
     <rect width="256" height="256" fill="url(#mt-sky)" />
     {/* Night Stars */}
-    <circle cx="50" cy="40" r="1.2" fill="#FFFFFF" opacity="0.7" />
-    <circle cx="190" cy="35" r="1.5" fill="#FFFFFF" opacity="0.8" />
-    <circle cx="128" cy="25" r="1" fill="#FFFFFF" opacity="0.6" />
+    <circle cx="50" cy="40" r="1.5" fill="#FFFFFF" style={canAnimate ? { animation: 'koban-star-twinkle 2.5s ease-in-out infinite' } : undefined} />
+    <circle cx="190" cy="35" r="1.8" fill="#FFFFFF" style={canAnimate ? { animation: 'koban-star-twinkle 3.2s ease-in-out infinite 0.8s' } : undefined} />
+    <circle cx="128" cy="25" r="1.5" fill="#FFFFFF" opacity="0.7" />
     {/* Stone Steps */}
     <path d="M30 256L60 210H196L226 256H30Z" fill="#0F172A" />
     <path d="M50 220H206V226H50Z" fill="#1E293B" />
     <path d="M60 232H196V238H60Z" fill="#1E293B" />
     {/* Grand Scarlet Torii Gate */}
     <g fill="#B91C1C" stroke="#7F1D1D" strokeWidth="1">
-      {/* Top Kasagi Arch */}
       <path d="M28 75C70 68 186 68 228 75L232 88C184 81 72 81 24 88L28 75Z" />
-      {/* Shimaki Tie-Beam */}
       <rect x="42" y="94" width="172" height="12" />
-      {/* Gakuzuka Tablet */}
       <rect x="120" y="84" width="16" height="24" fill="#0F172A" stroke="#F59E0B" strokeWidth="1.5" />
-      {/* Pillars (Hashira) */}
       <rect x="62" y="94" width="18" height="120" rx="3" />
       <rect x="176" y="94" width="18" height="120" rx="3" />
-      {/* Base Stones (Nemaki) */}
       <rect x="58" y="196" width="26" height="18" fill="#1E293B" rx="2" />
       <rect x="172" y="196" width="26" height="18" fill="#1E293B" rx="2" />
     </g>
-    {/* Hanging Paper Lanterns with Flickering Warm Glow */}
-    <g transform="translate(71, 110)">
+    {/* Hanging Paper Lanterns with Flickering Warm Glow & Sway */}
+    <g transform="translate(71, 110)" style={canAnimate ? { animation: 'koban-lantern-sway 3.2s ease-in-out infinite', transformOrigin: '0px 0px' } : undefined}>
       <rect x="-1" y="0" width="2" height="10" fill="#78350F" />
       <ellipse cx="0" cy="22" rx="9" ry="13" fill="#EA580C" />
       <ellipse
@@ -239,10 +245,10 @@ export const PfpMistToriiGate: React.FC<PfpSvgProps> = ({ canAnimate = true, cla
         rx="6"
         ry="9"
         fill="#FDE047"
-        className={canAnimate ? 'animate-[pulse_1.8s_ease-in-out_infinite]' : ''}
+        style={canAnimate ? { animation: 'koban-flame-flicker 1.8s ease-in-out infinite' } : undefined}
       />
     </g>
-    <g transform="translate(185, 110)">
+    <g transform="translate(185, 110)" style={canAnimate ? { animation: 'koban-lantern-sway 3.2s ease-in-out infinite 0.6s', transformOrigin: '0px 0px' } : undefined}>
       <rect x="-1" y="0" width="2" height="10" fill="#78350F" />
       <ellipse cx="0" cy="22" rx="9" ry="13" fill="#EA580C" />
       <ellipse
@@ -251,15 +257,15 @@ export const PfpMistToriiGate: React.FC<PfpSvgProps> = ({ canAnimate = true, cla
         rx="6"
         ry="9"
         fill="#FDE047"
-        className={canAnimate ? 'animate-[pulse_1.8s_ease-in-out_infinite]' : ''}
+        style={canAnimate ? { animation: 'koban-flame-flicker 1.8s ease-in-out infinite 0.6s' } : undefined}
       />
     </g>
     {/* Rolling Night Fog Over Steps */}
     <path
       d="M0 220C60 215 120 230 180 220C210 215 240 225 256 220V256H0Z"
       fill="#E2E8F0"
-      opacity="0.25"
-      className={canAnimate ? 'animate-[pulse_3.5s_ease-in-out_infinite]' : ''}
+      opacity="0.3"
+      style={canAnimate ? { animation: 'koban-aurora-wave 4s ease-in-out infinite' } : undefined}
     />
   </svg>
 );
@@ -268,10 +274,12 @@ export const PfpMistToriiGate: React.FC<PfpSvgProps> = ({ canAnimate = true, cla
 export const PfpThunderKami: React.FC<PfpSvgProps> = ({ canAnimate = true, className = '' }) => (
   <svg viewBox="0 0 256 256" className={`w-full h-full block ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect width="256" height="256" fill="#0C0A1D" />
-    {/* Rolling Dark Stormclouds */}
-    <circle cx="70" cy="190" r="60" fill="#1E1B4B" opacity="0.9" />
-    <circle cx="150" cy="205" r="70" fill="#2E1065" opacity="0.85" />
-    <circle cx="210" cy="180" r="55" fill="#1E1B4B" opacity="0.9" />
+    {/* Rolling Dark Stormclouds with Pulse */}
+    <g style={canAnimate ? { animation: 'koban-pulse-glow 3.5s ease-in-out infinite' } : undefined}>
+      <circle cx="70" cy="190" r="60" fill="#1E1B4B" opacity="0.95" />
+      <circle cx="150" cy="205" r="70" fill="#2E1065" opacity="0.9" />
+      <circle cx="210" cy="180" r="55" fill="#1E1B4B" opacity="0.95" />
+    </g>
     {/* Thunder Halo / Taiko Drums Ring */}
     <g transform="translate(128, 120)">
       <circle cx="0" cy="0" r="85" stroke="#F59E0B" strokeWidth="2" strokeDasharray="10 18" opacity="0.6" />
@@ -287,21 +295,21 @@ export const PfpThunderKami: React.FC<PfpSvgProps> = ({ canAnimate = true, class
         />
       ))}
     </g>
-    {/* Golden Lightning Bolts (Flashing) */}
+    {/* Golden Lightning Bolts (Flashing Lightning) */}
     <path
       d="M130 10L100 85H140L95 180L170 95H125L150 10Z"
       fill="#FDE047"
       stroke="#F59E0B"
       strokeWidth="2"
-      className={canAnimate ? 'animate-[pulse_1.2s_steps(2)_infinite]' : ''}
+      style={canAnimate ? { animation: 'koban-lightning-flicker 1.4s steps(2, start) infinite' } : undefined}
     />
     {/* Silhouette of Kami Demon Horns */}
     <path d="M100 130L90 100L105 115" stroke="#FDE047" strokeWidth="4" strokeLinecap="round" />
     <path d="M156 130L166 100L151 115" stroke="#FDE047" strokeWidth="4" strokeLinecap="round" />
     <circle cx="128" cy="150" r="28" fill="#1E1B4B" stroke="#7C3AED" strokeWidth="3" />
     {/* Fierce Glowing Eyes */}
-    <circle cx="118" cy="148" r="4" fill="#FDE047" className={canAnimate ? 'animate-ping' : ''} />
-    <circle cx="138" cy="148" r="4" fill="#FDE047" className={canAnimate ? 'animate-ping' : ''} />
+    <circle cx="118" cy="148" r="4" fill="#FDE047" style={canAnimate ? { animation: 'koban-pulse-glow 1.5s ease-in-out infinite' } : undefined} />
+    <circle cx="138" cy="148" r="4" fill="#FDE047" style={canAnimate ? { animation: 'koban-pulse-glow 1.5s ease-in-out infinite' } : undefined} />
   </svg>
 );
 
@@ -320,26 +328,26 @@ export const PfpAuroraWolf: React.FC<PfpSvgProps> = ({ canAnimate = true, classN
     <path
       d="M0 60C50 20 100 80 150 40C200 0 230 60 256 30V120C220 90 180 140 120 100C60 60 30 110 0 80Z"
       fill="#34D399"
-      opacity="0.45"
-      className={canAnimate ? 'origin-center animate-[pulse_3s_ease-in-out_infinite]' : ''}
+      opacity="0.5"
+      style={canAnimate ? { animation: 'koban-aurora-wave 4.5s ease-in-out infinite', transformOrigin: 'center top' } : undefined}
     />
     <path
       d="M0 40C60 80 120 20 180 60C220 30 240 70 256 50V100C220 120 160 80 100 110C50 80 20 120 0 90Z"
       fill="#06B6D4"
-      opacity="0.35"
-      className={canAnimate ? 'origin-center animate-[pulse_4.5s_ease-in-out_infinite]' : ''}
+      opacity="0.4"
+      style={canAnimate ? { animation: 'koban-aurora-wave 6s ease-in-out infinite 1.5s', transformOrigin: 'center top' } : undefined}
     />
+    {/* Stars */}
+    <circle cx="60" cy="30" r="1.5" fill="#E6FFFA" style={canAnimate ? { animation: 'koban-star-twinkle 2.8s ease-in-out infinite' } : undefined} />
+    <circle cx="210" cy="40" r="1.8" fill="#E6FFFA" style={canAnimate ? { animation: 'koban-star-twinkle 3.2s ease-in-out infinite 1s' } : undefined} />
     {/* Snow Rocky Cliff */}
     <path d="M0 256L40 170L110 180L170 256H0Z" fill="#042F2E" />
     <path d="M35 173L70 165L110 182" stroke="#E6FFFA" strokeWidth="3" fill="none" />
     {/* Howling Snow Wolf Silhouette */}
     <g transform="translate(60, 100)">
-      {/* Ears back howling pose */}
       <polygon points="28,25 36,10 42,28" fill="#F0FDFA" />
       <polygon points="20,28 26,14 32,30" fill="#CCFBF1" />
-      {/* Snout pointed up */}
       <path d="M32 30C38 20 54 10 65 5C58 15 48 24 45 34Z" fill="#F0FDFA" />
-      {/* Chest & Body */}
       <path d="M22 35C28 45 35 70 25 80H5L12 45Z" fill="#CCFBF1" />
       <path d="M35 55C40 65 48 78 45 80H25Z" fill="#99F6E4" />
     </g>
@@ -366,8 +374,8 @@ export const PfpNeonSkyline: React.FC<PfpSvgProps> = ({ canAnimate = true, class
       height="18"
       rx="3"
       fill="#00F0FF"
-      opacity="0.85"
-      className={canAnimate ? 'animate-pulse' : ''}
+      opacity="0.9"
+      style={canAnimate ? { animation: 'koban-lightning-flicker 2s steps(2, start) infinite' } : undefined}
     />
     <rect
       x="148"
@@ -376,11 +384,16 @@ export const PfpNeonSkyline: React.FC<PfpSvgProps> = ({ canAnimate = true, class
       height="14"
       rx="2"
       fill="#F43F5E"
-      opacity="0.85"
-      className={canAnimate ? 'animate-[pulse_1.5s_ease-in-out_infinite]' : ''}
+      opacity="0.9"
+      style={canAnimate ? { animation: 'koban-lightning-flicker 2.5s steps(2, start) infinite 0.7s' } : undefined}
     />
-    {/* Diagonal Rain Streaks */}
-    <g stroke="#38BDF8" strokeWidth="1.2" opacity="0.45">
+    {/* Diagonal Rain Streaks with motion */}
+    <g
+      stroke="#38BDF8"
+      strokeWidth="1.5"
+      opacity="0.6"
+      style={canAnimate ? { animation: 'koban-grid-scroll 1.4s linear infinite' } : undefined}
+    >
       <line x1="30" y1="20" x2="10" y2="70" />
       <line x1="90" y1="40" x2="70" y2="90" />
       <line x1="150" y1="10" x2="130" y2="60" />
@@ -390,7 +403,14 @@ export const PfpNeonSkyline: React.FC<PfpSvgProps> = ({ canAnimate = true, class
       <line x1="180" y1="90" x2="160" y2="140" />
     </g>
     {/* Wet Rooftop Shimmer */}
-    <rect y="235" width="256" height="21" fill="#FF007A" opacity="0.25" />
+    <rect
+      y="235"
+      width="256"
+      height="21"
+      fill="#FF007A"
+      opacity="0.35"
+      style={canAnimate ? { animation: 'koban-pulse-glow 2.5s ease-in-out infinite' } : undefined}
+    />
   </svg>
 );
 
@@ -402,25 +422,27 @@ export const PfpCrescentCat: React.FC<PfpSvgProps> = ({ canAnimate = true, class
     <path
       d="M175 40C125 40 85 80 85 130C85 180 125 220 175 220C155 200 145 168 145 130C145 92 155 60 175 40Z"
       fill="#FDE047"
-      className={canAnimate ? 'origin-center animate-[pulse_4s_ease-in-out_infinite]' : ''}
+      style={canAnimate ? { animation: 'koban-pulse-glow 4s ease-in-out infinite' } : undefined}
     />
-    {/* Starfield with twinkling single star */}
-    <circle cx="50" cy="50" r="1.5" fill="#FFFFFF" opacity="0.8" />
-    <circle cx="75" cy="90" r="2" fill="#FDE047" className={canAnimate ? 'animate-ping' : ''} />
-    <circle cx="40" cy="130" r="1.2" fill="#FFFFFF" opacity="0.6" />
+    {/* Starfield with twinkling stars */}
+    <circle cx="50" cy="50" r="1.5" fill="#FFFFFF" style={canAnimate ? { animation: 'koban-star-twinkle 2.2s ease-in-out infinite' } : undefined} />
+    <circle cx="75" cy="90" r="2.5" fill="#FDE047" style={canAnimate ? { animation: 'koban-star-twinkle 3s ease-in-out infinite 0.7s' } : undefined} />
+    <circle cx="40" cy="130" r="1.5" fill="#FFFFFF" opacity="0.7" />
     {/* Pagoda Tiled Curved Rooftop */}
     <path d="M-10 230C60 210 180 210 266 230V256H-10Z" fill="#1E293B" />
     <path d="M-10 235C60 215 180 215 266 235" stroke="#334155" strokeWidth="4" />
-    {/* Sitting Cat Silhouette */}
+    {/* Sitting Cat Silhouette with Swaying Tail */}
     <g transform="translate(95, 160)">
-      {/* Body & Tail */}
       <ellipse cx="28" cy="40" rx="14" ry="18" fill="#020617" />
-      <path d="M15 45C5 45 0 32 -3 20" stroke="#020617" strokeWidth="4" strokeLinecap="round" />
+      {/* Swaying tail */}
+      <g style={canAnimate ? { animation: 'koban-lantern-sway 3.2s ease-in-out infinite', transformOrigin: '15px 45px' } : undefined}>
+        <path d="M15 45C5 45 0 32 -3 20" stroke="#020617" strokeWidth="4.5" strokeLinecap="round" />
+      </g>
       {/* Head & Ears */}
       <circle cx="28" cy="18" r="11" fill="#020617" />
       <polygon points="19,14 22,4 27,12" fill="#020617" />
       <polygon points="29,12 34,4 37,14" fill="#020617" />
-      {/* Tiny whiskers & eye shine */}
+      {/* Whiskers & eye shine */}
       <circle cx="25" cy="17" r="1.5" fill="#FDE047" />
       <circle cx="31" cy="17" r="1.5" fill="#FDE047" />
     </g>
@@ -432,31 +454,35 @@ export const PfpEmberPhoenix: React.FC<PfpSvgProps> = ({ canAnimate = true, clas
   <svg viewBox="0 0 256 256" className={`w-full h-full block ${className}`} fill="none" xmlns="http://www.w3.org/2000/svg">
     <rect width="256" height="256" fill="#180404" />
     {/* Glowing Sunburst Circle */}
-    <circle cx="128" cy="128" r="75" fill="#7C2D12" opacity="0.4" />
-    <circle cx="128" cy="128" r="55" fill="#C2410C" opacity="0.3" />
+    <circle
+      cx="128"
+      cy="128"
+      r="75"
+      fill="#7C2D12"
+      opacity="0.5"
+      style={canAnimate ? { animation: 'koban-pulse-glow 3.8s ease-in-out infinite' } : undefined}
+    />
+    <circle cx="128" cy="128" r="55" fill="#C2410C" opacity="0.4" />
     {/* Phoenix Head and Crown Feathers */}
     <path d="M128 65L122 85H134L128 65Z" fill="#FDE047" />
     <circle cx="128" cy="92" r="10" fill="#EA580C" />
     <path d="M128 92L145 96L128 102Z" fill="#FDE047" />
-    {/* Mighty Curved Flame Wings (Left & Right) */}
-    <path
-      d="M128 115C85 95 35 110 20 145C45 140 75 145 105 160L128 135Z"
-      fill="#F97316"
-      className={canAnimate ? 'origin-center animate-[pulse_3s_ease-in-out_infinite]' : ''}
-    />
-    <path
-      d="M128 115C171 95 221 110 236 145C211 140 181 145 151 160L128 135Z"
-      fill="#F97316"
-      className={canAnimate ? 'origin-center animate-[pulse_3s_ease-in-out_infinite]' : ''}
-    />
-    {/* Inner Molten Feathers */}
-    <path d="M128 120C100 110 65 125 50 145C70 140 95 145 120 155Z" fill="#FDE047" />
-    <path d="M128 120C156 110 191 125 206 145C186 140 161 145 136 155Z" fill="#FDE047" />
+    {/* Mighty Curved Flame Wings (Left & Right) with Flame Flicker */}
+    <g style={canAnimate ? { animation: 'koban-flame-flicker 2.4s ease-in-out infinite' } : undefined}>
+      <path d="M128 115C85 95 35 110 20 145C45 140 75 145 105 160L128 135Z" fill="#F97316" />
+      <path d="M128 115C171 95 221 110 236 145C211 140 181 145 151 160L128 135Z" fill="#F97316" />
+      {/* Inner Molten Feathers */}
+      <path d="M128 120C100 110 65 125 50 145C70 140 95 145 120 155Z" fill="#FDE047" />
+      <path d="M128 120C156 110 191 125 206 145C186 140 161 145 136 155Z" fill="#FDE047" />
+    </g>
     {/* Cascading Tail Feathers */}
     <path d="M128 160C110 190 100 230 115 256C122 230 134 230 141 256C156 230 146 190 128 160Z" fill="#EF4444" />
-    {/* Rising Sparks */}
-    <circle cx="55" cy="80" r="2.5" fill="#FDE047" className={canAnimate ? 'animate-ping' : ''} />
-    <circle cx="205" cy="75" r="2" fill="#F97316" className={canAnimate ? 'animate-ping' : ''} />
+    {/* Rising Sparks with Ember Rise */}
+    <g style={canAnimate ? { animation: 'koban-ember-rise 2.6s ease-out infinite' } : undefined}>
+      <circle cx="55" cy="110" r="2.5" fill="#FDE047" opacity="0.9" />
+      <circle cx="205" cy="105" r="2.5" fill="#F97316" opacity="0.9" />
+      <circle cx="128" cy="80" r="2" fill="#FEF08A" opacity="0.95" />
+    </g>
   </svg>
 );
 
@@ -467,18 +493,33 @@ export const PfpLanternAbyss: React.FC<PfpSvgProps> = ({ canAnimate = true, clas
     {/* Deep ocean caustic rays */}
     <path d="M50 0L70 256M130 0L150 256M200 0L220 256" stroke="#0284C7" strokeWidth="18" opacity="0.15" />
     {/* Circling Golden Koi (Yin Yang Curve) */}
-    <g transform="translate(128, 128)" className={canAnimate ? 'origin-center animate-[spin_10s_linear_infinite]' : ''}>
-      {/* Koi 1 (Gold/Crimson) */}
+    <g
+      transform="translate(128, 128)"
+      style={canAnimate ? { animation: 'koban-orbit-cw 12s linear infinite', transformOrigin: '128px 128px' } : undefined}
+    >
       <path d="M-10 -70C30 -70 50 -40 45 0C40 30 15 45 0 70C-10 40 5 20 5 -10C5 -40 -30 -50 -10 -70Z" fill="#F59E0B" />
       <path d="M0 -60C18 -55 25 -30 20 0C15 15 5 20 0 -60Z" fill="#EF4444" />
-      <circle cx="-5" cy="-55" r="2" fill="#FFFFFF" />
-      {/* Fin flaps */}
+      <circle cx="-5" cy="-55" r="2.5" fill="#FFFFFF" />
       <path d="M25 -35C45 -40 55 -25 35 -15Z" fill="#FBBF24" />
       <path d="M-15 -35C-35 -40 -45 -25 -25 -15Z" fill="#FBBF24" />
     </g>
     {/* Glowing Bioluminescent Water Bubbles */}
-    <circle cx="60" cy="180" r="4" fill="#38BDF8" opacity="0.75" className={canAnimate ? 'animate-pulse' : ''} />
-    <circle cx="195" cy="80" r="5" fill="#38BDF8" opacity="0.65" className={canAnimate ? 'animate-pulse' : ''} />
+    <circle
+      cx="60"
+      cy="180"
+      r="4"
+      fill="#38BDF8"
+      opacity="0.8"
+      style={canAnimate ? { animation: 'koban-pulse-glow 2.8s ease-in-out infinite' } : undefined}
+    />
+    <circle
+      cx="195"
+      cy="80"
+      r="5"
+      fill="#38BDF8"
+      opacity="0.75"
+      style={canAnimate ? { animation: 'koban-pulse-glow 3.4s ease-in-out infinite 0.9s' } : undefined}
+    />
   </svg>
 );
 
@@ -490,10 +531,10 @@ export const PfpSolarCoronaCrow: React.FC<PfpSvgProps> = ({ canAnimate = true, c
     <circle
       cx="128"
       cy="128"
-      r="82"
+      r="84"
       fill="#F59E0B"
       opacity="0.35"
-      className={canAnimate ? 'origin-center animate-[pulse_3s_ease-in-out_infinite]' : ''}
+      style={canAnimate ? { animation: 'koban-pulse-glow 3.6s ease-in-out infinite' } : undefined}
     />
     <circle
       cx="128"
@@ -501,19 +542,16 @@ export const PfpSolarCoronaCrow: React.FC<PfpSvgProps> = ({ canAnimate = true, c
       r="72"
       fill="#D97706"
       opacity="0.45"
-      className={canAnimate ? 'origin-center animate-[pulse_2s_ease-in-out_infinite]' : ''}
+      style={canAnimate ? { animation: 'koban-pulse-glow 2.4s ease-in-out infinite' } : undefined}
     />
     {/* Dark Eclipse Disc */}
     <circle cx="128" cy="128" r="62" fill="#0A0602" stroke="#FDE047" strokeWidth="2" />
     {/* Three-Legged Yatagarasu Raven Silhouette */}
     <g transform="translate(88, 88)">
-      {/* Beak & Head */}
       <polygon points="40,25 22,28 35,36" fill="#FDE047" />
       <circle cx="38" cy="32" r="12" fill="#0A0602" stroke="#FDE047" strokeWidth="1" />
-      {/* Spreading Wings */}
       <path d="M38 38C15 25 -10 40 -20 65C5 60 25 58 40 50Z" fill="#FDE047" />
       <path d="M42 38C65 25 90 40 100 65C75 60 55 58 40 50Z" fill="#FDE047" />
-      {/* 3 Legs */}
       <line x1="30" y1="58" x2="26" y2="76" stroke="#FDE047" strokeWidth="2.5" />
       <line x1="40" y1="60" x2="40" y2="78" stroke="#FDE047" strokeWidth="2.5" />
       <line x1="50" y1="58" x2="54" y2="76" stroke="#FDE047" strokeWidth="2.5" />
@@ -528,7 +566,7 @@ export const PfpCyberKatana: React.FC<PfpSvgProps> = ({ canAnimate = true, class
     {/* Cyber Hex Grid */}
     <path d="M0 64H256M0 128H256M0 192H256" stroke="#1E1B4B" strokeWidth="1" strokeDasharray="6 6" />
     <path d="M64 0V256M128 0V256M192 0V256" stroke="#1E1B4B" strokeWidth="1" strokeDasharray="6 6" />
-    {/* Glowing Katana Slash Line (Diagonal) */}
+    {/* Glowing Katana Slash Line (Diagonal) with lightning flicker */}
     <line
       x1="30"
       y1="226"
@@ -537,14 +575,12 @@ export const PfpCyberKatana: React.FC<PfpSvgProps> = ({ canAnimate = true, class
       stroke="#00F0FF"
       strokeWidth="4"
       strokeLinecap="round"
-      className={canAnimate ? 'animate-[pulse_1.5s_ease-in-out_infinite]' : ''}
+      style={canAnimate ? { animation: 'koban-lightning-flicker 1.8s steps(2, start) infinite' } : undefined}
     />
     <line x1="30" y1="226" x2="226" y2="30" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
     {/* Warrior Silhouette with Glowing Visor */}
     <g transform="translate(70, 75)">
-      {/* Hood/Helmet */}
       <path d="M25 40C30 15 85 15 90 40L98 100H18L25 40Z" fill="#0A0F24" />
-      {/* Glowing Cyber Eye Visor */}
       <rect
         x="40"
         y="42"
@@ -552,7 +588,7 @@ export const PfpCyberKatana: React.FC<PfpSvgProps> = ({ canAnimate = true, class
         height="8"
         rx="4"
         fill="#FF007A"
-        className={canAnimate ? 'animate-pulse' : ''}
+        style={canAnimate ? { animation: 'koban-pulse-glow 1.8s ease-in-out infinite' } : undefined}
       />
     </g>
   </svg>
