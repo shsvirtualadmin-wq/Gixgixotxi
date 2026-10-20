@@ -4,11 +4,14 @@ import { MatrixAvatar } from '@/lib/matrixAvatars';
 import { PFP_ARTWORK_MAP } from './artwork/pfpArtwork';
 import { FrameRenderer } from './artwork/frameArtwork';
 import { NameplateRenderer } from './artwork/plateArtwork';
-import { EffectAvatarRenderer, ProfileCardEffect, ProfileEffectCardPreview } from './artwork/effectArtwork';
+import {
+  EffectAvatarRenderer,
+  ProfileCardEffect as BaseProfileCardEffect,
+  ProfileEffectCardPreview,
+  type ProfileCardEffectProps,
+} from './artwork/effectArtwork';
 
-// Re-export ProfileCardEffect and ProfileEffectCardPreview for convenience
-export { ProfileCardEffect, ProfileEffectCardPreview };
-export const ProfileEffect = ProfileCardEffect;
+export { ProfileEffectCardPreview };
 
 interface BaseCosmeticProps {
   itemId: string;
@@ -55,6 +58,21 @@ export class CosmeticErrorBoundary extends React.Component<
     return this.props.children;
   }
 }
+
+/**
+ * Isolated Profile Card Effect wrapped in CosmeticErrorBoundary.
+ * Falls back to null if itemId is retired/missing or rendering throws.
+ */
+export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = (props) => {
+  const exists = Boolean(props.itemId && props.itemId !== 'none' && getCosmeticById(props.itemId));
+  if (!exists) return null;
+  return (
+    <CosmeticErrorBoundary fallback={null}>
+      <BaseProfileCardEffect {...props} />
+    </CosmeticErrorBoundary>
+  );
+};
+export const ProfileEffect = ProfileCardEffect;
 
 /**
  * Hook to determine if cosmetic should execute animations:

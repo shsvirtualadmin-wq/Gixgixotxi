@@ -26,6 +26,7 @@ import {
   CosmeticNameplate,
   ProfileCardEffect,
 } from '@/components/koban/CosmeticRenderers';
+import { getCosmeticById } from '@/data/cosmeticsCatalog';
 import { KobanIcon } from '@/components/koban/KobanIcon';
 
 export function ProfilePage() {
@@ -184,9 +185,9 @@ export function ProfilePage() {
                     Cancel
                   </Button>
                 </form>
-              ) : equipped.nameplate ? (
+              ) : (equipped.nameplate && getCosmeticById(equipped.nameplate)) ? (
                 <div className="flex items-center gap-2 max-w-full overflow-hidden">
-                  <CosmeticNameplate
+                  <Nameplate
                     itemId={equipped.nameplate}
                     name={rawName}
                     shortId={profile?.shortId || (user?.uid ? user.uid.slice(0, 5) : '00000')}

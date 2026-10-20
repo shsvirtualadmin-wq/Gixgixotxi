@@ -110,15 +110,42 @@ export function StorePage() {
     return list;
   }, [selectedCategory, animationFilter, rarityFilter, sortBy]);
 
-  // Owned items for My Collection view
-  const myCollectionItems = useMemo(() => {
-    return COSMETICS_CATALOG.filter((item) => owned.includes(item.id)).filter((item) => {
-      if (selectedCategory !== 'all' && item.type !== selectedCategory) return false;
-      if (animationFilter === 'animated' && !item.animated) return false;
-      if (animationFilter === 'static' && item.animated) return false;
-      return true;
+  // Dedicated type filter for My Collection
+  const [collectionCategory, setCollectionCategory] = useState<CosmeticType | 'all'>('all');
+
+  // Owned items for My Collection view: maps every id in owned[], ensuring 100% of owned items are displayed
+  const allOwnedItems = useMemo(() => {
+    const uniqueOwned = Array.from(new Set(owned));
+    return uniqueOwned.map((id) => {
+      const catalogItem = getCosmeticById(id);
+      if (catalogItem) return catalogItem;
+
+      let type: CosmeticType = 'avatar';
+      if (id.startsWith('frame') || id.includes('frame')) type = 'frame';
+      else if (id.startsWith('plate') || id.includes('plate') || id.includes('nameplate')) type = 'nameplate';
+      else if (id.startsWith('effect') || id.includes('effect')) type = 'effect';
+      else if (id.startsWith('pfp') || id.startsWith('avatar')) type = 'avatar';
+
+      const retiredItem: CosmeticItem & { isRetired?: boolean } = {
+        id,
+        name: `Retired Drop (${id})`,
+        type,
+        priceKobans: 0,
+        rarity: 'rare',
+        description: 'This legacy drop is retired from the active store catalog but remains permanently unlocked in your personal collection.',
+        animated: false,
+        isAnimated: false,
+        previewColor: '#6B7280',
+        isRetired: true,
+      };
+      return retiredItem;
     });
-  }, [owned, selectedCategory, animationFilter]);
+  }, [owned]);
+
+  const filteredCollectionItems = useMemo(() => {
+    if (collectionCategory === 'all') return allOwnedItems;
+    return allOwnedItems.filter((item) => item.type === collectionCategory);
+  }, [allOwnedItems, collectionCategory]);
 
   const handleEquip = async (item: CosmeticItem) => {
     if (!isLoggedIn) {
@@ -703,13 +730,13 @@ export function StorePage() {
         {/* ─── VIEW 3: MY COLLECTION ────────────────────────────────────────── */}
         {activeView === 'collection' && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-[var(--border)] gap-3">
               <div>
                 <h2 className="text-lg sm:text-xl font-heading font-bold text-[var(--text)]">
-                  My Unlocked Cosmetics
+                  My Collection ({filteredCollectionItems.length})
                 </h2>
                 <p className="text-xs text-[var(--muted)] mt-0.5">
-                  You own {owned.length} out of 100 items. Equip any owned drop directly to your profile.
+                  Showing {filteredCollectionItems.length} {collectionCategory === 'all' ? '' : collectionCategory} item{filteredCollectionItems.length === 1 ? '' : 's'} (You own {allOwnedItems.length} total). Equip any owned drop directly to your profile.
                 </p>
               </div>
 
@@ -719,59 +746,102 @@ export function StorePage() {
                   setSelectedCategory('all');
                   setActiveView('browse');
                 }}
-                className="btn-red text-xs px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1 shadow-sm"
+                className="btn-red text-xs px-3.5 py-1.5 rounded-xl font-bold flex items-center gap-1 shadow-sm self-start sm:self-auto cursor-pointer"
               >
                 <Plus size={14} />
                 <span>Browse Store</span>
               </button>
             </div>
 
-            {myCollectionItems.length === 0 ? (
+            {/* Collection Type Filter Pills */}
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+              {[
+                { id: 'all' as const, label: 'All', count: allOwnedItems.length },
+                { id: 'avatar' as const, label: 'Profile Pictures', count: allOwnedItems.filter((i) => i.type === 'avatar').length },
+                { id: 'frame' as const, label: 'Frames', count: allOwnedItems.filter((i) => i.type === 'frame').length },
+                { id: 'nameplate' as const, label: 'Nameplates', count: allOwnedItems.filter((i) => i.type === 'nameplate').length },
+                { id: 'effect' as const, label: 'Effects', count: allOwnedItems.filter((i) => i.type === 'effect').length },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setCollectionCategory(tab.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-heading font-semibold transition-colors cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                    collectionCategory === tab.id
+                      ? 'bg-[var(--text)] text-[var(--bg)] font-bold shadow-xs'
+                      : 'border border-[var(--border)] text-[var(--muted)] hover:text-white hover:bg-[var(--surface-hover)]'
+                  }`}
+                >
+                  <span>{tab.label}</span>
+                  <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full ${
+                    collectionCategory === tab.id ? 'bg-[var(--bg)] text-[var(--text)]' : 'bg-[var(--surface-2)] text-[var(--muted)]'
+                  }`}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
+            {filteredCollectionItems.length === 0 ? (
               <div className="py-12 text-center rounded-3xl bg-[var(--card)] border border-[var(--border)] p-8 space-y-4">
                 <div className="w-14 h-14 rounded-2xl bg-[#E8A317]/10 border border-[#E8A317]/30 flex items-center justify-center text-[#E8A317] mx-auto">
                   <ShoppingBag size={28} />
                 </div>
                 <div className="space-y-1">
                   <h3 className="font-heading font-bold text-base text-[var(--text)]">
-                    No Cosmetics Unlocked Yet
+                    {allOwnedItems.length === 0 ? 'No Cosmetics Unlocked Yet' : 'No Items in This Category'}
                   </h3>
                   <p className="text-xs text-[var(--muted)] max-w-sm mx-auto">
-                    Browse the Boardly Store to unlock custom Profile Pictures, Avatar Frames, and Effects.
+                    {allOwnedItems.length === 0
+                      ? 'Browse the Boardly Store to unlock custom Profile Pictures, Avatar Frames, and Effects.'
+                      : `You don't own any ${collectionCategory} drops yet. Switch categories or explore the store.`}
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => {
-                    setSelectedCategory('all');
-                    setActiveView('browse');
+                    if (allOwnedItems.length > 0) {
+                      setCollectionCategory('all');
+                    } else {
+                      setSelectedCategory('all');
+                      setActiveView('browse');
+                    }
                   }}
-                  className="btn-red text-xs px-5 py-2.5 rounded-xl font-bold inline-flex items-center gap-1.5"
+                  className="btn-red text-xs px-5 py-2.5 rounded-xl font-bold inline-flex items-center gap-1.5 cursor-pointer"
                 >
-                  <span>Explore 100 Drops</span>
+                  <span>{allOwnedItems.length > 0 ? 'Show All Owned Items' : 'Explore 100 Drops'}</span>
                   <ArrowRight size={14} />
                 </button>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-                {myCollectionItems.map((item) => {
+                {filteredCollectionItems.map((item) => {
                   const isEquipped = equipped[item.type] === item.id;
+                  const isRetired = Boolean((item as { isRetired?: boolean }).isRetired);
                   return (
                     <div
                       key={item.id}
                       className={`p-3.5 rounded-2xl bg-[var(--card)] border transition-all flex flex-col justify-between gap-3 ${
-                        isEquipped ? 'border-emerald-500 shadow-md' : 'border-[var(--border)]'
+                        isEquipped ? 'border-emerald-500 shadow-md ring-1 ring-emerald-500/30' : 'border-[var(--border)]'
                       }`}
                     >
-                      <div className="flex items-center justify-between text-[10px] font-mono">
-                        <span className="uppercase text-[var(--muted)]">{item.type}</span>
-                        {isEquipped && (
-                          <span className="text-emerald-400 font-bold flex items-center gap-0.5">
-                            <Check size={11} /> Active
-                          </span>
-                        )}
+                      <div className="flex items-center justify-between text-[10px] font-mono gap-1">
+                        <span className="uppercase text-[var(--muted)] truncate">{item.type}</span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {isRetired && (
+                            <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded-full border border-amber-500/40 bg-amber-950/40 text-amber-400">
+                              Retired
+                            </span>
+                          )}
+                          {isEquipped && (
+                            <span className="text-emerald-400 font-bold flex items-center gap-0.5">
+                              <Check size={11} /> Equipped
+                            </span>
+                          )}
+                        </div>
                       </div>
 
-                      <div className="h-24 rounded-xl bg-[var(--surface-2)] flex items-center justify-center p-2 overflow-hidden">
+                      <div className="h-24 rounded-xl bg-[var(--surface-2)] flex items-center justify-center p-2 overflow-hidden relative">
                         {item.type === 'avatar' && (
                           <div className="w-14 h-14 rounded-xl overflow-hidden shadow-sm shrink-0">
                             <AvatarPicture avatarId={item.id} size={56} />
@@ -795,15 +865,24 @@ export function StorePage() {
                         )}
                         {item.type === 'effect' && (
                           <div className="w-full h-full p-1">
-                            <ProfileEffectCardPreview itemId={item.id} compact={true} />
+                            {isRetired ? (
+                              <div className="w-full h-full flex items-center justify-center text-[10px] font-mono text-[var(--muted)] text-center">
+                                Retired Aura
+                              </div>
+                            ) : (
+                              <ProfileEffectCardPreview itemId={item.id} compact={true} />
+                            )}
                           </div>
                         )}
                       </div>
 
                       <div>
-                        <h4 className="font-heading font-bold text-xs text-[var(--text)] truncate">
+                        <h4 className="font-heading font-bold text-xs text-[var(--text)] truncate" title={item.name}>
                           {item.name}
                         </h4>
+                        <p className="text-[10px] text-[var(--muted)] line-clamp-1 mt-0.5">
+                          {isRetired ? 'Legacy unlocked item' : item.description}
+                        </p>
                       </div>
 
                       <button

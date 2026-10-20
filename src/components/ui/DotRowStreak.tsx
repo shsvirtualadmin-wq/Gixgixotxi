@@ -1,9 +1,11 @@
+import { getCurrentPKTDate, shiftPKTDate, getPKTWeekday, type SevenDayItem } from '@/services/streakEngine';
+
 interface DotRowStreakProps {
-  days?: number; // total days in row (default 7)
-  activeDays?: number; // active streak days count
+  days?: number;
+  activeDays?: number;
   todayActive?: boolean;
   className?: string;
-  labels?: string[]; // e.g. ['M', 'T', 'W', 'T', 'F', 'S', 'S']
+  items?: SevenDayItem[];
 }
 
 export function DotRowStreak({
@@ -11,40 +13,54 @@ export function DotRowStreak({
   activeDays = 0,
   todayActive = false,
   className = '',
-  labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'],
+  items: directItems,
 }: DotRowStreakProps) {
-  const items = Array.from({ length: days }).map((_, i) => {
-    // Current day is last item (index days - 1)
-    const isToday = i === days - 1;
-    // Active if within activeDays
-    const isActive = isToday ? todayActive : i >= days - 1 - (activeDays - (todayActive ? 1 : 0));
-    return {
-      index: i,
-      label: labels[i % labels.length],
-      isActive,
-      isToday,
-    };
-  });
+  // If direct items computed from streakEngine are provided, use them directly
+  const renderItems = directItems && directItems.length > 0
+    ? directItems
+    : (() => {
+        const today = getCurrentPKTDate();
+        const list: SevenDayItem[] = [];
+        for (let offset = days - 1; offset >= 0; offset--) {
+          const dStr = shiftPKTDate(today, -offset);
+          const { narrow } = getPKTWeekday(dStr);
+          const isToday = offset === 0;
+          // If activeDays count is given as a fallback
+          const isActive = isToday ? todayActive : offset < activeDays;
+          list.push({
+            date: dStr,
+            label: narrow,
+            isActive,
+            isToday,
+            sessionCount: isActive ? 1 : 0,
+          });
+        }
+        return list;
+      })();
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      {items.map((item) => (
-        <div key={item.index} className="flex flex-col items-center gap-1.5">
+      {renderItems.map((item, idx) => (
+        <div key={item.date || idx} className="flex flex-col items-center gap-1.5">
           <div
             className={`w-4 h-4 rounded-full flex items-center justify-center transition-all ${
               item.isActive
                 ? 'bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.4)]'
                 : 'border border-[var(--border)] bg-[var(--surface)]'
-            } ${item.isToday && !item.isActive ? 'border-[#D71921] border-dashed animate-pulse' : ''}`}
-            title={item.isActive ? 'Active practice day' : 'No practice'}
+            } ${item.isToday && !item.isActive ? 'border-[#D71921] border-dashed animate-pulse ring-1 ring-[#D71921]/30' : ''} ${
+              item.isToday ? 'scale-105' : ''
+            }`}
+            title={`${item.date}: ${item.isActive ? 'Completed sessions' : item.isToday ? 'Today (pending completion)' : 'No activity'}`}
           >
             {item.isActive && (
               <span className="w-1.5 h-1.5 rounded-full bg-white block" />
             )}
           </div>
           <span
-            className="text-[10px] font-mono tracking-tighter"
-            style={{ color: item.isActive ? 'var(--text)' : 'var(--text-faint)' }}
+            className={`text-[10px] font-mono tracking-tighter ${
+              item.isToday ? 'font-bold text-[var(--red)] underline decoration-[var(--red)]' : ''
+            }`}
+            style={{ color: item.isToday ? 'var(--red)' : item.isActive ? 'var(--text)' : 'var(--text-faint)' }}
           >
             {item.label}
           </span>
