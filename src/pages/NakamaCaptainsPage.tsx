@@ -109,7 +109,7 @@ export function NakamaCaptainsPage() {
         description={`Become a ${NAKAMA_CAPTAIN_SINGULAR}. Lead your student squad, earn Pro rewards, author tests on ${GRAND_LINE_NAME}, and climb the Pakistan leaderboards.`}
       />
 
-      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-28 pb-24 page-enter">
+      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-6 sm:pt-10 pb-20 page-enter">
         <div className="boardly-container max-w-5xl mx-auto px-4 sm:px-6 space-y-20">
           
           {/* ── Section A: Hero ── */}

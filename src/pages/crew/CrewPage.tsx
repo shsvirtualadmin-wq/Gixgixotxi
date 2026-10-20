@@ -18,7 +18,7 @@ import {
 import { MAX_CREW_MEMBERS } from '@/constants/limits';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAIN_SINGULAR } from '@/constants/branding';
 import { DashboardBottomNav } from '@/components/dashboard/DashboardBottomNav';
-import { Navbar } from '@/components/layout/Navbar';
+import { PublicPageHeader } from '@/components/layout/PublicPageHeader';
 import { Footer } from '@/components/layout/Footer';
 import { BackgroundCanvas } from '@/components/BackgroundCanvas';
 
@@ -116,7 +116,7 @@ export function CrewPage() {
   };
 
   const content = (
-    <div className={`pb-20 boardly-container page-enter space-y-16 ${isLoggedIn ? 'pt-8 sm:pt-12' : 'pt-28'}`}>
+    <div className="pb-20 boardly-container page-enter space-y-12 sm:space-y-16 pt-6 sm:pt-10">
       {/* ── 1. Hero ── */}
       <div className="text-center max-w-3xl mx-auto space-y-5">
         <Badge color="red">Feature 05 &bull; Collaborative Prep</Badge>
@@ -351,10 +351,10 @@ export function CrewPage() {
           <DashboardBottomNav />
         </div>
       ) : (
-        // Logged out: public header with hamburger menu, footer, and NO bottom nav
+        // Logged out: public header with back arrow & title, footer, and NO bottom nav
         <div className="relative min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)]">
           <BackgroundCanvas />
-          <Navbar />
+          <PublicPageHeader title="Study Crew" />
           <div className="flex-1 flex flex-col">
             {content}
           </div>

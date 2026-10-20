@@ -98,7 +98,7 @@ export function FeaturesPage() {
         description="Explore the authentic capabilities built into Boardly: timed entrance sprints, negative marking simulations, KaTeX derivations, weak chapter diagnostics, and Study Crews."
       />
 
-      <div className="pt-28 pb-20 boardly-container page-enter space-y-16">
+      <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-16">
         {/* Header */}
         <div className="section-header max-w-3xl mx-auto text-center space-y-4">
           <Badge color="red">Platform Capabilities</Badge>

@@ -41,7 +41,6 @@ export function DashboardSidebar() {
   const role = profile?.role || 'student';
   const rawDisplayName = profile?.displayName || user?.displayName || 'Student';
   const displayName = sanitizeStudentDisplayName(rawDisplayName, profile?.shortId || user?.uid);
-  const initial = (displayName[0] || 'S').toUpperCase();
 
   return (
     <aside

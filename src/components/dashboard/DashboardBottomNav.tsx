@@ -60,7 +60,6 @@ export function DashboardBottomNav() {
   const role = profile?.role || 'student';
   const rawDisplayName = profile?.displayName || user?.displayName || 'Student';
   const cleanDisplayName = sanitizeStudentDisplayName(rawDisplayName, profile?.shortId || user?.uid);
-  const initial = cleanDisplayName[0]?.toUpperCase() || 'S';
   const isApprovedCaptain = role === 'captain' || role === 'ambassador' || Boolean(profile?.isCaptain) || Boolean(profile?.isAmbassador);
   const crewLink = '/dashboard/crew';
 

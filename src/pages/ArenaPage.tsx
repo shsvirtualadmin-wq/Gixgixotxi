@@ -5,7 +5,7 @@ import { Badge } from '../components/ui/Badge';
 
 export function ArenaPage() {
   return (
-    <div className="pt-28 pb-20 boardly-container page-enter space-y-16">
+    <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-16">
       <div className="section-header">
         <div className="inline-flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-[var(--red)]" />

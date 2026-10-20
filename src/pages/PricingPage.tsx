@@ -49,7 +49,7 @@ export function PricingPage() {
         description="Transparent student pricing for Pakistan: Free forever tier (10 tests/day) and Pro full entrance mastery for PKR 199/month. Pay locally with JazzCash, EasyPaisa, or SadaPay."
       />
 
-      <div className="pt-28 pb-20 boardly-container page-enter space-y-16">
+      <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-16">
         {/* Header */}
         <div className="section-header max-w-3xl mx-auto text-center space-y-4">
           <Badge color="red">Accessible To Every Student</Badge>

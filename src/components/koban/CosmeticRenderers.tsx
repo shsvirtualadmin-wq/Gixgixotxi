@@ -27,7 +27,7 @@ const MAX_ANIMATED_NAMEPLATES = 10;
  * 2. Element must be visible in viewport via IntersectionObserver
  * 3. If nameplate, must respect the 10-item simultaneous animation cap
  */
-export function useCosmeticAnimation(itemId: string, isNameplate = false, forceStatic = false) {
+function useCosmeticAnimation(itemId: string, isNameplate = false, forceStatic = false) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(false);
   const [hasNameplateSlot, setHasNameplateSlot] = useState(false);
@@ -186,7 +186,7 @@ export const Nameplate: React.FC<{
   const { containerRef, canAnimate } = useCosmeticAnimation(itemId, true, forceStatic);
 
   return (
-    <div ref={containerRef} className="inline-flex items-center">
+    <div ref={containerRef} className="inline-flex items-center max-w-full overflow-hidden">
       <NameplateRenderer
         itemId={itemId}
         name={name}

@@ -2,7 +2,6 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
 import { AuthProvider } from './contexts/AuthContext';
 import { useReferralCapture } from './hooks/useReferral';
-import { Skeleton } from './components/ui/Skeleton';
 import { AdminGuard } from './components/admin/AdminGuard';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { PublicLayout } from './components/layout/PublicLayout';
@@ -165,15 +164,10 @@ const AdminKobansPage = lazyWithRetry(() =>
   import('./pages/admin/AdminKobansPage').then(m => ({ default: m.AdminKobansPage }))
 );
 
+import { NinjaFightLoader } from './components/ui/NinjaFightLoader';
+
 function PageLoader() {
-  return (
-    <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-      <div style={{ width: '100%', maxWidth: 400 }}>
-        <Skeleton height={32} width="60%" />
-        <div style={{ marginTop: 12 }}><Skeleton height={16} count={3} /></div>
-      </div>
-    </div>
-  );
+  return <NinjaFightLoader />;
 }
 
 function AppInner() {

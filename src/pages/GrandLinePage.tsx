@@ -187,7 +187,7 @@ export function GrandLinePage() {
         description={`Challenge verified entrance exam mock tests authored by ${NAKAMA_CAPTAINS_NAME}. Open to all students with real-time tie-broken rankings.`}
       />
 
-      <div className="pt-28 pb-20 boardly-container page-enter space-y-14">
+      <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-14">
         {/* Hero Header */}
         <div className="text-center max-w-3xl mx-auto space-y-4">
           <Badge color="red">Public Testing Arena</Badge>

@@ -20,7 +20,7 @@ export function GrandLineAboutPage() {
         description={`Learn how ${GRAND_LINE_NAME} works: open entrance exam mock tests authored by ${NAKAMA_CAPTAINS_NAME}, with real-time Pakistan leaderboards.`}
       />
 
-      <div className="pt-28 pb-20 boardly-container page-enter space-y-16">
+      <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-16">
         {/* Hero Section */}
         <div className="text-center max-w-3xl mx-auto space-y-5">
           <Badge color="red">Feature &bull; Open Challenges</Badge>

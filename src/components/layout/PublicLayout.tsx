@@ -2,18 +2,16 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { BackgroundCanvas } from '../BackgroundCanvas';
 import { Navbar } from './Navbar';
+import { PublicPageHeader } from './PublicPageHeader';
 import { Footer } from './Footer';
 import { DashboardBottomNav } from '../dashboard/DashboardBottomNav';
 
 /**
  * PublicLayout:
- * Used for public landing and marketing routes.
- * For logged-in students, /store and /kobans open seamlessly inside the dashboard shell:
- * - Public top navbar and public footer are hidden
- * - Dashboard bottom nav is visible (with Menu icon highlighted for /store)
- * - Deep links (e.g. boardly.cfd/store) work identically
- * For logged-out visitors:
- * - Keeps standard public Navbar + Footer, browsing allowed, buying requires login
+ * - Home page ('/'): Displays the floating pill top Navbar + Footer.
+ * - Non-home public pages (Features, Store, Pricing, Nakama Captains, Grand Line, Contact, Kobans, Policies):
+ *   Display full-page content with compact PublicPageHeader (Back arrow + page title) instead of the floating top Navbar.
+ * - Logged-in students visiting /store or /kobans keep the dashboard layout with DashboardBottomNav.
  */
 export function PublicLayout() {
   const { user } = useAuth();
@@ -38,13 +36,15 @@ export function PublicLayout() {
     );
   }
 
+  const isHomePage = location.pathname === '/';
+
   return (
     <div
       className="relative min-h-screen flex flex-col"
       style={{ backgroundColor: 'var(--bg)', color: 'var(--text)' }}
     >
       <BackgroundCanvas />
-      <Navbar />
+      {isHomePage ? <Navbar /> : <PublicPageHeader />}
       <div className="flex-1 flex flex-col">
         <Outlet />
       </div>

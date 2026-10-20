@@ -26,7 +26,7 @@ export function TermsPage() {
         description="Official terms and conditions governing Boardly test preparation, Pro plans, Study Crews, Kobans virtual economy, and digital store cosmetics. Last updated: 20 October 2026."
       />
 
-      <div className="pt-28 pb-20 boardly-container page-enter space-y-12">
+      <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12">
         {/* Header */}
         <div className="section-header max-w-3xl mx-auto text-center space-y-4">
           <Badge color="red">Legal &amp; Terms</Badge>

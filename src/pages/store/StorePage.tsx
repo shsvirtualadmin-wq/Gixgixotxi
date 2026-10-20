@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { PageMeta } from '@/components/ui/PageMeta';
-import { KobanIcon, KobanAmount, KobanChip } from '@/components/koban/KobanIcon';
+import { KobanAmount, KobanChip } from '@/components/koban/KobanIcon';
 import { COSMETICS_CATALOG, type CosmeticItem } from '@/data/cosmeticsCatalog';
 import {
   AvatarPicture,
@@ -45,7 +45,7 @@ export function StorePage() {
   const [activeView, setActiveView] = useState<MainView>('home');
   const [selectedCategory, setSelectedCategory] = useState<'all' | CosmeticType>('all');
   const [animationFilter, setAnimationFilter] = useState<AnimationFilter>('all');
-  const [rarityFilter, setRarityFilter] = useState<'all' | CosmeticRarity>('all');
+  const [rarityFilter] = useState<'all' | CosmeticRarity>('all');
   const [sortBy, setSortBy] = useState<SortOption>('default');
 
   // Item detail sheet state
@@ -449,9 +449,9 @@ export function StorePage() {
                     <span className="text-xs text-[var(--muted)] font-mono">From 70 Kobans</span>
                   </div>
 
-                  <div className="h-32 rounded-xl bg-[var(--surface-2)] flex items-center justify-center p-2">
-                    <div className="scale-105">
-                      <Nameplate itemId="plate-galaxy-pioneer" name="Cosmic Pioneer" shortId="99012" />
+                  <div className="h-32 rounded-xl bg-[var(--surface-2)] flex items-center justify-center p-2 overflow-hidden">
+                    <div className="w-full flex items-center justify-center overflow-hidden">
+                      <Nameplate itemId="plate-galaxy-pioneer" name="Cosmic Pioneer" shortId="99012" className="max-w-full" />
                     </div>
                   </div>
 
@@ -652,8 +652,8 @@ export function StorePage() {
                       )}
 
                       {item.type === 'nameplate' && (
-                        <div className="scale-90 max-w-full truncate">
-                          <Nameplate itemId={item.id} name={cleanDisplayName} />
+                        <div className="w-full flex items-center justify-center overflow-hidden px-1">
+                          <Nameplate itemId={item.id} name={cleanDisplayName} className="max-w-full" />
                         </div>
                       )}
 
@@ -794,8 +794,8 @@ export function StorePage() {
                           </AvatarFrame>
                         )}
                         {item.type === 'nameplate' && (
-                          <div className="scale-85 truncate">
-                            <Nameplate itemId={item.id} name={cleanDisplayName} />
+                          <div className="w-full flex items-center justify-center overflow-hidden px-1">
+                            <Nameplate itemId={item.id} name={cleanDisplayName} className="max-w-full" />
                           </div>
                         )}
                         {item.type === 'effect' && (
@@ -884,12 +884,13 @@ export function StorePage() {
                 )}
 
                 {selectedDetailItem.type === 'nameplate' && (
-                  <div className="scale-110">
+                  <div className="w-full max-w-xs mx-auto flex items-center justify-center overflow-hidden px-2">
                     <Nameplate
                       itemId={selectedDetailItem.id}
                       name={cleanDisplayName}
                       shortId={profile?.shortId || (user?.uid ? user.uid.slice(0, 5) : '00000')}
                       roleBadge={profile?.role === 'captain' ? 'CAPTAIN' : undefined}
+                      className="max-w-full"
                     />
                   </div>
                 )}

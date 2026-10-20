@@ -129,7 +129,7 @@ export function ContactPage() {
         description="Get in touch with Boardly Technologies support team in Pakistan. Reach us via WhatsApp at 0305 8969050 or email at support@boardly.cfd."
       />
 
-      <div className="pt-28 pb-20 boardly-container page-enter space-y-12">
+      <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12">
         {/* Header */}
         <div className="section-header max-w-3xl mx-auto text-center space-y-4">
           <Badge color="red">Student Helpdesk</Badge>

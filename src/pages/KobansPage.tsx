@@ -68,7 +68,7 @@ export function KobansPage() {
       />
 
       {/* ─── HERO SECTION ──────────────────────────────────────────────────── */}
-      <section className="relative pt-24 sm:pt-32 pb-14 sm:pb-20 overflow-hidden border-b border-[var(--border)]">
+      <section className="relative pt-6 sm:pt-12 pb-12 sm:pb-16 overflow-hidden border-b border-[var(--border)]">
         {/* Subtle radial background glow */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] h-[480px] bg-gradient-to-tr from-[#D71920]/10 via-[#E8A317]/10 to-transparent blur-3xl pointer-events-none rounded-full" />
 
@@ -262,13 +262,14 @@ export function KobansPage() {
                 </span>
                 <KobanAmount value={sampleNameplate.priceKobans} iconSize={14} className="text-xs text-[#FFD66B]" />
               </div>
-              <div className="h-32 rounded-xl bg-[var(--surface-2)] flex items-center justify-center p-2">
-                <div className="scale-110">
+              <div className="h-32 rounded-xl bg-[var(--surface-2)] flex items-center justify-center p-2 overflow-hidden">
+                <div className="w-full flex items-center justify-center overflow-hidden px-1">
                   <CosmeticNameplate
                     itemId={sampleNameplate.id}
                     name="Hamza Ahmed"
                     shortId="98402"
                     roleBadge="STUDENT"
+                    className="max-w-full"
                   />
                 </div>
               </div>

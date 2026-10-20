@@ -22,7 +22,6 @@ import { useWallet } from '@/hooks/useWallet';
 import {
   AvatarPicture,
   AvatarFrame,
-  Nameplate,
   ProfileCardEffect,
 } from '@/components/koban/CosmeticRenderers';
 import { KobanIcon } from '@/components/koban/KobanIcon';
@@ -184,12 +183,13 @@ export function ProfilePage() {
                   </Button>
                 </form>
               ) : equipped.nameplate ? (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 max-w-full overflow-hidden">
                   <CosmeticNameplate
                     itemId={equipped.nameplate}
                     name={rawName}
                     shortId={profile?.shortId || (user?.uid ? user.uid.slice(0, 5) : '00000')}
                     roleBadge={role === 'captain' ? 'CAPTAIN' : undefined}
+                    className="max-w-full"
                   />
                   <button
                     type="button"

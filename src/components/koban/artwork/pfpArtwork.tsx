@@ -919,6 +919,7 @@ export const PfpZenBonsai: React.FC<PfpSvgProps> = ({ className = '' }) => (
 /**
  * Registry mapping ID to Component
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export const PFP_ARTWORK_MAP: Record<string, React.FC<PfpSvgProps>> = {
   // 12 Animated
   pfp_crimson_ronin: PfpCrimsonRonin,
