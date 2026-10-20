@@ -54,6 +54,7 @@ import {
   BannerRenderer,
   DefaultDotMatrixBanner,
 } from '@/components/koban/artwork/bannerArtwork';
+import { KobanChip, KobanIcon } from '@/components/koban/KobanIcon';
 import { ProfilePostsSection } from './ProfilePostsSection';
 import { FollowListModal } from './FollowListModal';
 import { EditProfileSheet } from './EditProfileSheet';
