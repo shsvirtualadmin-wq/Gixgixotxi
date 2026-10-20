@@ -190,21 +190,25 @@ export const KobanAmount: React.FC<KobanAmountProps> = ({
   );
 };
 
-interface KobanChipProps {
+export interface KobanChipProps {
   balance: number;
   onClick?: () => void;
   className?: string;
   loading?: boolean;
+  as?: 'button' | 'span' | 'div';
 }
 
 /**
  * Koban Balance Chip pill: Displays oval coin and animated count with thousands separator.
+ * Renders as a <span> by default (when no onClick is passed) to prevent invalid DOM nesting
+ * when placed inside <button> or <a> links.
  */
 export const KobanChip: React.FC<KobanChipProps> = ({
   balance,
   onClick,
   className = '',
   loading = false,
+  as,
 }) => {
   const [displayBalance, setDisplayBalance] = useState(balance);
   const prevBalanceRef = useRef(balance);
@@ -235,21 +239,37 @@ export const KobanChip: React.FC<KobanChipProps> = ({
     requestAnimationFrame(animate);
   }, [balance]);
 
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-2)] border border-[rgba(232,163,23,0.35)] hover:border-[#E8A317] text-white transition-all shadow-sm ${
-        onClick ? 'cursor-pointer active:scale-95' : 'cursor-default'
-      } ${className}`}
-      title="Koban Balance"
-    >
+  const content = (
+    <>
       <KobanIcon size={18} />
       <span className="font-mono text-xs font-bold text-[#FFD66B]">
         {loading ? '…' : displayBalance.toLocaleString('en-US')}
       </span>
-    </button>
+    </>
+  );
+
+  const baseStyles = `inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[var(--surface-2)] border border-[rgba(232,163,23,0.35)] text-white shadow-sm ${className}`;
+
+  if (onClick || as === 'button') {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={!onClick}
+        className={`${baseStyles} hover:border-[#E8A317] transition-all ${
+          onClick ? 'cursor-pointer active:scale-95' : 'cursor-default'
+        }`}
+        title="Koban Balance"
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <span className={`${baseStyles} cursor-default`} title="Koban Balance">
+      {content}
+    </span>
   );
 };
 

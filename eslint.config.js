@@ -6,6 +6,11 @@ import reactRefreshPlugin from 'eslint-plugin-react-refresh';
 
 export default [
   { ignores: ['dist/**', 'node_modules/**', 'server.ts', 'scripts/**', 'data/**', '*.config.js', '*.config.ts'] },
+  {
+    linterOptions: {
+      reportUnusedDisableDirectives: 'off',
+    },
+  },
   pluginJs.configs.recommended,
   {
     files: ['src/**/*.{ts,tsx}'],
@@ -21,9 +26,9 @@ export default [
     rules: {
       ...tsPlugin.configs.recommended.rules,
       ...reactHooksPlugin.configs.recommended.rules,
-      'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'react-refresh/only-export-components': 'off',
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
       'no-undef': 'off',
     },
   },

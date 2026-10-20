@@ -23,7 +23,18 @@ export interface UniversityCriteria {
   // Legacy alias for compatibility with code expecting subjectsSplit
   subjectsSplit: Array<{ subject: string; count: number; name: string }>;
   description: string;
+  isVerified?: boolean;
+  sourceNote?: string;
+  version?: number;
+  difficultyMix?: {
+    easy: number;
+    medium: number;
+    hard: number;
+  };
 }
+
+export type TestBlueprint = UniversityCriteria;
+export type BlueprintSection = SectionCriteria;
 
 export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
   {
@@ -37,6 +48,10 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
     durationMinutes: 120,
     negativeMarking: '−0.25 penalty per wrong answer',
     hasNegativeMarking: true,
+    isVerified: false,
+    sourceNote: 'FAST-NUCES Official Admission Test Pattern (Draft pattern pending superadmin verification)',
+    version: 1,
+    difficultyMix: { easy: 20, medium: 60, hard: 20 },
     sections: [
       {
         subject: 'mathematics',
@@ -237,6 +252,59 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
     description: '100 questions, 400 marks in 100 minutes with high-stakes negative marking (+4 correct, −1 wrong).',
   },
   {
+    id: 'PIEAS',
+    name: 'PIEAS',
+    shortName: 'PIEAS',
+    fullName: 'Pakistan Institute of Engineering and Applied Sciences',
+    badge: 'Nuclear & Engineering',
+    totalQuestions: 100,
+    totalMarks: 300,
+    durationMinutes: 180,
+    negativeMarking: 'No negative marking (+3.0 / 0.0)',
+    hasNegativeMarking: false,
+    isVerified: false,
+    sourceNote: 'PIEAS Admission Test Pattern (Draft pattern pending superadmin verification)',
+    version: 1,
+    difficultyMix: { easy: 20, medium: 50, hard: 30 },
+    sections: [
+      { subject: 'mathematics', name: 'Mathematics', count: 30, correctMarks: 3.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+3 / 0 NO PENALTY' },
+      { subject: 'physics', name: 'Physics', count: 30, correctMarks: 3.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+3 / 0 NO PENALTY' },
+      { subject: 'chemistry', name: 'Chemistry / CS', count: 30, correctMarks: 3.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+3 / 0 NO PENALTY' },
+      { subject: 'english', name: 'English Comprehension', count: 10, correctMarks: 3.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+3 / 0 NO PENALTY' },
+    ],
+    get subjectsSplit() {
+      return this.sections.map((s) => ({ subject: s.subject, count: s.count, name: s.name }));
+    },
+    description: '100 questions, 300 marks in 180 minutes (+3 per correct answer, 0 penalty) covering Math, Physics, Chemistry/CS, and English.',
+  },
+  {
+    id: 'COMSATS',
+    name: 'COMSATS',
+    shortName: 'COMSATS',
+    fullName: 'COMSATS University Islamabad (NTS NAT-IE Pattern)',
+    badge: 'NTS NAT-IE',
+    totalQuestions: 90,
+    totalMarks: 90,
+    durationMinutes: 120,
+    negativeMarking: 'No negative marking (+1.0 / 0.0)',
+    hasNegativeMarking: false,
+    isVerified: false,
+    sourceNote: 'NTS NAT-IE / COMSATS Pattern (Draft pattern pending superadmin verification)',
+    version: 1,
+    difficultyMix: { easy: 30, medium: 50, hard: 20 },
+    sections: [
+      { subject: 'english', name: 'English (Verbal)', count: 20, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'analytical', name: 'Analytical Reasoning', count: 20, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'mathematics', name: 'Quantitative / Math', count: 20, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'physics', name: 'Physics', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+      { subject: 'chemistry', name: 'Chemistry / CS', count: 20, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
+    ],
+    get subjectsSplit() {
+      return this.sections.map((s) => ({ subject: s.subject, count: s.count, name: s.name }));
+    },
+    description: '90 questions in 120 minutes with no negative marking based on NTS NAT-IE curriculum.',
+  },
+  {
     id: 'Any',
     name: 'Any',
     shortName: 'General',
@@ -247,6 +315,10 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
     durationMinutes: 30,
     negativeMarking: 'No negative marking',
     hasNegativeMarking: false,
+    isVerified: true,
+    sourceNote: 'General entrance diagnostic pattern',
+    version: 1,
+    difficultyMix: { easy: 25, medium: 50, hard: 25 },
     sections: [
       { subject: 'mathematics', name: 'Mathematics', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
       { subject: 'physics', name: 'Physics', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1 / 0 NO PENALTY' },
@@ -257,29 +329,11 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
     },
     description: 'Balanced 30-minute diagnostic drill covering core intermediate STEM topics across all test formats.',
   },
-  {
-    id: 'Standard Sprint',
-    name: '10-Minute Sprint',
-    shortName: 'Sprint',
-    fullName: '10-Minute Rapid Sprint',
-    badge: 'Rapid Fire',
-    totalQuestions: 10,
-    totalMarks: 10,
-    durationMinutes: 10,
-    negativeMarking: 'No negative marking (+1.0 / 0.0)',
-    hasNegativeMarking: false,
-    sections: [
-      { subject: 'mathematics', name: 'Mathematics', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1.0 / 0.0 NO PENALTY' },
-      { subject: 'physics', name: 'Physics', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1.0 / 0.0 NO PENALTY' },
-      { subject: 'chemistry', name: 'Chemistry', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1.0 / 0.0 NO PENALTY' },
-      { subject: 'english', name: 'English', count: 10, correctMarks: 1.0, negativePenalty: 0.0, hasPenalty: false, badgeLabel: '+1.0 / 0.0 NO PENALTY' },
-    ],
-    get subjectsSplit() {
-      return this.sections.map((s) => ({ subject: s.subject, count: s.count, name: s.name }));
-    },
-    description: '10 rapid-fire questions in 10 minutes with Standard (+1.0 / 0.0) scoring.',
-  },
 ];
+
+export function getBlueprint(uniNameOrId?: string | null): UniversityCriteria {
+  return getUniversityCriteria(uniNameOrId);
+}
 
 export function getUniversityCriteria(uniNameOrId?: string | null): UniversityCriteria {
   if (!uniNameOrId) return TARGET_UNIVERSITY_CRITERIA[0];

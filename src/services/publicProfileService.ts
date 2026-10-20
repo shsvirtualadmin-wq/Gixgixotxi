@@ -29,34 +29,93 @@ export async function syncPublicProfile(
 ): Promise<PublicProfile> {
   if (!uid) throw new Error('Cannot sync public profile: missing UID');
 
-  const shortCode = (profileData.shortId as string) || deriveFallbackShortId(uid);
+  const existingCached = publicProfileCache.get(uid)?.profile;
+  const shortCode = (profileData.studentId as string) || (profileData.shortId as string) || existingCached?.studentId || deriveFallbackShortId(uid);
   const cleanDisplayName = sanitizeStudentDisplayName(
-    (profileData.displayName as string) || (profileData.name as string),
+    (profileData.displayName as string) || (profileData.name as string) || existingCached?.displayName,
     shortCode
   );
 
+  const equipped = (profileData.equipped as Record<string, unknown>) || existingCached?.equipped || {};
+  const frame = (profileData.frame as string) || (equipped.frame as string) || existingCached?.frame || null;
+  const nameplate = (profileData.nameplate as string) || (equipped.nameplate as string) || existingCached?.nameplate || null;
+  const effectId = (profileData.effectId as string) || (equipped.effect as string) || existingCached?.effectId || null;
+  const avatar = (profileData.avatar as string) || (equipped.avatar as string) || (profileData.photoURL as string) || (profileData.avatarKey as string) || existingCached?.avatar || null;
+  const banner = (profileData.banner as string) || existingCached?.banner || null;
+
+  const rawBadges = profileData.badges ?? profileData.equippedBadges ?? existingCached?.badges ?? [];
+  const badges: string[] = Array.isArray(rawBadges) ? rawBadges.map(String) : [];
+
+  const rawBio = typeof profileData.bio === 'string' ? profileData.bio.trim() : (existingCached?.bio || '');
+  const bio = rawBio.slice(0, 160);
+
+  const rawStatus = typeof profileData.status === 'string' ? profileData.status.trim() : (existingCached?.status || '');
+  const status = rawStatus.slice(0, 40);
+
+  const accent = (profileData.accent as string) || existingCached?.accent || '#E11D48';
+  const crewName = (profileData.crewName as string) ?? (existingCached?.crewName || null);
+  const memberSince = (profileData.memberSince as any) || (profileData.createdAt as any) || existingCached?.memberSince || serverTimestamp();
+  const lastActiveAt = (profileData.lastActiveAt as any) || serverTimestamp();
+
+  const inputStats = (profileData.stats as Record<string, unknown>) || (profileData.publicStats as Record<string, unknown>) || existingCached?.stats || {};
+  const streak = Number(inputStats.streak ?? profileData.streak ?? 0);
+  const longestStreak = Number(inputStats.longestStreak ?? profileData.longestStreak ?? streak);
+  const mcqs = Number(inputStats.mcqs ?? inputStats.mcqsSolved ?? inputStats.totalQuestionsSolved ?? profileData.totalQuestionsSolved ?? 0);
+  const accuracy = Number(inputStats.accuracy ?? profileData.accuracy ?? 0);
+
+  const stats = {
+    streak,
+    longestStreak,
+    mcqs,
+    accuracy,
+    score: Number(inputStats.score ?? profileData.score ?? 0),
+    testsCompleted: Number(inputStats.testsCompleted ?? profileData.testsCompleted ?? 0),
+    totalQuestionsSolved: mcqs,
+    mcqsSolved: mcqs,
+  };
+
+  const followersCount = typeof profileData.followersCount === 'number'
+    ? profileData.followersCount
+    : (existingCached?.followersCount ?? 0);
+  const followingCount = typeof profileData.followingCount === 'number'
+    ? profileData.followingCount
+    : (existingCached?.followingCount ?? 0);
+
+  // Strictly contains NO email and NO phone
   const safePublicDoc: PublicProfile = {
     uid,
     displayName: cleanDisplayName,
-    avatarKey: (profileData.avatarKey as string) || null,
-    avatarVariant: (profileData.avatarVariant as string) || null,
-    photoURL: (profileData.photoURL as string) || null,
-    crewId: (profileData.crewId as string) || null,
-    crewName: (profileData.crewName as string) || null,
-    role: (profileData.role as string) || 'student',
+    studentId: shortCode,
+    avatar,
+    banner,
+    frame,
+    nameplate,
+    effectId,
+    badges,
+    bio,
+    status,
+    accent,
+    memberSince,
+    crewName,
+    stats,
+    followersCount,
+    followingCount,
+    lastActiveAt,
+
+    // Legacy compatibility fields
     shortId: shortCode,
-    equipped: (profileData.equipped as PublicProfile['equipped']) || {
-      effect: null,
-      frame: null,
-      nameplate: null,
-      avatar: null,
+    avatarKey: (profileData.avatarKey as string) || avatar || null,
+    avatarVariant: (profileData.avatarVariant as string) || null,
+    photoURL: (profileData.photoURL as string) || avatar || null,
+    crewId: (profileData.crewId as string) || null,
+    role: (profileData.role as string) || 'student',
+    equipped: {
+      effect: effectId,
+      frame,
+      nameplate,
+      avatar,
     },
-    publicStats: {
-      streak: Number(profileData.streak || 0),
-      score: Number(profileData.score || 0),
-      testsCompleted: Number(profileData.testsCompleted || 0),
-      totalQuestionsSolved: Number(profileData.totalQuestionsSolved || 0),
-    },
+    publicStats: stats,
     updatedAt: serverTimestamp(),
   };
 
@@ -75,12 +134,49 @@ export async function syncPublicProfile(
  * Fallbacks to a sanitized default if not yet created.
  */
 export async function getPublicProfile(uid: string): Promise<PublicProfile> {
+  const fallbackShortId = deriveFallbackShortId(uid || 'guest');
+  const fallback: PublicProfile = {
+    uid: uid || 'guest',
+    displayName: `Student #${fallbackShortId}`,
+    studentId: fallbackShortId,
+    shortId: fallbackShortId,
+    avatar: null,
+    banner: null,
+    frame: null,
+    nameplate: null,
+    effectId: null,
+    badges: [],
+    bio: '',
+    status: '',
+    accent: '#E11D48',
+    memberSince: null,
+    crewName: null,
+    stats: {
+      streak: 0,
+      longestStreak: 0,
+      mcqs: 0,
+      accuracy: 0,
+      score: 0,
+      testsCompleted: 0,
+      totalQuestionsSolved: 0,
+    },
+    publicStats: {
+      streak: 0,
+      longestStreak: 0,
+      mcqs: 0,
+      accuracy: 0,
+      score: 0,
+      testsCompleted: 0,
+      totalQuestionsSolved: 0,
+    },
+    followersCount: 0,
+    followingCount: 0,
+    lastActiveAt: null,
+    role: 'student',
+  };
+
   if (!uid) {
-    return {
-      uid: 'guest',
-      displayName: 'Student #00000',
-      shortId: '00000',
-    };
+    return fallback;
   }
 
   const cached = publicProfileCache.get(uid);
@@ -91,24 +187,47 @@ export async function getPublicProfile(uid: string): Promise<PublicProfile> {
   try {
     const snap = await getDoc(doc(db, 'publicProfiles', uid));
     if (snap.exists()) {
-      const data = snap.data() as PublicProfile;
-      // Guarantee displayName is sanitized even if previously malformed
-      data.displayName = sanitizeStudentDisplayName(data.displayName, data.shortId || uid);
-      publicProfileCache.set(uid, { profile: data, fetchedAt: Date.now() });
-      return data;
+      const data = snap.data() as Partial<PublicProfile>;
+      const studentId = data.studentId || data.shortId || fallbackShortId;
+      const cleanDisplayName = sanitizeStudentDisplayName(data.displayName || fallback.displayName, studentId);
+
+      const resolvedStats = data.stats || {
+        streak: Number(data.publicStats?.streak || 0),
+        longestStreak: Number(data.publicStats?.longestStreak || data.publicStats?.streak || 0),
+        mcqs: Number(data.publicStats?.mcqs || data.publicStats?.totalQuestionsSolved || 0),
+        accuracy: Number(data.publicStats?.accuracy || 0),
+      };
+
+      const resolvedProfile: PublicProfile = {
+        ...fallback,
+        ...data,
+        uid,
+        displayName: cleanDisplayName,
+        studentId,
+        avatar: data.avatar ?? (data.equipped?.avatar || data.photoURL || data.avatarKey || null),
+        banner: data.banner ?? null,
+        frame: data.frame ?? (data.equipped?.frame || null),
+        nameplate: data.nameplate ?? (data.equipped?.nameplate || null),
+        effectId: data.effectId ?? (data.equipped?.effect || null),
+        badges: Array.isArray(data.badges) ? data.badges : (Array.isArray(data.equippedBadges) ? data.equippedBadges : []),
+        bio: typeof data.bio === 'string' ? data.bio.slice(0, 160) : '',
+        status: typeof data.status === 'string' ? data.status.slice(0, 40) : '',
+        accent: data.accent || '#E11D48',
+        memberSince: data.memberSince ?? null,
+        crewName: data.crewName ?? null,
+        stats: resolvedStats,
+        followersCount: Number(data.followersCount || 0),
+        followingCount: Number(data.followingCount || 0),
+        lastActiveAt: data.lastActiveAt ?? null,
+      };
+
+      publicProfileCache.set(uid, { profile: resolvedProfile, fetchedAt: Date.now() });
+      return resolvedProfile;
     }
   } catch (err) {
     console.warn(`[publicProfile] Could not fetch publicProfiles/${uid}:`, err);
   }
 
-  // Graceful fallback
-  const fallback: PublicProfile = {
-    uid,
-    displayName: `Student #${deriveFallbackShortId(uid)}`,
-    shortId: deriveFallbackShortId(uid),
-    role: 'student',
-    publicStats: { streak: 0, score: 0, testsCompleted: 0, totalQuestionsSolved: 0 },
-  };
   return fallback;
 }
 
@@ -216,24 +335,51 @@ export async function backfillAllPublicProfiles(): Promise<{ totalUsers: number;
         // Fallback to data.equipped
       }
 
+      const streak = Number(data.streak || 0);
+      const longestStreak = Number(data.longestStreak || streak);
+      const mcqs = Number(data.totalQuestionsSolved || data.mcqsSolved || 0);
+      const accuracy = Number(data.accuracy || 0);
+
+      const stats = {
+        streak,
+        longestStreak,
+        mcqs,
+        accuracy,
+        score: Number(data.score || 0),
+        testsCompleted: Number(data.testsCompleted || 0),
+        totalQuestionsSolved: mcqs,
+        mcqsSolved: mcqs,
+      };
+
       const publicDocRef = doc(db, 'publicProfiles', uid);
       const publicData: PublicProfile = {
         uid,
         displayName: cleanDisplayName,
+        studentId: shortCode,
+        avatar: (data.avatar as string) || userEquipped.avatar || data.photoURL || data.avatarKey || null,
+        banner: data.banner || null,
+        frame: data.frame || userEquipped.frame || null,
+        nameplate: data.nameplate || userEquipped.nameplate || null,
+        effectId: data.effectId || userEquipped.effect || null,
+        badges: Array.isArray(data.badges) ? data.badges : (Array.isArray(data.equippedBadges) ? data.equippedBadges : []),
+        bio: typeof data.bio === 'string' ? data.bio.trim().slice(0, 160) : '',
+        status: typeof data.status === 'string' ? data.status.trim().slice(0, 40) : '',
+        accent: data.accent || '#E11D48',
+        memberSince: data.memberSince || data.createdAt || serverTimestamp(),
+        crewName: data.crewName || null,
+        stats,
+        followersCount: Number(data.followersCount || 0),
+        followingCount: Number(data.followingCount || 0),
+        lastActiveAt: data.lastActiveDate || data.lastActiveAt || serverTimestamp(),
+
         avatarKey: data.avatarKey || null,
         avatarVariant: data.avatarVariant || null,
         photoURL: data.photoURL || null,
         crewId: data.crewId || null,
-        crewName: data.crewName || null,
         role: data.role || 'student',
         shortId: shortCode,
         equipped: userEquipped,
-        publicStats: {
-          streak: Number(data.streak || 0),
-          score: Number(data.score || 0),
-          testsCompleted: Number(data.testsCompleted || 0),
-          totalQuestionsSolved: Number(data.totalQuestionsSolved || 0),
-        },
+        publicStats: stats,
         updatedAt: serverTimestamp(),
       };
 

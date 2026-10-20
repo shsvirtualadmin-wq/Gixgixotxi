@@ -28,8 +28,9 @@ export function WeakChaptersPage() {
   const effectivePlan = useEffectivePlan();
 
   useEffect(() => {
+    const timer = launchTimeoutRef.current;
     return () => {
-      if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
+      if (timer) clearTimeout(timer);
     };
   }, []);
 
@@ -39,127 +40,8 @@ export function WeakChaptersPage() {
     }
   }, [launchError]);
 
-  const handleDrillChapter = async (item: ChapterStatItem) => {
-    if (!user) {
-      setLaunchError('Please sign in to start a chapter drill.');
-      return;
-    }
-    if (launchingChapter) return;
-
-    setLastAttemptedChapter(item);
-    setLaunchingChapter(item.chapter);
-    setLaunchError(null);
-    setLaunchStatus('Preparing your questions...');
-
-    // 15-second safety timeout
-    if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
-    let timedOut = false;
-    launchTimeoutRef.current = setTimeout(() => {
-      timedOut = true;
-      setLaunchingChapter(null);
-      setLaunchStatus(null);
-      setLaunchError('Setting up your drill took longer than expected. Please check your connection and try again.');
-    }, 15000);
-
-    try {
-      if (import.meta.env.DEV) {
-        console.log(`[WeakChapters] Setting up drill for chapter: "${item.chapter}"`);
-      }
-
-      // Check if questions are available
-      const questionsColl = collection(db, 'questions');
-      let questionsCount = 0;
-
-      try {
-        const chapterQuery = query(
-          questionsColl,
-          where('chapter', '==', item.chapter),
-          limit(15)
-        );
-        const snap = await getDocs(chapterQuery);
-        questionsCount = snap.size;
-      } catch (checkErr: unknown) {
-        if (import.meta.env.DEV) {
-          const errObj = checkErr as { message?: string };
-          console.warn('[WeakChapters] Pre-flight query notice:', checkErr);
-          if (errObj?.message?.includes('index')) {
-            console.warn('[WeakChapters] Required Firestore index url:', errObj.message);
-          }
-        }
-        questionsCount = 1; // Proceed to attempt initialization
-      }
-
-      if (timedOut) return;
-
-      if (questionsCount === 0) {
-        // Fallback check on subject
-        if (item.subject && item.subject !== 'General') {
-          try {
-            const subSnap = await getDocs(query(questionsColl, where('subject', '==', item.subject), limit(1)));
-            questionsCount = subSnap.size;
-          } catch {
-            questionsCount = 1;
-          }
-        }
-      }
-
-      if (questionsCount === 0) {
-        if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
-        setLaunchingChapter(null);
-        setLaunchStatus(null);
-        setLaunchError(`Questions for ${item.chapter} aren't available yet. Please try another chapter or a general sprint.`);
-        return;
-      }
-
-      const durationSeconds = 15 * 60; // 15 mins
-      const newAttemptRef = doc(collection(db, 'attempts'));
-      const attemptId = newAttemptRef.id;
-
-      const attemptPayload = {
-        id: attemptId,
-        userId: user.uid,
-        uid: user.uid,
-        subject: item.subject,
-        chapter: item.chapter,
-        totalQuestions: 15,
-        timed: true,
-        durationSeconds,
-        status: 'preparing' as const,
-        createdAt: serverTimestamp(),
-      };
-
-      await startTestSessionWithLimit({
-        uid: user.uid,
-        isUnlimited: Boolean(effectivePlan.isUnlimited || effectivePlan.isSuperAdmin),
-        attemptPayload,
-        customAttemptId: attemptId,
-      });
-
-      if (timedOut) return;
-      if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
-
-      navigate(`/test/${attemptId}`, { state: { attempt: attemptPayload } });
-    } catch (startErr: unknown) {
-      if (launchTimeoutRef.current) clearTimeout(launchTimeoutRef.current);
-      setLaunchingChapter(null);
-      setLaunchStatus(null);
-
-      if (
-        startErr instanceof DailyTestLimitError ||
-        (startErr as { code?: string })?.code === 'DAILY_TESTS_LIMIT_EXCEEDED'
-      ) {
-        if (!effectivePlan.isUnlimited && !effectivePlan.isSuperAdmin) {
-          setBlockedSheetOpen(true);
-        }
-        return;
-      }
-
-      if (import.meta.env.DEV) {
-        console.error('[WeakChapters] Drill setup error:', startErr);
-      }
-
-      setLaunchError('Could not start your chapter drill. Please check your connection and try again.');
-    }
+  const handleDrillChapter = (item: ChapterStatItem) => {
+    navigate(`/dashboard?drillChapter=${encodeURIComponent(item.chapter)}&drillSubject=${encodeURIComponent(item.subject)}`);
   };
 
   const allStatsList = Object.values(statsMap).filter((s) => s.total > 0);

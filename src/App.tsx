@@ -163,6 +163,17 @@ const AdminCrewsPage = lazyWithRetry(() =>
 const AdminKobansPage = lazyWithRetry(() =>
   import('./pages/admin/AdminKobansPage').then(m => ({ default: m.AdminKobansPage }))
 );
+const AdminCommonsPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminCommonsPage').then(m => ({ default: m.AdminCommonsPage }))
+);
+
+// Boardly Commons
+const CommonsFeedPage = lazyWithRetry(() =>
+  import('./pages/commons/CommonsFeedPage').then(m => ({ default: m.CommonsFeedPage }))
+);
+const CommunityGuidelinesPage = lazyWithRetry(() =>
+  import('./pages/commons/CommunityGuidelinesPage').then(m => ({ default: m.CommunityGuidelinesPage }))
+);
 
 import { NinjaFightLoader } from './components/ui/NinjaFightLoader';
 
@@ -201,6 +212,7 @@ function AppInner() {
           <Route path="captains" element={<AdminCaptainsPage />} />
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
           <Route path="crews" element={<AdminCrewsPage />} />
+          <Route path="commons" element={<AdminCommonsPage />} />
           <Route path="health" element={<AdminHealthPage />} />
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>
@@ -208,7 +220,8 @@ function AppInner() {
         {/* Dashboard shell (Student Portal) — no public Navbar/Footer */}
         <Route path="/dashboard" element={<DashboardShell />}>
           <Route index element={<OverviewPage />} />
-          <Route path="practice" element={<PracticePage />} />
+          <Route path="commons" element={<CommonsFeedPage />} />
+          <Route path="practice" element={<Navigate to="/dashboard" replace />} />
           <Route path="weak-chapters" element={<WeakChaptersPage />} />
           <Route path="streaks" element={<StreaksPage />} />
           <Route path="history" element={<ResultsListPage />} />
@@ -230,6 +243,8 @@ function AppInner() {
         <Route path="/plans" element={<Navigate to="/dashboard/plans" replace />} />
         <Route path="/profile" element={<Navigate to="/dashboard/profile" replace />} />
         <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
+        <Route path="/commons" element={<Navigate to="/dashboard/commons" replace />} />
+        <Route path="/commons/guidelines" element={<CommunityGuidelinesPage />} />
 
         {/* Auth routes ONLY (use AuthLayout ONLY, NO public Navbar or Footer) */}
         <Route path="/login" element={<LoginPage />} />

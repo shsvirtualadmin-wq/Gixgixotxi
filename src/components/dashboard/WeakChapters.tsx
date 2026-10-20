@@ -6,9 +6,10 @@ import { useUserChapterStats } from '@/hooks/useUserChapterStats';
 
 interface Props {
   uid: string;
+  onDrill?: (chapter: string, subject: string) => void;
 }
 
-export function WeakChapters({ uid }: Props) {
+export function WeakChapters({ uid, onDrill }: Props) {
   const { weakChapters, loading } = useUserChapterStats(uid);
   const navigate = useNavigate();
 
@@ -23,10 +24,14 @@ export function WeakChapters({ uid }: Props) {
         action={
           <button
             type="button"
-            onClick={() => navigate('/dashboard/practice')}
+            onClick={() => {
+              const el = document.getElementById('complete-test-card');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+              else navigate('/dashboard');
+            }}
             className="btn-outline text-xs px-4 py-2 rounded-xl mt-2 cursor-pointer inline-flex items-center gap-1.5"
           >
-            <span>Start Practice Drill</span>
+            <span>Start Complete Test</span>
             <ArrowRight size={13} />
           </button>
         }
@@ -63,7 +68,13 @@ export function WeakChapters({ uid }: Props) {
 
             <button
               type="button"
-              onClick={() => navigate(`/dashboard/practice?chapter=${encodeURIComponent(c.chapter)}`)}
+              onClick={() => {
+                if (onDrill) {
+                  onDrill(c.chapter, c.subject);
+                } else {
+                  navigate(`/dashboard?drillChapter=${encodeURIComponent(c.chapter)}&drillSubject=${encodeURIComponent(c.subject)}`);
+                }
+              }}
               className="px-3 py-1.5 rounded-xl border border-[var(--red)]/40 text-[var(--red)] text-xs font-semibold hover:bg-[var(--red)] hover:text-white transition-colors cursor-pointer shrink-0"
               style={{ fontFamily: 'var(--font-heading)' }}
             >

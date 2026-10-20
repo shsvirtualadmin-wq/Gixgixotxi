@@ -383,32 +383,63 @@ export async function selectUnseenQuestionsForSubject(
 export async function fetchQuestionsForAttempt(attempt: Partial<AttemptDoc>): Promise<AttemptQuestion[]> {
   const studentId = attempt.userId || 'guest';
 
-  // ─── 1. FULL MOCK TEST ──────────────────────────────────────────────────────
-  if (attempt.mode === 'full') {
+  // ─── 1. COMPLETE TEST & FULL BLUEPRINT MOCK ─────────────────────────────────
+  if (attempt.mode === 'complete' || attempt.mode === 'full') {
     const criteria = getUniversityCriteria(attempt.university);
     const globalExcludedIds = new Set<string>();
     const sectionSelectedQuestions: AttemptQuestion[] = [];
+    const weightedChapter = attempt.weightedChapter?.trim().toLowerCase();
 
-    for (const split of criteria.subjectsSplit) {
+    for (const split of criteria.sections) {
       const subSlug = findSubjectSlug(split.subject) || split.subject.toLowerCase();
       const countNeeded = split.count;
+
+      // Check if this section is the target for weighted chapter (~50%)
+      const isTargetSectionForWeight =
+        Boolean(weightedChapter) &&
+        (subSlug === attempt.subject?.toLowerCase() ||
+          split.name.toLowerCase().includes(attempt.subject?.toLowerCase() || '') ||
+          split.subject.toLowerCase() === attempt.subject?.toLowerCase());
+
+      let weightedCompoundIds: string[] = [];
+
+      if (isTargetSectionForWeight && weightedChapter) {
+        const weightedTargetCount = Math.max(1, Math.round(countNeeded * 0.5));
+        try {
+          const chapterQuestions = await fetchMultiSourcePoolQuestions(subSlug, {
+            topic: weightedChapter,
+            limitPerSource: weightedTargetCount * 2,
+          });
+          const validChapterIds = chapterQuestions
+            .map((q) => q.id)
+            .filter((id) => !globalExcludedIds.has(id));
+
+          weightedCompoundIds = shuffleArray(validChapterIds).slice(0, weightedTargetCount);
+          weightedCompoundIds.forEach((id) => globalExcludedIds.add(id));
+        } catch (wErr) {
+          console.warn('[testEngine] Chapter weighting fetch notice:', wErr);
+        }
+      }
+
+      const remainingNeeded = countNeeded - weightedCompoundIds.length;
 
       const { selectedCompoundIds, notice } = await selectUnseenQuestionsForSubject(
         studentId,
         subSlug,
-        countNeeded,
+        remainingNeeded,
         globalExcludedIds
       );
 
-      // Add to global exclusion set so NO subsequent section (e.g. Basic Math after Advanced Math) duplicates questions!
       selectedCompoundIds.forEach((id) => globalExcludedIds.add(id));
 
+      const allSectionIds = [...weightedCompoundIds, ...selectedCompoundIds];
+
       if (notice && import.meta.env.DEV) {
-        console.info(`[Full Mock - ${split.name}] ${notice}`);
+        console.info(`[Complete Test - ${split.name}] ${notice}`);
       }
 
-      if (selectedCompoundIds.length > 0) {
-        const fetchedQuestions = await fetchMultiSourceQuestionsByIds(selectedCompoundIds, subSlug);
+      if (allSectionIds.length > 0) {
+        const fetchedQuestions = await fetchMultiSourceQuestionsByIds(allSectionIds, subSlug);
 
         // Convert to AttemptQuestion with shuffled options and mapping
         fetchedQuestions.forEach((q) => {

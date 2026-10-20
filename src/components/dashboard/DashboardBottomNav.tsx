@@ -18,6 +18,7 @@ import {
   Users,
   Menu,
   ShoppingBag,
+  Compass,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -63,18 +64,18 @@ export function DashboardBottomNav() {
   const isApprovedCaptain = role === 'captain' || role === 'ambassador' || Boolean(profile?.isCaptain) || Boolean(profile?.isAmbassador);
   const crewLink = '/dashboard/crew';
 
-  // Unified Student Nav: Daily Practice, Cockpit, Weak Chapters, Streaks, Crew, [Captain], Menu
+  // Unified Student Nav: Home, Commons, Weak Chapters, Streaks, Crew, [Captain], Menu
   const navItems: PillNavItem[] = [
     {
-      to: '/dashboard/practice',
-      label: 'Daily Practice',
-      icon: <BookOpen size={18} />,
-    },
-    {
       to: '/dashboard',
-      label: 'Cockpit',
+      label: 'Home',
       icon: <LayoutDashboard size={18} />,
       end: true,
+    },
+    {
+      to: '/dashboard/commons',
+      label: 'Commons',
+      icon: <Compass size={18} />,
     },
     {
       to: '/dashboard/weak-chapters',
@@ -220,6 +221,24 @@ export function DashboardBottomNav() {
                   <KobanChip balance={kobanBalance} loading={walletLoading} />
                   <ChevronRight size={14} className="text-[var(--muted)]" />
                 </div>
+              </button>
+
+              {/* Commons Community */}
+              <button
+                type="button"
+                onClick={() => handleNav('/dashboard/commons')}
+                className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-red-950/40 border border-red-800/40 flex items-center justify-center text-red-500 shrink-0">
+                    <Compass size={17} />
+                  </div>
+                  <div>
+                    <span className="font-bold">Boardly Commons</span>
+                    <p className="text-[11px] text-[var(--muted)]">Study material, notes &amp; doubts</p>
+                  </div>
+                </div>
+                <ChevronRight size={14} className="text-[var(--muted)]" />
               </button>
 
               {/* 2. Profile */}

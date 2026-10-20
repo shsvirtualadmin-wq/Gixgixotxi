@@ -12,6 +12,7 @@ import {
   User,
   Users,
   LogOut,
+  Compass,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -63,7 +64,7 @@ export function DashboardSidebar() {
           Study Portal
         </div>
 
-        {/* 1. Cockpit */}
+        {/* 1. Home */}
         <NavLink
           to="/dashboard"
           end
@@ -77,12 +78,12 @@ export function DashboardSidebar() {
           style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
         >
           <LayoutDashboard size={18} />
-          <span>Cockpit</span>
+          <span>Home</span>
         </NavLink>
 
-        {/* 2. Daily Practice */}
+        {/* 2. Commons */}
         <NavLink
-          to="/dashboard/practice"
+          to="/dashboard/commons"
           className={({ isActive }) =>
             `flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
               isActive
@@ -92,8 +93,8 @@ export function DashboardSidebar() {
           }
           style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
         >
-          <BookOpen size={18} />
-          <span>Daily Practice</span>
+          <Compass size={18} />
+          <span>Commons</span>
         </NavLink>
 
         {/* 3. Arena */}

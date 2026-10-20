@@ -67,22 +67,50 @@ export interface EquippedCosmetics {
 }
 
 /**
+ * Public profile performance stats.
+ */
+export interface PublicProfileStats {
+  streak: number;
+  longestStreak: number;
+  mcqs: number;
+  accuracy: number;
+  // Legacy / backwards compatibility aliases:
+  score?: number;
+  testsCompleted?: number;
+  totalQuestionsSolved?: number;
+  mcqsSolved?: number;
+}
+
+/**
  * Publicly readable student profile stored at `publicProfiles/{uid}`.
  * Strictly contains NO email, NO phone number, and NO financial/payment data.
  */
 export interface PublicProfile {
   uid: string;
   displayName: string;
+  studentId: string;
+  avatar: string | null;
+  banner: string | null;
+  frame: string | null;
+  nameplate: string | null;
+  effectId: string | null;
+  badges: string[];
+  bio: string; // max 160 characters
+  status: string; // max 40 characters
+  accent: string;
+  memberSince: Timestamp | { seconds: number; nanoseconds?: number } | string | null;
+  crewName: string | null;
+  stats: PublicProfileStats;
+  followersCount: number;
+  followingCount: number;
+  lastActiveAt: Timestamp | { seconds: number; nanoseconds?: number } | string | null;
+
+  // Optional legacy fields for backward compatibility
   shortId?: string;
-  avatar?: string | null;
   avatarKey?: string | null;
   avatarVariant?: string | null;
-  banner?: string | null;
-  accent?: string | null;
-  bio?: string | null;
   photoURL?: string | null;
   crewId?: string | null;
-  crewName?: string | null;
   role?: UserRole | string;
   equipped?: EquippedCosmetics;
   equippedBadges?: string[];
@@ -91,17 +119,18 @@ export interface PublicProfile {
     captain?: boolean;
     staff?: boolean;
   };
-  memberSince?: Timestamp | { seconds: number; nanoseconds?: number } | string | null;
-  publicStats?: {
-    streak?: number;
-    longestStreak?: number;
-    score?: number;
-    testsCompleted?: number;
-    totalQuestionsSolved?: number;
-    mcqsSolved?: number;
-    accuracy?: number;
-  };
+  publicStats?: PublicProfileStats;
   updatedAt?: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
+}
+
+/**
+ * Follow relationship stored in `follows/{followerId}_{targetId}`.
+ * Strictly contains NO email or phone.
+ */
+export interface FollowDoc {
+  followerId: string;
+  targetId: string;
+  createdAt: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
 }
 
 export interface PlaceholderReview {
@@ -234,6 +263,8 @@ export interface AttemptDoc {
   chapter?: string | null;
   mode?: string;
   title?: string;
+  blueprintId?: string | null;
+  weightedChapter?: string | null;
   difficulty?: string | null;
   totalQuestions: number;
   timed: boolean;

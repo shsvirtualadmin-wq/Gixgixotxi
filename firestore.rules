@@ -91,36 +91,94 @@ service cloud.firestore {
       match /chapterStats/{chapterId} {
         allow read, write: if isOwner(userId) || isSuperAdmin();
       }
+
+      // Subcollection: Bookmarked study materials from Commons
+      match /savedCommons/{postId} {
+        allow read, write: if isOwner(userId) || isSuperAdmin();
+      }
     }
 
     // ─── PUBLIC PROFILES COLLECTION ──────────────────────────────────────────
     // Strictly sanitized public identity for leaderboards, crew lists, and profile views.
-    // Contains ONLY public data: displayName, avatar, crewId, equipped cosmetics, public stats.
-    // Explicitly FORBIDS storing any PII: email, phone, or payment/billing fields.
+    // Contains ONLY public data: displayName, studentId, avatar, banner, frame, nameplate,
+    // effectId, badges, bio (max 160), status (max 40), accent, memberSince, crewName, stats,
+    // followersCount, followingCount, lastActiveAt.
+    // Explicitly FORBIDS storing any PII: email or phone.
+    // Enforces: Clients cannot edit follower/following counts directly on profile updates.
     match /publicProfiles/{userId} {
       allow read: if true;
       allow list: if true;
 
-      allow create, update: if isSuperAdmin() || (
+      allow create: if isSuperAdmin() || (
         isOwner(userId) &&
         !('email' in request.resource.data) &&
         !('phone' in request.resource.data) &&
         !('payments' in request.resource.data) &&
         !('paid_until' in request.resource.data) &&
         !('billing' in request.resource.data) &&
-        (!('equipped' in request.resource.data) ||
-          request.resource.data.equipped == null ||
-          !exists(/databases/$(database)/documents/wallets/$(userId)) ||
+        (!('bio' in request.resource.data) || (request.resource.data.bio is string && request.resource.data.bio.size() <= 160)) &&
+        (!('status' in request.resource.data) || (request.resource.data.status is string && request.resource.data.status.size() <= 40)) &&
+        (!('followersCount' in request.resource.data) || request.resource.data.followersCount == 0) &&
+        (!('followingCount' in request.resource.data) || request.resource.data.followingCount == 0)
+      );
+
+      allow update: if isSuperAdmin() || (
+        // Case A: Owner updates their profile data. Clients cannot arbitrarily edit counts!
+        (
+          isOwner(userId) &&
+          !('email' in request.resource.data) &&
+          !('phone' in request.resource.data) &&
+          !('payments' in request.resource.data) &&
+          !('paid_until' in request.resource.data) &&
+          !('billing' in request.resource.data) &&
+          (!('bio' in request.resource.data) || (request.resource.data.bio is string && request.resource.data.bio.size() <= 160)) &&
+          (!('status' in request.resource.data) || (request.resource.data.status is string && request.resource.data.status.size() <= 40)) &&
           (
-            (request.resource.data.equipped.effect == null || request.resource.data.equipped.effect in get(/databases/$(database)/documents/wallets/$(userId)).data.owned) &&
-            (request.resource.data.equipped.frame == null || request.resource.data.equipped.frame in get(/databases/$(database)/documents/wallets/$(userId)).data.owned) &&
-            (request.resource.data.equipped.nameplate == null || request.resource.data.equipped.nameplate in get(/databases/$(database)/documents/wallets/$(userId)).data.owned) &&
-            (!('avatar' in request.resource.data.equipped) || request.resource.data.equipped.avatar == null || request.resource.data.equipped.avatar in get(/databases/$(database)/documents/wallets/$(userId)).data.owned)
+            !request.resource.data.diff(resource.data).affectedKeys().hasAny(['followersCount', 'followingCount']) ||
+            (
+              request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followingCount', 'updatedAt']) &&
+              request.resource.data.followingCount >= 0 &&
+              (request.resource.data.followingCount == resource.data.get('followingCount', 0) + 1 ||
+               request.resource.data.followingCount == resource.data.get('followingCount', 0) - 1)
+            )
           )
+        ) ||
+        // Case B: Follower count updated during a follow/unfollow transaction
+        // Another authenticated user can ONLY increment or decrement followersCount by 1 (never below 0)
+        (
+          isAuthenticated() &&
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'updatedAt']) &&
+          request.resource.data.followersCount >= 0 &&
+          (request.resource.data.followersCount == resource.data.get('followersCount', 0) + 1 ||
+           request.resource.data.followersCount == resource.data.get('followersCount', 0) - 1)
         )
       );
 
       allow delete: if isSuperAdmin();
+    }
+
+    // ─── FOLLOWS COLLECTION ──────────────────────────────────────────────────
+    // User follower graph: follows/{followerId}_{targetId}
+    // Fields: followerId, targetId, createdAt
+    // - Authenticated users can only create follows where followerId is their own uid
+    // - No self-follow: followerId != targetId
+    // - Authenticated users can only delete follows where followerId is their own uid
+    // - Document ID must match $(followerId)_$(targetId)
+    // - Updates not allowed (immutable follow link)
+    match /follows/{followId} {
+      allow read, list: if isAuthenticated();
+
+      allow create: if isAuthenticated() &&
+        request.resource.data.followerId == request.auth.uid &&
+        request.resource.data.targetId is string &&
+        request.resource.data.targetId.size() > 0 &&
+        request.resource.data.followerId != request.resource.data.targetId &&
+        followId == request.auth.uid + '_' + request.resource.data.targetId;
+
+      allow update: if false;
+
+      allow delete: if isAuthenticated() &&
+        resource.data.followerId == request.auth.uid;
     }
 
     // ─── KOBANS WALLETS & LEDGER ────────────────────────────────────────────
@@ -684,6 +742,58 @@ service cloud.firestore {
     match /announcements/{annId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // ─── BOARDLY COMMONS: STUDY RESOURCE EXCHANGE ────────────────────────────
+    match /commonsPosts/{postId} {
+      // Public study resource exchange: anyone can browse posts; hidden posts filtered in client/query
+      allow read: if true;
+
+      // Authenticated students can create posts; anonymous posts MUST have authorUid == null
+      allow create: if isAuthenticated() && (
+        (request.resource.data.isAnonymous == true && request.resource.data.authorUid == null) ||
+        (request.resource.data.isAnonymous == false && request.resource.data.authorUid == request.auth.uid)
+      );
+
+      // Update allowed for superadmin, post author, or counter increments (votes, comments, reports, saves)
+      allow update: if isSuperAdmin() || (
+        isAuthenticated() && (
+          resource.data.authorUid == request.auth.uid ||
+          // Counter updates allowed for peer interactions
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotes', 'commentCount', 'saveCount', 'reportCount', 'isHidden', 'updatedAt'])
+        )
+      );
+
+      // Delete allowed for superadmin or author
+      allow delete: if isSuperAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+
+      // Subcollection: Peer votes (1 vote per user doc)
+      match /votes/{userId} {
+        allow read: if isAuthenticated();
+        allow write: if isOwner(userId) || isSuperAdmin();
+      }
+
+      // Subcollection: Peer comments
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isAuthenticated();
+        allow update, delete: if isSuperAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+      }
+    }
+
+    // Private author audit records for Commons (for moderation & privacy guarantee)
+    // Strictly readable ONLY by the author and superadmin
+    match /postPrivate/{postId} {
+      allow read: if isSuperAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+      allow create: if isAuthenticated() && request.resource.data.authorUid == request.auth.uid;
+      allow update, delete: if isSuperAdmin() || (isAuthenticated() && resource.data.authorUid == request.auth.uid);
+    }
+
+    // Moderation report tickets
+    match /commonsReports/{reportId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated() && request.resource.data.reporterUid == request.auth.uid;
+      allow update, delete: if isAdmin();
     }
 
     // ─── DEFAULT DENY ────────────────────────────────────────────────────────
