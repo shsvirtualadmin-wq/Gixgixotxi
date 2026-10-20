@@ -29,6 +29,7 @@ interface CommonsPostCardProps {
   onOpenComments: (post: CommonsPost) => void;
   onOpenReport: (post: CommonsPost) => void;
   onDeletePost?: (postId: string) => void;
+  onAuthorClick?: (authorUid: string) => void;
 }
 
 export function CommonsPostCard({

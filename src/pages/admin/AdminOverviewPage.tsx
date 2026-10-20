@@ -11,6 +11,7 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertTriangle,
+  Coins,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -354,6 +355,33 @@ export function AdminOverviewPage() {
             );
           })}
         </div>
+      </div>
+
+      {/* ─── STORE PRICING CONTROL SECTION ─────────────────────────────────── */}
+      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+        <div className="flex items-start gap-3.5">
+          <div className="w-10 h-10 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-500 shrink-0">
+            <Coins size={20} />
+          </div>
+          <div>
+            <h2 className="font-heading font-semibold text-[15px] text-[var(--text)] flex items-center gap-2">
+              <span>Store Pricing &amp; Cosmetics Manager</span>
+              <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">
+                Super Admin
+              </span>
+            </h2>
+            <p className="text-[12px] text-[var(--muted)] mt-0.5">
+              Bulk update Koban prices with batched writes, preview before applying, toggle active items, and audit price history.
+            </p>
+          </div>
+        </div>
+        <Link
+          to="/admin/pricing"
+          className="px-4 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-heading font-bold text-xs flex items-center gap-2 shadow-sm transition-all shrink-0 cursor-pointer"
+        >
+          <span>Open Store Pricing</span>
+          <ArrowRight size={14} />
+        </Link>
       </div>
 
       {/* ─── SEED BALANCED QUESTION POOL TOOL ────────────────────────────────── */}

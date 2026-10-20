@@ -421,6 +421,7 @@ export interface ProfileCardEffectProps {
   itemId?: string | null;
   className?: string;
   previewMode?: boolean;
+  size?: number;
 }
 
 export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = ({ itemId, className = '', previewMode = false }) => {

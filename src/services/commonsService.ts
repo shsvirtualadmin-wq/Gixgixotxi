@@ -187,9 +187,9 @@ export async function createCommonsPost(params: {
   type: CommonsPostType;
   title: string;
   description: string;
-  subject: string;
-  chapter: string;
-  target: string;
+  subject?: string;
+  chapter?: string;
+  target?: string;
   tags: string[];
   files: CommonsFileAttachment[];
   isAnonymous: boolean;
@@ -235,9 +235,9 @@ export async function createCommonsPost(params: {
     title: params.title,
     description: params.description,
     tags: params.tags,
-    subject: params.subject,
-    chapter: params.chapter,
-    target: params.target,
+    subject: params.subject || '',
+    chapter: params.chapter || '',
+    target: params.target || '',
     type: params.type,
   });
 
@@ -247,9 +247,9 @@ export async function createCommonsPost(params: {
     type: params.type,
     title: params.title.trim(),
     description: params.description.trim(),
-    subject: params.subject,
-    chapter: params.chapter,
-    target: params.target,
+    subject: params.subject || '',
+    chapter: params.chapter || '',
+    target: params.target || '',
     tags: params.tags.map((t) => t.trim().toLowerCase()).filter(Boolean),
     files: params.files,
     isAnonymous: Boolean(params.isAnonymous),

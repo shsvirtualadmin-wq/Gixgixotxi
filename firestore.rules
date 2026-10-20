@@ -197,12 +197,13 @@ service cloud.firestore {
         request.resource.data.balance <= resource.data.balance &&
         // Cannot remove previously owned items
         resource.data.owned.toSet().difference(request.resource.data.owned.toSet()).size() == 0 &&
-        // Equipped items must be owned or null
+        // Equipped items must be owned or null (effects, frames, nameplates, avatars, banners)
         (!('equipped' in request.resource.data) || (
           (request.resource.data.equipped.effect == null || request.resource.data.equipped.effect in request.resource.data.owned) &&
           (request.resource.data.equipped.frame == null || request.resource.data.equipped.frame in request.resource.data.owned) &&
           (request.resource.data.equipped.nameplate == null || request.resource.data.equipped.nameplate in request.resource.data.owned) &&
-          (!('avatar' in request.resource.data.equipped) || request.resource.data.equipped.avatar == null || request.resource.data.equipped.avatar in request.resource.data.owned)
+          (!('avatar' in request.resource.data.equipped) || request.resource.data.equipped.avatar == null || request.resource.data.equipped.avatar in request.resource.data.owned) &&
+          (!('banner' in request.resource.data.equipped) || request.resource.data.equipped.banner == null || request.resource.data.equipped.banner in request.resource.data.owned)
         ))
       );
 
@@ -213,7 +214,7 @@ service cloud.firestore {
         allow create: if isSuperAdmin() || (
           isOwner(userId) &&
           request.resource.data.type == 'purchase' &&
-          request.resource.data.amount < 0
+          request.resource.data.amount <= 0
         );
         allow update: if false;
         allow delete: if isSuperAdmin();
@@ -227,6 +228,20 @@ service cloud.firestore {
         request.resource.data.userId == request.auth.uid &&
         request.resource.data.status == 'pending';
       allow update, delete: if isSuperAdmin();
+    }
+
+    // ─── BOARDLY STORE ITEMS & PRICING CONTROL ─────────────────────────────
+    // Store items catalog and prices.
+    // - Students & general users can read active items only.
+    // - Super Admin can read all items (including inactive) and write/update prices.
+    match /store_items/{itemId} {
+      allow read: if isSuperAdmin() || (resource != null && resource.data.active == true);
+      allow write: if isSuperAdmin();
+    }
+
+    // Price change audit log: readable & writable by Super Admin only
+    match /storePriceHistory/{historyId} {
+      allow read, write: if isSuperAdmin();
     }
 
     // ─── STUDY CREWS (SQUADS / CIRCLES) ───────────────────────────────────────

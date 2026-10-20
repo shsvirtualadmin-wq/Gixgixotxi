@@ -8,7 +8,7 @@ export interface SubjectAccuracyItem {
 }
 
 interface SubjectAccuracyRingsProps {
-  subjects: SubjectAccuracyItem[];
+  subjects?: SubjectAccuracyItem[];
   isOwnMode?: boolean;
   accentColor?: string;
 }

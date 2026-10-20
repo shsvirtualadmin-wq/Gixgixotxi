@@ -70,7 +70,7 @@ export async function syncPublicProfile(
   const nameplate = (p.nameplate as string) || (equipped.nameplate as string) || existingCached?.nameplate || null;
   const effectId = (p.effectId as string) || (equipped.effect as string) || existingCached?.effectId || null;
   const avatar = (p.avatar as string) || (equipped.avatar as string) || (p.photoURL as string) || (p.avatarKey as string) || existingCached?.avatar || null;
-  const banner = (p.banner as string) || existingCached?.banner || null;
+  const banner = (p.banner as string) || (equipped.banner as string) || existingCached?.banner || null;
 
   const rawBadges = p.badges ?? p.equippedBadges ?? existingCached?.badges ?? [];
   const badges: string[] = Array.isArray(rawBadges) ? rawBadges.map(String) : [];

@@ -13,8 +13,10 @@ import {
   CosmeticEffect,
   ProfileEffectCardPreview,
 } from '@/components/koban/CosmeticRenderers';
+import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { GetKobansModal } from '@/components/koban/GetKobansModal';
 import { CoinBurstEffect } from '@/components/koban/CoinBurstEffect';
+import { fetchStoreItems } from '@/services/storePricingService';
 import {
   Plus,
   Check,
@@ -40,7 +42,27 @@ export function StorePage() {
   const { profile } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
-  const { balance, owned, equipped, equipCosmetic, purchaseCosmetic } = useWallet();
+  const { balance, owned, equipped, equipCosmetic, purchaseCosmetic, isSuperAdmin } = useWallet();
+
+  // Dynamic pricing map from Firestore store_items collection
+  const [storePricesMap, setStorePricesMap] = useState<Record<string, { price: number; active: boolean }>>({});
+
+  useEffect(() => {
+    let mounted = true;
+    fetchStoreItems()
+      .then((items) => {
+        if (!mounted) return;
+        const map: Record<string, { price: number; active: boolean }> = {};
+        items.forEach((it) => {
+          map[it.id] = { price: it.priceKobans, active: it.active };
+        });
+        setStorePricesMap(map);
+      })
+      .catch((err) => console.warn('[StorePage] load dynamic prices error:', err));
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // Navigation states
   const [activeView, setActiveView] = useState<MainView>('home');
@@ -50,7 +72,7 @@ export function StorePage() {
   const [sortBy, setSortBy] = useState<SortOption>('default');
 
   // Item detail sheet state
-  const [selectedDetailItem, setSelectedDetailItem] = useState<CosmeticItem | null>(null);
+  const [selectedDetailItem, setSelectedDetailItem] = useState<(CosmeticItem & { active?: boolean }) | null>(null);
 
   // Equip / Buy state
   const [equippingId, setEquippingId] = useState<string | null>(null);
@@ -76,9 +98,23 @@ export function StorePage() {
     profile?.shortId || user?.uid
   );
 
-  // Filter items matching single source of truth
+  // Filter items matching single source of truth + dynamic store_items prices
   const filteredCatalog = useMemo(() => {
-    const list = COSMETICS_CATALOG.filter((item) => {
+    const list = COSMETICS_CATALOG.map((item) => {
+      const live = storePricesMap[item.id];
+      if (live) {
+        return {
+          ...item,
+          priceKobans: live.price,
+          active: live.active,
+        };
+      }
+      return { ...item, active: true };
+    }).filter((item) => {
+      // If inactive and not Super Admin, hide from normal students
+      if (item.active === false && !isSuperAdmin) {
+        return false;
+      }
       // 1. Category Filter
       if (selectedCategory !== 'all' && item.type !== selectedCategory) {
         return false;
@@ -108,7 +144,7 @@ export function StorePage() {
     }
 
     return list;
-  }, [selectedCategory, animationFilter, rarityFilter, sortBy]);
+  }, [selectedCategory, animationFilter, rarityFilter, sortBy, storePricesMap, isSuperAdmin]);
 
   // Dedicated type filter for My Collection
   const [collectionCategory, setCollectionCategory] = useState<CosmeticType | 'all'>('all');
@@ -124,6 +160,7 @@ export function StorePage() {
       if (id.startsWith('frame') || id.includes('frame')) type = 'frame';
       else if (id.startsWith('plate') || id.includes('plate') || id.includes('nameplate')) type = 'nameplate';
       else if (id.startsWith('effect') || id.includes('effect')) type = 'effect';
+      else if (id.startsWith('ban_') || id.includes('banner')) type = 'banner';
       else if (id.startsWith('pfp') || id.startsWith('avatar')) type = 'avatar';
 
       const retiredItem: CosmeticItem & { isRetired?: boolean } = {
@@ -290,10 +327,22 @@ export function StorePage() {
 
         {/* ─── EQUIPPED LOADOUT CARD (Uses shared AvatarFrame, AvatarPicture, Nameplate) ──── */}
         {isLoggedIn && (
-          <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-[rgba(215,25,33,0.08)] via-[rgba(232,163,23,0.06)] to-transparent border border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="relative overflow-hidden p-4 sm:p-5 rounded-2xl border border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm group">
+            {/* Single Source of Truth: Equipped Profile Banner */}
+            <div className="absolute inset-0 pointer-events-none -z-10 opacity-70 transition-opacity group-hover:opacity-85">
+              <BannerRenderer
+                bannerId={equipped.banner}
+                accentColor={profile?.accent || '#D71921'}
+                animated={true}
+                showReadabilityOverlay={true}
+              />
+            </div>
+            {/* Readability backdrop so nameplate and buttons remain distinct */}
+            <div className="absolute inset-0 bg-black/45 dark:bg-black/60 backdrop-blur-[2px] pointer-events-none -z-10" />
+
             <Link
               to="/dashboard/profile"
-              className="flex items-center gap-4 min-w-0 w-full sm:w-auto hover:opacity-85 transition-opacity cursor-pointer group"
+              className="flex items-center gap-4 min-w-0 w-full sm:w-auto hover:opacity-90 transition-opacity cursor-pointer group"
               title="Open your profile"
             >
               <div className="relative shrink-0">
@@ -411,9 +460,35 @@ export function StorePage() {
                 </button>
               </div>
 
-              {/* 4 Category Tiles Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Tile 1: Profile Pictures */}
+              {/* 5 Category Tiles Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                {/* Tile 1: Profile Banners */}
+                <div
+                  onClick={() => selectCategoryFromTile('banner')}
+                  className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] hover:border-amber-500/50 transition-all cursor-pointer group flex flex-col justify-between gap-4 shadow-xs"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase font-bold px-2 py-0.5 rounded-full border border-amber-500/40 bg-amber-950/40 text-amber-400">
+                      12 Flagships
+                    </span>
+                    <span className="text-xs text-[var(--muted)] font-mono">From 380 Kobans</span>
+                  </div>
+
+                  <div className="h-32 rounded-xl bg-[var(--surface-2)] overflow-hidden border border-[var(--border)] shadow-md group-hover:scale-[1.02] transition-transform">
+                    <BannerRenderer bannerId="ban_starfall" animated={true} className="w-full h-full" showReadabilityOverlay={false} />
+                  </div>
+
+                  <div>
+                    <h3 className="font-heading font-bold text-base text-[var(--text)] group-hover:text-amber-400 transition-colors">
+                      Profile Banners
+                    </h3>
+                    <p className="text-xs text-[var(--muted)] line-clamp-2 mt-1">
+                      Scenic Torii shrines, starfall meteors, rising embers, rain city skylines, and cosmic gates.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Tile 2: Profile Pictures */}
                 <div
                   onClick={() => selectCategoryFromTile('avatar')}
                   className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] hover:border-red-500/50 transition-all cursor-pointer group flex flex-col justify-between gap-4 shadow-xs"
@@ -441,7 +516,7 @@ export function StorePage() {
                   </div>
                 </div>
 
-                {/* Tile 2: Avatar Frames */}
+                {/* Tile 3: Avatar Frames */}
                 <div
                   onClick={() => selectCategoryFromTile('frame')}
                   className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] hover:border-cyan-500/50 transition-all cursor-pointer group flex flex-col justify-between gap-4 shadow-xs"
@@ -469,7 +544,7 @@ export function StorePage() {
                   </div>
                 </div>
 
-                {/* Tile 3: Chat Nameplates */}
+                {/* Tile 4: Chat Nameplates */}
                 <div
                   onClick={() => selectCategoryFromTile('nameplate')}
                   className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] hover:border-purple-500/50 transition-all cursor-pointer group flex flex-col justify-between gap-4 shadow-xs"
@@ -497,7 +572,7 @@ export function StorePage() {
                   </div>
                 </div>
 
-                {/* Tile 4: Profile Effects */}
+                {/* Tile 5: Profile Effects */}
                 <div
                   onClick={() => selectCategoryFromTile('effect')}
                   className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] hover:border-pink-500/50 transition-all cursor-pointer group flex flex-col justify-between gap-4 shadow-xs"
@@ -565,11 +640,12 @@ export function StorePage() {
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-heading font-bold text-[var(--muted)] mr-1">Type:</span>
                 {[
-                  { id: 'all', label: 'All (100)' },
-                  { id: 'avatar', label: 'Profile Pictures (25)' },
-                  { id: 'frame', label: 'Avatar Frames (25)' },
-                  { id: 'nameplate', label: 'Chat Nameplates (25)' },
-                  { id: 'effect', label: 'Profile Effects (25)' },
+                  { id: 'all', label: 'All Items' },
+                  { id: 'banner', label: 'Banners' },
+                  { id: 'avatar', label: 'Profile Pictures' },
+                  { id: 'frame', label: 'Avatar Frames' },
+                  { id: 'nameplate', label: 'Chat Nameplates' },
+                  { id: 'effect', label: 'Profile Effects' },
                 ].map((c) => (
                   <button
                     key={c.id}
@@ -643,15 +719,23 @@ export function StorePage() {
                     }}
                     className={`p-3 sm:p-4 rounded-2xl bg-[var(--card)] border transition-all cursor-pointer group flex flex-col justify-between gap-3 ${
                       isEquipped
-                        ? 'border-emerald-500/80 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
+                        ? 'border-emerald-500/80 shadow-[0_0_14px_rgba(16,185,129,0.22)]'
                         : isOwned
-                        ? 'border-[var(--border)] hover:border-amber-500/50'
+                        ? 'border-[var(--border)] hover:border-amber-500/50 hover:shadow-[0_0_12px_rgba(245,158,11,0.15)]'
+                        : item.rarity === 'legendary'
+                        ? 'border-amber-500/50 hover:border-amber-400 shadow-[0_0_16px_rgba(245,158,11,0.2)]'
+                        : item.rarity === 'epic'
+                        ? 'border-purple-500/40 hover:border-purple-400 shadow-[0_0_12px_rgba(168,85,247,0.16)]'
+                        : item.rarity === 'rare'
+                        ? 'border-blue-500/35 hover:border-blue-400 shadow-[0_0_10px_rgba(59,130,246,0.12)]'
                         : 'border-[var(--border)] hover:border-[var(--red)]/50'
                     }`}
                   >
                     {/* Header Badges */}
                     <div className="flex items-center justify-between gap-1 text-[10px] font-mono">
-                      <span className="uppercase font-bold text-[var(--muted)]">
+                      <span className={`uppercase font-bold ${
+                        item.rarity === 'legendary' ? 'text-amber-400' : item.rarity === 'epic' ? 'text-purple-400' : item.rarity === 'rare' ? 'text-blue-400' : 'text-[var(--muted)]'
+                      }`}>
                         {item.rarity}
                       </span>
                       {item.animated ? (
@@ -692,6 +776,17 @@ export function StorePage() {
                       {item.type === 'effect' && (
                         <div className="w-full h-full p-1">
                           <ProfileEffectCardPreview itemId={item.id} compact={true} />
+                        </div>
+                      )}
+
+                      {item.type === 'banner' && (
+                        <div className="w-full h-full rounded-lg overflow-hidden border border-[var(--border)] shadow-xs">
+                          <BannerRenderer
+                            bannerId={item.id}
+                            animated={item.animated}
+                            className="w-full h-full"
+                            showReadabilityOverlay={false}
+                          />
                         </div>
                       )}
                     </div>
@@ -761,6 +856,7 @@ export function StorePage() {
             <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
               {[
                 { id: 'all' as const, label: 'All', count: allOwnedItems.length },
+                { id: 'banner' as const, label: 'Banners', count: allOwnedItems.filter((i) => i.type === 'banner').length },
                 { id: 'avatar' as const, label: 'Profile Pictures', count: allOwnedItems.filter((i) => i.type === 'avatar').length },
                 { id: 'frame' as const, label: 'Frames', count: allOwnedItems.filter((i) => i.type === 'frame').length },
                 { id: 'nameplate' as const, label: 'Nameplates', count: allOwnedItems.filter((i) => i.type === 'nameplate').length },
@@ -878,6 +974,16 @@ export function StorePage() {
                             )}
                           </div>
                         )}
+                        {item.type === 'banner' && (
+                          <div className="w-full h-full rounded-lg overflow-hidden border border-[var(--border)] shadow-xs">
+                            <BannerRenderer
+                              bannerId={item.id}
+                              animated={item.animated}
+                              className="w-full h-full"
+                              showReadabilityOverlay={false}
+                            />
+                          </div>
+                        )}
                       </div>
 
                       <div>
@@ -978,6 +1084,23 @@ export function StorePage() {
                     <ProfileEffectCardPreview itemId={selectedDetailItem.id} />
                   </div>
                 )}
+
+                {selectedDetailItem.type === 'banner' && (
+                  <div className="w-full h-36 rounded-xl overflow-hidden relative shadow-lg border border-[var(--border)]">
+                    <BannerRenderer
+                      bannerId={selectedDetailItem.id}
+                      animated={selectedDetailItem.animated}
+                      className="w-full h-full"
+                      showReadabilityOverlay={true}
+                    />
+                    <div className="absolute bottom-2.5 left-3 flex items-center gap-2 z-20 pointer-events-none">
+                      <AvatarFrame itemId={equipped.frame || 'none'} size={38}>
+                        <AvatarPicture avatarId={equipped.avatar} size={28} />
+                      </AvatarFrame>
+                      <Nameplate itemId={equipped.nameplate || 'none'} name={cleanDisplayName} />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Item Info */}
@@ -1038,7 +1161,7 @@ export function StorePage() {
                     <span>Sign In to Unlock</span>
                     <ArrowRight size={14} />
                   </Link>
-                ) : owned.includes(selectedDetailItem.id) ? (
+                ) : (isSuperAdmin || owned.includes(selectedDetailItem.id)) ? (
                   <button
                     type="button"
                     disabled={equippingId === selectedDetailItem.id}
@@ -1053,9 +1176,11 @@ export function StorePage() {
                       ? 'Saving...'
                       : equipped[selectedDetailItem.type] === selectedDetailItem.id
                       ? 'Unequip Cosmetic'
+                      : isSuperAdmin && !owned.includes(selectedDetailItem.id)
+                      ? 'Equip for Free (Super Admin)'
                       : 'Equip to Profile'}
                   </button>
-                ) : balance >= selectedDetailItem.priceKobans ? (
+                ) : (selectedDetailItem.priceKobans === 0 || balance >= selectedDetailItem.priceKobans) ? (
                   <button
                     type="button"
                     disabled={purchasing}
@@ -1070,7 +1195,11 @@ export function StorePage() {
                     ) : (
                       <>
                         <Sparkles size={14} />
-                        <span>Unlock for {selectedDetailItem.priceKobans.toLocaleString()} Kobans</span>
+                        <span>
+                          {selectedDetailItem.priceKobans === 0
+                            ? 'Unlock for Free (0 Kobans)'
+                            : `Unlock for ${selectedDetailItem.priceKobans.toLocaleString()} Kobans`}
+                        </span>
                       </>
                     )}
                   </button>

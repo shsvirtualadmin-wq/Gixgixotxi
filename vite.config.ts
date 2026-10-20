@@ -815,6 +815,9 @@ export default defineConfig({
             if (id.includes('react') || id.includes('react-dom')) return 'vendor-react';
             if (id.includes('@tanstack')) return 'vendor-query';
           }
+          if (id.includes('src/components/ui/')) {
+            return 'ui-primitives';
+          }
         },
       },
     },

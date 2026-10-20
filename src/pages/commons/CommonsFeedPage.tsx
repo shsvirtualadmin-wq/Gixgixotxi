@@ -236,7 +236,7 @@ export function CommonsFeedPage() {
               onOpenComments={(p) => setCommentsPost(p)}
               onOpenReport={(p) => setReportPost(p)}
               onDeletePost={handleDeletePost}
-              onAuthorClick={(authorUid) => openProfile(authorUid)}
+              onAuthorClick={(authorUid: string) => openProfile(authorUid)}
             />
           ))
         )}
@@ -306,7 +306,7 @@ export function CommonsFeedPage() {
           setSearchModalOpen(false);
           setReportPost(p);
         }}
-        onOpenUserProfile={(uid) => {
+        onOpenUserProfile={(uid: string) => {
           setSearchModalOpen(false);
           openProfile(uid);
         }}

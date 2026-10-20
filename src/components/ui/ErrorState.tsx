@@ -3,6 +3,7 @@ import { Button } from './Button';
 
 interface ErrorStateProps {
   title?: string;
+  message?: string;
   error?: Error | { code?: string; message?: string } | string | null;
   path?: string;
   onRetry?: () => void;
@@ -12,6 +13,7 @@ interface ErrorStateProps {
 
 export function ErrorState({
   title = 'Something went wrong',
+  message: customMessage,
   error,
   path,
   onRetry,
@@ -19,11 +21,12 @@ export function ErrorState({
   backLabel = 'Go back',
 }: ErrorStateProps) {
   const message =
-    typeof error === 'string'
+    customMessage ??
+    (typeof error === 'string'
       ? error
       : error instanceof Error
       ? error.message
-      : (error as { message?: string } | null)?.message ?? 'Unknown error';
+      : (error as { message?: string } | null)?.message ?? '');
 
   const code =
     error && typeof error === 'object' && 'code' in error

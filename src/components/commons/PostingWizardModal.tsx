@@ -16,11 +16,9 @@ import {
   Sparkles,
   Shield,
   Layers,
-  Filter,
   MessageSquare,
 } from 'lucide-react';
 import { COMMONS_POST_TYPES, COMMONS_POST_TYPES_LIST, type CommonsPostType, type CommonsFileAttachment } from '@/types/commons';
-import { SYLLABUS_MAP, COMMONS_TARGET_OPTIONS, getAllChaptersForSubject } from '@/constants/syllabusMap';
 import { createCommonsPost, isExecutableFile } from '@/services/commonsService';
 
 interface PostingWizardModalProps {
@@ -51,12 +49,6 @@ export function PostingWizardModal({
   const [description, setDescription] = useState('');
   const [files, setFiles] = useState<CommonsFileAttachment[]>([]);
 
-  // Filter option state (inside tags area)
-  const [filterOpen, setFilterOpen] = useState(true);
-  const [selectedSubject, setSelectedSubject] = useState<string>('mathematics');
-  const [selectedChapter, setSelectedChapter] = useState<string>('Differentiation & Derivatives');
-  const [selectedTarget, setSelectedTarget] = useState<string>('FAST-NUCES');
-
   // Custom Tags
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
@@ -71,14 +63,6 @@ export function PostingWizardModal({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!isOpen) return null;
-
-  const availableChapters = getAllChaptersForSubject(selectedSubject);
-
-  const handleSubjectChange = (newSub: string) => {
-    setSelectedSubject(newSub);
-    const firstCh = getAllChaptersForSubject(newSub)[0];
-    if (firstCh) setSelectedChapter(firstCh.name);
-  };
 
   const handleAddTag = () => {
     const trimmed = tagInput.trim().replace(/^#/, '').toLowerCase();
@@ -161,9 +145,6 @@ export function PostingWizardModal({
         type: selectedType,
         title: title.trim(),
         description: description.trim(),
-        subject: selectedSubject,
-        chapter: selectedChapter,
-        target: selectedTarget,
         tags,
         files,
         isAnonymous,
@@ -240,7 +221,7 @@ export function PostingWizardModal({
                   : COMMONS_POST_TYPES && typeof COMMONS_POST_TYPES === 'object'
                   ? Object.values(COMMONS_POST_TYPES)
                   : []
-                ).map((typeMeta) => {
+                ).map((typeMeta: any) => {
                   const isSelected = selectedType === typeMeta.type;
                   return (
                     <button
@@ -407,105 +388,19 @@ export function PostingWizardModal({
                 )}
               </div>
 
-              {/* 4. TAGS & [FILTER] OPTION IN THE SAME PLACE */}
+              {/* 4. TAGS (CUSTOM TOPIC / EXAM TAGS) */}
               <div className="space-y-2 pt-1 border-t border-neutral-800/80">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-mono uppercase tracking-wider text-neutral-300 font-semibold flex items-center gap-2">
-                    <span>Tags &amp; Classification</span>
+                    <span>Tags (Optional)</span>
                   </label>
-                  <button
-                    type="button"
-                    onClick={() => setFilterOpen(!filterOpen)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-lg border font-mono transition-colors ${
-                      filterOpen
-                        ? 'bg-red-950/50 border-red-600 text-red-300'
-                        : 'bg-neutral-900 border-neutral-700 hover:border-neutral-500 text-neutral-300'
-                    }`}
-                  >
-                    <Filter size={13} className="text-red-500" />
-                    <span>[Filter]</span>
-                    <span className="text-[10px] text-neutral-500">{filterOpen ? '▲' : '▼'}</span>
-                  </button>
+                  <span className="text-[11px] text-neutral-500 font-mono">
+                    {tags.length}/8 tags
+                  </span>
                 </div>
 
-                {/* The [Filter] option right here in the tags area */}
-                {filterOpen && (
-                  <div className="p-3 rounded-xl border border-neutral-800 bg-[#0d0d10] space-y-2.5 animate-in fade-in duration-100">
-                    <div className="text-[11px] font-mono text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
-                      <span>Syllabus Filter Options</span>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      {/* Subject */}
-                      <div>
-                        <label className="text-[11px] text-neutral-400 block mb-1">Subject</label>
-                        <select
-                          value={selectedSubject}
-                          onChange={(e) => handleSubjectChange(e.target.value)}
-                          className="w-full text-xs bg-neutral-900 border border-neutral-700 rounded-lg p-2 text-neutral-200 focus:outline-none focus:border-red-600"
-                        >
-                          {Object.values(SYLLABUS_MAP).map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Chapter */}
-                      <div>
-                        <label className="text-[11px] text-neutral-400 block mb-1">Chapter</label>
-                        <select
-                          value={selectedChapter}
-                          onChange={(e) => setSelectedChapter(e.target.value)}
-                          className="w-full text-xs bg-neutral-900 border border-neutral-700 rounded-lg p-2 text-neutral-200 focus:outline-none focus:border-red-600"
-                        >
-                          {availableChapters.map((ch) => (
-                            <option key={ch.id} value={ch.name}>
-                              {ch.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Target */}
-                      <div>
-                        <label className="text-[11px] text-neutral-400 block mb-1">Target Exam / Class</label>
-                        <select
-                          value={selectedTarget}
-                          onChange={(e) => setSelectedTarget(e.target.value)}
-                          className="w-full text-xs bg-neutral-900 border border-neutral-700 rounded-lg p-2 text-neutral-200 focus:outline-none focus:border-red-600"
-                        >
-                          {COMMONS_TARGET_OPTIONS.map((opt) => (
-                            <option key={opt.id} value={opt.id}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Filter & Custom Tags unified badge display */}
+                {/* Custom Tags input and badge chips */}
                 <div className="flex flex-wrap items-center gap-1.5 p-2.5 rounded-xl border border-neutral-800 bg-[#09090b] min-h-[46px]">
-                  {/* Selected Filter Badges */}
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono bg-red-950/60 border border-red-800/70 text-red-300">
-                    <span className="text-red-500 font-bold">Subject:</span>
-                    <span className="capitalize">{selectedSubject}</span>
-                  </span>
-
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono bg-neutral-800/80 border border-neutral-700 text-neutral-300 max-w-[170px] truncate">
-                    <span className="text-neutral-500 font-bold">Ch:</span>
-                    <span className="truncate">{selectedChapter}</span>
-                  </span>
-
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono bg-neutral-800/80 border border-neutral-700 text-neutral-300">
-                    <span className="text-neutral-500 font-bold">Target:</span>
-                    <span>{selectedTarget}</span>
-                  </span>
-
                   {/* Custom hashtag tags */}
                   {tags.map((t) => (
                     <span
@@ -516,7 +411,7 @@ export function PostingWizardModal({
                       <button
                         type="button"
                         onClick={() => handleRemoveTag(t)}
-                        className="text-neutral-400 hover:text-red-400 ml-0.5"
+                        className="text-neutral-400 hover:text-red-400 ml-0.5 cursor-pointer"
                       >
                         ×
                       </button>
@@ -535,14 +430,14 @@ export function PostingWizardModal({
                           handleAddTag();
                         }
                       }}
-                      placeholder="+ Add custom tag (Enter)"
+                      placeholder="+ Add custom tag (e.g. #physics, #shortcuts) — Enter"
                       className="w-full text-xs bg-transparent text-neutral-200 placeholder-neutral-500 focus:outline-none px-1"
                     />
                     {tagInput.trim() && (
                       <button
                         type="button"
                         onClick={handleAddTag}
-                        className="text-[10px] font-mono text-red-400 px-1.5 py-0.5 rounded bg-neutral-800 shrink-0"
+                        className="text-[10px] font-mono text-red-400 px-1.5 py-0.5 rounded bg-neutral-800 shrink-0 cursor-pointer"
                       >
                         Add
                       </button>

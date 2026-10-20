@@ -20,6 +20,7 @@ const DEFAULT_WALLET: WalletDoc = {
     frame: null,
     nameplate: null,
     avatar: null,
+    banner: null,
   },
 };
 
@@ -60,6 +61,7 @@ export function useWallet() {
             frame: data.equipped?.frame ?? null,
             nameplate: data.equipped?.nameplate ?? null,
             avatar: data.equipped?.avatar ?? null,
+            banner: data.equipped?.banner ?? null,
           },
           updatedAt: data.updatedAt,
         };
@@ -71,7 +73,7 @@ export function useWallet() {
         const initial: WalletDoc = {
           balance: 0,
           owned: [],
-          equipped: { effect: null, frame: null, nameplate: null, avatar: null },
+          equipped: { effect: null, frame: null, nameplate: null, avatar: null, banner: null },
           updatedAt: serverTimestamp(),
         };
         await setDoc(walletDocRef, initial, { merge: true });
@@ -98,8 +100,16 @@ export function useWallet() {
     fetchWallet(user.uid, false);
   }, [user?.uid, fetchWallet]);
 
+  const emailLower = user?.email?.toLowerCase().trim() || '';
+  const isSuperAdminUser = Boolean(
+    emailLower === 'shsvirtualadmin@gmail.com' ||
+    emailLower === 'support@boardly.cfd' ||
+    user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
+  );
+
   /**
    * Equips or unequips a cosmetic item owned by the user.
+   * Super Admin can equip any item freely without ownership restriction.
    * Mirrors immediately to publicProfiles/{uid} for leaderboards and crew views.
    */
   const equipCosmetic = useCallback(
@@ -107,9 +117,9 @@ export function useWallet() {
       if (!user?.uid) throw new Error('Must be logged in to equip cosmetics');
       const current = walletRef.current;
 
-      // Validation: item must be owned if not un-equipping
-      if (itemId !== null && !current.owned.includes(itemId)) {
-        throw new Error('You do not own this cosmetic item');
+      // Validation: item must be owned if not un-equipping and not Super Admin
+      if (!isSuperAdminUser && itemId !== null && !current.owned.includes(itemId)) {
+        throw new Error('You do not own this cosmetic item. Please unlock it from the Store first.');
       }
 
       const updatedEquipped: EquippedCosmetics = {
@@ -122,7 +132,7 @@ export function useWallet() {
       await runTransaction(db, async (tx) => {
         const snap = await tx.get(walletDocRef);
         const curData = snap.exists() ? (snap.data() as WalletDoc) : current;
-        if (itemId !== null && !curData.owned.includes(itemId)) {
+        if (!isSuperAdminUser && itemId !== null && !curData.owned.includes(itemId)) {
           throw new Error('Item not owned');
         }
         tx.update(walletDocRef, {
@@ -143,17 +153,18 @@ export function useWallet() {
       sessionWalletCache[user.uid] = updated;
       setWallet(updated);
     },
-    [user?.uid]
+    [user?.uid, isSuperAdminUser]
   );
 
   /**
    * Purchases a cosmetic item via transactional balance deduction and ledger writing.
+   * Super Admin can unlock any item for 0 Kobans.
    */
   const purchaseCosmetic = useCallback(
     async (item: import('@/data/cosmeticsCatalog').CosmeticItem) => {
       if (!user?.uid) throw new Error('Must be logged in to purchase cosmetics');
       const { purchaseCosmeticItem } = await import('@/services/kobanService');
-      const result = await purchaseCosmeticItem(user.uid, item);
+      const result = await purchaseCosmeticItem(user.uid, item, isSuperAdminUser);
       const updated: WalletDoc = {
         ...walletRef.current,
         balance: result.newBalance,
@@ -165,7 +176,7 @@ export function useWallet() {
       setWallet(updated);
       return result;
     },
-    [user?.uid]
+    [user?.uid, isSuperAdminUser]
   );
 
   const refreshWallet = useCallback(async () => {
@@ -180,6 +191,7 @@ export function useWallet() {
     owned: wallet.owned,
     equipped: wallet.equipped,
     loading,
+    isSuperAdmin: isSuperAdminUser,
     equipCosmetic,
     purchaseCosmetic,
     refreshWallet,

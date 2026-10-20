@@ -24,9 +24,11 @@ import {
   HelpCircle,
   Pin,
   RotateCcw,
+  Tag,
 } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { StorePricingManager } from '@/components/store/StorePricingManager';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
@@ -40,7 +42,7 @@ import {
   type PassportStamp,
   type StreakBadge,
 } from '@/config/badgesConfig';
-import { getCosmeticById } from '@/data/cosmeticsCatalog';
+import { getCosmeticById, COSMETICS_CATALOG, type CosmeticItem } from '@/data/cosmeticsCatalog';
 import {
   AvatarPicture,
   AvatarFrame,
@@ -88,7 +90,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     daysLeft,
     updateProfileData,
   } = useUserProfile();
-  const { balance: kobanBalance, equipped: ownEquipped, equipCosmetic } = useWallet();
+  const {
+    balance: kobanBalance,
+    equipped: ownEquipped,
+    equipCosmetic,
+    owned: ownedCosmetics,
+    purchaseCosmetic,
+  } = useWallet();
   const effectivePlan = useEffectivePlan();
 
   // Determine true mode
@@ -107,6 +115,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // Tabs: 'overview' | 'loadout' | 'badges' | 'settings'
   const [activeTab, setActiveTab] = useState<'overview' | 'loadout' | 'badges' | 'settings'>('overview');
 
+  // Loadout sub-tabs: 'slots' | 'banners'
+  const [loadoutSubTab, setLoadoutSubTab] = useState<'slots' | 'banners'>('slots');
+  const [bannerFilter, setBannerFilter] = useState<'all' | 'static' | 'animated' | 'owned'>('all');
+  const [selectedBannerPreviewId, setSelectedBannerPreviewId] = useState<string | null>(null);
+  const [previewThemeMode, setPreviewThemeMode] = useState<'dark' | 'light'>('dark');
+  const [equippingBannerId, setEquippingBannerId] = useState<string | null>(null);
+
   // Follow states
   const [isFollowedByMe, setIsFollowedByMe] = useState(false);
   const [followsMe, setFollowsMe] = useState(false);
@@ -118,6 +133,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [crewDetailModalOpen, setCrewDetailModalOpen] = useState(false);
+  const [isStorePricingOpen, setIsStorePricingOpen] = useState(false);
 
   // Active badge popover state
   const [badgePopover, setBadgePopover] = useState<{ name: string; meaning: string } | null>(null);
@@ -133,8 +149,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   useEffect(() => {
     let isMounted = true;
-    const uidToFetch = targetUid || currentUid;
-    if (!uidToFetch) {
+    const resolvedUid = targetUid || currentUid;
+    if (!resolvedUid) {
       setLoading(false);
       return;
     }
@@ -142,16 +158,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     setFetchError(null);
 
     async function fetchProfileData() {
+      const uid = targetUid || currentUid;
+      if (!uid) return;
+
       try {
-        const publicData = await getPublicProfile(uidToFetch);
+        const publicData = await getPublicProfile(uid);
         if (!isMounted) return;
         setProfile(publicData);
 
         // Check follow relationship if viewing someone else
-        if (currentUid && uidToFetch !== currentUid) {
+        if (currentUid && uid !== currentUid) {
           const [followingTarget, followedByTarget] = await Promise.all([
-            isFollowing(currentUid, uidToFetch),
-            isFollowing(uidToFetch, currentUid),
+            isFollowing(currentUid, uid),
+            isFollowing(uid, currentUid),
           ]);
           if (!isMounted) return;
           setIsFollowedByMe(followingTarget);
@@ -176,33 +195,34 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // When viewing self in own mode, keep profile in sync with ownProfile/ownEquipped
   useEffect(() => {
     if (isViewingSelf && ownProfile && !previewAsPublic) {
-      const shortCode = ownProfile.studentId || ownProfile.shortId || deriveFallbackShortId(currentUid || '0');
-      const cleanName = sanitizeStudentDisplayName(ownProfile.displayName || authUser?.displayName, shortCode);
+      const op = ownProfile as any;
+      const shortCode = op.studentId || op.shortId || deriveFallbackShortId(currentUid || '0');
+      const cleanName = sanitizeStudentDisplayName(op.displayName || authUser?.displayName, shortCode);
 
       setProfile((prev) => ({
         uid: currentUid || 'guest',
         displayName: cleanName,
         studentId: shortCode,
-        avatar: (ownEquipped?.avatar as string) || (ownProfile.avatar as string) || ownProfile.avatarKey || null,
-        banner: (ownEquipped?.banner as string) || (ownProfile.banner as string) || null,
-        frame: (ownEquipped?.frame as string) || (ownProfile.frame as string) || null,
-        nameplate: (ownEquipped?.nameplate as string) || (ownProfile.nameplate as string) || null,
-        effectId: (ownEquipped?.effect as string) || (ownProfile.effectId as string) || null,
-        badges: ownProfile.badges || prev?.badges || [],
-        bio: ownProfile.bio || prev?.bio || '',
-        status: ownProfile.status || prev?.status || '',
-        accent: ownProfile.accent || prev?.accent || '#D71921',
-        memberSince: ownProfile.createdAt || ownProfile.memberSince || prev?.memberSince || null,
-        crewName: ownProfile.crewName || prev?.crewName || null,
+        avatar: (ownEquipped?.avatar as string) || (op.avatar as string) || op.avatarKey || null,
+        banner: (ownEquipped?.banner as string) || (op.banner as string) || null,
+        frame: (ownEquipped?.frame as string) || (op.frame as string) || null,
+        nameplate: (ownEquipped?.nameplate as string) || (op.nameplate as string) || null,
+        effectId: (ownEquipped?.effect as string) || (op.effectId as string) || null,
+        badges: op.badges || prev?.badges || [],
+        bio: op.bio || prev?.bio || '',
+        status: op.status || prev?.status || '',
+        accent: op.accent || prev?.accent || '#D71921',
+        memberSince: op.createdAt || op.memberSince || prev?.memberSince || null,
+        crewName: op.crewName || prev?.crewName || null,
         stats: {
-          streak: Number(ownProfile.streak ?? prev?.stats?.streak ?? 0),
-          longestStreak: Number(ownProfile.longestStreak ?? ownProfile.streak ?? prev?.stats?.longestStreak ?? 0),
-          mcqs: Number(ownProfile.totalQuestionsSolved ?? ownProfile.mcqsSolved ?? prev?.stats?.mcqs ?? 0),
-          accuracy: Number(ownProfile.accuracy ?? prev?.stats?.accuracy ?? 0),
+          streak: Number(op.streak ?? prev?.stats?.streak ?? 0),
+          longestStreak: Number(op.longestStreak ?? op.streak ?? prev?.stats?.longestStreak ?? 0),
+          mcqs: Number(op.totalQuestionsSolved ?? op.mcqsSolved ?? prev?.stats?.mcqs ?? 0),
+          accuracy: Number(op.accuracy ?? prev?.stats?.accuracy ?? 0),
         },
         followersCount: prev?.followersCount ?? 0,
         followingCount: prev?.followingCount ?? 0,
-        lastActiveAt: ownProfile.lastActiveDate || prev?.lastActiveAt || null,
+        lastActiveAt: op.lastActiveDate || prev?.lastActiveAt || null,
         equipped: ownEquipped,
       }));
     }
@@ -299,8 +319,62 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     if (!isViewingSelf) return;
     try {
       await equipCosmetic(type, null);
+      setProfile((prev) => (prev ? { ...prev, [type]: null } : null));
     } catch (err) {
       console.warn('[ProfileView] unequip error:', err);
+    }
+  };
+
+  // Student level calculation
+  const studentLevel = useMemo(() => {
+    const mcqs =
+      profile?.stats?.mcqs ??
+      profile?.publicStats?.totalQuestionsSolved ??
+      (isViewingSelf ? ownProfile?.totalQuestionsSolved : 0) ??
+      0;
+    return Math.max(1, Math.floor(Number(mcqs) / 25) + 1);
+  }, [profile, isViewingSelf, ownProfile]);
+
+  // All 12 flagship and catalog profile banners
+  const catalogBanners = useMemo(() => {
+    return COSMETICS_CATALOG.filter((item) => item.type === 'banner');
+  }, []);
+
+  // Equip banner handler with single source of truth sync
+  const handleEquipBanner = async (bannerId: string | null) => {
+    if (!isViewingSelf) return;
+    setEquippingBannerId(bannerId);
+    try {
+      await equipCosmetic('banner', bannerId);
+      setProfile((prev) => (prev ? { ...prev, banner: bannerId } : null));
+    } catch (err: any) {
+      console.warn('[ProfileView] Error equipping banner:', err);
+      alert(err?.message || 'Failed to equip banner.');
+    } finally {
+      setEquippingBannerId(null);
+    }
+  };
+
+  // Unlock and immediately equip banner
+  const handlePurchaseBanner = async (item: CosmeticItem) => {
+    if (!authUser?.uid) {
+      navigate('/login?redirect=/dashboard/profile');
+      return;
+    }
+    if (kobanBalance < item.priceKobans) {
+      navigate('/store');
+      return;
+    }
+    try {
+      setEquippingBannerId(item.id);
+      await purchaseCosmetic(item);
+      await equipCosmetic('banner', item.id);
+      setProfile((prev) => (prev ? { ...prev, banner: item.id } : null));
+    } catch (err: any) {
+      console.warn('[ProfileView] purchase banner error:', err);
+      alert(err?.message || 'Failed to purchase banner.');
+    } finally {
+      setEquippingBannerId(null);
     }
   };
 
@@ -408,7 +482,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           {/* Avatar row with half-banner overlap */}
           <div className="flex items-end justify-between -mt-[44px] sm:-mt-[60px] relative z-20">
             {/* Avatar container (88px mobile, 120px desktop, never clipped) */}
-            <div className="p-1 rounded-full bg-[var(--card)] shrink-0 overflow-visible">
+            <div className="p-1 rounded-full bg-[var(--card)] shrink-0 overflow-visible relative">
               <AvatarFrame itemId={profile?.frame || 'none'} size={window.innerWidth < 640 ? 88 : 120}>
                 <AvatarPicture
                   avatarId={profile?.avatar}
@@ -417,6 +491,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   size={window.innerWidth < 640 ? 76 : 104}
                 />
               </AvatarFrame>
+              {/* Level Badge anchored to bottom-right of avatar */}
+              <div
+                className="absolute -bottom-1 -right-1 z-30 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-600 to-amber-500 text-white font-mono font-black text-[10px] sm:text-[11px] shadow-md border-2 border-[var(--card)] flex items-center gap-0.5 select-none"
+                title={`Level ${studentLevel} Student`}
+              >
+                <span className="text-[8px] font-extrabold text-amber-200">LV</span>
+                <span>{studentLevel}</span>
+              </div>
             </div>
 
             {/* Kobans Chip (OWN MODE ONLY) */}
@@ -466,10 +548,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             {/* Rank title & status line */}
             <div className="flex items-center gap-2 flex-wrap text-xs">
               <span
-                className="font-mono font-semibold px-2 py-0.5 rounded"
+                className="font-mono font-semibold px-2 py-0.5 rounded flex items-center gap-1.5"
                 style={{ backgroundColor: rank.badgeBg, color: rank.badgeColor }}
               >
-                {rank.title}
+                <span className="font-bold opacity-85 text-[10px]">Lv.{studentLevel}</span>
+                <span>·</span>
+                <span>{rank.title}</span>
               </span>
 
               {profile?.status ? (
@@ -918,10 +1002,41 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               TAB 2: LOADOUT
              ══════════════════════════════════════════════════════════════ */}
           {activeTab === 'loadout' && (
-            <div className="flex flex-col gap-4">
-              <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-                <span className="font-heading font-semibold text-[var(--text)]">Equipped Cosmetics</span>
-                {isViewingSelf && !isPublicMode && (
+            <div className="flex flex-col gap-5">
+              {/* Loadout Sub-Tabs: Equipped Slots vs Banners */}
+              <div className="flex items-center justify-between border-b border-[var(--border)] pb-2 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setLoadoutSubTab('slots')}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-heading font-semibold transition-all cursor-pointer ${
+                      loadoutSubTab === 'slots'
+                        ? 'bg-[var(--card-2)] text-[var(--text)] border border-[var(--border)] shadow-xs'
+                        : 'text-[var(--muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    Equipped Slots
+                  </button>
+                  <button
+                    onClick={() => {
+                      setLoadoutSubTab('banners');
+                      if (!selectedBannerPreviewId) {
+                        setSelectedBannerPreviewId(profile?.banner || 'ban_midnight_torii');
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-heading font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                      loadoutSubTab === 'banners'
+                        ? 'bg-[var(--card-2)] text-[var(--text)] border border-amber-500/40 shadow-xs'
+                        : 'text-[var(--muted)] hover:text-[var(--text)]'
+                    }`}
+                  >
+                    <span>Banners</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-500 font-bold">
+                      12 Flagships
+                    </span>
+                  </button>
+                </div>
+
+                {isViewingSelf && !isPublicMode && loadoutSubTab === 'slots' && (
                   <button
                     onClick={() => setEffectPlayKey((k) => k + 1)}
                     className="text-xs font-heading font-semibold text-[var(--red)] hover:underline flex items-center gap-1 cursor-pointer"
@@ -932,172 +1047,498 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 )}
               </div>
 
-              {/* Grid of Loadout Slots: Effect, Banner, Picture, Frame, Nameplate */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* 1. Effect */}
-                <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
-                      <Sparkles size={20} className="text-purple-400" />
+              {/* ── SUB-VIEW A: ALL EQUIPPED SLOTS ── */}
+              {loadoutSubTab === 'slots' && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* 1. Effect */}
+                  <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
+                        <Sparkles size={20} className="text-purple-400" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Profile Effect</span>
+                        <span className="font-heading font-semibold text-xs text-[var(--text)]">
+                          {getCosmeticById(profile?.effectId || '')?.name || 'Default Pulse'}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Profile Effect</span>
-                      <span className="font-heading font-semibold text-xs text-[var(--text)]">
-                        {getCosmeticById(profile?.effectId || '')?.name || 'Default Pulse'}
-                      </span>
-                    </div>
+
+                    {isViewingSelf && !isPublicMode && (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => navigate('/store')}
+                          className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
+                        >
+                          Change
+                        </button>
+                        {profile?.effectId && (
+                          <button
+                            onClick={() => handleUnequipItem('effect')}
+                            className="h-8 px-2 rounded-lg text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                          >
+                            Unequip
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  {isViewingSelf && !isPublicMode && (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => navigate('/store')}
-                        className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
-                      >
-                        Change
-                      </button>
-                      {profile?.effectId && (
+                  {/* 2. Banner */}
+                  <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] overflow-hidden shrink-0 shadow-xs">
+                        <BannerRenderer
+                          bannerId={profile?.banner}
+                          accentColor={accentColor}
+                          animated={false}
+                          showReadabilityOverlay={false}
+                        />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Banner Art</span>
+                        <span className="font-heading font-semibold text-xs text-[var(--text)]">
+                          {getCosmeticById(profile?.banner || '')?.name || 'Signature Dot-Matrix'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {isViewingSelf && !isPublicMode && (
+                      <div className="flex items-center gap-1.5">
                         <button
-                          onClick={() => handleUnequipItem('effect')}
-                          className="h-8 px-2 rounded-lg text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                          onClick={() => {
+                            setLoadoutSubTab('banners');
+                            setSelectedBannerPreviewId(profile?.banner || 'ban_midnight_torii');
+                          }}
+                          className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer text-amber-500 hover:text-amber-400"
                         >
-                          Unequip
+                          Change
                         </button>
+                        {profile?.banner && (
+                          <button
+                            onClick={() => handleEquipBanner(null)}
+                            className="h-8 px-2 rounded-lg text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                          >
+                            Unequip
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3. Picture */}
+                  <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
+                        <AvatarPicture avatarId={profile?.avatar} size={36} />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Profile Picture</span>
+                        <span className="font-heading font-semibold text-xs text-[var(--text)]">
+                          {getCosmeticById(profile?.avatar || '')?.name || 'Dot-Matrix Avatar'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {isViewingSelf && !isPublicMode && (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => navigate('/store')}
+                          className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
+                        >
+                          Change
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 4. Frame */}
+                  <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
+                        <AvatarFrame itemId={profile?.frame || 'none'} size={40}>
+                          <div className="w-6 h-6 rounded-full bg-[var(--border)]" />
+                        </AvatarFrame>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Avatar Frame</span>
+                        <span className="font-heading font-semibold text-xs text-[var(--text)]">
+                          {getCosmeticById(profile?.frame || '')?.name || 'Classic Border'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {isViewingSelf && !isPublicMode && (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => navigate('/store')}
+                          className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
+                        >
+                          Change
+                        </button>
+                        {profile?.frame && (
+                          <button
+                            onClick={() => handleUnequipItem('frame')}
+                            className="h-8 px-2 rounded-lg text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                          >
+                            Unequip
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 5. Nameplate */}
+                  <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 sm:col-span-2">
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
+                        <Award size={20} className="text-amber-400" />
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Nameplate</span>
+                        <span className="font-heading font-semibold text-xs text-[var(--text)]">
+                          {getCosmeticById(profile?.nameplate || '')?.name || 'Standard Badge'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {isViewingSelf && !isPublicMode && (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => navigate('/store')}
+                          className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
+                        >
+                          Change
+                        </button>
+                        {profile?.nameplate && (
+                          <button
+                            onClick={() => handleUnequipItem('nameplate')}
+                            className="h-8 px-2 rounded-lg text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
+                          >
+                            Unequip
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* ── SUB-VIEW B: BANNERS WARDROBE & LIVE PREVIEW ── */}
+              {loadoutSubTab === 'banners' && (() => {
+                const activePreviewId = selectedBannerPreviewId ?? profile?.banner ?? 'ban_midnight_torii';
+                const previewItem = getCosmeticById(activePreviewId);
+                const isCurrentlyEquipped = (profile?.banner || ownEquipped?.banner) === activePreviewId;
+                const isOwned = (ownedCosmetics || []).includes(activePreviewId);
+
+                const filteredBanners = catalogBanners.filter((b) => {
+                  if (bannerFilter === 'static') return !b.animated;
+                  if (bannerFilter === 'animated') return b.animated;
+                  if (bannerFilter === 'owned') return (ownedCosmetics || []).includes(b.id);
+                  return true;
+                });
+
+                return (
+                  <div className="flex flex-col gap-5">
+                    {/* ── 1. LIVE PREVIEW STAGE ── */}
+                    <div className="p-4 sm:p-5 rounded-2xl bg-[var(--card-2)] border border-[var(--border)] shadow-md space-y-4">
+                      <div className="flex items-center justify-between flex-wrap gap-2 text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="font-heading font-bold text-sm text-[var(--text)]">
+                            Live Banner Preview
+                          </span>
+                          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full border border-amber-500/40 bg-amber-950/30 text-amber-400 font-bold">
+                            {previewItem?.rarity || 'legendary'}
+                          </span>
+                          {previewItem?.animated && (
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-950/40 border border-cyan-500/40 text-cyan-400">
+                              ✦ Animated
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Theme preview switch */}
+                        <div className="flex items-center gap-1.5 text-xs font-mono">
+                          <span className="text-[var(--muted)]">Preview theme:</span>
+                          <button
+                            onClick={() => setPreviewThemeMode((m) => (m === 'dark' ? 'light' : 'dark'))}
+                            className="px-2.5 py-0.5 rounded-md bg-[var(--card)] border border-[var(--border)] hover:border-amber-500/40 text-[var(--text)] font-semibold transition-colors cursor-pointer"
+                          >
+                            {previewThemeMode === 'dark' ? '🌙 Dark Mode' : '☀️ Light Mode'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Preview Container Window */}
+                      <div className={`relative rounded-2xl overflow-hidden border border-[var(--border)] ${
+                        previewThemeMode === 'light' ? 'bg-white text-zinc-900' : 'bg-[#0B0B10] text-white'
+                      } shadow-lg transition-colors`}>
+                        {/* Banner Cover Area (Responsive 130px mobile, 170px desktop) */}
+                        <div className="relative w-full h-[130px] sm:h-[170px] overflow-hidden select-none">
+                          <BannerRenderer
+                            bannerId={activePreviewId}
+                            accentColor={accentColor}
+                            animated={true}
+                            showReadabilityOverlay={true}
+                          />
+                        </div>
+
+                        {/* Avatar, Frame, Nameplate, and Lv badge overlay preview */}
+                        <div className="px-4 pb-4 -mt-[38px] sm:-mt-[48px] relative z-20 flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+                          <div className="flex items-end gap-3 min-w-0">
+                            {/* Avatar & Lv Badge */}
+                            <div className="p-0.5 rounded-full bg-[var(--card)] shrink-0 overflow-visible relative shadow-md">
+                              <AvatarFrame itemId={profile?.frame || 'none'} size={window.innerWidth < 640 ? 76 : 96}>
+                                <AvatarPicture
+                                  avatarId={profile?.avatar}
+                                  avatarKey={profile?.avatarKey}
+                                  variant={profile?.avatarVariant}
+                                  size={window.innerWidth < 640 ? 64 : 84}
+                                />
+                              </AvatarFrame>
+                              <div
+                                className="absolute -bottom-1 -right-1 z-30 px-1.5 py-0.2 rounded-full bg-gradient-to-r from-amber-600 to-amber-500 text-white font-mono font-black text-[9px] shadow-sm border border-[var(--card)] flex items-center gap-0.5"
+                              >
+                                <span className="text-[7px] font-extrabold text-amber-200">LV</span>
+                                <span>{studentLevel}</span>
+                              </div>
+                            </div>
+
+                            {/* Name & Identity */}
+                            <div className="min-w-0 pb-1 space-y-1">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <Nameplate
+                                  itemId={profile?.nameplate || 'none'}
+                                  name={profile?.displayName || 'Student'}
+                                  shortId={profile?.studentId || profile?.shortId}
+                                />
+                                <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-black/40 text-zinc-300 border border-white/10">
+                                  #{profile?.studentId || profile?.shortId || '00000'}
+                                </span>
+                              </div>
+                              <p className="text-[11px] font-heading font-semibold text-amber-400/90 truncate">
+                                {previewItem?.name || 'Default Cover'}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Live Action Buttons */}
+                          {isViewingSelf && !isPublicMode && (
+                            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto pb-1">
+                              {isCurrentlyEquipped ? (
+                                <div className="flex items-center gap-2">
+                                  <span className="px-3 py-1.5 rounded-xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 font-mono text-xs font-bold flex items-center gap-1.5 shadow-xs">
+                                    <CheckCircle2 size={14} />
+                                    <span>Equipped</span>
+                                  </span>
+                                  <button
+                                    disabled={equippingBannerId === 'none'}
+                                    onClick={() => handleEquipBanner(null)}
+                                    className="px-3 py-1.5 rounded-xl border border-[var(--border)] hover:bg-[var(--card)] text-xs text-red-400 font-heading font-semibold transition-colors cursor-pointer"
+                                  >
+                                    Revert to Default
+                                  </button>
+                                </div>
+                              ) : isOwned ? (
+                                <button
+                                  disabled={equippingBannerId === activePreviewId}
+                                  onClick={() => handleEquipBanner(activePreviewId)}
+                                  className="btn-red text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 shadow-md cursor-pointer hover:scale-[1.02] transition-transform"
+                                >
+                                  {equippingBannerId === activePreviewId ? (
+                                    <span>Equipping...</span>
+                                  ) : (
+                                    <>
+                                      <CheckCircle2 size={14} />
+                                      <span>Equip to Profile</span>
+                                    </>
+                                  )}
+                                </button>
+                              ) : (
+                                <div className="flex items-center gap-2">
+                                  {previewItem && (
+                                    <button
+                                      disabled={equippingBannerId === activePreviewId}
+                                      onClick={() => handlePurchaseBanner(previewItem)}
+                                      className="btn-red text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 shadow-md cursor-pointer hover:scale-[1.02] transition-transform"
+                                    >
+                                      <KobanIcon size={14} />
+                                      <span>Unlock ({previewItem.priceKobans} Kobans)</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => navigate('/store')}
+                                    className="px-3 py-2 rounded-xl border border-[var(--border)] hover:bg-[var(--card)] text-xs font-heading font-semibold transition-colors cursor-pointer"
+                                  >
+                                    View in Store
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Description & Story */}
+                      {previewItem && (
+                        <div className="p-3 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <span className="font-heading font-bold text-[var(--text)] mr-2">
+                              {previewItem.name}:
+                            </span>
+                            <span className="text-[var(--muted)]">{previewItem.description}</span>
+                          </div>
+                          <span className="font-mono text-[11px] text-amber-500 font-bold shrink-0">
+                            {previewItem.priceKobans} Kobans
+                          </span>
+                        </div>
                       )}
                     </div>
-                  )}
-                </div>
 
-                {/* 2. Banner */}
-                <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] overflow-hidden shrink-0">
-                      <DefaultDotMatrixBanner accentColor={accentColor} />
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Banner Art</span>
-                      <span className="font-heading font-semibold text-xs text-[var(--text)]">
-                        {getCosmeticById(profile?.banner || '')?.name || 'Dot-Matrix Pattern'}
-                      </span>
+                    {/* ── 2. FILTER PILLS & 12 BANNERS CATALOG ── */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-xs font-heading font-bold text-[var(--text)]">
+                          Select a Banner ({filteredBanners.length})
+                        </span>
+
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {[
+                            { id: 'all' as const, label: 'All 12' },
+                            { id: 'static' as const, label: 'Static (6)' },
+                            { id: 'animated' as const, label: 'Animated (6)' },
+                            {
+                              id: 'owned' as const,
+                              label: `Owned (${
+                                catalogBanners.filter((b) => (ownedCosmetics || []).includes(b.id)).length
+                              })`,
+                            },
+                          ].map((f) => (
+                            <button
+                              key={f.id}
+                              onClick={() => setBannerFilter(f.id)}
+                              className={`px-2.5 py-1 rounded-lg text-xs font-heading font-semibold transition-colors cursor-pointer ${
+                                bannerFilter === f.id
+                                  ? 'bg-[var(--text)] text-[var(--bg)] font-bold'
+                                  : 'border border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]'
+                              }`}
+                            >
+                              {f.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Grid of Banners */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {filteredBanners.map((banner) => {
+                          const isSelected = activePreviewId === banner.id;
+                          const isEquipped = (profile?.banner || ownEquipped?.banner) === banner.id;
+                          const userOwns = (ownedCosmetics || []).includes(banner.id);
+
+                          return (
+                            <div
+                              key={banner.id}
+                              onClick={() => setSelectedBannerPreviewId(banner.id)}
+                              className={`p-3 rounded-2xl bg-[var(--card)] border transition-all cursor-pointer group flex flex-col justify-between gap-2.5 ${
+                                isSelected
+                                  ? 'border-amber-500 shadow-[0_0_16px_rgba(245,158,11,0.25)] ring-1 ring-amber-500/50'
+                                  : isEquipped
+                                  ? 'border-emerald-500/80 shadow-[0_0_12px_rgba(16,185,129,0.2)]'
+                                  : banner.rarity === 'legendary'
+                                  ? 'border-amber-500/40 hover:border-amber-400'
+                                  : banner.rarity === 'epic'
+                                  ? 'border-purple-500/35 hover:border-purple-400'
+                                  : banner.rarity === 'rare'
+                                  ? 'border-blue-500/30 hover:border-blue-400'
+                                  : 'border-[var(--border)] hover:border-teal-500/40'
+                              }`}
+                            >
+                              {/* Rarity & Badges */}
+                              <div className="flex items-center justify-between text-[10px] font-mono">
+                                <span
+                                  className={`uppercase font-bold ${
+                                    banner.rarity === 'legendary'
+                                      ? 'text-amber-400'
+                                      : banner.rarity === 'epic'
+                                      ? 'text-purple-400'
+                                      : banner.rarity === 'rare'
+                                      ? 'text-blue-400'
+                                      : 'text-teal-400'
+                                  }`}
+                                >
+                                  {banner.rarity}
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  {banner.animated && (
+                                    <span className="text-cyan-400 font-bold">✦ Animated</span>
+                                  )}
+                                  {isEquipped && (
+                                    <span className="text-emerald-400 font-bold flex items-center gap-0.5">
+                                      <CheckCircle2 size={11} /> Equipped
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Banner Thumbnail */}
+                              <div className="h-24 rounded-xl overflow-hidden border border-[var(--border)] relative bg-neutral-950 shadow-inner group-hover:scale-[1.02] transition-transform">
+                                <BannerRenderer
+                                  bannerId={banner.id}
+                                  animated={banner.animated}
+                                  className="w-full h-full"
+                                  showReadabilityOverlay={false}
+                                />
+                              </div>
+
+                              {/* Info */}
+                              <div>
+                                <h4 className="font-heading font-bold text-xs text-[var(--text)] group-hover:text-amber-400 transition-colors">
+                                  {banner.name}
+                                </h4>
+                                <p className="text-[10px] text-[var(--muted)] line-clamp-1 mt-0.5">
+                                  {banner.description}
+                                </p>
+                              </div>
+
+                              {/* Footer Action */}
+                              <div className="flex items-center justify-between pt-1 border-t border-[var(--border)] text-xs">
+                                <span className="font-mono text-[11px] font-bold text-[#E8A317]">
+                                  {userOwns ? 'Owned' : `${banner.priceKobans} Kobans`}
+                                </span>
+
+                                {isViewingSelf && !isPublicMode && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setSelectedBannerPreviewId(banner.id);
+                                      if (userOwns) {
+                                        handleEquipBanner(isEquipped ? null : banner.id);
+                                      } else {
+                                        handlePurchaseBanner(banner);
+                                      }
+                                    }}
+                                    className={`px-2.5 py-1 rounded-lg text-xs font-heading font-bold transition-all cursor-pointer ${
+                                      isEquipped
+                                        ? 'border border-[var(--border)] text-[var(--muted)] hover:text-white'
+                                        : userOwns
+                                        ? 'bg-amber-500 hover:bg-amber-400 text-black shadow-xs'
+                                        : 'btn-red text-[11px] py-1 px-2.5'
+                                    }`}
+                                  >
+                                    {isEquipped ? 'Unequip' : userOwns ? 'Equip' : 'Unlock'}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
-
-                  {isViewingSelf && !isPublicMode && (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => navigate('/store')}
-                        className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
-                      >
-                        Change
-                      </button>
-                      {profile?.banner && (
-                        <button
-                          onClick={() => handleUnequipItem('banner')}
-                          className="h-8 px-2 rounded-lg text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
-                        >
-                          Unequip
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* 3. Picture */}
-                <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
-                      <AvatarPicture avatarId={profile?.avatar} size={36} />
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Profile Picture</span>
-                      <span className="font-heading font-semibold text-xs text-[var(--text)]">
-                        {getCosmeticById(profile?.avatar || '')?.name || 'Dot-Matrix Avatar'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {isViewingSelf && !isPublicMode && (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => navigate('/store')}
-                        className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
-                      >
-                        Change
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* 4. Frame */}
-                <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
-                      <AvatarFrame itemId={profile?.frame || 'none'} size={40}>
-                        <div className="w-6 h-6 rounded-full bg-[var(--border)]" />
-                      </AvatarFrame>
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Avatar Frame</span>
-                      <span className="font-heading font-semibold text-xs text-[var(--text)]">
-                        {getCosmeticById(profile?.frame || '')?.name || 'Classic Border'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {isViewingSelf && !isPublicMode && (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => navigate('/store')}
-                        className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
-                      >
-                        Change
-                      </button>
-                      {profile?.frame && (
-                        <button
-                          onClick={() => handleUnequipItem('frame')}
-                          className="h-8 px-2 rounded-lg text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
-                        >
-                          Unequip
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* 5. Nameplate */}
-                <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-3 sm:col-span-2">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-center shrink-0">
-                      <Award size={20} className="text-amber-400" />
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Nameplate</span>
-                      <span className="font-heading font-semibold text-xs text-[var(--text)]">
-                        {getCosmeticById(profile?.nameplate || '')?.name || 'Standard Badge'}
-                      </span>
-                    </div>
-                  </div>
-
-                  {isViewingSelf && !isPublicMode && (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => navigate('/store')}
-                        className="h-8 px-2.5 rounded-lg border border-[var(--border)] text-xs font-heading font-semibold hover:bg-[var(--card)] transition-colors cursor-pointer"
-                      >
-                        Change
-                      </button>
-                      {profile?.nameplate && (
-                        <button
-                          onClick={() => handleUnequipItem('nameplate')}
-                          className="h-8 px-2 rounded-lg text-xs text-red-500 hover:bg-red-500/10 transition-colors cursor-pointer"
-                        >
-                          Unequip
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
+                );
+              })()}
             </div>
           )}
 
@@ -1311,13 +1752,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                       {effectivePlan.isUnlimited ? 'Active' : 'Free'}
                     </span>
                   </div>
-                  {effectivePlan.planExpiresAt && (
+                  {(effectivePlan as any).planExpiresAt && (
                     <span className="text-[11px] text-[var(--muted)] font-mono">
                       Expires:{' '}
                       {new Date(
-                        typeof effectivePlan.planExpiresAt === 'object' && 'seconds' in effectivePlan.planExpiresAt
-                          ? effectivePlan.planExpiresAt.seconds * 1000
-                          : effectivePlan.planExpiresAt
+                        typeof (effectivePlan as any).planExpiresAt === 'object' && 'seconds' in (effectivePlan as any).planExpiresAt
+                          ? (effectivePlan as any).planExpiresAt.seconds * 1000
+                          : (effectivePlan as any).planExpiresAt
                       ).toLocaleDateString()}
                     </span>
                   )}
@@ -1331,25 +1772,36 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </Link>
               </div>
 
-              {/* 3. Superadmin Access (Visible ONLY to superadmins) */}
+              {/* 3. Super Admin Controls (Visible ONLY to Super Admins) */}
               {isAdmin && (
-                <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-between gap-4">
+                <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <Shield size={20} className="text-red-500 shrink-0" />
                     <div className="flex flex-col">
-                      <span className="font-heading font-bold text-xs text-[var(--text)]">Superadmin Console</span>
+                      <span className="font-heading font-bold text-xs text-[var(--text)]">Super Admin Controls</span>
                       <span className="text-[11px] text-[var(--muted)]">
-                        Platform management, moderation queue & question bank
+                        Platform management, store pricing control, moderation &amp; question bank
                       </span>
                     </div>
                   </div>
 
-                  <Link
-                    to="/admin"
-                    className="h-10 px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-heading font-semibold transition-colors flex items-center justify-center shrink-0"
-                  >
-                    Open Admin Portal
-                  </Link>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setIsStorePricingOpen(true)}
+                      className="h-10 px-3.5 rounded-lg border border-red-500/50 hover:bg-red-500/20 text-red-400 text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <Tag size={14} />
+                      <span>Store Pricing</span>
+                    </button>
+
+                    <Link
+                      to="/admin"
+                      className="h-10 px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-heading font-semibold transition-colors flex items-center justify-center shrink-0"
+                    >
+                      Open Admin Portal
+                    </Link>
+                  </div>
                 </div>
               )}
 
@@ -1484,6 +1936,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               >
                 {followWorking ? 'Unfollowing...' : 'Unfollow'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Super Admin Store Pricing Control Modal ── */}
+      {isStorePricingOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
+          <div className="relative w-full max-w-5xl bg-[var(--bg)] border border-[var(--border)] rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col">
+            <div className="overflow-y-auto flex-1">
+              <StorePricingManager onBack={() => setIsStorePricingOpen(false)} isModal={true} />
             </div>
           </div>
         </div>

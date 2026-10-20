@@ -24,6 +24,7 @@ export interface WalletData {
     frame: string | null;
     nameplate: string | null;
     avatar: string | null;
+    banner: string | null;
   };
 }
 
@@ -37,15 +38,36 @@ export interface WalletData {
  */
 export async function purchaseCosmeticItem(
   userId: string,
-  item: CosmeticItem
+  item: CosmeticItem,
+  isSuperAdmin = false
 ): Promise<{ success: boolean; newBalance: number }> {
   if (!userId) throw new Error('You must be signed in to purchase cosmetics.');
   const walletRef = doc(db, 'wallets', userId);
+  const storeItemRef = doc(db, 'store_items', item.id);
 
   const newBalance = await runTransaction(db, async (tx) => {
+    // 1. Fetch wallet
     const snap = await tx.get(walletRef);
     if (!snap.exists()) {
       throw new Error('Wallet not initialized. Please refresh and try again.');
+    }
+
+    // 2. Fetch live store item price and active state
+    let effectivePrice = item.priceKobans;
+    const storeItemSnap = await tx.get(storeItemRef);
+    if (storeItemSnap.exists()) {
+      const sData = storeItemSnap.data();
+      if (sData.active === false && !isSuperAdmin) {
+        throw new Error(`"${item.name}" is currently inactive in the Boardly Store.`);
+      }
+      if (typeof sData.priceKobans === 'number') {
+        effectivePrice = Math.max(0, sData.priceKobans);
+      }
+    }
+
+    // Super Admin gets items free of charge
+    if (isSuperAdmin) {
+      effectivePrice = 0;
     }
 
     const data = snap.data();
@@ -56,23 +78,23 @@ export async function purchaseCosmeticItem(
       throw new Error(`You already own ${item.name}.`);
     }
 
-    if (currentBalance < item.priceKobans) {
+    if (currentBalance < effectivePrice) {
       throw new Error(
-        `Insufficient Kobans balance. You have ${currentBalance.toLocaleString()} Kobans, but ${item.name} costs ${item.priceKobans.toLocaleString()} Kobans.`
+        `Insufficient Kobans balance. You have ${currentBalance.toLocaleString()} Kobans, but ${item.name} costs ${effectivePrice.toLocaleString()} Kobans.`
       );
     }
 
-    const balanceAfter = currentBalance - item.priceKobans;
+    const balanceAfter = Math.max(0, currentBalance - effectivePrice);
     const updatedOwned = [...currentOwned, item.id];
 
-    // 1. Update wallet
+    // 3. Atomically update wallet
     tx.update(walletRef, {
       balance: balanceAfter,
       owned: updatedOwned,
       updatedAt: serverTimestamp(),
     });
 
-    // 2. Append ledger doc
+    // 4. Append immutable ledger document
     const ledgerEntryRef = doc(
       collection(db, 'wallets', userId, 'ledger'),
       `purchase_${item.id}_${Date.now()}`
@@ -81,11 +103,11 @@ export async function purchaseCosmeticItem(
     tx.set(ledgerEntryRef, {
       id: ledgerEntryRef.id,
       type: 'purchase',
-      amount: -item.priceKobans,
+      amount: -effectivePrice,
       balanceAfter,
       itemId: item.id,
       itemName: item.name,
-      reason: `Store purchase: ${item.name}`,
+      reason: isSuperAdmin ? `Super Admin unlock: ${item.name}` : `Store purchase: ${item.name}`,
       timestamp: serverTimestamp(),
     });
 
@@ -189,7 +211,7 @@ export async function approveKobanRequest(
     const walletSnap = await tx.get(walletRef);
     let curBalance = 0;
     let curOwned: string[] = [];
-    let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null };
+    let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null, banner: null };
 
     if (walletSnap.exists()) {
       const wData = walletSnap.data();

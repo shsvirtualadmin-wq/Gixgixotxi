@@ -13,6 +13,7 @@ interface CommonsSearchModalProps {
   onSelectPost: (post: CommonsPost) => void;
   onOpenComments: (post: CommonsPost) => void;
   onOpenReport: (post: CommonsPost) => void;
+  onOpenUserProfile?: (uid: string) => void;
 }
 
 export function CommonsSearchModal({

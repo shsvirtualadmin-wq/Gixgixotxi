@@ -18,6 +18,7 @@ import {
   Activity,
   Award,
   Coins,
+  Tag,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -42,6 +43,7 @@ const PRIMARY_NAV: AdminNavItem[] = [
 ];
 
 const SECONDARY_NAV: AdminNavItem[] = [
+  { to: '/admin/pricing', label: 'Store Pricing', icon: Tag },
   { to: '/admin/kobans', label: 'Kobans', icon: Coins },
   { to: '/admin/applications', label: 'Applications', icon: FileCheck2 },
   { to: '/admin/payments', label: 'Payments', icon: CreditCard },
@@ -135,7 +137,7 @@ export function AdminLayout() {
                 </p>
                 <div className="mt-0.5">
                   <span className="inline-block text-[10px] font-heading px-1.5 py-0.2 rounded-full border border-[var(--red)] text-[var(--red)]">
-                    {isSuperAdmin ? 'Superadmin' : 'Admin'}
+                    {isSuperAdmin ? 'Super Admin' : 'Admin'}
                   </span>
                 </div>
               </div>

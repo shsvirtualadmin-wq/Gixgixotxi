@@ -167,6 +167,9 @@ const AdminKobansPage = lazyWithRetry(() =>
 const AdminCommonsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminCommonsPage').then(m => ({ default: m.AdminCommonsPage }))
 );
+const AdminPricingPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminPricingPage').then(m => ({ default: m.AdminPricingPage }))
+);
 
 // Boardly Commons
 const CommonsFeedPage = lazyWithRetry(() =>
@@ -206,6 +209,7 @@ function AppInner() {
         >
           <Route index element={<AdminOverviewPage />} />
           <Route path="users" element={<AdminUsersPage />} />
+          <Route path="pricing" element={<AdminPricingPage />} />
           <Route path="questions" element={<AdminQuestionsPage />} />
           <Route path="applications" element={<AdminApplicationsPage />} />
           <Route path="payments" element={<AdminPaymentsPage />} />

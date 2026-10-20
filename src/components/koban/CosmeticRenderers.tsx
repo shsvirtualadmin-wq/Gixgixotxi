@@ -128,6 +128,8 @@ function useCosmeticAnimation(itemId: string, _isNameplate = false, forceStatic 
  * - Isolated within its own CosmeticErrorBoundary.
  */
 export interface AvatarPictureProps {
+  itemId?: string | null;
+  photoURL?: string | null;
   avatarId?: string | null;
   avatarKey?: string | null;
   avatarVariant?: string | null;
@@ -139,7 +141,9 @@ export interface AvatarPictureProps {
 }
 
 const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
-  avatarId,
+  itemId,
+  photoURL: _photoURL,
+  avatarId: directAvatarId,
   avatarKey,
   avatarVariant,
   variant,
@@ -148,6 +152,7 @@ const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
   className = '',
   forceStatic = false,
 }) => {
+  const avatarId = directAvatarId || itemId || null;
   const numericSize = typeof size === 'number' ? size : parseInt(String(size), 10) || 40;
   const effectiveVariant = variant || avatarVariant;
   const pfpItem = avatarId ? getCosmeticById(avatarId) : undefined;
