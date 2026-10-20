@@ -8,6 +8,7 @@ import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useTheme } from '@/hooks/useTheme';
 import { useWallet } from '@/hooks/useWallet';
 import { KobanChip } from '@/components/koban/KobanIcon';
+import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 interface Props {
@@ -42,7 +43,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   };
 
   const effectivePlan = useEffectivePlan();
-  const { balance: kobanBalance } = useWallet();
+  const { balance: kobanBalance, equipped } = useWallet();
   const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
   const cleanName = sanitizeStudentDisplayName(profile?.displayName || user?.displayName, profile?.shortId || user?.uid);
@@ -99,18 +100,17 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
           <button
             onClick={() => setMenuOpen(!menuOpen)}
             aria-label="User profile menu"
-            className="w-10 h-10 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-[var(--text)] font-semibold hover:border-[var(--red)] transition-colors cursor-pointer text-sm"
-            style={{ fontFamily: 'var(--font-heading)' }}
+            className="flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
           >
-            {user?.photoURL ? (
-              <img
-                src={user.photoURL}
-                alt="Profile"
-                className="w-full h-full rounded-full object-cover"
+            <AvatarFrame itemId={equipped?.frame || 'none'} size={42}>
+              <AvatarPicture
+                avatarId={equipped?.avatar}
+                avatarKey={profile?.avatarKey}
+                variant={profile?.avatarVariant}
+                seed={user?.uid}
+                size={34}
               />
-            ) : (
-              (cleanName[0] || 'S').toUpperCase()
-            )}
+            </AvatarFrame>
           </button>
 
           {/* Avatar Dropdown Menu */}
@@ -119,13 +119,22 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
               className="absolute right-0 mt-2 w-64 rounded-2xl bg-[var(--card)] border border-[var(--border)] p-2 shadow-xl z-50 flex flex-col gap-1"
             >
               {/* User summary header (No Email) */}
-              <div className="p-3 border-b border-[var(--border)]">
-                <div
-                  className="font-bold text-sm text-[var(--text)] truncate"
-                  style={{ fontFamily: 'var(--font-heading)' }}
-                >
-                  {cleanName}
-                </div>
+              <div className="p-3 border-b border-[var(--border)] space-y-1">
+                {equipped?.nameplate ? (
+                  <Nameplate
+                    itemId={equipped.nameplate}
+                    name={cleanName}
+                    shortId={profile?.shortId || (user?.uid ? user.uid.slice(0, 5) : '00000')}
+                    roleBadge={role === 'captain' ? 'CAPTAIN' : undefined}
+                  />
+                ) : (
+                  <div
+                    className="font-bold text-sm text-[var(--text)] truncate"
+                    style={{ fontFamily: 'var(--font-heading)' }}
+                  >
+                    {cleanName}
+                  </div>
+                )}
                 <div className="mt-1 flex items-center gap-1.5 flex-wrap">
                   <span
                     className={`badge-pill text-[11px] px-2 py-0.5 ${

@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom';
 import { collection, query, orderBy, limit, getDocs, doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useWallet } from '@/hooks/useWallet';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { Award, Users, Compass, ArrowRight } from 'lucide-react';
 
 interface LeaderboardItem {
@@ -17,6 +19,14 @@ interface LeaderboardItem {
   city?: string;
   score: number;
   streak?: number;
+  avatarKey?: string;
+  avatarVariant?: string;
+  equipped?: {
+    effect?: string | null;
+    frame?: string | null;
+    nameplate?: string | null;
+    avatar?: string | null;
+  };
 }
 
 interface CircleMember {
@@ -28,6 +38,7 @@ interface CircleMember {
 
 export function ArenaDashboardPage() {
   const { user, profile } = useAuth();
+  const { equipped: myEquipped } = useWallet();
   const [activeTab, setActiveTab] = useState<'leaderboard' | 'grandline' | 'circle'>('leaderboard');
 
   // Leaderboard State
@@ -44,11 +55,13 @@ export function ArenaDashboardPage() {
     let isMounted = true;
     async function fetchLeaderboardData() {
       try {
-        const q = query(collection(db, 'users'), orderBy('score', 'desc'), limit(15));
-        const snap = await getDocs(q);
+        let snap = await getDocs(query(collection(db, 'publicProfiles'), orderBy('publicStats.score', 'desc'), limit(15))).catch(() => null);
+        if (!snap || snap.empty) {
+          snap = await getDocs(query(collection(db, 'users'), orderBy('score', 'desc'), limit(15))).catch(() => null);
+        }
         if (!isMounted) return;
 
-        if (!snap.empty) {
+        if (snap && !snap.empty) {
           const items: LeaderboardItem[] = snap.docs.map((d) => {
             const data = d.data();
             return {
@@ -57,8 +70,11 @@ export function ArenaDashboardPage() {
               displayName: data.displayName || data.name || 'Anonymous Student',
               university: data.targetUniversity || 'Top Tier University',
               city: data.city || 'Pakistan',
-              score: typeof data.score === 'number' ? data.score : 0,
-              streak: typeof data.streak === 'number' ? data.streak : 0,
+              score: typeof data.publicStats?.score === 'number' ? data.publicStats.score : (typeof data.score === 'number' ? data.score : 0),
+              streak: typeof data.publicStats?.streak === 'number' ? data.publicStats.streak : (typeof data.streak === 'number' ? data.streak : 0),
+              avatarKey: data.avatarKey,
+              avatarVariant: data.avatarVariant,
+              equipped: data.equipped,
             };
           });
           setLeaderboard(items);
@@ -230,14 +246,35 @@ export function ArenaDashboardPage() {
                         {rankNum}
                       </span>
 
-                      <div className="truncate">
+                      {/* Avatar Picture inside Avatar Frame */}
+                      <div className="shrink-0">
+                        <AvatarFrame itemId={(isCurrentUser ? myEquipped?.frame : item.equipped?.frame) || 'none'} size={44}>
+                          <AvatarPicture
+                            avatarId={isCurrentUser ? myEquipped?.avatar : item.equipped?.avatar}
+                            avatarKey={item.avatarKey || (isCurrentUser ? profile?.avatarKey : undefined)}
+                            variant={item.avatarVariant || (isCurrentUser ? profile?.avatarVariant : undefined)}
+                            seed={item.uid}
+                            size={34}
+                          />
+                        </AvatarFrame>
+                      </div>
+
+                      <div className="truncate min-w-0">
                         <div className="flex items-center gap-2">
-                          <span
-                            className="text-xs sm:text-sm font-bold text-[var(--text)] truncate"
-                            style={{ fontFamily: 'var(--font-heading)' }}
-                          >
-                            {item.displayName}
-                          </span>
+                          {(isCurrentUser ? myEquipped?.nameplate : item.equipped?.nameplate) ? (
+                            <Nameplate
+                              itemId={(isCurrentUser ? myEquipped?.nameplate : item.equipped?.nameplate)!}
+                              name={item.displayName}
+                              shortId={item.uid.slice(0, 5)}
+                            />
+                          ) : (
+                            <span
+                              className="text-xs sm:text-sm font-bold text-[var(--text)] truncate"
+                              style={{ fontFamily: 'var(--font-heading)' }}
+                            >
+                              {item.displayName}
+                            </span>
+                          )}
                           {isCurrentUser && (
                             <span className="badge-pill-red text-[10px] px-2 py-0.5 shrink-0">
                               You

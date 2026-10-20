@@ -55,13 +55,14 @@ export interface UserProfile {
   equipped?: EquippedCosmetics;
 }
 
-export type CosmeticType = 'effect' | 'frame' | 'nameplate';
+export type CosmeticType = 'effect' | 'frame' | 'nameplate' | 'avatar';
 export type CosmeticRarity = 'common' | 'rare' | 'epic' | 'legendary';
 
 export interface EquippedCosmetics {
   effect?: string | null;
   frame?: string | null;
   nameplate?: string | null;
+  avatar?: string | null;
 }
 
 /**

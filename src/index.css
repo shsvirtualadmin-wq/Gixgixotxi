@@ -674,4 +674,17 @@ body,
   }
 }
 
+/* ===== KOBAN COSMETICS KEYFRAMES (Transform and Opacity only) ===== */
+@keyframes koban-flame-flicker {
+  0%, 100% {
+    opacity: 0.95;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.52;
+    transform: scale(1.03);
+  }
+}
+
+
 

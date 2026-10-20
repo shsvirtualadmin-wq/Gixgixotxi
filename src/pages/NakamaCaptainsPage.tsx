@@ -62,6 +62,12 @@ const PERKS_AND_POWERS = [
     desc: 'Prominent featured standings across Pakistan on the official Captain and Crew Leaderboards, showcasing your squad reach and test records.',
     glow: 'rgba(234, 179, 8, 0.25)',
   },
+  {
+    icon: <Sparkles className="text-[#FFD66B]" size={24} />,
+    title: '5,000 Monthly Kobans Allotment',
+    desc: 'Discretionary leadership allowance of 5,000 Kobans credited every calendar month to unlock cosmetic avatar frames, nameplates, and aura effects in the Boardly Store (non-cash, requires active Captain status).',
+    glow: 'rgba(232, 163, 23, 0.25)',
+  },
 ];
 
 const FOUR_STEPS = [

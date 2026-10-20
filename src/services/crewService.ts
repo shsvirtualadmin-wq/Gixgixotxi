@@ -92,10 +92,35 @@ export async function fetchCrewDetails(crewId: string): Promise<CrewDoc | null> 
     const snap = await getDoc(doc(db, 'crews', crewId));
     if (!snap.exists()) return null;
     const data = snap.data() as CrewDoc;
+
+    // Enrich members with publicProfiles data (equipped cosmetics, avatarKey, avatarVariant)
+    let enrichedMembers = data.members;
+    if (Array.isArray(data.members) && data.members.length > 0) {
+      const memberPromises = data.members.map(async (m) => {
+        try {
+          const pSnap = await getDoc(doc(db, 'publicProfiles', m.uid));
+          if (pSnap.exists()) {
+            const pData = pSnap.data();
+            return {
+              ...m,
+              avatarKey: pData.avatarKey || m.avatarKey,
+              avatarVariant: pData.avatarVariant || m.avatarVariant,
+              equipped: pData.equipped || m.equipped,
+            };
+          }
+        } catch {
+          // Keep member unchanged on error
+        }
+        return m;
+      });
+      enrichedMembers = await Promise.all(memberPromises);
+    }
+
     return {
       ...data,
       id: snap.id,
       score: computeCrewScore(data),
+      members: enrichedMembers,
     };
   } catch (err) {
     console.error('[CrewService] fetchCrewDetails error:', err);

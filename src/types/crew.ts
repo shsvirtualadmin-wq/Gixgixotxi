@@ -41,6 +41,12 @@ export interface CrewMember {
   avatarKey?: string;
   avatarVariant?: string;
   isPro?: boolean;
+  equipped?: {
+    effect?: string | null;
+    frame?: string | null;
+    nameplate?: string | null;
+    avatar?: string | null;
+  };
 }
 
 export interface CrewDoc {

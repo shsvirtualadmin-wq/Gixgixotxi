@@ -100,11 +100,14 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto"
+      className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md overflow-hidden"
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-lg bg-[var(--card)] border border-[var(--border)] rounded-3xl p-5 sm:p-7 shadow-2xl space-y-6 my-auto text-[var(--text)]">
+      <div className="relative w-full max-w-lg bg-[var(--card)] border border-[var(--border)] rounded-t-[28px] sm:rounded-3xl p-5 sm:p-7 shadow-2xl space-y-5 my-0 sm:my-auto text-[var(--text)] max-h-[94vh] sm:max-h-[90vh] overflow-y-auto animate-in fade-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200">
+        {/* Mobile Drag Indicator */}
+        <div className="sm:hidden w-10 h-1 bg-[var(--border)] rounded-full mx-auto -mt-1 mb-2 pointer-events-none" />
+
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
           <div className="flex items-center gap-2.5">

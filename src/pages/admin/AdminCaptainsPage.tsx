@@ -261,9 +261,92 @@ export function AdminCaptainsPage() {
           )}
         </div>
       ) : (
-        <div className="rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+        <div>
+          {/* Mobile Stacked Cards Layout (< md) */}
+          <div className="block md:hidden space-y-3">
+            {filteredCaptains.map((c) => {
+              const st = allotmentStatuses[c.captainUid];
+              const isGranted = Boolean(st?.granted);
+              return (
+                <div
+                  key={c.captainUid}
+                  className="p-4 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-3 shadow-xs"
+                >
+                  {/* Name & Email (Superadmin only) */}
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-heading font-bold text-sm text-[var(--text)] truncate">
+                        {c.captainName}
+                      </div>
+                      <div className="text-[11px] text-[var(--muted)] font-mono truncate">
+                        {c.captainEmail}
+                      </div>
+                      <div className="text-[11px] text-[var(--muted)] truncate">
+                        {c.targetUniversity || 'General Campus'}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="font-heading font-bold text-base text-[var(--text)]">
+                        {c.totalReferrals}
+                      </span>
+                      <span className="text-[10px] text-[var(--muted)] block">referrals</span>
+                      <span className="text-[10px] text-amber-400 font-mono">+{c.bonusWeeksEarned} wks</span>
+                    </div>
+                  </div>
+
+                  {/* Allotment Status & Referral Code */}
+                  <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1.5 font-mono text-[11px] truncate">
+                      <span className="text-[var(--muted)]">Code:</span>
+                      <span className="font-bold text-[var(--text)]">
+                        {c.captainCode || `#${c.captainShortId}`}
+                      </span>
+                    </div>
+                    <div className="text-[11px] shrink-0">
+                      {isGranted ? (
+                        <span className="text-emerald-400 font-bold flex items-center gap-1">
+                          ✓ Granted ({currentMonthLabel})
+                        </span>
+                      ) : (
+                        <span className="text-amber-400 font-bold">Pending ({currentMonthLabel})</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Action Buttons: Full-width single-line Grant button */}
+                  {!isGranted ? (
+                    <button
+                      type="button"
+                      disabled={grantingId === c.captainUid}
+                      onClick={() => handleGrantSingle(c)}
+                      className="btn-red w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm cursor-pointer whitespace-nowrap disabled:opacity-50"
+                    >
+                      {grantingId === c.captainUid ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <KobanIcon size={14} />
+                      )}
+                      <span>Grant 5,000 Kobans</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCaptain(c)}
+                      className="w-full py-2 px-3 rounded-xl bg-[var(--surface-2)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs font-semibold text-[var(--text)] flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Eye size={13} />
+                      <span>View Referrals &amp; Activity</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop Table View (>= md) */}
+          <div className="hidden md:block rounded-2xl border border-[var(--border)] bg-[var(--card)] overflow-hidden shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
               <thead className="bg-[var(--surface-2)] border-b border-[var(--border)] text-[var(--muted)] font-heading">
                 <tr>
                   <th className="px-4 py-3 font-semibold">Captain</th>
@@ -380,6 +463,7 @@ export function AdminCaptainsPage() {
             </table>
           </div>
         </div>
+      </div>
       )}
 
       {/* Grant All Modal */}

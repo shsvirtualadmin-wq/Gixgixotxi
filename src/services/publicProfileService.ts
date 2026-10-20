@@ -49,6 +49,7 @@ export async function syncPublicProfile(
       effect: null,
       frame: null,
       nameplate: null,
+      avatar: null,
     },
     publicStats: {
       streak: Number(profileData.streak || 0),
@@ -191,6 +192,30 @@ export async function backfillAllPublicProfiles(): Promise<{ totalUsers: number;
         shortCode
       );
 
+      let userEquipped: PublicProfile['equipped'] = {
+        effect: data.equipped?.effect || null,
+        frame: data.equipped?.frame || null,
+        nameplate: data.equipped?.nameplate || null,
+        avatar: data.equipped?.avatar || null,
+      };
+
+      try {
+        const wSnap = await getDoc(doc(db, 'wallets', uid));
+        if (wSnap.exists()) {
+          const wData = wSnap.data();
+          if (wData.equipped) {
+            userEquipped = {
+              effect: wData.equipped.effect ?? userEquipped.effect,
+              frame: wData.equipped.frame ?? userEquipped.frame,
+              nameplate: wData.equipped.nameplate ?? userEquipped.nameplate,
+              avatar: wData.equipped.avatar ?? userEquipped.avatar,
+            };
+          }
+        }
+      } catch {
+        // Fallback to data.equipped
+      }
+
       const publicDocRef = doc(db, 'publicProfiles', uid);
       const publicData: PublicProfile = {
         uid,
@@ -202,11 +227,7 @@ export async function backfillAllPublicProfiles(): Promise<{ totalUsers: number;
         crewName: data.crewName || null,
         role: data.role || 'student',
         shortId: shortCode,
-        equipped: data.equipped || {
-          effect: null,
-          frame: null,
-          nameplate: null,
-        },
+        equipped: userEquipped,
         publicStats: {
           streak: Number(data.streak || 0),
           score: Number(data.score || 0),

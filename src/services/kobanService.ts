@@ -23,6 +23,7 @@ export interface WalletData {
     effect: string | null;
     frame: string | null;
     nameplate: string | null;
+    avatar: string | null;
   };
 }
 
@@ -188,7 +189,7 @@ export async function approveKobanRequest(
     const walletSnap = await tx.get(walletRef);
     let curBalance = 0;
     let curOwned: string[] = [];
-    let curEquipped = { effect: null, frame: null, nameplate: null };
+    let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null };
 
     if (walletSnap.exists()) {
       const wData = walletSnap.data();
@@ -315,7 +316,7 @@ export async function adminAdjustKobans(
     const snap = await tx.get(walletRef);
     let curBalance = 0;
     let curOwned: string[] = [];
-    let curEquipped = { effect: null, frame: null, nameplate: null };
+    let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null };
 
     if (snap.exists()) {
       const wData = snap.data();
@@ -397,7 +398,7 @@ export function getCurrentPktMonth(): { key: string; label: string } {
   const year = pktDate.getUTCFullYear();
   const month = pktDate.getUTCMonth(); // 0-indexed
   const monthStr = String(month + 1).padStart(2, '0');
-  const key = `${year}_${monthStr}`;
+  const key = `${year}-${monthStr}`;
 
   const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
@@ -411,7 +412,7 @@ export function getCurrentPktMonth(): { key: string; label: string } {
 /**
  * Checks whether an approved Nakama Captain has already received their 5,000 Kobans allotment
  * for the current PKT month.
- * Idempotent ledger doc ID: captain_allotment_<uid>_<YYYY_MM>
+ * Idempotent ledger doc ID: captain_allotment_<uid>_<YYYY-MM>
  */
 export async function getCaptainAllotmentStatus(captainUid: string): Promise<{
   granted: boolean;
@@ -430,6 +431,18 @@ export async function getCaptainAllotmentStatus(captainUid: string): Promise<{
       const sec = (data.timestamp as { seconds?: number })?.seconds;
       const date = sec ? new Date(sec * 1000) : new Date();
       return { granted: true, date, monthKey, monthLabel };
+    }
+
+    // Fallback check for underscore format if previously created
+    const altDocId = `captain_allotment_${captainUid}_${monthKey.replace('-', '_')}`;
+    if (altDocId !== docId) {
+      const altSnap = await getDoc(doc(db, 'wallets', captainUid, 'ledger', altDocId));
+      if (altSnap.exists()) {
+        const data = altSnap.data();
+        const sec = (data.timestamp as { seconds?: number })?.seconds;
+        const date = sec ? new Date(sec * 1000) : new Date();
+        return { granted: true, date, monthKey, monthLabel };
+      }
     }
   } catch (err) {
     console.warn('[kobanService] getCaptainAllotmentStatus error:', err);
@@ -465,7 +478,7 @@ export async function grantCaptainMonthlyAllotment(
     const walletSnap = await tx.get(walletRef);
     let curBalance = 0;
     let curOwned: string[] = [];
-    let curEquipped = { effect: null, frame: null, nameplate: null };
+    let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null };
 
     if (walletSnap.exists()) {
       const wData = walletSnap.data();

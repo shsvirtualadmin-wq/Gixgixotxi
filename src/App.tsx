@@ -61,6 +61,7 @@ const PrivacyPage = lazyWithRetry(() => import('./pages/PrivacyPage'));
 const TermsPage = lazyWithRetry(() => import('./pages/TermsPage'));
 const ContactPage = lazyWithRetry(() => import('./pages/ContactPage'));
 const StorePage = lazyWithRetry(() => import('./pages/store/StorePage'));
+const KobansPage = lazyWithRetry(() => import('./pages/KobansPage'));
 
 // Auth pages (lazy with retry) — use AuthLayout ONLY, NO public Navbar or Footer
 const LoginPage = lazyWithRetry(() => import('./pages/LoginPage'));
@@ -281,6 +282,8 @@ function AppInner() {
           <Route path="/contact" element={<ContactPage />} />
           <Route path="/store" element={<StorePage />} />
           <Route path="/store/get-kobans" element={<StorePage />} />
+          <Route path="/kobans" element={<KobansPage />} />
+          <Route path="/about-kobans" element={<Navigate to="/kobans" replace />} />
         </Route>
 
         {/* Global Catch-all fallback: redirect unknown routes to home page */}

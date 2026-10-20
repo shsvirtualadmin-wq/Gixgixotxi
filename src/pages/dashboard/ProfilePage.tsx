@@ -16,8 +16,16 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react';
-import { MatrixAvatar, AvatarPicker } from '@/lib/matrixAvatars';
+import { AvatarPicker } from '@/lib/matrixAvatars';
 import { getDefaultAvatar, type MatrixAvatarVariant } from '@/lib/matrixAvatarsData';
+import { useWallet } from '@/hooks/useWallet';
+import {
+  AvatarPicture,
+  AvatarFrame,
+  Nameplate,
+  ProfileCardEffect,
+} from '@/components/koban/CosmeticRenderers';
+import { KobanIcon } from '@/components/koban/KobanIcon';
 
 export function ProfilePage() {
   const { user, isAdmin } = useAuth();
@@ -47,6 +55,7 @@ export function ProfilePage() {
   const currentAvatarVariant = ((profile?.avatarVariant as MatrixAvatarVariant) || defaultAvatar.variant);
 
   const effectivePlan = useEffectivePlan();
+  const { equipped, balance } = useWallet();
   const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || (isAdmin ? 'superadmin' : 'student');
   const rawName =
@@ -120,21 +129,27 @@ export function ProfilePage() {
       </div>
 
       {/* ── Primary Profile Card ───────────────────────────────────── */}
-      <Card className="p-6">
-        <div className="flex items-start justify-between flex-wrap gap-4">
+      <Card className="p-6 relative overflow-hidden">
+        {/* Profile Effect: plays 3-4s when profile opens, then fades */}
+        <ProfileCardEffect itemId={equipped.effect} />
+
+        <div className="flex items-start justify-between flex-wrap gap-4 relative z-10">
           <div className="flex items-center gap-4">
             <div className="relative group shrink-0">
-              <MatrixAvatar
-                avatarKey={profile?.avatarKey}
-                variant={profile?.avatarVariant}
-                seed={user?.uid}
-                size={64}
-                className="cursor-pointer shadow-md hover:ring-2 hover:ring-[var(--red)] transition-all"
-              />
+              <AvatarFrame itemId={equipped.frame || 'none'} size={74}>
+                <AvatarPicture
+                  avatarId={equipped.avatar}
+                  avatarKey={profile?.avatarKey}
+                  variant={profile?.avatarVariant}
+                  seed={user?.uid}
+                  size={58}
+                  className="cursor-pointer shadow-md hover:ring-2 hover:ring-[var(--red)] transition-all"
+                />
+              </AvatarFrame>
               <button
                 type="button"
                 onClick={() => setIsPickingAvatar(true)}
-                className="absolute -bottom-1 -right-1 bg-[#D71921] hover:bg-[#b0131a] text-white p-1 rounded-full text-[10px] shadow-sm transition-transform hover:scale-110"
+                className="absolute -bottom-1 -right-1 bg-[#D71921] hover:bg-[#b0131a] text-white p-1 rounded-full text-[10px] shadow-sm transition-transform hover:scale-110 z-20"
                 title="Change matrix avatar"
               >
                 <Edit3 size={11} />
@@ -168,6 +183,28 @@ export function ProfilePage() {
                     Cancel
                   </Button>
                 </form>
+              ) : equipped.nameplate ? (
+                <div className="flex items-center gap-2">
+                  <CosmeticNameplate
+                    itemId={equipped.nameplate}
+                    name={rawName}
+                    shortId={profile?.shortId || (user?.uid ? user.uid.slice(0, 5) : '00000')}
+                    roleBadge={role === 'captain' ? 'CAPTAIN' : undefined}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleStartEditName}
+                    className="text-[var(--muted)] hover:text-[var(--text)] p-1 rounded-md transition-colors"
+                    title="Edit display name"
+                  >
+                    <Edit3 size={14} />
+                  </button>
+                  {saveSuccess && (
+                    <span className="text-xs text-emerald-400 flex items-center gap-1 font-heading">
+                      <CheckCircle2 size={13} /> Saved
+                    </span>
+                  )}
+                </div>
               ) : (
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-bold font-heading text-[var(--text)]">
@@ -188,8 +225,15 @@ export function ProfilePage() {
                   )}
                 </div>
               )}
-              <p className="text-xs text-[var(--muted)] mt-0.5">{user?.email || 'No email'}</p>
               <div className="flex items-center gap-2 mt-2">
+                <Link
+                  to="/store"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[var(--surface-2)] border border-[rgba(232,163,23,0.35)] hover:border-[#E8A317] text-[11px] font-mono text-[#FFD66B] transition-colors"
+                >
+                  <KobanIcon size={12} />
+                  <span>{balance.toLocaleString()} Kobans</span>
+                  <span className="text-[var(--muted)]">• Store</span>
+                </Link>
                 <span
                   className={`text-[10px] uppercase font-bold font-heading px-2 py-0.5 rounded-full border ${
                     role === 'superadmin' || role === 'admin'

@@ -20,10 +20,13 @@ import { Logo } from '@/components/ui/Logo';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 import { useTheme } from '@/hooks/useTheme';
+import { useWallet } from '@/hooks/useWallet';
+import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 
 export function DashboardSidebar() {
   const { isAdmin, signOutUser } = useAuth();
   const { user, profile } = useUserProfile();
+  const { equipped } = useWallet();
   const navigate = useNavigate();
   const effectivePlan = useEffectivePlan();
 
@@ -232,23 +235,32 @@ export function DashboardSidebar() {
 
       {/* Footer: User summary, Theme Toggle & Sign Out */}
       <div className="p-3 border-t border-[var(--border)] bg-[var(--card)] flex flex-col gap-2">
-        <div className="flex items-center gap-2.5 p-2 rounded-xl bg-[var(--card-2)] border border-[var(--border)]">
-          <div className="w-8 h-8 rounded-full bg-[var(--surface-hover)] border border-[var(--border)] flex items-center justify-center font-bold text-xs text-[var(--text)] shrink-0">
-            {user?.photoURL ? (
-              <img
-                src={user.photoURL}
-                alt="Avatar"
-                className="w-full h-full rounded-full object-cover"
+        <div className="flex items-center gap-2.5 p-2 rounded-xl bg-[var(--card-2)] border border-[var(--border)] overflow-hidden">
+          <div className="shrink-0">
+            <AvatarFrame itemId={equipped?.frame || 'none'} size={38}>
+              <AvatarPicture
+                avatarId={equipped?.avatar}
+                avatarKey={profile?.avatarKey}
+                variant={profile?.avatarVariant}
+                seed={user?.uid}
+                size={30}
               />
-            ) : (
-              initial
-            )}
+            </AvatarFrame>
           </div>
           <div className="min-w-0 flex-1">
-            <p className="font-heading font-semibold text-xs text-[var(--text)] truncate">
-              {displayName}
-            </p>
-            <p className="font-heading text-[10px] text-[var(--muted)] truncate">
+            {equipped?.nameplate ? (
+              <Nameplate
+                itemId={equipped.nameplate}
+                name={displayName}
+                shortId={profile?.shortId || (user?.uid ? user.uid.slice(0, 5) : '00000')}
+                roleBadge={profile?.role === 'captain' ? 'CAPTAIN' : undefined}
+              />
+            ) : (
+              <p className="font-heading font-semibold text-xs text-[var(--text)] truncate">
+                {displayName}
+              </p>
+            )}
+            <p className="font-heading text-[10px] text-[var(--muted)] truncate mt-0.5">
               {isPro ? 'Pro Member' : 'Free Starter'}
             </p>
           </div>

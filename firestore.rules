@@ -107,7 +107,17 @@ service cloud.firestore {
         !('phone' in request.resource.data) &&
         !('payments' in request.resource.data) &&
         !('paid_until' in request.resource.data) &&
-        !('billing' in request.resource.data)
+        !('billing' in request.resource.data) &&
+        (!('equipped' in request.resource.data) ||
+          request.resource.data.equipped == null ||
+          !exists(/databases/$(database)/documents/wallets/$(userId)) ||
+          (
+            (request.resource.data.equipped.effect == null || request.resource.data.equipped.effect in get(/databases/$(database)/documents/wallets/$(userId)).data.owned) &&
+            (request.resource.data.equipped.frame == null || request.resource.data.equipped.frame in get(/databases/$(database)/documents/wallets/$(userId)).data.owned) &&
+            (request.resource.data.equipped.nameplate == null || request.resource.data.equipped.nameplate in get(/databases/$(database)/documents/wallets/$(userId)).data.owned) &&
+            (!('avatar' in request.resource.data.equipped) || request.resource.data.equipped.avatar == null || request.resource.data.equipped.avatar in get(/databases/$(database)/documents/wallets/$(userId)).data.owned)
+          )
+        )
       );
 
       allow delete: if isSuperAdmin();
@@ -133,7 +143,8 @@ service cloud.firestore {
         (!('equipped' in request.resource.data) || (
           (request.resource.data.equipped.effect == null || request.resource.data.equipped.effect in request.resource.data.owned) &&
           (request.resource.data.equipped.frame == null || request.resource.data.equipped.frame in request.resource.data.owned) &&
-          (request.resource.data.equipped.nameplate == null || request.resource.data.equipped.nameplate in request.resource.data.owned)
+          (request.resource.data.equipped.nameplate == null || request.resource.data.equipped.nameplate in request.resource.data.owned) &&
+          (!('avatar' in request.resource.data.equipped) || request.resource.data.equipped.avatar == null || request.resource.data.equipped.avatar in request.resource.data.owned)
         ))
       );
 
@@ -146,7 +157,8 @@ service cloud.firestore {
           request.resource.data.type == 'purchase' &&
           request.resource.data.amount < 0
         );
-        allow update, delete: if isSuperAdmin();
+        allow update: if false;
+        allow delete: if isSuperAdmin();
       }
     }
 

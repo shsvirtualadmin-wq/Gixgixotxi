@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { doc, onSnapshot, setDoc, serverTimestamp, runTransaction } from 'firebase/firestore';
+import { doc, getDoc, setDoc, serverTimestamp, runTransaction } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { syncPublicProfile } from '@/services/publicProfileService';
@@ -19,15 +19,73 @@ const DEFAULT_WALLET: WalletDoc = {
     effect: null,
     frame: null,
     nameplate: null,
+    avatar: null,
   },
 };
 
+// Module-level in-memory session cache: Read the wallet once per session per user
+const sessionWalletCache: { [uid: string]: WalletDoc } = {};
+
 export function useWallet() {
   const { user } = useAuth();
-  const [wallet, setWallet] = useState<WalletDoc>(DEFAULT_WALLET);
-  const [loading, setLoading] = useState<boolean>(Boolean(user?.uid));
+  const initialWallet = user?.uid && sessionWalletCache[user.uid]
+    ? sessionWalletCache[user.uid]
+    : DEFAULT_WALLET;
+
+  const [wallet, setWallet] = useState<WalletDoc>(initialWallet);
+  const [loading, setLoading] = useState<boolean>(Boolean(user?.uid && !sessionWalletCache[user.uid]));
   const walletRef = useRef(wallet);
   walletRef.current = wallet;
+
+  const fetchWallet = useCallback(async (uid: string, forceRefresh = false) => {
+    // If already read once this session and not forced, reuse session cache
+    if (!forceRefresh && sessionWalletCache[uid]) {
+      setWallet(sessionWalletCache[uid]);
+      setLoading(false);
+      return sessionWalletCache[uid];
+    }
+
+    setLoading(true);
+    const walletDocRef = doc(db, 'wallets', uid);
+
+    try {
+      const snap = await getDoc(walletDocRef);
+      if (snap.exists()) {
+        const data = snap.data() as Partial<WalletDoc>;
+        const cleanWallet: WalletDoc = {
+          balance: typeof data.balance === 'number' ? Math.max(0, Math.floor(data.balance)) : 0,
+          owned: Array.isArray(data.owned) ? data.owned : [],
+          equipped: {
+            effect: data.equipped?.effect ?? null,
+            frame: data.equipped?.frame ?? null,
+            nameplate: data.equipped?.nameplate ?? null,
+            avatar: data.equipped?.avatar ?? null,
+          },
+          updatedAt: data.updatedAt,
+        };
+        sessionWalletCache[uid] = cleanWallet;
+        setWallet(cleanWallet);
+        return cleanWallet;
+      } else {
+        // Initialize empty wallet document for new user
+        const initial: WalletDoc = {
+          balance: 0,
+          owned: [],
+          equipped: { effect: null, frame: null, nameplate: null, avatar: null },
+          updatedAt: serverTimestamp(),
+        };
+        await setDoc(walletDocRef, initial, { merge: true });
+        sessionWalletCache[uid] = initial;
+        setWallet(initial);
+        return initial;
+      }
+    } catch (err) {
+      console.warn('[useWallet] Once-per-session wallet read error:', err);
+      return sessionWalletCache[uid] || DEFAULT_WALLET;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user?.uid) {
@@ -36,55 +94,16 @@ export function useWallet() {
       return;
     }
 
-    setLoading(true);
-    const walletDocRef = doc(db, 'wallets', user.uid);
-
-    const unsubscribe = onSnapshot(
-      walletDocRef,
-      (snap) => {
-        if (snap.exists()) {
-          const data = snap.data() as Partial<WalletDoc>;
-          const cleanWallet: WalletDoc = {
-            balance: typeof data.balance === 'number' ? Math.max(0, Math.floor(data.balance)) : 0,
-            owned: Array.isArray(data.owned) ? data.owned : [],
-            equipped: {
-              effect: data.equipped?.effect ?? null,
-              frame: data.equipped?.frame ?? null,
-              nameplate: data.equipped?.nameplate ?? null,
-            },
-            updatedAt: data.updatedAt,
-          };
-          setWallet(cleanWallet);
-        } else {
-          // Initialize empty wallet document for new user
-          const initial: WalletDoc = {
-            balance: 0,
-            owned: [],
-            equipped: { effect: null, frame: null, nameplate: null },
-            updatedAt: serverTimestamp(),
-          };
-          setDoc(walletDocRef, initial, { merge: true }).catch((err) => {
-            console.warn('[useWallet] Could not init wallet doc:', err);
-          });
-          setWallet(initial);
-        }
-        setLoading(false);
-      },
-      (err) => {
-        console.warn('[useWallet] Snapshot error:', err);
-        setLoading(false);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [user?.uid]);
+    // Read wallet once per session
+    fetchWallet(user.uid, false);
+  }, [user?.uid, fetchWallet]);
 
   /**
    * Equips or unequips a cosmetic item owned by the user.
    * Mirrors immediately to publicProfiles/{uid} for leaderboards and crew views.
    */
   const equipCosmetic = useCallback(
-    async (type: 'effect' | 'frame' | 'nameplate', itemId: string | null) => {
+    async (type: 'effect' | 'frame' | 'nameplate' | 'avatar', itemId: string | null) => {
       if (!user?.uid) throw new Error('Must be logged in to equip cosmetics');
       const current = walletRef.current;
 
@@ -117,10 +136,12 @@ export function useWallet() {
         equipped: updatedEquipped,
       });
 
-      setWallet((prev) => ({
-        ...prev,
+      const updated: WalletDoc = {
+        ...current,
         equipped: updatedEquipped,
-      }));
+      };
+      sessionWalletCache[user.uid] = updated;
+      setWallet(updated);
     },
     [user?.uid]
   );
@@ -133,15 +154,25 @@ export function useWallet() {
       if (!user?.uid) throw new Error('Must be logged in to purchase cosmetics');
       const { purchaseCosmeticItem } = await import('@/services/kobanService');
       const result = await purchaseCosmeticItem(user.uid, item);
-      setWallet((prev) => ({
-        ...prev,
+      const updated: WalletDoc = {
+        ...walletRef.current,
         balance: result.newBalance,
-        owned: prev.owned.includes(item.id) ? prev.owned : [...prev.owned, item.id],
-      }));
+        owned: walletRef.current.owned.includes(item.id)
+          ? walletRef.current.owned
+          : [...walletRef.current.owned, item.id],
+      };
+      sessionWalletCache[user.uid] = updated;
+      setWallet(updated);
       return result;
     },
     [user?.uid]
   );
+
+  const refreshWallet = useCallback(async () => {
+    if (user?.uid) {
+      await fetchWallet(user.uid, true);
+    }
+  }, [user?.uid, fetchWallet]);
 
   return {
     wallet,
@@ -151,5 +182,6 @@ export function useWallet() {
     loading,
     equipCosmetic,
     purchaseCosmetic,
+    refreshWallet,
   };
 }

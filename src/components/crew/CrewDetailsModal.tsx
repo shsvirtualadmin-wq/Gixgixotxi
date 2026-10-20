@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { X, Shield, Users, Flame, Trophy, Lock, Unlock, Check, Share2, Sparkles, AlertCircle } from 'lucide-react';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
+import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import type { PublicCrewSummary, CrewDoc } from '@/types/crew';
 import { fetchCrewDetails } from '@/services/crewService';
 
@@ -209,19 +210,33 @@ export const CrewDetailsModal: React.FC<CrewDetailsModalProps> = ({
                   className="flex items-center justify-between p-2 rounded-lg bg-[#121212] border border-[rgba(255,255,255,0.06)]"
                 >
                   <div className="flex items-center gap-2.5">
-                    <MatrixAvatar
-                      avatarKey={m.avatarKey}
-                      variant={m.avatarVariant}
-                      seed={m.uid}
-                      size={28}
-                    />
+                    <AvatarFrame itemId={m.equipped?.frame || 'none'} size={34}>
+                      <AvatarPicture
+                        avatarId={m.equipped?.avatar}
+                        avatarKey={m.avatarKey}
+                        variant={m.avatarVariant}
+                        seed={m.uid}
+                        size={26}
+                      />
+                    </AvatarFrame>
                     <div>
                       <div className="text-xs font-medium text-white flex items-center gap-1.5">
-                        <span>{sanitizeStudentDisplayName(m.displayName, m.uid)}</span>
-                        {m.role === 'leader' && (
-                          <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#D71921] text-white font-bold">
-                            LEADER
-                          </span>
+                        {m.equipped?.nameplate ? (
+                          <Nameplate
+                            itemId={m.equipped.nameplate}
+                            name={sanitizeStudentDisplayName(m.displayName, m.uid)}
+                            shortId={m.uid.slice(0, 5)}
+                            roleBadge={m.role === 'leader' ? 'LEADER' : undefined}
+                          />
+                        ) : (
+                          <>
+                            <span>{sanitizeStudentDisplayName(m.displayName, m.uid)}</span>
+                            {m.role === 'leader' && (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-[#D71921] text-white font-bold">
+                                LEADER
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>

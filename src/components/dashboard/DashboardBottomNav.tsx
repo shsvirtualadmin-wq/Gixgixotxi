@@ -26,6 +26,7 @@ import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useTheme } from '@/hooks/useTheme';
 import { useWallet } from '@/hooks/useWallet';
 import { KobanChip } from '@/components/koban/KobanIcon';
+import { AvatarPicture, AvatarFrame, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 export function DashboardBottomNav() {
@@ -54,7 +55,7 @@ export function DashboardBottomNav() {
   };
 
   const effectivePlan = useEffectivePlan();
-  const { balance: kobanBalance, loading: walletLoading } = useWallet();
+  const { balance: kobanBalance, loading: walletLoading, equipped } = useWallet();
   const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
   const rawDisplayName = profile?.displayName || user?.displayName || 'Student';
@@ -121,6 +122,7 @@ export function DashboardBottomNav() {
           items={navItems}
           layoutId="studentBottomNavActive"
           iconOnly={true}
+          activeId={location.pathname.startsWith('/store') ? 'menu' : undefined}
         />
       </div>
 
@@ -141,25 +143,31 @@ export function DashboardBottomNav() {
             {/* Grab handle for mobile */}
             <div className="md:hidden w-10 h-1 bg-[var(--border)] rounded-full mx-auto -mt-1 mb-1 pointer-events-none" />
 
-            {/* Header: User Summary */}
             {/* Header: User Summary (Privacy Protected - No Email Displayed) */}
             <div className="flex items-center justify-between pb-3.5 border-b border-[var(--border)]">
               <div className="flex items-center gap-3 min-w-0">
-                <div className="w-11 h-11 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-[15px] font-heading font-bold text-[var(--text)] shrink-0">
-                  {user?.photoURL ? (
-                    <img
-                      src={user.photoURL}
-                      alt="Avatar"
-                      className="w-full h-full rounded-full object-cover"
+                <AvatarFrame itemId={equipped?.frame || 'none'} size={48}>
+                  <AvatarPicture
+                    avatarId={equipped?.avatar}
+                    avatarKey={profile?.avatarKey}
+                    variant={profile?.avatarVariant}
+                    seed={user?.uid}
+                    size={38}
+                  />
+                </AvatarFrame>
+                <div className="min-w-0">
+                  {equipped?.nameplate ? (
+                    <Nameplate
+                      itemId={equipped.nameplate}
+                      name={cleanDisplayName}
+                      shortId={profile?.shortId || (user?.uid ? user.uid.slice(0, 5) : '00000')}
+                      roleBadge={role === 'captain' ? 'CAPTAIN' : undefined}
                     />
                   ) : (
-                    initial
+                    <p className="font-heading font-bold text-base text-[var(--text)] truncate">
+                      {cleanDisplayName}
+                    </p>
                   )}
-                </div>
-                <div className="min-w-0">
-                  <p className="font-heading font-bold text-base text-[var(--text)] truncate">
-                    {cleanDisplayName}
-                  </p>
                   <div className="flex items-center gap-1.5 mt-1">
                     <span
                       className={`text-[10px] font-heading px-2 py-0.5 rounded-full border ${
