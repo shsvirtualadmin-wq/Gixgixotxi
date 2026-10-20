@@ -14,7 +14,7 @@ export function ProfilePage() {
   const isOwn = !queryUid || (user && queryUid === user.uid);
 
   return (
-    <div className="w-full flex justify-center py-4 px-2 sm:px-4">
+    <div className="w-full flex justify-center py-0 sm:py-4 px-0 sm:px-2 md:px-4">
       <div className="w-full max-w-[960px]">
         <ProfileView
           targetUid={targetUid}

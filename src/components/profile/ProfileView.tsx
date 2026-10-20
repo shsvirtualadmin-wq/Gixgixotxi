@@ -28,6 +28,8 @@ import {
   GraduationCap,
   RotateCcw,
   BookOpen,
+  ArrowLeft,
+  Settings,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
@@ -261,17 +263,66 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
   }, [publicProfile?.lastActiveAt]);
 
-  // Formatted Member Since
-  const memberSinceFormatted = useMemo(() => {
-    if (!publicProfile?.memberSince) return 'Early Member';
-    try {
-      const ts = publicProfile.memberSince;
-      const date = (ts as any)?.toDate ? (ts as any).toDate() : new Date(ts as any);
-      return date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-    } catch {
-      return 'Early Member';
+  // Robust date parser supporting Firestore Timestamp, ISO string, milliseconds, seconds, and object formats
+  const parseDateSafely = (val: unknown): Date | null => {
+    if (!val) return null;
+    if (typeof (val as any)?.toDate === 'function') {
+      try {
+        const d = (val as any).toDate();
+        if (d instanceof Date && !isNaN(d.getTime())) return d;
+      } catch {
+        return null;
+      }
     }
-  }, [publicProfile?.memberSince]);
+    if (typeof val === 'number' && !isNaN(val)) {
+      const ms = val < 10000000000 ? val * 1000 : val;
+      const d = new Date(ms);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (typeof val === 'string' && val.trim().length > 0) {
+      const d = new Date(val);
+      if (!isNaN(d.getTime())) return d;
+    }
+    if (typeof val === 'object' && val !== null) {
+      const secs = (val as any).seconds ?? (val as any)._seconds;
+      if (typeof secs === 'number' && !isNaN(secs)) {
+        const d = new Date(secs * 1000);
+        if (!isNaN(d.getTime())) return d;
+      }
+    }
+    return null;
+  };
+
+  // Formatted Member Since (properly parsed with fallback to "Joined recently")
+  const memberSinceFormatted = useMemo(() => {
+    const raw =
+      publicProfile?.memberSince ||
+      ownUserProfile?.createdAt ||
+      user?.metadata?.creationTime;
+
+    if (!raw) return 'Joined recently';
+    const parsed = parseDateSafely(raw);
+    if (!parsed) return 'Joined recently';
+
+    try {
+      const str = parsed.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      return str && str !== 'Invalid Date' ? str : 'Joined recently';
+    } catch {
+      return 'Joined recently';
+    }
+  }, [publicProfile?.memberSince, ownUserProfile?.createdAt, user?.metadata]);
+
+  // Student Level calculation (e.g. Lv 24)
+  const studentLevel = useMemo(() => {
+    if (typeof (publicProfile as any)?.level === 'number' && (publicProfile as any).level > 0) {
+      return (publicProfile as any).level;
+    }
+    if (typeof (ownUserProfile as any)?.level === 'number' && (ownUserProfile as any).level > 0) {
+      return (ownUserProfile as any).level;
+    }
+    const solved = ownUserProfile?.totalQuestionsSolved || publicProfile?.stats?.mcqs || 0;
+    return Math.max(1, Math.floor(solved / 15) + 1);
+  }, [publicProfile, ownUserProfile]);
 
   // Follow action
   const handleFollowAction = async () => {
@@ -498,6 +549,107 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const equippedNameplateId = isOwnMode ? (wallet.equipped.nameplate || displayProfile.nameplate) : displayProfile.nameplate;
   const equippedAvatarId = isOwnMode ? (wallet.equipped.avatar || displayProfile.avatar) : displayProfile.avatar;
 
+  // ── EARNED BADGES COLLECTION (28px each, 8px gaps, max 4 + "+N" chip) ──
+  interface EarnedBadgeItem {
+    id: string;
+    name: string;
+    desc: string;
+    icon: React.ReactNode;
+    colorClass: string;
+    bgClass: string;
+    borderClass: string;
+  }
+
+  const allEarnedBadges = useMemo<EarnedBadgeItem[]>(() => {
+    const list: EarnedBadgeItem[] = [];
+
+    // 1. Pro Member
+    if (effectivePlan.isUnlimited || displayProfile.role === 'captain') {
+      list.push({
+        id: 'pro',
+        name: 'Pro Member',
+        desc: 'Unlimited diagnostic test runs and AI tutoring.',
+        icon: <Crown size={15} />,
+        colorClass: 'text-amber-400',
+        bgClass: 'bg-amber-500/15',
+        borderClass: 'border-amber-500/50',
+      });
+    }
+
+    // 2. Captain
+    if (displayProfile.role === 'captain' || ownUserProfile?.isCaptain) {
+      list.push({
+        id: 'captain',
+        name: 'Nakama Captain',
+        desc: 'Official campus leader guiding students through exam prep.',
+        icon: <Award size={15} />,
+        colorClass: 'text-blue-400',
+        bgClass: 'bg-blue-500/15',
+        borderClass: 'border-blue-500/50',
+      });
+    }
+
+    // 3. Crew
+    if (displayProfile.crewName) {
+      list.push({
+        id: 'crew',
+        name: `Crew: ${displayProfile.crewName}`,
+        desc: `Active member of the ${displayProfile.crewName} campus study crew.`,
+        icon: <Users size={15} />,
+        colorClass: 'text-emerald-400',
+        bgClass: 'bg-emerald-500/15',
+        borderClass: 'border-emerald-500/50',
+      });
+    }
+
+    // 4. Staff / Admin
+    if (isAdmin || displayProfile.role === 'superadmin') {
+      list.push({
+        id: 'staff',
+        name: 'Boardly Staff',
+        desc: 'Platform administrator and verified faculty engineer.',
+        icon: <Shield size={15} />,
+        colorClass: 'text-[#D71921]',
+        bgClass: 'bg-red-500/15',
+        borderClass: 'border-red-500/50',
+      });
+    }
+
+    // 5. Anime streak badges (equipped or unlocked)
+    const streakDays = ownUserProfile?.streak || publicProfile?.stats?.streak || 0;
+    const redeemed = ownUserProfile?.redeemedBadges || [];
+
+    for (const badge of ANIME_STREAK_BADGES) {
+      const isUnlocked = streakDays >= badge.days || redeemed.includes(badge.id) || equippedBadgesList.includes(badge.id);
+      if (isUnlocked) {
+        list.push({
+          id: badge.id,
+          name: badge.name,
+          desc: `${badge.days}-day streak unlock: ${badge.rewardTitle}.`,
+          icon: <Flame size={15} />,
+          colorClass: 'text-red-400',
+          bgClass: 'bg-red-950/40',
+          borderClass: 'border-red-700/50',
+        });
+      }
+    }
+
+    return list;
+  }, [
+    effectivePlan.isUnlimited,
+    displayProfile.role,
+    displayProfile.crewName,
+    ownUserProfile?.isCaptain,
+    ownUserProfile?.streak,
+    ownUserProfile?.redeemedBadges,
+    publicProfile?.stats?.streak,
+    isAdmin,
+    equippedBadgesList,
+  ]);
+
+  const visibleBadges = allEarnedBadges.slice(0, 4);
+  const remainingBadgesCount = Math.max(0, allEarnedBadges.length - 4);
+
   // ── ERROR HANDLING: USER NOT FOUND 404 CARD ──
   if (!isLoadingProfile && !publicProfile && !isSelf) {
     return (
@@ -526,7 +678,52 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   // Render Inner Content
   const renderProfileContent = () => (
-    <div className="w-full relative bg-[#0a0a0d] overflow-hidden select-none">
+    <div className="w-full relative bg-[#0a0a0d] overflow-x-hidden select-none pb-[calc(24px+env(safe-area-inset-bottom,0px))]">
+      {/* ── 0. STICKY TOP BAR (Back arrow, "Profile" title, Settings/Share icon) ── */}
+      <div className="sticky top-0 z-40 w-full bg-[#0a0a0d]/95 backdrop-blur-md border-b border-neutral-800/80 px-4 py-2 flex items-center justify-between min-h-[48px]">
+        <button
+          type="button"
+          onClick={() => {
+            if (onClose) onClose();
+            else navigate(-1);
+          }}
+          className="min-w-[44px] min-h-[44px] -ml-2 rounded-xl flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-800/60 transition-colors cursor-pointer"
+          aria-label="Go back"
+        >
+          <ArrowLeft size={20} />
+        </button>
+
+        <h1 className="font-heading font-bold text-sm sm:text-base text-white tracking-wide">
+          Profile
+        </h1>
+
+        {isOwnMode ? (
+          <button
+            type="button"
+            onClick={() => setActiveTab('settings')}
+            className={`min-w-[44px] min-h-[44px] -mr-2 rounded-xl flex items-center justify-center transition-colors cursor-pointer ${
+              activeTab === 'settings'
+                ? 'text-[#D71921] bg-red-950/40'
+                : 'text-neutral-300 hover:text-white hover:bg-neutral-800/60'
+            }`}
+            aria-label="Open settings"
+            title="Profile Settings"
+          >
+            <Settings size={20} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setShareModalOpen(true)}
+            className="min-w-[44px] min-h-[44px] -mr-2 rounded-xl flex items-center justify-center text-neutral-300 hover:text-white hover:bg-neutral-800/60 transition-colors cursor-pointer"
+            aria-label="Share profile"
+            title="Share Profile"
+          >
+            <Share2 size={18} />
+          </button>
+        )}
+      </div>
+
       {/* ── OFFLINE BANNER ── */}
       {isOffline && (
         <div className="bg-amber-950/80 border-b border-amber-800/80 px-4 py-2 flex items-center gap-2 text-xs text-amber-200">
@@ -549,10 +746,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       )}
 
-      {/* ══════════════════════════════════════════════════════════════════
-          1. BANNER (Full width, 160px mobile, 200px desktop)
-         ══════════════════════════════════════════════════════════════════ */}
-      <div className="relative w-full h-[160px] md:h-[200px] overflow-hidden bg-neutral-950">
+      {/* ── 1. COVER BANNER (Height: 120px mobile, 160px sm+) ── */}
+      <div className="relative w-full h-[120px] sm:h-[160px] overflow-hidden bg-neutral-950">
         <CosmeticErrorBoundary fallback={<div className="w-full h-full bg-neutral-900" />}>
           <BannerRenderer
             bannerId={equippedBannerId}
@@ -561,365 +756,260 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             className="w-full h-full object-cover"
           />
         </CosmeticErrorBoundary>
-        {/* Subtle bottom shadow gradient to elevate avatar */}
-        <div className="absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-[#0a0a0d] to-transparent pointer-events-none" />
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          2 & 3. AVATAR, NAME ROW, FOLLOW COUNTS, BADGE ICONS
-         ══════════════════════════════════════════════════════════════════ */}
-      <div className="px-4 sm:px-6 pb-4">
-        {/* Avatar overlapping banner by half: 88px mobile, 120px desktop */}
-        <div className="flex justify-between items-end -mt-11 md:-mt-15 mb-3">
-          <div className="relative overflow-visible z-10">
+      {/* ── 2. AVATAR, NAME ROW, LEVEL, BADGES & FOLLOWERS ── */}
+      <div className="px-4 sm:px-6 pb-2">
+        {/* Main Header Row: Avatar on left, info on right with >= 16px gap */}
+        <div className="flex items-start gap-4 -mt-8">
+          {/* Avatar: 84px with circular ring & red glow; overlaps cover banner by only 38% (-mt-8) */}
+          <div className="relative w-[84px] h-[84px] shrink-0 rounded-full ring-2 ring-[#D71921] shadow-[0_0_16px_rgba(215,25,33,0.45)] bg-neutral-900 overflow-visible z-20">
             <CosmeticErrorBoundary
               fallback={
-                <div className="w-[88px] h-[88px] md:w-[120px] md:h-[120px] rounded-full bg-neutral-800 border-2 border-neutral-700 flex items-center justify-center text-xl font-bold text-neutral-300">
+                <div className="w-full h-full rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-lg font-bold text-neutral-300">
                   {displayProfile.displayName.charAt(0).toUpperCase()}
                 </div>
               }
             >
-              <div className="w-[88px] h-[88px] md:w-[120px] md:h-[120px]">
+              <div className="w-full h-full rounded-full overflow-hidden flex items-center justify-center">
                 <AvatarFrame
                   itemId={equippedFrameId || 'none'}
-                  size={120}
+                  size={84}
                   className="w-full h-full"
                   forceStatic
                 >
                   <AvatarPicture
                     itemId={equippedAvatarId || 'none'}
-                    size={110}
+                    size={84}
                     photoURL={displayProfile.photoURL || user?.photoURL}
-                    className="w-full h-full"
+                    className="w-full h-full object-cover"
                   />
                 </AvatarFrame>
               </div>
             </CosmeticErrorBoundary>
+
+            {/* Level Badge: pinned small pill at bottom-right on higher z-index, never clipped */}
+            <div className="absolute -bottom-1 -right-1 z-30 px-2 py-0.5 rounded-full bg-[#D71921] border border-neutral-950 text-white font-mono font-bold text-[10px] tracking-wider shadow-md select-none flex items-center justify-center">
+              Lv {studentLevel}
+            </div>
           </div>
 
-          {/* Quick Action in Header */}
-          <div className="flex items-center gap-2">
-            {!isOwnMode ? (
+          {/* Right Column: Name, Rank, ID on same row; Badges row underneath; Followers below badges */}
+          <div className="min-w-0 flex-1 pt-2 space-y-1.5">
+            {/* Row 1: Name, Rank, ID */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <CosmeticErrorBoundary
+                fallback={
+                  <span className="font-heading font-bold text-base text-white truncate max-w-[140px] sm:max-w-xs">
+                    {displayProfile.displayName}
+                  </span>
+                }
+              >
+                <Nameplate
+                  itemId={equippedNameplateId || 'none'}
+                  name={displayProfile.displayName}
+                  forceStatic
+                  className="font-heading font-bold text-base text-white truncate max-w-[140px] sm:max-w-xs"
+                />
+              </CosmeticErrorBoundary>
+
+              <span className="px-1.5 py-0.5 rounded text-[11px] font-mono bg-neutral-900 border border-neutral-800 text-neutral-300 shrink-0">
+                #{displayProfile.studentId}
+              </span>
+
+              <span className="text-[11px] font-mono font-semibold text-neutral-400 shrink-0">
+                {displayProfile.rankTitle || 'Fresher'}
+              </span>
+
+              {!isOwnMode && isFollowerOfMe && (
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono tracking-wider uppercase bg-red-950/60 border border-red-800/70 text-red-300 shrink-0">
+                  Follows you
+                </span>
+              )}
+            </div>
+
+            {/* Row 2: Badges row (28px each with 8px gaps, max 4 + "+N" chip) */}
+            <div className="flex items-center gap-2 flex-wrap pt-0.5">
+              {visibleBadges.map((badge) => (
+                <button
+                  key={badge.id}
+                  type="button"
+                  onClick={() =>
+                    setActiveBadgeTooltip({
+                      id: badge.id,
+                      name: badge.name,
+                      desc: badge.desc,
+                    })
+                  }
+                  className={`w-7 h-7 rounded-lg border ${badge.borderClass} ${badge.bgClass} flex items-center justify-center ${badge.colorClass} hover:scale-110 transition-transform cursor-pointer shrink-0`}
+                  title={badge.name}
+                >
+                  {badge.icon}
+                </button>
+              ))}
+
+              {remainingBadgesCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('badges')}
+                  className="h-7 px-2 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-[11px] font-mono font-semibold text-neutral-300 hover:text-white flex items-center justify-center transition-colors cursor-pointer shrink-0"
+                  title="View all badges"
+                >
+                  +{remainingBadgesCount}
+                </button>
+              )}
+
+              {allEarnedBadges.length === 0 && (
+                <span className="text-[11px] text-neutral-500 font-mono">No badges yet</span>
+              )}
+            </div>
+
+            {/* Row 3: Followers / Following on one line below badges */}
+            <div className="flex items-center gap-2 pt-0.5 text-xs text-neutral-400 font-mono">
+              <button
+                type="button"
+                onClick={() => {
+                  setFollowModalInitialTab('followers');
+                  setFollowModalOpen(true);
+                }}
+                className="hover:text-white transition-colors cursor-pointer"
+              >
+                <strong className="text-white font-bold">{followersCount}</strong> followers
+              </button>
+              <span aria-hidden="true" className="text-neutral-600">·</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setFollowModalInitialTab('following');
+                  setFollowModalOpen(true);
+                }}
+                className="hover:text-white transition-colors cursor-pointer"
+              >
+                <strong className="text-white font-bold">{followingCount}</strong> following
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Active Badge Tooltip popover */}
+        {activeBadgeTooltip && (
+          <div className="mt-3 p-3 rounded-xl border border-neutral-700 bg-neutral-900/95 shadow-xl text-xs backdrop-blur-md max-w-xs space-y-1 animate-in fade-in">
+            <div className="flex items-center justify-between gap-3">
+              <span className="font-bold text-neutral-100 font-mono">
+                {activeBadgeTooltip.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => setActiveBadgeTooltip(null)}
+                className="text-neutral-400 hover:text-white p-1 cursor-pointer"
+              >
+                <X size={14} />
+              </button>
+            </div>
+            <p className="text-[11px] text-neutral-300 leading-snug">
+              {activeBadgeTooltip.desc}
+            </p>
+          </div>
+        )}
+
+        {/* ── 3. ACTION BUTTONS ROW ── */}
+        {isOwnMode ? (
+          <div className="space-y-2 pt-3">
+            {/* Full-width row: "Edit Profile" and "Boardly Store" */}
+            <div className="grid grid-cols-2 gap-2.5 w-full">
+              <button
+                type="button"
+                onClick={() => setEditModalOpen(true)}
+                className="min-h-[44px] px-3.5 rounded-xl bg-[#D71921] hover:bg-red-600 text-white text-xs font-semibold font-heading flex items-center justify-center gap-2 transition-colors shadow-md shadow-red-950/40 cursor-pointer"
+              >
+                <Edit3 size={15} />
+                <span>Edit Profile</span>
+              </button>
+              <Link
+                to="/store"
+                className="min-h-[44px] px-3.5 rounded-xl border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-white text-xs font-semibold font-heading flex items-center justify-center gap-2 transition-colors cursor-pointer"
+              >
+                <Sparkles size={15} className="text-amber-400" />
+                <span>Boardly Store</span>
+              </Link>
+            </div>
+
+            {/* Secondary row: "View as others" secondary button + Kobans balance compact pill */}
+            <div className="flex items-center justify-between gap-2 pt-0.5">
+              <button
+                type="button"
+                onClick={() => setViewAsOthers(true)}
+                className="min-h-[44px] px-3 py-1.5 rounded-xl border border-neutral-800/80 bg-neutral-900/50 hover:bg-neutral-800 text-neutral-300 hover:text-white text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
+                title="View as others see your profile"
+              >
+                <Eye size={14} className="text-neutral-400" />
+                <span>View as others</span>
+              </button>
+
+              <Link
+                to="/kobans"
+                className="min-h-[44px] px-3.5 py-1.5 rounded-full border border-neutral-800 bg-neutral-900/90 hover:border-amber-500/50 flex items-center gap-1.5 font-mono text-xs text-amber-400 transition-colors shrink-0"
+                title="View Kobans wallet"
+              >
+                <Coins size={14} />
+                <span className="font-bold text-white">{kobanBalance || 0}</span>
+                <span className="text-[11px] text-neutral-400">Kobans</span>
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-2 pt-3">
+            <div className="grid grid-cols-2 gap-2.5 w-full">
               <button
                 type="button"
                 onClick={amIFollowing ? () => setUnfollowConfirmOpen(true) : handleFollowAction}
-                className={`min-h-[40px] px-4 rounded-lg text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer ${
+                className={`min-h-[44px] px-4 rounded-xl text-xs font-semibold whitespace-nowrap transition-all border flex items-center justify-center gap-2 cursor-pointer ${
                   amIFollowing
                     ? 'border-neutral-700 bg-neutral-900 text-neutral-200 hover:border-red-600 hover:text-red-400'
                     : 'border-red-600 bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-950/40'
                 }`}
               >
                 {amIFollowing ? (
-                  <span className="flex items-center gap-1.5">
-                    <Check size={14} />
+                  <>
+                    <Check size={15} />
                     <span>Following</span>
-                  </span>
+                  </>
                 ) : (
-                  <span className="flex items-center gap-1.5">
-                    <UserPlus size={14} />
+                  <>
+                    <UserPlus size={15} />
                     <span>Follow</span>
-                  </span>
+                  </>
                 )}
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setEditModalOpen(true)}
-                className="min-h-[40px] px-3.5 rounded-lg border border-neutral-700 bg-neutral-900 hover:bg-neutral-800 text-xs font-semibold text-neutral-200 transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <Edit3 size={14} />
-                <span>Edit Profile</span>
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Nameplate, Display Name, Student ID, Rank Title & Status */}
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 flex-wrap">
-            <CosmeticErrorBoundary
-              fallback={
-                <span className="text-base sm:text-lg font-bold text-white font-mono">
-                  {displayProfile.displayName}
-                </span>
-              }
-            >
-              <Nameplate
-                itemId={equippedNameplateId || 'none'}
-                name={displayProfile.displayName}
-                forceStatic
-                className="text-base sm:text-lg font-bold text-white"
-              />
-            </CosmeticErrorBoundary>
-
-            <span className="px-2 py-0.5 rounded-md text-xs font-mono bg-neutral-900 border border-neutral-800 text-neutral-300">
-              #{displayProfile.studentId}
-            </span>
-
-            {/* Public mode: "Follows you" tag if they follow me */}
-            {!isOwnMode && isFollowerOfMe && (
-              <span className="px-2 py-0.5 rounded-md text-[10px] font-mono tracking-wider uppercase bg-red-950/50 border border-red-800/60 text-red-300">
-                Follows you
-              </span>
-            )}
-          </div>
-
-          {/* Rank title */}
-          <div className="text-xs font-bold font-mono text-neutral-400">
-            {displayProfile.rankTitle || 'Fresher'}
-          </div>
-
-          {/* Status Line with "studying now" dot if active in last 10 minutes */}
-          <div className="flex items-center gap-2 text-xs text-neutral-300 pt-0.5">
-            {isStudyingNow && (
-              <span className="flex items-center gap-1 text-[11px] font-mono text-emerald-400 shrink-0">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span>Studying now</span>
-              </span>
-            )}
-            {displayProfile.status && (
-              <span className="text-neutral-400 truncate max-w-sm">
-                {displayProfile.status}
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* 4. Follow counts: "128 followers · 54 following" */}
-        <div className="flex items-center gap-3 pt-2.5 text-xs text-neutral-400 font-mono">
-          <button
-            type="button"
-            onClick={() => {
-              setFollowModalInitialTab('followers');
-              setFollowModalOpen(true);
-            }}
-            className="hover:text-white transition-colors cursor-pointer"
-          >
-            <strong className="text-neutral-100 font-bold">{followersCount}</strong> followers
-          </button>
-          <span aria-hidden="true">·</span>
-          <button
-            type="button"
-            onClick={() => {
-              setFollowModalInitialTab('following');
-              setFollowModalOpen(true);
-            }}
-            className="hover:text-white transition-colors cursor-pointer"
-          >
-            <strong className="text-neutral-100 font-bold">{followingCount}</strong> following
-          </button>
-        </div>
-
-        {/* 5. Badge icons row: small icon-only badges (24px, 6px gap, wrapping row) */}
-        <div className="relative flex items-center gap-1.5 flex-wrap pt-3">
-          {/* Pro Badge */}
-          {(effectivePlan.isUnlimited || displayProfile.role === 'captain') && (
-            <button
-              type="button"
-              onClick={() =>
-                setActiveBadgeTooltip({
-                  id: 'pro',
-                  name: 'Pro Member',
-                  desc: 'Unlimited diagnostic test runs and step-by-step AI tutoring solutions.',
-                })
-              }
-              className="w-6 h-6 rounded-md bg-gradient-to-br from-amber-500/20 to-red-600/30 border border-amber-500/50 flex items-center justify-center text-amber-400 hover:scale-105 transition-transform cursor-pointer"
-              title="Pro Member"
-            >
-              <Crown size={14} />
-            </button>
-          )}
-
-          {/* Captain Badge */}
-          {(displayProfile.role === 'captain' || ownUserProfile?.isCaptain) && (
-            <button
-              type="button"
-              onClick={() =>
-                setActiveBadgeTooltip({
-                  id: 'captain',
-                  name: 'Nakama Captain',
-                  desc: 'Official campus leader guiding students through exam preparation.',
-                })
-              }
-              className="w-6 h-6 rounded-md bg-blue-950/60 border border-blue-500/60 flex items-center justify-center text-blue-400 hover:scale-105 transition-transform cursor-pointer"
-              title="Nakama Captain"
-            >
-              <Award size={14} />
-            </button>
-          )}
-
-          {/* Crew Leader Badge */}
-          {displayProfile.crewName && (
-            <button
-              type="button"
-              onClick={() =>
-                setActiveBadgeTooltip({
-                  id: 'crew',
-                  name: `Crew: ${displayProfile.crewName}`,
-                  desc: `Active member of the ${displayProfile.crewName} campus study crew.`,
-                })
-              }
-              className="w-6 h-6 rounded-md bg-emerald-950/60 border border-emerald-500/60 flex items-center justify-center text-emerald-400 hover:scale-105 transition-transform cursor-pointer"
-              title={`Crew: ${displayProfile.crewName}`}
-            >
-              <Users size={14} />
-            </button>
-          )}
-
-          {/* Staff Badge (Superadmin only) */}
-          {(isAdmin || displayProfile.role === 'superadmin') && (
-            <button
-              type="button"
-              onClick={() =>
-                setActiveBadgeTooltip({
-                  id: 'staff',
-                  name: 'Boardly Staff',
-                  desc: 'Platform administrator and verified faculty engineer.',
-                })
-              }
-              className="w-6 h-6 rounded-md bg-red-950/80 border border-red-500/80 flex items-center justify-center text-red-400 hover:scale-105 transition-transform cursor-pointer"
-              title="Boardly Staff"
-            >
-              <Shield size={14} />
-            </button>
-          )}
-
-          {/* Up to 3 equipped streak badges */}
-          {equippedBadgesList.map((badgeId) => {
-            const badge = ANIME_STREAK_BADGES.find((b) => b.id === badgeId);
-            if (!badge) return null;
-            return (
-              <button
-                key={badge.id}
-                type="button"
-                onClick={() =>
-                  setActiveBadgeTooltip({
-                    id: badge.id,
-                    name: badge.name,
-                    desc: `${badge.days}-day streak unlock: ${badge.rewardTitle}. ${badge.lore}`,
-                  })
-                }
-                className="w-6 h-6 rounded-md border flex items-center justify-center hover:scale-105 transition-transform cursor-pointer"
-                style={{
-                  backgroundColor: `${badge.accentColor}18`,
-                  borderColor: `${badge.accentColor}70`,
-                  color: badge.accentColor,
-                }}
-                title={badge.name}
-              >
-                <Flame size={14} />
-              </button>
-            );
-          })}
-
-          {/* Tooltip popover */}
-          {activeBadgeTooltip && (
-            <div className="absolute top-10 left-0 z-40 p-2.5 rounded-xl border border-neutral-700 bg-neutral-900/95 shadow-xl text-xs backdrop-blur-md max-w-xs space-y-1 animate-fade-in">
-              <div className="flex items-center justify-between gap-3">
-                <span className="font-bold text-neutral-100 font-mono">
-                  {activeBadgeTooltip.name}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setActiveBadgeTooltip(null)}
-                  className="text-neutral-400 hover:text-white"
-                >
-                  <X size={12} />
-                </button>
-              </div>
-              <p className="text-[11px] text-neutral-300 leading-snug">
-                {activeBadgeTooltip.desc}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* 6. Actions row */}
-        <div className="pt-3 border-t border-neutral-850 mt-3">
-          {isOwnMode ? (
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setEditModalOpen(true)}
-                className="min-h-[44px] px-4 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-semibold transition-colors shadow-md shadow-red-950/40 whitespace-nowrap cursor-pointer"
-              >
-                Edit Profile
-              </button>
-              <Link
-                to="/store"
-                className="min-h-[44px] px-3.5 rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-xs font-semibold text-neutral-200 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
-              >
-                <Sparkles size={14} className="text-amber-400" />
-                <span>Boardly Store</span>
-              </Link>
-              <button
-                type="button"
-                onClick={() => setViewAsOthers(true)}
-                className="min-h-[44px] px-3.5 rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-xs font-semibold text-neutral-300 hover:text-white transition-colors whitespace-nowrap cursor-pointer"
-              >
-                View as others
-              </button>
-
-              {/* Koban balance chip (contrast >= 4.5:1, never wrapping) */}
-              <div className="ml-auto min-h-[44px] px-3 rounded-lg border border-neutral-800 bg-neutral-900/90 flex items-center gap-1.5 font-mono text-xs text-amber-400 shrink-0 whitespace-nowrap">
-                <Coins size={14} />
-                <span className="font-bold text-white">{kobanBalance || 0}</span>
-                <span className="text-[11px] text-neutral-400">Kobans</span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={amIFollowing ? () => setUnfollowConfirmOpen(true) : handleFollowAction}
-                className={`min-h-[44px] px-4 rounded-lg text-xs font-semibold whitespace-nowrap transition-all border cursor-pointer ${
-                  amIFollowing
-                    ? 'border-neutral-700 bg-neutral-900 text-neutral-200 hover:border-red-600 hover:text-red-400'
-                    : 'border-red-600 bg-red-600 hover:bg-red-500 text-white shadow-md shadow-red-950/40'
-                }`}
-              >
-                {amIFollowing ? 'Following' : 'Follow'}
               </button>
 
               <button
                 type="button"
                 onClick={() => setShareModalOpen(true)}
-                className="min-h-[44px] px-3.5 rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-xs font-semibold text-neutral-200 transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
+                className="min-h-[44px] px-3.5 rounded-xl border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-xs font-semibold text-neutral-200 transition-colors flex items-center justify-center gap-2 whitespace-nowrap cursor-pointer"
               >
-                <Share2 size={14} />
-                <span>Share profile</span>
+                <Share2 size={15} />
+                <span>Share Profile</span>
               </button>
-
-              {displayProfile.crewName && (
-                <button
-                  type="button"
-                  onClick={() => setCrewModalOpen(true)}
-                  className="min-h-[44px] px-3.5 rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-xs font-semibold text-neutral-300 hover:text-white transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
-                >
-                  <Users size={14} />
-                  <span>View crew</span>
-                </button>
-              )}
-
-              {viewAsOthers && (
-                <button
-                  type="button"
-                  onClick={() => setViewAsOthers(false)}
-                  className="ml-auto min-h-[44px] px-3.5 rounded-lg border border-amber-600 bg-amber-600/20 text-xs font-bold text-amber-200 hover:bg-amber-600/30 transition-colors cursor-pointer"
-                >
-                  Back to my view
-                </button>
-              )}
             </div>
-          )}
-        </div>
+
+            {displayProfile.crewName && (
+              <button
+                type="button"
+                onClick={() => setCrewModalOpen(true)}
+                className="w-full min-h-[44px] px-3.5 rounded-xl border border-neutral-800 bg-neutral-900/50 hover:bg-neutral-800 text-xs font-semibold text-neutral-300 hover:text-white transition-colors flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Users size={15} />
+                <span>View Crew ({displayProfile.crewName})</span>
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          7. TABS (Underline style)
-         ══════════════════════════════════════════════════════════════════ */}
-      <div className="border-b border-neutral-800/90 px-4 sm:px-6">
-        <nav className="flex items-center gap-6 overflow-x-auto no-scrollbar">
+      {/* ── 4. STICKY TABS (Underline style with red active indicator) ── */}
+      <div className="sticky top-[48px] z-30 bg-[#0a0a0d]/95 backdrop-blur-md border-b border-neutral-800 px-4 sm:px-6">
+        <nav className="flex items-center gap-5 overflow-x-auto no-scrollbar">
           {(['overview', 'posts', 'loadout', 'badges', ...(isOwnMode ? ['settings'] : [])] as TabKey[]).map(
             (tab) => {
               const isActive = activeTab === tab;
@@ -935,9 +1025,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`py-3 text-xs font-semibold whitespace-nowrap border-b-2 transition-all cursor-pointer ${
+                  className={`min-h-[44px] py-3 text-xs font-semibold whitespace-nowrap border-b-2 transition-all cursor-pointer flex items-center ${
                     isActive
-                      ? 'border-red-600 text-white'
+                      ? 'border-[#D71921] text-white'
                       : 'border-transparent text-neutral-400 hover:text-neutral-200'
                   }`}
                 >
@@ -949,16 +1039,26 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </nav>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════════════
-          8. TAB CONTENTS
-         ══════════════════════════════════════════════════════════════════ */}
-      <div className="p-4 sm:p-6 space-y-6">
+      {/* ── 5. TAB CONTENTS ── */}
+      <div className="p-4 sm:p-6 space-y-3">
         {/* ── OVERVIEW TAB ── */}
         {activeTab === 'overview' && (
-          <div className="space-y-6">
-            {/* About me (Plain text, links never rendered) */}
+          <div className="space-y-3">
+            {/* About me card with "Add bio" button */}
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 space-y-2">
-              <span className="text-xs font-semibold text-neutral-300 block">About me</span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-neutral-300 font-heading">About me</span>
+                {isOwnMode && displayProfile.bio && (
+                  <button
+                    type="button"
+                    onClick={() => setEditModalOpen(true)}
+                    className="text-[11px] text-neutral-400 hover:text-[#D71921] flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Edit3 size={12} />
+                    <span>Edit</span>
+                  </button>
+                )}
+              </div>
               {displayProfile.bio ? (
                 <p className="text-xs text-neutral-200 leading-relaxed break-words whitespace-pre-wrap select-text">
                   {displayProfile.bio}
@@ -967,187 +1067,226 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setEditModalOpen(true)}
-                  className="text-xs text-neutral-500 hover:text-red-400 transition-colors font-mono cursor-pointer"
+                  className="w-full min-h-[44px] py-2.5 px-3 rounded-lg border border-dashed border-neutral-700/80 hover:border-red-600/70 text-xs text-neutral-400 hover:text-white transition-colors flex items-center justify-center gap-2 cursor-pointer font-mono"
                 >
-                  + Add a bio to share your exam goals
+                  <Edit3 size={14} className="text-[#D71921]" />
+                  <span>+ Add bio to share your exam goals</span>
                 </button>
               ) : (
                 <p className="text-xs text-neutral-500 font-mono">No bio provided yet.</p>
               )}
             </div>
 
-            {/* Member info & Crew */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3.5 space-y-1">
-                <span className="text-[11px] text-neutral-400 block font-mono">Member since</span>
-                <span className="text-xs font-semibold text-neutral-100">{memberSinceFormatted}</span>
+            {/* Merged Member info & Crew affiliation (one row of two small stat chips) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 space-y-1">
+                <div className="flex items-center gap-1.5 text-neutral-400">
+                  <Calendar size={13} />
+                  <span className="text-[10px] font-mono uppercase tracking-wider">Member since</span>
+                </div>
+                <span className="text-xs font-semibold text-neutral-100 block truncate">
+                  {memberSinceFormatted}
+                </span>
               </div>
-              <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3.5 space-y-1">
-                <span className="text-[11px] text-neutral-400 block font-mono">Crew affiliation</span>
-                <span className="text-xs font-semibold text-neutral-100">
+
+              <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 space-y-1">
+                <div className="flex items-center gap-1.5 text-neutral-400">
+                  <Users size={13} />
+                  <span className="text-[10px] font-mono uppercase tracking-wider">Crew</span>
+                </div>
+                <span className="text-xs font-semibold text-neutral-100 block truncate">
                   {displayProfile.crewName ? displayProfile.crewName : 'Independent Scholar'}
                 </span>
               </div>
             </div>
 
-            {/* Showcase: Up to 3 pinned stamps or badges */}
+            {/* Showcase: pin cards in a 2-column grid with a "Manage pins" link */}
             <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold text-neutral-300 block">Showcase</span>
+                <span className="text-xs font-semibold text-neutral-300 font-heading">Showcase</span>
                 {isOwnMode && (
                   <button
                     type="button"
                     onClick={() => setActiveTab('badges')}
-                    className="text-[11px] text-red-400 hover:underline font-mono cursor-pointer"
+                    className="text-[11px] text-[#D71921] hover:underline font-mono cursor-pointer"
                   >
                     Manage pins
                   </button>
                 )}
               </div>
 
-              <div className="grid grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-2 gap-3">
                 {stamps
                   .filter((s) => s.isEarned)
-                  .slice(0, 3)
+                  .slice(0, 4)
                   .map((stamp) => (
                     <div
                       key={stamp.id}
-                      className="rounded-xl border border-neutral-800 bg-neutral-950 p-2.5 text-center space-y-1"
+                      className="rounded-xl border border-neutral-800 bg-neutral-950 p-3 text-center space-y-1.5"
                     >
-                      <div className="text-xl">{stamp.icon}</div>
-                      <div className="text-[11px] font-bold text-neutral-200 truncate">
+                      <div className="text-2xl">{stamp.icon}</div>
+                      <div className="text-xs font-bold text-neutral-200 truncate">
                         {stamp.title}
                       </div>
-                      <div className="text-[9px] text-neutral-500 truncate">{stamp.desc}</div>
+                      <div className="text-[10px] text-neutral-400 line-clamp-1">{stamp.desc}</div>
                     </div>
                   ))}
                 {stamps.filter((s) => s.isEarned).length === 0 && (
-                  <div className="col-span-3 py-6 text-center text-xs text-neutral-500 font-mono">
+                  <div className="col-span-2 py-6 text-center text-xs text-neutral-500 font-mono">
                     No pinned stamps yet.
                   </div>
                 )}
               </div>
             </div>
 
-            {/* ── PRIVATE STUDY STATS (OWN MODE ONLY: NEVER RENDERED IN PUBLIC MODE) ── */}
+            {/* ── PRIVATE STUDY METRICS (2x2 STAT CARDS, OWN MODE ONLY) ── */}
             {isOwnMode && (
-              <div className="space-y-4 pt-4 border-t border-neutral-850">
-                <span className="text-xs font-semibold text-neutral-300 block">
+              <div className="space-y-3 pt-1">
+                <span className="text-xs font-semibold text-neutral-300 block font-heading">
                   Private Study Metrics
                 </span>
 
-                {/* 4 Stat Cards */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 space-y-0.5">
+                {/* 2x2 Stat Cards */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 space-y-1">
                     <span className="text-[10px] text-neutral-400 font-mono block">Current Streak</span>
-                    <div className="text-base font-bold text-white font-mono flex items-center gap-1">
-                      <Flame size={14} className="text-amber-400" />
+                    <div className="text-base font-bold text-white font-mono flex items-center gap-1.5">
+                      <Flame size={15} className="text-amber-400" />
                       <span>{ownUserProfile?.streak || 0}d</span>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 space-y-0.5">
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 space-y-1">
                     <span className="text-[10px] text-neutral-400 font-mono block">Longest Streak</span>
-                    <div className="text-base font-bold text-white font-mono flex items-center gap-1">
-                      <Flame size={14} className="text-red-400" />
+                    <div className="text-base font-bold text-white font-mono flex items-center gap-1.5">
+                      <Flame size={15} className="text-[#D71921]" />
                       <span>{ownUserProfile?.longestStreak || ownUserProfile?.streak || 0}d</span>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 space-y-0.5">
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 space-y-1">
                     <span className="text-[10px] text-neutral-400 font-mono block">MCQs Solved</span>
-                    <div className="text-base font-bold text-white font-mono flex items-center gap-1">
-                      <Target size={14} className="text-blue-400" />
+                    <div className="text-base font-bold text-white font-mono flex items-center gap-1.5">
+                      <Target size={15} className="text-blue-400" />
                       <span>{ownUserProfile?.totalQuestionsSolved || 0}</span>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 space-y-0.5">
+                  <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-3 space-y-1">
                     <span className="text-[10px] text-neutral-400 font-mono block">Accuracy</span>
-                    <div className="text-base font-bold text-white font-mono flex items-center gap-1">
-                      <Award size={14} className="text-emerald-400" />
+                    <div className="text-base font-bold text-white font-mono flex items-center gap-1.5">
+                      <Award size={15} className="text-emerald-400" />
                       <span>{ownUserProfile?.accuracy || 0}%</span>
                     </div>
                   </div>
                 </div>
 
-                {/* 12-Week Study Heatmap */}
-                <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 space-y-2">
+                {/* 12-Week Study Activity Heatmap: uniform cell sizes in aligned grid with day/month legend */}
+                <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-neutral-300 block">
-                      12-Week Study Activity Heatmap
+                    <span className="text-xs font-semibold text-neutral-300 font-heading">
+                      12-Week Study Heatmap
                     </span>
                     <span className="text-[10px] text-neutral-500 font-mono">Last 84 days</span>
                   </div>
 
-                  <div className="grid grid-flow-col grid-rows-7 gap-1 overflow-x-auto pb-1 pt-2">
-                    {Array.from({ length: 84 }).map((_, idx) => {
-                      const pseudoIntensity = (idx * 7 + (ownUserProfile?.streak || 0)) % 5;
-                      const shades = [
-                        'bg-neutral-850',
-                        'bg-red-950/60',
-                        'bg-red-900/80',
-                        'bg-red-600',
-                        'bg-red-500',
-                      ];
-                      return (
-                        <div
-                          key={idx}
-                          className={`w-2.5 h-2.5 rounded-[2px] ${shades[pseudoIntensity]}`}
-                          title={`Day ${84 - idx}: ${pseudoIntensity * 8} questions solved`}
-                        />
-                      );
-                    })}
+                  {/* Month legend */}
+                  <div className="flex items-center justify-between pl-7 pr-1 text-[9px] font-mono text-neutral-500">
+                    <span>Month -2</span>
+                    <span>Month -1</span>
+                    <span>Current</span>
+                  </div>
+
+                  <div className="flex items-start gap-2 pt-1">
+                    {/* Day labels legend */}
+                    <div className="flex flex-col justify-between h-[100px] text-[9px] font-mono text-neutral-500 shrink-0 select-none py-0.5">
+                      <span>Mon</span>
+                      <span>Wed</span>
+                      <span>Fri</span>
+                      <span>Sun</span>
+                    </div>
+
+                    {/* 12 columns x 7 rows grid with uniform square cells */}
+                    <div className="grid grid-flow-col grid-rows-7 grid-cols-12 gap-1 sm:gap-1.5 flex-1 w-full">
+                      {Array.from({ length: 84 }).map((_, idx) => {
+                        const pseudoIntensity = (idx * 7 + (ownUserProfile?.streak || 0)) % 5;
+                        const shades = [
+                          'bg-neutral-800/80',
+                          'bg-red-950/70 border border-red-900/40',
+                          'bg-red-900/90',
+                          'bg-red-600',
+                          'bg-red-500 shadow-[0_0_6px_rgba(239,68,68,0.5)]',
+                        ];
+                        return (
+                          <div
+                            key={idx}
+                            className={`w-full aspect-square rounded-[2px] transition-all hover:scale-125 ${shades[pseudoIntensity]}`}
+                            title={`Day ${84 - idx}: ${pseudoIntensity * 8} questions solved`}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Less / More Legend */}
+                  <div className="flex items-center justify-end gap-1.5 text-[10px] font-mono text-neutral-400 pt-1">
+                    <span>Less</span>
+                    <span className="w-2.5 h-2.5 rounded-[2px] bg-neutral-800/80" />
+                    <span className="w-2.5 h-2.5 rounded-[2px] bg-red-950/70" />
+                    <span className="w-2.5 h-2.5 rounded-[2px] bg-red-900/90" />
+                    <span className="w-2.5 h-2.5 rounded-[2px] bg-red-600" />
+                    <span className="w-2.5 h-2.5 rounded-[2px] bg-red-500" />
+                    <span>More</span>
                   </div>
                 </div>
 
-                {/* Subject Accuracy Rings */}
+                {/* Subject Performance Rings: 2x2 grid with consistent sizing */}
                 <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">
-                  <span className="text-xs font-semibold text-neutral-300 block">
+                  <span className="text-xs font-semibold text-neutral-300 font-heading block">
                     Subject Performance Rings
                   </span>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     {[
                       { subject: 'Biology', pct: 82, color: '#10B981' },
                       { subject: 'Chemistry', pct: 74, color: '#3B82F6' },
                       { subject: 'Physics', pct: 68, color: '#F59E0B' },
-                      { subject: 'English', pct: 90, color: '#8B5CF6' },
+                      { subject: 'Mathematics', pct: 90, color: '#EC4899' },
                     ].map((s) => (
                       <div
                         key={s.subject}
-                        className="flex flex-col items-center p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-1.5"
+                        className="flex flex-col items-center justify-center p-3 rounded-xl bg-neutral-950 border border-neutral-800 space-y-1.5 h-[116px]"
                       >
-                        <svg className="w-12 h-12 transform -rotate-90">
+                        <svg className="w-13 h-13 transform -rotate-90 shrink-0" viewBox="0 0 56 56">
                           <circle
-                            cx="24"
-                            cy="24"
-                            r="18"
+                            cx="28"
+                            cy="28"
+                            r="22"
                             stroke="currentColor"
-                            strokeWidth="3.5"
+                            strokeWidth="4"
                             className="text-neutral-800 fill-none"
                           />
                           <circle
-                            cx="24"
-                            cy="24"
-                            r="18"
+                            cx="28"
+                            cy="28"
+                            r="22"
                             stroke={s.color}
-                            strokeWidth="3.5"
-                            strokeDasharray={113}
-                            strokeDashoffset={113 - (113 * s.pct) / 100}
+                            strokeWidth="4"
+                            strokeDasharray={138.2}
+                            strokeDashoffset={138.2 - (138.2 * s.pct) / 100}
                             strokeLinecap="round"
                             className="fill-none transition-all duration-1000"
                           />
                           <text
-                            x="24"
-                            y="27"
-                            className="text-[9px] font-mono font-bold fill-white"
+                            x="28"
+                            y="32"
+                            className="text-[11px] font-mono font-bold fill-white"
                             textAnchor="middle"
                           >
                             {s.pct}%
                           </text>
                         </svg>
-                        <span className="text-[11px] font-semibold text-neutral-300">
+                        <span className="text-xs font-semibold text-neutral-200 font-heading truncate max-w-full">
                           {s.subject}
                         </span>
                       </div>
@@ -1155,31 +1294,31 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   </div>
                 </div>
 
-                {/* Kobans Balance Card */}
+                {/* Kobans Treasury Card */}
                 <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Coins className="text-amber-400" size={18} />
-                      <span className="text-xs font-semibold text-neutral-200">
+                      <span className="text-xs font-semibold text-neutral-200 font-heading">
                         Kobans Treasury
                       </span>
                     </div>
-                    <Link to="/kobans" className="text-xs font-mono text-red-400 hover:underline">
+                    <Link to="/kobans" className="text-xs font-mono text-[#D71921] hover:underline">
                       Ledger history
                     </Link>
                   </div>
-                  <div className="flex items-center justify-between p-3 rounded-lg bg-neutral-950 border border-neutral-800">
-                    <div>
-                      <div className="text-lg font-bold text-white font-mono">
+                  <div className="flex items-center justify-between p-3.5 rounded-xl bg-neutral-950 border border-neutral-800 gap-3">
+                    <div className="min-w-0">
+                      <div className="text-lg font-bold text-white font-mono truncate">
                         {kobanBalance || 0} Kobans
                       </div>
-                      <div className="text-[11px] text-neutral-400">
-                        Earn by completing daily tests & streaks
+                      <div className="text-[11px] text-neutral-400 truncate">
+                        Earn by solving MCQs &amp; maintaining streaks
                       </div>
                     </div>
                     <Link
                       to="/kobans"
-                      className="min-h-[40px] px-3.5 rounded-lg border border-red-700 bg-red-600 hover:bg-red-500 text-white text-xs font-semibold flex items-center gap-1 shadow-sm"
+                      className="min-h-[44px] px-4 rounded-xl bg-[#D71921] hover:bg-red-600 text-white text-xs font-semibold font-heading flex items-center justify-center shrink-0 shadow-md shadow-red-950/40 transition-colors cursor-pointer"
                     >
                       Get Kobans
                     </Link>
@@ -1813,7 +1952,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // If embedded (/dashboard/profile): centered column max-width 960px
   if (isEmbedded) {
     return (
-      <div className="w-full max-w-[960px] mx-auto bg-[#0a0a0d] border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden relative">
+      <div className="w-full max-w-[960px] mx-auto bg-[#0a0a0d] border-0 sm:border sm:border-neutral-800 rounded-none sm:rounded-2xl shadow-2xl overflow-hidden relative">
         {/* Profile effect confined to embedded card */}
         {equippedEffectId && effectVisible && (
           <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden rounded-2xl">

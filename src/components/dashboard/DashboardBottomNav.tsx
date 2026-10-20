@@ -109,12 +109,16 @@ export function DashboardBottomNav() {
     },
   ];
 
+  const isProfilePage = location.pathname.startsWith('/dashboard/profile');
+
   return (
     <>
       {/* ─── FIXED UNIFIED PILL BOTTOM NAVIGATION ────────────────────────────── */}
       <div
-        className={`fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[520px] z-40 transition-opacity duration-150 ${
-          isMenuOpen ? 'pointer-events-none opacity-0 invisible' : 'pointer-events-auto opacity-100'
+        className={`fixed bottom-[calc(12px+env(safe-area-inset-bottom,0px))] inset-x-0 mx-auto w-[calc(100%-24px)] max-w-[520px] z-40 transition-all duration-300 ease-out ${
+          isMenuOpen || isProfilePage
+            ? 'pointer-events-none opacity-0 invisible translate-y-6 scale-95'
+            : 'pointer-events-auto opacity-100 translate-y-0 scale-100'
         }`}
         aria-label="Student Navigation Bar"
       >
