@@ -55,7 +55,7 @@ export interface UserProfile {
   equipped?: EquippedCosmetics;
 }
 
-export type CosmeticType = 'effect' | 'frame' | 'nameplate' | 'avatar';
+export type CosmeticType = 'effect' | 'frame' | 'nameplate' | 'avatar' | 'banner';
 export type CosmeticRarity = 'common' | 'rare' | 'epic' | 'legendary';
 
 export interface EquippedCosmetics {
@@ -63,6 +63,7 @@ export interface EquippedCosmetics {
   frame?: string | null;
   nameplate?: string | null;
   avatar?: string | null;
+  banner?: string | null;
 }
 
 /**
@@ -72,20 +73,34 @@ export interface EquippedCosmetics {
 export interface PublicProfile {
   uid: string;
   displayName: string;
+  shortId?: string;
+  avatar?: string | null;
   avatarKey?: string | null;
   avatarVariant?: string | null;
+  banner?: string | null;
+  accent?: string | null;
+  bio?: string | null;
   photoURL?: string | null;
   crewId?: string | null;
   crewName?: string | null;
   role?: UserRole | string;
   equipped?: EquippedCosmetics;
+  equippedBadges?: string[];
+  verifiedBadges?: {
+    proUntil?: Timestamp | { seconds: number; nanoseconds?: number } | null;
+    captain?: boolean;
+    staff?: boolean;
+  };
+  memberSince?: Timestamp | { seconds: number; nanoseconds?: number } | string | null;
   publicStats?: {
     streak?: number;
+    longestStreak?: number;
     score?: number;
     testsCompleted?: number;
     totalQuestionsSolved?: number;
+    mcqsSolved?: number;
+    accuracy?: number;
   };
-  shortId?: string;
   updatedAt?: Timestamp | { seconds: number; nanoseconds?: number } | string | null | unknown;
 }
 
