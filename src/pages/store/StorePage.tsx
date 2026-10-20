@@ -5,7 +5,7 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { KobanAmount, KobanChip } from '@/components/koban/KobanIcon';
-import { COSMETICS_CATALOG, type CosmeticItem } from '@/data/cosmeticsCatalog';
+import { COSMETICS_CATALOG, getCosmeticById, type CosmeticItem } from '@/data/cosmeticsCatalog';
 import {
   AvatarPicture,
   AvatarFrame,
@@ -28,7 +28,7 @@ import {
   Loader2,
   SlidersHorizontal,
 } from 'lucide-react';
-import type { CosmeticType, CosmeticRarity } from '@/types';
+import type { CosmeticType, CosmeticRarity, EquippedCosmetics } from '@/types';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 type MainView = 'home' | 'browse' | 'collection';
@@ -816,7 +816,7 @@ export function StorePage() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
                 {filteredCollectionItems.map((item) => {
-                  const isEquipped = equipped[item.type] === item.id;
+                  const isEquipped = equipped[item.type as keyof EquippedCosmetics] === item.id;
                   const isRetired = Boolean((item as { isRetired?: boolean }).isRetired);
                   return (
                     <div

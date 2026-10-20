@@ -417,11 +417,13 @@ export const EffectAvatarRenderer: React.FC<EffectProps> = ({
  * In real profile view: displays for 3-4s, then smoothly fades away.
  * In store card / detail preview (`previewMode={true}`): loops continuously!
  */
-export const ProfileCardEffect: React.FC<{
+export interface ProfileCardEffectProps {
   itemId?: string | null;
   className?: string;
   previewMode?: boolean;
-}> = ({ itemId, className = '', previewMode = false }) => {
+}
+
+export const ProfileCardEffect: React.FC<ProfileCardEffectProps> = ({ itemId, className = '', previewMode = false }) => {
   const [visible, setVisible] = useState(true);
 
   useEffect(() => {

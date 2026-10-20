@@ -23,7 +23,6 @@ import {
   AvatarPicture,
   AvatarFrame,
   Nameplate,
-  CosmeticNameplate,
   ProfileCardEffect,
 } from '@/components/koban/CosmeticRenderers';
 import { getCosmeticById } from '@/data/cosmeticsCatalog';

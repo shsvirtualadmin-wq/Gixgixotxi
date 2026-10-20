@@ -8,6 +8,8 @@ import {
   query,
   where,
   serverTimestamp,
+  type DocumentData,
+  type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { syncPublicProfile } from '@/services/publicProfileService';
@@ -20,20 +22,22 @@ import { syncPublicProfile } from '@/services/publicProfileService';
  * Converts any timestamp (Date, number, string, Firestore Timestamp) to PKT date 'YYYY-MM-DD'.
  * Boundary is precisely 00:00:00 PKT (Asia/Karachi, UTC+5).
  */
-export function toPKTDateString(timestamp: any): string | null {
+export function toPKTDateString(timestamp: unknown): string | null {
   if (!timestamp) return null;
   let date: Date;
 
-  if (typeof timestamp.toDate === 'function') {
-    date = timestamp.toDate();
+  const ts = timestamp as Record<string, unknown>;
+  if (typeof (ts as { toDate?: () => Date }).toDate === 'function') {
+    date = (ts as { toDate: () => Date }).toDate();
   } else if (typeof timestamp === 'number') {
     date = new Date(timestamp < 1e11 ? timestamp * 1000 : timestamp);
   } else if (typeof timestamp === 'string') {
     date = new Date(timestamp);
   } else if (timestamp instanceof Date) {
     date = timestamp;
-  } else if (timestamp && (timestamp._seconds || timestamp.seconds)) {
-    date = new Date((timestamp._seconds || timestamp.seconds) * 1000);
+  } else if (ts && (ts._seconds || ts.seconds)) {
+    const sec = Number(ts._seconds ?? ts.seconds);
+    date = new Date(sec * 1000);
   } else {
     return null;
   }
@@ -278,7 +282,7 @@ export async function fetchUserCompletedSessionDates(uid: string): Promise<strin
   try {
     // 1. Fetch completed attempts for user
     const attemptsRef = collection(db, 'attempts');
-    let attemptDocs: any[] = [];
+    let attemptDocs: QueryDocumentSnapshot<DocumentData>[] = [];
 
     try {
       const q1 = query(attemptsRef, where('uid', '==', uid));
