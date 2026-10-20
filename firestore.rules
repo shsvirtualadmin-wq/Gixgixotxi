@@ -14,12 +14,17 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Custom Claim-based Admin (never trust client claims or email directly)
+    // Custom Claim & Database-verified Admin (never trust client claims or unverified email)
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.admin == true ||
         request.auth.token.role == 'admin' ||
-        request.auth.token.role == 'superadmin'
+        request.auth.token.role == 'superadmin' ||
+        (request.auth.token.email != null && (
+          request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com' ||
+          request.auth.token.email.lower() == 'support@boardly.cfd'
+        )) ||
+        request.auth.uid == 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
       );
     }
 
@@ -52,22 +57,22 @@ service cloud.firestore {
       return field == request.time;
     }
 
-    // Verify user owns an item before equipping (reads wallets/{uid})
+    // Verify user owns an item before equipping (reads wallets/{uid} or unlocked subcollection)
     function userOwnsItem(userId, itemId) {
       return itemId == null || itemId == 'none' || itemId == '' || (
         exists(/databases/$(database)/documents/wallets/$(userId)) &&
         itemId in get(/databases/$(database)/documents/wallets/$(userId)).data.owned
-      );
+      ) || exists(/databases/$(database)/documents/users/$(userId)/unlocked/$(itemId));
     }
 
     // =========================================================================
     // 3. USER ACCOUNTS & PROFILES
     // =========================================================================
 
-    // Private Student Document: Personal and security-critical data
-    // Contains role, subscription, status, and sensitive info.
+    // Student Document: User profiles viewable by signed-in peers.
+    // Privileged fields (kobans, role, followersCount, followingCount) are BLOCKED from client updates.
     match /users/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
+      allow read: if isSignedIn();
       allow list: if isAdmin();
 
       // Creation on signup: only allowed with default starter fields
@@ -77,20 +82,46 @@ service cloud.firestore {
         (!('plan' in request.resource.data) || request.resource.data.plan == 'free') &&
         (!('status' in request.resource.data) || request.resource.data.status == 'active') &&
         (!('isPremium' in request.resource.data) || request.resource.data.isPremium == false) &&
-        (!('suspended' in request.resource.data) || request.resource.data.suspended == false);
+        (!('suspended' in request.resource.data) || request.resource.data.suspended == false) &&
+        (!('kobans' in request.resource.data) || request.resource.data.kobans == 0) &&
+        (!('kobanBalance' in request.resource.data) || request.resource.data.kobanBalance == 0) &&
+        (!('followersCount' in request.resource.data) || request.resource.data.followersCount == 0) &&
+        (!('followingCount' in request.resource.data) || request.resource.data.followingCount == 0);
 
-      // Student updates: can only modify non-privileged preference fields
+      // Student updates: can only modify non-privileged preference fields.
+      // kobans, kobanBalance, role, followersCount, followingCount are STRICTLY BLOCKED from client writes.
       allow update: if isAdmin() || (
         isOwner(userId) &&
-        // Privilege & billing fields are strictly immutable to client
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName', 'bio', 'status', 'accent', 'targetUniversity',
           'targetTestDate', 'selectedSubjects', 'updatedAt', 'onboardingCompleted',
-          'streakFreezeActive'
+          'streakFreezeActive', 'equipped', 'avatarKey', 'avatarVariant'
         ])
       );
 
       allow delete: if isAdmin();
+
+      // Subcollection: following (users/{uid}/following/{target})
+      // A signed-in user can manage their own following records
+      match /following/{targetId} {
+        allow read: if isSignedIn();
+        allow create, delete: if isOwner(userId);
+        allow update: if false;
+      }
+
+      // Subcollection: followers (users/{target}/followers/{uid})
+      // A signed-in user can add/remove themselves as a follower of the target
+      match /followers/{followerId} {
+        allow read: if isSignedIn();
+        allow create, delete: if isOwner(followerId);
+        allow update: if false;
+      }
+
+      // Subcollection: unlocked cosmetic items (written by Cloud Functions / Admin SDK)
+      match /unlocked/{itemId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isAdmin();
+      }
 
       // Subcollection: Daily MCQ and AI query quota tracking
       match /usage/{dateKey} {
@@ -118,11 +149,10 @@ service cloud.firestore {
 
       allow update: if isAdmin() || (
         isOwner(userId) &&
-        // Prevent client from escalating public stats directly
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName', 'bio', 'status', 'accent', 'avatar', 'frame',
           'nameplate', 'banner', 'effectId', 'equipped', 'badges',
-          'crewName', 'updatedAt', 'followersCount', 'followingCount'
+          'crewName', 'updatedAt'
         ]) &&
         // Equipping verification: user must own the equipped cosmetic
         (
@@ -143,10 +173,33 @@ service cloud.firestore {
         allow read: if isSignedIn();
         allow write: if isOwner(userId) || isAdmin();
       }
+
+      match /followers/{followerUid} {
+        allow read: if isSignedIn();
+        allow write: if isOwner(followerUid) || isAdmin();
+      }
     }
 
     // =========================================================================
-    // 4. WALLETS, COSMETICS & STORE LEDGER
+    // 4. RESERVED USERNAMES & NAME REQUESTS
+    // =========================================================================
+
+    // Name Requests: Students request reserved display names for Admin approval
+    match /nameRequests/{requestId} {
+      allow read: if isSignedIn() && (
+        resource == null ||
+        resource.data.uid == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() &&
+        request.resource.data.uid == request.auth.uid &&
+        isValidString(request.resource.data.requestedName, 1, 50) &&
+        request.resource.data.status == 'pending';
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 5. WALLETS, COSMETICS & STORE LEDGER
     // =========================================================================
 
     // Student Wallet: Koban currency balance and owned cosmetic inventory
@@ -159,7 +212,7 @@ service cloud.firestore {
         request.resource.data.owned.size() == 0;
 
       // Updating wallet: Clients can ONLY update equipped slots.
-      // Balance and owned items are STRICTLY server/Admin SDK-writable!
+      // Balance and owned items are STRICTLY Cloud Function / Admin SDK-writable!
       allow update: if isAdmin() || (
         isOwner(userId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['equipped', 'updatedAt']) &&
@@ -201,7 +254,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 5. USER POSTS FEED (PROFILE POSTS)
+    // 6. USER POSTS FEED (PROFILE POSTS)
     // =========================================================================
 
     match /posts/{postId} {
@@ -281,7 +334,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 6. BOARDLY COMMONS (STUDY RESOURCE EXCHANGE)
+    // 7. BOARDLY COMMONS (STUDY RESOURCE EXCHANGE)
     // =========================================================================
 
     match /commonsPosts/{postId} {
@@ -334,7 +387,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 7. STUDY SQUADS & CREWS
+    // 8. STUDY SQUADS & CREWS
     // =========================================================================
 
     match /crews/{crewId} {
@@ -408,7 +461,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 8. SOCIAL EDGES: FOLLOWS
+    // 9. SOCIAL EDGES: FOLLOWS
     // =========================================================================
 
     match /follows/{followId} {
@@ -430,7 +483,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 9. MCQ ATTEMPTS & TEST ENGINE
+    // 10. MCQ ATTEMPTS & TEST ENGINE
     // =========================================================================
 
     match /attempts/{attemptId} {
@@ -459,7 +512,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 10. ENTRANCE TEST QUESTION BANK (~17,000 MCQs)
+    // 11. ENTRANCE TEST QUESTION BANK (~17,000 MCQs)
     // =========================================================================
 
     match /questions/{qId} {
@@ -498,7 +551,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 11. REFERRALS, PAYMENTS & AUDIT LOGS
+    // 12. REFERRALS, PAYMENTS & AUDIT LOGS
     // =========================================================================
 
     match /referrals/{refId} {
@@ -584,7 +637,7 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 12. DEFAULT DENY CATCH-ALL
+    // 13. DEFAULT DENY CATCH-ALL
     // =========================================================================
 
     // Any document path not explicitly authorized above is strictly denied

@@ -5,6 +5,10 @@ import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/Cosmet
 import { Link } from 'react-router-dom';
 import type { PublicProfile, UserProfile } from '@/types';
 
+import { validateDisplayName } from '@/utils/usernameValidation';
+import { submitNameRequest } from '@/services/nameRequestService';
+import { AlertCircle, Send, Loader2, CheckCircle2 } from 'lucide-react';
+
 interface EditProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -33,8 +37,28 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const [accent, setAccent] = useState(publicProfile.accent || userProfile?.accent || '#D71921');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSendingRequest, setIsSendingRequest] = useState(false);
+  const [requestSentMessage, setRequestSentMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const handleSendNameRequest = async () => {
+    if (!publicProfile.uid || !displayName.trim()) return;
+    setIsSendingRequest(true);
+    setError(null);
+    try {
+      await submitNameRequest({
+        uid: publicProfile.uid,
+        requestedName: displayName.trim(),
+        currentDisplayName: publicProfile.displayName,
+      });
+      setRequestSentMessage(`Request for "${displayName.trim()}" submitted! Admin will review your requested name.`);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to submit name request to admin.');
+    } finally {
+      setIsSendingRequest(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,6 +66,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
       setError('Display name cannot be empty');
       return;
     }
+
+    const validation = validateDisplayName(displayName.trim(), publicProfile.uid);
+    if (!validation.valid) {
+      setError(validation.error || 'This name is reserved. Send a request to the admin.');
+      return;
+    }
+
     setError(null);
     setIsSaving(true);
     try {
@@ -105,9 +136,6 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                       name={displayName || 'Student'}
                       forceStatic
                     />
-                    <span className="text-[10px] font-mono text-neutral-500">
-                      #{publicProfile.studentId}
-                    </span>
                   </div>
                   {status && (
                     <p className="text-[11px] text-neutral-400 font-mono truncate">{status}</p>
@@ -205,7 +233,41 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             </Link>
           </div>
 
-          {error && <p className="text-xs text-red-400">{error}</p>}
+          {error && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={14} className="shrink-0 text-red-500" />
+                <span>{error}</span>
+              </div>
+              {error.includes('Send a request to the admin') && (
+                <button
+                  type="button"
+                  disabled={isSendingRequest}
+                  onClick={handleSendNameRequest}
+                  className="self-start mt-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-heading font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+                >
+                  {isSendingRequest ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" />
+                      <span>Sending Request...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={13} />
+                      <span>Send Request to Admin</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+
+          {requestSentMessage && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
+              <CheckCircle2 size={14} className="shrink-0 text-emerald-500" />
+              <span>{requestSentMessage}</span>
+            </div>
+          )}
 
           {/* Footer Submit Buttons */}
           <div className="pt-2 flex items-center gap-2">

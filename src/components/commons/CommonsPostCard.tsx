@@ -21,6 +21,8 @@ import type { CommonsPost, CommonsFileAttachment } from '@/types/commons';
 import { COMMONS_POST_TYPES } from '@/types/commons';
 import { togglePostVote, toggleSavePost } from '@/services/commonsService';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 interface CommonsPostCardProps {
   post: CommonsPost;
@@ -135,23 +137,22 @@ export function CommonsPostCard({
             <div className="w-8 h-8 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-xs font-mono text-neutral-400 shrink-0">
               ?
             </div>
-          ) : post.authorAvatar ? (
-            <img
-              src={post.authorAvatar}
-              alt={post.authorName}
-              className="w-8 h-8 rounded-full border border-neutral-700 object-cover shrink-0 group-hover/author:border-red-500 transition-colors"
-            />
           ) : (
-            <div className="w-8 h-8 rounded-full bg-red-950/60 border border-red-800/60 flex items-center justify-center text-xs font-bold text-red-300 shrink-0 group-hover/author:border-red-500 transition-colors">
-              {post.authorName.charAt(0).toUpperCase()}
-            </div>
+            <BoardlyAvatar
+              equippedAvatar={(post as any).authorEquippedAvatar || (post.authorAvatar?.startsWith('pfp_') ? post.authorAvatar : undefined)}
+              avatarUrl={post.authorAvatar && !post.authorAvatar.startsWith('pfp_') && !post.authorAvatar.includes('googleusercontent') ? post.authorAvatar : undefined}
+              photoURL={post.authorAvatar?.includes('googleusercontent') ? post.authorAvatar : (post as any).authorPhotoURL}
+              frame={(post as any).authorFrame}
+              name={sanitizeStudentDisplayName(post.authorName, post.authorUid)}
+              size={32}
+            />
           )}
 
           {/* Author details */}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-neutral-100 group-hover/author:text-red-400 transition-colors truncate">
-                {post.authorName}
+                {sanitizeStudentDisplayName(post.authorName, post.authorUid)}
               </span>
               {post.isAnonymous && (
                 <span className="text-[10px] font-mono tracking-wider uppercase text-amber-400/90 bg-amber-950/40 border border-amber-800/40 px-1.5 py-0.2 rounded">

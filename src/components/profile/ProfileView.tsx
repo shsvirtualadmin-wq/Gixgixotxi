@@ -61,6 +61,7 @@ import { EditProfileSheet } from './EditProfileSheet';
 import { ShareProfileCardModal } from './ShareProfileCardModal';
 import { deriveFallbackShortId } from '@/utils/shortId';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import type { PublicProfile } from '@/types';
 
 export interface ProfileViewProps {
@@ -474,6 +475,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <span className="hidden sm:inline">View as others</span>
             </button>
           )}
+
+          {/* Student ID watermark badge on banner */}
+          <div className="absolute bottom-3 right-3 z-30 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/15 text-white/90 font-mono text-xs font-semibold select-none flex items-center gap-1 shadow-sm">
+            <span>#{profile?.studentId || profile?.shortId || (profile?.uid ? profile.uid.slice(0, 5) : '00000')}</span>
+          </div>
         </div>
 
         {/* ── 2. AVATAR & HEADER DETAILS ── */}
@@ -482,14 +488,16 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="flex items-end justify-between -mt-[44px] sm:-mt-[60px] relative z-20">
             {/* Avatar container (88px mobile, 120px desktop, never clipped) */}
             <div className="p-1 rounded-full bg-[var(--card)] shrink-0 overflow-visible relative">
-              <AvatarFrame itemId={profile?.frame || 'none'} size={window.innerWidth < 640 ? 88 : 120}>
-                <AvatarPicture
-                  avatarId={profile?.avatar}
-                  avatarKey={profile?.avatarKey}
-                  variant={profile?.avatarVariant}
-                  size={window.innerWidth < 640 ? 76 : 104}
-                />
-              </AvatarFrame>
+              <BoardlyAvatar
+                equippedAvatar={profile?.avatar || (profile?.equipped?.avatar as string)}
+                avatarUrl={profile?.avatarUrl}
+                photoURL={profile?.photoURL || (authUser?.photoURL as string)}
+                frame={profile?.frame || (profile?.equipped?.frame as string) || 'none'}
+                name={profile?.displayName || 'Student'}
+                avatarKey={profile?.avatarKey}
+                avatarVariant={profile?.avatarVariant}
+                size={window.innerWidth < 640 ? 76 : 104}
+              />
               {/* Level Badge anchored to bottom-right of avatar */}
               <div
                 className="absolute -bottom-1 -right-1 z-30 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-600 to-amber-500 text-white font-mono font-black text-[10px] sm:text-[11px] shadow-md border-2 border-[var(--card)] flex items-center gap-0.5 select-none"
@@ -523,18 +531,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <Nameplate
                   itemId={profile.nameplate}
                   name={profile?.displayName || 'Student'}
-                  shortId={profile?.studentId || profile?.shortId}
                 />
               ) : (
                 <h1 className="font-heading font-bold text-lg sm:text-xl text-[var(--text)] truncate">
                   {profile?.displayName || 'Student'}
                 </h1>
               )}
-
-              {/* Student ID chip */}
-              <span className="font-mono text-xs px-2 py-0.5 rounded-md bg-[var(--card-2)] border border-[var(--border)] text-[var(--muted)]">
-                #{profile?.studentId || profile?.shortId || profile?.uid?.slice(0, 5) || '00000'}
-              </span>
 
               {/* Public mode: Follows you tag */}
               {isPublicMode && followsMe && (
@@ -1286,11 +1288,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                                 <Nameplate
                                   itemId={profile?.nameplate || 'none'}
                                   name={profile?.displayName || 'Student'}
-                                  shortId={profile?.studentId || profile?.shortId}
                                 />
-                                <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-black/40 text-zinc-300 border border-white/10">
-                                  #{profile?.studentId || profile?.shortId || '00000'}
-                                </span>
                               </div>
                               <p className="text-[11px] font-heading font-semibold text-amber-400/90 truncate">
                                 {previewItem?.name || 'Default Cover'}

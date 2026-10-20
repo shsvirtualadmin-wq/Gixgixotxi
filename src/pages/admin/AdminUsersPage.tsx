@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Search, RefreshCw, UserCheck, Loader2, Shield } from 'lucide-react';
+import { Search, RefreshCw, UserCheck, Loader2, Shield, Users as UsersIcon, Clock, Tag } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserOverrideDrawer } from '@/components/admin/UserOverrideDrawer';
 import { AdminDiagnosticBanner, type AdminDiagnosticError } from '@/components/admin/AdminDiagnosticBanner';
+import { AdminNameRequestsSection } from '@/components/admin/AdminNameRequestsSection';
 import {
   fetchUsersPaginated,
   backfillMissingDisplayNames,
@@ -18,6 +19,8 @@ let cachedAdminUsers: UserProfile[] = [];
 
 export function AdminUsersPage() {
   const { user } = useAuth();
+  const [adminTab, setAdminTab] = useState<'users' | 'nameRequests'>('users');
+  const [pendingNameRequestsCount, setPendingNameRequestsCount] = useState<number>(0);
   const [allUsers, setAllUsers] = useState<UserProfile[]>(() => cachedAdminUsers);
   const [loading, setLoading] = useState(() => cachedAdminUsers.length === 0);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -273,8 +276,49 @@ export function AdminUsersPage() {
         </div>
       )}
 
-      {/* ─── SEARCH & FILTER CHIPS TOOLBAR ──────────────────────────────────── */}
-      <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3.5">
+      {/* ─── TAB NAVIGATION (Users Directory vs Name Requests) ─── */}
+      <div className="flex items-center gap-2 border-b border-[var(--border)] pb-2">
+        <button
+          type="button"
+          onClick={() => setAdminTab('users')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-heading font-semibold transition-colors cursor-pointer ${
+            adminTab === 'users'
+              ? 'bg-[var(--card-2)] text-[var(--text)] border border-[var(--border)] shadow-xs'
+              : 'text-[var(--muted)] hover:text-[var(--text)]'
+          }`}
+        >
+          <UsersIcon size={14} className={adminTab === 'users' ? 'text-[var(--red)]' : ''} />
+          <span>All Users ({allUsers.length})</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setAdminTab('nameRequests')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-heading font-semibold transition-colors cursor-pointer ${
+            adminTab === 'nameRequests'
+              ? 'bg-[var(--card-2)] text-[var(--text)] border border-[var(--border)] shadow-xs'
+              : 'text-[var(--muted)] hover:text-[var(--text)]'
+          }`}
+        >
+          <Tag size={14} className={adminTab === 'nameRequests' ? 'text-amber-400' : ''} />
+          <span>Name Requests</span>
+          {pendingNameRequestsCount > 0 && (
+            <span className="px-1.5 py-0.2 rounded-full bg-amber-500 text-black text-[10px] font-mono font-bold">
+              {pendingNameRequestsCount}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {adminTab === 'nameRequests' ? (
+        <AdminNameRequestsSection
+          adminEmail={user?.email || ''}
+          onRequestCountChange={setPendingNameRequestsCount}
+        />
+      ) : (
+        <>
+          {/* ─── SEARCH & FILTER CHIPS TOOLBAR ──────────────────────────────────── */}
+          <div className="p-5 rounded-[24px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-3.5">
         {/* Search input */}
         <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)]">
           <Search size={16} className="text-[var(--muted)] shrink-0" />
@@ -619,6 +663,8 @@ export function AdminUsersPage() {
             )}
           </button>
         </div>
+      )}
+        </>
       )}
 
       {/* ─── USER OVERRIDE DRAWER (Side Drawer on Desktop / Bottom Sheet on Mobile) ─── */}

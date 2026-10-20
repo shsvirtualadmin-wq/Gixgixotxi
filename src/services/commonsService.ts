@@ -27,6 +27,7 @@ import type {
   CommonsUserPreview,
 } from '@/types/commons';
 import { getFollowingIds } from '@/services/followService';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 const DAILY_POST_LIMIT = 10;
 const DISALLOWED_FILE_EXTENSIONS = [
@@ -183,7 +184,15 @@ async function recordPostUsage(uid: string): Promise<void> {
  * Create a new Commons post (Public doc + Private author record for moderation).
  */
 export async function createCommonsPost(params: {
-  currentUser: { uid: string; email?: string | null; displayName?: string | null; photoURL?: string | null };
+  currentUser: {
+    uid: string;
+    email?: string | null;
+    displayName?: string | null;
+    photoURL?: string | null;
+    equippedAvatar?: string | null;
+    frame?: string | null;
+    avatarUrl?: string | null;
+  };
   type: CommonsPostType;
   title: string;
   description: string;
@@ -220,8 +229,13 @@ export async function createCommonsPost(params: {
   const postId = postRef.id;
 
   let publicAuthorUid: string | null = currentUser.uid;
-  let publicAuthorName = currentUser.displayName || 'Student';
-  let publicAuthorAvatar: string | null = currentUser.photoURL || null;
+  let publicAuthorName = sanitizeStudentDisplayName(currentUser.displayName, currentUser.uid);
+  // Priority: 1. equippedAvatar, 2. avatarUrl, 3. photoURL (Google), 4. null
+  let publicAuthorAvatar: string | null =
+    currentUser.equippedAvatar || currentUser.avatarUrl || currentUser.photoURL || null;
+  let authorFrame: string | null = currentUser.frame || null;
+  let authorEquippedAvatar: string | null = currentUser.equippedAvatar || null;
+  let authorPhotoURL: string | null = currentUser.photoURL || null;
   let authorAlias: string | undefined = undefined;
 
   if (params.isAnonymous) {
@@ -229,6 +243,9 @@ export async function createCommonsPost(params: {
     authorAlias = undefined;
     publicAuthorName = 'Anonymous';
     publicAuthorAvatar = null;
+    authorFrame = null;
+    authorEquippedAvatar = null;
+    authorPhotoURL = null;
   }
 
   const searchKeywords = generateSearchKeywords({
@@ -256,6 +273,9 @@ export async function createCommonsPost(params: {
     authorUid: publicAuthorUid,
     authorName: publicAuthorName,
     authorAvatar: publicAuthorAvatar,
+    authorFrame,
+    authorEquippedAvatar,
+    authorPhotoURL,
     upvotes: 0,
     commentCount: 0,
     saveCount: 0,
@@ -490,7 +510,14 @@ export async function checkUserSaved(postId: string, userId: string): Promise<bo
  */
 export async function addPostComment(params: {
   postId: string;
-  author: { uid: string; displayName?: string | null; photoURL?: string | null };
+  author: {
+    uid: string;
+    displayName?: string | null;
+    photoURL?: string | null;
+    equippedAvatar?: string | null;
+    frame?: string | null;
+    avatarUrl?: string | null;
+  };
   text: string;
   isAnonymous?: boolean;
 }): Promise<CommonsComment> {
@@ -499,9 +526,15 @@ export async function addPostComment(params: {
 
   const authorName = params.isAnonymous
     ? 'Anonymous Student'
-    : params.author.displayName || 'Student';
+    : sanitizeStudentDisplayName(params.author.displayName, params.author.uid);
 
-  const authorAvatar = params.isAnonymous ? null : params.author.photoURL || null;
+  // Priority: 1. equippedAvatar, 2. avatarUrl, 3. photoURL (Google), 4. null
+  const authorAvatar = params.isAnonymous
+    ? null
+    : params.author.equippedAvatar || params.author.avatarUrl || params.author.photoURL || null;
+  const authorFrame = params.isAnonymous ? null : params.author.frame || null;
+  const authorEquippedAvatar = params.isAnonymous ? null : params.author.equippedAvatar || null;
+  const authorPhotoURL = params.isAnonymous ? null : params.author.photoURL || null;
   const authorUid = params.isAnonymous ? null : params.author.uid;
 
   const commentData: Omit<CommonsComment, 'id'> = {
@@ -509,6 +542,9 @@ export async function addPostComment(params: {
     authorUid,
     authorName,
     authorAvatar,
+    authorFrame,
+    authorEquippedAvatar,
+    authorPhotoURL,
     isAnonymous: Boolean(params.isAnonymous),
     text: params.text.trim(),
     createdAt: serverTimestamp(),

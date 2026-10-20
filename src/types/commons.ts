@@ -116,6 +116,9 @@ export interface CommonsPost {
   authorUid: string | null;
   authorName: string;
   authorAvatar: string | null;
+  authorFrame?: string | null;
+  authorEquippedAvatar?: string | null;
+  authorPhotoURL?: string | null;
   authorAlias?: string;
   upvotes: number;
   commentCount: number;
@@ -142,6 +145,9 @@ export interface CommonsComment {
   authorUid: string | null;
   authorName: string;
   authorAvatar: string | null;
+  authorFrame?: string | null;
+  authorEquippedAvatar?: string | null;
+  authorPhotoURL?: string | null;
   isAnonymous: boolean;
   text: string;
   createdAt: any;

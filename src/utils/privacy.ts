@@ -1,5 +1,21 @@
 import { deriveFallbackShortId } from './shortId';
 
+const ADMIN_IDENTIFIERS = [
+  'shsvirtualadmin@gmail.com',
+  'support@boardly.cfd',
+  'a5ymrimdhrcmedwutxtugt2e4hf2',
+  'shsvirtualadmin',
+];
+
+/**
+ * Checks whether an identifier (email, UID, or role) belongs to the Boardly admin account.
+ */
+export function isAdminAccount(identifier?: string | null): boolean {
+  if (!identifier || typeof identifier !== 'string') return false;
+  const clean = identifier.toLowerCase().trim();
+  return ADMIN_IDENTIFIERS.some((adminId) => clean === adminId || clean.includes('shsvirtualadmin'));
+}
+
 /**
  * Checks whether a string looks like an email address.
  */
@@ -10,40 +26,60 @@ export function isEmailLike(str?: string | null): boolean {
 }
 
 /**
- * Sanitizes student display name across all public surfaces, leaderboards, and crew lists.
- * If displayName is empty, whitespace, or looks like an email address,
- * it returns "Student #" + shortCode (derived from shortId or UID).
- * Ensures emails are NEVER exposed as display names.
+ * Sanitizes student display name across all public surfaces, leaderboards, profile, and Commons.
+ * Rules:
+ * 1. Admin account ALWAYS shows "SHS Virtual Academy".
+ * 2. Uses real displayName first.
+ * 3. Only falls back to "Student" if empty or whitespace (no "Student #43724").
+ * 4. Never exposes raw email addresses.
  */
 export function sanitizeStudentDisplayName(
   displayName?: string | null,
   uidOrShortId?: string | null
 ): string {
-  if (!displayName || typeof displayName !== 'string' || displayName.trim() === '') {
-    const code = getShortDisplayCode(uidOrShortId);
-    return `Student #${code}`;
+  // Admin account check: Must show "SHS Virtual Academy"
+  if (isAdminAccount(uidOrShortId) || isAdminAccount(displayName)) {
+    return 'SHS Virtual Academy';
   }
 
-  const trimmed = displayName.trim();
+  if (displayName && typeof displayName === 'string') {
+    const trimmed = displayName.trim();
 
-  // If the display name looks like an email address (e.g. user@gmail.com)
-  if (isEmailLike(trimmed) || trimmed.includes('@')) {
-    const code = getShortDisplayCode(uidOrShortId);
-    return `Student #${code}`;
+    // Check if displayName itself represents the admin
+    if (
+      trimmed.toLowerCase() === 'shs virtual academy' ||
+      trimmed.toLowerCase() === 'shsvirtualadmin' ||
+      trimmed.toLowerCase() === 'shs virtual academy (admin)'
+    ) {
+      return 'SHS Virtual Academy';
+    }
+
+    // Never expose email as display name: if email, extract friendly prefix or fall back to "Student"
+    if (isEmailLike(trimmed) || trimmed.includes('@')) {
+      const prefix = trimmed.split('@')[0].trim();
+      if (prefix && prefix.length >= 2 && !prefix.includes('.')) {
+        return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+      }
+      return 'Student';
+    }
+
+    if (trimmed.length > 0) {
+      // Cap length for clean mobile layout
+      if (trimmed.length > 28) {
+        return trimmed.slice(0, 26).trim() + '…';
+      }
+      return trimmed;
+    }
   }
 
-  // Cap length for clean mobile display without horizontal overflow
-  if (trimmed.length > 28) {
-    return trimmed.slice(0, 26).trim() + '…';
-  }
-
-  return trimmed;
+  // Fall back to "Student" if empty
+  return 'Student';
 }
 
 /**
  * Extracts or derives a clean 5-digit short code for a student.
  */
-function getShortDisplayCode(uidOrShortId?: string | null): string {
+export function getShortDisplayCode(uidOrShortId?: string | null): string {
   if (!uidOrShortId) return '00000';
   const clean = String(uidOrShortId).trim();
   if (/^\d{4,6}$/.test(clean)) {

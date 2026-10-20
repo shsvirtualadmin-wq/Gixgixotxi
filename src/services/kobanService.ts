@@ -36,23 +36,63 @@ export interface WalletData {
  * - Appends item to owned[]
  * - Appends immutable ledger document in wallets/{uid}/ledger/{entryId}
  */
+import { httpsCallable } from 'firebase/functions';
+import { functions } from '@/lib/firebase';
+
+/**
+ * Purchases and unlocks a cosmetic item:
+ * - Calls callable Cloud Function "unlockItem" which runs an atomic Firestore transaction.
+ * - Server validates price, balance, and prevents double unlocks.
+ * - Deducts Kobans and writes to users/{uid}/unlocked/{itemId}.
+ * - Emits clear, helpful error messages for the user.
+ */
 export async function purchaseCosmeticItem(
   userId: string,
   item: CosmeticItem,
   isSuperAdmin = false
 ): Promise<{ success: boolean; newBalance: number }> {
   if (!userId) throw new Error('You must be signed in to purchase cosmetics.');
+
+  // 1. Primary: Server-side atomic Cloud Function
+  try {
+    const unlockItemCallable = httpsCallable<
+      { itemId: string; userId?: string },
+      { success: boolean; itemId: string; itemName: string; pricePaid: number; newBalance: number; owned: string[] }
+    >(functions, 'unlockItem');
+
+    const response = await unlockItemCallable({ itemId: item.id, userId });
+    if (response?.data?.success) {
+      return {
+        success: true,
+        newBalance: response.data.newBalance,
+      };
+    }
+  } catch (fnErr: any) {
+    const msg = fnErr?.message || '';
+    // If it's a domain/validation error, surface it cleanly to the user
+    if (
+      msg.includes('already own') ||
+      msg.includes('already unlocked') ||
+      msg.includes('Insufficient Kobans') ||
+      msg.includes('inactive') ||
+      msg.includes('signed in')
+    ) {
+      throw new Error(msg);
+    }
+    console.warn('[kobanService] unlockItem Cloud Function call failed, trying transaction fallback:', fnErr);
+  }
+
+  // 2. Fallback: Local Firestore transaction (if Cloud Functions not deployed in current environment)
   const walletRef = doc(db, 'wallets', userId);
   const storeItemRef = doc(db, 'store_items', item.id);
+  const unlockedDocRef = doc(db, 'users', userId, 'unlocked', item.id);
 
   const newBalance = await runTransaction(db, async (tx) => {
-    // 1. Fetch wallet
     const snap = await tx.get(walletRef);
     if (!snap.exists()) {
       throw new Error('Wallet not initialized. Please refresh and try again.');
     }
 
-    // 2. Fetch live store item price and active state
     let effectivePrice = item.priceKobans;
     const storeItemSnap = await tx.get(storeItemRef);
     if (storeItemSnap.exists()) {
@@ -65,7 +105,6 @@ export async function purchaseCosmeticItem(
       }
     }
 
-    // Super Admin gets items free of charge
     if (isSuperAdmin) {
       effectivePrice = 0;
     }
@@ -87,14 +126,22 @@ export async function purchaseCosmeticItem(
     const balanceAfter = Math.max(0, currentBalance - effectivePrice);
     const updatedOwned = [...currentOwned, item.id];
 
-    // 3. Atomically update wallet
+    // Atomically update wallet
     tx.update(walletRef, {
       balance: balanceAfter,
       owned: updatedOwned,
       updatedAt: serverTimestamp(),
     });
 
-    // 4. Append immutable ledger document
+    // Write unlocked record
+    tx.set(unlockedDocRef, {
+      itemId: item.id,
+      itemName: item.name,
+      pricePaid: effectivePrice,
+      unlockedAt: serverTimestamp(),
+    });
+
+    // Append ledger document
     const ledgerEntryRef = doc(
       collection(db, 'wallets', userId, 'ledger'),
       `purchase_${item.id}_${Date.now()}`

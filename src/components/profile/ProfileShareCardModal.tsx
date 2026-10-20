@@ -106,9 +106,6 @@ export const ProfileShareCardModal: React.FC<ProfileShareCardModalProps> = ({
                   name={profile.displayName}
                   forceStatic
                 />
-                <span className="px-2 py-0.5 rounded-md text-[11px] font-mono bg-neutral-900 border border-neutral-800 text-neutral-300">
-                  #{profile.studentId}
-                </span>
               </div>
               <div className="text-xs font-semibold text-neutral-400 font-mono">
                 {profile.rankTitle || 'Fresher'}

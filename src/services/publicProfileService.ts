@@ -221,9 +221,10 @@ export async function getPublicProfile(uid: string, forceFresh = false): Promise
   if (!uid) return null;
 
   const fallbackShortId = deriveFallbackShortId(uid || 'guest');
+  const fallbackDisplayName = sanitizeStudentDisplayName('', uid);
   const fallback: PublicProfile = {
     uid: uid || 'guest',
-    displayName: `Student #${fallbackShortId}`,
+    displayName: fallbackDisplayName,
     studentId: fallbackShortId,
     shortId: fallbackShortId,
     avatar: null,
@@ -391,9 +392,10 @@ export async function getPublicProfiles(uids: string[]): Promise<Map<string, Pub
   // Any missing UIDs get a clean fallback
   for (const uid of cleanUids) {
     if (!result.has(uid)) {
+      const fallbackDisplayName = sanitizeStudentDisplayName('', uid);
       const fallback: PublicProfile = {
         uid,
-        displayName: `Student #${deriveFallbackShortId(uid)}`,
+        displayName: fallbackDisplayName,
         studentId: deriveFallbackShortId(uid),
         shortId: deriveFallbackShortId(uid),
         avatar: null,

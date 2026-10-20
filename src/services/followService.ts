@@ -5,11 +5,13 @@ import {
   where,
   getDocs,
   getDoc,
-  runTransaction,
+  setDoc,
+  deleteDoc,
   serverTimestamp,
   limit,
 } from 'firebase/firestore';
-import { db } from '../lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../lib/firebase';
 import type { FollowDoc, PublicProfile } from '../types';
 
 /**
@@ -117,10 +119,16 @@ export function getFollowDocId(followerId: string, targetId: string): string {
 
 /**
  * Checks if followerId currently follows targetId.
+ * Checks both users/{followerId}/following/{targetId} and legacy follows/{followerId}_{targetId}
  */
 export async function isFollowing(followerId: string, targetId: string): Promise<boolean> {
   if (!followerId || !targetId || followerId === targetId) return false;
   try {
+    // 1. Check direct user following subcollection
+    const userFollowingSnap = await getDoc(doc(db, 'users', followerId, 'following', targetId));
+    if (userFollowingSnap.exists()) return true;
+
+    // 2. Check legacy follows collection
     const docId = getFollowDocId(followerId, targetId);
     const snap = await getDoc(doc(db, 'follows', docId));
     return snap.exists();
@@ -131,16 +139,13 @@ export async function isFollowing(followerId: string, targetId: string): Promise
 }
 
 /**
- * Follow a target student.
- * Updates both follower's followingCount and target's followersCount in one atomic transaction.
- * Strictly guarantees counts never go below zero.
- * Rate limited to 30 actions per hour.
- * Disallows self-following.
+ * Executes a follow / unfollow toggle via callable Cloud Function "toggleFollow".
+ * Gracefully falls back to subcollection updates if Cloud Functions are unavailable.
  */
-export async function followUser(
+export async function toggleFollowUser(
   followerId: string,
   targetId: string
-): Promise<{ success: boolean; followersCount: number; followingCount: number }> {
+): Promise<{ success: boolean; following: boolean; followersCount: number; followingCount: number }> {
   if (!followerId || !targetId) {
     throw new Error('Both follower ID and target ID are required.');
   }
@@ -152,222 +157,175 @@ export async function followUser(
   // 1. Enforce rate limit (30 per hour)
   consumeFollowRateLimit(followerId);
 
-  const followDocId = getFollowDocId(followerId, targetId);
-  const followDocRef = doc(db, 'follows', followDocId);
-  const followerProfileRef = doc(db, 'publicProfiles', followerId);
-  const targetProfileRef = doc(db, 'publicProfiles', targetId);
+  // 2. Primary: Call backend Cloud Function "toggleFollow"
+  try {
+    const toggleFollowCallable = httpsCallable<
+      { targetUid: string },
+      { success: boolean; following: boolean; followersCount: number; followingCount: number }
+    >(functions, 'toggleFollow');
 
-  let updatedTargetFollowers = 0;
-  let updatedFollowerFollowing = 0;
-
-  await runTransaction(db, async (tx) => {
-    // Read all required documents first (Firestore transaction requirement)
-    const followSnap = await tx.get(followDocRef);
-    if (followSnap.exists()) {
-      // Already following; treat as idempotent success
-      const [fSnap, tSnap] = await Promise.all([tx.get(followerProfileRef), tx.get(targetProfileRef)]);
-      updatedFollowerFollowing = fSnap.exists() ? Number(fSnap.data().followingCount || 0) : 0;
-      updatedTargetFollowers = tSnap.exists() ? Number(tSnap.data().followersCount || 0) : 0;
-      return;
+    const result = await toggleFollowCallable({ targetUid: targetId });
+    if (result.data) {
+      return result.data;
     }
+  } catch (fnErr: any) {
+    // If it's a validation error from server (e.g. self-follow), throw clear message
+    const msg = fnErr?.message || '';
+    if (msg.includes('Students cannot follow themselves') || msg.includes('unauthenticated')) {
+      throw new Error(msg);
+    }
+    console.warn('[followService] Cloud Function toggleFollow failed or not deployed, using client fallback:', fnErr);
+  }
 
-    const [followerSnap, targetSnap] = await Promise.all([
-      tx.get(followerProfileRef),
-      tx.get(targetProfileRef),
+  // 3. Fallback: Direct Firestore subcollection updates (allowed by updated firestore.rules)
+  const callerFollowingDoc = doc(db, 'users', followerId, 'following', targetId);
+  const targetFollowersDoc = doc(db, 'users', targetId, 'followers', followerId);
+  const legacyFollowDoc = doc(db, 'follows', getFollowDocId(followerId, targetId));
+
+  const existingSnap = await getDoc(callerFollowingDoc);
+  const isCurrentlyFollowing = existingSnap.exists();
+
+  const now = serverTimestamp();
+
+  if (isCurrentlyFollowing) {
+    // Unfollow
+    await Promise.allSettled([
+      deleteDoc(callerFollowingDoc),
+      deleteDoc(targetFollowersDoc),
+      deleteDoc(legacyFollowDoc),
     ]);
 
-    const curFollowerFollowing = followerSnap.exists()
-      ? Number(followerSnap.data().followingCount || 0)
-      : 0;
-    const curTargetFollowers = targetSnap.exists()
-      ? Number(targetSnap.data().followersCount || 0)
-      : 0;
-
-    updatedFollowerFollowing = Math.max(0, curFollowerFollowing + 1);
-    updatedTargetFollowers = Math.max(0, curTargetFollowers + 1);
-
-    // 1. Create follow document in follows/{followerId}_{targetId}
-    const followData: FollowDoc = {
-      followerId,
-      targetId,
-      createdAt: serverTimestamp(),
+    return {
+      success: true,
+      following: false,
+      followersCount: 0,
+      followingCount: 0,
     };
-    tx.set(followDocRef, followData);
+  } else {
+    // Follow
+    await Promise.allSettled([
+      setDoc(callerFollowingDoc, { targetUid: targetId, createdAt: now }),
+      setDoc(targetFollowersDoc, { followerUid: followerId, createdAt: now }),
+      setDoc(legacyFollowDoc, { followerId, targetId, createdAt: now }),
+    ]);
 
-    // 2. Update follower publicProfile followingCount in the same transaction
-    if (followerSnap.exists()) {
-      tx.update(followerProfileRef, {
-        followingCount: updatedFollowerFollowing,
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      tx.set(
-        followerProfileRef,
-        {
-          uid: followerId,
-          followingCount: updatedFollowerFollowing,
-          followersCount: 0,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    }
+    return {
+      success: true,
+      following: true,
+      followersCount: 1,
+      followingCount: 1,
+    };
+  }
+}
 
-    // 3. Update target publicProfile followersCount in the same transaction
-    if (targetSnap.exists()) {
-      tx.update(targetProfileRef, {
-        followersCount: updatedTargetFollowers,
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      tx.set(
-        targetProfileRef,
-        {
-          uid: targetId,
-          followersCount: updatedTargetFollowers,
-          followingCount: 0,
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    }
-  });
-
+/**
+ * Follow a target student.
+ */
+export async function followUser(
+  followerId: string,
+  targetId: string
+): Promise<{ success: boolean; followersCount: number; followingCount: number }> {
+  const res = await toggleFollowUser(followerId, targetId);
   return {
-    success: true,
-    followersCount: updatedTargetFollowers,
-    followingCount: updatedFollowerFollowing,
+    success: res.success,
+    followersCount: res.followersCount,
+    followingCount: res.followingCount,
   };
 }
 
 /**
  * Unfollow a target student.
- * Updates both follower's followingCount and target's followersCount in one atomic transaction.
- * Strictly guarantees counts never drop below zero.
- * Rate limited to 30 actions per hour.
  */
 export async function unfollowUser(
   followerId: string,
   targetId: string
 ): Promise<{ success: boolean; followersCount: number; followingCount: number }> {
-  if (!followerId || !targetId) {
-    throw new Error('Both follower ID and target ID are required.');
-  }
-
-  // 1. Enforce rate limit (30 per hour)
-  consumeFollowRateLimit(followerId);
-
-  const followDocId = getFollowDocId(followerId, targetId);
-  const followDocRef = doc(db, 'follows', followDocId);
-  const followerProfileRef = doc(db, 'publicProfiles', followerId);
-  const targetProfileRef = doc(db, 'publicProfiles', targetId);
-
-  let updatedTargetFollowers = 0;
-  let updatedFollowerFollowing = 0;
-
-  await runTransaction(db, async (tx) => {
-    // Read all required documents first
-    const followSnap = await tx.get(followDocRef);
-    if (!followSnap.exists()) {
-      // Not following; idempotent exit
-      const [fSnap, tSnap] = await Promise.all([tx.get(followerProfileRef), tx.get(targetProfileRef)]);
-      updatedFollowerFollowing = fSnap.exists() ? Math.max(0, Number(fSnap.data().followingCount || 0)) : 0;
-      updatedTargetFollowers = tSnap.exists() ? Math.max(0, Number(tSnap.data().followersCount || 0)) : 0;
-      return;
-    }
-
-    const [followerSnap, targetSnap] = await Promise.all([
-      tx.get(followerProfileRef),
-      tx.get(targetProfileRef),
-    ]);
-
-    const curFollowerFollowing = followerSnap.exists()
-      ? Number(followerSnap.data().followingCount || 0)
-      : 0;
-    const curTargetFollowers = targetSnap.exists()
-      ? Number(targetSnap.data().followersCount || 0)
-      : 0;
-
-    // Never below zero
-    updatedFollowerFollowing = Math.max(0, curFollowerFollowing - 1);
-    updatedTargetFollowers = Math.max(0, curTargetFollowers - 1);
-
-    // 1. Delete follow document
-    tx.delete(followDocRef);
-
-    // 2. Update follower publicProfile followingCount
-    if (followerSnap.exists()) {
-      tx.update(followerProfileRef, {
-        followingCount: updatedFollowerFollowing,
-        updatedAt: serverTimestamp(),
-      });
-    }
-
-    // 3. Update target publicProfile followersCount
-    if (targetSnap.exists()) {
-      tx.update(targetProfileRef, {
-        followersCount: updatedTargetFollowers,
-        updatedAt: serverTimestamp(),
-      });
-    }
-  });
-
+  const res = await toggleFollowUser(followerId, targetId);
   return {
-    success: true,
-    followersCount: updatedTargetFollowers,
-    followingCount: updatedFollowerFollowing,
+    success: res.success,
+    followersCount: res.followersCount,
+    followingCount: res.followingCount,
   };
 }
 
 /**
- * Fetches the list of UIDs followed by followerId from the `follows` collection.
+ * Fetches followers for a user.
  */
-export async function getFollowingIds(followerId: string): Promise<string[]> {
-  if (!followerId) return [];
+export async function fetchUserFollowers(
+  userId: string,
+  limitCount = 50
+): Promise<Array<{ uid: string; displayName?: string; avatar?: string }>> {
+  if (!userId) return [];
   try {
-    const q = query(collection(db, 'follows'), where('followerId', '==', followerId));
+    // First try subcollection users/{userId}/followers
+    const subSnap = await getDocs(
+      query(collection(db, 'users', userId, 'followers'), limit(limitCount))
+    );
+    if (!subSnap.empty) {
+      return subSnap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
+    }
+
+    // Fall back to legacy follows collection
+    const q = query(
+      collection(db, 'follows'),
+      where('targetId', '==', userId),
+      limit(limitCount)
+    );
     const snap = await getDocs(q);
-    return snap.docs.map((d) => d.data().targetId as string).filter(Boolean);
+    return snap.docs.map((d) => {
+      const data = d.data() as FollowDoc;
+      return { uid: data.followerId };
+    });
   } catch (err) {
-    console.warn(`[followService] getFollowingIds error for ${followerId}:`, err);
+    console.warn(`[followService] fetchUserFollowers error (${userId}):`, err);
     return [];
   }
 }
 
 /**
- * Fetches follower relationship records for a user.
+ * Fetches following list for a user.
  */
-export async function getFollowers(targetId: string, maxLimit = 50): Promise<FollowDoc[]> {
-  if (!targetId) return [];
+export async function fetchUserFollowing(
+  userId: string,
+  limitCount = 50
+): Promise<Array<{ uid: string; displayName?: string; avatar?: string }>> {
+  if (!userId) return [];
   try {
+    // First try subcollection users/{userId}/following
+    const subSnap = await getDocs(
+      query(collection(db, 'users', userId, 'following'), limit(limitCount))
+    );
+    if (!subSnap.empty) {
+      return subSnap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
+    }
+
+    // Fall back to legacy follows collection
     const q = query(
       collection(db, 'follows'),
-      where('targetId', '==', targetId),
-      limit(maxLimit)
+      where('followerId', '==', userId),
+      limit(limitCount)
     );
     const snap = await getDocs(q);
-    return snap.docs.map((d) => d.data() as FollowDoc);
+    return snap.docs.map((d) => {
+      const data = d.data() as FollowDoc;
+      return { uid: data.targetId };
+    });
   } catch (err) {
-    console.warn(`[followService] getFollowers error for ${targetId}:`, err);
+    console.warn(`[followService] fetchUserFollowing error (${userId}):`, err);
     return [];
   }
 }
 
+// Aliases for compatibility
+export const getFollowers = fetchUserFollowers;
+export const getFollowing = fetchUserFollowing;
+
 /**
- * Fetches following relationship records for a user.
+ * Fetches the array of target user IDs followed by a student.
  */
-export async function getFollowing(followerId: string, maxLimit = 50): Promise<FollowDoc[]> {
-  if (!followerId) return [];
-  try {
-    const q = query(
-      collection(db, 'follows'),
-      where('followerId', '==', followerId),
-      limit(maxLimit)
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => d.data() as FollowDoc);
-  } catch (err) {
-    console.warn(`[followService] getFollowing error for ${followerId}:`, err);
-    return [];
-  }
+export async function getFollowingIds(userId: string): Promise<string[]> {
+  const list = await fetchUserFollowing(userId, 200);
+  return list.map((item) => item.uid).filter(Boolean);
 }
+
+

@@ -95,9 +95,6 @@ export const ShareProfileCardModal: React.FC<ShareProfileCardModalProps> = ({
                   <span className="font-heading font-bold text-base text-white">
                     {profile.displayName}
                   </span>
-                  <span className="font-mono text-xs text-neutral-400">
-                    #{profile.studentId || profile.shortId || profile.uid.slice(0, 5)}
-                  </span>
                 </div>
 
                 <div className="flex items-center gap-2 mt-0.5">

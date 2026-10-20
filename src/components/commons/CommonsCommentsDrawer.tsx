@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { X, Send, AlertCircle, EyeOff, Shield } from 'lucide-react';
 import type { CommonsPost, CommonsComment } from '@/types/commons';
 import { addPostComment, fetchPostComments } from '@/services/commonsService';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 interface CommonsCommentsDrawerProps {
   post: CommonsPost | null;
@@ -11,6 +13,9 @@ interface CommonsCommentsDrawerProps {
     uid: string;
     displayName?: string | null;
     photoURL?: string | null;
+    equippedAvatar?: string | null;
+    frame?: string | null;
+    avatarUrl?: string | null;
   } | null;
 }
 
@@ -116,8 +121,22 @@ export function CommonsCommentsDrawer({
               >
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
+                    {comment.isAnonymous ? (
+                      <div className="w-6 h-6 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[10px] font-mono text-neutral-400 shrink-0">
+                        ?
+                      </div>
+                    ) : (
+                      <BoardlyAvatar
+                        equippedAvatar={(comment as any).authorEquippedAvatar || (comment.authorAvatar?.startsWith('pfp_') ? comment.authorAvatar : undefined)}
+                        avatarUrl={comment.authorAvatar && !comment.authorAvatar.startsWith('pfp_') && !comment.authorAvatar.includes('googleusercontent') ? comment.authorAvatar : undefined}
+                        photoURL={comment.authorAvatar?.includes('googleusercontent') ? comment.authorAvatar : (comment as any).authorPhotoURL}
+                        frame={(comment as any).authorFrame}
+                        name={sanitizeStudentDisplayName(comment.authorName, comment.authorUid)}
+                        size={24}
+                      />
+                    )}
                     <span className="font-semibold text-neutral-200">
-                      {comment.authorName}
+                      {sanitizeStudentDisplayName(comment.authorName, comment.authorUid)}
                     </span>
                     {comment.isAnonymous && (
                       <span className="text-[10px] text-amber-400/90 font-mono bg-amber-950/40 px-1 rounded">

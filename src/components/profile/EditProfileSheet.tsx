@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { X, Sparkles, ShoppingBag, Check } from 'lucide-react';
+import { X, Sparkles, ShoppingBag, Check, Send, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { ACCENT_PRESETS, DefaultDotMatrixBanner } from '@/components/koban/artwork/bannerArtwork';
 import { AvatarPicture, AvatarFrame } from '@/components/koban/CosmeticRenderers';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { validateDisplayName } from '@/utils/usernameValidation';
+import { submitNameRequest } from '@/services/nameRequestService';
 import type { PublicProfile } from '@/types';
 
 interface EditProfileSheetProps {
@@ -33,13 +35,40 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
 
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSendingRequest, setIsSendingRequest] = useState(false);
+  const [requestSentMessage, setRequestSentMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
+
+  const handleSendNameRequest = async () => {
+    if (!profile.uid || !displayName.trim()) return;
+    setIsSendingRequest(true);
+    setError(null);
+    try {
+      await submitNameRequest({
+        uid: profile.uid,
+        requestedName: displayName.trim(),
+        currentDisplayName: profile.displayName,
+      });
+      setRequestSentMessage(`Request for "${displayName.trim()}" submitted! Admin will review your requested name.`);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to submit name request to admin.');
+    } finally {
+      setIsSendingRequest(false);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!displayName.trim()) {
       setError('Display name cannot be empty.');
+      return;
+    }
+
+    // Validate reserved names & look-alikes
+    const validation = validateDisplayName(displayName.trim(), profile.uid);
+    if (!validation.valid) {
+      setError(validation.error || 'This name is reserved. Send a request to the admin.');
       return;
     }
 
@@ -93,8 +122,38 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
         {/* Form Body with Live Preview */}
         <form onSubmit={handleSave} className="p-5 overflow-y-auto flex-1 flex flex-col gap-6">
           {error && (
-            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-500 text-xs">
-              {error}
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs flex flex-col gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={15} className="shrink-0 text-red-500" />
+                <span>{error}</span>
+              </div>
+              {error.includes('Send a request to the admin') && (
+                <button
+                  type="button"
+                  disabled={isSendingRequest}
+                  onClick={handleSendNameRequest}
+                  className="self-start mt-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-heading font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50 transition-colors"
+                >
+                  {isSendingRequest ? (
+                    <>
+                      <Loader2 size={13} className="animate-spin" />
+                      <span>Sending Request...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Send size={13} />
+                      <span>Send Request to Admin</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          )}
+
+          {requestSentMessage && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
+              <CheckCircle2 size={15} className="shrink-0 text-emerald-500" />
+              <span>{requestSentMessage}</span>
             </div>
           )}
 
@@ -134,9 +193,6 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="font-heading font-bold text-sm text-[var(--text)]">
                       {displayName || 'Student'}
-                    </span>
-                    <span className="font-mono text-[11px] text-[var(--muted)]">
-                      #{profile.studentId || profile.shortId || profile.uid.slice(0, 5)}
                     </span>
                   </div>
 
