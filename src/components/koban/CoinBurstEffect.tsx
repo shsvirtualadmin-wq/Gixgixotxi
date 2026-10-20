@@ -13,7 +13,7 @@ interface Particle {
 }
 
 interface CoinBurstEffectProps {
-  active: boolean;
+  active?: boolean;
   onComplete?: () => void;
   count?: number;
 }
@@ -23,7 +23,7 @@ interface CoinBurstEffectProps {
  * Automatically cleans up after 1.2s.
  */
 export const CoinBurstEffect: React.FC<CoinBurstEffectProps> = ({
-  active,
+  active = true,
   onComplete,
   count = 12,
 }) => {

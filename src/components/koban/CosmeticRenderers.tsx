@@ -8,6 +8,7 @@ import { EffectAvatarRenderer, ProfileCardEffect, ProfileEffectCardPreview } fro
 
 // Re-export ProfileCardEffect and ProfileEffectCardPreview for convenience
 export { ProfileCardEffect, ProfileEffectCardPreview };
+export const ProfileEffect = ProfileCardEffect;
 
 interface BaseCosmeticProps {
   itemId: string;
@@ -17,6 +18,43 @@ interface BaseCosmeticProps {
   forceStatic?: boolean;
 }
 
+/**
+ * Small Error Boundary to wrap individual cosmetics.
+ * Prevents any broken cosmetic rendering from crashing parent components or entire pages.
+ */
+interface CosmeticErrorBoundaryProps {
+  fallback: React.ReactNode;
+  children: React.ReactNode;
+}
+
+interface CosmeticErrorBoundaryState {
+  hasError: boolean;
+}
+
+export class CosmeticErrorBoundary extends React.Component<
+  CosmeticErrorBoundaryProps,
+  CosmeticErrorBoundaryState
+> {
+  constructor(props: CosmeticErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(): CosmeticErrorBoundaryState {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: unknown) {
+    console.warn('Cosmetic rendering suppressed by boundary:', error);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
 
 /**
  * Hook to determine if cosmetic should execute animations:
@@ -28,7 +66,7 @@ function useCosmeticAnimation(itemId: string, _isNameplate = false, forceStatic 
   const containerRef = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(true);
 
-  const item = getCosmeticById(itemId);
+  const item = itemId ? getCosmeticById(itemId) : undefined;
   // Catalog animated flag is the single source of truth
   const isCatalogAnimated = Boolean(item?.animated && !forceStatic);
 
@@ -68,29 +106,32 @@ function useCosmeticAnimation(itemId: string, _isNameplate = false, forceStatic 
  * SHARED AVATAR PICTURE COMPONENT (<AvatarPicture />)
  * - If student has equipped an owned Profile Picture (pfp_...), renders the full-art illustration.
  * - Otherwise falls back cleanly to the student's dot-matrix avatar.
- * - Animated PFPs animate only if animated: true and in viewport.
- * - Static PFPs NEVER animate anywhere.
+ * - If avatarId does not exist in catalog, gracefully falls back to default dot-matrix avatar.
+ * - Isolated within its own CosmeticErrorBoundary.
  */
 export interface AvatarPictureProps {
   avatarId?: string | null;
   avatarKey?: string | null;
   avatarVariant?: string | null;
+  variant?: string | null;
   seed?: string | null;
   size?: number | string;
   className?: string;
   forceStatic?: boolean;
 }
 
-export const AvatarPicture: React.FC<AvatarPictureProps> = ({
+const AvatarPictureInner: React.FC<AvatarPictureProps> = ({
   avatarId,
   avatarKey,
   avatarVariant,
+  variant,
   seed,
   size = 40,
   className = '',
   forceStatic = false,
 }) => {
   const numericSize = typeof size === 'number' ? size : parseInt(String(size), 10) || 40;
+  const effectiveVariant = variant || avatarVariant;
   const pfpItem = avatarId ? getCosmeticById(avatarId) : undefined;
   const isPfp = Boolean(pfpItem && pfpItem.type === 'avatar' && PFP_ARTWORK_MAP[avatarId!]);
   const { containerRef, canAnimate } = useCosmeticAnimation(avatarId || '', false, forceStatic);
@@ -114,7 +155,7 @@ export const AvatarPicture: React.FC<AvatarPictureProps> = ({
   return (
     <MatrixAvatar
       avatarKey={avatarKey}
-      variant={avatarVariant}
+      variant={effectiveVariant}
       seed={seed}
       size={numericSize}
       className={className}
@@ -122,10 +163,32 @@ export const AvatarPicture: React.FC<AvatarPictureProps> = ({
   );
 };
 
+export const AvatarPicture: React.FC<AvatarPictureProps> = (props) => {
+  const numericSize = typeof props.size === 'number' ? props.size : parseInt(String(props.size), 10) || 40;
+  const fallback = (
+    <MatrixAvatar
+      avatarKey={props.avatarKey}
+      variant={props.variant || props.avatarVariant}
+      seed={props.seed}
+      size={numericSize}
+      className={props.className}
+    />
+  );
+  return (
+    <CosmeticErrorBoundary fallback={fallback}>
+      <AvatarPictureInner {...props} />
+    </CosmeticErrorBoundary>
+  );
+};
+
+export const CosmeticAvatar = AvatarPicture;
+
 /**
  * SHARED AVATAR FRAME COMPONENT (<AvatarFrame />)
+ * - If frame itemId is invalid or missing, cleanly renders children without frame decoration.
+ * - Isolated within its own CosmeticErrorBoundary.
  */
-export const AvatarFrame: React.FC<BaseCosmeticProps> = ({
+const AvatarFrameInner: React.FC<BaseCosmeticProps> = ({
   itemId,
   size = 56,
   children,
@@ -133,6 +196,11 @@ export const AvatarFrame: React.FC<BaseCosmeticProps> = ({
   forceStatic = false,
 }) => {
   const { containerRef, canAnimate } = useCosmeticAnimation(itemId, false, forceStatic);
+  const exists = Boolean(itemId && itemId !== 'none' && getCosmeticById(itemId));
+
+  if (!exists) {
+    return <>{children}</>;
+  }
 
   return (
     <div ref={containerRef} className="inline-flex items-center justify-center">
@@ -148,13 +216,21 @@ export const AvatarFrame: React.FC<BaseCosmeticProps> = ({
   );
 };
 
+export const AvatarFrame: React.FC<BaseCosmeticProps> = (props) => (
+  <CosmeticErrorBoundary fallback={<>{props.children}</>}>
+    <AvatarFrameInner {...props} />
+  </CosmeticErrorBoundary>
+);
+
 // Backward-compatible alias
 export const CosmeticFrame = AvatarFrame;
 
 /**
  * SHARED NAMEPLATE COMPONENT (<Nameplate />)
+ * - If nameplate itemId is invalid, falls back to plain unstyled student name.
+ * - Isolated within its own CosmeticErrorBoundary.
  */
-export const Nameplate: React.FC<{
+const NameplateInner: React.FC<{
   itemId: string;
   name: string;
   shortId?: string;
@@ -163,6 +239,16 @@ export const Nameplate: React.FC<{
   forceStatic?: boolean;
 }> = ({ itemId, name, shortId, roleBadge, className = '', forceStatic = false }) => {
   const { containerRef, canAnimate } = useCosmeticAnimation(itemId, true, forceStatic);
+  const exists = Boolean(itemId && itemId !== 'none' && getCosmeticById(itemId));
+
+  if (!exists) {
+    return (
+      <div className={`inline-flex items-center gap-1.5 max-w-full truncate ${className}`}>
+        <span className="font-heading font-semibold text-xs text-[var(--text)] truncate">{name}</span>
+        {shortId && <span className="font-mono text-[10px] text-[var(--muted)] shrink-0">#{shortId}</span>}
+      </div>
+    );
+  }
 
   return (
     <div ref={containerRef} className="inline-flex items-center max-w-full overflow-hidden">
@@ -178,13 +264,34 @@ export const Nameplate: React.FC<{
   );
 };
 
+export const Nameplate: React.FC<{
+  itemId: string;
+  name: string;
+  shortId?: string;
+  roleBadge?: string;
+  className?: string;
+  forceStatic?: boolean;
+}> = (props) => {
+  const fallback = (
+    <div className={`inline-flex items-center gap-1.5 max-w-full truncate ${props.className || ''}`}>
+      <span className="font-heading font-semibold text-xs text-[var(--text)] truncate">{props.name}</span>
+      {props.shortId && <span className="font-mono text-[10px] text-[var(--muted)] shrink-0">#{props.shortId}</span>}
+    </div>
+  );
+  return (
+    <CosmeticErrorBoundary fallback={fallback}>
+      <NameplateInner {...props} />
+    </CosmeticErrorBoundary>
+  );
+};
+
 // Backward-compatible alias
 export const CosmeticNameplate = Nameplate;
 
 /**
  * SHARED PROFILE EFFECT COMPONENT (<CosmeticEffect />)
  */
-export const CosmeticEffect: React.FC<BaseCosmeticProps> = ({
+const CosmeticEffectInner: React.FC<BaseCosmeticProps> = ({
   itemId,
   size = 64,
   children,
@@ -192,6 +299,11 @@ export const CosmeticEffect: React.FC<BaseCosmeticProps> = ({
   forceStatic = false,
 }) => {
   const { containerRef, canAnimate } = useCosmeticAnimation(itemId, false, forceStatic);
+  const exists = Boolean(itemId && itemId !== 'none' && getCosmeticById(itemId));
+
+  if (!exists) {
+    return <>{children}</>;
+  }
 
   return (
     <div ref={containerRef} className="inline-flex items-center justify-center">
@@ -206,3 +318,9 @@ export const CosmeticEffect: React.FC<BaseCosmeticProps> = ({
     </div>
   );
 };
+
+export const CosmeticEffect: React.FC<BaseCosmeticProps> = (props) => (
+  <CosmeticErrorBoundary fallback={<>{props.children}</>}>
+    <CosmeticEffectInner {...props} />
+  </CosmeticErrorBoundary>
+);

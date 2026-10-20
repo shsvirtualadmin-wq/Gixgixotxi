@@ -22,6 +22,8 @@ import { useWallet } from '@/hooks/useWallet';
 import {
   AvatarPicture,
   AvatarFrame,
+  Nameplate,
+  CosmeticNameplate,
   ProfileCardEffect,
 } from '@/components/koban/CosmeticRenderers';
 import { KobanIcon } from '@/components/koban/KobanIcon';
