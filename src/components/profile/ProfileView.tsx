@@ -54,9 +54,7 @@ import {
   BannerRenderer,
   DefaultDotMatrixBanner,
 } from '@/components/koban/artwork/bannerArtwork';
-import { KobanChip, KobanIcon } from '@/components/koban/KobanIcon';
-import { StudyHeatmap } from './StudyHeatmap';
-import { SubjectAccuracyRings } from './SubjectAccuracyRings';
+import { ProfilePostsSection } from './ProfilePostsSection';
 import { FollowListModal } from './FollowListModal';
 import { EditProfileSheet } from './EditProfileSheet';
 import { ShareProfileCardModal } from './ShareProfileCardModal';
@@ -816,7 +814,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
         {/* ── TAB CONTENT BODY ── */}
-        <div className="p-4 sm:p-6 flex flex-col gap-6">
+        <div className="p-4 sm:p-6 pb-28 sm:pb-36 flex flex-col gap-6">
           {/* ══════════════════════════════════════════════════════════════
               TAB 1: OVERVIEW
              ══════════════════════════════════════════════════════════════ */}
@@ -863,45 +861,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 )}
               </div>
 
-              {/* Public Stats Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <div className="p-3.5 rounded-xl bg-[var(--card)] border border-[var(--border)] flex flex-col">
-                  <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Streak</span>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <Flame size={16} className="text-orange-500 fill-orange-500" />
-                    <span className="font-mono font-bold text-lg text-[var(--text)]">
-                      {profile?.stats?.streak ?? profile?.publicStats?.streak ?? 0}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-[var(--card)] border border-[var(--border)] flex flex-col">
-                  <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Best Streak</span>
-                  <span className="font-mono font-bold text-lg text-[var(--text)] mt-1">
-                    {profile?.stats?.longestStreak ?? profile?.publicStats?.longestStreak ?? profile?.stats?.streak ?? 0}d
-                  </span>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-[var(--card)] border border-[var(--border)] flex flex-col">
-                  <span className="text-[10px] uppercase font-mono text-[var(--muted)]">MCQs Solved</span>
-                  <span className="font-mono font-bold text-lg text-[var(--text)] mt-1">
-                    {(profile?.stats?.mcqs ?? profile?.publicStats?.totalQuestionsSolved ?? 0).toLocaleString()}
-                  </span>
-                </div>
-
-                <div className="p-3.5 rounded-xl bg-[var(--card)] border border-[var(--border)] flex flex-col">
-                  <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Accuracy</span>
-                  <span className="font-mono font-bold text-lg text-[var(--text)] mt-1">
-                    {Math.round(profile?.stats?.accuracy ?? profile?.publicStats?.accuracy ?? 0)}%
-                  </span>
-                </div>
-              </div>
-
-              {/* 12-Week Heatmap */}
-              <StudyHeatmap accentColor={accentColor} />
-
-              {/* Subject Accuracy Rings */}
-              <SubjectAccuracyRings isOwnMode={!isPublicMode} accentColor={accentColor} />
+              {/* ── POSTS SECTION ── */}
+              <ProfilePostsSection
+                targetUid={profile?.uid || targetUid || currentUid || ''}
+                isOwnProfile={Boolean(isViewingSelf && !previewAsPublic)}
+                readOnly={Boolean(isPublicMode)}
+                currentUserId={currentUid}
+                currentUserDisplayName={ownProfile?.displayName || authUser?.displayName || profile?.displayName}
+                currentUserAvatar={
+                  (ownEquipped?.avatar as string) ||
+                  (ownProfile?.avatar as string) ||
+                  (authUser?.photoURL as string) ||
+                  profile?.avatar ||
+                  null
+                }
+                accentColor={accentColor}
+              />
 
               {/* Showcase Pinned Items */}
               <div className="flex flex-col gap-2.5">

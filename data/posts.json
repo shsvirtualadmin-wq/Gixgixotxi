@@ -1,0 +1,28 @@
+[
+  {
+    "id": "post_seed_1",
+    "user_id": "std-ayesha-01",
+    "text": "Finished the whole Bioenergetics question bank today! 🌿 Remember: in photophosphorylation, non-cyclic produces both ATP and NADPH, while cyclic only produces ATP. Good luck everyone with the upcoming MDCAT mocks!",
+    "image_url": null,
+    "author_name": "Ayesha Khan",
+    "author_avatar": null,
+    "likes_count": 8,
+    "comments_count": 3,
+    "liked_by": [],
+    "created_at": "2026-10-18T14:30:00.000Z",
+    "updated_at": "2026-10-18T14:30:00.000Z"
+  },
+  {
+    "id": "post_seed_2",
+    "user_id": "std-hamza-02",
+    "text": "Quick integration trick for FAST and NUST tests: when you see ∫ (f'(x)/f(x)) dx, it is always ln|f(x)| + C. Saved me 2 minutes on the speed drill today! 📐",
+    "image_url": null,
+    "author_name": "Hamza Ahmed",
+    "author_avatar": null,
+    "likes_count": 14,
+    "comments_count": 5,
+    "liked_by": [],
+    "created_at": "2026-10-19T09:15:00.000Z",
+    "updated_at": "2026-10-19T09:15:00.000Z"
+  }
+]

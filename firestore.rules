@@ -828,6 +828,28 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    // ─── USER PROFILE FEED POSTS ───────────────────────────────────────────
+    match /posts/{postId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && (
+        request.resource.data.user_id == request.auth.uid ||
+        request.resource.data.userId == request.auth.uid
+      );
+      allow update: if isSuperAdmin() || (
+        isAuthenticated() && (
+          resource.data.user_id == request.auth.uid ||
+          resource.data.userId == request.auth.uid ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes_count', 'comments_count', 'liked_by', 'updated_at'])
+        )
+      );
+      allow delete: if isSuperAdmin() || (
+        isAuthenticated() && (
+          resource.data.user_id == request.auth.uid ||
+          resource.data.userId == request.auth.uid
+        )
+      );
+    }
+
     // ─── DEFAULT DENY ────────────────────────────────────────────────────────
     // Any document path not explicitly permitted above is strictly denied.
     match /{document=**} {
