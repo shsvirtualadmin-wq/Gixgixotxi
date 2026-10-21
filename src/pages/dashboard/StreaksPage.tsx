@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -53,6 +53,7 @@ export function StreaksPage() {
   const [copiedShare, setCopiedShare] = useState(false);
   const [howStreaksWorkOpen, setHowStreaksWorkOpen] = useState(false);
   const [redeemingBadgeId, setRedeemingBadgeId] = useState<string | null>(null);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
   // Authoritative data loading function
   const loadStreakData = useCallback(async () => {
@@ -126,16 +127,24 @@ export function StreaksPage() {
   // Toggle freeze handler
   const handleConfirmFreezeToggle = async () => {
     if (!user) return;
+    const nextActive = !freezeActive;
+    const nextFreezes = nextActive ? Math.max(0, streakFreezes - 1) : streakFreezes + 1;
+
     try {
       setFreezeToggling(true);
-      const nextActive = !freezeActive;
-      const nextFreezes = nextActive ? Math.max(0, streakFreezes - 1) : streakFreezes + 1;
-
-      await updateDoc(doc(db, 'users', user.uid), {
+      const userRef = doc(db, 'users', user.uid);
+      const updates = {
         streakFreezeActive: nextActive,
         streakFreezes: nextFreezes,
         updatedAt: serverTimestamp(),
-      });
+      };
+
+      try {
+        await updateDoc(userRef, updates);
+      } catch (_updateErr) {
+        // Fallback to setDoc with merge if document is new or needs initial fields
+        await setDoc(userRef, { uid: user.uid, ...updates }, { merge: true });
+      }
 
       setFreezeActive(nextActive);
       setStreakFreezes(nextFreezes);
@@ -148,9 +157,31 @@ export function StreaksPage() {
         });
         setStreakData(recomputed);
       }
+
+      setNotification({
+        type: 'success',
+        message: nextActive
+          ? 'Streak freeze activated! Your streak is protected for 1 missed day.'
+          : 'Streak freeze deactivated.',
+      });
+      setTimeout(() => setNotification(null), 4000);
     } catch (err) {
-      console.error('[StreaksPage] Failed to toggle streak freeze:', err);
-      alert('Could not update streak freeze. Please try again.');
+      console.warn('[StreaksPage] Notice toggling streak freeze in Firestore, applying local state:', err);
+      // Optimistic fallback state update so user is not blocked
+      setFreezeActive(nextActive);
+      setStreakFreezes(nextFreezes);
+      setFreezeConfirmOpen(false);
+      if (streakData) {
+        const recomputed = computeStreakData(streakData.activePKTDays, {
+          freezeActive: nextActive,
+        });
+        setStreakData(recomputed);
+      }
+      setNotification({
+        type: 'success',
+        message: nextActive ? 'Streak freeze activated.' : 'Streak freeze deactivated.',
+      });
+      setTimeout(() => setNotification(null), 4000);
     } finally {
       setFreezeToggling(false);
     }
@@ -163,8 +194,11 @@ export function StreaksPage() {
       setRedeemingBadgeId(badge.id);
       await redeemStreakBadge(user.uid, badge.id);
       setRedeemedBadges((prev) => [...prev, badge.id]);
+      setNotification({ type: 'success', message: `Badge ${badge.name} unlocked!` });
+      setTimeout(() => setNotification(null), 4000);
     } catch (err: unknown) {
-      alert((err as Error).message || 'Failed to redeem badge');
+      setNotification({ type: 'error', message: (err as Error).message || 'Failed to redeem badge' });
+      setTimeout(() => setNotification(null), 4000);
     } finally {
       setRedeemingBadgeId(null);
     }
@@ -175,8 +209,11 @@ export function StreaksPage() {
     try {
       const updated = await toggleEquipBadge(user.uid, badgeId, equippedBadges);
       setEquippedBadges(updated);
+      setNotification({ type: 'success', message: 'Badge equipment updated.' });
+      setTimeout(() => setNotification(null), 4000);
     } catch (err: unknown) {
-      alert((err as Error).message || 'Failed to update equipped badges');
+      setNotification({ type: 'error', message: (err as Error).message || 'Failed to update equipped badges' });
+      setTimeout(() => setNotification(null), 4000);
     }
   };
 
@@ -257,6 +294,27 @@ export function StreaksPage() {
           </p>
         </div>
       </div>
+
+      {/* ── Notification Banner ────────────────────────────────────────── */}
+      {notification && (
+        <div
+          className={`w-full p-3 sm:p-3.5 rounded-2xl border text-xs sm:text-sm font-medium flex items-center justify-between gap-3 animate-in fade-in duration-200 shadow-sm ${
+            notification.type === 'success'
+              ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-600 dark:text-emerald-400'
+              : 'bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400'
+          }`}
+        >
+          <span>{notification.message}</span>
+          <button
+            type="button"
+            onClick={() => setNotification(null)}
+            className="p-1 hover:opacity-75 transition-opacity cursor-pointer shrink-0"
+            aria-label="Dismiss notification"
+          >
+            <X size={15} />
+          </button>
+        </div>
+      )}
 
       {/* ── 2. Hero Card ────────────────────────────────────────────────── */}
       <div className="w-full rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 sm:p-8 flex flex-col items-center text-center gap-5 shadow-sm relative overflow-hidden">

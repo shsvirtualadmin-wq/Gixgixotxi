@@ -33,6 +33,9 @@
         "lastUsageDate": { "type": "string" },
         "streak": { "type": "number" },
         "streakDays": { "type": "number" },
+        "streakFreezeActive": { "type": "boolean" },
+        "streakFreezes": { "type": "number" },
+        "lastActiveDate": { "type": "string" },
         "testHistory": { "type": "array" },
         "status": { "type": "string", "enum": ["active", "suspended", "disabled"] }
       },

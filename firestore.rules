@@ -129,7 +129,8 @@ service cloud.firestore {
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'uid', 'email', 'displayName', 'name', 'nickname', 'username', 'bio', 'status', 'accent',
           'targetUniversity', 'targetTestDate', 'selectedSubjects', 'updatedAt',
-          'onboardingCompleted', 'profileCompleted', 'streakFreezeActive', 'equipped',
+          'onboardingCompleted', 'profileCompleted', 'streakFreezeActive', 'streakFreezes',
+          'streak', 'lastActiveDate', 'equipped', 'equippedBadges', 'redeemedBadges',
           'avatarKey', 'avatarVariant', 'photoURL', 'shortId', 'studentId', 'role',
           'customRole', 'hasChosenRole'
         ]) &&
@@ -210,6 +211,16 @@ service cloud.firestore {
       match /readAnnouncements/{announcementId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
+    }
+
+    // =========================================================================
+    // 4b. USER STREAK STATE (STREAKS/{USERID})
+    // =========================================================================
+
+    match /streaks/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
     }
 
     // =========================================================================
