@@ -829,7 +829,7 @@ export function AmbassadorDashboardPage() {
                   Student Attempts: {viewingAttemptsTest.title}
                 </h3>
                 <p className="text-xs text-[var(--muted)]">
-                  Private attempt records (Name, Email, Target Test, Score, Time).
+                  Private attempt records (Name, Email, Test Title, Score, Time).
                 </p>
               </div>
               <button

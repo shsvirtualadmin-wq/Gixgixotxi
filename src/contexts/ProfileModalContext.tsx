@@ -6,7 +6,7 @@ const LazyProfileView = lazy(() =>
 
 interface ProfileModalContextType {
   openProfile: (uid?: string | null) => void;
-  closeProfile: () => void;
+  closeProfile: (skipHistoryBack?: boolean) => void;
   isOpen: boolean;
   activeUid: string | null;
 }
@@ -31,10 +31,10 @@ export const ProfileModalProvider: React.FC<{ children: React.ReactNode }> = ({ 
     window.history.pushState({ profileModal: true }, '');
   }, []);
 
-  const closeProfile = useCallback(() => {
+  const closeProfile = useCallback((skipHistoryBack = false) => {
     setIsOpen(false);
     setActiveUid(null);
-    if (window.history.state?.profileModal) {
+    if (!skipHistoryBack && window.history.state?.profileModal) {
       window.history.back();
     }
   }, []);

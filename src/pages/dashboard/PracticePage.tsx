@@ -540,7 +540,7 @@ export function PracticePage() {
             </button>
           </Card>
 
-          {/* Card 3: Targeted Chapter Drill (Rebuilt with step-by-step popup) */}
+          {/* Card 3: Focused Chapter Drill (Rebuilt with step-by-step popup) */}
           <Card className="justify-between p-6 flex flex-col">
             <div className="space-y-3.5">
               <div className="w-12 h-12 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] flex items-center justify-center shrink-0">
@@ -551,10 +551,10 @@ export function PracticePage() {
                   className="text-lg font-bold text-[var(--text)]"
                   style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                 >
-                  Targeted Chapter Drill
+                  Focused Chapter Drill
                 </h2>
                 <p className="text-xs text-[var(--muted)] leading-relaxed mt-1">
-                  Multi-step targeted generator. Choose subject, specific chapter(s) with accuracy diagnostic, question count, and difficulty.
+                  Multi-step focused generator. Choose subject, specific chapter(s) with accuracy diagnostic, question count, and difficulty.
                 </p>
               </div>
 

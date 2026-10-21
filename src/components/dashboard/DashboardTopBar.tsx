@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, CreditCard, LogOut, Sun, Moon, Shield, Award, ShoppingBag } from 'lucide-react';
+import { User, CreditCard, LogOut, Sun, Moon, Shield, Award, ShoppingBag, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { Logo } from '@/components/ui/Logo';
@@ -244,6 +244,16 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                   <span>Superadmin Portal</span>
                 </Link>
               )}
+
+              <Link
+                to="/settings"
+                onClick={() => setMenuOpen(false)}
+                className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)] transition-colors"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                <Settings size={16} />
+                <span>Settings</span>
+              </Link>
 
               <div className="border-t border-[var(--border)] my-1" />
 

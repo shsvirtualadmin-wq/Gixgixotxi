@@ -123,7 +123,7 @@ export function SettingsPage() {
       <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 sm:p-6 space-y-4 shadow-xs">
         <div className="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
           <CreditCard size={16} className="text-[var(--accent)]" />
-          <span>Plan & Subscription</span>
+          <span>Plan</span>
         </div>
 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
@@ -196,7 +196,7 @@ export function SettingsPage() {
       </div>
 
       {/* ── Section C: Sign Out ─────────────────────────────────────────── */}
-      <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] overflow-hidden shadow-xs">
+      <div className="rounded-2xl bg-[var(--card)] border border-red-500/20 overflow-hidden shadow-xs">
         <button
           type="button"
           onClick={() => setShowSignOutConfirm(true)}

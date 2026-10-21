@@ -74,7 +74,7 @@ export interface ProfileViewProps {
   /** Whether mounted full-page (e.g. /dashboard/profile centered column max-w-960px) or in dialog */
   isFullPage?: boolean;
   /** Optional callback to close modal container */
-  onClose?: () => void;
+  onClose?: (skipHistoryBack?: boolean) => void;
   /** Force preview mode */
   initialPreviewAsPublic?: boolean;
 }
@@ -896,7 +896,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </button>
 
                 <button
-                  onClick={() => navigate('/store')}
+                  onClick={() => {
+                    if (onClose) onClose(true);
+                    navigate('/store');
+                  }}
                   className="h-11 px-4 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                 >
                   <ShoppingBag size={14} className="text-[#E8A317]" />
@@ -905,7 +908,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
                 <button
                   onClick={() => {
-                    if (onClose) onClose();
+                    if (onClose) onClose(true);
                     navigate('/settings');
                   }}
                   className="h-11 px-3.5 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
