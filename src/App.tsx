@@ -297,6 +297,7 @@ function AppInner() {
         <Route element={<PublicLayout />}>
           <Route path="/" element={<LandingPage />} />
           <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/about" element={<Navigate to="/commons/about" replace />} />
           <Route path="/commons/about" element={<CommonsAboutPage />} />
           <Route path="/about-commons" element={<Navigate to="/commons/about" replace />} />
           <Route path="/arena" element={<ArenaPage />} />
