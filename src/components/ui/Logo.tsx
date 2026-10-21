@@ -79,7 +79,7 @@ export const Logo = React.memo(function Logo({
   } else if (typeof size === 'number') {
     inlineHeight = `${size}px`;
   } else if (size === 'navbar') {
-    resolvedClass = `h-[28px] sm:h-[32px] ${className}`.trim();
+    resolvedClass = `h-[40px] sm:h-[46px] md:h-[48px] ${className}`.trim();
   } else if (size === 'footer') {
     resolvedClass = `h-[44px] sm:h-[52px] ${className}`.trim();
   } else if (size === 'sidebar') {

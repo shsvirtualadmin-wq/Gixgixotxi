@@ -79,22 +79,23 @@ export function Navbar() {
       >
         <nav
           aria-label="Main Navigation"
-          className="w-full max-w-[1200px] h-[64px] md:h-[72px] rounded-[20px] px-4 flex items-center justify-between pointer-events-auto border transition-colors select-none text-[var(--text)]"
+          className="w-full max-w-[1200px] h-[72px] md:h-[80px] rounded-[20px] px-5 sm:px-6 flex items-center justify-between pointer-events-auto border transition-colors select-none text-[var(--text)]"
           style={{
             backgroundColor: 'var(--surface)',
             borderColor: 'var(--border)',
-            boxShadow: theme === 'dark' ? 'none' : '0 4px 20px rgba(0,0,0,0.06)',
+            boxShadow: resolvedTheme === 'dark' ? 'none' : '0 4px 20px rgba(0,0,0,0.06)',
           }}
         >
-          {/* Left side: Brand Logo vertically centered, sized 28-32px height, linked to home */}
+          {/* Left side: Brand Logo vertically centered, sized 40-48px height, linked to home */}
           <Link
             to="/"
+            onClick={handleClose}
             className="flex items-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-lg text-[var(--text)]"
             aria-label="Boardly Home"
           >
             <Logo
-              height={30}
-              className="h-[28px] sm:h-[32px] w-auto text-[var(--text)]"
+              size="navbar"
+              className="h-[40px] sm:h-[46px] md:h-[48px] w-auto text-[var(--text)]"
               alt="Boardly"
             />
           </Link>
@@ -124,9 +125,9 @@ export function Navbar() {
           aria-label="Mobile Navigation"
           className="fixed inset-0 z-[1001] w-full h-[100dvh] max-h-[100dvh] overflow-y-auto overscroll-contain select-none transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none"
           style={{
-            backgroundColor: '#0A0A0A',
-            color: '#FFFFFF',
-            paddingTop: 'calc(88px + env(safe-area-inset-top, 0px))',
+            backgroundColor: 'var(--bg)',
+            color: 'var(--text)',
+            paddingTop: 'calc(100px + env(safe-area-inset-top, 0px))',
             paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
             paddingLeft: 'max(1.5rem, env(safe-area-inset-left, 0px))',
             paddingRight: 'max(1.5rem, env(safe-area-inset-right, 0px))',
@@ -146,12 +147,12 @@ export function Navbar() {
                     key={link.to}
                     to={link.to}
                     onClick={handleClose}
-                    className="font-dot text-[30px] sm:text-[36px] leading-tight transition-[opacity,transform,color] tracking-tight motion-reduce:transition-none"
+                    className="font-dot text-[30px] sm:text-[36px] leading-tight transition-[opacity,transform,color] tracking-tight motion-reduce:transition-none hover:text-[#D71921] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-lg"
                     style={{
                       fontFamily: 'var(--font-dot)',
                       fontWeight: 800,
                       letterSpacing: '0.01em',
-                      color: active ? '#D71921' : '#FFFFFF',
+                      color: active ? '#D71921' : 'var(--text)',
                       opacity: isOpen ? 1 : 0,
                       transform: isOpen ? 'translateY(0)' : 'translateY(-8px)',
                       transitionDuration: '300ms',
@@ -168,12 +169,12 @@ export function Navbar() {
             {/* Bottom Auth Buttons & Appearance segmented control */}
             <div
               className="flex flex-col gap-3 pt-5 shrink-0"
-              style={{ borderTop: '1px solid rgba(255,255,255,0.12)' }}
+              style={{ borderTop: '1px solid var(--border)' }}
             >
               <Link
                 to="/login"
                 onClick={handleClose}
-                className="w-full flex items-center justify-center rounded-full transition-colors text-[15px] font-semibold border border-[rgba(255,255,255,0.6)] hover:border-white text-white hover:bg-white/10"
+                className="w-full flex items-center justify-center rounded-full transition-colors text-[15px] font-semibold border border-[var(--border-strong)] hover:border-[var(--text)] text-[var(--text)] hover:bg-[var(--surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
                 style={{
                   height: '52px',
                   fontFamily: 'var(--font-heading)',
@@ -185,7 +186,7 @@ export function Navbar() {
               <Link
                 to="/signup"
                 onClick={handleClose}
-                className="w-full flex items-center justify-center rounded-full transition-colors text-[15px] font-semibold bg-[#D71921] hover:bg-[#b0131a] text-white shadow-sm"
+                className="w-full flex items-center justify-center rounded-full transition-colors text-[15px] font-semibold bg-[#D71921] hover:bg-[#b0131a] text-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
                 style={{
                   height: '52px',
                   fontFamily: 'var(--font-heading)',
@@ -200,7 +201,7 @@ export function Navbar() {
                 <div
                   role="radiogroup"
                   aria-label="Appearance"
-                  className="inline-flex items-center p-1 rounded-full bg-[rgba(255,255,255,0.08)] border border-[rgba(255,255,255,0.12)] text-xs font-medium"
+                  className="inline-flex items-center p-1 rounded-full bg-[var(--surface-muted)] border border-[var(--border)] text-xs font-medium transition-colors"
                 >
                   {(['light', 'dark', 'system'] as const).map((mode) => {
                     const isSelected = theme === mode;
@@ -214,7 +215,7 @@ export function Navbar() {
                         className={`px-3.5 py-1.5 rounded-full capitalize transition-all cursor-pointer text-[13px] ${
                           isSelected
                             ? 'bg-[#D71921] text-white font-semibold shadow-sm'
-                            : 'text-neutral-400 hover:text-white'
+                            : 'text-[var(--text-muted)] hover:text-[var(--text)]'
                         }`}
                       >
                         {mode === 'light' ? 'Light' : mode === 'dark' ? 'Dark' : 'System'}
