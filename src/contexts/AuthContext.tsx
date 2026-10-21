@@ -105,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )) ||
     profile?.role === 'admin' ||
     profile?.role === 'superadmin' ||
-    profile?.isSuperAdmin === true
+    (profile as any)?.isSuperAdmin === true
   );
 
   // ── Helper to determine target dashboard URL by role ─────────────────────

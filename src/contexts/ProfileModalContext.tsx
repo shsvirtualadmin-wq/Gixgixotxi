@@ -84,7 +84,7 @@ export const ProfileModalHost: React.FC = () => {
     <div className="fixed inset-0 z-[140] flex items-center justify-center p-0 sm:p-4 bg-black/65 backdrop-blur-sm animate-fade-in overflow-hidden">
       {/* Backdrop on desktop */}
       <div
-        onClick={closeProfile}
+        onClick={() => closeProfile()}
         className="absolute inset-0 hidden sm:block bg-black/40 backdrop-blur-xs"
       />
 

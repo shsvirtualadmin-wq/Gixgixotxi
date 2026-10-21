@@ -18,6 +18,7 @@ import { CommonsPostCard } from '@/components/commons/CommonsPostCard';
 import { PostingWizardModal } from '@/components/commons/PostingWizardModal';
 import { CommonsCommentsDrawer } from '@/components/commons/CommonsCommentsDrawer';
 import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
+import { CommonsSearchModal } from '@/components/commons/CommonsSearchModal';
 import {
   fetchCommonsPosts,
   deleteCommonsPost,
@@ -298,9 +299,9 @@ export function CommonsFeedPage() {
             title="View your profile"
           >
             <BoardlyAvatar
-              equippedAvatar={profile?.equipped?.avatar || profile?.equippedAvatar}
-              avatarUrl={profile?.avatarUrl || user?.photoURL}
-              frame={profile?.equipped?.frame || profile?.frame}
+              equippedAvatar={profile?.equipped?.avatar || (profile as any)?.equippedAvatar}
+              avatarUrl={(profile as any)?.avatarUrl || profile?.photoURL || user?.photoURL}
+              frame={profile?.equipped?.frame || (profile as any)?.frame}
               name={profile?.displayName || user?.displayName || 'User'}
               isSuperAdmin={
                 isAdmin ||
@@ -561,9 +562,9 @@ export function CommonsFeedPage() {
                 uid: user.uid,
                 displayName: profile?.displayName || user.displayName,
                 photoURL: profile?.photoURL || user.photoURL,
-                equippedAvatar: profile?.equippedAvatar,
-                frame: profile?.frame,
-                avatarUrl: profile?.avatarUrl,
+                equippedAvatar: profile?.equipped?.avatar || (profile as any)?.equippedAvatar,
+                frame: profile?.equipped?.frame || (profile as any)?.frame,
+                avatarUrl: (profile as any)?.avatarUrl || profile?.photoURL || user.photoURL,
               }
             : null
         }
@@ -581,15 +582,15 @@ export function CommonsFeedPage() {
         onClose={() => setSearchModalOpen(false)}
         posts={posts}
         currentUserId={user?.uid}
-        onSelectPost={(post) => {
+        onSelectPost={(post: CommonsPost) => {
           setSearchModalOpen(false);
           setCommentsPost(post);
         }}
-        onOpenComments={(p) => {
+        onOpenComments={(p: CommonsPost) => {
           setSearchModalOpen(false);
           setCommentsPost(p);
         }}
-        onOpenReport={(p) => {
+        onOpenReport={(p: CommonsPost) => {
           setSearchModalOpen(false);
           setReportPost(p);
         }}

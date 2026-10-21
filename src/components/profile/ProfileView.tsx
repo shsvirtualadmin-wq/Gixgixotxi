@@ -665,7 +665,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           {/* Close button on mobile/dialog */}
           {onClose && (
             <button
-              onClick={onClose}
+              onClick={() => onClose()}
               className="absolute top-3 left-3 z-40 w-8 h-8 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center backdrop-blur-md transition-colors cursor-pointer border border-white/20"
               aria-label="Close"
             >

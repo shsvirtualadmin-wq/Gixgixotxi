@@ -290,7 +290,7 @@ export function OverviewPage() {
           <div>
             <div className="flex items-baseline gap-2 mb-2">
               <span className="font-doto text-3xl font-bold text-[var(--text)]">
-                {profile?.stats?.mcqs || profile?.totalQuestionsSolved || 0}
+                {(profile as any)?.stats?.mcqs || profile?.totalQuestionsSolved || 0}
               </span>
               <span className="text-xs text-[var(--muted)]">MCQs</span>
             </div>
