@@ -319,7 +319,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           {mode === 'signin' ? 'Welcome back' : 'Create your account'}
         </h1>
         <p className="text-xs sm:text-sm text-[var(--muted)] mt-1.5 leading-relaxed">
-          Practice for FAST, NUST, GIKI, NED and MDCAT
+          Practice MCQs. Learn together. Education for everyone.
         </p>
       </div>
 
@@ -370,20 +370,13 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
         </div>
       )}
 
-      {/* Continue with Google FIRST: Full-width white button, 52px tall, official Google icon, black text */}
+      {/* Continue with Google: Full-width white button, 52px tall, official Google icon, black text, 2px red border, pill shape */}
       <button
         type="button"
         onClick={handleGoogleSignIn}
         disabled={googleLoading || loading}
-        className="w-full rounded-2xl flex items-center justify-center gap-3 font-semibold text-sm transition-opacity hover:opacity-90 disabled:opacity-50 cursor-pointer"
-        style={{
-          height: '52px',
-          backgroundColor: '#FFFFFF',
-          color: '#000000',
-          border: '1px solid #FFFFFF',
-          fontFamily: 'var(--font-heading)',
-          letterSpacing: '-0.02em',
-        }}
+        className="auth-google-btn"
+        aria-label="Continue with Google"
       >
         {googleLoading ? (
           <span
@@ -438,7 +431,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
               Full name
             </label>
             <div className="relative">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)] pointer-events-none">
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
                 <User size={18} />
               </div>
               <input
@@ -448,7 +441,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Ahmed Khan"
                 autoComplete="name"
-                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)] transition-colors text-sm"
+                className={`auth-form-input ${fieldErrors.name ? 'input-error' : ''}`}
                 style={{
                   height: '52px',
                   paddingLeft: '44px',
@@ -457,7 +450,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
               />
             </div>
             {fieldErrors.name && (
-              <span className="text-xs text-[var(--red)]">{fieldErrors.name}</span>
+              <span className="text-xs text-[#DC2626] font-medium mt-0.5">{fieldErrors.name}</span>
             )}
           </div>
         )}
@@ -472,7 +465,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             Email
           </label>
           <div className="relative">
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)] pointer-events-none">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
               <Mail size={18} />
             </div>
             <input
@@ -482,7 +475,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="student@example.com"
               autoComplete="email"
-              className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)] transition-colors text-sm"
+              className={`auth-form-input ${fieldErrors.email ? 'input-error' : ''}`}
               style={{
                 height: '52px',
                 paddingLeft: '44px',
@@ -491,7 +484,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             />
           </div>
           {fieldErrors.email && (
-            <span className="text-xs text-[var(--red)]">{fieldErrors.email}</span>
+            <span className="text-xs text-[#DC2626] font-medium mt-0.5">{fieldErrors.email}</span>
           )}
         </div>
 
@@ -516,7 +509,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             )}
           </div>
           <div className="relative">
-            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)] pointer-events-none">
+            <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
               <Lock size={18} />
             </div>
             <input
@@ -526,7 +519,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-              className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)] transition-colors text-sm"
+              className={`auth-form-input ${fieldErrors.password ? 'input-error' : ''}`}
               style={{
                 height: '52px',
                 paddingLeft: '44px',
@@ -537,13 +530,13 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
               type="button"
               onClick={() => setShowPassword(!showPassword)}
               aria-label={showPassword ? 'Hide password' : 'Show password'}
-              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+              className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#374151] hover:text-[#000000] transition-colors cursor-pointer p-1"
             >
               {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
             </button>
           </div>
           {fieldErrors.password && (
-            <span className="text-xs text-[var(--red)]">{fieldErrors.password}</span>
+            <span className="text-xs text-[#DC2626] font-medium mt-0.5">{fieldErrors.password}</span>
           )}
         </div>
 
@@ -558,7 +551,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
               Confirm password
             </label>
             <div className="relative">
-              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)] pointer-events-none">
+              <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
                 <Lock size={18} />
               </div>
               <input
@@ -568,7 +561,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
                 autoComplete="new-password"
-                className="w-full rounded-2xl bg-[#0A0A0A] border border-[var(--border)] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)] transition-colors text-sm"
+                className={`auth-form-input ${fieldErrors.confirmPassword ? 'input-error' : ''}`}
                 style={{
                   height: '52px',
                   paddingLeft: '44px',
@@ -579,13 +572,13 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
                 type="button"
                 onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                 aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#374151] hover:text-[#000000] transition-colors cursor-pointer p-1"
               >
                 {showConfirmPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
             {fieldErrors.confirmPassword && (
-              <span className="text-xs text-[var(--red)]">{fieldErrors.confirmPassword}</span>
+              <span className="text-xs text-[#DC2626] font-medium mt-0.5">{fieldErrors.confirmPassword}</span>
             )}
           </div>
         )}

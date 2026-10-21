@@ -567,6 +567,84 @@ nav[aria-label="Main Navigation"] .boardly-brand-logo,
   width: 100%;
 }
 
+/* ===== AUTH FORM CONTROLS (LIGHT/DARK CONSISTENT) ===== */
+.auth-google-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  height: 52px;
+  background-color: #FFFFFF !important;
+  color: #000000 !important;
+  border: 2px solid #D71921 !important;
+  border-radius: 9999px !important;
+  font-family: var(--font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  transition: background-color var(--dur-hover) var(--ease-out), box-shadow var(--dur-hover) var(--ease-out), opacity var(--dur-hover) var(--ease-out);
+  cursor: pointer;
+  text-decoration: none;
+  user-select: none;
+}
+.auth-google-btn:hover:not(:disabled) {
+  background-color: #FFF5F5 !important;
+}
+.auth-google-btn:active:not(:disabled) {
+  background-color: #FEE2E2 !important;
+}
+.auth-google-btn:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 3px rgba(215, 25, 33, 0.35) !important;
+}
+.auth-google-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.auth-form-input {
+  width: 100%;
+  height: 52px;
+  background-color: #FFFFFF !important;
+  color: #000000 !important;
+  border: 2px solid #D71921 !important;
+  border-radius: 1rem !important; /* rounded-2xl */
+  font-size: 14px;
+  line-height: 1.25rem;
+  transition: border-color var(--dur-hover) var(--ease-out), box-shadow var(--dur-hover) var(--ease-out), background-color var(--dur-hover) var(--ease-out);
+}
+.auth-form-input::placeholder {
+  color: #6B7280 !important;
+  opacity: 1 !important;
+}
+.auth-form-input:focus {
+  outline: none !important;
+  background-color: #FFFFFF !important;
+  color: #000000 !important;
+  border-color: #D71921 !important;
+  box-shadow: 0 0 0 3px rgba(215, 25, 33, 0.20) !important;
+}
+.auth-form-input.input-error {
+  border-color: #B91C1C !important;
+}
+.auth-form-input.input-error:focus {
+  border-color: #991B1B !important;
+  box-shadow: 0 0 0 3px rgba(185, 28, 28, 0.25) !important;
+}
+
+/* Autofill override to preserve white background and black text */
+.auth-form-input:-webkit-autofill,
+.auth-form-input:-webkit-autofill:hover,
+.auth-form-input:-webkit-autofill:focus,
+.auth-form-input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 1000px #FFFFFF inset !important;
+  box-shadow: 0 0 0 1000px #FFFFFF inset !important;
+  -webkit-text-fill-color: #000000 !important;
+  caret-color: #000000 !important;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
 /* ===== PILLS AND BADGES ===== */
 .badge-pill {
   display: inline-flex;

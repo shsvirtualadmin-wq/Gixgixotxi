@@ -112,7 +112,7 @@ export function ForgotPasswordPage() {
                 Email address
               </label>
               <div className="relative">
-                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)] pointer-events-none">
+                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#374151] pointer-events-none">
                   <Mail size={18} />
                 </div>
                 <input
@@ -123,7 +123,7 @@ export function ForgotPasswordPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="student@example.com"
                   autoComplete="email"
-                  className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] focus:ring-1 focus:ring-[var(--red)] transition-colors text-sm"
+                  className={`auth-form-input ${errorDetails?.code === 'validation/missing-email' ? 'input-error' : ''}`}
                   style={{
                     height: '52px',
                     paddingLeft: '44px',
