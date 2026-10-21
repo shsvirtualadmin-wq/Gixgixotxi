@@ -148,7 +148,7 @@ export function DashboardSidebar() {
           </NavLink>
         )}
 
-        {/* Study Squads / Crew */}
+        {/* Study Squads */}
         <NavLink
           to="/dashboard/crew"
           className={({ isActive }) =>
@@ -161,7 +161,7 @@ export function DashboardSidebar() {
           style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
         >
           <Users size={18} />
-          <span>Crew</span>
+          <span>Squad</span>
         </NavLink>
 
         {/* 5. Plans & Upgrade */}

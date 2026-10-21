@@ -60,7 +60,7 @@ function DashboardBottomNavComponent() {
       },
       {
         to: crewLink,
-        label: 'Crew',
+        label: 'Squad',
         icon: <Users size={18} />,
       },
       ...(isApprovedCaptain
