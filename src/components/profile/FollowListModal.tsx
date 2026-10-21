@@ -59,7 +59,7 @@ export const FollowListModal: React.FC<FollowListModalProps> = ({
           ? await getFollowers(userId, page * PAGE_SIZE + 1)
           : await getFollowing(userId, page * PAGE_SIZE + 1);
 
-      const targetUids = records.map((r) => (tab === 'followers' ? r.followerId : r.targetId));
+      const targetUids = records.map((r: any) => r.uid || (tab === 'followers' ? r.followerId : r.targetId)).filter(Boolean);
       const hasNext = targetUids.length > page * PAGE_SIZE;
       const slicedUids = targetUids.slice(0, page * PAGE_SIZE);
 

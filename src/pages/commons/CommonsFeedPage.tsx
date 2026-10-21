@@ -7,6 +7,7 @@ import {
   Compass,
   Users,
   Shield,
+  AlertTriangle,
 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAuth } from '@/contexts/AuthContext';
@@ -31,6 +32,7 @@ export function CommonsFeedPage() {
   // Posts State (strictly real Firestore posts, zero placeholder/fake posts)
   const [posts, setPosts] = useState<CommonsPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [hasMore, setHasMore] = useState(false);
   const [lastDoc, setLastDoc] = useState<any>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -46,6 +48,7 @@ export function CommonsFeedPage() {
 
   const loadPosts = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await fetchCommonsPosts({
         feedTab,
@@ -57,8 +60,10 @@ export function CommonsFeedPage() {
       setPosts(res.posts);
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
-    } catch (err) {
+    } catch (err: unknown) {
       console.warn('[CommonsFeedPage] fetch error:', err);
+      const msg = err instanceof Error ? err.message : 'Could not load community posts';
+      setLoadError(msg);
       setPosts([]);
       setLastDoc(null);
       setHasMore(false);
@@ -207,6 +212,23 @@ export function CommonsFeedPage() {
             <div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin mx-auto" />
             <p className="text-xs text-neutral-500 font-mono">Loading Commons stream...</p>
           </div>
+        ) : loadError ? (
+          <div className="p-8 text-center rounded-2xl border border-red-900/40 bg-[#160b0c] space-y-3">
+            <AlertTriangle size={28} className="mx-auto text-red-500" />
+            <h3 className="text-sm font-semibold text-neutral-200 font-mono uppercase tracking-wider">
+              Couldn't Load Posts
+            </h3>
+            <p className="text-xs text-neutral-400 max-w-sm mx-auto leading-relaxed">
+              We encountered an issue fetching the latest community resources. Your connection might have timed out or been interrupted.
+            </p>
+            <button
+              onClick={() => loadPosts()}
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-neutral-900 border border-neutral-700 text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+            >
+              <RefreshCw size={14} />
+              <span>Retry</span>
+            </button>
+          </div>
         ) : posts.length === 0 ? (
           <div className="p-12 text-center rounded-2xl border border-neutral-800 bg-[#0c0c0e] space-y-3">
             <BookOpen size={32} className="mx-auto text-neutral-600" />
@@ -218,13 +240,24 @@ export function CommonsFeedPage() {
                 ? 'Follow peers and study creators to see their notes and papers here, or switch to "All" to browse the community feed.'
                 : 'Be the first to share handwritten notes, solved past papers, or high-yield formula sheets for your peers!'}
             </p>
-            <button
-              onClick={() => setWizardOpen(true)}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-red-600 text-white hover:bg-red-500 transition-colors"
-            >
-              <Plus size={15} />
-              <span>Share First Resource</span>
-            </button>
+            <div className="flex items-center justify-center gap-3 pt-1">
+              {feedTab === 'following' && (
+                <button
+                  onClick={() => setFeedTab('all')}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-mono font-semibold rounded-xl border border-neutral-800 hover:border-neutral-700 bg-neutral-900 text-neutral-300 hover:text-white transition-colors"
+                >
+                  <Compass size={14} className="text-red-500" />
+                  <span>Browse All Posts</span>
+                </button>
+              )}
+              <button
+                onClick={() => setWizardOpen(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-red-600 text-white hover:bg-red-500 transition-colors cursor-pointer shadow-md shadow-red-950/40"
+              >
+                <Plus size={15} />
+                <span>Create first post</span>
+              </button>
+            </div>
           </div>
         ) : (
           posts.map((post) => (

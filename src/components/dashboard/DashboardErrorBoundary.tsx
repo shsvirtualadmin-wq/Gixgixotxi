@@ -25,7 +25,10 @@ export class DashboardErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('[DashboardErrorBoundary] Caught render error:', error, errorInfo);
+    console.error('[DashboardErrorBoundary] Caught render error:', error);
+    console.error('[DashboardErrorBoundary] Error message:', error?.message);
+    console.error('[DashboardErrorBoundary] Error stack:', error?.stack);
+    console.error('[DashboardErrorBoundary] Component stack:', errorInfo?.componentStack);
     this.setState({ errorInfo });
   }
 
@@ -40,8 +43,14 @@ export class DashboardErrorBoundary extends Component<Props, State> {
         (new URLSearchParams(window.location.search).get('debug') === '1' ||
           sessionStorage.getItem('boardly_debug') === '1');
       const currentEmail = auth.currentUser?.email;
-      const isSuper = isSuperAdminEmailOrRole(currentEmail, null, auth.currentUser?.uid);
-      const showTechDetails = isDebug || isSuper;
+      const currentUid = auth.currentUser?.uid;
+      const isSuper =
+        isSuperAdminEmailOrRole(currentEmail, null, currentUid) ||
+        (currentEmail && currentEmail.toLowerCase() === 'support@scholario.me') ||
+        (currentEmail && currentEmail.toLowerCase() === 'support@boardly.cfd') ||
+        (currentEmail && currentEmail.toLowerCase() === 'shsvirtualadmin@gmail.com') ||
+        currentUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
+      const showTechDetails = isDebug || Boolean(isSuper);
 
       if (!showTechDetails) {
         return (

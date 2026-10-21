@@ -226,7 +226,7 @@ export function StorePage() {
       console.error(
         '[StorePage] unlock error:',
         (err as any)?.code || 'ERROR',
-        `users/${authUser?.uid}/unlocked/${item.id}`,
+        `users/${user?.uid}/unlocked/${item.id}`,
         err
       );
       setPurchaseError((err as Error).message || 'Purchase failed');

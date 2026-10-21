@@ -18,7 +18,11 @@ export interface EffectivePlanResult {
 }
 
 // ── Superadmin Identity Checker ─────────────────────────────────────────────
-export const SUPER_ADMIN_EMAILS = ['shsvirtualadmin@gmail.com', 'support@boardly.cfd'];
+export const SUPER_ADMIN_EMAILS = [
+  'shsvirtualadmin@gmail.com',
+  'support@boardly.cfd',
+  'support@scholario.me',
+];
 export const SUPER_ADMIN_UID = 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
 
 export function isSuperAdminEmailOrRole(

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   ThumbsUp,
   MessageSquare,
@@ -359,11 +359,13 @@ export function CommonsPostCard({
 }
 
 function FileAttachmentItem({ file }: { file: CommonsFileAttachment }) {
-  const isImage = file.type?.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(file.name);
-  const isPdf = file.type === 'application/pdf' || file.name.endsWith('.pdf');
+  const fileName = file?.name || 'attachment';
+  const fileType = file?.type || '';
+  const isImage = fileType.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(fileName);
+  const isPdf = fileType === 'application/pdf' || fileName.toLowerCase().endsWith('.pdf');
 
   const formatSize = (bytes: number) => {
-    if (!bytes) return '';
+    if (!bytes || isNaN(bytes)) return '';
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };

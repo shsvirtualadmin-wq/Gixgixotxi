@@ -50,8 +50,8 @@ export const ProfileFollowModal: React.FC<ProfileFollowModalProps> = ({
 
         const uids =
           activeTab === 'followers'
-            ? followDocs.map((d) => d.followerId).filter(Boolean)
-            : followDocs.map((d) => d.targetId).filter(Boolean);
+            ? followDocs.map((d: any) => d.uid || d.followerId).filter(Boolean)
+            : followDocs.map((d: any) => d.uid || d.targetId).filter(Boolean);
 
         if (cancelled) return;
 

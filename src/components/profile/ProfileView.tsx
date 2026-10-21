@@ -1091,7 +1091,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 currentUserDisplayName={ownProfile?.displayName || authUser?.displayName || profile?.displayName}
                 currentUserAvatar={
                   (ownEquipped?.avatar as string) ||
-                  (ownProfile?.avatar as string) ||
+                  ((ownProfile as any)?.avatar as string) ||
+                  (ownProfile?.photoURL as string) ||
                   (authUser?.photoURL as string) ||
                   profile?.avatar ||
                   null

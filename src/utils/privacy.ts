@@ -3,6 +3,7 @@ import { deriveFallbackShortId } from './shortId';
 const ADMIN_IDENTIFIERS = [
   'shsvirtualadmin@gmail.com',
   'support@boardly.cfd',
+  'support@scholario.me',
   'a5ymrimdhrcmedwutxtugt2e4hf2',
   'shsvirtualadmin',
 ];

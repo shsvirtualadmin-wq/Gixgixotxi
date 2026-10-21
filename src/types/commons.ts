@@ -143,6 +143,7 @@ export interface CommonsComment {
   id: string;
   postId: string;
   authorUid: string | null;
+  uid?: string | null;
   authorName: string;
   authorAvatar: string | null;
   authorFrame?: string | null;

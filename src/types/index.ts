@@ -117,6 +117,7 @@ export interface PublicProfile {
   shortId?: string;
   avatarKey?: string | null;
   avatarVariant?: string | null;
+  avatarUrl?: string | null;
   photoURL?: string | null;
   crewId?: string | null;
   role?: UserRole | string;

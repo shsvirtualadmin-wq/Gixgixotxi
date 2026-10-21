@@ -399,7 +399,7 @@ export async function fetchCommonsPosts(params: {
     if (params.searchQuery && params.searchQuery.trim().length >= 2) {
       const tokens = params.searchQuery.toLowerCase().trim().split(/\s+/);
       posts = posts.filter((post) => {
-        const text = `${post.title} ${post.description} ${post.subject} ${post.chapter} ${post.target} ${post.tags.join(' ')}`.toLowerCase();
+        const text = `${post.title || ''} ${post.description || ''} ${post.subject || ''} ${post.chapter || ''} ${post.target || ''} ${(post.tags || []).join(' ')}`.toLowerCase();
         return tokens.every((token) => text.includes(token));
       });
     }

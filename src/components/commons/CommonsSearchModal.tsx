@@ -51,7 +51,7 @@ export function CommonsSearchModal({
   const filteredPosts = posts.filter((p) => {
     if (!searchQuery.trim()) return true;
     const tokens = searchQuery.toLowerCase().trim().split(/\s+/);
-    const text = `${p.title} ${p.description} ${p.subject} ${p.chapter} ${p.target} ${p.tags.join(' ')}`.toLowerCase();
+    const text = `${p.title || ''} ${p.description || ''} ${p.subject || ''} ${p.chapter || ''} ${p.target || ''} ${(p.tags || []).join(' ')}`.toLowerCase();
     return tokens.every((t) => text.includes(t));
   });
 
