@@ -431,6 +431,13 @@ export async function fetchCommonsPosts(params: {
       });
     }
 
+    // Sort pinned posts first
+    posts.sort((a, b) => {
+      const aPinned = a.isPinned ? 1 : 0;
+      const bPinned = b.isPinned ? 1 : 0;
+      return bPinned - aPinned;
+    });
+
     const trimmed = posts.slice(0, limitCount);
     const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
     const hasMore = snap.docs.length >= limitCount;
@@ -715,20 +722,31 @@ export async function searchPeople(queryText: string): Promise<CommonsUserPrevie
   try {
     const q = query(
       collection(db, 'publicProfiles'),
-      limit(20)
+      limit(50)
     );
     const snap = await getDocs(q);
 
     const matches: CommonsUserPreview[] = [];
     snap.docs.forEach((docSnap) => {
       const data = docSnap.data();
-      const name = String(data.displayName || '').toLowerCase();
-      if (name.includes(cleanQ)) {
+      const displayName = String(data.displayName || '').toLowerCase();
+      const nickname = String(data.nickname || '').toLowerCase();
+      const username = String(data.username || '').toLowerCase();
+
+      if (displayName.includes(cleanQ) || nickname.includes(cleanQ) || username.includes(cleanQ)) {
         matches.push({
           uid: docSnap.id,
-          displayName: data.displayName || 'Student',
+          displayName: data.displayName || data.nickname || 'Student',
+          nickname: data.nickname || data.displayName || 'Student',
+          username: data.username || undefined,
+          role: data.role || 'Student',
+          customRole: data.customRole || undefined,
+          isSuperAdmin: Boolean(data.isSuperAdmin || data.role === 'superadmin' || docSnap.id === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'),
           shortId: data.shortId,
           avatarUrl: data.avatarUrl || data.photoURL,
+          photoURL: data.photoURL,
+          equippedAvatar: data.equippedAvatar,
+          frame: data.frame,
           targetUniversity: data.targetUniversity,
           streak: data.streak,
         });

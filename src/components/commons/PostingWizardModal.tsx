@@ -31,6 +31,10 @@ interface PostingWizardModalProps {
     displayName?: string | null;
     photoURL?: string | null;
   };
+  initialType?: CommonsPostType;
+  initialAnonymous?: boolean;
+  initialStep?: 1 | 2;
+  triggerUploadOnMount?: 'photo' | 'file' | null;
 }
 
 export function PostingWizardModal({
@@ -38,13 +42,17 @@ export function PostingWizardModal({
   onClose,
   onPostCreated,
   currentUser,
+  initialType,
+  initialAnonymous,
+  initialStep,
+  triggerUploadOnMount,
 }: PostingWizardModalProps) {
   // Step 1: Material Type selection
   // Step 2: Title, Description, Uploads, Tags with [Filter] option, Consent & Publish
-  const [currentStep, setCurrentStep] = useState<1 | 2>(1);
+  const [currentStep, setCurrentStep] = useState<1 | 2>(initialStep || 1);
 
   // Form State
-  const [selectedType, setSelectedType] = useState<CommonsPostType>('notes');
+  const [selectedType, setSelectedType] = useState<CommonsPostType>(initialType || 'notes');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [files, setFiles] = useState<CommonsFileAttachment[]>([]);
@@ -55,12 +63,26 @@ export function PostingWizardModal({
 
   // Consent & Identity Checkboxes
   const [consentAcademic, setConsentAcademic] = useState(true);
-  const [isAnonymous, setIsAnonymous] = useState<boolean>(false);
+  const [isAnonymous, setIsAnonymous] = useState<boolean>(initialAnonymous || false);
 
   // Status & Error
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      if (initialType) setSelectedType(initialType);
+      if (typeof initialAnonymous === 'boolean') setIsAnonymous(initialAnonymous);
+      if (initialStep) setCurrentStep(initialStep);
+      setErrorMsg(null);
+      if (triggerUploadOnMount) {
+        setTimeout(() => {
+          fileInputRef.current?.click();
+        }, 150);
+      }
+    }
+  }, [isOpen, initialType, initialAnonymous, initialStep, triggerUploadOnMount]);
 
   if (!isOpen) return null;
 
@@ -161,31 +183,31 @@ export function PostingWizardModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-      <div className="relative w-full max-w-2xl bg-[#0c0c0e] border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+      <div className="relative w-full max-w-2xl bg-surface border border-border rounded-2xl shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
         {/* Header Bar */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-neutral-800 bg-[#111114]">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-surface-raised">
           <div className="flex items-center gap-2.5">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
-            <h2 className="text-sm sm:text-base font-extrabold font-mono tracking-tight text-neutral-100">
-              SHARE STUDY RESOURCE
+            <div className="w-2.5 h-2.5 rounded-full bg-accent animate-pulse" />
+            <h2 className="text-sm sm:text-base font-bold tracking-tight text-primary">
+              Share Study Resource
             </h2>
-            <span className="text-[11px] font-mono text-neutral-400 bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded-full">
+            <span className="text-[11px] font-mono text-muted bg-surface-muted border border-border px-2 py-0.5 rounded-full">
               Step {currentStep} of 2
             </span>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
+            className="p-1.5 text-muted hover:text-primary rounded-lg hover:bg-surface-muted transition-colors cursor-pointer"
           >
             <X size={18} />
           </button>
         </div>
 
         {/* Step Indicator Bar */}
-        <div className="h-1 w-full bg-neutral-900">
+        <div className="h-1 w-full bg-surface-muted">
           <div
-            className="h-full bg-red-600 transition-all duration-300"
+            className="h-full bg-accent transition-all duration-300"
             style={{ width: currentStep === 1 ? '50%' : '100%' }}
           />
         </div>
@@ -193,8 +215,8 @@ export function PostingWizardModal({
         {/* Content Body */}
         <div className="p-5 sm:p-6 max-h-[80vh] overflow-y-auto space-y-5">
           {errorMsg && (
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-red-950/40 border border-red-800/80 text-red-200 text-xs">
-              <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-tag-danger-bg border border-tag-danger-text/30 text-tag-danger-text text-xs">
+              <AlertCircle size={16} className="text-accent shrink-0 mt-0.5" />
               <span>{errorMsg}</span>
             </div>
           )}
@@ -205,10 +227,10 @@ export function PostingWizardModal({
           {currentStep === 1 && (
             <div className="space-y-4">
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-neutral-100 font-mono">
+                <h3 className="text-base sm:text-lg font-bold text-primary">
                   What type of material are you sharing?
                 </h3>
-                <p className="text-xs text-neutral-400 mt-1">
+                <p className="text-xs text-muted mt-1">
                   Select the category that best describes your study contribution:
                 </p>
               </div>
@@ -228,15 +250,15 @@ export function PostingWizardModal({
                       key={typeMeta.type}
                       type="button"
                       onClick={() => setSelectedType(typeMeta.type)}
-                      className={`flex items-start gap-3 p-3.5 rounded-xl border text-left transition-all ${
+                      className={`flex items-start gap-3 p-3.5 rounded-xl border text-left transition-all cursor-pointer ${
                         isSelected
-                          ? 'border-red-600 bg-red-950/20 shadow-md shadow-red-950/30'
-                          : 'border-neutral-800/90 bg-neutral-900/50 hover:border-neutral-700 hover:bg-neutral-900'
+                          ? 'border-accent bg-accent-soft shadow-xs'
+                          : 'border-border bg-surface hover:border-border-strong hover:bg-surface-muted'
                       }`}
                     >
                       <div
                         className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                          isSelected ? 'bg-red-600 text-white' : 'bg-neutral-800 text-neutral-400'
+                          isSelected ? 'bg-accent text-on-accent' : 'bg-surface-muted text-secondary'
                         }`}
                       >
                         <FileText size={18} />
@@ -244,15 +266,15 @@ export function PostingWizardModal({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span
-                            className={`text-xs font-bold font-mono uppercase tracking-wide ${
-                              isSelected ? 'text-red-400' : 'text-neutral-200'
+                            className={`text-xs font-bold uppercase tracking-wide ${
+                              isSelected ? 'text-accent' : 'text-primary'
                             }`}
                           >
                             {typeMeta.label}
                           </span>
-                          {isSelected && <CheckCircle2 size={15} className="text-red-500" />}
+                          {isSelected && <CheckCircle2 size={15} className="text-accent" />}
                         </div>
-                        <p className="text-[11px] text-neutral-400 mt-0.5 leading-relaxed">
+                        <p className="text-[11px] text-muted mt-0.5 leading-relaxed">
                           {typeMeta.description}
                         </p>
                       </div>
@@ -262,11 +284,11 @@ export function PostingWizardModal({
               </div>
 
               {/* Step 1 Footer Action */}
-              <div className="pt-3 border-t border-neutral-800/80 flex justify-end">
+              <div className="pt-3 border-t border-border flex justify-end">
                 <button
                   type="button"
                   onClick={() => setCurrentStep(2)}
-                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-white font-bold text-xs font-mono tracking-wide shadow-lg shadow-red-950/40 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                  className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-accent hover:opacity-90 text-on-accent font-bold text-xs tracking-wide shadow-xs transition-all hover:scale-[1.02] active:scale-[0.98] cursor-pointer"
                 >
                   <span>Continue to Details</span>
                   <ChevronRight size={16} />
@@ -283,17 +305,17 @@ export function PostingWizardModal({
           {currentStep === 2 && (
             <div className="space-y-4">
               {/* Back to Step 1 Switcher */}
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-900/60 border border-neutral-800">
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-surface-muted border border-border">
                 <div className="flex items-center gap-2 text-xs">
-                  <span className="text-neutral-400">Material Type:</span>
-                  <span className="font-mono font-bold uppercase text-red-400 bg-red-950/60 px-2 py-0.5 rounded border border-red-800/60">
+                  <span className="text-muted">Material Type:</span>
+                  <span className="font-semibold uppercase text-accent bg-accent-soft px-2 py-0.5 rounded border border-accent/30 text-[11px]">
                     {selectedType.replace('_', ' ')}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setCurrentStep(1)}
-                  className="text-xs text-neutral-400 hover:text-white flex items-center gap-1 font-mono transition-colors"
+                  className="text-xs text-muted hover:text-primary flex items-center gap-1 transition-colors cursor-pointer"
                 >
                   <ChevronLeft size={14} />
                   <span>Change type</span>
@@ -302,46 +324,46 @@ export function PostingWizardModal({
 
               {/* 1. Title Input */}
               <div className="space-y-1">
-                <label className="text-xs font-mono uppercase tracking-wider text-neutral-300 font-semibold">
-                  Title <span className="text-red-500">*</span>
+                <label className="text-xs font-semibold uppercase tracking-wider text-secondary">
+                  Title <span className="text-accent">*</span>
                 </label>
                 <input
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   placeholder="e.g. Complete Differentiation & Limits Handwritten Notes"
-                  className="w-full text-xs sm:text-sm bg-[#09090b] border border-neutral-800 rounded-xl p-3 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-red-600 transition-colors"
+                  className="w-full text-xs sm:text-sm bg-surface border border-border rounded-xl p-3 text-primary placeholder:text-muted focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-colors"
                 />
               </div>
 
               {/* 2. Description Input */}
               <div className="space-y-1">
-                <label className="text-xs font-mono uppercase tracking-wider text-neutral-300 font-semibold">
-                  Description <span className="text-red-500">*</span>
+                <label className="text-xs font-semibold uppercase tracking-wider text-secondary">
+                  Description <span className="text-accent">*</span>
                 </label>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={3}
-                  placeholder="Summarize key topics covered, exam relevance, shortcut tricks..."
-                  className="w-full text-xs sm:text-sm bg-[#09090b] border border-neutral-800 rounded-xl p-3 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-red-600 transition-colors resize-none"
+                  placeholder="Summarize key topics covered, problem breakdowns, shortcuts..."
+                  className="w-full text-xs sm:text-sm bg-surface border border-border rounded-xl p-3 text-primary placeholder:text-muted focus:outline-none focus:border-accent focus:ring-2 focus:ring-accent/20 transition-colors resize-none"
                 />
               </div>
 
               {/* 3. Attachments */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-mono uppercase tracking-wider text-neutral-300 font-semibold">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-secondary">
                     Attach Files (PDF, Images, Docs)
                   </label>
-                  <span className="text-[11px] text-neutral-400 font-mono">
+                  <span className="text-[11px] text-muted">
                     {files.length}/5 files (25 MB max each)
                   </span>
                 </div>
 
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-neutral-800 hover:border-neutral-700 bg-[#09090b]/80 rounded-xl p-4 text-center cursor-pointer transition-colors group"
+                  className="border-2 border-dashed border-border hover:border-border-strong bg-surface-muted/60 rounded-xl p-4 text-center cursor-pointer transition-colors group"
                 >
                   <input
                     ref={fileInputRef}
@@ -351,11 +373,11 @@ export function PostingWizardModal({
                     onChange={handleFileUpload}
                     className="hidden"
                   />
-                  <Upload size={20} className="mx-auto text-neutral-500 group-hover:text-red-500 transition-colors" />
-                  <p className="text-xs text-neutral-300 mt-1.5 font-medium">
+                  <Upload size={20} className="mx-auto text-muted group-hover:text-accent transition-colors" />
+                  <p className="text-xs text-primary mt-1.5 font-medium">
                     Click to select files from your device
                   </p>
-                  <p className="text-[11px] text-neutral-500 mt-0.5">
+                  <p className="text-[11px] text-muted mt-0.5">
                     PDF, PNG, JPG, DOCX, PPTX (No executable files)
                   </p>
                 </div>
@@ -366,19 +388,19 @@ export function PostingWizardModal({
                     {files.map((file, idx) => (
                       <div
                         key={idx}
-                        className="flex items-center justify-between p-2 rounded-lg bg-neutral-900 border border-neutral-800 text-xs"
+                        className="flex items-center justify-between p-2 rounded-lg bg-surface border border-border text-xs"
                       >
                         <div className="flex items-center gap-2 truncate">
-                          <FileText size={14} className="text-red-400 shrink-0" />
-                          <span className="truncate text-neutral-200">{file.name}</span>
-                          <span className="text-[11px] text-neutral-500 shrink-0">
+                          <FileText size={14} className="text-accent shrink-0" />
+                          <span className="truncate text-primary">{file.name}</span>
+                          <span className="text-[11px] text-muted shrink-0">
                             ({(file.size / 1024 / 1024).toFixed(1)} MB)
                           </span>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleRemoveFile(idx)}
-                          className="text-neutral-500 hover:text-red-400 p-1 transition-colors"
+                          className="text-muted hover:text-accent p-1 transition-colors cursor-pointer"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -388,37 +410,34 @@ export function PostingWizardModal({
                 )}
               </div>
 
-              {/* 4. TAGS (CUSTOM TOPIC / EXAM TAGS) */}
-              <div className="space-y-2 pt-1 border-t border-neutral-800/80">
+              {/* 4. TAGS (CUSTOM TOPIC / SUBJECT TAGS) */}
+              <div className="space-y-2 pt-1 border-t border-border">
                 <div className="flex items-center justify-between">
-                  <label className="text-xs font-mono uppercase tracking-wider text-neutral-300 font-semibold flex items-center gap-2">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-secondary flex items-center gap-2">
                     <span>Tags (Optional)</span>
                   </label>
-                  <span className="text-[11px] text-neutral-500 font-mono">
+                  <span className="text-[11px] text-muted font-mono">
                     {tags.length}/8 tags
                   </span>
                 </div>
 
-                {/* Custom Tags input and badge chips */}
-                <div className="flex flex-wrap items-center gap-1.5 p-2.5 rounded-xl border border-neutral-800 bg-[#09090b] min-h-[46px]">
-                  {/* Custom hashtag tags */}
+                <div className="flex flex-wrap items-center gap-1.5 p-2.5 rounded-xl border border-border bg-surface min-h-[46px]">
                   {tags.map((t) => (
                     <span
                       key={t}
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono bg-neutral-900 border border-neutral-700 text-neutral-200"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-mono bg-surface-muted border border-border text-secondary"
                     >
                       <span>#{t}</span>
                       <button
                         type="button"
                         onClick={() => handleRemoveTag(t)}
-                        className="text-neutral-400 hover:text-red-400 ml-0.5 cursor-pointer"
+                        className="text-muted hover:text-accent ml-0.5 cursor-pointer"
                       >
                         ×
                       </button>
                     </span>
                   ))}
 
-                  {/* Input for custom tag */}
                   <div className="flex items-center gap-1 flex-1 min-w-[140px]">
                     <input
                       type="text"
@@ -431,13 +450,13 @@ export function PostingWizardModal({
                         }
                       }}
                       placeholder="+ Add custom tag (e.g. #physics, #shortcuts) — Enter"
-                      className="w-full text-xs bg-transparent text-neutral-200 placeholder-neutral-500 focus:outline-none px-1"
+                      className="w-full text-xs bg-transparent text-primary placeholder:text-muted focus:outline-none px-1"
                     />
                     {tagInput.trim() && (
                       <button
                         type="button"
                         onClick={handleAddTag}
-                        className="text-[10px] font-mono text-red-400 px-1.5 py-0.5 rounded bg-neutral-800 shrink-0 cursor-pointer"
+                        className="text-[10px] font-mono text-accent px-1.5 py-0.5 rounded bg-surface-muted border border-border shrink-0 cursor-pointer"
                       >
                         Add
                       </button>
@@ -446,35 +465,30 @@ export function PostingWizardModal({
                 </div>
               </div>
 
-              {/* ══════════════════════════════════════════════════════════════════
-                  BELOW THAT: CONSENT CHECKBOX(ES), THEN THE PUBLISH BUTTON
-                 ══════════════════════════════════════════════════════════════════ */}
-              {/* ══════════════════════════════════════════════════════════════════
-                  VISIBILITY OPTION (PUBLIC OR ANONYMOUS)
-                 ══════════════════════════════════════════════════════════════════ */}
-              <div className="space-y-2 pt-3 border-t border-neutral-800/80">
-                <label className="text-xs font-semibold text-neutral-200 block">Post visibility</label>
+              {/* VISIBILITY OPTION (PUBLIC OR ANONYMOUS) */}
+              <div className="space-y-2 pt-3 border-t border-border">
+                <label className="text-xs font-semibold text-primary block">Post visibility</label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   <button
                     type="button"
                     onClick={() => setIsAnonymous(false)}
-                    className={`p-3 rounded-xl border text-left transition-all ${
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                       !isAnonymous
-                        ? 'border-red-600 bg-red-950/20 shadow-sm'
-                        : 'border-neutral-800 bg-neutral-900/60 hover:border-neutral-700'
+                        ? 'border-accent bg-accent-soft shadow-xs'
+                        : 'border-border bg-surface hover:border-border-strong hover:bg-surface-muted'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <div
                         className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                          !isAnonymous ? 'border-red-500 bg-red-600' : 'border-neutral-600'
+                          !isAnonymous ? 'border-accent bg-accent' : 'border-border'
                         }`}
                       >
                         {!isAnonymous && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
-                      <span className="text-xs font-bold text-neutral-100">Post publicly</span>
+                      <span className="text-xs font-bold text-primary">Post publicly</span>
                     </div>
-                    <p className="text-[11px] text-neutral-400 pl-5.5 leading-snug">
+                    <p className="text-[11px] text-muted pl-5.5 leading-snug">
                       Public posts show your name and appear on your profile.
                     </p>
                   </button>
@@ -482,41 +496,39 @@ export function PostingWizardModal({
                   <button
                     type="button"
                     onClick={() => setIsAnonymous(true)}
-                    className={`p-3 rounded-xl border text-left transition-all ${
+                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
                       isAnonymous
-                        ? 'border-red-600 bg-red-950/20 shadow-sm'
-                        : 'border-neutral-800 bg-neutral-900/60 hover:border-neutral-700'
+                        ? 'border-accent bg-accent-soft shadow-xs'
+                        : 'border-border bg-surface hover:border-border-strong hover:bg-surface-muted'
                     }`}
                   >
                     <div className="flex items-center gap-2 mb-1">
                       <div
                         className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                          isAnonymous ? 'border-red-500 bg-red-600' : 'border-neutral-600'
+                          isAnonymous ? 'border-accent bg-accent' : 'border-border'
                         }`}
                       >
                         {isAnonymous && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
-                      <span className="text-xs font-bold text-neutral-100">Post anonymously</span>
+                      <span className="text-xs font-bold text-primary">Post anonymously</span>
                     </div>
-                    <p className="text-[11px] text-neutral-400 pl-5.5 leading-snug">
+                    <p className="text-[11px] text-muted pl-5.5 leading-snug">
                       Anonymous posts show no name and never appear on your profile.
                     </p>
                   </button>
                 </div>
               </div>
 
-              {/* ══════════════════════════════════════════════════════════════════
-                  CONSENT CHECKBOX & PUBLISH
-                 ══════════════════════════════════════════════════════════════════ */}
+              {/* CONSENT CHECKBOX & PUBLISH */}
               <div className="pt-2">
                 <label className="flex items-start gap-2.5 cursor-pointer group">
                   <input
                     type="checkbox"
                     checked={consentAcademic}
                     onChange={(e) => setConsentAcademic(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-red-600 focus:ring-red-500 focus:ring-offset-0 cursor-pointer accent-red-600"
+                    className="mt-0.5 w-4 h-4 rounded border-border bg-surface text-accent focus:ring-accent focus:ring-offset-0 cursor-pointer accent-red-600"
                   />
-                  <span className="text-xs text-neutral-300 leading-snug">
+                  <span className="text-xs text-secondary leading-snug">
                     I confirm this material complies with Boardly Community Guidelines, is intended for peer academic learning, and does not contain unauthorized exam leaks.
                   </span>
                 </label>
@@ -528,7 +540,7 @@ export function PostingWizardModal({
                   type="button"
                   onClick={handlePublish}
                   disabled={isSubmitting || !title.trim() || !description.trim() || !consentAcademic}
-                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm bg-red-600 hover:bg-red-500 disabled:bg-neutral-800 disabled:text-neutral-500 disabled:cursor-not-allowed text-white shadow-lg shadow-red-950/40 transition-all active:scale-[0.99]"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-bold text-sm bg-accent hover:opacity-90 disabled:bg-surface-muted disabled:text-muted disabled:cursor-not-allowed text-on-accent shadow-xs transition-all active:scale-[0.99] cursor-pointer"
                 >
                   {isSubmitting ? (
                     <>

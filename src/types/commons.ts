@@ -127,7 +127,9 @@ export interface CommonsPost {
   saveCount: number;
   reportCount: number;
   isHidden: boolean;
-  searchKeywords: string[];
+  isPinned?: boolean;
+  sharesCount?: number;
+  searchKeywords?: string[];
   createdAt: any;
   updatedAt: any;
 }
@@ -156,6 +158,7 @@ export interface CommonsComment {
   isAnonymous: boolean;
   text: string;
   createdAt: any;
+  likesCount?: number;
 }
 
 export interface CommonsReport {
@@ -171,8 +174,16 @@ export interface CommonsReport {
 export interface CommonsUserPreview {
   uid: string;
   displayName: string;
+  nickname?: string;
+  username?: string;
+  role?: string;
+  customRole?: string;
+  isSuperAdmin?: boolean;
   shortId?: string;
   avatarUrl?: string;
+  photoURL?: string;
+  equippedAvatar?: string;
+  frame?: string;
   targetUniversity?: string;
   streak?: number;
 }

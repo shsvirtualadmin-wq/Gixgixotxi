@@ -1,13 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search,
-  Plus,
   BookOpen,
   RefreshCw,
-  Compass,
-  Users,
   Shield,
   AlertTriangle,
+  ArrowUp,
+  Image as ImageIcon,
+  Paperclip,
+  HelpCircle,
+  EyeOff,
+  Compass,
 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,19 +20,20 @@ import { CommonsCommentsDrawer } from '@/components/commons/CommonsCommentsDrawe
 import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
 import { CommonsSearchModal } from '@/components/commons/CommonsSearchModal';
 import { fetchCommonsPosts, deleteCommonsPost } from '@/services/commonsService';
-import type { CommonsPost } from '@/types/commons';
+import type { CommonsPost, CommonsPostType } from '@/types/commons';
 import { Link } from 'react-router-dom';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 
 export function CommonsFeedPage() {
   const { user, profile } = useUserProfile();
   const { isAdmin } = useAuth();
   const { openProfile } = useProfileModal();
 
-  // Feed Options: Only "Following" and "All"
-  const [feedTab, setFeedTab] = useState<'following' | 'all'>('all');
+  // Feed Options: Only "All" and "Following"
+  const [feedTab, setFeedTab] = useState<'all' | 'following'>('all');
 
-  // Posts State (strictly real Firestore posts, zero placeholder/fake posts)
+  // Posts State (strictly real Firestore posts, 10 per page)
   const [posts, setPosts] = useState<CommonsPost[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -37,22 +41,38 @@ export function CommonsFeedPage() {
   const [lastDoc, setLastDoc] = useState<any>(null);
   const [loadingMore, setLoadingMore] = useState(false);
 
-  // Modals
-  const [wizardOpen, setWizardOpen] = useState(false);
+  // Modals & Composer Config
+  const [wizardConfig, setWizardConfig] = useState<{
+    isOpen: boolean;
+    initialType?: CommonsPostType;
+    initialAnonymous?: boolean;
+    initialStep?: 1 | 2;
+    triggerUploadOnMount?: 'photo' | 'file' | null;
+  }>({ isOpen: false });
+
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [commentsPost, setCommentsPost] = useState<CommonsPost | null>(null);
   const [reportPost, setReportPost] = useState<CommonsPost | null>(null);
 
-  // Direct search query with 300ms debounce
-  const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
+  // Back to top indicator
+  const [showBackToTop, setShowBackToTop] = useState(false);
+
+  // Pull-to-refresh state
+  const [isPulling, setIsPulling] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const touchStartY = useRef(0);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(searchQuery);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+    const handleScroll = () => {
+      setShowBackToTop(window.scrollY > 380);
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const scrollToTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const loadPosts = useCallback(async () => {
     setLoading(true);
@@ -60,8 +80,7 @@ export function CommonsFeedPage() {
     try {
       const res = await fetchCommonsPosts({
         feedTab,
-        searchQuery: debouncedQuery,
-        pageSize: 20,
+        pageSize: 10,
         currentUid: user?.uid,
       });
 
@@ -70,7 +89,8 @@ export function CommonsFeedPage() {
       setHasMore(res.hasMore);
     } catch (err: unknown) {
       console.warn('[CommonsFeedPage] fetch error:', err);
-      const msg = err instanceof Error ? err.message : 'Could not load community posts';
+      const msg =
+        err instanceof Error ? err.message : 'Could not load community posts';
       setLoadError(msg);
       setPosts([]);
       setLastDoc(null);
@@ -78,7 +98,7 @@ export function CommonsFeedPage() {
     } finally {
       setLoading(false);
     }
-  }, [feedTab, debouncedQuery, user?.uid]);
+  }, [feedTab, user?.uid]);
 
   useEffect(() => {
     loadPosts();
@@ -90,9 +110,8 @@ export function CommonsFeedPage() {
     try {
       const res = await fetchCommonsPosts({
         feedTab,
-        searchQuery: debouncedQuery,
         lastVisibleDoc: lastDoc,
-        pageSize: 20,
+        pageSize: 10,
         currentUid: user?.uid,
       });
       setPosts((prev) => [...prev, ...res.posts]);
@@ -103,7 +122,7 @@ export function CommonsFeedPage() {
     } finally {
       setLoadingMore(false);
     }
-  }, [lastDoc, loadingMore, feedTab, debouncedQuery, user?.uid]);
+  }, [lastDoc, loadingMore, feedTab, user?.uid]);
 
   // Infinite scroll trigger via IntersectionObserver sentinel
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -126,135 +145,280 @@ export function CommonsFeedPage() {
     return () => observer.disconnect();
   }, [hasMore, loadingMore, loading, handleLoadMore]);
 
+  // Mobile pull-to-refresh touch handlers
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (window.scrollY === 0) {
+      touchStartY.current = e.touches[0].clientY;
+      setIsPulling(true);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isPulling || window.scrollY > 0) return;
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - touchStartY.current;
+    if (diff > 0) {
+      setPullDistance(Math.min(diff * 0.4, 75));
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (isPulling) {
+      if (pullDistance > 55) {
+        loadPosts();
+      }
+      setIsPulling(false);
+      setPullDistance(0);
+    }
+  };
+
   const handlePostCreated = useCallback(() => {
     loadPosts();
   }, [loadPosts]);
 
-  const handleDeletePost = useCallback(async (postId: string) => {
-    if (!user) return;
-    try {
-      await deleteCommonsPost(postId, user.uid, isAdmin);
-      setPosts((prev) => prev.filter((p) => p.id !== postId));
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Could not delete post.';
-      console.warn('[CommonsFeedPage] Delete failed:', msg);
-    }
-  }, [user, isAdmin]);
+  const handleDeletePost = useCallback(
+    async (postId: string) => {
+      if (!user) return;
+      try {
+        await deleteCommonsPost(postId, user.uid, isAdmin);
+        setPosts((prev) => prev.filter((p) => p.id !== postId));
+      } catch (err: unknown) {
+        const msg =
+          err instanceof Error ? err.message : 'Could not delete post.';
+        console.warn('[CommonsFeedPage] Delete failed:', msg);
+      }
+    },
+    [user, isAdmin]
+  );
 
   const handleOpenComments = useCallback((p: CommonsPost) => setCommentsPost(p), []);
   const handleOpenReport = useCallback((p: CommonsPost) => setReportPost(p), []);
-  const handleAuthorClick = useCallback((authorUid: string) => openProfile(authorUid), [openProfile]);
+  const handleAuthorClick = useCallback(
+    (authorUid: string) => openProfile(authorUid),
+    [openProfile]
+  );
 
   return (
-    <div className="space-y-5 pb-24 max-w-4xl mx-auto">
-      {/* ── Top Header Bar with Red Dot Matrix Accent ── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      className="pb-28 max-w-2xl mx-auto space-y-3"
+    >
+      {/* ── Sticky Top Bar: "Commons", Search, Shield, Refresh ── */}
+      <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-md border-b border-border -mx-4 sm:mx-0 sm:rounded-b-2xl px-4 py-2.5 flex items-center justify-between shadow-xs transition-colors">
         <div>
-          <div className="flex items-center gap-2 text-xs font-mono text-accent uppercase tracking-widest">
-            <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-            <span>COMMUNITY RESOURCE EXCHANGE</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-primary font-mono mt-1">
-            BOARDLY COMMONS
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-primary">
+            Commons
           </h1>
-          <p className="text-xs text-muted mt-0.5">
-            Peer notes, solved entrance past papers, high-yield formula sheets &amp; doubts.
+          <p className="text-xs text-muted">
+            Share notes, papers and doubts. Learn together.
           </p>
         </div>
 
-        {/* Action Controls */}
-        <div className="flex items-center gap-2.5">
+        {/* Right Action Icons: Search, Guidelines, Refresh */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setSearchModalOpen(true)}
+            className="p-2 text-secondary hover:text-primary rounded-xl hover:bg-surface-muted transition-colors cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
+            title="Search Commons"
+            aria-label="Search"
+          >
+            <Search size={19} />
+          </button>
+
           <Link
             to="/commons/guidelines"
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-mono text-secondary hover:text-primary rounded-xl border border-border hover:border-border-strong bg-surface hover:bg-surface-muted transition-colors shadow-xs"
+            className="p-2 text-secondary hover:text-primary rounded-xl hover:bg-surface-muted transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+            title="Community Guidelines"
+            aria-label="Guidelines"
           >
-            <Shield size={14} className="text-muted" />
-            <span>Guidelines</span>
+            <Shield size={19} />
           </Link>
 
           <button
-            onClick={() => setWizardOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-accent hover:opacity-90 text-on-accent shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
+            onClick={() => loadPosts()}
+            disabled={loading}
+            className="p-2 text-secondary hover:text-primary rounded-xl hover:bg-surface-muted transition-colors cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
+            title="Refresh feed"
+            aria-label="Refresh feed"
           >
-            <Plus size={16} />
-            <span>Share Resource</span>
+            <RefreshCw size={19} className={loading ? 'animate-spin' : ''} />
+          </button>
+        </div>
+      </header>
+
+      {/* Pull-to-refresh mobile visual indicator */}
+      {pullDistance > 0 && (
+        <div
+          className="flex justify-center items-center overflow-hidden transition-all text-xs text-muted"
+          style={{ height: `${pullDistance}px` }}
+        >
+          <div className="flex items-center gap-2">
+            <RefreshCw
+              size={14}
+              className={pullDistance > 55 ? 'animate-spin text-accent' : ''}
+            />
+            <span>{pullDistance > 55 ? 'Release to refresh' : 'Pull down to refresh'}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ── Post Composer Card (Facebook style: "What's on your mind?") ── */}
+      <div className="rounded-2xl border border-border bg-surface p-3.5 sm:p-4 shadow-xs space-y-3">
+        <div className="flex items-center gap-3">
+          <div
+            onClick={() => user && openProfile(user.uid)}
+            className="shrink-0 cursor-pointer transition-transform hover:scale-105"
+            title="View your profile"
+          >
+            <BoardlyAvatar
+              equippedAvatar={profile?.equippedAvatar}
+              avatarUrl={profile?.avatarUrl}
+              photoURL={profile?.photoURL || user?.photoURL}
+              frame={profile?.frame}
+              name={profile?.displayName || 'User'}
+              size={38}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setWizardConfig({ isOpen: true, initialStep: 1 })}
+            className="flex-1 text-left px-4 py-2.5 rounded-full bg-surface-muted hover:bg-surface-raised border border-border text-muted text-xs sm:text-sm transition-colors cursor-pointer"
+          >
+            Share a resource or ask a doubt...
+          </button>
+        </div>
+
+        {/* Quick action buttons row: Photo, File, Doubt, Anonymous */}
+        <div className="grid grid-cols-4 gap-1 pt-2 border-t border-border">
+          <button
+            type="button"
+            onClick={() =>
+              setWizardConfig({
+                isOpen: true,
+                initialStep: 2,
+                triggerUploadOnMount: 'photo',
+              })
+            }
+            className="flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px]"
+          >
+            <ImageIcon size={16} className="text-emerald-500 shrink-0" />
+            <span className="truncate">Photo</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              setWizardConfig({
+                isOpen: true,
+                initialStep: 2,
+                triggerUploadOnMount: 'file',
+              })
+            }
+            className="flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px]"
+          >
+            <Paperclip size={16} className="text-blue-500 shrink-0" />
+            <span className="truncate">File</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              setWizardConfig({
+                isOpen: true,
+                initialStep: 2,
+                initialType: 'doubt',
+              })
+            }
+            className="flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px]"
+          >
+            <HelpCircle size={16} className="text-amber-500 shrink-0" />
+            <span className="truncate">Doubt</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() =>
+              setWizardConfig({
+                isOpen: true,
+                initialStep: 2,
+                initialAnonymous: true,
+              })
+            }
+            className="flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px]"
+          >
+            <EyeOff size={16} className="text-purple-500 shrink-0" />
+            <span className="truncate">Anonymous</span>
           </button>
         </div>
       </div>
 
-      {/* ── Search Bar ── */}
-      <div className="relative">
+      {/* ── Feed Tabs: "All" and "Following" (Clean underlined active tab in red) ── */}
+      <div className="sticky top-[58px] z-20 bg-background/95 backdrop-blur-md border-b border-border -mx-4 sm:mx-0 px-4 flex items-center gap-6">
         <button
-          onClick={() => setSearchModalOpen(true)}
-          className="w-full flex items-center justify-between p-3 sm:p-3.5 rounded-2xl border border-border bg-surface hover:border-border-strong text-left transition-colors group cursor-text shadow-xs"
+          onClick={() => setFeedTab('all')}
+          className={`py-2.5 px-1 text-xs sm:text-sm transition-all cursor-pointer select-none ${
+            feedTab === 'all'
+              ? 'border-b-2 border-accent text-accent font-bold'
+              : 'border-b-2 border-transparent text-muted hover:text-primary font-medium'
+          }`}
         >
-          <div className="flex items-center gap-3">
-            <Search size={18} className="text-accent shrink-0 group-hover:scale-110 transition-transform" />
-            <span className="text-xs sm:text-sm text-muted">
-              Search high-yield formulas, past papers, doubts, or classmates...
-            </span>
-          </div>
-          <div className="hidden sm:flex items-center gap-1 text-[11px] text-muted font-mono bg-surface-muted px-2 py-0.5 rounded border border-border">
-            <span>⌘K</span>
-          </div>
+          All
+        </button>
+
+        <button
+          onClick={() => setFeedTab('following')}
+          className={`py-2.5 px-1 text-xs sm:text-sm transition-all cursor-pointer select-none ${
+            feedTab === 'following'
+              ? 'border-b-2 border-accent text-accent font-bold'
+              : 'border-b-2 border-transparent text-muted hover:text-primary font-medium'
+          }`}
+        >
+          Following
         </button>
       </div>
 
-      {/* ── Feed Options: ONLY "Following" and "All" (No Shortcuts) ── */}
-      <div className="flex items-center justify-between border-b border-border pb-3">
-        <div className="flex items-center gap-2">
-          {/* Option 1: Following */}
-          <button
-            onClick={() => setFeedTab('following')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold font-mono transition-all ${
-              feedTab === 'following'
-                ? 'bg-surface-raised text-primary shadow-sm border border-border-strong font-bold'
-                : 'text-muted hover:text-primary hover:bg-surface-muted border border-transparent'
-            }`}
-          >
-            <Users size={15} className={feedTab === 'following' ? 'text-accent' : ''} />
-            <span>Following</span>
-          </button>
-
-          {/* Option 2: All */}
-          <button
-            onClick={() => setFeedTab('all')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold font-mono transition-all ${
-              feedTab === 'all'
-                ? 'bg-surface-raised text-primary shadow-sm border border-border-strong font-bold'
-                : 'text-muted hover:text-primary hover:bg-surface-muted border border-transparent'
-            }`}
-          >
-            <Compass size={15} className={feedTab === 'all' ? 'text-accent' : ''} />
-            <span>All</span>
-          </button>
-        </div>
-
-        <button
-          onClick={() => loadPosts()}
-          disabled={loading}
-          className="p-2 text-muted hover:text-primary rounded-lg hover:bg-surface-muted transition-colors cursor-pointer"
-          title="Refresh Feed"
-        >
-          <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
-        </button>
-      </div>
-
-      {/* ── Posts Stream (Real Posts Only) ── */}
-      <div className="space-y-4">
-        {loading ? (
-          <div className="py-20 text-center space-y-3">
-            <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-xs text-muted font-mono">Loading Commons stream...</p>
+      {/* ── Posts Stream (10 at a time, skeleton loaders, Facebook style) ── */}
+      <div className="space-y-3 pt-1">
+        {loading && posts.length === 0 ? (
+          /* Skeleton Loaders (No blank screen, no spinner-only state) */
+          <div className="space-y-3">
+            {[1, 2, 3].map((n) => (
+              <div
+                key={n}
+                className="rounded-2xl border border-border bg-surface p-4 sm:p-5 space-y-3 animate-pulse"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-skeleton shrink-0" />
+                  <div className="space-y-1.5 flex-1">
+                    <div className="w-32 h-3.5 bg-skeleton rounded" />
+                    <div className="w-20 h-2.5 bg-skeleton rounded" />
+                  </div>
+                </div>
+                <div className="w-3/4 h-4 bg-skeleton rounded mt-2" />
+                <div className="space-y-2">
+                  <div className="w-full h-3 bg-skeleton rounded" />
+                  <div className="w-5/6 h-3 bg-skeleton rounded" />
+                </div>
+                <div className="pt-2 border-t border-border flex justify-between">
+                  <div className="w-16 h-3.5 bg-skeleton rounded" />
+                  <div className="w-16 h-3.5 bg-skeleton rounded" />
+                  <div className="w-16 h-3.5 bg-skeleton rounded" />
+                </div>
+              </div>
+            ))}
           </div>
         ) : loadError ? (
+          /* Error state with retry */
           <div className="p-8 text-center rounded-2xl border border-tag-danger-text/30 bg-tag-danger-bg space-y-3 shadow-xs">
             <AlertTriangle size={28} className="mx-auto text-accent" />
-            <h3 className="text-sm font-semibold text-primary font-mono uppercase tracking-wider">
+            <h3 className="text-sm font-semibold text-primary">
               Couldn't Load Posts
             </h3>
             <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
-              We encountered an issue fetching the latest community resources. Your connection might have timed out or been interrupted.
+              We encountered an issue fetching the latest community resources.
             </p>
             <button
               onClick={() => loadPosts()}
@@ -265,36 +429,42 @@ export function CommonsFeedPage() {
             </button>
           </div>
         ) : posts.length === 0 ? (
-          <div className="p-12 text-center rounded-2xl border border-border bg-surface space-y-3 shadow-xs">
+          /* Empty state */
+          <div className="p-10 text-center rounded-2xl border border-border bg-surface space-y-3 shadow-xs">
             <BookOpen size={32} className="mx-auto text-muted" />
-            <h3 className="text-sm font-semibold text-primary font-mono uppercase tracking-wider">
-              {feedTab === 'following' ? 'NO POSTS FROM FOLLOWED USERS' : 'NO STUDY POSTS YET'}
+            <h3 className="text-sm font-bold text-primary">
+              {feedTab === 'following'
+                ? "You aren't following anyone yet."
+                : 'No posts yet'}
             </h3>
             <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
               {feedTab === 'following'
-                ? 'Follow peers and study creators to see their notes and papers here, or switch to "All" to browse the community feed.'
-                : 'Be the first to share handwritten notes, solved past papers, or high-yield formula sheets for your peers!'}
+                ? 'Follow people to see their posts here.'
+                : 'Be the first to share notes, papers, or ask a doubt to learn together!'}
             </p>
-            <div className="flex items-center justify-center gap-3 pt-1">
-              {feedTab === 'following' && (
+            <div className="flex items-center justify-center gap-3 pt-2">
+              {feedTab === 'following' ? (
                 <button
                   onClick={() => setFeedTab('all')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-mono font-semibold rounded-xl border border-border hover:border-border-strong bg-surface-muted text-secondary hover:text-primary transition-colors cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
                 >
-                  <Compass size={14} className="text-accent" />
-                  <span>Browse All Posts</span>
+                  <Compass size={14} />
+                  <span>Switch to All</span>
+                </button>
+              ) : (
+                <button
+                  onClick={() =>
+                    setWizardConfig({ isOpen: true, initialStep: 1 })
+                  }
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
+                >
+                  <span>Share something</span>
                 </button>
               )}
-              <button
-                onClick={() => setWizardOpen(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-sm"
-              >
-                <Plus size={15} />
-                <span>Create first post</span>
-              </button>
             </div>
           </div>
         ) : (
+          /* Real Firestore posts */
           posts.map((post) => (
             <CommonsPostCard
               key={post.id}
@@ -310,27 +480,34 @@ export function CommonsFeedPage() {
         )}
 
         {/* Infinite Scroll Sentinel */}
-        {hasMore && <div ref={sentinelRef} className="h-4 w-full" />}
+        {hasMore && <div ref={sentinelRef} className="h-6 w-full" />}
 
-        {/* Load More Button / Indicator */}
-        {hasMore && (
-          <div className="text-center pt-2">
-            <button
-              onClick={handleLoadMore}
-              disabled={loadingMore}
-              className="px-5 py-2 text-xs font-semibold rounded-xl bg-surface-muted border border-border text-secondary hover:text-primary hover:border-border-strong transition-colors cursor-pointer shadow-xs"
-            >
-              {loadingMore ? 'Loading more posts...' : 'Load more resources'}
-            </button>
+        {/* Loading More Indicator */}
+        {loadingMore && (
+          <div className="py-4 text-center">
+            <div className="w-5 h-5 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-[11px] text-muted mt-1.5">Loading more posts...</p>
           </div>
         )}
       </div>
 
+      {/* ── Floating "Back to top" Chip (When scrolled) ── */}
+      {showBackToTop && (
+        <button
+          onClick={scrollToTop}
+          className="fixed bottom-20 right-4 sm:right-8 z-40 px-3.5 py-2 rounded-full bg-surface-raised border border-border text-primary shadow-lg text-xs font-semibold flex items-center gap-1.5 hover:scale-105 active:scale-95 transition-all cursor-pointer"
+          title="Back to top"
+        >
+          <ArrowUp size={14} />
+          <span>Back to top</span>
+        </button>
+      )}
+
       {/* ── Modals & Drawers ── */}
       {user && (
         <PostingWizardModal
-          isOpen={wizardOpen}
-          onClose={() => setWizardOpen(false)}
+          isOpen={wizardConfig.isOpen}
+          onClose={() => setWizardConfig({ isOpen: false })}
           onPostCreated={handlePostCreated}
           currentUser={{
             uid: user.uid,
@@ -338,6 +515,10 @@ export function CommonsFeedPage() {
             displayName: profile?.displayName || user.displayName,
             photoURL: profile?.photoURL || user.photoURL,
           }}
+          initialType={wizardConfig.initialType}
+          initialAnonymous={wizardConfig.initialAnonymous}
+          initialStep={wizardConfig.initialStep}
+          triggerUploadOnMount={wizardConfig.triggerUploadOnMount}
         />
       )}
 
@@ -351,6 +532,9 @@ export function CommonsFeedPage() {
                 uid: user.uid,
                 displayName: profile?.displayName || user.displayName,
                 photoURL: profile?.photoURL || user.photoURL,
+                equippedAvatar: profile?.equippedAvatar,
+                frame: profile?.frame,
+                avatarUrl: profile?.avatarUrl,
               }
             : null
         }
@@ -368,7 +552,10 @@ export function CommonsFeedPage() {
         onClose={() => setSearchModalOpen(false)}
         posts={posts}
         currentUserId={user?.uid}
-        onSelectPost={() => {}}
+        onSelectPost={(post) => {
+          setSearchModalOpen(false);
+          setCommentsPost(post);
+        }}
         onOpenComments={(p) => {
           setSearchModalOpen(false);
           setCommentsPost(p);
