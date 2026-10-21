@@ -410,7 +410,7 @@ export function OverviewPage() {
         className="p-6 sm:p-7 border-[var(--accent)]/30 bg-[var(--surface)] relative overflow-hidden"
       >
         <div className="flex flex-col gap-5">
-          {/* Top Row: Title, Target Badge, Change Target Trigger */}
+          {/* Top Row: Title, Blueprint Selector */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[var(--border)]">
             <div>
               <div className="flex items-center gap-2 flex-wrap mb-1">

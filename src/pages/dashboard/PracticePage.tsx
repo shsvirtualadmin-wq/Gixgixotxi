@@ -47,7 +47,7 @@ export function PracticePage() {
   const initialChapterSlug = searchParams.get('chapter') || 'integration-by-parts';
 
   const [selectedUniversity, setSelectedUniversity] = useState(
-    university || profile?.targetUniversity || 'FAST-NUCES'
+    university || 'FAST-NUCES'
   );
   const [trackPickerOpen, setTrackPickerOpen] = useState(false);
 
@@ -77,10 +77,8 @@ export function PracticePage() {
   useEffect(() => {
     if (university) {
       setSelectedUniversity(university);
-    } else if (profile?.targetUniversity) {
-      setSelectedUniversity(profile.targetUniversity);
     }
-  }, [university, profile?.targetUniversity]);
+  }, [university]);
 
   useEffect(() => {
     if (launchError && errorBannerRef.current) {

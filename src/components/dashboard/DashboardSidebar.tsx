@@ -115,7 +115,7 @@ export function DashboardSidebar() {
           <span>Arena</span>
         </NavLink>
 
-        {/* 4. Target Exam & Profile Setup (switches to Profile when setup is complete) */}
+        {/* Profile */}
         {profile?.profileCompleted || profile?.onboardingCompleted ? (
           <NavLink
             to="/dashboard/profile"

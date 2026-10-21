@@ -5,7 +5,6 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 import { useTheme } from '@/hooks/useTheme';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { RoleBadge } from '@/components/ui/RoleBadge';
-import { StorePricingManager } from '@/components/store/StorePricingManager';
 import {
   checkUsernameAvailability,
   saveProfileIdentity,
@@ -669,52 +668,7 @@ export function SettingsPage() {
         </div>
       </section>
 
-      {/* ── Section F: Superadmin Controls (Superadmin only) ── */}
-      {isSuperAdmin && (
-        <section className="bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-xs space-y-4">
-          <div className="flex items-center justify-between pb-3 border-b border-border">
-            <div className="flex items-center gap-2">
-              <Shield size={18} className="text-accent" />
-              <h2 className="text-base font-semibold text-primary">
-                Superadmin
-              </h2>
-            </div>
-            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-[#D71921] dark:bg-red-950/70 dark:text-red-400 border border-red-200 dark:border-red-900/60">
-              Super Admin
-            </span>
-          </div>
 
-          <div className="divide-y divide-border rounded-xl border border-border overflow-hidden bg-surface-muted/40">
-            {/* Superadmin Portal */}
-            <button
-              type="button"
-              onClick={() => navigate('/admin')}
-              className="w-full p-3.5 flex items-center justify-between hover:bg-surface-muted text-left transition-colors cursor-pointer group"
-            >
-              <div>
-                <p className="text-sm font-semibold text-primary group-hover:text-accent transition-colors">
-                  Superadmin Portal
-                </p>
-                <p className="text-xs text-muted">
-                  Users, question bank, approvals & audit log
-                </p>
-              </div>
-              <ChevronRight size={16} className="text-muted group-hover:text-primary" />
-            </button>
-
-            {/* Store Pricing */}
-            <div className="p-3.5 space-y-2">
-              <p className="text-sm font-semibold text-primary">Store Pricing</p>
-              <p className="text-xs text-muted">
-                Inspect and tune global cosmetic catalog and Koban pricing.
-              </p>
-              <div className="pt-2">
-                <StorePricingManager />
-              </div>
-            </div>
-          </div>
-        </section>
-      )}
 
       {/* ── Section E: Sign Out ── */}
       <section className="bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-xs">

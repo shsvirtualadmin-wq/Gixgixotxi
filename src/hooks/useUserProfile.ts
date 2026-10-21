@@ -44,9 +44,6 @@ export interface UserProfileHookResult {
   updateProfileData: (updates: {
     displayName?: string;
     photoURL?: string | null;
-    targetUniversity?: string;
-    targetExam?: string;
-    targetTestDate?: string;
     academicTrack?: string;
     subjects?: string[];
     profileCompleted?: boolean;

@@ -24,6 +24,7 @@ import {
   toggleLikePost,
   validateAndCompressImage,
 } from '@/services/userPostService';
+import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 
 interface ProfilePostsSectionProps {
   targetUid: string;
@@ -32,6 +33,9 @@ interface ProfilePostsSectionProps {
   currentUserId?: string | null;
   currentUserDisplayName?: string | null;
   currentUserAvatar?: string | null;
+  equippedAvatar?: string | null;
+  avatarKey?: string | null;
+  avatarVariant?: string | null;
   accentColor?: string;
 }
 
@@ -42,6 +46,9 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
   currentUserId,
   currentUserDisplayName,
   currentUserAvatar,
+  equippedAvatar,
+  avatarKey,
+  avatarVariant,
   accentColor = '#D71921',
 }) => {
   // Feed state
@@ -385,12 +392,15 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
 
           <div className="flex gap-3 items-start">
             {/* Author Avatar Thumbnail */}
-            <div className="w-9 h-9 rounded-full bg-[var(--card)] border border-[var(--border)] overflow-hidden shrink-0 flex items-center justify-center font-heading font-bold text-xs text-[var(--text)]">
-              {currentUserAvatar ? (
-                <img src={currentUserAvatar} alt="You" loading="lazy" decoding="async" className="w-full h-full object-cover" />
-              ) : (
-                <span>{(currentUserDisplayName || 'U').charAt(0).toUpperCase()}</span>
-              )}
+            <div className="shrink-0">
+              <BoardlyAvatar
+                equippedAvatar={equippedAvatar || (currentUserAvatar && !currentUserAvatar.startsWith('http') ? currentUserAvatar : undefined)}
+                avatarUrl={currentUserAvatar?.startsWith('http') ? currentUserAvatar : undefined}
+                avatarKey={avatarKey}
+                avatarVariant={avatarVariant}
+                name={currentUserDisplayName || 'You'}
+                size={36}
+              />
             </div>
 
             {/* Post Input */}
@@ -491,32 +501,13 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
           <span>{feedError}</span>
         </div>
       ) : posts.length === 0 ? (
-        /* Empty State */
-        <div className="p-8 sm:p-10 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex flex-col items-center justify-center text-center gap-3.5 shadow-xs">
-          <div className="w-12 h-12 rounded-2xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-[var(--muted)]">
-            <MessageCircle size={22} />
-          </div>
-          <div className="flex flex-col gap-1 max-w-sm">
-            <h4 className="font-heading font-semibold text-sm text-[var(--text)]">
-              No posts yet
-            </h4>
-            <p className="text-xs text-[var(--muted)] leading-relaxed">
-              {canManageOwn
-                ? 'Share something with your study squad! You can post questions, formulas, or updates.'
-                : 'This student hasn’t posted any updates yet.'}
-            </p>
-          </div>
-          {canManageOwn && (
-            <button
-              onClick={() => {
-                postTextareaRef.current?.focus();
-              }}
-              className="mt-1 h-9 px-4 rounded-xl bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              <Sparkles size={14} />
-              <span>Create Post</span>
-            </button>
-          )}
+        /* Empty State: short text under the composer */
+        <div className="py-4 px-2 text-center">
+          <p className="text-xs text-[var(--muted)]">
+            {canManageOwn
+              ? 'No posts yet. Share something with your study squad above!'
+              : 'This student hasn’t posted any updates yet.'}
+          </p>
         </div>
       ) : (
         <div className="flex flex-col gap-3">

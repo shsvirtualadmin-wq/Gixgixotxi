@@ -151,7 +151,7 @@ export function JoinCrewPage() {
                 </span>
               </div>
               <div>
-                <span className="text-[10px] uppercase font-mono text-[var(--text-faint)] block">Target Goal</span>
+                <span className="text-[10px] uppercase font-mono text-[var(--text-faint)] block">Squad Goal</span>
                 <span className="text-base font-bold font-display text-[#D71921]">
                   {crewPreview.goalQuestions} MCQs
                 </span>

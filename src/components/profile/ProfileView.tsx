@@ -25,10 +25,11 @@ import {
   Pin,
   RotateCcw,
   Tag,
+  Settings,
 } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { StorePricingManager } from '@/components/store/StorePricingManager';
+import { WalletModal } from './WalletModal';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
@@ -88,9 +89,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const { user: authUser, isAdmin, signOutUser } = useAuth();
   const {
     profile: ownProfile,
-    targetExam,
-    testDate,
-    daysLeft,
     updateProfileData,
   } = useUserProfile();
   const {
@@ -115,8 +113,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
-  // Tabs: 'overview' | 'loadout' | 'badges' | 'settings'
-  const [activeTab, setActiveTab] = useState<'overview' | 'loadout' | 'badges' | 'settings'>('overview');
+  // Tabs: 'overview' | 'loadout' | 'badges'
+  const [activeTab, setActiveTab] = useState<'overview' | 'loadout' | 'badges'>('overview');
+  const [walletModalOpen, setWalletModalOpen] = useState(false);
 
   // Loadout sub-tabs: 'slots' | 'banners'
   const [loadoutSubTab, setLoadoutSubTab] = useState<'slots' | 'banners'>('slots');
@@ -136,16 +135,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [editSheetOpen, setEditSheetOpen] = useState(false);
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [crewDetailModalOpen, setCrewDetailModalOpen] = useState(false);
-  const [isStorePricingOpen, setIsStorePricingOpen] = useState(false);
 
   // Active badge popover state
   const [badgePopover, setBadgePopover] = useState<{ name: string; meaning: string } | null>(null);
 
   // Profile effect replay / play once trigger
   const [effectPlayKey, setEffectPlayKey] = useState(1);
-
-  // Showcase pinned items (up to 3)
-  const [pinnedShowcase, setPinnedShowcase] = useState<string[]>(['stamp_100_mcqs', 'stamp_7d_streak']);
 
   // Equipped streak badges (up to 3)
   const [equippedStreakBadges, setEquippedStreakBadges] = useState<string[]>(['badge_streak_7d']);
@@ -707,17 +702,18 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
             </div>
 
-            {/* Kobans Chip (OWN MODE ONLY) */}
+            {/* Kobans Chip (OWN MODE ONLY) - Opens Wallet Modal */}
             {isViewingSelf && !isPublicMode && (
               <div className="mb-2 shrink-0">
-                <Link
-                  to="/store"
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--card-2)] border border-[#E8A317]/30 hover:border-[#E8A317] text-[#D97706] dark:text-[#FBBF24] font-mono text-xs font-bold transition-colors shadow-sm"
-                  title="Your Koban balance"
+                <button
+                  type="button"
+                  onClick={() => setWalletModalOpen(true)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[var(--card-2)] border border-[#E8A317]/30 hover:border-[#E8A317] text-[#D97706] dark:text-[#FBBF24] font-mono text-xs font-bold transition-colors shadow-sm cursor-pointer"
+                  title="Your Koban balance - View Wallet"
                 >
                   <KobanIcon size={15} />
                   <span>{kobanBalance.toLocaleString()}</span>
-                </Link>
+                </button>
               </div>
             )}
           </div>
@@ -908,12 +904,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </button>
 
                 <button
-                  onClick={() => setPreviewAsPublic(true)}
-                  className="h-11 px-3.5 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--muted)] hover:text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
-                  title="View as others"
+                  onClick={() => {
+                    if (onClose) onClose();
+                    navigate('/dashboard/settings');
+                  }}
+                  className="h-11 px-3.5 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                  title="Settings"
                 >
-                  <Eye size={14} />
-                  <span className="hidden sm:inline">View as others</span>
+                  <Settings size={15} />
+                  <span className="hidden sm:inline">Settings</span>
                 </button>
               </>
             ) : (
@@ -1002,20 +1001,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           >
             Badges
           </button>
-
-          {/* Settings tab: OWN MODE ONLY */}
-          {isViewingSelf && !isPublicMode && (
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`pb-3 text-xs sm:text-sm font-heading font-semibold transition-colors cursor-pointer border-b-2 whitespace-nowrap ${
-                activeTab === 'settings'
-                  ? 'border-[var(--red)] text-[var(--text)]'
-                  : 'border-transparent text-[var(--muted)] hover:text-[var(--text)]'
-              }`}
-            >
-              Settings
-            </button>
-          )}
         </div>
 
         {/* ── TAB CONTENT BODY ── */}
@@ -1051,7 +1036,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                     onClick={() => setEditSheetOpen(true)}
                     className="py-3 px-4 rounded-lg border border-dashed border-[var(--border)] text-xs text-[var(--muted)] hover:text-[var(--text)] hover:border-[var(--red)] transition-colors cursor-pointer text-left"
                   >
-                    + Add a bio to let other students know what exam you're preparing for...
+                    + Add a short bio so other students can get to know you.
                   </button>
                 ) : (
                   <p className="text-xs text-[var(--muted)] italic">No bio shared yet.</p>
@@ -1081,101 +1066,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   profile?.avatar ||
                   null
                 }
+                equippedAvatar={ownEquipped?.avatar || (profile?.equipped?.avatar as string) || profile?.avatar}
+                avatarKey={profile?.avatarKey || ownProfile?.avatarKey}
+                avatarVariant={profile?.avatarVariant || ownProfile?.avatarVariant}
                 accentColor={accentColor}
               />
-
-              {/* Showcase Pinned Items */}
-              <div className="flex flex-col gap-2.5">
-                <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-                  <span className="font-heading font-semibold text-[var(--text)] flex items-center gap-1.5">
-                    <Pin size={13} className="text-[var(--red)]" />
-                    Student Showcase
-                  </span>
-                  <span className="font-mono text-[11px]">{pinnedShowcase.length}/3 Pinned</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                  {pinnedShowcase.map((itemId) => {
-                    const stamp = PASSPORT_STAMPS.find((s) => s.id === itemId);
-                    const badge = STREAK_BADGES.find((b) => b.id === itemId);
-
-                    return (
-                      <div
-                        key={itemId}
-                        className="p-3 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center gap-3"
-                      >
-                        <div className="w-10 h-10 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center shrink-0">
-                          {badge ? (
-                            <Flame size={18} style={{ color: badge.color }} />
-                          ) : (
-                            <Award size={18} className="text-[var(--red)]" />
-                          )}
-                        </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-heading font-semibold text-xs text-[var(--text)] truncate">
-                            {badge?.name || stamp?.name || 'Honor Stamp'}
-                          </span>
-                          <span className="text-[10px] text-[var(--muted)] truncate">
-                            {badge?.description || stamp?.requirement || 'Earned Achievement'}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* OWN MODE ONLY OVERVIEW ADDITIONS: Kobans Card & Daily Pro Reward */}
-              {isViewingSelf && !isPublicMode && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2">
-                  {/* Koban Balance Card */}
-                  <div className="p-4 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between gap-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <KobanIcon size={20} />
-                        <span className="font-heading font-bold text-sm text-[var(--text)]">
-                          Kobans Balance
-                        </span>
-                      </div>
-                      <span className="font-mono font-bold text-base text-[#D97706] dark:text-[#FBBF24]">
-                        {kobanBalance.toLocaleString()}
-                      </span>
-                    </div>
-                    <div className="flex items-center justify-between gap-2 pt-1 border-t border-[var(--border)]">
-                      <Link
-                        to="/store"
-                        className="text-xs font-heading font-semibold text-[var(--red)] hover:underline"
-                      >
-                        Get Kobans →
-                      </Link>
-                      <Link
-                        to="/dashboard/plans"
-                        className="text-xs font-mono text-[var(--muted)] hover:text-[var(--text)]"
-                      >
-                        Ledger History
-                      </Link>
-                    </div>
-                  </div>
-
-                  {/* Daily Reward / Pro Perk Card */}
-                  <div className="p-4 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex flex-col justify-between gap-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Sparkles size={18} className="text-amber-500" />
-                        <span className="font-heading font-bold text-sm text-[var(--text)]">
-                          Pro Daily Reward
-                        </span>
-                      </div>
-                      <span className="font-mono text-xs px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                        Active
-                      </span>
-                    </div>
-                    <p className="text-xs text-[var(--muted)]">
-                      Claim daily study streak rewards and unlock exclusive anime cosmetic drops in the store.
-                    </p>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
@@ -1866,158 +1761,6 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               )}
             </div>
           )}
-
-          {/* ══════════════════════════════════════════════════════════════
-              TAB 4: SETTINGS (OWN MODE ONLY)
-             ══════════════════════════════════════════════════════════════ */}
-          {activeTab === 'settings' && isViewingSelf && !isPublicMode && (
-            <div className="flex flex-col gap-6">
-              {/* 1. Target Exam with Countdown & Edit */}
-              <div className="p-4 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <span className="font-heading font-semibold text-xs text-[var(--text)]">Target Exam</span>
-                  <Link
-                    to="/onboarding"
-                    className="text-xs font-heading font-semibold text-[var(--red)] hover:underline"
-                  >
-                    Change Target →
-                  </Link>
-                </div>
-
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <h3 className="font-heading font-bold text-base text-[var(--text)]">
-                      {targetExam || 'MDCAT / ECAT / University Test'}
-                    </h3>
-                    <p className="text-xs text-[var(--muted)] mt-0.5">
-                      {testDate ? `Scheduled Date: ${testDate}` : 'No date set yet'}
-                    </p>
-                  </div>
-
-                  {daysLeft !== null && daysLeft >= 0 ? (
-                    <div className="flex flex-col items-end">
-                      <span className="font-mono font-bold text-xl text-[var(--red)]">{daysLeft}</span>
-                      <span className="font-mono text-[10px] uppercase text-[var(--muted)]">Days Left</span>
-                    </div>
-                  ) : daysLeft !== null && daysLeft < 0 ? (
-                    <div className="flex flex-col items-end gap-1">
-                      <span className="text-xs text-[var(--muted)]">Exam passed. Set your next target</span>
-                      <Link
-                        to="/onboarding"
-                        className="h-8 px-3 rounded-lg border border-[var(--border)] hover:bg-[var(--card)] text-xs font-heading font-semibold text-[var(--text)] transition-colors inline-flex items-center"
-                      >
-                        Set Next Target
-                      </Link>
-                    </div>
-                  ) : null}
-                </div>
-              </div>
-
-              {/* 2. Current Plan */}
-              <div className="p-4 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between gap-4">
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Current Plan</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-heading font-bold text-sm text-[var(--text)]">
-                      {effectivePlan.isSuperAdmin
-                        ? 'Superadmin (Unlimited)'
-                        : effectivePlan.isUnlimited
-                        ? 'Boardly Pro Member'
-                        : 'Free Starter'}
-                    </span>
-                    <span className="badge-pill text-[10px] px-2 py-0.5">
-                      {effectivePlan.isUnlimited ? 'Active' : 'Free'}
-                    </span>
-                  </div>
-                  {(effectivePlan as any).planExpiresAt && (
-                    <span className="text-[11px] text-[var(--muted)] font-mono">
-                      Expires:{' '}
-                      {new Date(
-                        typeof (effectivePlan as any).planExpiresAt === 'object' && 'seconds' in (effectivePlan as any).planExpiresAt
-                          ? (effectivePlan as any).planExpiresAt.seconds * 1000
-                          : (effectivePlan as any).planExpiresAt
-                      ).toLocaleDateString()}
-                    </span>
-                  )}
-                </div>
-
-                <Link
-                  to="/pricing"
-                  className="h-10 px-4 rounded-lg bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors flex items-center justify-center shrink-0"
-                >
-                  Manage Subscription
-                </Link>
-              </div>
-
-              {/* 3. Super Admin Controls (Visible ONLY to Super Admins) */}
-              {isAdmin && (
-                <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <Shield size={20} className="text-red-500 shrink-0" />
-                    <div className="flex flex-col">
-                      <span className="font-heading font-bold text-xs text-[var(--text)]">Super Admin Controls</span>
-                      <span className="text-[11px] text-[var(--muted)]">
-                        Platform management, store pricing control, moderation &amp; question bank
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      type="button"
-                      onClick={() => setIsStorePricingOpen(true)}
-                      className="h-10 px-3.5 rounded-lg border border-red-500/50 hover:bg-red-500/20 text-red-400 text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
-                    >
-                      <Tag size={14} />
-                      <span>Store Pricing</span>
-                    </button>
-
-                    <Link
-                      to="/admin"
-                      className="h-10 px-4 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-heading font-semibold transition-colors flex items-center justify-center shrink-0"
-                    >
-                      Open Admin Portal
-                    </Link>
-                  </div>
-                </div>
-              )}
-
-              {/* 4. Account (Email visible ONLY here) */}
-              <div className="p-4 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex flex-col gap-4">
-                <span className="font-heading font-semibold text-xs text-[var(--text)]">Account & Authentication</span>
-
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] uppercase font-mono text-[var(--muted)]">Account Email</span>
-                  <span className="font-mono text-xs text-[var(--text)] bg-[var(--card)] px-3 py-2 rounded-lg border border-[var(--border)]">
-                    {authUser?.email || 'No email attached'}
-                  </span>
-                  <span className="text-[10px] text-[var(--muted)]">
-                    Strict Privacy: Your email is private and is NEVER shown on public profiles or Commons.
-                  </span>
-                </div>
-
-                <div className="pt-2 border-t border-[var(--border)] flex items-center justify-between gap-3">
-                  <button
-                    onClick={() => setEditSheetOpen(true)}
-                    className="h-10 px-4 rounded-lg border border-[var(--border)] hover:bg-[var(--card)] text-xs font-heading font-semibold text-[var(--text)] transition-colors cursor-pointer"
-                  >
-                    Change Display Name
-                  </button>
-
-                  <button
-                    onClick={async () => {
-                      await signOutUser();
-                      navigate('/login');
-                    }}
-                    className="h-10 px-4 rounded-lg border border-red-500/30 text-red-500 hover:bg-red-500/10 text-xs font-heading font-semibold transition-colors cursor-pointer flex items-center gap-1.5"
-                  >
-                    <LogOut size={14} />
-                    <span>Sign Out</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
@@ -2118,16 +1861,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
       )}
 
-      {/* ── Super Admin Store Pricing Control Modal ── */}
-      {isStorePricingOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-5xl bg-[var(--bg)] border border-[var(--border)] rounded-3xl shadow-2xl overflow-hidden my-auto max-h-[92vh] flex flex-col">
-            <div className="overflow-y-auto flex-1">
-              <StorePricingManager onBack={() => setIsStorePricingOpen(false)} isModal={true} />
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── Koban Wallet Modal ── */}
+      <WalletModal
+        isOpen={walletModalOpen}
+        onClose={() => setWalletModalOpen(false)}
+        balance={kobanBalance}
+      />
     </div>
   );
 };
