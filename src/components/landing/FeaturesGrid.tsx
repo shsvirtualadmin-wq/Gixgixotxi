@@ -37,19 +37,17 @@ export function FeaturesGrid() {
                 </p>
               </div>
 
-              {/* Live Math Demo: Intentional dark panel with explicit white text and clear KaTeX */}
+              {/* Live Math Demo: white block matching card style with theme-aware KaTeX */}
               <div
-                className="p-4 rounded-xl border text-sm space-y-2 select-text"
-                style={{
-                  backgroundColor: '#0A0A0A',
-                  color: '#FFFFFF',
-                  borderColor: 'rgba(255, 255, 255, 0.12)',
-                }}
+                className="p-4 rounded-[12px] border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] space-y-2 select-text"
               >
-                <div style={{ color: 'rgba(255, 255, 255, 0.7)' }} className="text-xs font-medium">
+                <div className="text-[14px] font-medium text-[var(--text)]">
                   Sample solution step:
                 </div>
-                <div style={{ color: '#FFFFFF' }} className="py-1">
+                <div
+                  className="py-1 overflow-x-auto text-center text-[var(--text)]"
+                  style={{ color: 'var(--text)' }}
+                >
                   <MathText block text={'$$\\int x e^{2x} \\, dx = \\frac{1}{2} x e^{2x} - \\frac{1}{4} e^{2x} + C$$'} />
                 </div>
               </div>
@@ -76,17 +74,17 @@ export function FeaturesGrid() {
                 An open student community to share study material free with no limits, talk to the whole community, talk anonymously, and message peers directly to solve doubts together.
               </p>
             </div>
-            {/* Callout: solid red #D71921 with white text */}
+            {/* Callout: matching card style with 3px red accent bar */}
             <div
-              className="mt-5 p-3.5 rounded-xl text-xs font-semibold flex flex-col gap-1.5"
-              style={{
-                backgroundColor: '#D71921',
-                color: '#FFFFFF',
-                border: '1px solid #D71921',
-              }}
+              className="mt-5 p-4 rounded-[12px] border border-[var(--border)] border-l-[3px] border-l-[var(--red)] bg-[var(--surface)] text-[var(--text)] flex flex-col gap-2.5"
             >
-              <span>Free, unlimited sharing and peer learning for everyone.</span>
-              <Link to="/commons/about" className="inline-flex items-center gap-1 text-[11px] font-bold underline hover:opacity-90">
+              <span className="text-[16px] font-medium text-[var(--text)] leading-snug">
+                Free, unlimited sharing and peer learning for everyone.
+              </span>
+              <Link
+                to="/commons/about"
+                className="inline-flex items-center gap-1 text-[13px] font-medium text-[var(--red)] hover:underline focus:underline focus:outline-hidden transition-colors w-fit"
+              >
                 <span>Learn more about Commons</span>
                 <span aria-hidden="true">&rarr;</span>
               </Link>
@@ -124,7 +122,7 @@ export function FeaturesGrid() {
                 className="text-xl font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
               >
-                Study Crew &amp; Squads
+                Study Squads
               </h3>
               <p className="text-sm text-[var(--muted)] leading-relaxed">
                 Form collaborative study squads of up to 30 classmates with private 6-character room codes. Compare solve times, coordinate drills, and track streaks.
@@ -132,7 +130,7 @@ export function FeaturesGrid() {
             </div>
             <div className="mt-4 pt-3 border-t border-[var(--border)]">
               <Link to="/crew" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--red)] hover:underline">
-                <span>Learn more about Study Crew</span>
+                <span>Learn more about Study Squads</span>
                 <span aria-hidden="true">&rarr;</span>
               </Link>
             </div>
