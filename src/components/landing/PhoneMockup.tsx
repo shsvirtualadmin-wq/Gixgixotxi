@@ -128,7 +128,7 @@ export function PhoneMockup({
             {/* SCREEN 1: CREW */}
             {activeScreen === 1 && (
               <div className="space-y-2 flex-1 flex flex-col justify-between">
-                {/* Squad Sprint Target */}
+                {/* Squad Sprint Goal */}
                 <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between">
                   <div>
                     <span className="text-[9px] text-[var(--text-muted)] uppercase font-semibold">

@@ -19,7 +19,7 @@ const STEPS = [
   },
   {
     step: '03',
-    title: 'Target Weak Chapters & Grow',
+    title: 'Master Weak Chapters & Grow',
     description:
       'Review your detailed accuracy scores across every chapter. Pinpoint your weak topics, maintain your daily practice streak, and build mastery step by step.',
     icon: TrendingUp,

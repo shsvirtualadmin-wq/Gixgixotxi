@@ -1073,7 +1073,7 @@ export function AdminKobansPage() {
 
             <div className="p-3.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] space-y-2 text-xs font-mono">
               <div className="flex justify-between text-[var(--muted)]">
-                <span>Target Student:</span>
+                <span>Student:</span>
                 <span className="font-bold text-[var(--text)]">{selectedUser.displayName}</span>
               </div>
               <div className="flex justify-between text-[var(--muted)]">

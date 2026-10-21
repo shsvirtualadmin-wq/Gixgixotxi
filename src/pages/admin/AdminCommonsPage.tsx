@@ -193,7 +193,7 @@ export function AdminCommonsPage() {
                     <div className="flex items-center gap-2 text-[11px] text-neutral-500 mt-2 font-mono">
                       <span>Subject: {post.subject}</span>
                       <span>·</span>
-                      <span>Target: {post.target}</span>
+                      <span>Category: {post.target}</span>
                       <span>·</span>
                       <span>Author: {post.authorName} ({post.isAnonymous ? 'Anonymous' : 'Public'})</span>
                     </div>

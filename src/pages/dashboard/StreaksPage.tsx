@@ -155,7 +155,7 @@ export function StreaksPage() {
   };
 
   const handleCopyShare = () => {
-    const text = `🔥 I'm on a ${streak}-day entrance test prep streak on Boardly (boardly.cfd)! Preparing for FAST-NUCES and NUST NET daily. Keep the chain unbroken!`;
+    const text = `🔥 I'm on a ${streak}-day study streak on Boardly (boardly.cfd)! Preparing daily with authentic practice questions. Keep the chain unbroken!`;
     navigator.clipboard.writeText(text);
     setCopiedShare(true);
     setTimeout(() => setCopiedShare(false), 2000);
@@ -163,7 +163,7 @@ export function StreaksPage() {
 
   const handleWhatsAppShare = () => {
     const text = encodeURIComponent(
-      `🔥 I'm on a ${streak}-day entrance test prep streak on Boardly!\nJoin me and practice daily for FAST, NUST & GIKI:\nhttps://boardly.cfd`
+      `🔥 I'm on a ${streak}-day study streak on Boardly!\nJoin me and practice daily:\nhttps://boardly.cfd`
     );
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };

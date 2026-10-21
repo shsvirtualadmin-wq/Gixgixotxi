@@ -258,7 +258,10 @@ function AppInner() {
         {/* Global shortcuts for plans, profile and settings */}
         <Route path="/plans" element={<Navigate to="/dashboard/plans" replace />} />
         <Route path="/profile" element={<Navigate to="/dashboard/profile" replace />} />
-        <Route path="/settings" element={<Navigate to="/dashboard/settings" replace />} />
+        {/* Dedicated /settings route */}
+        <Route path="/settings" element={<DashboardShell />}>
+          <Route index element={<SettingsPage />} />
+        </Route>
         <Route path="/commons" element={<Navigate to="/dashboard/commons" replace />} />
         <Route path="/commons/guidelines" element={<CommunityGuidelinesPage />} />
 

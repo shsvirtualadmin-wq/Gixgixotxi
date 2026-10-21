@@ -452,7 +452,7 @@ export function GrandLinePage() {
 
               <div>
                 <label className="text-xs font-semibold text-[var(--text-muted)] block mb-1">
-                  Target Entrance Exam
+                  Entrance Exam
                 </label>
                 <select
                   value={guestEntryTest}

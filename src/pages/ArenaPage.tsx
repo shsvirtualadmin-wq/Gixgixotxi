@@ -62,7 +62,7 @@ export function ArenaPage() {
             Instant Percentile
           </h3>
           <p className="text-xs text-[var(--muted)] leading-relaxed">
-            Get an instant percentile rank showing where you stand among peers targeting FAST, NUST, and GIKI.
+            Get an instant percentile rank showing where you stand among peers preparing for entrance exams.
           </p>
         </div>
       </div>

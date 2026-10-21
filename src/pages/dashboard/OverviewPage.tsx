@@ -108,6 +108,7 @@ export function OverviewPage() {
   const [launchError, setLaunchError] = useState<string | null>(null);
   const [blockedSheetOpen, setBlockedSheetOpen] = useState(false);
   const [todayAttempts, setTodayAttempts] = useState(0);
+  const [dailyLimitError, setDailyLimitError] = useState(false);
   const errorBannerRef = useRef<HTMLDivElement | null>(null);
   const launchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -231,7 +232,7 @@ export function OverviewPage() {
             Salam, {firstName}!
           </h1>
           <p className="text-xs sm:text-sm text-[var(--muted)] mt-1 truncate">
-            Target: {blueprint.name} Admissions 2026 · Complete Test Engine
+            Ready to practice today?
           </p>
         </div>
 
@@ -316,17 +317,24 @@ export function OverviewPage() {
         </Card>
 
         {/* Metric 3: Daily Limit */}
-        <Card className="justify-between min-h-[135px]">
-          <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-            <span className="font-semibold uppercase tracking-wider text-[10px]">
-              Daily Limit
-            </span>
-            <BookOpen size={16} />
-          </div>
-          <div>
-            <DailyLimitsMeter uid={currentUid} isPremium={isPro} onUsageChange={setTodayAttempts} />
-          </div>
-        </Card>
+        {!dailyLimitError && (
+          <Card className="justify-between min-h-[135px]">
+            <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+              <span className="font-semibold uppercase tracking-wider text-[10px]">
+                Daily Limit
+              </span>
+              <BookOpen size={16} />
+            </div>
+            <div>
+              <DailyLimitsMeter
+                uid={currentUid}
+                isPremium={isPro}
+                onUsageChange={setTodayAttempts}
+                onError={() => setDailyLimitError(true)}
+              />
+            </div>
+          </Card>
+        )}
 
         {/* Metric 4: Current Plan Card with Upgrade (Links to /dashboard/plans) */}
         <Card

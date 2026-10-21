@@ -501,7 +501,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
               {/* Settings */}
               <button
                 type="button"
-                onClick={() => handleNav('/dashboard/settings')}
+                onClick={() => handleNav('/settings')}
                 className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between text-left hover:bg-surface-muted active:bg-surface-muted/80 transition-colors cursor-pointer group"
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -515,7 +515,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
                       Settings
                     </p>
                     <p className="text-[12px] sm:text-[13px] text-muted truncate leading-snug">
-                      Role, nickname, username & security
+                      Plan, account & sign out
                     </p>
                   </div>
                 </div>

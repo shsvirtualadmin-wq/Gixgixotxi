@@ -119,7 +119,7 @@ export const CreateCrewModal: React.FC<CreateCrewModalProps> = ({
               <textarea
                 maxLength={160}
                 rows={2}
-                placeholder="Brief squad description, target universities, or study motto..."
+                placeholder="Brief squad description, universities, or study motto..."
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}
                 className="w-full px-3.5 py-2 rounded-xl bg-[#141414] border border-[rgba(255,255,255,0.12)] text-sm text-white placeholder-[rgba(255,255,255,0.3)] focus:outline-none focus:border-[#D71921] resize-none"

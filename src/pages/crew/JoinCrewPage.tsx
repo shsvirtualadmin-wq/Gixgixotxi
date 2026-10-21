@@ -92,7 +92,7 @@ export function JoinCrewPage() {
 
   const handleWhatsAppShare = () => {
     const text = encodeURIComponent(
-      `Join our Study Crew "${crewPreview?.name || 'Boardly Crew'}" on Boardly!\nPrep together for FAST, NUST & GIKI entry tests with unlimited shared practice:\n${joinUrl}`
+      `Join our Study Crew "${crewPreview?.name || 'Boardly Crew'}" on Boardly!\nPrep together on Boardly with unlimited shared practice:\n${joinUrl}`
     );
     window.open(`https://api.whatsapp.com/send?text=${text}`, '_blank');
   };

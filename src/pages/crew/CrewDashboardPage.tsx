@@ -96,7 +96,7 @@ export function CrewDashboardPage() {
   const handleWhatsAppShare = () => {
     if (!crew) return;
     const msg = encodeURIComponent(
-      `Join our Study Crew "${crew.name}" on Boardly!\nPrepare together for FAST, NUST & GIKI with shared Pro quota (up to 30 members):\n${joinUrl}`
+      `Join our Study Crew "${crew.name}" on Boardly!\nPrepare together on Boardly with shared Pro quota (up to 30 members):\n${joinUrl}`
     );
     window.open(`https://api.whatsapp.com/send?text=${msg}`, '_blank');
   };
@@ -382,7 +382,7 @@ export function CrewDashboardPage() {
             size={130}
             strokeWidth={8}
             label={`${Math.round((currentQuestions / Math.max(1, goalQuestions)) * 100)}%`}
-            sublabel="Target"
+            sublabel="Goal"
           />
           <div>
             <span style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--text-faint)' }}>

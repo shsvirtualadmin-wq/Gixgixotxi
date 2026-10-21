@@ -906,7 +906,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 <button
                   onClick={() => {
                     if (onClose) onClose();
-                    navigate('/dashboard/settings');
+                    navigate('/settings');
                   }}
                   className="h-11 px-3.5 rounded-lg border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
                   title="Settings"
