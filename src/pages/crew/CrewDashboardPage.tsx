@@ -205,7 +205,10 @@ export function CrewDashboardPage() {
   }, [user]);
 
   const isLeader = Boolean(crew && user && crew.leaderId === user.uid);
-  const squadName = crew?.name?.trim() ? crew.name.trim() : 'Study Squad';
+  const squadName =
+    crew?.name?.trim() && crew.name.trim() !== '1'
+      ? crew.name.trim()
+      : 'Study Squad';
   const joinUrl = crew ? `https://boardly.cfd/join/${crew.code}` : '';
 
   // Copy invite code with toast feedback
@@ -711,7 +714,7 @@ export function CrewDashboardPage() {
       <section className="p-5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] shadow-sm dark:shadow-none space-y-4">
         <div>
           <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-[22px] font-bold text-[var(--text-primary)] tracking-tight leading-tight break-words">
+            <h1 className="text-[22px] font-bold font-sans text-[var(--text-primary)] tracking-tight leading-tight break-words">
               {squadName}
             </h1>
             {isLeader && (
@@ -862,8 +865,8 @@ export function CrewDashboardPage() {
       <section className="space-y-3">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-baseline gap-2">
-            <h2 className="text-base font-bold text-[var(--text-primary)]">Leaderboard</h2>
-            <span className="text-xs text-[var(--text-muted)] font-normal">
+            <h2 className="text-base font-bold font-sans text-[var(--text-primary)]">Leaderboard</h2>
+            <span className="text-xs text-[var(--text-muted)] font-normal font-sans">
               {memberCount} of {maxMembers} members
             </span>
           </div>
@@ -988,10 +991,10 @@ export function CrewDashboardPage() {
       {/* ── 5. Weak Topics ────────────────────────────────────────────── */}
       <section className="space-y-3">
         <div>
-          <h2 className="text-base font-bold text-[var(--text-primary)]">
+          <h2 className="text-base font-bold font-sans text-[var(--text-primary)]">
             Squad weak topics
           </h2>
-          <p className="text-xs text-[var(--text-muted)] mt-0.5">
+          <p className="text-xs text-[var(--text-muted)] mt-0.5 font-sans">
             Chapters where your squad made the most mistakes this week.
           </p>
         </div>
@@ -1009,7 +1012,7 @@ export function CrewDashboardPage() {
                 >
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="text-sm font-semibold text-[var(--text-primary)] truncate">
+                      <h3 className="text-sm font-semibold font-sans text-[var(--text-primary)] truncate">
                         {ch.chapter}
                       </h3>
                     </div>
@@ -1054,10 +1057,10 @@ export function CrewDashboardPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="w-full max-w-sm rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-5 shadow-2xl space-y-4">
             <div className="space-y-1.5">
-              <h3 className="text-lg font-bold text-[var(--text-primary)]">
+              <h3 className="text-lg font-bold font-sans text-[var(--text-primary)]">
                 Leave this squad?
               </h3>
-              <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              <p className="text-xs text-[var(--text-muted)] leading-relaxed font-sans">
                 Leave this squad? You can rejoin with the invite code.
               </p>
             </div>
@@ -1087,7 +1090,7 @@ export function CrewDashboardPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="w-full max-w-sm rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-5 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[var(--text-primary)]">
+              <h3 className="text-base font-bold font-sans text-[var(--text-primary)]">
                 Edit Squad Name
               </h3>
               <button
@@ -1147,7 +1150,7 @@ export function CrewDashboardPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
           <div className="w-full max-w-sm rounded-2xl bg-[var(--surface)] border border-[var(--border)] p-5 shadow-2xl space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-[var(--text-primary)]">
+              <h3 className="text-base font-bold font-sans text-[var(--text-primary)]">
                 Transfer Leadership
               </h3>
               <button
