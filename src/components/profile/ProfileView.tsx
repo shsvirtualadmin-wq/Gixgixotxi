@@ -145,6 +145,9 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   // Equipped streak badges (up to 3)
   const [equippedStreakBadges, setEquippedStreakBadges] = useState<string[]>(['badge_streak_7d']);
 
+  // Pinned stamps in showcase (up to 3)
+  const [pinnedShowcase, setPinnedShowcase] = useState<string[]>([]);
+
   useEffect(() => {
     let isMounted = true;
     const resolvedUid = targetUid || currentUid;
@@ -311,6 +314,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
         if (!isMounted) return;
         setProfile(resolvedProfile);
+
+        const initialPinned = (uData?.pinnedStamps as string[]) || (pubData?.pinnedStamps as string[]) || [];
+        if (Array.isArray(initialPinned)) {
+          setPinnedShowcase(initialPinned);
+        }
 
         // Check follow relationship directly from users/{currentUid}/following/{uid}
         if (currentUid && uid !== currentUid) {
@@ -592,15 +600,17 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   // Toggle showcase pin
   const handleToggleShowcasePin = (id: string) => {
-    if (!isViewingSelf) return;
+    if (!isViewingSelf || !currentUid) return;
     setPinnedShowcase((prev) => {
-      if (prev.includes(id)) {
-        return prev.filter((p) => p !== id);
-      }
-      if (prev.length >= 3) {
-        return [...prev.slice(1), id];
-      }
-      return [...prev, id];
+      const next = prev.includes(id)
+        ? prev.filter((p) => p !== id)
+        : prev.length >= 3
+        ? [...prev.slice(1), id]
+        : [...prev, id];
+
+      setDoc(doc(db, 'users', currentUid), { pinnedStamps: next }, { merge: true }).catch(() => {});
+      setDoc(doc(db, 'publicProfiles', currentUid), { pinnedStamps: next }, { merge: true }).catch(() => {});
+      return next;
     });
   };
 
@@ -864,6 +874,23 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   title={b.name}
                 >
                   <Flame size={13} style={{ color: b.color }} />
+                </button>
+              );
+            })}
+
+            {/* Pinned Showcase Stamps (up to 3) */}
+            {pinnedShowcase.map((stampId) => {
+              const s = PASSPORT_STAMPS.find((p) => p.id === stampId);
+              if (!s) return null;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setBadgePopover({ name: s.name, meaning: s.requirement })}
+                  className="w-6 h-6 rounded-md bg-amber-500/10 border border-amber-500/30 text-amber-500 flex items-center justify-center cursor-pointer hover:scale-110 transition-transform"
+                  title={s.name}
+                >
+                  <Award size={13} />
                 </button>
               );
             })}
