@@ -1,115 +1,220 @@
-import { Shield, CheckCircle2, AlertTriangle, ArrowLeft, BookOpen, Lock, Users } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Shield, CheckCircle2, AlertTriangle, ArrowLeft, Lock } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export function CommunityGuidelinesPage() {
-  const navigate = useNavigate();
+  const sansStyle = { fontFamily: "var(--font-body, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif)" };
 
   return (
-    <div className="min-h-screen bg-black text-neutral-100 p-4 md:p-8 flex justify-center">
-      <div className="w-full max-w-3xl space-y-8 py-6">
-        {/* Header Back Button */}
-        <button
-          onClick={() => navigate(-1)}
-          className="flex items-center gap-2 text-xs font-mono text-neutral-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft size={16} />
-          <span>BACK TO COMMONS</span>
-        </button>
+    <div
+      style={sansStyle}
+      className="min-h-screen bg-[var(--bg)] text-[var(--text-primary)] font-sans antialiased p-4 sm:p-6 md:p-8 flex justify-center selection:bg-[var(--accent)] selection:text-white"
+    >
+      <div className="w-full max-w-3xl space-y-8 py-4 sm:py-6">
+        {/* Header Back Link */}
+        <div>
+          <Link
+            to="/dashboard/commons"
+            style={sansStyle}
+            className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors py-1.5 px-2.5 -ml-2.5 rounded-lg hover:bg-[var(--surface-muted)] cursor-pointer"
+            title="Back to Commons"
+          >
+            <ArrowLeft size={16} className="text-current shrink-0" />
+            <span>Back to Commons</span>
+          </Link>
+        </div>
 
-        {/* Title */}
-        <div className="space-y-2 border-b border-neutral-800 pb-6">
-          <div className="flex items-center gap-2 text-red-500 font-mono text-xs uppercase tracking-wider">
-            <Shield size={16} />
+        {/* Title Section */}
+        <div className="space-y-3 border-b border-[var(--border)] pb-6">
+          <div
+            style={sansStyle}
+            className="flex items-center gap-2 text-[12px] font-semibold text-[var(--accent)] uppercase tracking-wider"
+          >
+            <Shield size={16} className="text-[var(--accent)] shrink-0" />
             <span>Academic Standards & Safety</span>
           </div>
-          <h1 className="text-3xl font-bold tracking-tight text-neutral-50 font-mono">
-            BOARDLY COMMONS GUIDELINES
+
+          <h1
+            style={sansStyle}
+            className="text-[28px] font-bold tracking-tight text-[var(--text-primary)] leading-tight"
+          >
+            Boardly Commons Guidelines
           </h1>
-          <p className="text-sm text-neutral-400 leading-relaxed">
-            Boardly Commons is built for Pakistani students preparing for FAST, NUST, GIKI, MDCAT, ECAT, and FBISE exams to exchange high-yield notes, formula sheets, solved problems, and study strategies.
+
+          <p
+            style={sansStyle}
+            className="text-[15px] text-[var(--text-secondary)] leading-relaxed"
+          >
+            Boardly Commons is a place for students to share notes, formulas, solved problems and doubts, and to learn from each other. Please read these guidelines before you post.
           </p>
         </div>
 
-        {/* Section 1: Core Values */}
+        {/* Section 1: What We Encourage */}
         <div className="space-y-4">
-          <h2 className="text-lg font-bold text-neutral-100 flex items-center gap-2">
-            <CheckCircle2 size={18} className="text-red-500" />
+          <h2
+            style={sansStyle}
+            className="text-[20px] font-semibold text-[var(--text-primary)] flex items-center gap-2.5 tracking-normal"
+          >
+            <CheckCircle2 size={20} className="text-[var(--accent)] shrink-0" />
             <span>1. What We Encourage</span>
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs leading-relaxed text-neutral-300">
-            <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-900/40 space-y-1.5">
-              <span className="font-bold text-neutral-100 block">Personal Handwritten Notes</span>
-              <p className="text-neutral-400">
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            <div className="p-4 sm:p-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-2 shadow-xs transition-colors">
+              <span
+                style={sansStyle}
+                className="text-[16px] font-semibold text-[var(--text-primary)] block"
+              >
+                Personal Handwritten Notes
+              </span>
+              <p
+                style={sansStyle}
+                className="text-[15px] text-[var(--text-secondary)] leading-relaxed"
+              >
                 Summary cheat sheets, mnemonics, quick derivations, and organic chemistry reaction roadmaps.
               </p>
             </div>
-            <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-900/40 space-y-1.5">
-              <span className="font-bold text-neutral-100 block">Worked Solutions & Explanations</span>
-              <p className="text-neutral-400">
-                Step-by-step calculus workings, tricky physics physics numerical solutions, and past paper dissections.
+
+            <div className="p-4 sm:p-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-2 shadow-xs transition-colors">
+              <span
+                style={sansStyle}
+                className="text-[16px] font-semibold text-[var(--text-primary)] block"
+              >
+                Worked Solutions & Explanations
+              </span>
+              <p
+                style={sansStyle}
+                className="text-[15px] text-[var(--text-secondary)] leading-relaxed"
+              >
+                Step-by-step calculus workings, tricky physics numerical solutions, and past paper dissections.
               </p>
             </div>
-            <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-900/40 space-y-1.5">
-              <span className="font-bold text-neutral-100 block">Concept Doubts & Clarifications</span>
-              <p className="text-neutral-400">
+
+            <div className="p-4 sm:p-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-2 shadow-xs transition-colors">
+              <span
+                style={sansStyle}
+                className="text-[16px] font-semibold text-[var(--text-primary)] block"
+              >
+                Concept Doubts & Clarifications
+              </span>
+              <p
+                style={sansStyle}
+                className="text-[15px] text-[var(--text-secondary)] leading-relaxed"
+              >
                 Asking for alternative intuition on difficult problems without hesitation or fear of judgment.
               </p>
             </div>
-            <div className="p-4 rounded-xl border border-neutral-800 bg-neutral-900/40 space-y-1.5">
-              <span className="font-bold text-neutral-100 block">Preparation Roadmaps</span>
-              <p className="text-neutral-400">
-                Sharing book recommendations, syllabus completion timelines, and mock exam pacing advice.
+
+            <div className="p-4 sm:p-5 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-2 shadow-xs transition-colors">
+              <span
+                style={sansStyle}
+                className="text-[16px] font-semibold text-[var(--text-primary)] block"
+              >
+                Preparation Roadmaps
+              </span>
+              <p
+                style={sansStyle}
+                className="text-[15px] text-[var(--text-secondary)] leading-relaxed"
+              >
+                Sharing book recommendations, study plans, syllabus timelines and revision tips.
               </p>
             </div>
           </div>
         </div>
 
-        {/* Section 2: Prohibited Conduct */}
+        {/* Section 2: Strictly Prohibited */}
         <div className="space-y-4">
-          <h2 className="text-lg font-bold text-neutral-100 flex items-center gap-2">
-            <AlertTriangle size={18} className="text-amber-500" />
+          <h2
+            style={sansStyle}
+            className="text-[20px] font-semibold text-[var(--text-primary)] flex items-center gap-2.5 tracking-normal"
+          >
+            <AlertTriangle size={20} className="text-[var(--accent)] shrink-0" />
             <span>2. Strictly Prohibited</span>
           </h2>
-          <div className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 space-y-3 text-xs text-neutral-300 leading-relaxed">
+
+          <div
+            style={sansStyle}
+            className="p-5 sm:p-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-3.5 text-[15px] text-[var(--text-secondary)] leading-relaxed shadow-xs"
+          >
             <p>
-              • <strong>Malicious Files & Scripts:</strong> Executable files (.exe, .bat, .sh, .apk, .js, .msi) are strictly blocked. Uploading malware or deceptive downloads results in an immediate permanent ban.
+              • <strong className="text-[var(--text-primary)] font-semibold">Malicious Files & Scripts:</strong> Executable files (.exe, .bat, .sh, .apk, .js, .msi) are strictly blocked. Uploading malware or deceptive downloads results in an immediate permanent ban.
             </p>
             <p>
-              • <strong>Live Exam Leaks & Impersonation:</strong> Sharing live test questions during active examination windows or soliciting exam substitution is prohibited and reported to university authorities.
+              • <strong className="text-[var(--text-primary)] font-semibold">Live Exam Leaks & Impersonation:</strong> Sharing questions from an exam that is currently in progress, or offering to take an exam for someone else, is not allowed. Such posts are removed and the account may be banned.
             </p>
             <p>
-              • <strong>Abuse & Harassment:</strong> Any derogatory remarks regarding school board, provincial origin, religion, gender, or academic rank will lead to posting revocation.
+              • <strong className="text-[var(--text-primary)] font-semibold">Abuse & Harassment:</strong> Any derogatory remarks regarding background, origin, religion, gender or academic results will lead to posting revocation. Bullying is not allowed anywhere, including in anonymous posts and direct messages.
             </p>
             <p>
-              • <strong>Spam & Self-Promotion:</strong> Repeated promotional links to third-party paid academies or whatsapp marketing groups without authentic educational content are removed.
+              • <strong className="text-[var(--text-primary)] font-semibold">Personal Privacy:</strong> Sharing personal details such as phone numbers, addresses or private photos of yourself or others.
+            </p>
+            <p>
+              • <strong className="text-[var(--text-primary)] font-semibold">Copyrighted Content:</strong> Only share material you have the right to share. Don't upload copyrighted books or paid course material that you don't own.
+            </p>
+            <p>
+              • <strong className="text-[var(--text-primary)] font-semibold">Spam & Self-Promotion:</strong> Repeated promotional links to third-party paid academies or WhatsApp marketing groups without authentic educational content are removed.
             </p>
           </div>
         </div>
 
-        {/* Section 3: Anonymous Posting Rules */}
+        {/* Section 3: Anonymous Posting Standards */}
         <div className="space-y-4">
-          <h2 className="text-lg font-bold text-neutral-100 flex items-center gap-2">
-            <Lock size={18} className="text-red-400" />
+          <h2
+            style={sansStyle}
+            className="text-[20px] font-semibold text-[var(--text-primary)] flex items-center gap-2.5 tracking-normal"
+          >
+            <Lock size={20} className="text-[var(--accent)] shrink-0" />
             <span>3. Anonymous Posting Standards</span>
           </h2>
-          <div className="p-4 rounded-2xl border border-neutral-800 bg-neutral-900/40 space-y-2 text-xs text-neutral-400 leading-relaxed">
+
+          <div
+            style={sansStyle}
+            className="p-5 sm:p-6 rounded-2xl border border-[var(--border)] bg-[var(--surface)] space-y-3 text-[15px] text-[var(--text-secondary)] leading-relaxed shadow-xs"
+          >
             <p>
-              Anonymity gives every student the psychological safety to ask basic questions, share doubts, or post preliminary notes without social anxiety.
-            </p>
-            <p>
-              However, anonymity does not shield policy violations. A secure, immutable author record is stored in private superadmin moderation logs (<code className="text-neutral-300 font-mono">postPrivate</code>). If a post receives 3+ community flags, it is automatically hidden pending human review.
+              Anonymous posting lets you ask questions and share doubts without worry. Your name is hidden from other students, but anonymous posts must follow the same rules. Boardly keeps a private record of the author that only the superadmin can see, and it is used only for moderation. If a post gets 3 or more community flags, it is hidden automatically until a moderator reviews it.
             </p>
           </div>
         </div>
 
         {/* Section 4: Daily Posting Limit */}
-        <div className="p-4 rounded-xl border border-neutral-800 bg-red-950/20 text-xs text-neutral-300 space-y-1">
-          <span className="font-bold text-red-400 font-mono">DAILY RATE LIMIT: 10 POSTS / DAY</span>
-          <p className="text-neutral-400">
-            To prevent spam and automated scrapers, each student is allowed up to 10 published posts per Pakistan Standard Time (PKT) calendar day.
+        <div
+          style={sansStyle}
+          className="p-5 rounded-2xl border border-[var(--accent)]/20 dark:border-[var(--accent)]/30 bg-[var(--tag-danger-bg)] text-[var(--tag-danger-text)] space-y-1.5 shadow-xs"
+        >
+          <span
+            style={sansStyle}
+            className="text-[16px] font-semibold block text-[var(--tag-danger-text)]"
+          >
+            Daily limit: 10 posts per day.
+          </span>
+          <p
+            style={sansStyle}
+            className="text-[15px] leading-relaxed text-[var(--tag-danger-text)]"
+          >
+            To prevent spam, each student can publish up to 10 posts per calendar day (Pakistan Standard Time).
+          </p>
+        </div>
+
+        {/* Footer Contact note */}
+        <div
+          style={sansStyle}
+          className="pt-2 text-center text-[14px] text-[var(--text-muted)] leading-relaxed"
+        >
+          <p>
+            Boardly Commons is run by SHS Virtual Academy. Questions or reports: use the Report option on any post or contact us through the{' '}
+            <Link
+              to="/contact"
+              style={sansStyle}
+              className="text-[var(--accent)] hover:underline font-semibold"
+            >
+              Contact page
+            </Link>
+            .
           </p>
         </div>
       </div>
     </div>
   );
 }
+
+export default CommunityGuidelinesPage;
