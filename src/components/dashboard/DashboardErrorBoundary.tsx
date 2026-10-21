@@ -1,5 +1,7 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { AlertCircle, RefreshCw } from 'lucide-react';
+import { Logo } from '@/components/ui/Logo';
 import { auth } from '@/lib/firebase';
 import { isSuperAdminEmailOrRole } from '@/hooks/useEffectivePlan';
 
@@ -56,6 +58,11 @@ export class DashboardErrorBoundary extends Component<Props, State> {
         return (
           <div className="min-h-[40vh] p-4 sm:p-6 flex items-center justify-center">
             <div className="w-full max-w-[500px] p-6 rounded-[24px] bg-[#0D0D0D] border border-[#222222] text-center space-y-4">
+              <div className="flex justify-center pb-1">
+                <Link to="/" aria-label="Boardly Home">
+                  <Logo size={28} className="text-white hover:opacity-80 transition-opacity" />
+                </Link>
+              </div>
               <div className="w-12 h-12 rounded-full bg-[#1A1A1A] border border-[#D71921] text-[#D71921] flex items-center justify-center mx-auto">
                 <AlertCircle size={22} />
               </div>

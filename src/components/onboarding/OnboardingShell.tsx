@@ -17,7 +17,7 @@ export function OnboardingShell({ step, children }: OnboardingShellProps) {
       <div className="w-full max-w-lg mx-auto my-auto flex flex-col items-center">
         {/* Logo */}
         <div className="mb-6 flex items-center justify-center">
-          <Logo size="onboarding" />
+          <Logo size="onboarding" className="text-white" />
         </div>
 
         {/* Step indicators */}

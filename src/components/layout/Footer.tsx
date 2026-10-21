@@ -63,10 +63,10 @@ export function Footer() {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 w-full [grid-template-columns:repeat(2,minmax(0,1fr))] lg:[grid-template-columns:repeat(4,minmax(0,1fr))]">
           {/* Brand info (Full width on mobile, 1 col on desktop) */}
           <div className="col-span-2 lg:col-span-1 min-w-0">
-            <Link to="/" className="inline-flex items-center mb-6 group" aria-label="Boardly Home">
+            <Link to="/" className="inline-flex items-center mb-6 group text-white" aria-label="Boardly Home">
               <Logo
                 size="footer"
-                className="h-[72px] sm:h-[88px] w-auto max-w-none brightness-0 invert"
+                className="h-[72px] sm:h-[88px] w-auto max-w-none text-white"
                 style={{ maxHeight: 'none' }}
                 alt="Boardly"
               />

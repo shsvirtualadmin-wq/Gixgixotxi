@@ -296,25 +296,8 @@
 
 /* ===== BRAND LOGO THEME ADAPTATION ===== */
 .boardly-brand-logo {
-  filter: none;
-  transition: filter var(--dur-hover) var(--ease-out);
-}
-
-[data-theme="light"] .boardly-brand-logo {
-  filter: invert(1);
-}
-
-/* Maintain crisp white logo inside dark surfaces (e.g. Navbar floating pill, Onboarding) */
-[data-theme="light"] .bg-black .boardly-brand-logo,
-[data-theme="light"] .bg-neutral-900 .boardly-brand-logo,
-[data-theme="light"] .bg-neutral-950 .boardly-brand-logo,
-[data-theme="light"] [class*="bg-neutral-900"] .boardly-brand-logo,
-[data-theme="light"] [class*="bg-neutral-950"] .boardly-brand-logo,
-[role="dialog"] .boardly-brand-logo,
-[data-theme="light"] [role="dialog"] .boardly-brand-logo,
-[data-theme="dark"] [role="dialog"] .boardly-brand-logo {
-  filter: none !important;
-  opacity: 1 !important;
+  color: var(--text);
+  fill: currentColor;
 }
 
 /* ===== BASE LAYER (Ensures Tailwind utilities are NEVER overridden) ===== */

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, Moon, Sun } from 'lucide-react';
+import { Menu, X } from 'lucide-react';
 import { Logo } from '@/components/ui/Logo';
 import { useTheme } from '@/hooks/useTheme';
 
@@ -20,7 +20,7 @@ const NAV_LINKS = [
 export function Navbar() {
   const [isMounted, setIsMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const { theme, toggle } = useTheme();
+  const { theme, setTheme } = useTheme();
   const location = useLocation();
   const closeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -79,7 +79,7 @@ export function Navbar() {
       >
         <nav
           aria-label="Main Navigation"
-          className="w-full max-w-[1200px] h-[64px] md:h-[72px] rounded-[20px] px-4 flex items-center justify-between pointer-events-auto border transition-colors select-none"
+          className="w-full max-w-[1200px] h-[64px] md:h-[72px] rounded-[20px] px-4 flex items-center justify-between pointer-events-auto border transition-colors select-none text-[var(--text)]"
           style={{
             backgroundColor: 'var(--surface)',
             borderColor: 'var(--border)',
@@ -89,12 +89,12 @@ export function Navbar() {
           {/* Left side: Brand Logo vertically centered, sized 28-32px height, linked to home */}
           <Link
             to="/"
-            className="flex items-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-lg"
+            className="flex items-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-lg text-[var(--text)]"
             aria-label="Boardly Home"
           >
             <Logo
               height={30}
-              className="h-[28px] sm:h-[32px] w-auto"
+              className="h-[28px] sm:h-[32px] w-auto text-[var(--text)]"
               alt="Boardly"
             />
           </Link>
@@ -135,44 +135,8 @@ export function Navbar() {
           }}
         >
           <div className="min-h-full flex flex-col justify-between gap-6 w-full max-w-lg mx-auto">
-            {/* Top Bar inside Menu */}
-            <div
-              className="flex items-center justify-between pb-5 shrink-0"
-              style={{ borderBottom: '1px solid rgba(255,255,255,0.12)' }}
-            >
-              <Link
-                to="/"
-                onClick={handleClose}
-                className="flex items-center shrink-0"
-                aria-label="Boardly Home"
-              >
-                <Logo
-                  className="h-[52px] sm:h-[64px]"
-                  style={{ filter: 'none', opacity: 1 }}
-                  alt="Boardly"
-                />
-              </Link>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={toggle}
-                  aria-label="Toggle theme"
-                  className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer bg-[rgba(255,255,255,0.12)] hover:bg-[#D71921] active:bg-[#D71921] text-white"
-                >
-                  {theme === 'dark' ? <Sun size={22} className="text-white" /> : <Moon size={22} className="text-white" />}
-                </button>
-                <button
-                  onClick={handleClose}
-                  aria-label="Close menu"
-                  className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer bg-[rgba(255,255,255,0.12)] hover:bg-[#D71921] active:bg-[#D71921] text-white"
-                >
-                  <X size={22} className="text-white" />
-                </button>
-              </div>
-            </div>
-
             {/* Large Navigation Links in the dot font with Staggered Transition */}
-            <div className="flex flex-col gap-4 sm:gap-5 my-auto py-4 shrink-0">
+            <div className="flex flex-col gap-4 sm:gap-5 my-auto py-2 shrink-0">
               {NAV_LINKS.map((link, idx) => {
                 const active = isLinkActive(link.to);
                 const forwardDelay = idx * 40;
@@ -201,7 +165,7 @@ export function Navbar() {
               })}
             </div>
 
-            {/* Bottom Auth Buttons (Scrollable & always reachable) */}
+            {/* Bottom Auth Buttons & Appearance segmented control */}
             <div
               className="flex flex-col gap-3 pt-5 shrink-0"
               style={{ borderTop: '1px solid rgba(255,255,255,0.12)' }}
@@ -230,6 +194,35 @@ export function Navbar() {
               >
                 Get Started
               </Link>
+
+              {/* Three-option segmented control: Light, Dark, System */}
+              <div className="pt-2 pb-1 shrink-0 flex justify-center">
+                <div
+                  role="radiogroup"
+                  aria-label="Appearance"
+                  className="inline-flex items-center p-1 rounded-full bg-[rgba(255,255,255,0.08)] border border-[rgba(255,255,255,0.12)] text-xs font-medium"
+                >
+                  {(['light', 'dark', 'system'] as const).map((mode) => {
+                    const isSelected = theme === mode;
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="radio"
+                        aria-checked={isSelected}
+                        onClick={() => setTheme(mode)}
+                        className={`px-3.5 py-1.5 rounded-full capitalize transition-all cursor-pointer text-[13px] ${
+                          isSelected
+                            ? 'bg-[#D71921] text-white font-semibold shadow-sm'
+                            : 'text-neutral-400 hover:text-white'
+                        }`}
+                      >
+                        {mode === 'light' ? 'Light' : mode === 'dark' ? 'Dark' : 'System'}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           </div>
         </div>

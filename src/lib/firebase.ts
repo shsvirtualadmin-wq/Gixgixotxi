@@ -32,7 +32,7 @@ export const storage = getStorage(app);
 export const functions = getFunctions(app);
 
 // Initialize Firestore with the unified database:
-// Uses experimentalForceLongPolling: true and useFetchStreams: false
+// Uses experimentalAutoDetectLongPolling: true to prevent 10s backend unreachable timeouts while supporting restricted proxies
 // Uses memoryLocalCache() to prevent multi-tab IndexedDB lock contention & write queue stalls
 // Uses ignoreUndefinedProperties: true to prevent invalid data errors on optional fields
 export const db = (() => {
@@ -40,8 +40,7 @@ export const db = (() => {
     return initializeFirestore(
       app,
       {
-        experimentalForceLongPolling: true,
-        useFetchStreams: false,
+        experimentalAutoDetectLongPolling: true,
         localCache: memoryLocalCache(),
         ignoreUndefinedProperties: true,
       } as unknown as Parameters<typeof initializeFirestore>[1],
