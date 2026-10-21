@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, memo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -32,7 +32,7 @@ import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 
-export function DashboardBottomNav() {
+function DashboardBottomNavComponent() {
   const { isAdmin, signOutUser } = useAuth();
   const { user, profile } = useUserProfile();
   const { openProfile } = useProfileModal();
@@ -69,7 +69,7 @@ export function DashboardBottomNav() {
   const crewLink = '/dashboard/crew';
 
   // Unified Student Nav: Home, Commons, Notifications, Streaks, Crew, [Captain], Menu
-  const navItems: PillNavItem[] = [
+  const navItems: PillNavItem[] = useMemo(() => [
     {
       to: '/dashboard',
       label: 'Home',
@@ -112,7 +112,7 @@ export function DashboardBottomNav() {
       icon: <Menu size={18} />,
       onClick: () => setIsMenuOpen(true),
     },
-  ];
+  ], [unreadCount, crewLink, isApprovedCaptain]);
 
   return (
     <>
@@ -403,4 +403,5 @@ export function DashboardBottomNav() {
   );
 }
 
+export const DashboardBottomNav = memo(DashboardBottomNavComponent);
 export default DashboardBottomNav;

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { collection, getDocs, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, getDoc, setDoc, serverTimestamp, query, limit } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePKTDate } from '@/hooks/usePKTDate';
@@ -80,8 +80,10 @@ export function StreaksPage() {
           setEquippedBadges(Array.isArray(data.equippedBadges) ? data.equippedBadges : []);
         }
 
-        // 2. Get past usage subcollection
-        const usageSnap = await getDocs(collection(db, 'users', user!.uid, 'usage'));
+        // 2. Get past usage subcollection (limited to recent window for 28-day grid)
+        const usageSnap = await getDocs(
+          query(collection(db, 'users', user!.uid, 'usage'), limit(35))
+        );
         const hist: Record<string, UsageDoc> = {};
         usageSnap.docs.forEach((d) => {
           hist[d.id] = { date: d.id, ...d.data() } as UsageDoc;

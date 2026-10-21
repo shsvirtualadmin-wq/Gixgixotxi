@@ -1134,11 +1134,9 @@ export default defineConfig({
             if (id.includes('lucide-react')) return 'vendor-icons';
             if (id.includes('framer-motion')) return 'vendor-motion';
             if (id.includes('firebase')) return 'vendor-firebase';
+            if (id.includes('html2canvas')) return 'vendor-html2canvas';
             if (id.includes('react') || id.includes('react-dom')) return 'vendor-react';
             if (id.includes('@tanstack')) return 'vendor-query';
-          }
-          if (id.includes('src/components/ui/')) {
-            return 'ui-primitives';
           }
         },
       },

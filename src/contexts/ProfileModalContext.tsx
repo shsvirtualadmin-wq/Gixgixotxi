@@ -1,5 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { ProfileView } from '@/components/profile/ProfileView';
+import React, { createContext, useContext, useState, useEffect, useCallback, lazy, Suspense } from 'react';
+
+const LazyProfileView = lazy(() =>
+  import('@/components/profile/ProfileView').then((m) => ({ default: m.ProfileView }))
+);
 
 interface ProfileModalContextType {
   openProfile: (uid?: string | null) => void;
@@ -84,11 +87,20 @@ export const ProfileModalHost: React.FC = () => {
       <div
         className="relative z-10 w-full h-full sm:h-auto sm:max-h-[90vh] sm:max-w-[560px] bg-[var(--background)] sm:rounded-3xl shadow-2xl overflow-y-auto scrollbar-none flex flex-col"
       >
-        <ProfileView
-          targetUid={activeUid}
-          isFullPage={false}
-          onClose={closeProfile}
-        />
+        <Suspense
+          fallback={
+            <div className="p-8 flex items-center justify-center min-h-[300px] text-xs text-[var(--muted)]">
+              <div className="w-6 h-6 rounded-full border-2 border-red-600 border-t-transparent animate-spin mr-2" />
+              <span>Loading profile...</span>
+            </div>
+          }
+        >
+          <LazyProfileView
+            targetUid={activeUid}
+            isFullPage={false}
+            onClose={closeProfile}
+          />
+        </Suspense>
       </div>
     </div>
   );

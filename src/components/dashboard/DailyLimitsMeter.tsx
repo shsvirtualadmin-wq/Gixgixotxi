@@ -13,12 +13,15 @@ interface UsageData {
   aiTutorTokens?: number;
 }
 
+import { ReactNode } from 'react';
+
 interface Props {
   uid: string;
   isPremium?: boolean;
+  onUsageChange?: (used: number) => void;
 }
 
-export function DailyLimitsMeter({ uid, isPremium }: Props) {
+export const DailyLimitsMeter = function DailyLimitsMeter({ uid, isPremium, onUsageChange }: Props) {
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const effectivePlan = useEffectivePlan();
@@ -36,7 +39,10 @@ export function DailyLimitsMeter({ uid, isPremium }: Props) {
     const unsubscribe = onSnapshot(
       doc(db, 'users', uid, 'usage', dateKey),
       (snap) => {
-        setUsage(snap.exists() ? (snap.data() as UsageData) : {});
+        const u = snap.exists() ? (snap.data() as UsageData) : {};
+        setUsage(u);
+        const count = Number(u.testsStarted ?? u.practiceAttempts ?? 0);
+        if (onUsageChange) onUsageChange(count);
         setLoading(false);
       },
       () => {
@@ -45,7 +51,7 @@ export function DailyLimitsMeter({ uid, isPremium }: Props) {
     );
 
     return unsubscribe;
-  }, [uid, dateKey]);
+  }, [uid, dateKey, onUsageChange]);
 
   if (loading || effectivePlan.loading) return <Skeleton height={70} />;
 

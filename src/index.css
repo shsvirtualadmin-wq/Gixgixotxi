@@ -835,6 +835,45 @@ body,
   }
 }
 
+/* ===== MOBILE & LOW-END DEVICE GPU OPTIMIZATION ===== */
+@media (max-width: 768px) {
+  /* Heavy backdrop-filter blurs are the #1 cause of GPU fill-rate exhaustion on mobile Mali/Adreno GPUs.
+     Capping them to 4px preserves the frosted aesthetic while avoiding 15fps scrolling drops. */
+  .backdrop-blur-2xl,
+  .backdrop-blur-xl,
+  .backdrop-blur-lg,
+  .backdrop-blur-md,
+  .backdrop-blur {
+    backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
+  }
+
+  /* Reduce costly box-shadow spread on mobile */
+  .shadow-2xl,
+  .shadow-xl {
+    box-shadow: 0 8px 20px -4px rgba(0, 0, 0, 0.45) !important;
+  }
+}
+
+/* Promote fixed and sticky navigation to independent GPU compositor layers */
+.fixed,
+.sticky {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+/* ===== ACCESSIBILITY & PREFERS REDUCED MOTION ===== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 
 
 

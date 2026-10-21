@@ -3,7 +3,6 @@ import { X, Copy, Check, Download } from 'lucide-react';
 import { BannerRenderer } from '@/components/koban/artwork/bannerArtwork';
 import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import type { PublicProfile } from '@/types';
-import html2canvas from 'html2canvas';
 
 interface ProfileShareCardModalProps {
   isOpen: boolean;
@@ -34,6 +33,8 @@ export const ProfileShareCardModal: React.FC<ProfileShareCardModalProps> = ({
     if (!cardRef.current || isExporting) return;
     setIsExporting(true);
     try {
+      const html2canvasModule = await import('html2canvas');
+      const html2canvas = html2canvasModule.default || html2canvasModule;
       const canvas = await html2canvas(cardRef.current, {
         backgroundColor: '#0a0a0a',
         scale: 2,

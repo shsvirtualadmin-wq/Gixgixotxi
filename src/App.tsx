@@ -8,7 +8,10 @@ import { AdminLayout } from './components/admin/AdminLayout';
 import { PublicLayout } from './components/layout/PublicLayout';
 import { DashboardShell } from './components/dashboard/DashboardShell';
 import { DashboardErrorBoundary } from './components/dashboard/DashboardErrorBoundary';
-import { DebugPanel } from './components/debug/DebugPanel';
+
+const LazyDebugPanel = lazy(() =>
+  import('./components/debug/DebugPanel').then((m) => ({ default: m.DebugPanel }))
+);
 
 /**
  * Robust chunk import with 2 retries and single guarded reload
@@ -315,7 +318,11 @@ function AppInner() {
       </Routes>
     </Suspense>
     <ProfileModalHost />
-    {import.meta.env.DEV && <DebugPanel />}
+    {import.meta.env.DEV && (
+      <Suspense fallback={null}>
+        <LazyDebugPanel />
+      </Suspense>
+    )}
     </DashboardErrorBoundary>
   );
 }

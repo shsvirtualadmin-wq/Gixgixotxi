@@ -43,8 +43,16 @@ export function CommonsFeedPage() {
   const [commentsPost, setCommentsPost] = useState<CommonsPost | null>(null);
   const [reportPost, setReportPost] = useState<CommonsPost | null>(null);
 
-  // Direct search query
+  // Direct search query with 300ms debounce
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const loadPosts = useCallback(async () => {
     setLoading(true);
@@ -52,7 +60,7 @@ export function CommonsFeedPage() {
     try {
       const res = await fetchCommonsPosts({
         feedTab,
-        searchQuery,
+        searchQuery: debouncedQuery,
         pageSize: 20,
         currentUid: user?.uid,
       });
@@ -70,7 +78,7 @@ export function CommonsFeedPage() {
     } finally {
       setLoading(false);
     }
-  }, [feedTab, searchQuery, user?.uid]);
+  }, [feedTab, debouncedQuery, user?.uid]);
 
   useEffect(() => {
     loadPosts();

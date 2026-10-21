@@ -119,24 +119,6 @@ export function OverviewPage() {
     };
   }, []);
 
-  // Fetch today's usage from Firestore
-  useEffect(() => {
-    if (!user) return;
-    const dateKey = getPKTDateKey();
-    getDoc(doc(db, 'users', user.uid, 'usage', dateKey))
-      .then((snap) => {
-        if (snap.exists()) {
-          const data = snap.data();
-          setTodayAttempts(Number(data?.testsStarted ?? data?.practiceAttempts ?? 0));
-        }
-      })
-      .catch((err) => {
-        if (import.meta.env.DEV) {
-          console.warn('[OverviewPage] Usage fetch notice:', err);
-        }
-      });
-  }, [user]);
-
   // ── Launch Complete Test ──
   const handleStartCompleteTest = async (chapterOverride?: string, subjectOverride?: string) => {
     if (!user) {
@@ -340,7 +322,7 @@ export function OverviewPage() {
             <BookOpen size={16} />
           </div>
           <div>
-            <DailyLimitsMeter uid={currentUid} isPremium={isPro} />
+            <DailyLimitsMeter uid={currentUid} isPremium={isPro} onUsageChange={setTodayAttempts} />
           </div>
         </Card>
 

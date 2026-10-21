@@ -17,10 +17,29 @@ export interface ChapterStatItem {
   notAttempted: boolean;
 }
 
+interface CachedChapterStats {
+  statsMap: Record<string, ChapterStatItem>;
+  weakChapters: ChapterStatItem[];
+  timestamp: number;
+}
+
+const chapterStatsCache = new Map<string, CachedChapterStats>();
+
+export function invalidateChapterStatsCache(uid?: string) {
+  if (uid) {
+    chapterStatsCache.delete(uid);
+  } else {
+    chapterStatsCache.clear();
+  }
+}
+
 export function useUserChapterStats(uid?: string | null) {
-  const [statsMap, setStatsMap] = useState<Record<string, ChapterStatItem>>({});
-  const [weakChapters, setWeakChapters] = useState<ChapterStatItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const cached = uid && chapterStatsCache.has(uid) ? chapterStatsCache.get(uid)! : null;
+  const isFresh = cached && Date.now() - cached.timestamp < 180000; // 3-minute cache TTL
+
+  const [statsMap, setStatsMap] = useState<Record<string, ChapterStatItem>>(() => (isFresh ? cached.statsMap : {}));
+  const [weakChapters, setWeakChapters] = useState<ChapterStatItem[]>(() => (isFresh ? cached.weakChapters : []));
+  const [loading, setLoading] = useState<boolean>(() => !isFresh);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -29,6 +48,16 @@ export function useUserChapterStats(uid?: string | null) {
       setWeakChapters([]);
       setLoading(false);
       return;
+    }
+
+    if (chapterStatsCache.has(uid)) {
+      const entry = chapterStatsCache.get(uid)!;
+      if (Date.now() - entry.timestamp < 180000) {
+        setStatsMap(entry.statsMap);
+        setWeakChapters(entry.weakChapters);
+        setLoading(false);
+        return;
+      }
     }
 
     let isMounted = true;
@@ -81,6 +110,11 @@ export function useUserChapterStats(uid?: string | null) {
 
         setStatsMap(map);
         setWeakChapters(weakList);
+        chapterStatsCache.set(uid, {
+          statsMap: map,
+          weakChapters: weakList,
+          timestamp: Date.now(),
+        });
         setLoading(false);
       })
       .catch((err) => {

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, limit, startAfter, type DocumentSnapshot } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { GlassCard } from '@/components/ui/GlassCard';
@@ -43,6 +43,9 @@ export function ResultsListPage() {
 
   const [attempts, setAttempts] = useState<AttemptDoc[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [lastDoc, setLastDoc] = useState<DocumentSnapshot | null>(null);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState<{ code?: string; message: string; path?: string } | null>(null);
 
   const loadAttempts = useCallback(async () => {
@@ -50,21 +53,24 @@ export function ResultsListPage() {
     setLoading(true);
     setError(null);
     try {
-      // Query attempts matching user ID
+      // Query attempts matching user ID with limit 20
       const q = query(
         collection(db, 'attempts'),
         where('userId', '==', user.uid),
-        orderBy('createdAt', 'desc')
+        orderBy('createdAt', 'desc'),
+        limit(20)
       );
       const snap = await getDocs(q);
       const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AttemptDoc));
       setAttempts(docs.filter((a) => a.status === 'completed' || a.score !== undefined));
+      setLastDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null);
+      setHasMore(snap.docs.length === 20);
     } catch (err: unknown) {
       console.warn('[ResultsListPage] Attempt query error:', err);
       // Fallback without compound index if needed
       try {
         const snap = await getDocs(
-          query(collection(db, 'attempts'), where('userId', '==', user.uid))
+          query(collection(db, 'attempts'), where('userId', '==', user.uid), limit(20))
         );
         const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AttemptDoc));
         docs.sort((a, b) => {
@@ -73,6 +79,8 @@ export function ResultsListPage() {
           return tB - tA;
         });
         setAttempts(docs.filter((a) => a.status === 'completed' || a.score !== undefined));
+        setLastDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null);
+        setHasMore(snap.docs.length === 20);
       } catch (fallbackErr: unknown) {
         const msg = fallbackErr instanceof Error ? fallbackErr.message : 'Failed to load test history';
         setError({ message: msg });
@@ -81,6 +89,30 @@ export function ResultsListPage() {
       setLoading(false);
     }
   }, [user]);
+
+  const handleLoadMore = async () => {
+    if (!user || !lastDoc || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const q = query(
+        collection(db, 'attempts'),
+        where('userId', '==', user.uid),
+        orderBy('createdAt', 'desc'),
+        startAfter(lastDoc),
+        limit(20)
+      );
+      const snap = await getDocs(q);
+      const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as AttemptDoc));
+      const filtered = docs.filter((a) => a.status === 'completed' || a.score !== undefined);
+      setAttempts((prev) => [...prev, ...filtered]);
+      setLastDoc(snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null);
+      setHasMore(snap.docs.length === 20);
+    } catch (err) {
+      console.warn('[ResultsListPage] Load more error:', err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   useEffect(() => {
     loadAttempts();
@@ -261,6 +293,19 @@ export function ResultsListPage() {
               </GlassCard>
             );
           })}
+
+          {hasMore && (
+            <div style={{ textAlign: 'center', paddingTop: 16 }}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+              >
+                {loadingMore ? 'Loading older results...' : 'Load older test results'}
+              </Button>
+            </div>
+          )}
         </div>
       )}
     </div>

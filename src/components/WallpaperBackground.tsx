@@ -34,7 +34,7 @@ export function WallpaperThumbnail({
  * Near-black base (#050508), deep red radial glow, large concentric red arcs in corner,
  * thin curved circuit lines, faint dot-matrix grid.
  */
-function CrimsonArcArtwork({ isThumbnail = false }: { isThumbnail?: boolean }) {
+const CrimsonArcArtwork = React.memo(function CrimsonArcArtwork({ isThumbnail = false }: { isThumbnail?: boolean }) {
   return (
     <div className="absolute inset-0 w-full h-full overflow-hidden bg-[#050508]">
       {/* Deep Red Radial Glows */}
@@ -125,14 +125,14 @@ function CrimsonArcArtwork({ isThumbnail = false }: { isThumbnail?: boolean }) {
       </svg>
     </div>
   );
-}
+});
 
 /**
  * 2. "Ember Grid":
  * Black (#050505) with a subtle red dot-matrix grid fading toward the edges.
  * Clean, technical, geometric, minimal.
  */
-function EmberGridArtwork({ isThumbnail = false }: { isThumbnail?: boolean }) {
+const EmberGridArtwork = React.memo(function EmberGridArtwork({ isThumbnail = false }: { isThumbnail?: boolean }) {
   return (
     <div className="absolute inset-0 w-full h-full overflow-hidden bg-[#050505]">
       {/* Warm Ambient Ember Core */}
@@ -189,14 +189,14 @@ function EmberGridArtwork({ isThumbnail = false }: { isThumbnail?: boolean }) {
       </svg>
     </div>
   );
-}
+});
 
 /**
  * 3. "Midnight":
  * Near-black (#030305) with a very soft red vignette.
  * Deep, sleek, distraction-free.
  */
-function MidnightArtwork({ isThumbnail = false }: { isThumbnail?: boolean }) {
+const MidnightArtwork = React.memo(function MidnightArtwork({ isThumbnail = false }: { isThumbnail?: boolean }) {
   return (
     <div className="absolute inset-0 w-full h-full overflow-hidden bg-[#030305]">
       {/* Outer Velvety Crimson Vignette */}
@@ -225,14 +225,15 @@ function MidnightArtwork({ isThumbnail = false }: { isThumbnail?: boolean }) {
       </svg>
     </div>
   );
-}
+});
 
 /**
  * Global Wallpaper Background layer rendered behind the app at all times.
  * Rendered at position: fixed; inset: 0; z-index: -1.
  * Dark overlay (~58%) ensures minimum 4.5:1 text contrast for all direct content.
+ * Hardware-accelerated with contain: strict and zero offscreen blur compositing passes.
  */
-export function WallpaperBackground() {
+export const WallpaperBackground = React.memo(function WallpaperBackground() {
   const { wallpaper } = useWallpaper();
 
   return (
@@ -248,6 +249,9 @@ export function WallpaperBackground() {
         bottom: 0,
         width: '100vw',
         height: '100vh',
+        contain: 'strict',
+        willChange: 'transform',
+        transform: 'translateZ(0)',
       }}
     >
       {/* Base Wallpaper SVG Artwork */}
@@ -260,9 +264,8 @@ export function WallpaperBackground() {
         className="absolute inset-0 pointer-events-none"
         style={{
           backgroundColor: 'rgba(0, 0, 0, 0.58)',
-          backdropFilter: 'blur(0.5px)',
         }}
       />
     </div>
   );
-}
+});

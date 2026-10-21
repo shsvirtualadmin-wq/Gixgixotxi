@@ -57,211 +57,214 @@ export interface UserProfileHookResult {
   retryFetch: () => void;
 }
 
+interface SharedUserProfileState {
+  profile: UserProfile | null;
+  docExists: boolean | null;
+  fetchStatus: 'idle' | 'loading' | 'success' | 'error';
+  fetchDurationMs: number | null;
+  error: { code?: string; message: string; path?: string } | null;
+  hasReceivedSnapshot: boolean;
+}
+
+let activeUid: string | null = null;
+let activeUnsub: (() => void) | null = null;
+let activeTimeoutTimer: NodeJS.Timeout | null = null;
+let teardownTimeout: NodeJS.Timeout | null = null;
+
+let sharedState: SharedUserProfileState = {
+  profile: null,
+  docExists: null,
+  fetchStatus: 'idle',
+  fetchDurationMs: null,
+  error: null,
+  hasReceivedSnapshot: false,
+};
+
+const subscriberCallbacks = new Set<() => void>();
+
+function broadcastState() {
+  for (const cb of subscriberCallbacks) {
+    try {
+      cb();
+    } catch {
+      // Ignore callback errors
+    }
+  }
+}
+
+function startSubscription(uid: string, authProfileFallback?: UserProfile | null) {
+  if (teardownTimeout) {
+    clearTimeout(teardownTimeout);
+    teardownTimeout = null;
+  }
+
+  if (activeUid === uid && activeUnsub) {
+    return;
+  }
+
+  if (activeUnsub) {
+    activeUnsub();
+    activeUnsub = null;
+  }
+  if (activeTimeoutTimer) {
+    clearTimeout(activeTimeoutTimer);
+    activeTimeoutTimer = null;
+  }
+
+  activeUid = uid;
+  const path = `users/${uid}`;
+  const startTime = Date.now();
+  const cached = getLocalCachedProfile(uid);
+
+  sharedState = {
+    profile: cached || authProfileFallback || null,
+    docExists: Boolean(cached),
+    fetchStatus: cached ? 'success' : 'loading',
+    fetchDurationMs: null,
+    error: null,
+    hasReceivedSnapshot: Boolean(cached),
+  };
+  broadcastState();
+
+  activeTimeoutTimer = setTimeout(() => {
+    if (!sharedState.hasReceivedSnapshot) {
+      console.warn(`[useUserProfile] Snapshot timeout (8s) on ${path}. Falling back to cached state.`);
+      const duration = Date.now() - startTime;
+      sharedState.hasReceivedSnapshot = true;
+      sharedState.fetchStatus = 'error';
+      sharedState.fetchDurationMs = duration;
+      sharedState.error = {
+        code: 'timeout',
+        message: 'Profile fetch timed out after 8s. Showing cached profile.',
+        path,
+      };
+      if (authProfileFallback && !sharedState.profile) {
+        sharedState.profile = authProfileFallback;
+      }
+      broadcastState();
+    }
+  }, 8000);
+
+  activeUnsub = onSnapshot(
+    doc(db, 'users', uid),
+    (snap) => {
+      if (activeTimeoutTimer) {
+        clearTimeout(activeTimeoutTimer);
+        activeTimeoutTimer = null;
+      }
+      const duration = Date.now() - startTime;
+      sharedState.fetchDurationMs = duration;
+      sharedState.hasReceivedSnapshot = true;
+      sharedState.error = null;
+
+      if (snap.exists()) {
+        const data = snap.data() as UserProfile;
+        const fullProfile = { ...data, uid };
+        sharedState.docExists = true;
+        sharedState.fetchStatus = 'success';
+        sharedState.profile = fullProfile;
+        setLocalCachedProfile(uid, fullProfile);
+        if (!data.shortId) {
+          import('@/utils/shortId').then(({ ensureUserShortId }) => {
+            ensureUserShortId(uid, data.shortId).catch(() => {});
+          });
+        }
+      } else {
+        sharedState.docExists = false;
+        sharedState.fetchStatus = 'success';
+        if (authProfileFallback) {
+          sharedState.profile = authProfileFallback;
+        }
+      }
+      broadcastState();
+    },
+    (err) => {
+      if (activeTimeoutTimer) {
+        clearTimeout(activeTimeoutTimer);
+        activeTimeoutTimer = null;
+      }
+      const duration = Date.now() - startTime;
+      const isQuota = isQuotaExhaustedError(err);
+      sharedState.fetchDurationMs = duration;
+      sharedState.hasReceivedSnapshot = true;
+      sharedState.fetchStatus = isQuota ? 'success' : 'error';
+      sharedState.error = {
+        code: isQuota ? 'RESOURCE_EXHAUSTED' : err.code,
+        message: isQuota ? 'Daily database limit reached, using cached profile' : err.message,
+        path,
+      };
+      const cachedProf = getLocalCachedProfile(uid);
+      if (cachedProf) {
+        sharedState.profile = cachedProf;
+        sharedState.docExists = true;
+      } else if (authProfileFallback) {
+        sharedState.profile = authProfileFallback;
+        sharedState.docExists = true;
+      }
+      broadcastState();
+    }
+  );
+}
+
+function releaseSubscription() {
+  if (teardownTimeout) clearTimeout(teardownTimeout);
+  teardownTimeout = setTimeout(() => {
+    if (subscriberCallbacks.size === 0 && activeUnsub) {
+      activeUnsub();
+      activeUnsub = null;
+      activeUid = null;
+    }
+  }, 15000);
+}
+
 /**
  * Single shared hook for accessing and updating the active student's profile.
- * Reads directly from `users/{uid}` with a real-time `onSnapshot` listener.
- * Prevents infinite loop re-renders by using stable refs.
- * Enforces an 8-second hard timeout to guarantee no indefinite skeleton states.
+ * Coordinates through a singleton observer on `users/{uid}` to eliminate duplicate reads.
+ * Prevents re-render cascades and ensures instant cache-first availability.
  */
 export function useUserProfile(): UserProfileHookResult {
   const { user, profile: authProfile, profileLoading: authLoading, updateLocalProfile } = useAuth();
-  const [profile, setProfile] = useState<UserProfile | null>(() => {
-    if (authProfile) return authProfile;
-    if (user?.uid) return getLocalCachedProfile(user.uid);
-    return null;
-  });
-  const [hasReceivedSnapshot, setHasReceivedSnapshot] = useState<boolean>(Boolean(profile));
-  const [docExists, setDocExists] = useState<boolean | null>(Boolean(profile));
-  const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [fetchDurationMs, setFetchDurationMs] = useState<number | null>(null);
-  const [error, setError] = useState<{ code?: string; message: string; path?: string } | null>(null);
-  const [retryTrigger, setRetryTrigger] = useState(0);
+  const [, setTick] = useState(0);
 
   const updateLocalProfileRef = useRef(updateLocalProfile);
   useEffect(() => {
     updateLocalProfileRef.current = updateLocalProfile;
   }, [updateLocalProfile]);
 
-  const authProfileRef = useRef(authProfile);
   useEffect(() => {
-    authProfileRef.current = authProfile;
-    if (authProfile && !profile) {
-      setProfile(authProfile);
-    }
-  }, [authProfile, profile]);
+    if (!user?.uid) return;
 
-  useEffect(() => {
-    if (!user?.uid) {
-      setProfile(null);
-      setHasReceivedSnapshot(false);
-      setDocExists(null);
-      setFetchStatus('idle');
-      setFetchDurationMs(null);
-      setError(null);
-      debugTracker.recordUserFetch({
-        status: 'idle',
-        updatedAt: Date.now(),
-      });
-      return;
-    }
+    const onUpdate = () => {
+      setTick((t) => t + 1);
+    };
 
-    const path = `users/${user.uid}`;
-    const startTime = Date.now();
-    setFetchStatus('loading');
-    debugTracker.recordUserFetch({
-      status: 'loading',
-      updatedAt: Date.now(),
-    });
-
-    let isSubscribed = true;
-
-    // 8-second safety timeout: guarantee loading ends even if network hangs
-    const timeoutTimer = setTimeout(() => {
-      if (isSubscribed && !hasReceivedSnapshot) {
-        console.warn(`[useUserProfile] Snapshot timeout (8s) on ${path}. Falling back to cached state.`);
-        const duration = Date.now() - startTime;
-        setHasReceivedSnapshot(true);
-        setFetchStatus('error');
-        setFetchDurationMs(duration);
-        setError({
-          code: 'timeout',
-          message: 'Profile fetch timed out after 8s. Showing cached profile.',
-          path,
-        });
-        debugTracker.recordUserFetch({
-          status: 'error',
-          code: 'timeout',
-          message: '8s timeout exceeded',
-          durationMs: duration,
-          docExists: false,
-          updatedAt: Date.now(),
-        });
-        // Use authProfile or minimal default profile
-        if (authProfileRef.current) {
-          setProfile(authProfileRef.current);
-        }
-      }
-    }, 8000);
-
-    const unsubscribe = onSnapshot(
-      doc(db, 'users', user.uid),
-      (snap) => {
-        if (!isSubscribed) return;
-        clearTimeout(timeoutTimer);
-        const duration = Date.now() - startTime;
-        setFetchDurationMs(duration);
-        setHasReceivedSnapshot(true);
-        setError(null);
-
-        if (snap.exists()) {
-          const data = snap.data() as UserProfile;
-          const fullProfile = { ...data, uid: user.uid };
-          setDocExists(true);
-          setFetchStatus('success');
-          setProfile(fullProfile);
-          setLocalCachedProfile(user.uid, fullProfile);
-          updateLocalProfileRef.current(data);
-          if (!data.shortId) {
-            import('@/utils/shortId').then(({ ensureUserShortId }) => {
-              ensureUserShortId(user.uid, data.shortId).catch(() => {});
-            });
-          }
-          debugTracker.recordUserFetch({
-            status: 'success',
-            durationMs: duration,
-            docExists: true,
-            updatedAt: Date.now(),
-          });
-        } else {
-          // Document does not exist yet: do NOT overwrite with defaults (AuthContext transaction handles creation)
-          setDocExists(false);
-          setFetchStatus('success');
-          console.log(`[useUserProfile] User doc pending creation at ${path}`);
-          if (authProfileRef.current) {
-            setProfile(authProfileRef.current);
-          }
-          debugTracker.recordUserFetch({
-            status: 'success',
-            durationMs: duration,
-            docExists: false,
-            updatedAt: Date.now(),
-          });
-        }
-      },
-      (err) => {
-        if (!isSubscribed) return;
-        clearTimeout(timeoutTimer);
-        const duration = Date.now() - startTime;
-        const isQuota = isQuotaExhaustedError(err);
-
-        if (isQuota) {
-          console.warn(`[useUserProfile] Quota limit reached on ${path}. Falling back to cached profile.`);
-        } else {
-          console.error(`[useUserProfile] Snapshot error on ${path}:`, err);
-        }
-
-        setFetchDurationMs(duration);
-        setHasReceivedSnapshot(true);
-        setFetchStatus(isQuota ? 'success' : 'error');
-        setError({
-          code: isQuota ? 'RESOURCE_EXHAUSTED' : err.code,
-          message: isQuota ? 'Daily database limit reached, using cached profile' : err.message,
-          path,
-        });
-
-        if (err.code === 'permission-denied') {
-          debugTracker.recordPlanLog({
-            action: 'profile_snapshot',
-            status: 'permission_denied',
-            errorCode: err.code,
-            details: `Permission denied reading ${path}`,
-          });
-        }
-        debugTracker.recordUserFetch({
-          status: isQuota ? 'success' : 'error',
-          code: err.code,
-          message: err.message,
-          durationMs: duration,
-          updatedAt: Date.now(),
-        });
-
-        // Always prioritize cached profile or authProfile so app doesn't break
-        const cached = getLocalCachedProfile(user.uid);
-        if (cached) {
-          setProfile(cached);
-          setDocExists(true);
-        } else if (authProfileRef.current) {
-          setProfile(authProfileRef.current);
-          setDocExists(true);
-        } else {
-          setProfile({
-            uid: user.uid,
-            email: user.email || '',
-            displayName: user.displayName || user.email?.split('@')[0] || 'Student',
-            targetUniversity: 'FAST',
-            role: 'student',
-            plan: 'free',
-          } as UserProfile);
-          setDocExists(true);
-        }
-      }
-    );
+    subscriberCallbacks.add(onUpdate);
+    startSubscription(user.uid, authProfile);
 
     return () => {
-      isSubscribed = false;
-      clearTimeout(timeoutTimer);
-      unsubscribe();
+      subscriberCallbacks.delete(onUpdate);
+      if (subscriberCallbacks.size === 0) {
+        releaseSubscription();
+      }
     };
-    // CRITICAL: only re-subscribe if user.uid changes or explicit retry is triggered!
-    // Never include authProfile or updateLocalProfile in dependencies to prevent infinite re-render loops!
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.uid, retryTrigger]);
+  }, [user?.uid, authProfile]);
+
+  const profile = sharedState.profile || (user?.uid ? getLocalCachedProfile(user.uid) : null);
+  const hasReceivedSnapshot = sharedState.hasReceivedSnapshot;
+  const docExists = sharedState.docExists;
+  const fetchStatus = sharedState.fetchStatus;
+  const fetchDurationMs = sharedState.fetchDurationMs;
+  const error = sharedState.error;
 
   const retryFetch = useCallback(() => {
-    setHasReceivedSnapshot(false);
-    setFetchStatus('loading');
-    setRetryTrigger((prev) => prev + 1);
-  }, []);
+    if (user?.uid) {
+      if (activeUnsub) {
+        activeUnsub();
+        activeUnsub = null;
+      }
+      startSubscription(user.uid, authProfile);
+    }
+  }, [user?.uid, authProfile]);
 
   // Loading state: true only while Auth is resolving OR while initial snapshot is waiting for active user
   const loading = (authLoading && !profile) || (Boolean(user?.uid) && !hasReceivedSnapshot && !profile);
@@ -357,7 +360,11 @@ export function useUserProfile(): UserProfileHookResult {
 
       // 1. Immediately update in-memory state so UI updates without needing a refresh
       updateLocalProfileRef.current(safePayload);
-      setProfile((prev) => (prev ? { ...prev, ...safePayload } : (safePayload as UserProfile)));
+      if (sharedState.profile) {
+        sharedState.profile = { ...sharedState.profile, ...safePayload };
+        setLocalCachedProfile(user.uid, sharedState.profile);
+      }
+      broadcastState();
 
       // 2. Perform merge write to Firestore
       await setDoc(doc(db, 'users', user.uid), safePayload, { merge: true });
