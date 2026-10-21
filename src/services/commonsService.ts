@@ -26,7 +26,8 @@ import type {
   CommonsFileAttachment,
   CommonsUserPreview,
 } from '@/types/commons';
-import { getFollowingIds } from '@/services/followService';
+import { getFollowingIds, fetchUserFollowers } from '@/services/followService';
+import { notifyFollowersOfPost } from '@/services/notificationService';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 const DAILY_POST_LIMIT = 10;
@@ -305,6 +306,26 @@ export async function createCommonsPost(params: {
 
   await batch.commit();
   await recordPostUsage(currentUser.uid);
+
+  // Notify followers if post is public (strictly skip if anonymous)
+  if (!params.isAnonymous && currentUser.uid) {
+    try {
+      const followers = await fetchUserFollowers(currentUser.uid, 100);
+      const followerUids = followers.map((f) => f.uid).filter(Boolean);
+      if (followerUids.length > 0) {
+        await notifyFollowersOfPost({
+          followerUids,
+          authorId: currentUser.uid,
+          authorName: publicAuthorName,
+          postId,
+          postTitle: params.title,
+          isAnonymous: false,
+        });
+      }
+    } catch (notifErr) {
+      console.warn('[commonsService] Failed to notify followers:', notifErr);
+    }
+  }
 
   return postId;
 }

@@ -85,8 +85,13 @@ export function PillNav({
                       }`}
                     >
                       {item.icon && (
-                        <span className={`shrink-0 flex items-center justify-center ${active ? 'text-white' : ''}`}>
+                        <span className={`shrink-0 flex items-center justify-center relative ${active ? 'text-white' : ''}`}>
                           {item.icon}
+                          {Boolean(item.badge) && (
+                            <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 bg-[#D71921] text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none border border-black shadow-sm">
+                              {Number(item.badge) > 9 ? '9+' : item.badge}
+                            </span>
+                          )}
                         </span>
                       )}
                       {!iconOnly && (!activeLabelOnly || active) && (
@@ -142,8 +147,13 @@ export function PillNav({
               }`}
             >
               {item.icon && (
-                <span className={`shrink-0 flex items-center justify-center ${isSelected ? 'text-white' : ''}`}>
+                <span className={`shrink-0 flex items-center justify-center relative ${isSelected ? 'text-white' : ''}`}>
                   {item.icon}
+                  {Boolean(item.badge) && (
+                    <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 bg-[#D71921] text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none border border-black shadow-sm">
+                      {Number(item.badge) > 9 ? '9+' : item.badge}
+                    </span>
+                  )}
                 </span>
               )}
               {!iconOnly && (!activeLabelOnly || isSelected) && (

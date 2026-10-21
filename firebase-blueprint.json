@@ -312,6 +312,12 @@
     "/config/{configDoc}": {
       "schema": { "$ref": "#/entities/AppConfig" },
       "description": "Global application configuration documents."
+    },
+    "/announcements/{announcementId}": {
+      "description": "Global broadcast announcements created by superadmin."
+    },
+    "/notifications/{notificationId}": {
+      "description": "In-app notifications for activity from followed students."
     }
   }
 }

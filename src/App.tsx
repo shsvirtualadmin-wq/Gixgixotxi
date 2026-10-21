@@ -83,8 +83,8 @@ const PlansBillingPage = lazyWithRetry(() =>
 const ArenaDashboardPage = lazyWithRetry(() =>
   import('./pages/dashboard/ArenaDashboardPage').then(m => ({ default: m.ArenaDashboardPage }))
 );
-const WeakChaptersPage = lazyWithRetry(() =>
-  import('./pages/dashboard/WeakChaptersPage').then(m => ({ default: m.WeakChaptersPage }))
+const NotificationsPage = lazyWithRetry(() =>
+  import('./pages/dashboard/NotificationsPage').then(m => ({ default: m.NotificationsPage }))
 );
 const StreaksPage = lazyWithRetry(() =>
   import('./pages/dashboard/StreaksPage').then(m => ({ default: m.StreaksPage }))
@@ -164,6 +164,9 @@ const AdminCrewsPage = lazyWithRetry(() =>
 const AdminKobansPage = lazyWithRetry(() =>
   import('./pages/admin/AdminKobansPage').then(m => ({ default: m.AdminKobansPage }))
 );
+const AdminAnnouncementsPage = lazyWithRetry(() =>
+  import('./pages/admin/AdminAnnouncementsPage').then(m => ({ default: m.AdminAnnouncementsPage }))
+);
 const AdminCommonsPage = lazyWithRetry(() =>
   import('./pages/admin/AdminCommonsPage').then(m => ({ default: m.AdminCommonsPage }))
 );
@@ -217,6 +220,7 @@ function AppInner() {
           <Route path="applications" element={<AdminApplicationsPage />} />
           <Route path="payments" element={<AdminPaymentsPage />} />
           <Route path="kobans" element={<AdminKobansPage />} />
+          <Route path="announcements" element={<AdminAnnouncementsPage />} />
           <Route path="captains" element={<AdminCaptainsPage />} />
           <Route path="audit-logs" element={<AdminAuditLogsPage />} />
           <Route path="crews" element={<AdminCrewsPage />} />
@@ -230,7 +234,8 @@ function AppInner() {
           <Route index element={<OverviewPage />} />
           <Route path="commons" element={<CommonsFeedPage />} />
           <Route path="practice" element={<Navigate to="/dashboard" replace />} />
-          <Route path="weak-chapters" element={<WeakChaptersPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
+          <Route path="weak-chapters" element={<Navigate to="/dashboard/notifications" replace />} />
           <Route path="streaks" element={<StreaksPage />} />
           <Route path="history" element={<ResultsListPage />} />
           <Route path="past-papers" element={<PlaceholderPage title="Past Papers" />} />

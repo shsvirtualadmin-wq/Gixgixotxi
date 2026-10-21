@@ -13,7 +13,7 @@ import {
   ChevronRight,
   Award,
   Flame,
-  Target,
+  Bell,
   User,
   Users,
   Menu,
@@ -30,11 +30,13 @@ import { KobanChip } from '@/components/koban/KobanIcon';
 import { AvatarPicture, AvatarFrame, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
+import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 
 export function DashboardBottomNav() {
   const { isAdmin, signOutUser } = useAuth();
   const { user, profile } = useUserProfile();
   const { openProfile } = useProfileModal();
+  const unreadCount = useUnreadNotificationsCount();
   const navigate = useNavigate();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -66,7 +68,7 @@ export function DashboardBottomNav() {
   const isApprovedCaptain = role === 'captain' || role === 'ambassador' || Boolean(profile?.isCaptain) || Boolean(profile?.isAmbassador);
   const crewLink = '/dashboard/crew';
 
-  // Unified Student Nav: Home, Commons, Weak Chapters, Streaks, Crew, [Captain], Menu
+  // Unified Student Nav: Home, Commons, Notifications, Streaks, Crew, [Captain], Menu
   const navItems: PillNavItem[] = [
     {
       to: '/dashboard',
@@ -80,9 +82,10 @@ export function DashboardBottomNav() {
       icon: <Compass size={18} />,
     },
     {
-      to: '/dashboard/weak-chapters',
-      label: 'Weak Chapters',
-      icon: <Target size={18} />,
+      to: '/dashboard/notifications',
+      label: 'Notifications',
+      icon: <Bell size={18} />,
+      badge: unreadCount > 0 ? unreadCount : undefined,
     },
     {
       to: '/dashboard/streaks',
@@ -249,6 +252,34 @@ export function DashboardBottomNav() {
                 <ChevronRight size={14} className="text-[var(--muted)]" />
               </button>
 
+              {/* Notifications */}
+              <button
+                type="button"
+                onClick={() => handleNav('/dashboard/notifications')}
+                className="w-full flex items-center justify-between py-3.5 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--surface-hover)] text-sm sm:text-base font-heading text-[var(--text)] transition-colors text-left cursor-pointer"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[var(--surface-2)] flex items-center justify-center text-[var(--text)] shrink-0 relative">
+                    <Bell size={17} />
+                    {unreadCount > 0 && (
+                      <span className="w-2 h-2 rounded-full bg-[var(--red)] absolute top-1 right-1" />
+                    )}
+                  </div>
+                  <div>
+                    <span className="font-bold">Notifications</span>
+                    <p className="text-[11px] text-[var(--muted)]">Follower activity &amp; announcements</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {unreadCount > 0 && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[var(--red)] text-white">
+                      {unreadCount} new
+                    </span>
+                  )}
+                  <ChevronRight size={14} className="text-[var(--muted)]" />
+                </div>
+              </button>
+
               {/* 2. Profile */}
               {profile?.profileCompleted || profile?.onboardingCompleted ? (
                 <button
@@ -270,7 +301,7 @@ export function DashboardBottomNav() {
                 >
                   <div className="flex items-center gap-3">
                     <GraduationCap size={18} className="text-[var(--muted)]" />
-                    <span>Target Exam &amp; Profile Setup</span>
+                    <span>Profile Setup</span>
                   </div>
                   <ChevronRight size={14} className="text-[var(--muted)]" />
                 </button>

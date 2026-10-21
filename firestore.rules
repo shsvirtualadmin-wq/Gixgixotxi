@@ -182,6 +182,11 @@ service cloud.firestore {
       match /savedCommons/{postId} {
         allow read, write: if isOwner(userId) || isAdmin();
       }
+
+      // Subcollection: Read announcements tracking
+      match /readAnnouncements/{announcementId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
     }
 
     // =========================================================================
@@ -495,6 +500,25 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow create: if true;
       allow update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 14. IN-APP NOTIFICATIONS & SUPERADMIN ANNOUNCEMENTS
+    // =========================================================================
+
+    // Global superadmin announcements: read by all signed-in users, created & deleted ONLY by superadmin
+    match /announcements/{announcementId} {
+      allow read: if isSignedIn();
+      allow create, delete: if isAdmin();
+      allow update: if false;
+    }
+
+    // In-app notifications: strictly scoped to recipient user or superadmin
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow delete: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
     }
   }
 }

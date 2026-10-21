@@ -45,11 +45,11 @@ const REAL_FEATURES = [
   {
     num: '04',
     icon: <Flame size={22} />,
-    title: 'Weak Chapter Diagnostics & Streaks',
-    badge: 'Analytics',
-    desc: 'Detailed chapter accuracy metrics tracking weak topics (such as Integration by Parts or Aldehydes & Ketones). Daily study streak counters reset precisely at 12:00 AM PKT (Asia/Karachi).',
-    link: '/dashboard/weak-chapters',
-    linkText: 'Track Weak Chapters',
+    title: 'Study Streaks & Practice Tracking',
+    badge: 'Consistency',
+    desc: 'Maintain your daily study routine with streak counters that reset precisely at 12:00 AM PKT (Asia/Karachi), along with complete attempt history logs.',
+    link: '/dashboard/streaks',
+    linkText: 'Track Daily Streaks',
   },
   {
     num: '05',
@@ -94,8 +94,8 @@ export function FeaturesPage() {
   return (
     <>
       <PageMeta
-        title="Features — Boardly Entrance Test Engine"
-        description="Explore the authentic capabilities built into Boardly: timed entrance sprints, negative marking simulations, KaTeX derivations, weak chapter diagnostics, and Study Crews."
+        title="Features — Boardly Practice & Learning Engine"
+        description="Explore the authentic capabilities built into Boardly: timed practice sprints, negative marking simulations, KaTeX derivations, in-app notifications, and Study Crews."
       />
 
       <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-16">
