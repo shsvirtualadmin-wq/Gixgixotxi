@@ -141,9 +141,14 @@ export function NotificationsPage() {
   const allNotifications = useMemo<AppNotification[]>(() => {
     const combined = [...userNotifications, ...announcementNotifications];
     return combined.sort((a, b) => {
-      const timeA = a.createdAt?.toDate ? a.createdAt.toDate().getTime() : new Date(a.createdAt || 0).getTime();
-      const timeB = b.createdAt?.toDate ? b.createdAt.toDate().getTime() : new Date(b.createdAt || 0).getTime();
-      return timeB - timeA;
+      const getMillis = (val: any) => {
+        if (!val) return 0;
+        if (typeof val.toDate === 'function') return val.toDate().getTime();
+        if (val instanceof Date) return val.getTime();
+        if (typeof val === 'number') return val;
+        return new Date(val).getTime() || 0;
+      };
+      return getMillis(b.createdAt) - getMillis(a.createdAt);
     });
   }, [userNotifications, announcementNotifications]);
 
