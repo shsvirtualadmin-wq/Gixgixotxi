@@ -267,7 +267,7 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
                 onChange={(e) => setBio(e.target.value.slice(0, 160))}
                 maxLength={160}
                 rows={3}
-                placeholder="Share your exam target or favorite subject. Links will never be clickable."
+                placeholder="Add a short bio so other students can get to know you."
                 className="w-full p-3 rounded-xl bg-[var(--input-bg,var(--card-2))] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors resize-none"
               />
             </div>

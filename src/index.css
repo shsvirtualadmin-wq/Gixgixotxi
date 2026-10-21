@@ -280,6 +280,7 @@
 .text-on-accent { color: var(--text-on-accent) !important; }
 
 .bg-accent { background-color: var(--accent) !important; }
+.bg-accent-soft { background-color: var(--accent-soft) !important; }
 .text-accent { color: var(--accent) !important; }
 .border-accent { border-color: var(--accent) !important; }
 

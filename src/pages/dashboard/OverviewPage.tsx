@@ -15,7 +15,6 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
-import { CountdownTimer } from '@/components/dashboard/CountdownTimer';
 import { DailyLimitsMeter } from '@/components/dashboard/DailyLimitsMeter';
 import { RecentAttempts } from '@/components/dashboard/RecentAttempts';
 import { WeakChapters } from '@/components/dashboard/WeakChapters';
@@ -255,14 +254,14 @@ export function OverviewPage() {
         <div className="p-4 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-[rgba(239,68,68,0.12)] text-[var(--red)] flex items-center justify-center shrink-0">
-              <Target size={18} />
+              <BookOpen size={18} />
             </div>
             <div>
               <p className="font-heading font-semibold text-sm text-[var(--text)]">
-                Target Exam &amp; Profile Setup
+                Complete Your Profile
               </p>
               <p className="text-xs text-[var(--muted)]">
-                Personalize your target university and test date to calibrate all Complete Test blueprints.
+                Personalize your nickname, study subjects and preferences.
               </p>
             </div>
           </div>
@@ -278,19 +277,22 @@ export function OverviewPage() {
 
       {/* ── 4-Card Cockpit Metric Row (Responsive Grid: 1 col mobile, 2 sm, 4 lg) ──────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Metric 1: Target Exam Countdown */}
+        {/* Metric 1: Questions Solved */}
         <Card className="justify-between min-h-[135px]">
           <div className="flex items-center justify-between text-xs text-[var(--muted)]">
             <span className="font-semibold uppercase tracking-wider text-[10px]">
-              Exam Countdown
+              Questions Solved
             </span>
-            <Target size={16} />
+            <BookOpen size={16} />
           </div>
           <div>
-            <CountdownTimer
-              targetTestDate={targetTestDate}
-              targetUniversity={selectedTarget}
-            />
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="font-doto text-3xl font-bold text-[var(--text)]">
+                {profile?.stats?.mcqs || profile?.totalQuestionsSolved || 0}
+              </span>
+              <span className="text-xs text-[var(--muted)]">MCQs</span>
+            </div>
+            <p className="text-[11px] text-[var(--muted)]">Continuous practice progress</p>
           </div>
         </Card>
 
@@ -432,7 +434,7 @@ export function OverviewPage() {
                 Complete Test
               </h2>
               <p className="text-xs sm:text-sm text-[var(--muted)] mt-0.5">
-                Full authentic entrance simulation generated directly from your target blueprint.
+                Full authentic simulation generated directly from curriculum blueprint.
               </p>
             </div>
 
@@ -443,7 +445,7 @@ export function OverviewPage() {
                 className="btn-outline px-3.5 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer hover:border-[var(--accent)]"
               >
                 <Sliders size={14} className="text-[var(--accent)]" />
-                <span>Change target: {blueprint.name}</span>
+                <span>Blueprint: {blueprint.name}</span>
                 <ChevronRight size={13} className="text-[var(--muted)]" />
               </button>
             </div>
@@ -455,7 +457,7 @@ export function OverviewPage() {
               <div className="flex items-center gap-2 min-w-0">
                 <Target size={16} className="text-[var(--red)] shrink-0" />
                 <div className="text-xs min-w-0">
-                  <span className="font-bold text-[var(--text)]">Targeted Focus Active: </span>
+                  <span className="font-bold text-[var(--text)]">Chapter Focus Active: </span>
                   <span className="text-[var(--red)] font-semibold">{weightedChapter}</span>
                   <span className="text-[var(--muted)]"> (~50% weighted in {weightedSubject || 'subject'} section)</span>
                 </div>
@@ -633,7 +635,7 @@ export function OverviewPage() {
                   className="text-lg font-bold text-[var(--text)]"
                   style={{ fontFamily: 'var(--font-heading)' }}
                 >
-                  Select Target Test Blueprint
+                  Select Test Blueprint
                 </h3>
                 <p className="text-xs text-[var(--muted)] mt-0.5">
                   Official Pakistani university criteria, negative marking rules, and section splits.

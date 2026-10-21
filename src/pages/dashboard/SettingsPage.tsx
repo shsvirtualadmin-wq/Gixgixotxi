@@ -1,40 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
-import { GlassCard } from '@/components/ui/GlassCard';
-import { Button } from '@/components/ui/Button';
-import { Skeleton } from '@/components/ui/Skeleton';
-import {
-  Sun,
-  Moon,
-  Check,
-  Save,
-  LogOut,
-  Trash2,
-  AlertTriangle,
-  X,
-  Eye,
-  EyeOff,
-  KeyRound,
-  ShieldCheck,
-  UserCheck,
-  Send,
-  Loader2,
-  Mail,
-  Lock,
-  AlertCircle,
-  CheckCircle2,
-} from 'lucide-react';
-import { formatStudentId } from '@/utils/shortId';
-import { wipeStudentAccount } from '@/services/userAccountService';
 import { useTheme } from '@/hooks/useTheme';
-import { useWallpaper, WALLPAPERS } from '@/hooks/useWallpaper';
-import { WallpaperThumbnail } from '@/components/WallpaperBackground';
+import { useEffectivePlan } from '@/hooks/useEffectivePlan';
+import { RoleBadge } from '@/components/ui/RoleBadge';
+import { StorePricingManager } from '@/components/store/StorePricingManager';
 import {
   checkUsernameAvailability,
   saveProfileIdentity,
-  sendReservedNameRequest,
   type UsernameCheckResult,
 } from '@/services/userService';
 import {
@@ -43,39 +17,38 @@ import {
   isForbiddenAdminRole,
 } from '@/utils/usernameValidation';
 import {
-  EmailAuthProvider,
-  linkWithCredential,
-  reauthenticateWithPopup,
-  reauthenticateWithCredential,
   updatePassword,
   sendPasswordResetEmail,
-  GoogleAuthProvider,
+  linkWithCredential,
+  EmailAuthProvider,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
-import { RoleBadge } from '@/components/ui/RoleBadge';
-
-const PAKISTANI_UNIVERSITIES = [
-  'FAST-NUCES (CS/SE/AI/DS)',
-  'NUST NET (Engineering & Computing)',
-  'GIKI (Top Engineering & CS)',
-  'LUMS (SBASSE / SDSB)',
-  'NED University Karachi',
-  'MDCAT (UHS / PMDC / NUMS)',
-  'ECAT Punjab (UET Lahore)',
-  'PIEAS Islamabad',
-  'COMSATS University',
-  'Habib University',
-  'IBA Karachi',
-  'AKU (Aga Khan University)',
-];
+import {
+  User,
+  Shield,
+  CreditCard,
+  Lock,
+  Sun,
+  Moon,
+  Monitor,
+  LogOut,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  Eye,
+  EyeOff,
+  ChevronRight,
+  ExternalLink,
+  Sliders,
+  Sparkles,
+} from 'lucide-react';
 
 export function SettingsPage() {
   const navigate = useNavigate();
   const { user, isAdmin, signOutUser } = useAuth();
   const { profile, loading: profileLoading, updateProfileData } = useUserProfile();
-
-  const { theme, setTheme: toggleTheme } = useTheme();
-  const { wallpaper: currentWallpaper, setWallpaper } = useWallpaper();
+  const effectivePlan = useEffectivePlan();
+  const { themeSetting, resolvedTheme, setTheme } = useTheme();
 
   // ── Profile Identity State ────────────────────────────────────────────────
   const [roleOption, setRoleOption] = useState<string>('Student');
@@ -89,1209 +62,700 @@ export function SettingsPage() {
   const [identitySuccess, setIdentitySuccess] = useState<string | null>(null);
   const [identityError, setIdentityError] = useState<string | null>(null);
 
-  // Reserved name request state
-  const [sendingNameRequest, setSendingNameRequest] = useState<boolean>(false);
-  const [nameRequestSuccess, setNameRequestSuccess] = useState<string | null>(null);
-
-  // ── Academic Preferences State ────────────────────────────────────────────
-  const [targetUniversity, setTargetUniversity] = useState('');
-  const [targetTestDate, setTargetTestDate] = useState('');
-  const [savingPreferences, setSavingPreferences] = useState(false);
-  const [preferencesSuccess, setPreferencesSuccess] = useState(false);
-
-  // ── Security State ────────────────────────────────────────────────────────
-  // Provider detection
-  const providerIds = useMemo(() => {
-    return (user?.providerData || []).map((p) => p.providerId);
-  }, [user]);
-
-  const hasGoogle = providerIds.includes('google.com');
-  const hasPassword = providerIds.includes('password');
-
-  // Set password form (Google-only)
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [settingPassword, setSettingPassword] = useState(false);
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
-
-  // Change password form (when password already exists)
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
-  const [changePasswordError, setChangePasswordError] = useState<string | null>(null);
-  const [changePasswordSuccess, setChangePasswordSuccess] = useState<string | null>(null);
-
-  // Forgot password flow
-  const [sendingReset, setSendingReset] = useState(false);
-  const [resetMessage, setResetMessage] = useState<string | null>(null);
-
-  // ── Account Deletion & Logout ─────────────────────────────────────────────
-  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-  const [deleteConfirmText, setDeleteConfirmText] = useState('');
-  const [deletingAccount, setDeletingAccount] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  // ── Populate initial data from profile ────────────────────────────────────
+  // Sync profile when loaded
   useEffect(() => {
     if (profile) {
-      const initialNickname = profile.nickname || profile.displayName || user?.displayName || '';
-      setNickname(initialNickname);
-
-      const initialUsername = profile.username || '';
-      setUsername(initialUsername);
-
-      const rawRole = profile.role || 'Student';
-      if (isAdmin || rawRole === 'admin' || rawRole === 'superadmin') {
-        setRoleOption('Super Admin');
-      } else if (rawRole === 'Teacher' || rawRole === 'Parent') {
-        setRoleOption(rawRole);
-      } else if (rawRole === 'Student' || rawRole === 'student') {
-        setRoleOption('Student');
-      } else {
-        setRoleOption('Other');
-        setCustomRoleText(profile.customRole || rawRole || '');
+      if (profile.role) {
+        const lower = profile.role.toLowerCase();
+        if (lower === 'teacher') setRoleOption('Teacher');
+        else if (lower === 'parent') setRoleOption('Parent');
+        else if (lower === 'other') {
+          setRoleOption('Other');
+          setCustomRoleText(profile.customRole || '');
+        } else {
+          setRoleOption('Student');
+        }
       }
-
-      setTargetUniversity(profile.targetUniversity || '');
-      setTargetTestDate(profile.targetTestDate || '');
+      setNickname(profile.nickname || profile.displayName || '');
+      setUsername(profile.username || '');
     }
-  }, [profile, user, isAdmin]);
+  }, [profile]);
 
-  // ── Debounced Live Username Availability Check ────────────────────────────
-  const checkTimerRef = useRef<NodeJS.Timeout | null>(null);
-
+  // Live username availability debounce check (350ms)
+  const usernameCheckSeq = useRef(0);
   useEffect(() => {
-    if (!username.trim()) {
+    if (!username || username.trim() === '') {
       setUsernameStatus(null);
       setCheckingUsername(false);
       return;
     }
 
     const clean = username.trim().toLowerCase();
-
-    // If unchanged from saved profile username, it is available for current user
-    if (profile?.username && clean === profile.username.toLowerCase()) {
-      setUsernameStatus({ available: true, isCurrent: true });
+    const formatCheck = validateUsernameFormat(clean);
+    if (!formatCheck.valid) {
+      setUsernameStatus({
+        available: false,
+        reason: formatCheck.error || 'Invalid username format',
+      });
       setCheckingUsername(false);
       return;
     }
 
-    setCheckingUsername(true);
-    if (checkTimerRef.current) {
-      clearTimeout(checkTimerRef.current);
+    // If matches user's current saved username
+    if (profile?.username && clean === profile.username.toLowerCase()) {
+      setUsernameStatus({ available: true });
+      setCheckingUsername(false);
+      return;
     }
 
-    checkTimerRef.current = setTimeout(async () => {
-      const res = await checkUsernameAvailability(clean, user?.uid, isAdmin);
-      setUsernameStatus(res);
-      setCheckingUsername(false);
+    const seq = ++usernameCheckSeq.current;
+    setCheckingUsername(true);
+
+    const timer = setTimeout(async () => {
+      try {
+        const res = await checkUsernameAvailability(clean, user?.uid);
+        if (seq === usernameCheckSeq.current) {
+          setUsernameStatus(res);
+          setCheckingUsername(false);
+        }
+      } catch (err) {
+        if (seq === usernameCheckSeq.current) {
+          setUsernameStatus({ available: false, reason: 'Error checking username' });
+          setCheckingUsername(false);
+        }
+      }
     }, 350);
 
-    return () => {
-      if (checkTimerRef.current) {
-        clearTimeout(checkTimerRef.current);
-      }
-    };
-  }, [username, profile?.username, user?.uid, isAdmin]);
+    return () => clearTimeout(timer);
+  }, [username, user?.uid, profile?.username]);
 
-  // ── Nickname validation helper ────────────────────────────────────────────
-  const nicknameValidation = useMemo(() => {
-    if (!nickname) return { valid: false, error: 'Nickname cannot be empty.' };
-    return validateNickname(nickname, user?.uid, isAdmin);
-  }, [nickname, user?.uid, isAdmin]);
-
-  // ── Save Profile Identity ─────────────────────────────────────────────────
   const handleSaveIdentity = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user) return;
+    if (!user?.uid) return;
 
+    setSavingIdentity(true);
     setIdentityError(null);
     setIdentitySuccess(null);
 
-    // Validate nickname
-    if (!nicknameValidation.valid) {
-      setIdentityError(nicknameValidation.error || 'Please enter a valid nickname.');
+    // Validate Nickname
+    const nickVal = validateNickname(nickname);
+    if (!nickVal.valid) {
+      setIdentityError(nickVal.error || 'Invalid nickname.');
+      setSavingIdentity(false);
       return;
     }
 
-    // Validate username format
-    const uVal = validateUsernameFormat(username, user.uid, isAdmin);
-    if (!uVal.valid) {
-      setIdentityError(uVal.error || 'Please enter a valid username.');
-      return;
+    // Validate Role
+    let finalRole = roleOption.toLowerCase();
+    let finalCustomRole: string | undefined = undefined;
+
+    if (roleOption === 'Other') {
+      if (!customRoleText.trim()) {
+        setIdentityError('Please specify your custom role.');
+        setSavingIdentity(false);
+        return;
+      }
+      if (isForbiddenAdminRole(customRoleText)) {
+        setIdentityError('This role title is reserved for platform staff.');
+        setSavingIdentity(false);
+        return;
+      }
+      finalCustomRole = customRoleText.trim().slice(0, 30);
     }
 
-    // Check username availability
-    if (usernameStatus && !usernameStatus.available && !usernameStatus.isCurrent) {
-      setIdentityError(usernameStatus.error || 'This username is not available.');
-      return;
-    }
-
-    // Role check
-    let finalRole = roleOption;
-    let finalCustomRole: string | null = null;
-
-    if (!isAdmin) {
-      if (roleOption === 'Other') {
-        const trimmedCustom = customRoleText.trim();
-        if (!trimmedCustom) {
-          setIdentityError('Please enter a role title for "Other".');
-          return;
-        }
-        if (isForbiddenAdminRole(trimmedCustom)) {
-          setIdentityError('You cannot assign yourself an administrative role.');
-          return;
-        }
-        finalRole = 'Other';
-        finalCustomRole = trimmedCustom.slice(0, 20);
-      } else if (isForbiddenAdminRole(roleOption)) {
-        setIdentityError('You cannot assign yourself an administrative role.');
+    // Validate Username if entered
+    let cleanUsername = username.trim().toLowerCase();
+    if (cleanUsername) {
+      const uVal = validateUsernameFormat(cleanUsername);
+      if (!uVal.valid) {
+        setIdentityError(uVal.error || 'Invalid username format.');
+        setSavingIdentity(false);
+        return;
+      }
+      if (usernameStatus && !usernameStatus.available && cleanUsername !== (profile?.username || '').toLowerCase()) {
+        setIdentityError(usernameStatus.reason || 'Username is not available.');
+        setSavingIdentity(false);
         return;
       }
     } else {
-      finalRole = 'superadmin';
+      cleanUsername = '';
     }
 
-    setSavingIdentity(true);
     try {
-      const result = await saveProfileIdentity(
-        user.uid,
-        {
-          role: finalRole,
-          customRole: finalCustomRole,
-          nickname: nickname.trim(),
-          username: username.trim().toLowerCase(),
-          previousUsername: profile?.username || null,
-        },
-        isAdmin
-      );
+      await saveProfileIdentity({
+        uid: user.uid,
+        nickname: nickname.trim(),
+        username: cleanUsername,
+        role: finalRole,
+        customRole: finalCustomRole,
+      });
 
-      if (!result.success) {
-        setIdentityError(result.error || 'Failed to save identity.');
-      } else {
-        setIdentitySuccess('Profile identity saved successfully!');
-        setTimeout(() => setIdentitySuccess(null), 3500);
-      }
-    } catch (err: any) {
-      console.error('[SettingsPage] Error saving identity:', err);
-      setIdentityError(err?.message || 'An error occurred while saving profile identity.');
+      // Update local profile hook state
+      await updateProfileData({
+        displayName: nickname.trim(),
+      });
+
+      setIdentitySuccess('Profile identity saved successfully.');
+      setTimeout(() => setIdentitySuccess(null), 3500);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to save identity.';
+      setIdentityError(msg);
     } finally {
       setSavingIdentity(false);
     }
   };
 
-  // ── Send Reserved Name Request ────────────────────────────────────────────
-  const handleSendReservedNameRequest = async () => {
-    if (!user || !username.trim()) return;
-    setSendingNameRequest(true);
-    setNameRequestSuccess(null);
-    setIdentityError(null);
+  // ── Account & Password Management State ──────────────────────────────────
+  const isGoogleUser = useMemo(() => {
+    return user?.providerData?.some((p) => p.providerId === 'google.com');
+  }, [user]);
 
-    try {
-      const res = await sendReservedNameRequest(
-        user.uid,
-        username.trim().toLowerCase(),
-        user.email,
-        nickname
-      );
+  const hasPasswordProvider = useMemo(() => {
+    return user?.providerData?.some((p) => p.providerId === 'password');
+  }, [user]);
 
-      if (res.success) {
-        setNameRequestSuccess(
-          `Request for "${username.trim().toLowerCase()}" submitted to Super Admin for approval.`
-        );
-      } else {
-        setIdentityError(res.error || 'Failed to submit name request.');
-      }
-    } catch (err: any) {
-      setIdentityError(err?.message || 'Failed to submit request.');
-    } finally {
-      setSendingNameRequest(false);
-    }
-  };
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [resetEmailSent, setResetEmailSent] = useState(false);
 
-  // ── Save Academic Preferences ─────────────────────────────────────────────
-  const handleSavePreferences = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user) return;
-    setSavingPreferences(true);
-    setPreferencesSuccess(false);
-
-    try {
-      await updateProfileData({
-        targetUniversity: targetUniversity.trim() || undefined,
-        targetTestDate: targetTestDate.trim() || undefined,
-      });
-      setPreferencesSuccess(true);
-      setTimeout(() => setPreferencesSuccess(false), 3000);
-    } catch (err) {
-      console.error('[SettingsPage] Error saving preferences:', err);
-    } finally {
-      setSavingPreferences(false);
-    }
-  };
-
-  // ── Set Password for Google-Only Account ───────────────────────────────────
   const handleSetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user || !user.email) return;
 
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match.');
+      return;
+    }
+
+    setSavingPassword(true);
     setPasswordError(null);
     setPasswordSuccess(null);
 
-    // Password strength hint: minimum 8 characters, at least one letter and one number
-    if (newPassword.length < 8) {
-      setPasswordError('Password must be at least 8 characters long.');
-      return;
-    }
-    const hasLetter = /[A-Za-z]/.test(newPassword);
-    const hasNumber = /\d/.test(newPassword);
-    if (!hasLetter || !hasNumber) {
-      setPasswordError('Password must contain at least one letter and one number.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setPasswordError('New password and confirmation password do not match.');
-      return;
-    }
-
-    setSettingPassword(true);
-    const credential = EmailAuthProvider.credential(user.email, newPassword);
-
     try {
-      await linkWithCredential(user, credential);
-      await user.reload();
-      setPasswordSuccess(
-        'Password set successfully! You can now sign in with either Google or your email and password.'
-      );
+      if (hasPasswordProvider) {
+        // Change existing password
+        await updatePassword(user, newPassword);
+        setPasswordSuccess('Password updated successfully.');
+      } else {
+        // Link password credential for Google user
+        const credential = EmailAuthProvider.credential(user.email, newPassword);
+        await linkWithCredential(user, credential);
+        setPasswordSuccess('Password linked successfully! You can now sign in with email or Google.');
+      }
       setNewPassword('');
       setConfirmPassword('');
-    } catch (err: any) {
-      console.warn('[SettingsPage] linkWithCredential error:', err);
-
-      // If sensitive change requires recent login, re-authenticate with Google first
-      if (
-        err.code === 'auth/requires-recent-login' ||
-        err.message?.includes('recent') ||
-        err.code === 'auth/user-token-expired'
-      ) {
-        try {
-          const provider = new GoogleAuthProvider();
-          await reauthenticateWithPopup(user, provider);
-          // Retry link
-          await linkWithCredential(user, credential);
-          await user.reload();
-          setPasswordSuccess(
-            'Password set successfully! You can now sign in with either Google or your email and password.'
-          );
-          setNewPassword('');
-          setConfirmPassword('');
-        } catch (reauthErr: any) {
-          console.error('[SettingsPage] Google re-authentication failed:', reauthErr);
-          setPasswordError(
-            reauthErr?.message ||
-              'Please sign out and sign back in with Google before setting a password.'
-          );
-        }
-      } else if (err.code === 'auth/provider-already-linked') {
-        setPasswordError('A password is already linked to this account.');
-      } else {
-        setPasswordError(err?.message || 'Failed to set password. Please try again.');
-      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to update password. You may need to sign in again first.';
+      setPasswordError(msg);
     } finally {
-      setSettingPassword(false);
+      setSavingPassword(false);
     }
   };
 
-  // ── Change Password (for accounts with an existing password) ───────────────
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!user || !user.email) return;
-
-    setChangePasswordError(null);
-    setChangePasswordSuccess(null);
-
-    if (!currentPassword) {
-      setChangePasswordError('Please enter your current password.');
-      return;
-    }
-
-    if (newPassword.length < 8) {
-      setChangePasswordError('New password must be at least 8 characters long.');
-      return;
-    }
-    const hasLetter = /[A-Za-z]/.test(newPassword);
-    const hasNumber = /\d/.test(newPassword);
-    if (!hasLetter || !hasNumber) {
-      setChangePasswordError('New password must contain at least one letter and one number.');
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      setChangePasswordError('New password and confirmation password do not match.');
-      return;
-    }
-
-    setChangingPassword(true);
-    try {
-      const cred = EmailAuthProvider.credential(user.email, currentPassword);
-      await reauthenticateWithCredential(user, cred);
-      await updatePassword(user, newPassword);
-      setChangePasswordSuccess('Password updated successfully!');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
-      setTimeout(() => setChangePasswordSuccess(null), 4000);
-    } catch (err: any) {
-      console.warn('[SettingsPage] Change password error:', err);
-      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
-        setChangePasswordError('Current password is incorrect.');
-      } else if (err.code === 'auth/requires-recent-login') {
-        setChangePasswordError('Please log in again before changing your password.');
-      } else {
-        setChangePasswordError(err?.message || 'Failed to change password. Please try again.');
-      }
-    } finally {
-      setChangingPassword(false);
-    }
-  };
-
-  // ── Forgot Password (sends reset email) ───────────────────────────────────
-  const handleForgotPassword = async () => {
-    if (!user || !user.email) return;
-    setSendingReset(true);
-    setResetMessage(null);
-
+  const handleSendResetEmail = async () => {
+    if (!user?.email) return;
     try {
       await sendPasswordResetEmail(auth, user.email);
-      // Strictly do not reveal whether email exists; provide uniform reassuring message
-      setResetMessage(
-        'If this email is registered, a password reset link has been sent to your inbox.'
-      );
-    } catch (err: any) {
-      console.warn('[SettingsPage] Reset password error:', err);
-      // Even on error, don't leak account existence
-      setResetMessage(
-        'If this email is registered, a password reset link has been sent to your inbox.'
-      );
-    } finally {
-      setSendingReset(false);
+      setResetEmailSent(true);
+      setTimeout(() => setResetEmailSent(false), 5000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Could not send reset email.';
+      setPasswordError(msg);
     }
   };
 
-  // ── Logout & Account Deletion ─────────────────────────────────────────────
-  const handleLogout = async () => {
+  // ── Sign Out Confirmation State ──────────────────────────────────────────
+  const [showSignOutModal, setShowSignOutModal] = useState(false);
+
+  const handleConfirmSignOut = async () => {
+    setShowSignOutModal(false);
     await signOutUser();
     navigate('/login');
   };
 
-  const handleConfirmDelete = async () => {
-    if (!user) return;
-    setDeletingAccount(true);
-    setDeleteError(null);
-    try {
-      await wipeStudentAccount(user.uid);
-      await signOutUser();
-      navigate('/');
-    } catch (err) {
-      console.error('[SettingsPage] Delete account error:', err);
-      setDeleteError(
-        err instanceof Error ? err.message : 'Failed to delete account. Please try again.'
-      );
-      setDeletingAccount(false);
-    }
-  };
+  // Superadmin privileges
+  const isSuperAdmin = Boolean(
+    isAdmin ||
+    effectivePlan.isSuperAdmin ||
+    (user && user.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2')
+  );
 
   return (
-    <div style={{ maxWidth: 840, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div className="w-full max-w-2xl mx-auto py-4 sm:py-8 px-4 space-y-6">
+      {/* ── Page Header ── */}
       <div>
-        <h1 className="font-heading" style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em' }}>
-          Settings & Account Security
+        <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-primary">
+          Settings
         </h1>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>
-          Manage your profile identity, role, sign-in methods, and appearance.
+        <p className="text-xs sm:text-sm text-muted mt-0.5">
+          Manage your role, identity, plan, preferences, and account security.
         </p>
       </div>
 
-      {profileLoading ? (
-        <Skeleton height={240} />
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-          {/* ═════════════════════════════════════════════════════════════════════
-              1. PROFILE IDENTITY (ROLE, NICKNAME, USERNAME)
-          ═════════════════════════════════════════════════════════════════════ */}
-          <GlassCard className="p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <div>
-                <h3 className="font-heading" style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>
-                  Profile Identity
-                </h3>
-                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Set your role, display nickname, and unique public username.
-                </p>
-              </div>
-              <RoleBadge
-                role={isAdmin ? 'Super Admin' : (roleOption === 'Other' ? (customRoleText || 'Other') : roleOption)}
-                customRole={roleOption === 'Other' ? customRoleText : undefined}
-                isSuperAdmin={isAdmin}
-                size="md"
-              />
-            </div>
+      {/* ── Section A: Profile Identity ── */}
+      <section className="bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-xs space-y-5">
+        <div className="flex items-center gap-2.5 pb-3 border-b border-border">
+          <User size={18} className="text-accent" />
+          <h2 className="text-base font-semibold text-primary">
+            Profile Identity
+          </h2>
+        </div>
 
-            <form onSubmit={handleSaveIdentity} className="flex flex-col gap-4">
-              {/* Field 1: Role Dropdown */}
-              <div>
-                <label className="block text-xs font-semibold text-secondary mb-1.5">
-                  Role
-                </label>
-                {isAdmin ? (
-                  <div className="flex items-center gap-2 p-3 rounded-xl bg-surface-muted border border-border text-sm font-medium text-primary">
-                    <RoleBadge role="Super Admin" isSuperAdmin={true} size="sm" />
-                    <span className="text-xs text-muted">
-                      (Administrative role is assigned based on verified security credentials)
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-2">
-                    <select
-                      value={roleOption}
-                      onChange={(e) => setRoleOption(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl bg-input-bg border border-border text-sm text-primary focus:outline-none focus:border-[#D71921] transition-colors"
-                    >
-                      <option value="Student">Student</option>
-                      <option value="Teacher">Teacher</option>
-                      <option value="Parent">Parent</option>
-                      <option value="Other">Other</option>
-                    </select>
+        <form onSubmit={handleSaveIdentity} className="space-y-4">
+          {/* Role Dropdown */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-semibold text-secondary block">
+              Role
+            </label>
+            <select
+              value={roleOption}
+              onChange={(e) => setRoleOption(e.target.value)}
+              className="w-full h-11 px-3 rounded-xl bg-surface-muted border border-border text-sm text-primary focus:outline-none focus:border-accent cursor-pointer"
+            >
+              <option value="Student">Student</option>
+              <option value="Teacher">Teacher</option>
+              <option value="Parent">Parent</option>
+              <option value="Other">Other (Custom)</option>
+            </select>
+          </div>
 
-                    {roleOption === 'Other' && (
-                      <div className="flex flex-col gap-1 mt-1">
-                        <label className="text-[11px] font-medium text-muted">
-                          Specify your role title (max 20 characters)
-                        </label>
-                        <input
-                          type="text"
-                          maxLength={20}
-                          value={customRoleText}
-                          onChange={(e) => setCustomRoleText(e.target.value)}
-                          placeholder="e.g. Mentor, Tutor, Counselor"
-                          className="w-full px-3.5 py-2 rounded-xl bg-input-bg border border-border text-sm text-primary placeholder:text-placeholder focus:outline-none focus:border-[#D71921]"
-                        />
-                        {isForbiddenAdminRole(customRoleText) && (
-                          <p className="text-xs text-red-500 font-medium mt-0.5">
-                            You cannot assign yourself an administrative role.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Field 2: Nickname */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-semibold text-secondary">
-                    Nickname (Display Name)
-                  </label>
-                  <span className="text-[11px] font-mono text-muted">
-                    {nickname.length}/30
-                  </span>
-                </div>
-                <input
-                  type="text"
-                  maxLength={30}
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                  placeholder="e.g. Ayesha Khan"
-                  className={`w-full px-3.5 py-2.5 rounded-xl bg-input-bg border text-sm text-primary placeholder:text-placeholder focus:outline-none transition-colors ${
-                    nickname && !nicknameValidation.valid
-                      ? 'border-red-500/70 focus:border-red-500'
-                      : 'border-border focus:border-[#D71921]'
-                  }`}
-                />
-                <p className="text-[11px] text-muted mt-1">
-                  Shown on your profile and in Commons (2 to 30 characters; letters, numbers, spaces, and basic punctuation).
-                </p>
-                {nickname && !nicknameValidation.valid && (
-                  <p className="text-xs text-red-500 font-medium mt-1">
-                    {nicknameValidation.error}
-                  </p>
-                )}
-              </div>
-
-              {/* Field 3: Username */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-semibold text-secondary">
-                    Username
-                  </label>
-                  <span className="text-[11px] font-mono text-muted">
-                    {username.length}/20
-                  </span>
-                </div>
-                <div className="relative">
-                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted font-mono text-sm select-none">
-                    @
-                  </span>
-                  <input
-                    type="text"
-                    maxLength={20}
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9._]/g, ''))}
-                    placeholder="e.g. ayesha_99"
-                    className="w-full pl-8 pr-10 py-2.5 rounded-xl bg-input-bg border border-border text-sm text-primary placeholder:text-placeholder font-sans focus:outline-none focus:border-[#D71921] transition-colors"
-                  />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center">
-                    {checkingUsername && <Loader2 size={16} className="animate-spin text-muted" />}
-                    {!checkingUsername && usernameStatus?.available && (
-                      <CheckCircle2 size={16} className="text-emerald-500" />
-                    )}
-                    {!checkingUsername && usernameStatus && !usernameStatus.available && (
-                      <AlertCircle size={16} className="text-red-500" />
-                    )}
-                  </div>
-                </div>
-
-                {/* Username helper & live availability messages */}
-                <p className="text-[11px] text-muted mt-1">
-                  Unique, lowercase, letters, numbers, dots and underscores only (3 to 20 characters).
-                </p>
-
-                {usernameStatus && !checkingUsername && (
-                  <div className="mt-1.5">
-                    {usernameStatus.available ? (
-                      <p className="text-xs text-emerald-500 font-medium flex items-center gap-1.5">
-                        <Check size={14} />
-                        <span>Username is available{usernameStatus.isCurrent ? ' (your current username)' : ''}!</span>
-                      </p>
-                    ) : usernameStatus.isReserved ? (
-                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-600 dark:text-amber-400 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 mt-2">
-                        <div className="flex items-center gap-2">
-                          <AlertTriangle size={15} className="shrink-0" />
-                          <span>This name is reserved. Send a request to use it.</span>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          type="button"
-                          onClick={handleSendReservedNameRequest}
-                          disabled={sendingNameRequest}
-                          className="shrink-0 text-xs"
-                        >
-                          <Send size={12} />
-                          <span>{sendingNameRequest ? 'Sending...' : 'Send Request'}</span>
-                        </Button>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-red-500 font-medium flex items-center gap-1.5">
-                        <AlertCircle size={14} />
-                        <span>{usernameStatus.error || 'Username is not available.'}</span>
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {nameRequestSuccess && (
-                  <p className="text-xs text-emerald-500 font-medium mt-2 flex items-center gap-1.5">
-                    <CheckCircle2 size={14} />
-                    <span>{nameRequestSuccess}</span>
-                  </p>
-                )}
-              </div>
-
-              {/* Feedback messages */}
-              {identityError && (
-                <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-500 dark:text-red-400">
-                  {identityError}
-                </div>
-              )}
-
-              {identitySuccess && (
-                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                  <CheckCircle2 size={15} />
-                  <span>{identitySuccess}</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-3 pt-2">
-                <Button
-                  variant="primary"
-                  size="md"
-                  type="submit"
-                  loading={savingIdentity}
-                  disabled={
-                    savingIdentity ||
-                    checkingUsername ||
-                    !nicknameValidation.valid ||
-                    (usernameStatus !== null && !usernameStatus.available && !usernameStatus.isCurrent)
-                  }
-                >
-                  <Save size={14} />
-                  <span>Save Identity</span>
-                </Button>
-              </div>
-            </form>
-          </GlassCard>
-
-          {/* ═════════════════════════════════════════════════════════════════════
-              2. SECURITY & SIGN-IN METHODS (GOOGLE-ONLY PASSWORD SET & CHANGE)
-          ═════════════════════════════════════════════════════════════════════ */}
-          <GlassCard className="p-4 sm:p-6">
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <div>
-                <h3 className="font-heading" style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>
-                  Security & Sign-In Methods
-                </h3>
-                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Manage account credentials, linked sign-in methods, and passwords.
-                </p>
-              </div>
-
-              {/* Linked Sign-in Methods Status */}
-              <div className="flex items-center gap-2 text-xs font-sans px-3 py-1.5 rounded-full bg-surface-muted border border-border text-primary font-medium">
-                <KeyRound size={14} className="text-[#D71921]" />
-                <span>
-                  Sign-in methods:{' '}
-                  {hasGoogle && hasPassword
-                    ? 'Google, Email and password'
-                    : hasGoogle
-                    ? 'Google'
-                    : 'Email and password'}
-                </span>
-              </div>
-            </div>
-
-            {/* Case A: Google-Only Account (No password yet) */}
-            {hasGoogle && !hasPassword ? (
-              <div className="p-5 rounded-2xl bg-surface-muted border border-border flex flex-col gap-4">
-                <div>
-                  <h4 className="text-sm font-bold text-primary flex items-center gap-2">
-                    <Lock size={16} className="text-[#D71921]" />
-                    <span>Set Password</span>
-                  </h4>
-                  <p className="text-xs text-muted mt-1 leading-relaxed">
-                    You signed in with Google. Add a password so you can also log in with your email.
-                  </p>
-                </div>
-
-                <form onSubmit={handleSetPassword} className="flex flex-col gap-3.5 max-w-md">
-                  <div>
-                    <label className="block text-xs font-semibold text-secondary mb-1">
-                      New Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showNewPassword ? 'text' : 'password'}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Enter new password"
-                        className="w-full px-3.5 pr-10 py-2.5 rounded-xl bg-input-bg border border-border text-sm text-primary placeholder:text-placeholder focus:outline-none focus:border-[#D71921]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPassword(!showNewPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors cursor-pointer"
-                        title={showNewPassword ? 'Hide password' : 'Show password'}
-                      >
-                        {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-secondary mb-1">
-                      Confirm Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showConfirmPassword ? 'text' : 'password'}
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Re-enter password to confirm"
-                        className="w-full px-3.5 pr-10 py-2.5 rounded-xl bg-input-bg border border-border text-sm text-primary placeholder:text-placeholder focus:outline-none focus:border-[#D71921]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors cursor-pointer"
-                        title={showConfirmPassword ? 'Hide password' : 'Show password'}
-                      >
-                        {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-muted">
-                    Strength hint: Minimum 8 characters, at least one letter and one number.
-                  </p>
-
-                  {passwordError && (
-                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-500">
-                      {passwordError}
-                    </div>
-                  )}
-
-                  {passwordSuccess && (
-                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                      <CheckCircle2 size={16} />
-                      <span>{passwordSuccess}</span>
-                    </div>
-                  )}
-
-                  <div className="pt-1">
-                    <Button
-                      variant="primary"
-                      size="md"
-                      type="submit"
-                      loading={settingPassword}
-                    >
-                      <Lock size={14} />
-                      <span>Set Password</span>
-                    </Button>
-                  </div>
-                </form>
-              </div>
-            ) : (
-              /* Case B: Password exists (Email account or Google+Password account) */
-              <div className="flex flex-col gap-5">
-                <form onSubmit={handleChangePassword} className="flex flex-col gap-3.5 max-w-md">
-                  <h4 className="text-sm font-bold text-primary flex items-center gap-2">
-                    <Lock size={16} className="text-[#D71921]" />
-                    <span>Change Password</span>
-                  </h4>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-secondary mb-1">
-                      Current Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showCurrentPassword ? 'text' : 'password'}
-                        value={currentPassword}
-                        onChange={(e) => setCurrentPassword(e.target.value)}
-                        placeholder="Enter current password"
-                        className="w-full px-3.5 pr-10 py-2.5 rounded-xl bg-input-bg border border-border text-sm text-primary placeholder:text-placeholder focus:outline-none focus:border-[#D71921]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors cursor-pointer"
-                        title={showCurrentPassword ? 'Hide password' : 'Show password'}
-                      >
-                        {showCurrentPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-secondary mb-1">
-                      New Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showNewPassword ? 'text' : 'password'}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Enter new password"
-                        className="w-full px-3.5 pr-10 py-2.5 rounded-xl bg-input-bg border border-border text-sm text-primary placeholder:text-placeholder focus:outline-none focus:border-[#D71921]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowNewPassword(!showNewPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors cursor-pointer"
-                        title={showNewPassword ? 'Hide password' : 'Show password'}
-                      >
-                        {showNewPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-secondary mb-1">
-                      Confirm New Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showConfirmPassword ? 'text' : 'password'}
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Confirm new password"
-                        className="w-full px-3.5 pr-10 py-2.5 rounded-xl bg-input-bg border border-border text-sm text-primary placeholder:text-placeholder focus:outline-none focus:border-[#D71921]"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-primary transition-colors cursor-pointer"
-                        title={showConfirmPassword ? 'Hide password' : 'Show password'}
-                      >
-                        {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-muted">
-                    Strength hint: Minimum 8 characters, at least one letter and one number.
-                  </p>
-
-                  {changePasswordError && (
-                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-500">
-                      {changePasswordError}
-                    </div>
-                  )}
-
-                  {changePasswordSuccess && (
-                    <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs text-emerald-600 dark:text-emerald-400 flex items-center gap-2">
-                      <CheckCircle2 size={16} />
-                      <span>{changePasswordSuccess}</span>
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-3 pt-1">
-                    <Button
-                      variant="primary"
-                      size="md"
-                      type="submit"
-                      loading={changingPassword}
-                    >
-                      <Lock size={14} />
-                      <span>Change Password</span>
-                    </Button>
-                  </div>
-                </form>
-
-                {/* Forgot Password Reset flow */}
-                <div className="pt-3 border-t border-border flex flex-col gap-2 max-w-md">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h5 className="text-xs font-bold text-primary">Forgot your password?</h5>
-                      <p className="text-[11px] text-muted">
-                        We'll send a secure password reset link to your registered email address.
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      type="button"
-                      onClick={handleForgotPassword}
-                      loading={sendingReset}
-                      className="shrink-0 text-xs"
-                    >
-                      <Mail size={13} />
-                      <span>Send Reset Link</span>
-                    </Button>
-                  </div>
-
-                  {resetMessage && (
-                    <div className="p-3 rounded-xl bg-surface-muted border border-border text-xs text-primary flex items-center gap-2">
-                      <CheckCircle2 size={15} className="text-emerald-500 shrink-0" />
-                      <span>{resetMessage}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </GlassCard>
-
-          {/* ═════════════════════════════════════════════════════════════════════
-              3. APPEARANCE SETTINGS (NOTHING OS DARK / LIGHT & WALLPAPER)
-          ═════════════════════════════════════════════════════════════════════ */}
-          <GlassCard className="p-4 sm:p-6">
-            <h3 className="font-heading" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
-              Appearance
-            </h3>
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
-              Select Nothing OS monochrome dark mode or high-contrast light mode.
-            </p>
-
-            <div style={{ display: 'flex', gap: 12 }}>
-              <button
-                type="button"
-                onClick={() => toggleTheme('dark')}
-                style={{
-                  flex: 1,
-                  padding: '16px',
-                  borderRadius: 'var(--r-card)',
-                  background: '#000000',
-                  border: theme === 'dark' ? '2px solid #D71921' : '1px solid #333333',
-                  color: '#F2F2F2',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 10,
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: 14,
-                }}
-              >
-                <Moon size={18} />
-                <span>Nothing Dark</span>
-                {theme === 'dark' && <Check size={16} className="text-[#D71921]" />}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => toggleTheme('light')}
-                style={{
-                  flex: 1,
-                  padding: '16px',
-                  borderRadius: 'var(--r-card)',
-                  background: '#F2F2F2',
-                  border: theme === 'light' ? '2px solid #D71921' : '1px solid #CCCCCC',
-                  color: '#000000',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 10,
-                  cursor: 'pointer',
-                  fontWeight: 600,
-                  fontSize: 14,
-                }}
-              >
-                <Sun size={18} />
-                <span>Nothing Light</span>
-                {theme === 'light' && <Check size={16} className="text-[#D71921]" />}
-              </button>
-            </div>
-
-            {/* Background Wallpaper Picker */}
-            <div style={{ marginTop: 24, paddingTop: 20, borderTop: '1px solid var(--border)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, flexWrap: 'wrap', gap: 8 }}>
-                <div>
-                  <h4 className="font-heading" style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-                    Background Wallpaper
-                  </h4>
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                    Original dark artwork: concentric arcs, deep red glow, and dot matrix. Saved locally.
-                  </p>
-                </div>
-                <span style={{ fontSize: 11, fontFamily: 'var(--font-dot)', padding: '2px 8px', borderRadius: 9999, background: 'var(--surface-2)', border: '1px solid var(--border)', color: '#D71921', fontWeight: 700 }}>
-                  {WALLPAPERS.find((w) => w.id === currentWallpaper)?.name || 'Crimson Arc'}
-                </span>
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
-                {WALLPAPERS.map((item) => {
-                  const isSelected = currentWallpaper === item.id;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setWallpaper(item.id)}
-                      style={{
-                        padding: 12,
-                        borderRadius: 16,
-                        border: isSelected ? '2px solid #D71921' : '1px solid var(--border)',
-                        background: isSelected ? 'var(--surface-2)' : 'var(--surface)',
-                        display: 'flex',
-                        flexDirection: 'column',
-                        gap: 10,
-                        textAlign: 'left',
-                        cursor: 'pointer',
-                        transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <WallpaperThumbnail id={item.id} selected={isSelected} />
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-                            {item.name}
-                          </span>
-                          {isSelected && <Check size={14} className="text-[#D71921]" />}
-                        </div>
-                        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.35 }}>
-                          {item.description}
-                        </p>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </GlassCard>
-
-          {/* ═════════════════════════════════════════════════════════════════════
-              4. TARGET UNIVERSITY & SCHEDULE (TARGET EXAM REMOVED)
-          ═════════════════════════════════════════════════════════════════════ */}
-          <GlassCard className="p-4 sm:p-6 flex flex-col gap-4">
-            <h3 className="font-heading" style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>
-              Target University & Schedule
-            </h3>
-
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
-                Primary Target University
-              </label>
-              <select
-                value={targetUniversity}
-                onChange={(e) => setTargetUniversity(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: 'var(--r-input)',
-                  background: 'var(--surface-hover)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text)',
-                  fontSize: 14,
-                  outline: 'none',
-                }}
-              >
-                <option value="">Select target university...</option>
-                {PAKISTANI_UNIVERSITIES.map((uni) => (
-                  <option key={uni} value={uni}>
-                    {uni}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', display: 'block', marginBottom: 6 }}>
-                Expected Test Date (for countdown)
+          {/* Custom Role Input (if Other) */}
+          {roleOption === 'Other' && (
+            <div className="space-y-1.5">
+              <label className="text-xs font-semibold text-secondary block">
+                Custom Role Title
               </label>
               <input
-                type="date"
-                value={targetTestDate}
-                onChange={(e) => setTargetTestDate(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 14px',
-                  borderRadius: 'var(--r-input)',
-                  background: 'var(--surface-hover)',
-                  border: '1px solid var(--border)',
-                  color: 'var(--text)',
-                  fontSize: 14,
-                }}
+                type="text"
+                value={customRoleText}
+                onChange={(e) => setCustomRoleText(e.target.value)}
+                maxLength={30}
+                placeholder="e.g. Researcher, Mentor, Alumni"
+                className="w-full h-11 px-3.5 rounded-xl bg-surface-muted border border-border text-sm text-primary focus:outline-none focus:border-accent"
               />
             </div>
+          )}
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
-              {preferencesSuccess ? (
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, color: 'var(--success)', fontSize: 13, fontWeight: 600 }}>
-                  <Check size={16} /> Preferences saved!
-                </span>
-              ) : (
-                <span />
-              )}
-              <Button variant="primary" size="md" type="button" onClick={handleSavePreferences} loading={savingPreferences}>
-                <Save size={14} /> Save Preferences
-              </Button>
+          {/* Nickname / Display Name */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-secondary block">
+                Nickname / Display Name
+              </label>
+              <span className="text-[11px] text-muted">{nickname.length}/40</span>
             </div>
-          </GlassCard>
-
-          {/* ═════════════════════════════════════════════════════════════════════
-              5. ACCOUNT DETAILS & SESSION ACTIONS
-          ═════════════════════════════════════════════════════════════════════ */}
-          <GlassCard style={{ padding: '20px 24px' }}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{user?.email}</p>
-                <p className="text-xs font-mono text-[var(--muted)] mt-1 flex items-center gap-1.5">
-                  <span>Student ID:</span>
-                  <span className="font-bold text-[var(--text)] px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)]">
-                    {formatStudentId(profile || user?.uid)}
-                  </span>
-                </p>
-              </div>
-              <div className="flex items-center gap-2.5">
-                <Button
-                  variant="outline"
-                  size="md"
-                  type="button"
-                  onClick={handleLogout}
-                  className="cursor-pointer"
-                >
-                  <LogOut size={15} />
-                  <span>Log Out</span>
-                </Button>
-              </div>
-            </div>
-          </GlassCard>
-
-          {/* ═════════════════════════════════════════════════════════════════════
-              6. DANGER ZONE: ACCOUNT DELETION
-          ═════════════════════════════════════════════════════════════════════ */}
-          <GlassCard style={{ padding: '20px 24px', borderColor: 'rgba(239, 68, 68, 0.3)' }}>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h4 className="text-sm font-bold text-red-400 flex items-center gap-2">
-                  <AlertTriangle size={16} />
-                  <span>Danger Zone</span>
-                </h4>
-                <p className="text-xs text-[var(--muted)] mt-1 max-w-md leading-relaxed">
-                  Permanently delete your Boardly student account, test attempts, streaks, and squad data. This action is irreversible.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDeleteModalOpen(true)}
-                className="px-4 py-2.5 rounded-xl border border-red-500/50 hover:bg-red-500/10 text-red-400 hover:text-red-300 text-xs font-bold transition-all flex items-center gap-2 cursor-pointer shrink-0"
-              >
-                <Trash2 size={14} />
-                <span>Delete My Account</span>
-              </button>
-            </div>
-          </GlassCard>
-        </div>
-      )}
-
-      {/* Delete Account Confirmation Modal */}
-      {deleteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-md rounded-2xl bg-[var(--card)] border border-red-500/40 p-6 shadow-2xl flex flex-col gap-4">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-2.5 text-red-500">
-                <AlertTriangle size={22} className="shrink-0" />
-                <h3 className="text-lg font-bold font-heading text-[var(--text)]">Delete Account Confirmation</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDeleteModalOpen(false)}
-                className="w-8 h-8 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--muted)] hover:text-white cursor-pointer"
-              >
-                <X size={15} />
-              </button>
-            </div>
-
-            <p className="text-xs text-[var(--muted)] leading-relaxed">
-              Are you sure you want to delete your account? All your personal data—including profile settings, test attempts, streak records, crew membership, and ambassador status—will be wiped immediately.
+            <input
+              type="text"
+              value={nickname}
+              onChange={(e) => setNickname(e.target.value)}
+              maxLength={40}
+              placeholder="e.g. Akira, Sarah, Hamza"
+              className="w-full h-11 px-3.5 rounded-xl bg-surface-muted border border-border text-sm text-primary focus:outline-none focus:border-accent"
+            />
+            <p className="text-[11px] text-muted">
+              Shown across your profile, Commons posts, and comments.
             </p>
+          </div>
 
-            <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/30 text-[11px] text-red-300">
-              Type <strong className="text-white font-mono">DELETE</strong> below to confirm.
+          {/* Username with Live Availability Check */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-secondary block">
+                Username
+              </label>
+              {checkingUsername ? (
+                <span className="text-[11px] text-muted flex items-center gap-1">
+                  <Loader2 size={11} className="animate-spin" /> Checking...
+                </span>
+              ) : usernameStatus ? (
+                usernameStatus.available ? (
+                  <span className="text-[11px] text-emerald-500 font-semibold flex items-center gap-1">
+                    <CheckCircle2 size={11} /> Available
+                  </span>
+                ) : (
+                  <span className="text-[11px] text-accent font-semibold flex items-center gap-1">
+                    <AlertCircle size={11} /> {usernameStatus.reason || 'Unavailable'}
+                  </span>
+                )
+              ) : null}
+            </div>
+
+            <div className="relative flex items-center">
+              <span className="absolute left-3.5 text-muted text-sm font-mono select-none">
+                @
+              </span>
+              <input
+                type="text"
+                value={username}
+                onChange={(e) =>
+                  setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_.]/g, ''))
+                }
+                maxLength={30}
+                placeholder="username"
+                className="w-full h-11 pl-8 pr-3.5 rounded-xl bg-surface-muted border border-border text-sm text-primary focus:outline-none focus:border-accent"
+              />
+            </div>
+            <p className="text-[11px] text-muted">
+              Unique handle (3-30 letters, numbers, underscores, and dots).
+            </p>
+          </div>
+
+          {/* Feedback messages */}
+          {identityError && (
+            <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-accent text-xs flex items-center gap-2">
+              <AlertCircle size={15} className="shrink-0" />
+              <span>{identityError}</span>
+            </div>
+          )}
+
+          {identitySuccess && (
+            <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2">
+              <CheckCircle2 size={15} className="shrink-0" />
+              <span>{identitySuccess}</span>
+            </div>
+          )}
+
+          <div className="pt-2 flex justify-end">
+            <button
+              type="submit"
+              disabled={savingIdentity}
+              className="px-5 py-2.5 rounded-xl bg-accent hover:bg-accent-hover text-on-accent text-xs sm:text-sm font-semibold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+            >
+              {savingIdentity ? 'Saving...' : 'Save Identity'}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      {/* ── Section B: Plan ── */}
+      <section className="bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-xs space-y-4">
+        <div className="flex items-center gap-2.5 pb-3 border-b border-border">
+          <Sparkles size={18} className="text-accent" />
+          <h2 className="text-base font-semibold text-primary">
+            Plan & Subscription
+          </h2>
+        </div>
+
+        <div className="flex items-center justify-between p-4 rounded-xl bg-surface-muted border border-border">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-base text-primary">
+                {effectivePlan.isUnlimited ? 'Unlimited' : 'Free'}
+              </span>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-500 border border-emerald-500/30">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                Active
+              </span>
+            </div>
+            <p className="text-xs text-muted">
+              {effectivePlan.isUnlimited
+                ? effectivePlan.source === 'crew'
+                  ? `Unlimited member with ${effectivePlan.crewName || 'Study Squad'}`
+                  : 'Full unlimited access across all question banks and simulations.'
+                : 'Free tier with daily limits on mock tests and practice sprints.'}
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => navigate('/dashboard/plans')}
+            className={`px-4 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer shrink-0 ${
+              effectivePlan.isUnlimited
+                ? 'bg-surface hover:bg-surface-raised border border-border text-primary'
+                : 'bg-accent hover:bg-accent-hover text-on-accent shadow-xs'
+            }`}
+          >
+            {effectivePlan.isUnlimited ? 'Manage Subscription' : 'Upgrade Plan'}
+          </button>
+        </div>
+      </section>
+
+      {/* ── Section C: Account & Sign-In ── */}
+      <section className="bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-xs space-y-5">
+        <div className="flex items-center gap-2.5 pb-3 border-b border-border">
+          <Lock size={18} className="text-accent" />
+          <h2 className="text-base font-semibold text-primary">
+            Account & Sign-In
+          </h2>
+        </div>
+
+        {/* Read-Only Email */}
+        <div className="space-y-1.5">
+          <label className="text-xs font-semibold text-secondary block">
+            Email Address
+          </label>
+          <div className="flex items-center gap-2 px-3.5 py-2.5 rounded-xl bg-surface-muted border border-border text-sm text-secondary">
+            <Lock size={14} className="text-muted shrink-0" />
+            <span className="truncate">{user?.email || 'No email associated'}</span>
+          </div>
+          <p className="text-[11px] text-muted">
+            Your email is private and never shown on your profile or in Commons.
+          </p>
+        </div>
+
+        {/* Sign-in Methods Line */}
+        <div className="p-3 rounded-xl bg-surface-muted/50 border border-border flex items-center justify-between text-xs text-muted">
+          <span>Sign-in methods:</span>
+          <span className="font-medium text-secondary">
+            {isGoogleUser && hasPasswordProvider
+              ? 'Google + Email/Password'
+              : isGoogleUser
+              ? 'Google Sign-In'
+              : 'Email & Password'}
+          </span>
+        </div>
+
+        {/* Password Management */}
+        <div className="pt-2 border-t border-border space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-primary">
+                {hasPasswordProvider ? 'Change Password' : 'Set Password'}
+              </h3>
+              <p className="text-xs text-muted">
+                {hasPasswordProvider
+                  ? 'Update your password for email sign-in.'
+                  : 'Add a password so you can also sign in with email directly.'}
+              </p>
+            </div>
+
+            {hasPasswordProvider && (
+              <button
+                type="button"
+                onClick={handleSendResetEmail}
+                className="text-xs text-accent hover:underline font-semibold cursor-pointer"
+              >
+                {resetEmailSent ? 'Reset link sent!' : 'Forgot password?'}
+              </button>
+            )}
+          </div>
+
+          <form onSubmit={handleSetPassword} className="space-y-3">
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder={hasPasswordProvider ? 'New password (min. 6 chars)' : 'Set password (min. 6 chars)'}
+                className="w-full h-11 px-3.5 pr-10 rounded-xl bg-surface-muted border border-border text-sm text-primary focus:outline-none focus:border-accent"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-3 text-muted hover:text-primary cursor-pointer"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
 
             <input
-              type="text"
-              value={deleteConfirmText}
-              onChange={(e) => setDeleteConfirmText(e.target.value)}
-              placeholder="Type DELETE"
-              className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-red-500"
+              type={showPassword ? 'text' : 'password'}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Confirm password"
+              className="w-full h-11 px-3.5 rounded-xl bg-surface-muted border border-border text-sm text-primary focus:outline-none focus:border-accent"
             />
 
-            {deleteError && (
-              <p className="text-xs text-red-400">{deleteError}</p>
+            {passwordError && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-accent text-xs flex items-center gap-2">
+                <AlertCircle size={15} className="shrink-0" />
+                <span>{passwordError}</span>
+              </div>
             )}
 
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <Button
-                variant="ghost"
-                size="sm"
-                type="button"
-                onClick={() => setDeleteModalOpen(false)}
-                disabled={deletingAccount}
+            {passwordSuccess && (
+              <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs flex items-center gap-2">
+                <CheckCircle2 size={15} className="shrink-0" />
+                <span>{passwordSuccess}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={savingPassword || !newPassword}
+                className="px-4 py-2 rounded-xl bg-surface hover:bg-surface-raised border border-border text-primary text-xs font-semibold transition-colors cursor-pointer disabled:opacity-50"
               >
-                Cancel
-              </Button>
+                {savingPassword ? 'Saving...' : hasPasswordProvider ? 'Update Password' : 'Set Password'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      {/* ── Section D: Appearance ── */}
+      <section className="bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-xs space-y-4">
+        <div className="flex items-center gap-2.5 pb-3 border-b border-border">
+          {resolvedTheme === 'dark' ? (
+            <Moon size={18} className="text-accent" />
+          ) : (
+            <Sun size={18} className="text-accent" />
+          )}
+          <h2 className="text-base font-semibold text-primary">
+            Appearance
+          </h2>
+        </div>
+
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-sm font-medium text-primary">Theme</p>
+            <p className="text-xs text-muted">
+              {themeSetting === 'system'
+                ? `System sync (${resolvedTheme === 'dark' ? 'Dark' : 'Light'})`
+                : resolvedTheme === 'dark'
+                ? 'Dark Mode'
+                : 'Light Mode'}
+            </p>
+          </div>
+
+          <div
+            className="flex items-center p-1 rounded-xl bg-surface-muted border border-border select-none"
+            role="radiogroup"
+            aria-label="Theme selection"
+          >
+            <button
+              type="button"
+              onClick={() => setTheme('light')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                themeSetting === 'light'
+                  ? 'bg-surface text-primary shadow-xs border border-border font-bold'
+                  : 'text-muted hover:text-primary border border-transparent'
+              }`}
+              aria-checked={themeSetting === 'light'}
+              role="radio"
+            >
+              <Sun size={13} strokeWidth={2} />
+              <span>Light</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTheme('dark')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                themeSetting === 'dark'
+                  ? 'bg-surface text-primary shadow-xs border border-border font-bold'
+                  : 'text-muted hover:text-primary border border-transparent'
+              }`}
+              aria-checked={themeSetting === 'dark'}
+              role="radio"
+            >
+              <Moon size={13} strokeWidth={2} />
+              <span>Dark</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTheme('system')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+                themeSetting === 'system'
+                  ? 'bg-surface text-primary shadow-xs border border-border font-bold'
+                  : 'text-muted hover:text-primary border border-transparent'
+              }`}
+              aria-checked={themeSetting === 'system'}
+              role="radio"
+            >
+              <Monitor size={13} strokeWidth={2} />
+              <span>System</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Section F: Superadmin Controls (Superadmin only) ── */}
+      {isSuperAdmin && (
+        <section className="bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-xs space-y-4">
+          <div className="flex items-center justify-between pb-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <Shield size={18} className="text-accent" />
+              <h2 className="text-base font-semibold text-primary">
+                Superadmin
+              </h2>
+            </div>
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-red-100 text-[#D71921] dark:bg-red-950/70 dark:text-red-400 border border-red-200 dark:border-red-900/60">
+              Super Admin
+            </span>
+          </div>
+
+          <div className="divide-y divide-border rounded-xl border border-border overflow-hidden bg-surface-muted/40">
+            {/* Superadmin Portal */}
+            <button
+              type="button"
+              onClick={() => navigate('/admin')}
+              className="w-full p-3.5 flex items-center justify-between hover:bg-surface-muted text-left transition-colors cursor-pointer group"
+            >
+              <div>
+                <p className="text-sm font-semibold text-primary group-hover:text-accent transition-colors">
+                  Superadmin Portal
+                </p>
+                <p className="text-xs text-muted">
+                  Users, question bank, approvals & audit log
+                </p>
+              </div>
+              <ChevronRight size={16} className="text-muted group-hover:text-primary" />
+            </button>
+
+            {/* Store Pricing */}
+            <div className="p-3.5 space-y-2">
+              <p className="text-sm font-semibold text-primary">Store Pricing</p>
+              <p className="text-xs text-muted">
+                Inspect and tune global cosmetic catalog and Koban pricing.
+              </p>
+              <div className="pt-2">
+                <StorePricingManager />
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── Section E: Sign Out ── */}
+      <section className="bg-surface border border-border rounded-2xl p-4 sm:p-6 shadow-xs">
+        <button
+          type="button"
+          onClick={() => setShowSignOutModal(true)}
+          className="w-full flex items-center justify-center gap-2 py-3 text-accent hover:bg-accent-soft rounded-xl font-medium text-sm transition-colors cursor-pointer select-none"
+        >
+          <LogOut size={16} strokeWidth={1.75} />
+          <span>Sign Out</span>
+        </button>
+      </section>
+
+      {/* ── Sign Out Confirmation Modal ── */}
+      {showSignOutModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-2xl bg-surface border border-border p-5 shadow-2xl space-y-4 animate-in zoom-in-95 duration-150"
+          >
+            <div className="flex items-center gap-2.5 text-primary">
+              <AlertCircle size={20} className="text-accent shrink-0" />
+              <h3 className="text-base font-bold">Sign out of Boardly?</h3>
+            </div>
+            <p className="text-xs text-muted leading-relaxed">
+              You will be returned to the login screen. Your progress and preferences remain securely saved.
+            </p>
+            <div className="flex items-center justify-end gap-2.5 pt-1">
               <button
                 type="button"
-                onClick={handleConfirmDelete}
-                disabled={deletingAccount || deleteConfirmText.trim() !== 'DELETE'}
-                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                onClick={() => setShowSignOutModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-secondary hover:bg-surface-muted border border-border transition-colors cursor-pointer"
               >
-                <Trash2 size={14} />
-                <span>{deletingAccount ? 'Wiping Data...' : 'Yes, Delete My Account'}</span>
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSignOut}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-accent hover:bg-accent-hover text-on-accent transition-colors cursor-pointer shadow-xs"
+              >
+                Sign Out
               </button>
             </div>
           </div>

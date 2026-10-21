@@ -269,12 +269,7 @@ export function useUserProfile(): UserProfileHookResult {
   // Loading state: true only while Auth is resolving OR while initial snapshot is waiting for active user
   const loading = (authLoading && !profile) || (Boolean(user?.uid) && !hasReceivedSnapshot && !profile);
 
-  // Unified field extraction with complete synchronization
-  const targetExam = profile?.targetExam || profile?.targetUniversity || '';
-  const university = profile?.targetUniversity || profile?.targetExam || '';
-  const testDate = profile?.targetTestDate || '';
-  const targetTestDate = profile?.targetTestDate || '';
-  const track = profile?.academicTrack || '';
+  // Unified field extraction without target exam
   const profileCompleted = Boolean(profile?.profileCompleted || profile?.onboardingCompleted);
 
   const subjects = useMemo(() => {
@@ -284,29 +279,12 @@ export function useUserProfile(): UserProfileHookResult {
     return [];
   }, [profile?.subjects]);
 
-  const daysLeft = useMemo(() => {
-    if (!testDate) return null;
-    try {
-      const target = new Date(`${testDate}T00:00:00`);
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-      const diffMs = target.getTime() - now.getTime();
-      return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-    } catch {
-      return null;
-    }
-  }, [testDate]);
-
   const updateProfileData = useCallback(
     async (updates: {
       displayName?: string;
       photoURL?: string | null;
       avatarKey?: string | null;
       avatarVariant?: string | null;
-      targetUniversity?: string;
-      targetExam?: string;
-      targetTestDate?: string;
-      academicTrack?: string;
       subjects?: string[];
       profileCompleted?: boolean;
       onboardingCompleted?: boolean;
@@ -332,18 +310,6 @@ export function useUserProfile(): UserProfileHookResult {
       }
       if (updates.avatarVariant !== undefined) {
         safePayload.avatarVariant = updates.avatarVariant;
-      }
-      const resolvedExam = updates.targetExam || updates.targetUniversity;
-      if (resolvedExam !== undefined) {
-        const val = resolvedExam ? resolvedExam.trim() || null : null;
-        safePayload.targetExam = val;
-        safePayload.targetUniversity = val;
-      }
-      if (updates.targetTestDate !== undefined) {
-        safePayload.targetTestDate = updates.targetTestDate ? updates.targetTestDate.trim() || null : null;
-      }
-      if (updates.academicTrack !== undefined) {
-        safePayload.academicTrack = updates.academicTrack.trim();
       }
       if (updates.subjects !== undefined) {
         safePayload.subjects = updates.subjects;
@@ -390,13 +356,13 @@ export function useUserProfile(): UserProfileHookResult {
     fetchDurationMs,
     docExists,
     error,
-    university,
-    targetExam,
-    testDate,
-    targetTestDate,
-    track,
+    university: '',
+    targetExam: '',
+    testDate: '',
+    targetTestDate: '',
+    track: '',
     subjects,
-    daysLeft,
+    daysLeft: null,
     profileCompleted,
     updateProfileData,
     retryFetch,

@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Logo } from '@/components/ui/Logo';
 
-const STEPS = ['University', 'Test Date', 'Subjects', 'Summary'];
+const STEPS = ['Subjects', 'Summary'];
 
 interface OnboardingShellProps {
   step: number; // 1-indexed

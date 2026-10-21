@@ -170,26 +170,26 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
               value={status}
               onChange={(e) => setStatus(e.target.value)}
               maxLength={40}
-              placeholder="e.g. Grinding MDCAT Physics..."
-              className="w-full text-xs bg-neutral-900 border border-neutral-800 rounded-lg p-2.5 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-red-600"
+              placeholder="e.g. Exploring concepts & learning together..."
+              className="w-full text-xs bg-surface-muted border border-border rounded-lg p-2.5 text-primary placeholder:text-muted focus:outline-none focus:border-accent"
             />
           </div>
 
           {/* Bio */}
           <div className="space-y-1">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-neutral-300 block">About me (Bio)</label>
-              <span className="text-[10px] font-mono text-neutral-500">{bio.length}/160</span>
+              <label className="text-xs font-semibold text-secondary block">About me (Bio)</label>
+              <span className="text-[10px] text-muted">{bio.length}/160</span>
             </div>
             <textarea
               value={bio}
               onChange={(e) => setBio(e.target.value)}
               maxLength={160}
               rows={3}
-              placeholder="Share your prep goals, dream university, or tips..."
-              className="w-full text-xs bg-neutral-900 border border-neutral-800 rounded-lg p-2.5 text-neutral-100 placeholder-neutral-500 focus:outline-none focus:border-red-600 resize-none"
+              placeholder="Add a short bio so other students can get to know you."
+              className="w-full text-xs bg-surface-muted border border-border rounded-lg p-2.5 text-primary placeholder:text-muted focus:outline-none focus:border-accent resize-none"
             />
-            <p className="text-[10px] text-neutral-500">Plain text only. Links will not be rendered.</p>
+            <p className="text-[10px] text-muted">Plain text only. Links will not be rendered.</p>
           </div>
 
           {/* Accent Color Presets */}

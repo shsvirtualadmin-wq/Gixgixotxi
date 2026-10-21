@@ -90,8 +90,6 @@ export function UserOverrideDrawer({
   const [plan, setPlan] = useState<UserPlan>('free');
   const [extendMonths, setExtendMonths] = useState<0 | 1 | 2 | 3>(0);
   const [isSuspended, setIsSuspended] = useState<boolean>(false);
-  const [targetUniversity, setTargetUniversity] = useState<string>('');
-  const [targetTestDate, setTargetTestDate] = useState<string>('');
   const [recentAttempts, setRecentAttempts] = useState<RecentAttemptItem[]>([]);
   const [loadingAttempts, setLoadingAttempts] = useState(false);
 
@@ -111,8 +109,6 @@ export function UserOverrideDrawer({
       setPlan(user.plan || 'free');
       setExtendMonths(0);
       setIsSuspended(!!(user.suspended || user.isSuspended));
-      setTargetUniversity(user.targetUniversity || '');
-      setTargetTestDate(user.targetTestDate || '');
       setError(null);
       setConfirmAction(null);
 
@@ -158,8 +154,6 @@ export function UserOverrideDrawer({
         plan,
         suspended: isSuspended,
         isSuspended: isSuspended,
-        targetUniversity: targetUniversity.trim() || null,
-        targetTestDate: targetTestDate.trim() || null,
       };
 
       if (plan === 'pro') {
@@ -336,18 +330,6 @@ export function UserOverrideDrawer({
               <span className="text-[var(--muted)]">User ID</span>
               <span className="text-[var(--text)] truncate max-w-[220px]">
                 {user.uid}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--muted)]">Target campus</span>
-              <span className="text-[var(--text)]">
-                {user.targetUniversity || 'Not set'}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-[var(--muted)]">Target exam date</span>
-              <span className="text-[var(--text)]">
-                {user.targetTestDate || 'Not set'}
               </span>
             </div>
             <div className="flex items-center justify-between">

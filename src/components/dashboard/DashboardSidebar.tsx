@@ -144,7 +144,7 @@ export function DashboardSidebar() {
             style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
           >
             <GraduationCap size={18} />
-            <span>Target Exam &amp; Profile Setup</span>
+            <span>Profile Setup</span>
           </NavLink>
         )}
 

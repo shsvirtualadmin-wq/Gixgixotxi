@@ -273,11 +273,12 @@ export function CommonsFeedPage() {
             title="View your profile"
           >
             <BoardlyAvatar
-              equippedAvatar={profile?.equippedAvatar}
+              equippedAvatar={profile?.equipped?.avatar || profile?.equippedAvatar}
+              avatarKey={profile?.avatarKey}
+              avatarVariant={profile?.avatarVariant}
               avatarUrl={profile?.avatarUrl}
-              photoURL={profile?.photoURL || user?.photoURL}
-              frame={profile?.frame}
-              name={profile?.displayName || 'User'}
+              frame={profile?.equipped?.frame || profile?.frame}
+              name={profile?.displayName || user?.displayName || 'User'}
               size={38}
             />
           </div>

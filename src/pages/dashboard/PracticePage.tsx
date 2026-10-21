@@ -447,7 +447,7 @@ export function PracticePage() {
                   Full Mock Test
                 </h2>
                 <p className="text-xs text-[var(--muted)] leading-relaxed mt-1">
-                  Authentic full-length entrance paper matched to your target university syllabus and negative marking scheme.
+                  Authentic full-length practice paper matched to comprehensive curriculum and marking scheme.
                 </p>
               </div>
 
@@ -455,7 +455,7 @@ export function PracticePage() {
               <div className="pt-1">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--muted)]">
-                    Target Track:
+                    Test Track:
                   </span>
                   <button
                     type="button"
@@ -619,7 +619,7 @@ export function PracticePage() {
                     className="text-lg font-bold text-[var(--text)]"
                     style={{ fontFamily: 'var(--font-heading)' }}
                   >
-                    Select Target University Track
+                    Select Test Track
                   </h3>
                   <p className="text-xs text-[var(--muted)] mt-0.5">
                     Official test criteria, negative marking rules, and subject-wise distributions.

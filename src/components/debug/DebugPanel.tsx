@@ -40,8 +40,6 @@ export function DebugPanel() {
   if (!visible) return null;
 
   const currentRoute = `${location.pathname}${location.search}`;
-  const targetExam = profile?.targetExam || profile?.targetUniversity || '(none)';
-  const targetTestDate = profile?.targetTestDate || '(none)';
   const role = profile?.role || '(none)';
   const plan = profile?.plan || (profile?.isPremium ? 'pro' : '(none)');
   const profileCompleted = profile?.profileCompleted !== undefined
@@ -138,12 +136,6 @@ export function DebugPanel() {
             <span style={{ color: profileCompleted === 'true' ? '#10b981' : '#f59e0b', fontWeight: 600 }}>
               {profileCompleted}
             </span>
-
-            <span style={{ color: '#71717a' }}>targetExam:</span>
-            <span style={{ color: '#f4f4f5' }}>{targetExam}</span>
-
-            <span style={{ color: '#71717a' }}>targetTestDate:</span>
-            <span style={{ color: '#f4f4f5' }}>{targetTestDate}</span>
 
             <span style={{ color: '#71717a' }}>role:</span>
             <span style={{ color: role === 'superadmin' || role === 'admin' ? '#ef4444' : '#60a5fa' }}>{role}</span>

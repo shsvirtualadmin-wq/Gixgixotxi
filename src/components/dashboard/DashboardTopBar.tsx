@@ -195,7 +195,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
                   style={{ fontFamily: 'var(--font-heading)' }}
                 >
                   <User size={16} />
-                  <span>Target Exam &amp; Profile Setup</span>
+                  <span>Profile Setup</span>
                 </Link>
               )}
 

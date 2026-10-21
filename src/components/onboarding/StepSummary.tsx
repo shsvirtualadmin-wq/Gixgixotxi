@@ -7,9 +7,6 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { AlertCircle } from 'lucide-react';
 
 interface SummaryData {
-  targetUniversity: string;
-  targetTestDate: string;
-  academicTrack: string;
   subjects: string[];
 }
 
@@ -34,18 +31,11 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
     setError(null);
 
     const safePayload = {
-      targetUniversity: data.targetUniversity || null,
-      testDate: data.targetTestDate || null,
-      track: data.academicTrack || null,
       subjects: data.subjects || [],
       onboardingComplete: true,
-      updatedAt: serverTimestamp(),
-      // Backward compatibility aliases
-      targetExam: data.targetUniversity || null,
-      targetTestDate: data.targetTestDate || null,
-      academicTrack: data.academicTrack || null,
-      profileCompleted: true,
       onboardingCompleted: true,
+      profileCompleted: true,
+      updatedAt: serverTimestamp(),
       profileCompletedAt: serverTimestamp(),
       onboardingCompletedAt: serverTimestamp(),
     };
@@ -58,10 +48,7 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
       const docRef = doc(db, 'users', user.uid);
 
       const writeAndVerify = async () => {
-        // Write to users/{uid} with merge: true
         await setDoc(docRef, safePayload, { merge: true });
-
-        // Confirm write directly from server
         const snap = await getDocFromServer(docRef);
         if (!snap.exists()) {
           throw new Error('Profile write could not be confirmed on the server.');
@@ -77,17 +64,9 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
         }, 15000);
       });
 
-      const confirmedData = await Promise.race([writeAndVerify(), timeoutPromise]);
-      console.log(`[StepSummary] Server confirmed profile write at ${path}:`, confirmedData);
+      await Promise.race([writeAndVerify(), timeoutPromise]);
 
-      // Update local profile state
       updateLocalProfile({
-        targetUniversity: data.targetUniversity,
-        targetExam: data.targetUniversity,
-        testDate: data.targetTestDate,
-        targetTestDate: data.targetTestDate,
-        track: data.academicTrack,
-        academicTrack: data.academicTrack,
         subjects: data.subjects,
         onboardingComplete: true,
         onboardingCompleted: true,
@@ -109,10 +88,15 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
   };
 
   const rows: { label: string; value: string }[] = [
-    { label: 'Target University', value: data.targetUniversity },
-    { label: 'Test Date', value: data.targetTestDate ? new Date(data.targetTestDate + 'T00:00:00').toLocaleDateString('en-PK', { year: 'numeric', month: 'long', day: 'numeric' }) : '—' },
-    { label: 'Academic Track', value: data.academicTrack.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) },
-    { label: 'Subjects', value: data.subjects.length > 0 ? data.subjects.map((s) => s.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())).join(', ') : 'None selected' },
+    {
+      label: 'Study Subjects',
+      value:
+        data.subjects.length > 0
+          ? data.subjects
+              .map((s) => s.replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()))
+              .join(', ')
+          : 'All core subjects',
+    },
   ];
 
   return (
@@ -121,7 +105,7 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
         <h2 className="font-display" style={{ fontSize: 26, fontWeight: 800, color: 'var(--text)', letterSpacing: '-0.02em', marginBottom: 6 }}>
           <span className="text-gradient">Almost there!</span> Review your setup
         </h2>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>You can update these from your dashboard settings anytime.</p>
+        <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>You can update your subjects anytime in Settings.</p>
       </div>
 
       <GlassCard style={{ padding: '1.25rem' }}>
@@ -134,7 +118,6 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
               alignItems: 'flex-start',
               gap: 12,
               padding: '10px 0',
-              borderBottom: '1px solid var(--border)',
             }}
           >
             <span style={{ fontSize: 13, color: 'var(--text-faint)', flexShrink: 0 }}>{row.label}</span>
@@ -143,29 +126,20 @@ export function StepSummary({ data, onBack, onComplete }: StepSummaryProps) {
         ))}
       </GlassCard>
 
-      {/* Error state */}
       {error && (
-        <div style={{
-          background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.3)',
-          borderRadius: 12, padding: '14px 16px',
-        }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <AlertCircle size={16} style={{ color: 'var(--danger)', flexShrink: 0 }} />
-            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--danger)' }}>Save failed</span>
-          </div>
-          {error.code && <code style={{ fontSize: 11, color: 'var(--danger)', display: 'block', marginBottom: 4 }}>{error.code}</code>}
-          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>{error.message}</p>
-          {error.path && <p style={{ fontSize: 11, color: 'var(--text-faint)', fontFamily: 'monospace' }}>Path: {error.path}</p>}
+        <div style={{ padding: '12px 14px', borderRadius: 'var(--r-card)', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <AlertCircle size={16} color="var(--red)" style={{ flexShrink: 0 }} />
+          <span style={{ fontSize: 12, color: 'var(--red)', lineHeight: 1.4 }}>{error.message}</span>
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <Button variant="secondary" size="lg" onClick={onBack} disabled={saving} style={{ flex: '0 0 auto' }}>Back</Button>
-          <Button variant="primary" size="lg" fullWidth loading={saving} onClick={handleSave}>
-            {error ? 'Retry Save' : 'Save & Go to Dashboard'}
-          </Button>
-        </div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+        <Button variant="secondary" onClick={onBack} disabled={saving}>
+          Back
+        </Button>
+        <Button variant="primary" onClick={handleSave} disabled={saving}>
+          {saving ? 'Saving...' : 'Finish Setup'}
+        </Button>
       </div>
     </div>
   );

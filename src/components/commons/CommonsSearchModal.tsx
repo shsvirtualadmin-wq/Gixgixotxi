@@ -477,12 +477,6 @@ export function CommonsSearchModal({
                         {u.username && (
                           <span className="font-mono text-muted">@{u.username}</span>
                         )}
-                        {u.targetUniversity && (
-                          <>
-                            <span>·</span>
-                            <span className="truncate">{u.targetUniversity}</span>
-                          </>
-                        )}
                       </div>
                     </div>
                   </div>
