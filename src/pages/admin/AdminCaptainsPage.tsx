@@ -144,11 +144,11 @@ export function AdminCaptainsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl sm:text-2xl font-bold font-heading text-[var(--text)] tracking-tight">
+          <div className="flex items-center gap-2.5">
+            <h1 className="text-xl sm:text-2xl font-bold font-sans text-[var(--text)] tracking-tight">
               {NAKAMA_CAPTAINS_NAME} &amp; Referrals
             </h1>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-[var(--surface-2)] text-[var(--muted)] font-mono">
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text-secondary)] font-sans font-medium">
               {totalCaptains} {totalCaptains === 1 ? 'Captain' : 'Captains'}
             </span>
           </div>
@@ -162,7 +162,7 @@ export function AdminCaptainsPage() {
             <button
               type="button"
               onClick={() => setGrantAllModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-[#E8A317]/15 border border-[#E8A317]/40 text-[#FFD66B] hover:bg-[#E8A317]/25 flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+              className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-amber-500/10 border border-amber-500/30 text-amber-800 dark:text-amber-300 hover:bg-amber-500/20 flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
             >
               <KobanIcon size={14} />
               <span>Grant All Captains ({pendingCaptainsCount} pending)</span>
@@ -189,39 +189,45 @@ export function AdminCaptainsPage() {
       </div>
 
       {bannerNotice && (
-        <div className="p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500 text-emerald-300 text-xs font-heading flex items-center gap-2 animate-in fade-in">
-          <CheckCircle2 size={16} className="shrink-0" />
+        <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 dark:bg-emerald-950/40 dark:border-emerald-500/40 dark:text-emerald-300 text-xs font-sans flex items-center gap-2 animate-fadeIn">
+          <CheckCircle2 size={16} className="shrink-0 text-emerald-600 dark:text-emerald-400" />
           <span>{bannerNotice}</span>
         </div>
       )}
 
-      {/* Summary Metrics */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="p-4 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-1">
-          <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-            <span>Approved {NAKAMA_CAPTAINS_NAME}</span>
-            <Award size={16} className="text-[#D71921]" />
+      {/* Summary Metrics (Compact row of tiles) */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="p-4 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-between gap-3 shadow-xs">
+          <div>
+            <span className="text-[11px] font-medium text-[var(--muted)]">Approved Captains</span>
+            <p className="text-xl sm:text-2xl font-bold font-sans text-[var(--text)] mt-0.5">{totalCaptains}</p>
+            <p className="text-[10px] text-[var(--muted)]">Active campus leaders</p>
           </div>
-          <p className="text-2xl font-bold font-heading text-[var(--text)]">{totalCaptains}</p>
-          <p className="text-[11px] text-[var(--muted)]">Active student leaders across Pakistan</p>
+          <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center shrink-0">
+            <Award size={20} />
+          </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-1">
-          <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-            <span>Total Students Referred</span>
-            <Users size={16} className="text-cyan-400" />
+        <div className="p-4 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-between gap-3 shadow-xs">
+          <div>
+            <span className="text-[11px] font-medium text-[var(--muted)]">Students Referred</span>
+            <p className="text-xl sm:text-2xl font-bold font-sans text-[var(--text)] mt-0.5">{totalStudentsBrought}</p>
+            <p className="text-[10px] text-[var(--muted)]">Verified candidates joined</p>
           </div>
-          <p className="text-2xl font-bold font-heading text-[var(--text)]">{totalStudentsBrought}</p>
-          <p className="text-[11px] text-[var(--muted)]">Each verified candidate counted once</p>
+          <div className="w-10 h-10 rounded-xl bg-cyan-500/10 text-cyan-600 dark:text-cyan-400 flex items-center justify-center shrink-0">
+            <Users size={20} />
+          </div>
         </div>
 
-        <div className="p-4 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-1">
-          <div className="flex items-center justify-between text-xs text-[var(--muted)]">
-            <span>Total Bonus Pro Access</span>
-            <Sparkles size={16} className="text-amber-400" />
+        <div className="p-4 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-between gap-3 shadow-xs">
+          <div>
+            <span className="text-[11px] font-medium text-[var(--muted)]">Bonus Pro Access</span>
+            <p className="text-xl sm:text-2xl font-bold font-sans text-[var(--text)] mt-0.5">{totalBonusWeeks} wks</p>
+            <p className="text-[10px] text-[var(--muted)]">+1 week Pro per referral</p>
           </div>
-          <p className="text-2xl font-bold font-heading text-[var(--text)]">{totalBonusWeeks} wks</p>
-          <p className="text-[11px] text-[var(--muted)]">+1 week Pro granted per referred student</p>
+          <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+            <Sparkles size={20} />
+          </div>
         </div>
       </div>
 
@@ -231,25 +237,35 @@ export function AdminCaptainsPage() {
           <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
           <input
             type="text"
-            placeholder={`Search ${NAKAMA_CAPTAINS_NAME} by name, email, code or campus...`}
+            placeholder="Search captains by name, email, code or campus..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)]"
+            className="w-full pl-9 pr-4 py-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)] text-xs sm:text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--accent)]"
           />
         </div>
       </div>
 
       {/* Captains Table / List */}
       {loading ? (
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-16 rounded-xl bg-[var(--card)] animate-pulse" />
+            <div
+              key={i}
+              className="p-4 rounded-xl bg-[var(--card)] border border-[var(--border)] flex items-center justify-between gap-4 animate-pulse"
+            >
+              <div className="space-y-2 flex-1">
+                <div className="h-4 w-36 bg-[var(--surface-2)] rounded-md" />
+                <div className="h-3 w-48 bg-[var(--surface-2)] rounded-md" />
+              </div>
+              <div className="h-6 w-24 bg-[var(--surface-2)] rounded-md hidden sm:block" />
+              <div className="h-8 w-24 bg-[var(--surface-2)] rounded-lg" />
+            </div>
           ))}
         </div>
       ) : filteredCaptains.length === 0 ? (
-        <div className="p-12 text-center rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-3">
+        <div className="p-8 sm:p-10 text-center rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-3">
           <Award size={32} className="mx-auto text-[var(--muted)]" />
-          <h3 className="font-heading font-bold text-base text-[var(--text)]">No Captains Found</h3>
+          <h3 className="font-sans font-bold text-base text-[var(--text)]">No Captains Found</h3>
           <p className="text-xs text-[var(--muted)] max-w-sm mx-auto">
             {search
               ? `No captains match "${search}". Try adjusting your query.`
@@ -287,11 +303,11 @@ export function AdminCaptainsPage() {
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <span className="font-heading font-bold text-base text-[var(--text)]">
+                      <span className="font-sans font-bold text-base text-[var(--text)]">
                         {c.totalReferrals}
                       </span>
                       <span className="text-[10px] text-[var(--muted)] block">referrals</span>
-                      <span className="text-[10px] text-amber-400 font-mono">+{c.bonusWeeksEarned} wks</span>
+                      <span className="text-[10px] text-amber-700 dark:text-amber-400 font-mono font-semibold">+{c.bonusWeeksEarned} wks</span>
                     </div>
                   </div>
 
@@ -305,11 +321,11 @@ export function AdminCaptainsPage() {
                     </div>
                     <div className="text-[11px] shrink-0">
                       {isGranted ? (
-                        <span className="text-emerald-400 font-bold flex items-center gap-1">
+                        <span className="text-emerald-700 dark:text-emerald-400 font-bold flex items-center gap-1">
                           ✓ Granted ({currentMonthLabel})
                         </span>
                       ) : (
-                        <span className="text-amber-400 font-bold">Pending ({currentMonthLabel})</span>
+                        <span className="text-amber-700 dark:text-amber-400 font-bold">Pending ({currentMonthLabel})</span>
                       )}
                     </div>
                   </div>
@@ -384,7 +400,7 @@ export function AdminCaptainsPage() {
                             <span>
                               Status ({currentMonthLabel}):{' '}
                               {isGranted ? (
-                                <span className="text-emerald-400 font-bold">
+                                <span className="text-emerald-700 dark:text-emerald-400 font-bold">
                                   Granted on{' '}
                                   {st?.date?.toLocaleDateString('en-US', {
                                     month: 'short',
@@ -393,7 +409,7 @@ export function AdminCaptainsPage() {
                                   })}
                                 </span>
                               ) : (
-                                <span className="text-amber-400 font-bold">Pending</span>
+                                <span className="text-amber-700 dark:text-amber-400 font-bold">Pending</span>
                               )}
                             </span>
 
@@ -402,7 +418,7 @@ export function AdminCaptainsPage() {
                                 type="button"
                                 disabled={grantingId === c.captainUid}
                                 onClick={() => handleGrantSingle(c)}
-                                className="btn-red text-[11px] px-2.5 py-0.5 rounded-lg font-bold flex items-center gap-1 shadow-sm cursor-pointer disabled:opacity-50"
+                                className="btn-red text-[11px] px-2.5 py-0.5 rounded-lg font-bold flex items-center gap-1 shadow-xs cursor-pointer disabled:opacity-50"
                               >
                                 {grantingId === c.captainUid ? (
                                   <Loader2 size={11} className="animate-spin" />
@@ -423,10 +439,10 @@ export function AdminCaptainsPage() {
                           <button
                             type="button"
                             onClick={() => handleCopy(c.captainUid, c.captainShortId)}
-                            className="text-[var(--muted)] hover:text-white transition-colors"
+                            className="text-[var(--muted)] hover:text-[var(--text)] transition-colors"
                             title="Copy Short ID"
                           >
-                            {copiedId === c.captainUid ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
+                            {copiedId === c.captainUid ? <Check size={12} className="text-emerald-600 dark:text-emerald-400" /> : <Copy size={12} />}
                           </button>
                         </div>
                         <div className="text-[10px] text-[var(--muted)] font-mono">{c.captainCode}</div>
@@ -439,10 +455,10 @@ export function AdminCaptainsPage() {
 
                       {/* Total Referrals */}
                       <td className="px-4 py-3.5 text-center">
-                        <span className="font-heading font-bold text-sm text-[var(--text)]">
+                        <span className="font-sans font-bold text-sm text-[var(--text)]">
                           {c.totalReferrals}
                         </span>
-                        <div className="text-[10px] text-amber-400 font-mono">+{c.bonusWeeksEarned} wks</div>
+                        <div className="text-[10px] text-amber-700 dark:text-amber-400 font-mono font-semibold">+{c.bonusWeeksEarned} wks</div>
                       </td>
 
                       {/* Actions */}
@@ -470,17 +486,17 @@ export function AdminCaptainsPage() {
       {/* Grant All Modal */}
       {grantAllModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-xs"
           role="dialog"
           aria-modal="true"
         >
           <div className="relative w-full max-w-md rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
             <div className="flex items-center gap-2.5 pb-2 border-b border-[var(--border)]">
-              <div className="w-10 h-10 rounded-2xl bg-[#E8A317]/10 border border-[#E8A317]/30 flex items-center justify-center text-[#FFD66B]">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-800 dark:text-amber-300">
                 <KobanIcon size={24} />
               </div>
               <div>
-                <h3 className="font-heading font-extrabold text-base text-[var(--text)]">
+                <h3 className="font-sans font-bold text-base text-[var(--text)]">
                   Grant to All Approved Captains
                 </h3>
                 <p className="text-xs text-[var(--muted)] font-mono">{currentMonthLabel} Allotment</p>
@@ -488,7 +504,7 @@ export function AdminCaptainsPage() {
             </div>
 
             <p className="text-xs text-[var(--muted)] leading-relaxed">
-              This will grant <strong className="text-[#FFD66B] font-mono">5,000 Kobans</strong> to each approved Nakama Captain who has not yet received their monthly allowance for {currentMonthLabel}.
+              This will grant <strong className="text-amber-800 dark:text-amber-300 font-mono">5,000 Kobans</strong> to each approved Nakama Captain who has not yet received their monthly allowance for {currentMonthLabel}.
             </p>
 
             <div className="p-3 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] max-h-48 overflow-y-auto divide-y divide-[var(--border)]">
@@ -496,7 +512,7 @@ export function AdminCaptainsPage() {
                 Captains to Credit ({pendingCaptainsCount}):
               </span>
               {pendingCaptainsCount === 0 ? (
-                <p className="text-xs text-emerald-400 py-2">
+                <p className="text-xs text-emerald-700 dark:text-emerald-400 font-semibold py-2">
                   All approved captains have already received their {currentMonthLabel} allotment!
                 </p>
               ) : (
@@ -504,8 +520,8 @@ export function AdminCaptainsPage() {
                   .filter((c) => !allotmentStatuses[c.captainUid]?.granted)
                   .map((c) => (
                     <div key={c.captainUid} className="py-2 flex items-center justify-between text-xs">
-                      <span className="font-heading font-semibold text-[var(--text)]">{c.captainName}</span>
-                      <span className="font-mono text-[#FFD66B] font-bold">+5,000</span>
+                      <span className="font-sans font-semibold text-[var(--text)]">{c.captainName}</span>
+                      <span className="font-mono text-amber-800 dark:text-amber-300 font-bold">+5,000</span>
                     </div>
                   ))
               )}
@@ -535,11 +551,11 @@ export function AdminCaptainsPage() {
 
       {/* Roster Drawer / Modal */}
       {selectedCaptain && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 dark:bg-black/80 backdrop-blur-xs">
           <div className="relative w-full max-w-lg rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
               <div>
-                <h3 className="font-heading font-bold text-base text-[var(--text)]">
+                <h3 className="font-sans font-bold text-base text-[var(--text)]">
                   {selectedCaptain.captainName}'s Student Roster
                 </h3>
                 <p className="text-xs text-[var(--muted)] font-mono">
@@ -549,7 +565,7 @@ export function AdminCaptainsPage() {
               <button
                 type="button"
                 onClick={() => setSelectedCaptain(null)}
-                className="text-[var(--muted)] hover:text-white"
+                className="text-[var(--muted)] hover:text-[var(--text)] transition-colors p-1 rounded-lg"
               >
                 <X size={18} />
               </button>
@@ -564,7 +580,7 @@ export function AdminCaptainsPage() {
                 selectedCaptain.referredStudents.map((st, i) => (
                   <div key={i} className="py-2.5 flex items-center justify-between text-xs">
                     <div>
-                      <div className="font-heading font-semibold text-[var(--text)]">
+                      <div className="font-sans font-semibold text-[var(--text)]">
                         {st.studentName || 'Student'}
                       </div>
                       <div className="text-[10px] text-[var(--muted)] font-mono">{st.studentEmail}</div>

@@ -22,6 +22,7 @@ import {
   Lock,
   Unlock,
   AlertTriangle,
+  Copy,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import {
@@ -267,9 +268,11 @@ export function AdminQuestionsPage() {
   const [unlockLoading, setUnlockLoading] = useState(false);
 
   // Source health failure and diagnostic listeners
-  const [failingSources, setFailingSources] = useState<{ id: string; name: string; error?: string; errorCode?: string }[]>([]);
+  const [failingSources, setFailingSources] = useState<{ id: string; name: string; error?: string; errorCode?: string; operation?: string; lastChecked?: Date }[]>([]);
   const [bankSourceDiagnostics, setBankSourceDiagnostics] = useState<SourceHealthDiagnostic[]>([]);
   const [probingBankHealth, setProbingBankHealth] = useState(false);
+  const [isDiagnosticsOpen, setIsDiagnosticsOpen] = useState(false);
+  const [copiedDiagnosticId, setCopiedDiagnosticId] = useState<string | null>(null);
 
   useEffect(() => {
     const unsubFailing = subscribeFailingSources(setFailingSources);
@@ -1362,30 +1365,23 @@ export function AdminQuestionsPage() {
         </button>
       </div>
 
-      {/* Failing source banner (Requirement 6: Admin sees small banner naming the failing source and error code) */}
+      {/* Failing source banner (Accessible, theme-tokenized with WCAG AA contrast) */}
       {failingSources.length > 0 && (
-        <div className="p-3.5 rounded-[14px] bg-rose-500/10 border border-rose-500/30 text-rose-300 text-xs font-heading flex items-center justify-between gap-3 animate-fadeIn">
-          <div className="flex items-center gap-2">
-            <AlertTriangle size={16} className="text-rose-400 shrink-0" />
-            <div>
-              <div>
-                <strong>Bank Source Issue:</strong> Failing source(s):{' '}
-                <span className="font-semibold text-white underline decoration-rose-400">
-                  {failingSources.map((s) => `${s.name}${s.errorCode ? ` [${s.errorCode}]` : ''}`).join(', ')}
-                </span>
-                . The app continues serving questions from other active sources without interruption.
-              </div>
-              {failingSources[0]?.error && (
-                <div className="text-[11px] text-rose-300/80 mt-0.5 font-mono">
-                  Error: {failingSources[0].error}
-                </div>
-              )}
+        <div className="p-3.5 sm:p-4 rounded-[16px] bg-rose-50 border border-rose-200 text-[#991B1B] dark:bg-rose-950/40 dark:border-rose-500/30 dark:text-rose-200 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-start sm:items-center gap-2.5">
+            <AlertTriangle size={18} className="text-[#B91C1C] dark:text-rose-400 shrink-0 mt-0.5 sm:mt-0" />
+            <div className="leading-relaxed">
+              <strong>Bank Source Issue:</strong> Failing source(s):{' '}
+              <span className="font-semibold underline decoration-rose-400">
+                {failingSources.map((s) => `${s.name}${s.errorCode ? ` [${s.errorCode}]` : ''}`).join(', ')}
+              </span>
+              . The app continues serving questions from other active sources without interruption.
             </div>
           </div>
           <button
             type="button"
-            onClick={() => setActiveTab('health')}
-            className="px-2.5 py-1 rounded-[8px] bg-rose-500/20 text-rose-200 border border-rose-500/40 text-[11px] font-semibold hover:bg-rose-500/30 shrink-0 cursor-pointer"
+            onClick={() => setIsDiagnosticsOpen(true)}
+            className="self-start sm:self-auto px-3.5 py-1.5 rounded-[10px] border border-rose-600 dark:border-rose-400 bg-white dark:bg-rose-950/40 text-rose-800 dark:text-rose-200 hover:bg-rose-100 dark:hover:bg-rose-900/40 text-xs font-semibold shrink-0 cursor-pointer shadow-xs transition-colors"
           >
             Diagnostics
           </button>
@@ -1960,7 +1956,7 @@ export function AdminQuestionsPage() {
                     >
                       <div>
                         <div className="flex items-start justify-between gap-2">
-                          <div>
+                          <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-2">
                               <span className="font-heading font-bold text-[14px] text-[var(--text)]">
                                 {diag.name}
@@ -1972,17 +1968,24 @@ export function AdminQuestionsPage() {
                             <span className="text-[11px] text-[var(--muted)] line-clamp-1 mt-0.5">
                               {subtitle}
                             </span>
+                            {!isHealthy && (
+                              <div className="mt-1.5 text-xs text-rose-700 dark:text-rose-400 font-medium leading-snug">
+                                {diag.errorCode === 'permission-denied'
+                                  ? "Couldn't read question counts: permission denied"
+                                  : `Couldn't read question counts: ${diag.errorCode || 'error encountered'}`}
+                              </div>
+                            )}
                           </div>
                           <span
-                            className={`text-[10px] font-heading font-bold px-2 py-0.5 rounded-full shrink-0 flex items-center gap-1 ${
+                            className={`text-[10px] font-heading font-bold px-2.5 py-1 rounded-full shrink-0 flex items-center gap-1.5 border ${
                               isHealthy
-                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                                : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/30'
+                                : 'bg-rose-50 text-rose-800 border-rose-200 dark:bg-rose-500/20 dark:text-rose-300 dark:border-rose-500/30'
                             }`}
                           >
                             <span
                               className={`w-1.5 h-1.5 rounded-full ${
-                                isHealthy ? 'bg-emerald-400' : 'bg-rose-400 animate-pulse'
+                                isHealthy ? 'bg-emerald-600 dark:bg-emerald-400' : 'bg-rose-600 dark:bg-rose-400 animate-pulse'
                               }`}
                             />
                             <span>{isHealthy ? 'Healthy' : 'Failing'}</span>
@@ -1993,40 +1996,33 @@ export function AdminQuestionsPage() {
                         <div className="mt-3.5 p-2.5 rounded-[12px] bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-between">
                           <span className="text-[11px] font-heading text-[var(--muted)]">Question Count:</span>
                           <span className="font-dot text-[15px] font-bold text-[var(--text)]">
-                            {diag.questionCount !== undefined ? `${diag.questionCount.toLocaleString()} MCQs` : '0 MCQs'}
+                            {!isHealthy ? (
+                              <span className="text-rose-700 dark:text-rose-400 font-sans text-xs font-semibold">
+                                Unavailable
+                              </span>
+                            ) : diag.questionCount !== undefined ? (
+                              `${diag.questionCount.toLocaleString()} MCQs`
+                            ) : (
+                              <span className="text-[var(--muted)] font-sans text-xs">
+                                Unavailable
+                              </span>
+                            )}
                           </span>
                         </div>
-
-                        {/* Diagnostic details if failing */}
-                        {!isHealthy && (
-                          <div className="mt-3 pt-3 border-t border-rose-500/20 space-y-2 text-xs">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-[11px] text-rose-300 font-semibold">Error:</span>
-                              <span className="font-mono text-[11px] font-bold px-2 py-0.5 rounded bg-rose-500/20 text-rose-200 border border-rose-500/40">
-                                {diag.errorCode || 'unknown'}
-                              </span>
-                            </div>
-
-                            {diag.operation && (
-                              <div className="text-[11px] text-[var(--muted)]">
-                                <span className="text-white/60">Op:</span>{' '}
-                                <span className="font-mono text-white/80">{diag.operation}</span>
-                              </div>
-                            )}
-
-                            {diag.errorMessage && (
-                              <div className="p-2 rounded-[8px] bg-rose-950/40 border border-rose-500/30 text-rose-200 text-[10px] font-mono break-all line-clamp-2">
-                                {diag.errorMessage}
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
 
-                      <div className="mt-3 pt-2 border-t border-[var(--border)] flex items-center justify-between text-[11px] text-[var(--muted)]">
-                        <span>{isHealthy ? 'Operational' : 'Isolated'}</span>
+                      <div className="mt-3 pt-2 border-t border-[var(--border)] flex items-center justify-between text-[11px]">
+                        <span
+                          className={`font-semibold ${
+                            isHealthy
+                              ? 'text-emerald-700 dark:text-emerald-400'
+                              : 'text-rose-700 dark:text-rose-400'
+                          }`}
+                        >
+                          {isHealthy ? 'Operational' : 'Isolated'}
+                        </span>
                         {diag.latencyMs !== undefined && (
-                          <span className="font-mono text-[10px]">{diag.latencyMs}ms</span>
+                          <span className="font-mono text-[10px] text-[var(--muted)]">{diag.latencyMs}ms</span>
                         )}
                       </div>
                     </div>
@@ -3691,6 +3687,166 @@ export function AdminQuestionsPage() {
                   <span>Confirm and Move ({misfiledCandidates.length})</span>
                 </button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── DIAGNOSTICS BOTTOM SHEET / DRAWER ──────────────────────────────── */}
+      {isDiagnosticsOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-fadeIn"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setIsDiagnosticsOpen(false)}
+        >
+          <div
+            className="w-full sm:max-w-xl max-h-[85vh] rounded-t-[24px] sm:rounded-[24px] bg-[var(--card)] border border-[var(--border)] p-5 sm:p-6 space-y-4 shadow-2xl overflow-y-auto animate-slideUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-500">
+                  <AlertTriangle size={16} />
+                </div>
+                <div>
+                  <h3 className="font-heading font-bold text-base text-[var(--text)]">
+                    Bank Sources Diagnostics
+                  </h3>
+                  <p className="text-xs text-[var(--muted)]">
+                    Real-time status and failure logs across connected banks
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsDiagnosticsOpen(false)}
+                className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors cursor-pointer"
+                aria-label="Close diagnostics"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {bankSourceDiagnostics.filter((d) => !d.healthy).length === 0 ? (
+                <div className="p-8 text-center rounded-2xl bg-[var(--surface)] border border-[var(--border)] space-y-2">
+                  <CheckCircle2 size={24} className="mx-auto text-emerald-500" />
+                  <p className="text-xs font-semibold text-[var(--text)]">All bank sources are healthy</p>
+                  <p className="text-[11px] text-[var(--muted)]">
+                    No active connectivity or permission failures recorded.
+                  </p>
+                </div>
+              ) : (
+                bankSourceDiagnostics
+                  .filter((d) => !d.healthy)
+                  .map((diag) => {
+                    const formattedTime = diag.lastChecked
+                      ? new Date(diag.lastChecked).toLocaleString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: 'numeric',
+                          minute: '2-digit',
+                          second: '2-digit',
+                        })
+                      : 'Recently';
+
+                    const detailsPayload = JSON.stringify(
+                      {
+                        sourceId: diag.id,
+                        sourceName: diag.name,
+                        operation: diag.operation || 'reading stats/questionCounts',
+                        errorCode: diag.errorCode || 'unknown',
+                        errorMessage: diag.errorMessage || 'Unknown error',
+                        timestamp: diag.lastChecked ? new Date(diag.lastChecked).toISOString() : new Date().toISOString(),
+                      },
+                      null,
+                      2
+                    );
+
+                    const isCopied = copiedDiagnosticId === diag.id;
+
+                    return (
+                      <div
+                        key={diag.id}
+                        className="p-4 rounded-[16px] bg-[var(--surface)] border border-[var(--border)] space-y-3"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-heading font-bold text-sm text-[var(--text)]">
+                                {diag.name}
+                              </span>
+                              <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-[var(--card-2)] border border-[var(--border)] text-[var(--muted)]">
+                                {diag.id}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-[var(--muted)] mt-0.5">
+                              Recorded at {formattedTime}
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(detailsPayload);
+                              setCopiedDiagnosticId(diag.id);
+                              setTimeout(() => setCopiedDiagnosticId(null), 2000);
+                            }}
+                            className="px-2.5 py-1 rounded-[8px] border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-hover)] text-xs font-semibold text-[var(--text)] flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            {isCopied ? (
+                              <>
+                                <Check size={12} className="text-emerald-500" />
+                                <span>Copied</span>
+                              </>
+                            ) : (
+                              <>
+                                <Copy size={12} />
+                                <span>Copy details</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+
+                        <div className="space-y-1.5 text-xs">
+                          <div>
+                            <span className="text-[var(--muted)]">Operation: </span>
+                            <span className="font-mono text-[11px] text-[var(--text)] font-medium">
+                              {diag.operation || 'reading stats/questionCounts'}
+                            </span>
+                          </div>
+
+                          <div>
+                            <span className="text-[var(--muted)]">Error: </span>
+                            <span className="text-rose-700 dark:text-rose-400 font-sans text-xs font-semibold">
+                              {diag.errorMessage || 'Missing or insufficient permissions.'}
+                            </span>
+                          </div>
+
+                          <div className="mt-2 pt-2 border-t border-[var(--border)]">
+                            <span className="text-[10px] uppercase font-mono text-[var(--muted)] block mb-1">
+                              Technical Payload:
+                            </span>
+                            <pre className="p-2.5 rounded-lg bg-[var(--card-2)] border border-[var(--border)] text-[10px] font-mono text-[var(--text)] overflow-x-auto whitespace-pre-wrap break-all">
+                              {detailsPayload}
+                            </pre>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+              )}
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDiagnosticsOpen(false)}
+                className="w-full py-2.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] hover:bg-[var(--surface-hover)] text-xs font-semibold text-[var(--text)] transition-colors cursor-pointer"
+              >
+                Close Diagnostics
+              </button>
             </div>
           </div>
         </div>

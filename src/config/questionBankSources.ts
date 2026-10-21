@@ -258,7 +258,7 @@ export function recordSourceFailure(sourceId: string, error?: unknown, operation
     id: sourceId,
     name: src?.name || sourceId,
     healthy: false,
-    questionCount: existing?.questionCount ?? 0,
+    questionCount: undefined,
     errorCode: code,
     errorMessage: errMsg,
     operation,
@@ -298,14 +298,23 @@ export function getAllBankSourceHealth(): SourceHealthDiagnostic[] {
       id: src.id,
       name: src.name,
       healthy: true,
-      questionCount: 0,
+      questionCount: undefined,
       lastChecked: new Date(),
     };
   });
 }
 
-export function getFailingSources(): { id: string; name: string; error?: string; errorCode?: string }[] {
-  const failing: { id: string; name: string; error?: string; errorCode?: string }[] = [];
+export interface FailingSourceDiagnostic {
+  id: string;
+  name: string;
+  error?: string;
+  errorCode?: string;
+  operation?: string;
+  lastChecked?: Date;
+}
+
+export function getFailingSources(): FailingSourceDiagnostic[] {
+  const failing: FailingSourceDiagnostic[] = [];
   for (const item of getAllBankSourceHealth()) {
     if (!item.healthy) {
       failing.push({
@@ -313,6 +322,8 @@ export function getFailingSources(): { id: string; name: string; error?: string;
         name: item.name,
         error: item.errorMessage,
         errorCode: item.errorCode,
+        operation: item.operation,
+        lastChecked: item.lastChecked,
       });
     }
   }
@@ -404,7 +415,7 @@ export async function checkAllBankSourcesHealth(): Promise<SourceHealthDiagnosti
         id: src.id,
         name: src.name,
         healthy: false,
-        questionCount: existing?.questionCount ?? 0,
+        questionCount: undefined,
         errorCode: code,
         errorMessage: errMsg,
         operation: 'probe query on questions_mathematics / stats',

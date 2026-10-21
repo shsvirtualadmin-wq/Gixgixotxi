@@ -27,7 +27,12 @@ service cloud.firestore {
           request.auth.token.email.lower() == 'support@boardly.cfd' ||
           request.auth.token.email.lower() == 'support@scholario.me'
         )) ||
-        request.auth.uid == 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
+        request.auth.uid == 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin' ||
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+        ))
       );
     }
 
@@ -508,12 +513,35 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 12. ACADEMIC QUESTION BANK (QUESTIONS)
+    // 12. ACADEMIC QUESTION BANK & MULTI-SOURCE POOLS
     // =========================================================================
 
+    // Legacy general questions collection
     match /questions/{questionId} {
       allow read: if true;
       allow write: if isAdmin();
+    }
+
+    // Dedicated subject pools (e.g. questions_mathematics, questions_physics, etc.)
+    match /questions_{subject}/{questionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Question index maps used for fast random sampling
+    match /question_index/{subject} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // MCQ answer keys and explanations
+    match /questionKeys/{questionId} {
+      allow read, write: if isAdmin();
+    }
+
+    // Question bank counts and aggregates - strictly restricted to superadmins
+    match /stats/{statId} {
+      allow read, write: if isAdmin();
     }
 
     // =========================================================================
