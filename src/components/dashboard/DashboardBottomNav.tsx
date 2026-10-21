@@ -97,7 +97,11 @@ function DashboardBottomNavComponent() {
           items={navItems}
           layoutId="studentBottomNavActive"
           iconOnly={true}
-          activeId={location.pathname.startsWith('/store') ? 'menu' : undefined}
+          activeId={
+            location.pathname.startsWith('/store') || location.pathname === '/contact'
+              ? 'menu'
+              : undefined
+          }
         />
       </div>
 

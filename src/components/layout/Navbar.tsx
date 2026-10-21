@@ -70,94 +70,50 @@ export function Navbar() {
 
   return (
     <>
-      {/* Sticky header with top offset 12px plus safe area, z-index 1000 */}
+      {/* Floating card navbar inset 16px from edges, 12px from top, fixed while scrolling */}
       <header
-        className="sticky z-[1000] w-full"
+        className="fixed top-0 inset-x-0 z-[1002] flex justify-center px-4 pointer-events-none"
         style={{
-          top: 'calc(12px + env(safe-area-inset-top, 0px))',
+          paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
         }}
       >
-        <div className="boardly-container">
-          <nav
-            aria-label="Main Navigation"
-            className="w-full h-[72px] sm:h-[80px] rounded-full px-4 sm:px-7 flex items-center justify-between text-white transition-colors"
-            style={{
-              backgroundColor: theme === 'dark' ? '#141414' : '#0A0A0A',
-              border: theme === 'dark' ? '1px solid rgba(255,255,255,0.14)' : '1px solid rgba(255,255,255,0.12)',
-              boxShadow: '0 12px 36px -8px rgba(0,0,0,0.35)',
-            }}
+        <nav
+          aria-label="Main Navigation"
+          className="w-full max-w-[1200px] h-[64px] md:h-[72px] rounded-[20px] px-4 flex items-center justify-between pointer-events-auto border transition-colors select-none"
+          style={{
+            backgroundColor: 'var(--surface)',
+            borderColor: 'var(--border)',
+            boxShadow: theme === 'dark' ? 'none' : '0 4px 20px rgba(0,0,0,0.06)',
+          }}
+        >
+          {/* Left side: Brand Logo vertically centered, sized 28-32px height, linked to home */}
+          <Link
+            to="/"
+            className="flex items-center shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-lg"
+            aria-label="Boardly Home"
           >
-            {/* Brand Logo - 100% white, full opacity, no fade filter */}
-            <Link to="/" className="flex items-center shrink-0" aria-label="Boardly Home">
-              <Logo
-                className="h-[52px] sm:h-[64px]"
-                style={{ filter: 'none', opacity: 1 }}
-                alt="Boardly"
-              />
-            </Link>
+            <Logo
+              height={30}
+              className="h-[28px] sm:h-[32px] w-auto"
+              alt="Boardly"
+            />
+          </Link>
 
-            {/* Desktop Unified Segmented Pill Links */}
-            <div className="hidden lg:flex items-center gap-1 bg-[rgba(255,255,255,0.08)] rounded-full p-1.5 border border-[rgba(255,255,255,0.1)]">
-              {NAV_LINKS.map((link) => {
-                const active = isLinkActive(link.to);
-                return (
-                  <Link
-                    key={link.to}
-                    to={link.to}
-                    className={`text-xs xl:text-sm font-medium px-3 xl:px-4 py-2 rounded-full transition-all duration-200 ${
-                      active
-                        ? 'bg-white text-black font-semibold shadow-sm'
-                        : 'text-[rgba(255,255,255,0.7)] hover:text-white'
-                    }`}
-                  >
-                    {link.shortLabel || link.label}
-                  </Link>
-                );
-              })}
-            </div>
-
-            {/* Desktop Right Actions: Sign In, Get Started, Theme Toggle */}
-            <div className="hidden lg:flex items-center gap-2.5">
-              <Link
-                to="/login"
-                className="text-xs xl:text-sm font-medium px-4 py-2 rounded-full border border-[rgba(255,255,255,0.6)] hover:border-white text-white hover:bg-white/10 transition-all cursor-pointer"
-              >
-                Sign In
-              </Link>
-              <Link
-                to="/signup"
-                className="text-xs xl:text-sm font-semibold px-4 py-2 rounded-full bg-[#D71921] hover:bg-[#b0131a] text-white transition-all shadow-sm cursor-pointer"
-              >
-                Get Started
-              </Link>
-              <button
-                onClick={toggle}
-                aria-label="Toggle theme"
-                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer bg-[rgba(255,255,255,0.12)] hover:bg-[#D71921] active:bg-[#D71921] text-white ml-1"
-              >
-                {theme === 'dark' ? <Sun size={22} className="text-white" /> : <Moon size={22} className="text-white" />}
-              </button>
-            </div>
-
-            {/* Mobile Controls */}
-            <div className="flex lg:hidden items-center gap-2">
-              <button
-                onClick={toggle}
-                aria-label="Toggle theme"
-                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer bg-[rgba(255,255,255,0.12)] hover:bg-[#D71921] active:bg-[#D71921] text-white"
-              >
-                {theme === 'dark' ? <Sun size={22} className="text-white" /> : <Moon size={22} className="text-white" />}
-              </button>
-              <button
-                onClick={() => (isOpen ? handleClose() : handleOpen())}
-                aria-label={isOpen ? 'Close Menu' : 'Open Menu'}
-                className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full flex items-center justify-center transition-colors cursor-pointer bg-[rgba(255,255,255,0.12)] hover:bg-[#D71921] active:bg-[#D71921] text-white"
-              >
-                {isOpen ? <X size={22} className="text-white" /> : <Menu size={22} className="text-white" />}
-              </button>
-            </div>
-          </nav>
-        </div>
+          {/* Right side: Clean 24px Hamburger / Close Icon with 44px tap area */}
+          <button
+            type="button"
+            onClick={() => (isOpen ? handleClose() : handleOpen())}
+            aria-label={isOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={isOpen}
+            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text)] hover:text-[var(--accent)] transition-colors cursor-pointer bg-transparent border-0 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-lg p-0"
+          >
+            {isOpen ? (
+              <X size={24} className="stroke-[2.25]" />
+            ) : (
+              <Menu size={24} className="stroke-[2.25]" />
+            )}
+          </button>
+        </nav>
       </header>
 
       {/* Full-Screen Scrollable Mobile Menu with Staggered 300ms Animation */}
@@ -170,7 +126,7 @@ export function Navbar() {
           style={{
             backgroundColor: '#0A0A0A',
             color: '#FFFFFF',
-            paddingTop: 'max(1.25rem, env(safe-area-inset-top, 0px))',
+            paddingTop: 'calc(88px + env(safe-area-inset-top, 0px))',
             paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
             paddingLeft: 'max(1.5rem, env(safe-area-inset-left, 0px))',
             paddingRight: 'max(1.5rem, env(safe-area-inset-right, 0px))',

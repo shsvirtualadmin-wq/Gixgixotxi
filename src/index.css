@@ -310,9 +310,9 @@
 [data-theme="light"] .bg-neutral-950 .boardly-brand-logo,
 [data-theme="light"] [class*="bg-neutral-900"] .boardly-brand-logo,
 [data-theme="light"] [class*="bg-neutral-950"] .boardly-brand-logo,
-nav[aria-label="Main Navigation"] .boardly-brand-logo,
-[data-theme="light"] nav[aria-label="Main Navigation"] .boardly-brand-logo,
-[data-theme="dark"] nav[aria-label="Main Navigation"] .boardly-brand-logo {
+[role="dialog"] .boardly-brand-logo,
+[data-theme="light"] [role="dialog"] .boardly-brand-logo,
+[data-theme="dark"] [role="dialog"] .boardly-brand-logo {
   filter: none !important;
   opacity: 1 !important;
 }

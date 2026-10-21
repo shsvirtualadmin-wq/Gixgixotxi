@@ -22,7 +22,9 @@ export function PublicLayout() {
     location.pathname === '/kobans' ||
     location.pathname === '/about-kobans';
 
-  const isDashboardAppRoute = Boolean(user && isStoreOrKobans);
+  const isContact = location.pathname === '/contact';
+
+  const isDashboardAppRoute = Boolean(user && (isStoreOrKobans || isContact));
 
   if (isDashboardAppRoute) {
     return (

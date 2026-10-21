@@ -252,6 +252,7 @@ function AppInner() {
           <Route path="plans" element={<PlansBillingPage />} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="settings" element={<SettingsPage />} />
+          <Route path="contact" element={<Navigate to="/contact" replace />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
 
@@ -263,6 +264,7 @@ function AppInner() {
           <Route index element={<SettingsPage />} />
         </Route>
         <Route path="/commons" element={<Navigate to="/dashboard/commons" replace />} />
+        <Route path="/commons/contact" element={<Navigate to="/contact" replace />} />
         <Route path="/commons/guidelines" element={<CommunityGuidelinesPage />} />
 
         {/* Auth routes ONLY (use AuthLayout ONLY, NO public Navbar or Footer) */}

@@ -1,13 +1,19 @@
-import { useState } from 'react';
-import { Mail, MessageCircle, Phone, Send, CheckCircle2, AlertCircle, Clock } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Mail, MessageCircle, Phone, Send, CheckCircle2, AlertCircle, Clock, ArrowLeft } from 'lucide-react';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { useUserProfile } from '@/hooks/useUserProfile';
 
 export function ContactPage() {
+  const navigate = useNavigate();
+  const { user, profileLoading } = useAuth();
+  const { profile } = useUserProfile();
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -15,6 +21,39 @@ export function ContactPage() {
     message: '',
     website: '', // honeypot
   });
+
+  // Prefill name and email from profile/user when available (user can still freely edit)
+  useEffect(() => {
+    if (user || profile) {
+      setFormData((prev) => ({
+        ...prev,
+        name: prev.name ? prev.name : (profile?.displayName || user?.displayName || ''),
+        email: prev.email ? prev.email : (profile?.email || user?.email || ''),
+      }));
+    }
+  }, [user, profile]);
+
+  // If a student's active session really expired, redirect to login and bring them back after signing in
+  useEffect(() => {
+    if (!profileLoading && !user) {
+      try {
+        const wasAuthenticated = localStorage.getItem('boardly_user_authenticated') === 'true';
+        if (wasAuthenticated) {
+          navigate('/login?redirect=/contact', { replace: true });
+        }
+      } catch {
+        // Ignore storage errors
+      }
+    }
+  }, [user, profileLoading, navigate]);
+
+  const handleBack = () => {
+    if (typeof window !== 'undefined' && window.history.state && window.history.state.idx > 0) {
+      navigate(-1);
+    } else {
+      navigate('/dashboard');
+    }
+  };
 
   const [formLoadedAt] = useState<number>(() => Date.now());
   const [submitting, setSubmitting] = useState(false);
@@ -129,7 +168,22 @@ export function ContactPage() {
         description="Get in touch with Boardly Technologies support team in Pakistan. Reach us via WhatsApp at 0305 8969050 or email at support@boardly.cfd."
       />
 
-      <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12">
+      <div className="pt-4 sm:pt-6 pb-20 boardly-container page-enter space-y-8 sm:space-y-12">
+        {/* In-app Back Navigation Link (visible when signed in) */}
+        {user && (
+          <div className="max-w-5xl mx-auto -mb-4 sm:-mb-6">
+            <button
+              type="button"
+              onClick={handleBack}
+              className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors py-1.5 px-3 -ml-3 rounded-xl hover:bg-[var(--surface-muted)] cursor-pointer"
+              aria-label="Back to previous page"
+            >
+              <ArrowLeft size={18} className="shrink-0" />
+              <span>Back</span>
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="section-header max-w-3xl mx-auto text-center space-y-4">
           <Badge color="red">Student Helpdesk</Badge>
@@ -140,7 +194,7 @@ export function ContactPage() {
             Contact Boardly Support
           </h1>
           <p className="text-base sm:text-lg text-[var(--muted)] leading-relaxed">
-            Need assistance with your plan activation, Study Crew squad, or reporting a question formula error? Our support desk responds directly to every student.
+            Need assistance with your plan activation, Study Squad, or reporting a question formula error? Our support desk responds directly to every student.
           </p>
         </div>
 

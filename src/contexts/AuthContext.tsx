@@ -287,6 +287,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
+        try {
+          localStorage.setItem('boardly_user_authenticated', 'true');
+        } catch {
+          // Ignore storage errors in restricted contexts
+        }
         // Warm-up read of config/{any} right after sign-in so the first connection is opened early
         getDoc(doc(db, 'config', 'app')).catch(() => {});
 
@@ -416,6 +421,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOutUser = useCallback(async () => {
     setAuthError(null);
+    try {
+      localStorage.removeItem('boardly_user_authenticated');
+    } catch {
+      // Ignore storage errors
+    }
     await firebaseSignOut(auth);
   }, []);
 

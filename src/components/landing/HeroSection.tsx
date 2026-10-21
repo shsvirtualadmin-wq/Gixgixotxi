@@ -8,7 +8,7 @@ export function HeroSection() {
     <section
       className="relative overflow-hidden"
       style={{
-        paddingTop: 'calc(var(--nav-h) + 40px)',
+        paddingTop: 'calc(88px + 32px + env(safe-area-inset-top, 0px))',
         paddingBottom: '64px',
       }}
     >
