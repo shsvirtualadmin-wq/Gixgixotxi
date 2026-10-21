@@ -30,6 +30,8 @@ import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { useTheme } from '@/hooks/useTheme';
+import { CommonsImageAttachment } from './CommonsImageAttachment';
+import { CommonsImageViewerModal } from './CommonsImageViewerModal';
 
 interface CommonsPostCardProps {
   post: CommonsPost;
@@ -61,6 +63,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [isHidden, setIsHidden] = useState(false);
   const [localShares, setLocalShares] = useState(post.sharesCount || 0);
+  const [viewerImage, setViewerImage] = useState<{ url: string; name?: string } | null>(null);
 
   // Sync vote & save state on mount / user change
   useEffect(() => {
@@ -249,9 +252,9 @@ export const CommonsPostCard = memo(function CommonsPostCard({
     <article className="group relative rounded-2xl border border-border bg-surface p-4 sm:p-5 shadow-xs transition-all duration-200 hover:border-border-strong hover:shadow-sm">
       {/* ── Pinned Post Indicator (Super Admin) ── */}
       {isPinned && (
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-accent mb-3 pb-2.5 border-b border-border">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-accent mb-3 pb-2.5 border-b border-border font-sans">
           <Pin size={13} className="fill-current text-accent" />
-          <span>Pinned Post</span>
+          <span>Pinned</span>
         </div>
       )}
 
@@ -289,6 +292,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
                 }
                 frame={(post as any).authorFrame}
                 name={sanitizeStudentDisplayName(post.authorName, post.authorUid)}
+                isSuperAdmin={isSuperAdminAuthor}
                 size={40}
               />
             </div>
@@ -425,20 +429,23 @@ export const CommonsPostCard = memo(function CommonsPostCard({
       </div>
 
       {/* ── Post Title (Bold sans-serif, no stray slash) ── */}
-      <h2 className="text-[16px] sm:text-[17px] font-bold text-primary mb-2 leading-snug">
+      <h2
+        className="text-[17px] font-bold text-primary mb-2 leading-snug font-sans"
+        style={{ fontFamily: 'var(--font-heading)' }}
+      >
         {post.title}
       </h2>
 
       {/* ── Post Body (Preserve line breaks, paragraphs, 4 lines + See more) ── */}
       {post.description && (
-        <div className="text-[15px] text-secondary leading-relaxed whitespace-pre-wrap font-normal mb-3">
+        <div className="text-[15px] text-secondary leading-relaxed whitespace-pre-wrap font-normal mb-3 font-sans">
           <div className={expanded ? '' : 'line-clamp-4'}>
             {post.description}
           </div>
           {!expanded && isLongDescription && (
             <button
               onClick={() => setExpanded(true)}
-              className="text-xs font-semibold text-accent hover:underline mt-1.5 cursor-pointer block"
+              className="text-xs font-semibold text-accent hover:underline mt-1.5 cursor-pointer block font-sans"
             >
               See more
             </button>
@@ -452,7 +459,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
           {post.tags.map((tag, idx) => (
             <span
               key={idx}
-              className="text-muted bg-surface-muted px-2 py-0.5 rounded-md text-xs font-medium border border-border"
+              className="text-muted bg-surface-muted px-2 py-0.5 rounded-md text-xs font-medium border border-border font-sans"
             >
               #{tag}
             </span>
@@ -460,22 +467,16 @@ export const CommonsPostCard = memo(function CommonsPostCard({
         </div>
       )}
 
-      {/* ── Image Previews ── */}
+      {/* ── Image Attachments (with skeleton, retry placeholder & lightbox) ── */}
       {imageFiles.length > 0 && (
-        <div className="mb-3 space-y-2">
+        <div className="mb-3 space-y-2.5">
           {imageFiles.map((file, i) => (
-            <div
+            <CommonsImageAttachment
               key={i}
-              className="rounded-xl overflow-hidden border border-border bg-surface-muted max-h-96"
-            >
-              <img
-                src={file.url}
-                alt={file.name}
-                loading="lazy"
-                onClick={() => window.open(file.url, '_blank')}
-                className="w-full h-auto max-h-96 object-cover cursor-pointer hover:opacity-95 transition-opacity"
-              />
-            </div>
+              file={file}
+              authorUid={post.authorUid}
+              onOpenViewer={(url, name) => setViewerImage({ url, name: name || post.title })}
+            />
           ))}
         </div>
       )}
@@ -557,6 +558,14 @@ export const CommonsPostCard = memo(function CommonsPostCard({
           <Bookmark size={16} className={isSaved ? 'fill-current text-accent' : ''} />
         </button>
       </div>
+
+      {/* Full-screen pinch-to-zoom image viewer */}
+      <CommonsImageViewerModal
+        isOpen={Boolean(viewerImage)}
+        imageUrl={viewerImage?.url || null}
+        imageAlt={viewerImage?.name || post.title}
+        onClose={() => setViewerImage(null)}
+      />
     </article>
   );
 });

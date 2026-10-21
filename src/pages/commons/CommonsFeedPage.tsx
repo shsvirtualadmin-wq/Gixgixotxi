@@ -18,10 +18,14 @@ import { CommonsPostCard } from '@/components/commons/CommonsPostCard';
 import { PostingWizardModal } from '@/components/commons/PostingWizardModal';
 import { CommonsCommentsDrawer } from '@/components/commons/CommonsCommentsDrawer';
 import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
-import { CommonsSearchModal } from '@/components/commons/CommonsSearchModal';
-import { fetchCommonsPosts, deleteCommonsPost } from '@/services/commonsService';
+import {
+  fetchCommonsPosts,
+  deleteCommonsPost,
+  sortCommonsPosts,
+  fetchCommonsPostById,
+} from '@/services/commonsService';
 import type { CommonsPost, CommonsPostType } from '@/types/commons';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 
@@ -74,17 +78,31 @@ export function CommonsFeedPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+  const [searchParams] = useSearchParams();
+  const targetPostId = searchParams.get('post') || searchParams.get('id');
+
   const loadPosts = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
+      // If a shared post ID is in the URL, fetch it specifically so it's guaranteed to be loaded
+      let targetPost: CommonsPost | null = null;
+      if (targetPostId) {
+        targetPost = await fetchCommonsPostById(targetPostId);
+      }
+
       const res = await fetchCommonsPosts({
         feedTab,
         pageSize: 10,
         currentUid: user?.uid,
       });
 
-      setPosts(res.posts);
+      let combined = res.posts;
+      if (targetPost && !combined.some((p) => p.id === targetPost!.id)) {
+        combined = [targetPost, ...combined];
+      }
+
+      setPosts(sortCommonsPosts(combined));
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
     } catch (err: unknown) {
@@ -98,7 +116,7 @@ export function CommonsFeedPage() {
     } finally {
       setLoading(false);
     }
-  }, [feedTab, user?.uid]);
+  }, [feedTab, user?.uid, targetPostId]);
 
   useEffect(() => {
     loadPosts();
@@ -114,7 +132,11 @@ export function CommonsFeedPage() {
         pageSize: 10,
         currentUid: user?.uid,
       });
-      setPosts((prev) => [...prev, ...res.posts]);
+      setPosts((prev) => {
+        const existingIds = new Set(prev.map((p) => p.id));
+        const newPosts = res.posts.filter((p) => !existingIds.has(p.id));
+        return sortCommonsPosts([...prev, ...newPosts]);
+      });
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
     } catch (err: unknown) {
@@ -208,7 +230,10 @@ export function CommonsFeedPage() {
       {/* ── Sticky Top Bar: "Commons", Search, Shield, Refresh ── */}
       <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-md border-b border-border -mx-4 sm:mx-0 sm:rounded-b-2xl px-4 py-2.5 flex items-center justify-between shadow-xs transition-colors">
         <div>
-          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-primary">
+          <h1
+            className="text-lg sm:text-xl font-bold tracking-tight text-primary font-sans"
+            style={{ fontFamily: 'var(--font-heading)' }}
+          >
             Commons
           </h1>
           <p className="text-xs text-muted">
@@ -274,11 +299,14 @@ export function CommonsFeedPage() {
           >
             <BoardlyAvatar
               equippedAvatar={profile?.equipped?.avatar || profile?.equippedAvatar}
-              avatarKey={profile?.avatarKey}
-              avatarVariant={profile?.avatarVariant}
-              avatarUrl={profile?.avatarUrl}
+              avatarUrl={profile?.avatarUrl || user?.photoURL}
               frame={profile?.equipped?.frame || profile?.frame}
               name={profile?.displayName || user?.displayName || 'User'}
+              isSuperAdmin={
+                isAdmin ||
+                user?.email === 'admin@shsvirtual.org' ||
+                user?.uid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
+              }
               size={38}
             />
           </div>
@@ -293,7 +321,7 @@ export function CommonsFeedPage() {
         </div>
 
         {/* Quick action buttons row: Photo, File, Doubt, Anonymous */}
-        <div className="grid grid-cols-4 gap-1 pt-2 border-t border-border">
+        <div className="flex items-center justify-between gap-1 pt-2 border-t border-border overflow-x-auto no-scrollbar">
           <button
             type="button"
             onClick={() =>
@@ -303,10 +331,10 @@ export function CommonsFeedPage() {
                 triggerUploadOnMount: 'photo',
               })
             }
-            className="flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px]"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap shrink-0"
           >
             <ImageIcon size={16} className="text-emerald-500 shrink-0" />
-            <span className="truncate">Photo</span>
+            <span>Photo</span>
           </button>
 
           <button
@@ -318,10 +346,10 @@ export function CommonsFeedPage() {
                 triggerUploadOnMount: 'file',
               })
             }
-            className="flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px]"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap shrink-0"
           >
             <Paperclip size={16} className="text-blue-500 shrink-0" />
-            <span className="truncate">File</span>
+            <span>File</span>
           </button>
 
           <button
@@ -333,10 +361,10 @@ export function CommonsFeedPage() {
                 initialType: 'doubt',
               })
             }
-            className="flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px]"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap shrink-0"
           >
             <HelpCircle size={16} className="text-amber-500 shrink-0" />
-            <span className="truncate">Doubt</span>
+            <span>Doubt</span>
           </button>
 
           <button
@@ -348,10 +376,10 @@ export function CommonsFeedPage() {
                 initialAnonymous: true,
               })
             }
-            className="flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px]"
+            className="flex-1 flex items-center justify-center gap-1.5 py-2 px-1 rounded-xl text-[11px] sm:text-xs font-semibold text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer min-h-[44px] whitespace-nowrap shrink-0"
           >
             <EyeOff size={16} className="text-purple-500 shrink-0" />
-            <span className="truncate">Anonymous</span>
+            <span>Anonymous</span>
           </button>
         </div>
       </div>

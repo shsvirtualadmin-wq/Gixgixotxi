@@ -15,14 +15,26 @@ service firebase.storage {
       return isSignedIn() && (
         request.auth.token.admin == true ||
         request.auth.token.role == 'admin' ||
-        request.auth.token.role == 'superadmin'
+        request.auth.token.role == 'superadmin' ||
+        (request.auth.token.email != null && (
+          request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com' ||
+          request.auth.token.email.lower() == 'support@boardly.cfd' ||
+          request.auth.token.email.lower() == 'support@scholario.me'
+        ))
       );
     }
 
     function isValidImage(maxBytes) {
       return request.resource != null &&
         request.resource.size <= maxBytes &&
-        request.resource.contentType.matches('image/(jpeg|png|webp)');
+        (
+          request.resource.contentType.matches('image/(jpeg|jpg|png|webp|gif)') ||
+          request.resource.contentType == 'image/jpeg' ||
+          request.resource.contentType == 'image/jpg' ||
+          request.resource.contentType == 'image/png' ||
+          request.resource.contentType == 'image/webp' ||
+          request.resource.contentType == 'image/gif'
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -53,10 +65,19 @@ service firebase.storage {
     }
 
     // -------------------------------------------------------------------------
-    // COMMONS UPLOADS (Shared PDFs, handwritten notes, study resources)
+    // POSTS ALIAS (/posts/{userId}/{fileName})
+    // -------------------------------------------------------------------------
+    match /posts/{userId}/{fileName} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) && isValidImage(5 * 1024 * 1024);
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    // -------------------------------------------------------------------------
+    // COMMONS UPLOADS (Shared PDFs, handwritten notes, study resources up to 25 MB)
     // -------------------------------------------------------------------------
     match /commons/{uploaderId}/{fileName} {
-      allow read: if true;
+      allow read: if isSignedIn();
       allow write: if isOwner(uploaderId) &&
         request.resource.size <= 25 * 1024 * 1024 &&
         !fileName.matches('.*\\.(exe|bat|cmd|sh|bin|msi|apk|jar|scr|vbs|js|com|wsf|ps1)$');

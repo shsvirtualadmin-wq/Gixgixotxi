@@ -431,12 +431,8 @@ export async function fetchCommonsPosts(params: {
       });
     }
 
-    // Sort pinned posts first
-    posts.sort((a, b) => {
-      const aPinned = a.isPinned ? 1 : 0;
-      const bPinned = b.isPinned ? 1 : 0;
-      return bPinned - aPinned;
-    });
+    // Sort pinned posts first in the order pinned, then normal posts newest first
+    posts = sortCommonsPosts(posts);
 
     const trimmed = posts.slice(0, limitCount);
     const lastDoc = snap.docs.length > 0 ? snap.docs[snap.docs.length - 1] : null;
@@ -447,6 +443,80 @@ export async function fetchCommonsPosts(params: {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.warn('[commonsService] fetchCommonsPosts notice (using local feed fallback):', errorMsg);
     return { posts: [], lastDoc: null, hasMore: false };
+  }
+}
+
+export function isPostPinned(post: CommonsPost): boolean {
+  if (post.isPinned || (post as any).pinned) return true;
+  const isSuperAdminAuthor =
+    post.authorUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
+    post.authorRole === 'superadmin' ||
+    (post as any).authorRole === 'admin';
+  if (
+    isSuperAdminAuthor &&
+    (post.title?.toLowerCase().includes('welcome') ||
+      post.title?.toLowerCase().includes('guideline'))
+  ) {
+    return true;
+  }
+  return false;
+}
+
+export function getPostMillis(val: any): number {
+  if (!val) return 0;
+  if (typeof val === 'number') return val;
+  if (typeof val?.toMillis === 'function') return val.toMillis();
+  if (val?.seconds) return val.seconds * 1000 + (val.nanoseconds ? Math.floor(val.nanoseconds / 1000000) : 0);
+  if (val instanceof Date) return val.getTime();
+  const d = new Date(val);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+/**
+ * Sorts posts so pinned posts appear at the top in the order they were pinned,
+ * followed by normal posts newest first.
+ */
+export function sortCommonsPosts(posts: CommonsPost[]): CommonsPost[] {
+  const pinned: CommonsPost[] = [];
+  const normal: CommonsPost[] = [];
+
+  for (const post of posts) {
+    if (isPostPinned(post)) {
+      pinned.push(post);
+    } else {
+      normal.push(post);
+    }
+  }
+
+  // Pinned posts: in the order they were pinned (pinnedAt / createdAt ascending)
+  pinned.sort((a, b) => {
+    const timeA = getPostMillis((a as any).pinnedAt) || getPostMillis(a.createdAt);
+    const timeB = getPostMillis((b as any).pinnedAt) || getPostMillis(b.createdAt);
+    return timeA - timeB;
+  });
+
+  // Normal posts: newest first
+  normal.sort((a, b) => {
+    const timeA = getPostMillis(a.createdAt);
+    const timeB = getPostMillis(b.createdAt);
+    return timeB - timeA;
+  });
+
+  return [...pinned, ...normal];
+}
+
+export async function fetchCommonsPostById(postId: string): Promise<CommonsPost | null> {
+  if (!postId) return null;
+  try {
+    const snap = await getDoc(doc(db, 'commonsPosts', postId));
+    if (!snap.exists()) return null;
+    return {
+      id: snap.id,
+      ...(snap.data() as Omit<CommonsPost, 'id'>),
+    };
+  } catch (err) {
+    console.warn('[commonsService] fetchCommonsPostById notice:', err);
+    return null;
   }
 }
 

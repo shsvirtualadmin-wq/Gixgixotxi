@@ -10,16 +10,28 @@ import {
   File,
   Image as ImageIcon,
   Trash2,
-  HelpCircle,
-  Eye,
-  EyeOff,
   Sparkles,
-  Shield,
-  Layers,
-  MessageSquare,
+  Loader2,
 } from 'lucide-react';
-import { COMMONS_POST_TYPES, COMMONS_POST_TYPES_LIST, type CommonsPostType, type CommonsFileAttachment } from '@/types/commons';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '@/lib/firebase';
+import { compressPhoto } from '@/utils/imageCompression';
+import {
+  COMMONS_POST_TYPES,
+  COMMONS_POST_TYPES_LIST,
+  type CommonsPostType,
+  type CommonsFileAttachment,
+} from '@/types/commons';
 import { createCommonsPost, isExecutableFile } from '@/services/commonsService';
+
+interface StagedAttachment {
+  file?: File;
+  name: string;
+  size: number;
+  type: string;
+  previewUrl: string;
+  isImage: boolean;
+}
 
 interface PostingWizardModalProps {
   isOpen: boolean;
@@ -47,15 +59,13 @@ export function PostingWizardModal({
   initialStep,
   triggerUploadOnMount,
 }: PostingWizardModalProps) {
-  // Step 1: Material Type selection
-  // Step 2: Title, Description, Uploads, Tags with [Filter] option, Consent & Publish
   const [currentStep, setCurrentStep] = useState<1 | 2>(initialStep || 1);
 
   // Form State
   const [selectedType, setSelectedType] = useState<CommonsPostType>(initialType || 'notes');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [files, setFiles] = useState<CommonsFileAttachment[]>([]);
+  const [stagedFiles, setStagedFiles] = useState<StagedAttachment[]>([]);
 
   // Custom Tags
   const [tagInput, setTagInput] = useState('');
@@ -67,6 +77,7 @@ export function PostingWizardModal({
 
   // Status & Error
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -76,6 +87,7 @@ export function PostingWizardModal({
       if (typeof initialAnonymous === 'boolean') setIsAnonymous(initialAnonymous);
       if (initialStep) setCurrentStep(initialStep);
       setErrorMsg(null);
+      setUploadStatus(null);
       if (triggerUploadOnMount) {
         setTimeout(() => {
           fileInputRef.current?.click();
@@ -83,6 +95,17 @@ export function PostingWizardModal({
       }
     }
   }, [isOpen, initialType, initialAnonymous, initialStep, triggerUploadOnMount]);
+
+  // Clean up object URLs on unmount
+  useEffect(() => {
+    return () => {
+      stagedFiles.forEach((f) => {
+        if (f.previewUrl?.startsWith('blob:')) {
+          URL.revokeObjectURL(f.previewUrl);
+        }
+      });
+    };
+  }, [stagedFiles]);
 
   if (!isOpen) return null;
 
@@ -98,17 +121,17 @@ export function PostingWizardModal({
     setTags(tags.filter((t) => t !== tagToRemove));
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedList = e.target.files;
     if (!selectedList || selectedList.length === 0) return;
 
     setErrorMsg(null);
-    if (files.length + selectedList.length > 5) {
+    if (stagedFiles.length + selectedList.length > 5) {
       setErrorMsg('You can attach a maximum of 5 files per post.');
       return;
     }
 
-    const newAttachments: CommonsFileAttachment[] = [];
+    const newlyAdded: StagedAttachment[] = [];
 
     for (let i = 0; i < selectedList.length; i++) {
       const file = selectedList[i];
@@ -125,23 +148,44 @@ export function PostingWizardModal({
         return;
       }
 
-      const previewUrl = URL.createObjectURL(file);
-      newAttachments.push({
-        name: file.name,
-        size: file.size,
-        type: file.type || 'application/octet-stream',
-        url: previewUrl,
+      const isImage =
+        file.type.startsWith('image/') ||
+        /\.(png|jpe?g|webp|gif)$/i.test(file.name);
+
+      let processedFile = file;
+      if (isImage) {
+        // Compress photo client-side before staging (max 1600px, quality 0.8)
+        try {
+          processedFile = await compressPhoto(file, { maxDimension: 1600, quality: 0.8 });
+        } catch (err) {
+          console.warn('[PostingWizard] Compression fallback:', err);
+          processedFile = file;
+        }
+      }
+
+      const previewUrl = URL.createObjectURL(processedFile);
+      newlyAdded.push({
+        file: processedFile,
+        name: processedFile.name,
+        size: processedFile.size,
+        type: processedFile.type || (isImage ? 'image/jpeg' : 'application/octet-stream'),
+        previewUrl,
+        isImage,
       });
     }
 
-    setFiles([...files, ...newAttachments]);
+    setStagedFiles((prev) => [...prev, ...newlyAdded]);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
   };
 
   const handleRemoveFile = (index: number) => {
-    setFiles(files.filter((_, i) => i !== index));
+    const target = stagedFiles[index];
+    if (target?.previewUrl?.startsWith('blob:')) {
+      URL.revokeObjectURL(target.previewUrl);
+    }
+    setStagedFiles((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handlePublish = async () => {
@@ -160,36 +204,79 @@ export function PostingWizardModal({
       return;
     }
 
+    if (!currentUser?.uid) {
+      setErrorMsg('You must be signed in to create a post.');
+      return;
+    }
+
     setIsSubmitting(true);
+    setUploadStatus('Uploading attachments...');
+
     try {
+      const finalAttachments: CommonsFileAttachment[] = [];
+
+      // 1. Upload files to Firebase Storage first and await download URLs
+      for (let i = 0; i < stagedFiles.length; i++) {
+        const item = stagedFiles[i];
+        if (item.file) {
+          setUploadStatus(`Uploading file ${i + 1} of ${stagedFiles.length}...`);
+
+          const cleanFileName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          // Images go into users/{uid}/posts/{timestamp}_{filename}
+          // Documents go into commons/{uid}/{timestamp}_{filename}
+          const storagePath = item.isImage
+            ? `users/${currentUser.uid}/posts/${Date.now()}_${cleanFileName}`
+            : `commons/${currentUser.uid}/${Date.now()}_${cleanFileName}`;
+
+          const fileRef = ref(storage, storagePath);
+          const uploadSnapshot = await uploadBytes(fileRef, item.file, {
+            contentType: item.file.type || (item.isImage ? 'image/jpeg' : 'application/octet-stream'),
+          });
+
+          const downloadUrl = await getDownloadURL(uploadSnapshot.ref);
+
+          finalAttachments.push({
+            name: item.name,
+            size: item.size,
+            type: item.type,
+            url: downloadUrl,
+          });
+        }
+      }
+
+      setUploadStatus('Publishing post...');
+
+      // 2. Create post document with persistent download URLs
       const newPostId = await createCommonsPost({
         currentUser,
         type: selectedType,
         title: title.trim(),
         description: description.trim(),
         tags,
-        files,
+        files: finalAttachments,
         isAnonymous,
       });
 
       onPostCreated(newPostId);
       onClose();
     } catch (err: unknown) {
+      console.error('[PostingWizard] publish error:', err);
       const msg = err instanceof Error ? err.message : 'Failed to publish post.';
       setErrorMsg(msg);
     } finally {
       setIsSubmitting(false);
+      setUploadStatus(null);
     }
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto font-sans">
       <div className="relative w-full max-w-2xl bg-surface border border-border rounded-2xl shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
         {/* Header Bar */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-surface-raised">
           <div className="flex items-center gap-2.5">
             <div className="w-2.5 h-2.5 rounded-full bg-accent animate-pulse" />
-            <h2 className="text-sm sm:text-base font-bold tracking-tight text-primary">
+            <h2 className="text-sm sm:text-base font-bold tracking-tight text-primary font-sans">
               Share Study Resource
             </h2>
             <span className="text-[11px] font-mono text-muted bg-surface-muted border border-border px-2 py-0.5 rounded-full">
@@ -199,6 +286,7 @@ export function PostingWizardModal({
           <button
             onClick={onClose}
             className="p-1.5 text-muted hover:text-primary rounded-lg hover:bg-surface-muted transition-colors cursor-pointer"
+            aria-label="Close"
           >
             <X size={18} />
           </button>
@@ -222,12 +310,12 @@ export function PostingWizardModal({
           )}
 
           {/* ══════════════════════════════════════════════════════════════════
-              STEP 1: ASK ONLY FOR THE TYPE OF MATERIAL BEING SHARED
+              STEP 1: MATERIAL TYPE SELECTION
              ══════════════════════════════════════════════════════════════════ */}
           {currentStep === 1 && (
             <div className="space-y-4">
               <div>
-                <h3 className="text-base sm:text-lg font-bold text-primary">
+                <h3 className="text-base sm:text-lg font-bold text-primary font-sans">
                   What type of material are you sharing?
                 </h3>
                 <p className="text-xs text-muted mt-1">
@@ -266,7 +354,7 @@ export function PostingWizardModal({
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between">
                           <span
-                            className={`text-xs font-bold uppercase tracking-wide ${
+                            className={`text-xs font-bold uppercase tracking-wide font-sans ${
                               isSelected ? 'text-accent' : 'text-primary'
                             }`}
                           >
@@ -298,9 +386,7 @@ export function PostingWizardModal({
           )}
 
           {/* ══════════════════════════════════════════════════════════════════
-              STEP 2: TITLE, DESCRIPTION, ATTACHMENTS,
-                      TAGS & [FILTER] OPTION RIGHT IN THE SAME PLACE,
-                      CONSENT CHECKBOX(ES), THEN PUBLISH BUTTON
+              STEP 2: TITLE, DESCRIPTION, ATTACHMENTS, TAGS, VISIBILITY & PUBLISH
              ══════════════════════════════════════════════════════════════════ */}
           {currentStep === 2 && (
             <div className="space-y-4">
@@ -354,10 +440,10 @@ export function PostingWizardModal({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-semibold uppercase tracking-wider text-secondary">
-                    Attach Files (PDF, Images, Docs)
+                    Attach Files (Images, PDF, Notes)
                   </label>
                   <span className="text-[11px] text-muted">
-                    {files.length}/5 files (25 MB max each)
+                    {stagedFiles.length}/5 files
                   </span>
                 </div>
 
@@ -369,38 +455,49 @@ export function PostingWizardModal({
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx,.ppt,.pptx,.txt"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.doc,.docx,.ppt,.pptx,.txt"
                     onChange={handleFileUpload}
                     className="hidden"
                   />
                   <Upload size={20} className="mx-auto text-muted group-hover:text-accent transition-colors" />
                   <p className="text-xs text-primary mt-1.5 font-medium">
-                    Click to select files from your device
+                    Click to select photos or documents
                   </p>
                   <p className="text-[11px] text-muted mt-0.5">
-                    PDF, PNG, JPG, DOCX, PPTX (No executable files)
+                    PNG, JPG, WEBP, GIF (auto-compressed), PDF, DOCX (up to 25 MB)
                   </p>
                 </div>
 
-                {/* Uploaded File Chips */}
-                {files.length > 0 && (
+                {/* Staged Files List with previews */}
+                {stagedFiles.length > 0 && (
                   <div className="space-y-1.5 pt-1">
-                    {files.map((file, idx) => (
+                    {stagedFiles.map((file, idx) => (
                       <div
                         key={idx}
                         className="flex items-center justify-between p-2 rounded-lg bg-surface border border-border text-xs"
                       >
-                        <div className="flex items-center gap-2 truncate">
-                          <FileText size={14} className="text-accent shrink-0" />
-                          <span className="truncate text-primary">{file.name}</span>
+                        <div className="flex items-center gap-2.5 truncate">
+                          {file.isImage ? (
+                            <div className="w-8 h-8 rounded-md overflow-hidden bg-surface-muted shrink-0 border border-border">
+                              <img
+                                src={file.previewUrl}
+                                alt={file.name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ) : (
+                            <FileText size={16} className="text-accent shrink-0 ml-1" />
+                          )}
+                          <span className="truncate text-primary font-medium">{file.name}</span>
                           <span className="text-[11px] text-muted shrink-0">
-                            ({(file.size / 1024 / 1024).toFixed(1)} MB)
+                            ({(file.size / 1024).toFixed(0)} KB)
                           </span>
                         </div>
                         <button
                           type="button"
                           onClick={() => handleRemoveFile(idx)}
                           className="text-muted hover:text-accent p-1 transition-colors cursor-pointer"
+                          aria-label="Remove attachment"
                         >
                           <Trash2 size={13} />
                         </button>
@@ -449,7 +546,7 @@ export function PostingWizardModal({
                           handleAddTag();
                         }
                       }}
-                      placeholder="+ Add custom tag (e.g. #physics, #shortcuts) — Enter"
+                      placeholder="+ Add tag (e.g. #physics) — Enter"
                       className="w-full text-xs bg-transparent text-primary placeholder:text-muted focus:outline-none px-1"
                     />
                     {tagInput.trim() && (
@@ -486,7 +583,7 @@ export function PostingWizardModal({
                       >
                         {!isAnonymous && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
-                      <span className="text-xs font-bold text-primary">Post publicly</span>
+                      <span className="text-xs font-bold text-primary font-sans">Post publicly</span>
                     </div>
                     <p className="text-[11px] text-muted pl-5.5 leading-snug">
                       Public posts show your name and appear on your profile.
@@ -510,7 +607,7 @@ export function PostingWizardModal({
                       >
                         {isAnonymous && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
                       </div>
-                      <span className="text-xs font-bold text-primary">Post anonymously</span>
+                      <span className="text-xs font-bold text-primary font-sans">Post anonymously</span>
                     </div>
                     <p className="text-[11px] text-muted pl-5.5 leading-snug">
                       Anonymous posts show no name and never appear on your profile.
@@ -534,7 +631,7 @@ export function PostingWizardModal({
                 </label>
               </div>
 
-              {/* Below that: Publish Button */}
+              {/* Publish Button */}
               <div className="pt-2">
                 <button
                   type="button"
@@ -544,8 +641,8 @@ export function PostingWizardModal({
                 >
                   {isSubmitting ? (
                     <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Publishing to Commons...</span>
+                      <Loader2 size={16} className="animate-spin" />
+                      <span>{uploadStatus || 'Publishing to Commons...'}</span>
                     </>
                   ) : (
                     <>
@@ -562,3 +659,5 @@ export function PostingWizardModal({
     </div>
   );
 }
+
+export default PostingWizardModal;
