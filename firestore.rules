@@ -29,9 +29,13 @@ service cloud.firestore {
         )) ||
         request.auth.uid == 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin' ||
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+          ('role' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data && (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'superadmin'
+          )) ||
+          ('isSuperAdmin' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data &&
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isSuperAdmin == true
+          )
         ))
       );
     }
@@ -123,12 +127,13 @@ service cloud.firestore {
         // Case A: Owner editing preferences
         isOwner(userId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'displayName', 'name', 'nickname', 'username', 'bio', 'status', 'accent',
+          'uid', 'email', 'displayName', 'name', 'nickname', 'username', 'bio', 'status', 'accent',
           'targetUniversity', 'targetTestDate', 'selectedSubjects', 'updatedAt',
           'onboardingCompleted', 'profileCompleted', 'streakFreezeActive', 'equipped',
           'avatarKey', 'avatarVariant', 'photoURL', 'shortId', 'studentId', 'role',
           'customRole', 'hasChosenRole'
         ]) &&
+        (!('uid' in request.resource.data) || request.resource.data.uid == userId) &&
         (!('role' in request.resource.data) || !isForbiddenAdminRole(request.resource.data.role)) &&
         (!('customRole' in request.resource.data) || request.resource.data.customRole == null || !isForbiddenAdminRole(request.resource.data.customRole))
       ) || (
@@ -219,12 +224,13 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isOwner(userId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'displayName', 'nickname', 'username', 'bio', 'status', 'accent', 'avatar', 'frame',
-          'nameplate', 'banner', 'effectId', 'equipped', 'badges',
-          'crewName', 'updatedAt', 'stats', 'publicStats', 'lastActiveAt',
+          'uid', 'displayName', 'nickname', 'username', 'bio', 'status', 'accent', 'avatar', 'frame',
+          'nameplate', 'banner', 'effectId', 'equipped', 'badges', 'memberSince',
+          'crewName', 'crewId', 'updatedAt', 'stats', 'publicStats', 'lastActiveAt',
           'followersCount', 'followingCount', 'rankTitle', 'pinnedBadges',
-          'pinnedStamps', 'shortId', 'studentId', 'role', 'customRole'
+          'pinnedStamps', 'shortId', 'studentId', 'avatarKey', 'avatarVariant', 'photoURL', 'role', 'customRole'
         ]) &&
+        (!('uid' in request.resource.data) || request.resource.data.uid == userId) &&
         (!('role' in request.resource.data) || !isForbiddenAdminRole(request.resource.data.role)) &&
         (!('customRole' in request.resource.data) || request.resource.data.customRole == null || !isForbiddenAdminRole(request.resource.data.customRole))
       ) || (
@@ -257,7 +263,10 @@ service cloud.firestore {
         request.resource.data.username == username &&
         isValidString(username, 3, 20) &&
         username.matches('^[a-z0-9._]+$');
-      allow update: if false;
+      allow update: if isSignedIn() && (
+        resource.data.uid == request.auth.uid || isAdmin()
+      ) && request.resource.data.uid == resource.data.uid &&
+      request.resource.data.username == username;
       allow delete: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
     }
 

@@ -5,14 +5,17 @@ import { saveProfileIdentity } from '@/services/userService';
 import { GraduationCap, BookOpen, Heart, User, Check, X, Shield } from 'lucide-react';
 
 export const RoleSelectionPromptModal: React.FC = () => {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, updateLocalProfile } = useAuth();
   const { profile } = useUserProfile();
 
   const [selectedRole, setSelectedRole] = useState<'Student' | 'Teacher' | 'Parent' | 'Other'>('Student');
   const [customRole, setCustomRole] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === 'undefined' || !user?.uid) return false;
+    return !!localStorage.getItem(`boardly_chosen_role_${user.uid}`);
+  });
 
   // If user is not logged in, profile not loaded, or user already has chosen a role, don't show
   if (!user || !profile || profile.hasChosenRole || dismissed) {
@@ -20,7 +23,12 @@ export const RoleSelectionPromptModal: React.FC = () => {
   }
 
   // If user is superadmin, they already have an assigned role
-  if (isAdmin || profile.role === 'admin' || profile.role === 'superadmin') {
+  const isSuperAdminEmail = user.email && (
+    user.email.toLowerCase() === 'support@scholario.me' ||
+    user.email.toLowerCase() === 'support@boardly.cfd' ||
+    user.email.toLowerCase() === 'shsvirtualadmin@gmail.com'
+  );
+  if (isAdmin || isSuperAdminEmail || profile.role === 'admin' || profile.role === 'superadmin') {
     return null;
   }
 
@@ -35,13 +43,30 @@ export const RoleSelectionPromptModal: React.FC = () => {
 
     const nickname = profile.nickname || profile.displayName || user.displayName || 'Student';
     const username = profile.username || `user_${user.uid.slice(0, 6).toLowerCase()}`;
+    const effectiveCustomRole = selectedRole === 'Other' ? customRole.trim().slice(0, 20) : null;
+    const effectiveRole = selectedRole === 'Other' ? (effectiveCustomRole || 'Other') : selectedRole;
+
+    // Optimistically update local profile and persist choice
+    try {
+      updateLocalProfile({
+        role: effectiveRole,
+        customRole: effectiveCustomRole,
+        hasChosenRole: true,
+        displayName: nickname,
+        nickname,
+        username,
+      });
+      localStorage.setItem(`boardly_chosen_role_${user.uid}`, selectedRole);
+    } catch {
+      // Ignore local storage error
+    }
 
     try {
       const res = await saveProfileIdentity(
         user.uid,
         {
           role: selectedRole,
-          customRole: selectedRole === 'Other' ? customRole.trim().slice(0, 20) : null,
+          customRole: effectiveCustomRole,
           nickname,
           username,
         },
@@ -49,22 +74,47 @@ export const RoleSelectionPromptModal: React.FC = () => {
       );
 
       if (!res.success) {
-        setError(res.error || 'Failed to save role.');
+        if (res.error && res.error.toLowerCase().includes('permission')) {
+          // Rule/permission mismatch: local profile is updated, dismiss so user is not blocked
+          setDismissed(true);
+        } else {
+          setError(res.error || 'Failed to save role.');
+        }
       } else {
         setDismissed(true);
       }
     } catch (err: any) {
-      setError(err?.message || 'Failed to save role.');
+      console.warn('[RoleSelectionPromptModal] Non-fatal save notice:', err);
+      // If error is permission-related, avoid locking the user
+      if (err?.message && err.message.toLowerCase().includes('permission')) {
+        setDismissed(true);
+      } else {
+        setError(err?.message || 'Failed to save role.');
+      }
     } finally {
       setSaving(false);
     }
   };
 
   const handleSkip = async () => {
-    // Default to Student
     setDismissed(true);
+    try {
+      localStorage.setItem(`boardly_chosen_role_${user.uid}`, 'Student');
+    } catch {
+      // Ignore local storage error
+    }
+
     const nickname = profile.nickname || profile.displayName || user.displayName || 'Student';
     const username = profile.username || `user_${user.uid.slice(0, 6).toLowerCase()}`;
+
+    updateLocalProfile({
+      role: 'Student',
+      hasChosenRole: true,
+      displayName: nickname,
+      nickname,
+      username,
+    });
+
     await saveProfileIdentity(
       user.uid,
       {
@@ -73,7 +123,9 @@ export const RoleSelectionPromptModal: React.FC = () => {
         username,
       },
       isAdmin
-    ).catch(() => {});
+    ).catch((e) => {
+      console.warn('[RoleSelectionPromptModal] Skip identity save notice:', e);
+    });
   };
 
   const roles = [

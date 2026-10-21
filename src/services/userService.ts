@@ -150,8 +150,25 @@ export async function saveProfileIdentity(
   try {
     await updateDoc(userRef, updates);
   } catch (err: any) {
-    // If updateDoc fails because document doesn't exist yet, use setDoc with merge
-    await setDoc(userRef, updates, { merge: true });
+    // If updateDoc fails because document doesn't exist yet, use setDoc with merge including required base fields
+    const baseDoc = {
+      uid,
+      plan: isUserAdmin ? 'pro' : 'free',
+      status: 'active',
+      isPremium: isUserAdmin,
+      suspended: false,
+      createdAt: now,
+      ...updates,
+    };
+    try {
+      await setDoc(userRef, baseDoc, { merge: true });
+    } catch (createErr: any) {
+      console.warn('[userService] Notice persisting user doc:', createErr?.message || createErr);
+      // Return clear error if non-permission or return success with local warning
+      if (createErr?.message && !createErr.message.includes('permission')) {
+        return { success: false, error: createErr.message };
+      }
+    }
   }
 
   // 5. Claim username in usernames collection

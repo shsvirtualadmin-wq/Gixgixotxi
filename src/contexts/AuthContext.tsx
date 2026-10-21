@@ -35,6 +35,7 @@ import { processAmbassadorReferralOnSignup } from '@/services/referralService';
 // ─── Constants ──────────────────────────────────────────────────────────────
 const SUPER_ADMIN_EMAIL = 'shsvirtualadmin@gmail.com';
 const SUPER_ADMIN_EMAIL_SUPPORT = 'support@boardly.cfd';
+const SUPER_ADMIN_EMAIL_SCHOLARIO = 'support@scholario.me';
 const SUPER_ADMIN_UID = 'A5YMRimdHRcmeDWutxtUGt2e4hf2';
 const REFERRAL_LS_KEY = 'boardly_ref_code';
 
@@ -91,13 +92,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAdmin = !!(
     (user?.uid && user.uid === SUPER_ADMIN_UID) ||
-    (user?.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL) ||
-    (user?.email && user.email.toLowerCase() === SUPER_ADMIN_EMAIL_SUPPORT) ||
+    (user?.email && (
+      user.email.toLowerCase() === SUPER_ADMIN_EMAIL ||
+      user.email.toLowerCase() === SUPER_ADMIN_EMAIL_SUPPORT ||
+      user.email.toLowerCase() === SUPER_ADMIN_EMAIL_SCHOLARIO
+    )) ||
     (profile?.uid && profile.uid === SUPER_ADMIN_UID) ||
-    (profile?.email && profile.email.toLowerCase() === SUPER_ADMIN_EMAIL) ||
-    (profile?.email && profile.email.toLowerCase() === SUPER_ADMIN_EMAIL_SUPPORT) ||
+    (profile?.email && (
+      profile.email.toLowerCase() === SUPER_ADMIN_EMAIL ||
+      profile.email.toLowerCase() === SUPER_ADMIN_EMAIL_SUPPORT ||
+      profile.email.toLowerCase() === SUPER_ADMIN_EMAIL_SCHOLARIO
+    )) ||
     profile?.role === 'admin' ||
-    profile?.role === 'superadmin'
+    profile?.role === 'superadmin' ||
+    profile?.isSuperAdmin === true
   );
 
   // ── Helper to determine target dashboard URL by role ─────────────────────
@@ -146,7 +154,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isSuperAdminAccount =
       firebaseUser.uid === SUPER_ADMIN_UID ||
       emailLower === SUPER_ADMIN_EMAIL ||
-      emailLower === SUPER_ADMIN_EMAIL_SUPPORT;
+      emailLower === SUPER_ADMIN_EMAIL_SUPPORT ||
+      emailLower === SUPER_ADMIN_EMAIL_SCHOLARIO;
 
     const fallbackName =
       firebaseUser.displayName?.trim() ||
