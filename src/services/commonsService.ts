@@ -521,44 +521,69 @@ export async function addPostComment(params: {
   text: string;
   isAnonymous?: boolean;
 }): Promise<CommonsComment> {
+  if (!params.postId) throw new Error('Missing post ID');
+  if (!params.author?.uid) throw new Error('Must be signed in to comment');
+
   const commentRef = doc(collection(db, 'commonsPosts', params.postId, 'comments'));
   const postRef = doc(db, 'commonsPosts', params.postId);
 
-  const authorName = params.isAnonymous
-    ? 'Anonymous Student'
+  const cleanText = params.text.trim();
+  if (!cleanText) throw new Error('Comment text cannot be empty');
+  if (cleanText.length > 1000) throw new Error('Comment exceeds 1,000 characters');
+
+  const isAnon = Boolean(params.isAnonymous);
+
+  // For anonymous comments, store real UID for moderation, but hide personal info in display fields
+  const authorUid = params.author.uid;
+  const authorName = isAnon
+    ? 'Anonymous'
     : sanitizeStudentDisplayName(params.author.displayName, params.author.uid);
 
-  // Priority: 1. equippedAvatar, 2. avatarUrl, 3. photoURL (Google), 4. null
-  const authorAvatar = params.isAnonymous
+  // Avatar priority: equippedAvatar -> avatarUrl -> photoURL -> null
+  const authorAvatar = isAnon
     ? null
     : params.author.equippedAvatar || params.author.avatarUrl || params.author.photoURL || null;
-  const authorFrame = params.isAnonymous ? null : params.author.frame || null;
-  const authorEquippedAvatar = params.isAnonymous ? null : params.author.equippedAvatar || null;
-  const authorPhotoURL = params.isAnonymous ? null : params.author.photoURL || null;
-  const authorUid = params.isAnonymous ? null : params.author.uid;
+  const authorFrame = isAnon ? null : params.author.frame || null;
+  const authorEquippedAvatar = isAnon ? null : params.author.equippedAvatar || null;
+  const authorPhotoURL = isAnon ? null : params.author.photoURL || null;
 
   const commentData: Omit<CommonsComment, 'id'> = {
     postId: params.postId,
     authorUid,
+    uid: authorUid, // for rules compatibility
     authorName,
     authorAvatar,
     authorFrame,
     authorEquippedAvatar,
     authorPhotoURL,
-    isAnonymous: Boolean(params.isAnonymous),
-    text: params.text.trim(),
+    isAnonymous: isAnon,
+    text: cleanText,
     createdAt: serverTimestamp(),
   };
 
-  const batch = writeBatch(db);
-  batch.set(commentRef, commentData);
-  batch.update(postRef, { commentCount: increment(1) });
-  await batch.commit();
+  try {
+    const batch = writeBatch(db);
+    batch.set(commentRef, commentData);
+    batch.update(postRef, {
+      commentCount: increment(1),
+      commentsCount: increment(1),
+      updatedAt: serverTimestamp(),
+    });
+    await batch.commit();
 
-  return {
-    id: commentRef.id,
-    ...commentData,
-  };
+    return {
+      id: commentRef.id,
+      ...commentData,
+    };
+  } catch (err: any) {
+    console.error(
+      '[commonsService] addPostComment error:',
+      err?.code || 'ERROR',
+      `commonsPosts/${params.postId}/comments/${commentRef.id}`,
+      err
+    );
+    throw err;
+  }
 }
 
 /**

@@ -5,13 +5,12 @@ import {
   where,
   getDocs,
   getDoc,
-  setDoc,
-  deleteDoc,
   serverTimestamp,
   limit,
+  writeBatch,
+  increment,
 } from 'firebase/firestore';
-import { httpsCallable } from 'firebase/functions';
-import { db, functions } from '../lib/firebase';
+import { db } from '../lib/firebase';
 import type { FollowDoc, PublicProfile } from '../types';
 
 /**
@@ -111,36 +110,31 @@ export function checkFollowRateLimit(userId: string): { allowed: boolean; remain
 }
 
 /**
- * Returns the deterministic follow document ID for a follower/target pair.
- */
-export function getFollowDocId(followerId: string, targetId: string): string {
-  return `${followerId}_${targetId}`;
-}
-
-/**
  * Checks if followerId currently follows targetId.
- * Checks both users/{followerId}/following/{targetId} and legacy follows/{followerId}_{targetId}
+ * Directly reads users/{followerId}/following/{targetId}.
  */
 export async function isFollowing(followerId: string, targetId: string): Promise<boolean> {
   if (!followerId || !targetId || followerId === targetId) return false;
   try {
-    // 1. Check direct user following subcollection
     const userFollowingSnap = await getDoc(doc(db, 'users', followerId, 'following', targetId));
-    if (userFollowingSnap.exists()) return true;
-
-    // 2. Check legacy follows collection
-    const docId = getFollowDocId(followerId, targetId);
-    const snap = await getDoc(doc(db, 'follows', docId));
-    return snap.exists();
-  } catch (err) {
-    console.warn(`[followService] isFollowing check error (${followerId} -> ${targetId}):`, err);
+    return userFollowingSnap.exists();
+  } catch (err: any) {
+    console.error(
+      '[followService] isFollowing check error:',
+      err?.code || 'ERROR',
+      `users/${followerId}/following/${targetId}`,
+      err
+    );
     return false;
   }
 }
 
 /**
- * Executes a follow / unfollow toggle via callable Cloud Function "toggleFollow".
- * Gracefully falls back to subcollection updates if Cloud Functions are unavailable.
+ * Executes an atomic client-side follow / unfollow writeBatch (Spark plan compatible):
+ * - Creates / deletes users/{followerId}/following/{targetId} (where follower id == request.auth.uid)
+ * - Creates / deletes users/{targetId}/followers/{followerId} (where follower id == request.auth.uid)
+ * - Increments / decrements followingCount by 1 on users/{followerId}
+ * - Increments / decrements followersCount by 1 on users/{targetId}
  */
 export async function toggleFollowUser(
   followerId: string,
@@ -154,67 +148,78 @@ export async function toggleFollowUser(
     throw new Error('Students cannot follow themselves.');
   }
 
-  // 1. Enforce rate limit (30 per hour)
+  // Enforce client-side rate limit (30 per hour)
   consumeFollowRateLimit(followerId);
 
-  // 2. Primary: Call backend Cloud Function "toggleFollow"
-  try {
-    const toggleFollowCallable = httpsCallable<
-      { targetUid: string },
-      { success: boolean; following: boolean; followersCount: number; followingCount: number }
-    >(functions, 'toggleFollow');
-
-    const result = await toggleFollowCallable({ targetUid: targetId });
-    if (result.data) {
-      return result.data;
-    }
-  } catch (fnErr: any) {
-    // If it's a validation error from server (e.g. self-follow), throw clear message
-    const msg = fnErr?.message || '';
-    if (msg.includes('Students cannot follow themselves') || msg.includes('unauthenticated')) {
-      throw new Error(msg);
-    }
-    console.warn('[followService] Cloud Function toggleFollow failed or not deployed, using client fallback:', fnErr);
-  }
-
-  // 3. Fallback: Direct Firestore subcollection updates (allowed by updated firestore.rules)
   const callerFollowingDoc = doc(db, 'users', followerId, 'following', targetId);
   const targetFollowersDoc = doc(db, 'users', targetId, 'followers', followerId);
-  const legacyFollowDoc = doc(db, 'follows', getFollowDocId(followerId, targetId));
+  const callerUserDoc = doc(db, 'users', followerId);
+  const targetUserDoc = doc(db, 'users', targetId);
 
-  const existingSnap = await getDoc(callerFollowingDoc);
-  const isCurrentlyFollowing = existingSnap.exists();
+  try {
+    const existingSnap = await getDoc(callerFollowingDoc);
+    const isCurrentlyFollowing = existingSnap.exists();
+    const batch = writeBatch(db);
 
-  const now = serverTimestamp();
+    if (isCurrentlyFollowing) {
+      // ─── UNFOLLOW ──────────────────────────────────────────
+      batch.delete(callerFollowingDoc);
+      batch.delete(targetFollowersDoc);
 
-  if (isCurrentlyFollowing) {
-    // Unfollow
-    await Promise.allSettled([
-      deleteDoc(callerFollowingDoc),
-      deleteDoc(targetFollowersDoc),
-      deleteDoc(legacyFollowDoc),
-    ]);
+      batch.update(callerUserDoc, {
+        followingCount: increment(-1),
+        updatedAt: serverTimestamp(),
+      });
+      batch.update(targetUserDoc, {
+        followersCount: increment(-1),
+        updatedAt: serverTimestamp(),
+      });
 
-    return {
-      success: true,
-      following: false,
-      followersCount: 0,
-      followingCount: 0,
-    };
-  } else {
-    // Follow
-    await Promise.allSettled([
-      setDoc(callerFollowingDoc, { targetUid: targetId, createdAt: now }),
-      setDoc(targetFollowersDoc, { followerUid: followerId, createdAt: now }),
-      setDoc(legacyFollowDoc, { followerId, targetId, createdAt: now }),
-    ]);
+      await batch.commit();
 
-    return {
-      success: true,
-      following: true,
-      followersCount: 1,
-      followingCount: 1,
-    };
+      return {
+        success: true,
+        following: false,
+        followersCount: 0,
+        followingCount: 0,
+      };
+    } else {
+      // ─── FOLLOW ────────────────────────────────────────────
+      batch.set(callerFollowingDoc, {
+        targetUid: targetId,
+        createdAt: serverTimestamp(),
+      });
+      batch.set(targetFollowersDoc, {
+        followerUid: followerId,
+        createdAt: serverTimestamp(),
+      });
+
+      batch.update(callerUserDoc, {
+        followingCount: increment(1),
+        updatedAt: serverTimestamp(),
+      });
+      batch.update(targetUserDoc, {
+        followersCount: increment(1),
+        updatedAt: serverTimestamp(),
+      });
+
+      await batch.commit();
+
+      return {
+        success: true,
+        following: true,
+        followersCount: 1,
+        followingCount: 1,
+      };
+    }
+  } catch (err: any) {
+    console.error(
+      '[followService] toggleFollowUser error:',
+      err?.code || 'ERROR',
+      `users/${followerId}/following/${targetId}`,
+      err
+    );
+    throw err;
   }
 }
 
@@ -249,7 +254,7 @@ export async function unfollowUser(
 }
 
 /**
- * Fetches followers for a user.
+ * Fetches followers for a user from users/{userId}/followers.
  */
 export async function fetchUserFollowers(
   userId: string,
@@ -257,33 +262,23 @@ export async function fetchUserFollowers(
 ): Promise<Array<{ uid: string; displayName?: string; avatar?: string }>> {
   if (!userId) return [];
   try {
-    // First try subcollection users/{userId}/followers
     const subSnap = await getDocs(
       query(collection(db, 'users', userId, 'followers'), limit(limitCount))
     );
-    if (!subSnap.empty) {
-      return subSnap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
-    }
-
-    // Fall back to legacy follows collection
-    const q = query(
-      collection(db, 'follows'),
-      where('targetId', '==', userId),
-      limit(limitCount)
+    return subSnap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
+  } catch (err: any) {
+    console.error(
+      '[followService] fetchUserFollowers error:',
+      err?.code || 'ERROR',
+      `users/${userId}/followers`,
+      err
     );
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => {
-      const data = d.data() as FollowDoc;
-      return { uid: data.followerId };
-    });
-  } catch (err) {
-    console.warn(`[followService] fetchUserFollowers error (${userId}):`, err);
     return [];
   }
 }
 
 /**
- * Fetches following list for a user.
+ * Fetches following list for a user from users/{userId}/following.
  */
 export async function fetchUserFollowing(
   userId: string,
@@ -291,27 +286,17 @@ export async function fetchUserFollowing(
 ): Promise<Array<{ uid: string; displayName?: string; avatar?: string }>> {
   if (!userId) return [];
   try {
-    // First try subcollection users/{userId}/following
     const subSnap = await getDocs(
       query(collection(db, 'users', userId, 'following'), limit(limitCount))
     );
-    if (!subSnap.empty) {
-      return subSnap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
-    }
-
-    // Fall back to legacy follows collection
-    const q = query(
-      collection(db, 'follows'),
-      where('followerId', '==', userId),
-      limit(limitCount)
+    return subSnap.docs.map((d) => ({ uid: d.id, ...(d.data() as any) }));
+  } catch (err: any) {
+    console.error(
+      '[followService] fetchUserFollowing error:',
+      err?.code || 'ERROR',
+      `users/${userId}/following`,
+      err
     );
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => {
-      const data = d.data() as FollowDoc;
-      return { uid: data.targetId };
-    });
-  } catch (err) {
-    console.warn(`[followService] fetchUserFollowing error (${userId}):`, err);
     return [];
   }
 }
@@ -322,10 +307,20 @@ export const getFollowing = fetchUserFollowing;
 
 /**
  * Fetches the array of target user IDs followed by a student.
+ * Directly reads subcollection users/{userId}/following.
  */
 export async function getFollowingIds(userId: string): Promise<string[]> {
-  const list = await fetchUserFollowing(userId, 200);
-  return list.map((item) => item.uid).filter(Boolean);
+  if (!userId) return [];
+  try {
+    const snap = await getDocs(collection(db, 'users', userId, 'following'));
+    return snap.docs.map((d) => d.id).filter(Boolean);
+  } catch (err: any) {
+    console.error(
+      '[followService] getFollowingIds error:',
+      err?.code || 'ERROR',
+      `users/${userId}/following`,
+      err
+    );
+    return [];
+  }
 }
-
-

@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   updateDoc,
@@ -9,6 +10,10 @@ import {
   where,
   orderBy,
   limit as firestoreLimit,
+  runTransaction,
+  serverTimestamp,
+  arrayUnion,
+  arrayRemove,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 
@@ -30,6 +35,7 @@ export interface FetchUserPostsParams {
   userId?: string | null;
   page?: number;
   limit?: number;
+  currentUserId?: string | null;
 }
 
 export interface FetchUserPostsResponse {
@@ -134,11 +140,17 @@ export async function validateAndCompressImage(file: File): Promise<{
 
 /**
  * Fetch posts for a specific user, sorted newest first, with pagination.
+ * Checks posts/{postId}/likes/{uid} subcollection and liked_by array to ensure like state is accurately hydrated.
  */
 export async function fetchUserPosts(params: FetchUserPostsParams): Promise<FetchUserPostsResponse> {
   const page = params.page || 1;
   const limitCount = params.limit || 5;
   const userId = params.userId || '';
+  const currentUserId = params.currentUserId || '';
+
+  let postsList: UserPost[] = [];
+  let totalCount = 0;
+  let hasMorePosts = false;
 
   // 1. Try server API endpoint /api/posts
   try {
@@ -155,14 +167,9 @@ export async function fetchUserPosts(params: FetchUserPostsParams): Promise<Fetc
     if (res.ok) {
       const data = await res.json();
       if (data && data.success && Array.isArray(data.posts)) {
-        return {
-          success: true,
-          posts: data.posts,
-          total: data.total ?? data.posts.length,
-          page: data.page ?? page,
-          limit: data.limit ?? limitCount,
-          hasMore: Boolean(data.hasMore),
-        };
+        postsList = data.posts;
+        totalCount = data.total ?? data.posts.length;
+        hasMorePosts = Boolean(data.hasMore);
       }
     }
   } catch (apiErr) {
@@ -170,54 +177,70 @@ export async function fetchUserPosts(params: FetchUserPostsParams): Promise<Fetc
   }
 
   // 2. Firestore fallback if API is unavailable or offline
-  try {
-    const postsRef = collection(db, 'posts');
-    let q = query(postsRef, orderBy('created_at', 'desc'), firestoreLimit(limitCount * page));
+  if (postsList.length === 0) {
+    try {
+      const postsRef = collection(db, 'posts');
+      let q = query(postsRef, orderBy('created_at', 'desc'), firestoreLimit(limitCount * page));
 
-    if (userId) {
-      q = query(postsRef, where('user_id', '==', userId), orderBy('created_at', 'desc'), firestoreLimit(limitCount * page));
+      if (userId) {
+        q = query(postsRef, where('user_id', '==', userId), orderBy('created_at', 'desc'), firestoreLimit(limitCount * page));
+      }
+
+      const snap = await getDocs(q);
+      const allFetched = snap.docs.map((d) => {
+        const data = d.data();
+        return {
+          id: d.id,
+          user_id: data.user_id || data.userId,
+          text: data.text || '',
+          image_url: data.image_url || data.imageUrl || null,
+          author_name: data.author_name || data.authorName || 'Student',
+          author_avatar: data.author_avatar || data.authorAvatar || null,
+          likes_count: data.likes_count ?? data.likesCount ?? 0,
+          comments_count: data.comments_count ?? data.commentCount ?? 0,
+          liked_by: Array.isArray(data.liked_by) ? data.liked_by : Array.isArray(data.likedBy) ? data.likedBy : [],
+          created_at: data.created_at || new Date().toISOString(),
+          updated_at: data.updated_at || new Date().toISOString(),
+        } as UserPost;
+      });
+
+      const startIndex = (page - 1) * limitCount;
+      postsList = allFetched.slice(startIndex, startIndex + limitCount);
+      totalCount = allFetched.length;
+      hasMorePosts = allFetched.length > page * limitCount;
+    } catch (fsErr: any) {
+      console.warn('[userPostService] Firestore query error:', fsErr);
     }
-
-    const snap = await getDocs(q);
-    const allFetched = snap.docs.map((d) => {
-      const data = d.data();
-      return {
-        id: d.id,
-        user_id: data.user_id || data.userId,
-        text: data.text || '',
-        image_url: data.image_url || data.imageUrl || null,
-        author_name: data.author_name || data.authorName || 'Student',
-        author_avatar: data.author_avatar || data.authorAvatar || null,
-        likes_count: data.likes_count ?? 0,
-        comments_count: data.comments_count ?? 0,
-        liked_by: Array.isArray(data.liked_by) ? data.liked_by : [],
-        created_at: data.created_at || new Date().toISOString(),
-        updated_at: data.updated_at || new Date().toISOString(),
-      } as UserPost;
-    });
-
-    const startIndex = (page - 1) * limitCount;
-    const paginated = allFetched.slice(startIndex, startIndex + limitCount);
-
-    return {
-      success: true,
-      posts: paginated,
-      total: allFetched.length,
-      page,
-      limit: limitCount,
-      hasMore: allFetched.length > page * limitCount,
-    };
-  } catch (fsErr) {
-    console.warn('[userPostService] Firestore query error:', fsErr);
-    return {
-      success: false,
-      posts: [],
-      total: 0,
-      page,
-      limit: limitCount,
-      hasMore: false,
-    };
   }
+
+  // 3. Hydrate like state for current user from posts/{id}/likes/{currentUserId} if needed
+  if (currentUserId && postsList.length > 0) {
+    try {
+      await Promise.all(
+        postsList.map(async (post) => {
+          const likedByArray = Array.isArray(post.liked_by) ? post.liked_by : [];
+          if (!likedByArray.includes(currentUserId)) {
+            const likeDocRef = doc(db, 'posts', post.id, 'likes', currentUserId);
+            const likeDocSnap = await getDoc(likeDocRef);
+            if (likeDocSnap.exists()) {
+              post.liked_by = [...likedByArray, currentUserId];
+            }
+          }
+        })
+      );
+    } catch (likeCheckErr) {
+      console.warn('[userPostService] like check hydration notice:', likeCheckErr);
+    }
+  }
+
+  return {
+    success: true,
+    posts: postsList,
+    total: totalCount,
+    page,
+    limit: limitCount,
+    hasMore: hasMorePosts,
+  };
 }
 
 /**
@@ -409,13 +432,77 @@ export async function deleteUserPost(params: { id: string; userId: string }): Pr
 
 /**
  * Like / unlike a post.
+ * Stores like in subcollection posts/{postId}/likes/{userId} and maintains liked_by[] array on posts/{postId}.
  */
 export async function toggleLikePost(params: { id: string; userId: string }): Promise<{
   liked: boolean;
   likesCount: number;
 }> {
+  if (!params.id || !params.userId) {
+    throw new Error('Post ID and User ID required to toggle like.');
+  }
+
+  const postRef = doc(db, 'posts', params.id);
+  const likeRef = doc(db, 'posts', params.id, 'likes', params.userId);
+
   try {
-    const res = await fetch('/api/posts', {
+    const result = await runTransaction(db, async (tx) => {
+      const [postSnap, likeSnap] = await Promise.all([
+        tx.get(postRef),
+        tx.get(likeRef),
+      ]);
+
+      const isLiked = likeSnap.exists();
+      const currentData = postSnap.exists() ? postSnap.data() : null;
+      const currentLikedBy: string[] = Array.isArray(currentData?.liked_by)
+        ? currentData.liked_by
+        : Array.isArray(currentData?.likedBy)
+        ? currentData.likedBy
+        : [];
+      const currentCount = typeof currentData?.likes_count === 'number'
+        ? currentData.likes_count
+        : typeof currentData?.likesCount === 'number'
+        ? currentData.likesCount
+        : currentLikedBy.length;
+
+      if (isLiked) {
+        // Unlike
+        tx.delete(likeRef);
+        const newCount = Math.max(0, currentCount - 1);
+        const newLikedBy = currentLikedBy.filter((u) => u !== params.userId);
+        if (postSnap.exists()) {
+          tx.update(postRef, {
+            likes_count: newCount,
+            likesCount: newCount,
+            liked_by: newLikedBy,
+            likedBy: newLikedBy,
+            updated_at: new Date().toISOString(),
+          });
+        }
+        return { liked: false, likesCount: newCount };
+      } else {
+        // Like
+        tx.set(likeRef, {
+          uid: params.userId,
+          createdAt: serverTimestamp(),
+        });
+        const newCount = currentCount + 1;
+        const newLikedBy = currentLikedBy.includes(params.userId) ? currentLikedBy : [...currentLikedBy, params.userId];
+        if (postSnap.exists()) {
+          tx.update(postRef, {
+            likes_count: newCount,
+            likesCount: newCount,
+            liked_by: newLikedBy,
+            likedBy: newLikedBy,
+            updated_at: new Date().toISOString(),
+          });
+        }
+        return { liked: true, likesCount: newCount };
+      }
+    });
+
+    // Also notify server in background if available
+    fetch('/api/posts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -423,18 +510,36 @@ export async function toggleLikePost(params: { id: string; userId: string }): Pr
         id: params.id,
         user_id: params.userId,
       }),
-    });
+    }).catch(() => {});
 
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        liked: Boolean(data.liked),
-        likesCount: data.likes_count ?? 0,
-      };
-    }
-  } catch (err) {
-    console.warn('[userPostService] like error:', err);
+    return result;
+  } catch (err: any) {
+    console.error(
+      '[userPostService] toggleLikePost error:',
+      err?.code || 'ERROR',
+      `posts/${params.id}/likes/${params.userId}`,
+      err
+    );
+    throw err;
   }
+}
 
-  return { liked: true, likesCount: 1 };
+/**
+ * Checks if a user has liked a specific post.
+ */
+export async function checkUserLikedPost(postId: string, userId: string): Promise<boolean> {
+  if (!postId || !userId) return false;
+  try {
+    const likeRef = doc(db, 'posts', postId, 'likes', userId);
+    const snap = await getDoc(likeRef);
+    return snap.exists();
+  } catch (err: any) {
+    console.error(
+      '[userPostService] checkUserLikedPost error:',
+      err?.code || 'ERROR',
+      `posts/${postId}/likes/${userId}`,
+      err
+    );
+    return false;
+  }
 }

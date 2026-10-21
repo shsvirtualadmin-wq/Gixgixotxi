@@ -53,115 +53,157 @@ export async function purchaseCosmeticItem(
 ): Promise<{ success: boolean; newBalance: number }> {
   if (!userId) throw new Error('You must be signed in to purchase cosmetics.');
 
-  // 1. Primary: Server-side atomic Cloud Function
-  try {
-    const unlockItemCallable = httpsCallable<
-      { itemId: string; userId?: string },
-      { success: boolean; itemId: string; itemName: string; pricePaid: number; newBalance: number; owned: string[] }
-    >(functions, 'unlockItem');
-
-    const response = await unlockItemCallable({ itemId: item.id, userId });
-    if (response?.data?.success) {
-      return {
-        success: true,
-        newBalance: response.data.newBalance,
-      };
-    }
-  } catch (fnErr: any) {
-    const msg = fnErr?.message || '';
-    // If it's a domain/validation error, surface it cleanly to the user
-    if (
-      msg.includes('already own') ||
-      msg.includes('already unlocked') ||
-      msg.includes('Insufficient Kobans') ||
-      msg.includes('inactive') ||
-      msg.includes('signed in')
-    ) {
-      throw new Error(msg);
-    }
-    console.warn('[kobanService] unlockItem Cloud Function call failed, trying transaction fallback:', fnErr);
-  }
-
-  // 2. Fallback: Local Firestore transaction (if Cloud Functions not deployed in current environment)
+  const userRef = doc(db, 'users', userId);
   const walletRef = doc(db, 'wallets', userId);
-  const storeItemRef = doc(db, 'store_items', item.id);
   const unlockedDocRef = doc(db, 'users', userId, 'unlocked', item.id);
+  const storeItemRef = doc(db, 'storeItems', item.id);
+  const legacyStoreItemRef = doc(db, 'store_items', item.id);
 
-  const newBalance = await runTransaction(db, async (tx) => {
-    const snap = await tx.get(walletRef);
-    if (!snap.exists()) {
-      throw new Error('Wallet not initialized. Please refresh and try again.');
-    }
+  try {
+    const newBalance = await runTransaction(db, async (tx) => {
+      // 1. Reads
+      const [userSnap, walletSnap, unlockedSnap] = await Promise.all([
+        tx.get(userRef),
+        tx.get(walletRef),
+        tx.get(unlockedDocRef),
+      ]);
 
-    let effectivePrice = item.priceKobans;
-    const storeItemSnap = await tx.get(storeItemRef);
-    if (storeItemSnap.exists()) {
-      const sData = storeItemSnap.data();
-      if (sData.active === false && !isSuperAdmin) {
-        throw new Error(`"${item.name}" is currently inactive in the Boardly Store.`);
+      if (unlockedSnap.exists()) {
+        throw new Error(`You have already unlocked "${item.name}".`);
       }
-      if (typeof sData.priceKobans === 'number') {
-        effectivePrice = Math.max(0, sData.priceKobans);
+
+      const walletData = walletSnap.exists() ? walletSnap.data() : null;
+      const currentOwned: string[] = Array.isArray(walletData?.owned) ? walletData.owned : [];
+      if (currentOwned.includes(item.id)) {
+        throw new Error(`You already own "${item.name}".`);
       }
-    }
 
-    if (isSuperAdmin) {
-      effectivePrice = 0;
-    }
+      // Check item price from Firestore store items if present
+      let effectivePrice = item.priceKobans;
+      const storeItemSnap = await tx.get(storeItemRef);
+      if (storeItemSnap.exists()) {
+        const sData = storeItemSnap.data();
+        if (sData.active === false && !isSuperAdmin) {
+          throw new Error(`"${item.name}" is currently inactive in the Boardly Store.`);
+        }
+        if (typeof sData.priceKobans === 'number') {
+          effectivePrice = Math.max(0, sData.priceKobans);
+        }
+      } else {
+        const legacySnap = await tx.get(legacyStoreItemRef);
+        if (legacySnap.exists()) {
+          const sData = legacySnap.data();
+          if (sData.active === false && !isSuperAdmin) {
+            throw new Error(`"${item.name}" is currently inactive in the Boardly Store.`);
+          }
+          if (typeof sData.priceKobans === 'number') {
+            effectivePrice = Math.max(0, sData.priceKobans);
+          }
+        }
+      }
 
-    const data = snap.data();
-    const currentBalance = typeof data.balance === 'number' ? data.balance : 0;
-    const currentOwned: string[] = Array.isArray(data.owned) ? data.owned : [];
+      if (isSuperAdmin) {
+        effectivePrice = 0;
+      }
 
-    if (currentOwned.includes(item.id)) {
-      throw new Error(`You already own ${item.name}.`);
-    }
+      // Read current balance from users doc (preferred) or wallets doc
+      const userData = userSnap.exists() ? userSnap.data() : null;
+      let currentBalance = 0;
+      if (userData && typeof userData.kobans === 'number') {
+        currentBalance = userData.kobans;
+      } else if (userData && typeof userData.kobanBalance === 'number') {
+        currentBalance = userData.kobanBalance;
+      } else if (walletData && typeof walletData.balance === 'number') {
+        currentBalance = walletData.balance;
+      }
 
-    if (currentBalance < effectivePrice) {
-      throw new Error(
-        `Insufficient Kobans balance. You have ${currentBalance.toLocaleString()} Kobans, but ${item.name} costs ${effectivePrice.toLocaleString()} Kobans.`
+      if (currentBalance < effectivePrice) {
+        throw new Error(
+          `Insufficient Kobans. You have ${currentBalance.toLocaleString()} Kobans, but ${item.name} costs ${effectivePrice.toLocaleString()} Kobans.`
+        );
+      }
+
+      const balanceAfter = Math.max(0, currentBalance - effectivePrice);
+      const updatedOwned = Array.from(new Set([...currentOwned, item.id]));
+
+      // 2. Writes in same atomic batch:
+      // A. Update users doc (decrement only kobans and kobanBalance down)
+      if (userSnap.exists()) {
+        tx.update(userRef, {
+          kobans: balanceAfter,
+          kobanBalance: balanceAfter,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        tx.set(
+          userRef,
+          {
+            uid: userId,
+            kobans: balanceAfter,
+            kobanBalance: balanceAfter,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      // B. Create users/{uid}/unlocked/{itemId}
+      tx.set(unlockedDocRef, {
+        itemId: item.id,
+        itemName: item.name,
+        pricePaid: effectivePrice,
+        unlockedAt: serverTimestamp(),
+      });
+
+      // C. Update wallets/{uid} balance & owned
+      if (walletSnap.exists()) {
+        tx.update(walletRef, {
+          balance: balanceAfter,
+          owned: updatedOwned,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        tx.set(
+          walletRef,
+          {
+            balance: balanceAfter,
+            owned: updatedOwned,
+            equipped: { effect: null, frame: null, nameplate: null, avatar: null, banner: null },
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
+
+      // D. Append immutable ledger document
+      const ledgerEntryRef = doc(
+        collection(db, 'wallets', userId, 'ledger'),
+        `purchase_${item.id}_${Date.now()}`
       );
-    }
+      tx.set(ledgerEntryRef, {
+        id: ledgerEntryRef.id,
+        type: 'purchase',
+        amount: -effectivePrice,
+        balanceAfter,
+        itemId: item.id,
+        itemName: item.name,
+        reason: isSuperAdmin ? `Super Admin unlock: ${item.name}` : `Store purchase: ${item.name}`,
+        timestamp: serverTimestamp(),
+      });
 
-    const balanceAfter = Math.max(0, currentBalance - effectivePrice);
-    const updatedOwned = [...currentOwned, item.id];
-
-    // Atomically update wallet
-    tx.update(walletRef, {
-      balance: balanceAfter,
-      owned: updatedOwned,
-      updatedAt: serverTimestamp(),
+      return balanceAfter;
     });
 
-    // Write unlocked record
-    tx.set(unlockedDocRef, {
-      itemId: item.id,
-      itemName: item.name,
-      pricePaid: effectivePrice,
-      unlockedAt: serverTimestamp(),
-    });
-
-    // Append ledger document
-    const ledgerEntryRef = doc(
-      collection(db, 'wallets', userId, 'ledger'),
-      `purchase_${item.id}_${Date.now()}`
+    return { success: true, newBalance };
+  } catch (err: any) {
+    console.error(
+      '[kobanService] purchaseCosmeticItem error:',
+      err?.code || 'ERROR',
+      `users/${userId}/unlocked/${item.id}`,
+      err
     );
-
-    tx.set(ledgerEntryRef, {
-      id: ledgerEntryRef.id,
-      type: 'purchase',
-      amount: -effectivePrice,
-      balanceAfter,
-      itemId: item.id,
-      itemName: item.name,
-      reason: isSuperAdmin ? `Super Admin unlock: ${item.name}` : `Store purchase: ${item.name}`,
-      timestamp: serverTimestamp(),
-    });
-
-    return balanceAfter;
-  });
-
-  return { success: true, newBalance };
+    throw err;
+  }
 }
 
 /**

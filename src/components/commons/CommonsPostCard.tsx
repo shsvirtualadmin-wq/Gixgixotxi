@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 import type { CommonsPost, CommonsFileAttachment } from '@/types/commons';
 import { COMMONS_POST_TYPES } from '@/types/commons';
-import { togglePostVote, toggleSavePost } from '@/services/commonsService';
+import { togglePostVote, toggleSavePost, checkUserVoted, checkUserSaved } from '@/services/commonsService';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
@@ -50,6 +50,27 @@ export function CommonsPostCard({
   const [voting, setVoting] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Sync vote state on mount / user change
+  useEffect(() => {
+    let isMounted = true;
+    if (currentUserId && post.id) {
+      Promise.all([
+        checkUserVoted(post.id, currentUserId),
+        checkUserSaved(post.id, currentUserId),
+      ])
+        .then(([voted, saved]) => {
+          if (isMounted) {
+            setHasVoted(voted);
+            setIsSaved(saved);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [post.id, currentUserId]);
 
   const typeMeta = COMMONS_POST_TYPES[post.type] || COMMONS_POST_TYPES.notes;
 

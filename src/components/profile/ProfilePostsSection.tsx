@@ -97,6 +97,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
           userId: targetUid,
           page: 1,
           limit: 5,
+          currentUserId,
         });
 
         if (!isMounted) return;
@@ -119,7 +120,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [targetUid]);
+  }, [targetUid, currentUserId]);
 
   // Load more posts
   const handleLoadMore = async () => {
@@ -131,6 +132,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
         userId: targetUid,
         page: nextPage,
         limit: 5,
+        currentUserId,
       });
 
       setPosts((prev) => {
@@ -289,22 +291,32 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
     setPosts((prev) =>
       prev.map((p) => {
         if (p.id !== postId) return p;
-        const likedBy = Array.isArray(p.liked_by) ? [...p.liked_by] : [];
+        const likedBy = Array.isArray(p.liked_by)
+          ? [...p.liked_by]
+          : Array.isArray((p as any).likedBy)
+          ? [...(p as any).likedBy]
+          : [];
         const hasLiked = likedBy.includes(currentUserId);
         const newLikedBy = hasLiked ? likedBy.filter((u) => u !== currentUserId) : [...likedBy, currentUserId];
-        const newCount = Math.max(0, (p.likes_count ?? 0) + (hasLiked ? -1 : 1));
+        const newCount = Math.max(0, (p.likes_count ?? (p as any).likesCount ?? 0) + (hasLiked ? -1 : 1));
         return {
           ...p,
           liked_by: newLikedBy,
+          likedBy: newLikedBy,
           likes_count: newCount,
+          likesCount: newCount,
         };
       })
     );
 
+    const originalPost = posts.find((p) => p.id === postId);
     try {
       await toggleLikePost({ id: postId, userId: currentUserId });
-    } catch (err) {
-      console.warn('[ProfilePostsSection] Like toggle exception:', err);
+    } catch (err: any) {
+      console.error('[ProfilePostsSection] Like toggle exception:', err?.code, `posts/${postId}/likes/${currentUserId}`, err);
+      if (originalPost) {
+        setPosts((prev) => prev.map((p) => (p.id === postId ? originalPost : p)));
+      }
     }
   };
 
@@ -511,7 +523,12 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
           {posts.map((post) => {
             const isMyPost = Boolean(currentUserId && String(post.user_id) === String(currentUserId));
             const isEditingThis = editingPostId === post.id;
-            const hasLiked = Array.isArray(post.liked_by) && currentUserId ? post.liked_by.includes(currentUserId) : false;
+            const postLikedBy = Array.isArray(post.liked_by)
+              ? post.liked_by
+              : Array.isArray((post as any).likedBy)
+              ? (post as any).likedBy
+              : [];
+            const hasLiked = Boolean(currentUserId && postLikedBy.includes(currentUserId));
 
             return (
               <div

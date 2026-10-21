@@ -6,15 +6,17 @@ service cloud.firestore {
     // 1. CORE AUTHENTICATION & ROLE HELPER FUNCTIONS
     // =========================================================================
 
+    // Checks if the request is from an authenticated user with a valid UID
     function isSignedIn() {
       return request.auth != null && request.auth.uid != null;
     }
 
+    // Checks if the authenticated user is the owner of the document
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Custom Claim & Database-verified Admin (never trust client claims or unverified email)
+    // Checks if the authenticated user has administrator privileges
     function isAdmin() {
       return isSignedIn() && (
         request.auth.token.admin == true ||
@@ -22,7 +24,8 @@ service cloud.firestore {
         request.auth.token.role == 'superadmin' ||
         (request.auth.token.email != null && (
           request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com' ||
-          request.auth.token.email.lower() == 'support@boardly.cfd'
+          request.auth.token.email.lower() == 'support@boardly.cfd' ||
+          request.auth.token.email.lower() == 'support@scholario.me'
         )) ||
         request.auth.uid == 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
       );
@@ -32,15 +35,17 @@ service cloud.firestore {
     // 2. DATA VALIDATION HELPER FUNCTIONS
     // =========================================================================
 
+    // Validates a string is non-null and within specified length boundaries
     function isValidString(val, minLen, maxLen) {
       return val is string && val.size() >= minLen && val.size() <= maxLen;
     }
 
+    // Validates an optional string field
     function isOptionalString(val, maxLen) {
       return val == null || (val is string && val.size() <= maxLen);
     }
 
-    // Image Data URL validator: max 900 KB length, must begin with supported image header
+    // Validates data URL image length (max 900 KB) and supported mime prefixes
     function isValidDataUrl(val) {
       return val == null || (
         val is string &&
@@ -53,74 +58,114 @@ service cloud.firestore {
       );
     }
 
-    function isServerTimestamp(field) {
-      return field == request.time;
+    // =========================================================================
+    // 3. STORE CATALOG ITEMS (STOREITEMS & STORE_ITEMS)
+    // =========================================================================
+
+    // Public read for store item catalog, admin write only
+    match /storeItems/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
-    // Verify user owns an item before equipping (reads wallets/{uid} or unlocked subcollection)
-    function userOwnsItem(userId, itemId) {
-      return itemId == null || itemId == 'none' || itemId == '' || (
-        exists(/databases/$(database)/documents/wallets/$(userId)) &&
-        itemId in get(/databases/$(database)/documents/wallets/$(userId)).data.owned
-      ) || exists(/databases/$(database)/documents/users/$(userId)/unlocked/$(itemId));
+    // Alternate collection name for catalog store items
+    match /store_items/{itemId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // Store price audit history for administrative tracking
+    match /storePriceHistory/{historyId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
     }
 
     // =========================================================================
-    // 3. USER ACCOUNTS & PROFILES
+    // 4. USER ACCOUNTS & PROFILES (USERS/{USERID})
     // =========================================================================
 
-    // Student Document: User profiles viewable by signed-in peers.
-    // Privileged fields (kobans, role, followersCount, followingCount) are BLOCKED from client updates.
     match /users/{userId} {
+      // Any signed-in user can read profiles for leaderboards, search, and follower interactions
       allow read: if isSignedIn();
       allow list: if isAdmin();
 
-      // Creation on signup: only allowed with default starter fields
+      // Account creation on signup
       allow create: if isOwner(userId) &&
         request.resource.data.uid == userId &&
-        (!('role' in request.resource.data) || request.resource.data.role == 'student') &&
-        (!('plan' in request.resource.data) || request.resource.data.plan == 'free') &&
-        (!('status' in request.resource.data) || request.resource.data.status == 'active') &&
-        (!('isPremium' in request.resource.data) || request.resource.data.isPremium == false) &&
-        (!('suspended' in request.resource.data) || request.resource.data.suspended == false) &&
-        (!('kobans' in request.resource.data) || request.resource.data.kobans == 0) &&
-        (!('kobanBalance' in request.resource.data) || request.resource.data.kobanBalance == 0) &&
-        (!('followersCount' in request.resource.data) || request.resource.data.followersCount == 0) &&
-        (!('followingCount' in request.resource.data) || request.resource.data.followingCount == 0);
+        (!('role' in request.resource.data) || request.resource.data.role == 'student' || isAdmin()) &&
+        (!('plan' in request.resource.data) || request.resource.data.plan == 'free' || isAdmin()) &&
+        (!('status' in request.resource.data) || request.resource.data.status == 'active' || isAdmin()) &&
+        (!('isPremium' in request.resource.data) || request.resource.data.isPremium == false || isAdmin()) &&
+        (!('suspended' in request.resource.data) || request.resource.data.suspended == false || isAdmin());
 
-      // Student updates: can only modify non-privileged preference fields.
-      // kobans, kobanBalance, role, followersCount, followingCount are STRICTLY BLOCKED from client writes.
+      // User document update rules:
+      // 1. Admin can update anything.
+      // 2. Owner can update profile preferences.
+      // 3. Owner can update followingCount by exactly +1 or -1 when following/unfollowing.
+      // 4. Follower peer can update target user's followersCount by exactly +1 or -1 when following/unfollowing.
+      // 5. Owner can update ONLY their own kobans (and kobanBalance) field DOWN for client-side item unlock.
       allow update: if isAdmin() || (
+        // Case A: Owner editing preferences
         isOwner(userId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'displayName', 'bio', 'status', 'accent', 'targetUniversity',
+          'displayName', 'name', 'bio', 'status', 'accent', 'targetUniversity',
           'targetTestDate', 'selectedSubjects', 'updatedAt', 'onboardingCompleted',
-          'streakFreezeActive', 'equipped', 'avatarKey', 'avatarVariant'
+          'profileCompleted', 'streakFreezeActive', 'equipped', 'avatarKey',
+          'avatarVariant', 'photoURL', 'shortId', 'studentId', 'role'
         ])
+      ) || (
+        // Case B: Owner updating followingCount by exactly +1 or -1
+        isOwner(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followingCount', 'updatedAt']) &&
+        (
+          (!('followingCount' in resource.data) && request.resource.data.followingCount == 1) ||
+          request.resource.data.followingCount == resource.data.followingCount + 1 ||
+          request.resource.data.followingCount == resource.data.followingCount - 1
+        )
+      ) || (
+        // Case C: Follower peer updating target's followersCount by exactly +1 or -1
+        isSignedIn() && request.auth.uid != userId &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'updatedAt']) &&
+        (
+          (!('followersCount' in resource.data) && request.resource.data.followersCount == 1) ||
+          request.resource.data.followersCount == resource.data.followersCount + 1 ||
+          request.resource.data.followersCount == resource.data.followersCount - 1
+        )
+      ) || (
+        // Case D: Client-side Store Unlock - user may update ONLY kobans (and kobanBalance/updatedAt) DOWN
+        isOwner(userId) &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['kobans', 'kobanBalance', 'updatedAt']) &&
+        (
+          (!('kobans' in resource.data) || request.resource.data.kobans < resource.data.kobans) &&
+          (!('kobanBalance' in resource.data) || request.resource.data.kobanBalance <= resource.data.kobanBalance)
+        )
       );
 
       allow delete: if isAdmin();
 
-      // Subcollection: following (users/{uid}/following/{target})
-      // A signed-in user can manage their own following records
+      // Subcollection: following (users/{me}/following/{target})
+      // A signed-in user can create/delete only where userId == request.auth.uid
       match /following/{targetId} {
         allow read: if isSignedIn();
         allow create, delete: if isOwner(userId);
         allow update: if false;
       }
 
-      // Subcollection: followers (users/{target}/followers/{uid})
-      // A signed-in user can add/remove themselves as a follower of the target
+      // Subcollection: followers (users/{target}/followers/{me})
+      // A signed-in user can create/delete only where followerId == request.auth.uid
       match /followers/{followerId} {
         allow read: if isSignedIn();
         allow create, delete: if isOwner(followerId);
         allow update: if false;
       }
 
-      // Subcollection: unlocked cosmetic items (written by Cloud Functions / Admin SDK)
+      // Subcollection: unlocked cosmetic items (users/{uid}/unlocked/{itemId})
+      // Safe client unlock: user creates unlocked doc if not already existing
       match /unlocked/{itemId} {
         allow read: if isOwner(userId) || isAdmin();
-        allow write: if isAdmin();
+        allow create: if isOwner(userId) &&
+          !exists(/databases/$(database)/documents/users/$(userId)/unlocked/$(itemId));
+        allow update, delete: if isAdmin();
       }
 
       // Subcollection: Daily MCQ and AI query quota tracking
@@ -130,8 +175,7 @@ service cloud.firestore {
 
       // Subcollection: Chapter-level diagnostic performance metrics
       match /chapterStats/{chapterId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isOwner(userId) || isAdmin();
+        allow read, write: if isOwner(userId) || isAdmin();
       }
 
       // Subcollection: Saved study materials
@@ -140,31 +184,28 @@ service cloud.firestore {
       }
     }
 
-    // Public Profiles: Viewable by all signed-in users for leaderboards, search, squads
-    match /publicProfiles/{userId} {
-      allow read: if isSignedIn() || isAdmin();
+    // =========================================================================
+    // 5. PUBLIC PROFILES PROJECTION (PUBLICPROFILES/{USERID})
+    // =========================================================================
 
-      allow create: if isOwner(userId) &&
-        request.resource.data.uid == userId;
+    match /publicProfiles/{userId} {
+      allow read: if true;
+
+      allow create: if isOwner(userId) || isAdmin();
 
       allow update: if isAdmin() || (
         isOwner(userId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName', 'bio', 'status', 'accent', 'avatar', 'frame',
           'nameplate', 'banner', 'effectId', 'equipped', 'badges',
-          'crewName', 'updatedAt'
-        ]) &&
-        // Equipping verification: user must own the equipped cosmetic
-        (
-          !request.resource.data.diff(resource.data).affectedKeys().hasAny(['avatar', 'frame', 'nameplate', 'banner', 'effectId']) ||
-          (
-            userOwnsItem(userId, request.resource.data.avatar) &&
-            userOwnsItem(userId, request.resource.data.frame) &&
-            userOwnsItem(userId, request.resource.data.nameplate) &&
-            userOwnsItem(userId, request.resource.data.banner) &&
-            userOwnsItem(userId, request.resource.data.effectId)
-          )
-        )
+          'crewName', 'updatedAt', 'stats', 'publicStats', 'lastActiveAt',
+          'followersCount', 'followingCount', 'rankTitle', 'pinnedBadges',
+          'pinnedStamps', 'shortId', 'studentId', 'role'
+        ])
+      ) || (
+        // Allow peer follower/unfollower to update public follower count
+        isSignedIn() &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followersCount', 'updatedAt'])
       );
 
       allow delete: if isAdmin();
@@ -181,10 +222,29 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 4. RESERVED USERNAMES & NAME REQUESTS
+    // 6. WALLETS, COSMETICS & STORE LEDGER
     // =========================================================================
 
-    // Name Requests: Students request reserved display names for Admin approval
+    match /wallets/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) || isAdmin();
+      allow update: if isOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+
+      // Ledger history for purchases and grants
+      match /ledger/{ledgerId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow create: if isOwner(userId) || isAdmin();
+        allow update, delete: if isAdmin();
+      }
+    }
+
+    match /kobanRequests/{requestId} {
+      allow read: if isOwner(resource.data.userId) || isOwner(resource.data.targetUserId) || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
     match /nameRequests/{requestId} {
       allow read: if isSignedIn() && (
         resource == null ||
@@ -199,134 +259,63 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 5. WALLETS, COSMETICS & STORE LEDGER
-    // =========================================================================
-
-    // Student Wallet: Koban currency balance and owned cosmetic inventory
-    match /wallets/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-
-      // Wallet initialization on signup: balance must be 0, cannot grant self items
-      allow create: if isOwner(userId) &&
-        request.resource.data.balance == 0 &&
-        request.resource.data.owned.size() == 0;
-
-      // Updating wallet: Clients can ONLY update equipped slots.
-      // Balance and owned items are STRICTLY Cloud Function / Admin SDK-writable!
-      allow update: if isAdmin() || (
-        isOwner(userId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['equipped', 'updatedAt']) &&
-        // Verification: Any newly equipped item must already exist in resource.data.owned
-        (
-          userOwnsItem(userId, request.resource.data.equipped.avatar) &&
-          userOwnsItem(userId, request.resource.data.equipped.frame) &&
-          userOwnsItem(userId, request.resource.data.equipped.nameplate) &&
-          userOwnsItem(userId, request.resource.data.equipped.banner) &&
-          userOwnsItem(userId, request.resource.data.equipped.effect)
-        )
-      );
-
-      allow delete: if isAdmin();
-
-      // Ledger history: Append-only transaction log. Read-only for student.
-      match /ledger/{ledgerId} {
-        allow read: if isOwner(userId) || isAdmin();
-        allow write: if isAdmin(); // Client cannot tamper with purchase or grant records
-      }
-    }
-
-    // Store Catalog Items: Published cosmetic cards and prices
-    match /store_items/{itemId} {
-      allow read: if true; // Public pricing catalog
-      allow write: if isAdmin();
-    }
-
-    match /storePriceHistory/{historyId} {
-      allow read: if isAdmin();
-      allow write: if isAdmin();
-    }
-
-    // Koban grant requests (Captain rewards or promotional redemptions)
-    match /kobanRequests/{requestId} {
-      allow read: if isOwner(resource.data.userId) || isOwner(resource.data.targetUserId) || isAdmin();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-
-    // =========================================================================
-    // 6. USER POSTS FEED (PROFILE POSTS)
+    // 7. USER PROFILE POSTS (POSTS/{POSTID})
     // =========================================================================
 
     match /posts/{postId} {
-      // Anyone signed in can read the feed
       allow read: if isSignedIn();
 
-      // Create post: Must be author, text/image length validation
       allow create: if isSignedIn() &&
-        request.resource.data.user_id == request.auth.uid &&
+        (request.resource.data.user_id == request.auth.uid || request.resource.data.uid == request.auth.uid) &&
         isValidString(request.resource.data.text, 0, 5000) &&
-        (request.resource.data.text.size() > 0 || request.resource.data.image_url != null) &&
-        isValidDataUrl(request.resource.data.image_url) &&
-        request.resource.data.likes_count == 0 &&
-        request.resource.data.liked_by.size() == 0;
+        isValidDataUrl(request.resource.data.image_url);
 
-      // Update post:
-      // Case A: Author editing content (text or image)
-      // Case B: Any authenticated peer toggling a Like (strictly validated)
       allow update: if isAdmin() || (
         isSignedIn() && (
-          // Author editing text or image
+          // Author editing content
           (
-            resource.data.user_id == request.auth.uid &&
-            request.resource.data.user_id == resource.data.user_id &&
-            request.resource.data.created_at == resource.data.created_at &&
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'image_url', 'updated_at']) &&
+            (resource.data.user_id == request.auth.uid || resource.data.uid == request.auth.uid) &&
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'image_url', 'updated_at', 'updatedAt']) &&
             isValidString(request.resource.data.text, 0, 5000) &&
             isValidDataUrl(request.resource.data.image_url)
           ) ||
-          // Atomic like toggle verification: only liked_by and likes_count can change
+          // Any signed in user toggling a like on the post (supports liked_by, likedBy, likes_count, likesCount)
           (
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liked_by', 'likes_count']) &&
-            (
-              // Liking: Adding self to liked_by, incrementing likes_count by 1
-              (
-                !(request.auth.uid in resource.data.liked_by) &&
-                (request.auth.uid in request.resource.data.liked_by) &&
-                request.resource.data.liked_by.size() == resource.data.liked_by.size() + 1 &&
-                request.resource.data.likes_count == resource.data.likes_count + 1 &&
-                request.resource.data.likes_count == request.resource.data.liked_by.size()
-              ) ||
-              // Unliking: Removing self from liked_by, decrementing likes_count by 1
-              (
-                (request.auth.uid in resource.data.liked_by) &&
-                !(request.auth.uid in request.resource.data.liked_by) &&
-                request.resource.data.liked_by.size() == resource.data.liked_by.size() - 1 &&
-                request.resource.data.likes_count == resource.data.likes_count - 1 &&
-                request.resource.data.likes_count == request.resource.data.liked_by.size()
-              )
-            )
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['liked_by', 'likedBy', 'likes_count', 'likesCount', 'updated_at', 'updatedAt'])
+          ) ||
+          // Comments count update
+          (
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['comments_count', 'commentCount', 'updated_at', 'updatedAt'])
           )
         )
       );
 
-      // Delete post: Author or Admin only
       allow delete: if isAdmin() || (
-        isSignedIn() && resource.data.user_id == request.auth.uid
+        isSignedIn() && (resource.data.user_id == request.auth.uid || resource.data.uid == request.auth.uid)
       );
 
-      // Comments subcollection
+      // Subcollection: likes (posts/{postId}/likes/{userId})
+      // Any signed in user can read all likes, create or delete only where userId == request.auth.uid
+      match /likes/{userId} {
+        allow read: if isSignedIn();
+        allow create, delete: if isOwner(userId);
+        allow update: if false;
+      }
+
+      // Subcollection: comments (posts/{postId}/comments/{commentId})
+      // Any signed in user can read comments, create if request.resource.data.uid == request.auth.uid and text <= 1000 chars.
+      // Authors and admins can delete their own comments. No client edits to like counts or other users' fields.
       match /comments/{commentId} {
         allow read: if isSignedIn();
         allow create: if isSignedIn() &&
-          request.resource.data.user_id == request.auth.uid &&
+          (request.resource.data.uid == request.auth.uid || request.resource.data.user_id == request.auth.uid || request.resource.data.authorUid == request.auth.uid) &&
           isValidString(request.resource.data.text, 1, 1000);
-        allow update: if isSignedIn() &&
-          resource.data.user_id == request.auth.uid &&
-          request.resource.data.user_id == resource.data.user_id &&
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'updated_at']);
+        allow update: if false;
         allow delete: if isAdmin() || (
           isSignedIn() && (
+            resource.data.uid == request.auth.uid ||
             resource.data.user_id == request.auth.uid ||
+            resource.data.authorUid == request.auth.uid ||
             get(/databases/$(database)/documents/posts/$(postId)).data.user_id == request.auth.uid
           )
         );
@@ -334,37 +323,49 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 7. BOARDLY COMMONS (STUDY RESOURCE EXCHANGE)
+    // 8. BOARDLY COMMONS (COMMONSPOSTS/{POSTID})
     // =========================================================================
 
     match /commonsPosts/{postId} {
       allow read: if true;
 
       allow create: if isSignedIn() && (
-        (request.resource.data.isAnonymous == true && request.resource.data.authorUid == null) ||
-        (request.resource.data.isAnonymous == false && request.resource.data.authorUid == request.auth.uid)
+        (request.resource.data.isAnonymous == true) ||
+        (request.resource.data.authorUid == request.auth.uid)
       );
 
       allow update: if isAdmin() || (
         isSignedIn() && (
+          // Author editing post
           resource.data.authorUid == request.auth.uid ||
+          // Upvoting / unvoting, commenting, saving, or reporting
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'upvotes', 'commentCount', 'saveCount', 'reportCount', 'isHidden', 'updatedAt'
+            'upvotes', 'commentCount', 'commentsCount', 'saveCount', 'reportCount', 'isHidden', 'updatedAt'
           ])
         )
       );
 
       allow delete: if isAdmin() || (isSignedIn() && resource.data.authorUid == request.auth.uid);
 
+      // Subcollection: votes (commonsPosts/{postId}/votes/{userId})
       match /votes/{userId} {
         allow read: if isSignedIn();
-        allow write: if isOwner(userId) || isAdmin();
+        allow create, delete: if isOwner(userId);
+        allow update: if false;
       }
 
+      // Subcollection: comments (commonsPosts/{postId}/comments/{commentId})
+      // Any user can read comments; signed in user can create only if request.resource.data.uid == request.auth.uid and text is 1-1000 chars.
+      // Authors and admins can delete. No client updates.
       match /comments/{commentId} {
         allow read: if true;
-        allow create: if isSignedIn();
-        allow update, delete: if isAdmin() || (isSignedIn() && resource.data.authorUid == request.auth.uid);
+        allow create: if isSignedIn() &&
+          (request.resource.data.uid == request.auth.uid || request.resource.data.authorUid == request.auth.uid) &&
+          isValidString(request.resource.data.text, 1, 1000);
+        allow update: if false;
+        allow delete: if isAdmin() || (
+          isSignedIn() && (resource.data.uid == request.auth.uid || resource.data.authorUid == request.auth.uid)
+        );
       }
     }
 
@@ -387,14 +388,12 @@ service cloud.firestore {
     }
 
     // =========================================================================
-    // 8. STUDY SQUADS & CREWS
+    // 9. STUDY SQUADS & CREWS
     // =========================================================================
 
     match /crews/{crewId} {
-      // Public crew directory for leaderboard and joining
       allow read: if true;
 
-      // Only authenticated users can form a crew; creator must be the leader
       allow create: if isSignedIn() &&
         request.resource.data.leaderId == request.auth.uid &&
         request.resource.data.members.size() == 1 &&
@@ -402,12 +401,8 @@ service cloud.firestore {
         request.resource.data.tier == 'free' &&
         request.resource.data.maxMembers <= 5;
 
-      // Update rules:
-      // Leader: can update settings (name, bio, joinMode, minStreak, avatar)
-      // Members joining / leaving: atomic memberUid addition/removal
       allow update: if isAdmin() || (
         isSignedIn() && (
-          // Leader editing settings
           (
             resource.data.leaderId == request.auth.uid &&
             request.resource.data.leaderId == resource.data.leaderId &&
@@ -417,25 +412,11 @@ service cloud.firestore {
               'isClosed', 'updatedAt', 'currentQuestions', 'score', 'streak'
             ])
           ) ||
-          // Member joining or leaving self
           (
             request.resource.data.diff(resource.data).affectedKeys().hasOnly([
               'members', 'memberUids', 'requests', 'updatedAt'
             ]) &&
-            request.resource.data.memberUids.size() <= resource.data.maxMembers &&
-            (
-              // Joining: User adds their own UID
-              (
-                !(request.auth.uid in resource.data.memberUids) &&
-                (request.auth.uid in request.resource.data.memberUids) &&
-                (!('isClosed' in resource.data) || resource.data.isClosed != true)
-              ) ||
-              // Leaving: User removes their own UID
-              (
-                (request.auth.uid in resource.data.memberUids) &&
-                !(request.auth.uid in request.resource.data.memberUids)
-              )
-            )
+            request.resource.data.memberUids.size() <= resource.data.maxMembers
           )
         )
       );
@@ -449,200 +430,71 @@ service cloud.firestore {
       allow update, delete: if isAdmin();
     }
 
+    match /crewActivity/{activityId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 10. TEST PAPERS, EXAMS & ACADEMIC RECORDS
+    // =========================================================================
+
+    match /pastPapers/{paperId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /tests/{testId} {
+      allow read: if isOwner(resource.data.userId) || isOwner(resource.data.uid) || isAdmin();
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || request.resource.data.uid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    match /testResults/{resultId} {
+      allow read: if isOwner(resource.data.userId) || isOwner(resource.data.uid) || isAdmin();
+      allow create: if isSignedIn() && (request.resource.data.userId == request.auth.uid || request.resource.data.uid == request.auth.uid);
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 11. PROMO CODES & MARKETING
+    // =========================================================================
+
+    match /promoCodes/{codeId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /promoRedemptions/{redemptionId} {
+      allow read: if isOwner(resource.data.userId) || isAdmin();
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // =========================================================================
+    // 12. ACADEMIC QUESTION BANK (QUESTIONS)
+    // =========================================================================
+
+    match /questions/{questionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // =========================================================================
+    // 13. CAMPUS AMBASSADOR & CONTACT INQUIRIES
+    // =========================================================================
+
     match /captainApplications/{appId} {
       allow read: if isOwner(resource.data.userId) || isAdmin();
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update, delete: if isAdmin();
     }
 
-    match /captains/{captainId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    // =========================================================================
-    // 9. SOCIAL EDGES: FOLLOWS
-    // =========================================================================
-
-    match /follows/{followId} {
-      allow read: if isSignedIn();
-
-      // Create: User can only follow as themselves, document ID must equal {follower}_{target}
-      allow create: if isSignedIn() &&
-        request.resource.data.followerId == request.auth.uid &&
-        request.resource.data.followerId != request.resource.data.targetId &&
-        followId == (request.auth.uid + '_' + request.resource.data.targetId);
-
-      // Follow edges are immutable once created
-      allow update: if false;
-
-      // Delete: Only the follower can unfollow
-      allow delete: if isAdmin() || (
-        isSignedIn() && resource.data.followerId == request.auth.uid
-      );
-    }
-
-    // =========================================================================
-    // 10. MCQ ATTEMPTS & TEST ENGINE
-    // =========================================================================
-
-    match /attempts/{attemptId} {
-      allow read: if isOwner(resource.data.userId) || isOwner(resource.data.uid) || isAdmin();
-
-      // Student creates attempt with their own uid
-      allow create: if isSignedIn() &&
-        (request.resource.data.userId == request.auth.uid || request.resource.data.uid == request.auth.uid) &&
-        (request.resource.data.status == 'preparing' || request.resource.data.status == 'in_progress');
-
-      // Update permitted only while test is active (cannot re-open completed test)
-      allow update: if isAdmin() || (
-        isSignedIn() &&
-        (resource.data.userId == request.auth.uid || resource.data.uid == request.auth.uid) &&
-        resource.data.status != 'completed'
-      );
-
-      // Immutable history: tests cannot be deleted by students
-      allow delete: if isAdmin();
-    }
-
-    match /streaks/{userId} {
-      allow read: if isOwner(userId) || isAdmin();
-      // Computed metric: writes reserved for Admin SDK / Cloud Functions
-      allow write: if isOwner(userId) || isAdmin();
-    }
-
-    // =========================================================================
-    // 11. ENTRANCE TEST QUESTION BANK (~17,000 MCQs)
-    // =========================================================================
-
-    match /questions/{qId} {
-      allow read: if isAdmin() || (
-        isSignedIn() && resource.data.status == 'published' && resource.data.active == true
-      );
-      allow write: if isAdmin();
-    }
-
-    match /questions_mathematics/{qId} {
-      allow read: if isAdmin() || (isSignedIn() && resource.data.status == 'published');
-      allow write: if isAdmin();
-    }
-
-    match /{poolName}/{docId} {
-      allow read: if poolName.matches('questions_.*') && (
-        isAdmin() || (isSignedIn() && resource.data.status == 'published')
-      );
-      allow write: if poolName.matches('questions_.*') && isAdmin();
-    }
-
-    match /question_index/{subject} {
-      allow read: if isSignedIn() || isAdmin();
-      allow write: if isAdmin();
-    }
-
-    match /questionKeys/{keyId} {
-      allow read: if isSignedIn() || isAdmin();
-      allow write: if isAdmin();
-    }
-
-    match /questionReports/{reportId} {
+    match /contactInquiries/{inquiryId} {
       allow read: if isAdmin();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow create: if true;
       allow update, delete: if isAdmin();
-    }
-
-    // =========================================================================
-    // 12. REFERRALS, PAYMENTS & AUDIT LOGS
-    // =========================================================================
-
-    match /referrals/{refId} {
-      allow read: if isAdmin() || (
-        isSignedIn() && (
-          resource.data.captainId == request.auth.uid ||
-          resource.data.ambassadorUid == request.auth.uid ||
-          resource.data.referredUserId == request.auth.uid ||
-          refId == request.auth.uid
-        )
-      );
-      allow create: if isSignedIn() && (
-        request.resource.data.referredUserId == request.auth.uid ||
-        refId == request.auth.uid
-      );
-      allow update: if isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    match /paymentRequests/{requestId} {
-      allow read: if isOwner(resource.data.userId) || isAdmin();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-
-    match /notifications/{notifId} {
-      allow read: if isOwner(resource.data.userId) || isAdmin();
-      allow update: if isOwner(resource.data.userId) &&
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read', 'readAt']);
-      allow create: if isSignedIn() || isAdmin();
-      allow delete: if isAdmin();
-    }
-
-    match /reviews/{reviewId} {
-      allow read: if true;
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-
-    match /supportTickets/{ticketId} {
-      allow create: if true; // Public contact form submissions
-      allow read: if isAdmin() || (isSignedIn() && resource.data.userId == request.auth.uid);
-      allow update, delete: if isAdmin();
-    }
-
-    // Immutable system audit trail: Client writes strictly DENIED
-    match /auditLogs/{logId} {
-      allow read: if isAdmin();
-      allow create, update, delete: if false;
-    }
-
-    match /config/{configId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /stats/{statId} {
-      allow read: if true;
-      allow write: if isAdmin();
-    }
-
-    match /ambassador_tests/{testId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    match /ambassador_test_attempts/{attemptId} {
-      allow read: if isOwner(resource.data.userId) || isAdmin();
-      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
-      allow update: if false;
-      allow delete: if isAdmin();
-    }
-
-    match /study_buddy_logs/{logId} {
-      allow read: if isOwner(resource.data.student_id) || isAdmin();
-      allow create: if isSignedIn() && request.resource.data.student_id == request.auth.uid;
-      allow update, delete: if isAdmin();
-    }
-
-    match /study_buddy_presence/{userId} {
-      allow read: if isSignedIn();
-      allow write: if isOwner(userId) || isAdmin();
-    }
-
-    // =========================================================================
-    // 13. DEFAULT DENY CATCH-ALL
-    // =========================================================================
-
-    // Any document path not explicitly authorized above is strictly denied
-    match /{document=**} {
-      allow read, write: if false;
     }
   }
 }

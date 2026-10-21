@@ -223,6 +223,12 @@ export function StorePage() {
       setEquipNotice(`Unlocked ${item.name}! You can now equip it to your profile.`);
       setTimeout(() => setEquipNotice(null), 3000);
     } catch (err: unknown) {
+      console.error(
+        '[StorePage] unlock error:',
+        (err as any)?.code || 'ERROR',
+        `users/${authUser?.uid}/unlocked/${item.id}`,
+        err
+      );
       setPurchaseError((err as Error).message || 'Purchase failed');
     } finally {
       setPurchasing(false);

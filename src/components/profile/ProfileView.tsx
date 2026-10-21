@@ -59,8 +59,10 @@ import { ProfilePostsSection } from './ProfilePostsSection';
 import { FollowListModal } from './FollowListModal';
 import { EditProfileSheet } from './EditProfileSheet';
 import { ShareProfileCardModal } from './ShareProfileCardModal';
+import { doc, getDoc, setDoc, onSnapshot, collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { deriveFallbackShortId } from '@/utils/shortId';
-import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { sanitizeStudentDisplayName, isAdminAccount } from '@/utils/privacy';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import type { PublicProfile } from '@/types';
 
@@ -162,23 +164,167 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       if (!uid) return;
 
       try {
-        const publicData = await getPublicProfile(uid);
-        if (!isMounted) return;
-        setProfile(publicData);
+        // 1. Read directly from users collection as primary source of truth, and publicProfiles
+        const userDocRef = doc(db, 'users', uid);
+        const [userSnap, publicSnap] = await Promise.all([
+          getDoc(userDocRef),
+          getDoc(doc(db, 'publicProfiles', uid)),
+        ]);
 
-        // Check follow relationship if viewing someone else
+        const uData = userSnap.exists() ? userSnap.data() : null;
+        const pubData = publicSnap.exists() ? publicSnap.data() : null;
+
+        // 2. Fallback check: Read author details from recent post if user doc lacks displayName / photo
+        let postAuthorName: string | null = null;
+        let postAuthorAvatar: string | null = null;
+        let postAuthorPhotoURL: string | null = null;
+        let postAuthorFrame: string | null = null;
+        let postAuthorEquippedAvatar: string | null = null;
+
+        if (!uData?.displayName && !pubData?.displayName) {
+          try {
+            const commonsPostSnap = await getDocs(
+              query(collection(db, 'commonsPosts'), where('authorUid', '==', uid), limit(1))
+            );
+            if (!commonsPostSnap.empty) {
+              const pData = commonsPostSnap.docs[0].data();
+              postAuthorName = pData.authorName || null;
+              postAuthorAvatar = pData.authorAvatar || null;
+              postAuthorPhotoURL = pData.authorPhotoURL || (pData.authorAvatar?.includes('googleusercontent') ? pData.authorAvatar : null);
+              postAuthorFrame = pData.authorFrame || null;
+              postAuthorEquippedAvatar = pData.authorEquippedAvatar || null;
+            } else {
+              const userPostSnap = await getDocs(
+                query(collection(db, 'posts'), where('user_id', '==', uid), limit(1))
+              );
+              if (!userPostSnap.empty) {
+                const pData = userPostSnap.docs[0].data();
+                postAuthorName = pData.author_name || pData.authorName || null;
+                postAuthorAvatar = pData.author_avatar || pData.authorAvatar || null;
+              }
+            }
+          } catch (postErr) {
+            console.warn('[ProfileView] author post fallback notice:', postErr);
+          }
+        }
+
+        const candidateName = uData?.displayName || uData?.username || uData?.name || pubData?.displayName || postAuthorName;
+        const candidateEmail = uData?.email || pubData?.email || (uid === currentUid ? authUser?.email : null);
+
+        const isAdminAccountUser =
+          isAdminAccount(uid) ||
+          uData?.role === 'admin' ||
+          uData?.role === 'superadmin' ||
+          pubData?.role === 'admin' ||
+          (candidateEmail && isAdminAccount(candidateEmail)) ||
+          isAdminAccount(candidateName) ||
+          (candidateName && (
+            candidateName.toLowerCase().includes('shs') ||
+            candidateName.toLowerCase().includes('virtual academy')
+          )) ||
+          (uid === currentUid && isAdmin);
+
+        const shortCode =
+          uData?.studentId ||
+          uData?.shortId ||
+          pubData?.studentId ||
+          pubData?.shortId ||
+          deriveFallbackShortId(uid);
+
+        let cleanName = '';
+        if (isAdminAccountUser) {
+          cleanName = 'SHS Virtual Academy';
+          // Ensure admin user doc and public profile have the official name and role
+          if (uData && (!uData.displayName || uData.displayName !== 'SHS Virtual Academy' || uData.role !== 'admin')) {
+            setDoc(userDocRef, { displayName: 'SHS Virtual Academy', role: 'admin' }, { merge: true }).catch(() => {});
+          }
+          if (pubData && (!pubData.displayName || pubData.displayName !== 'SHS Virtual Academy' || pubData.role !== 'admin')) {
+            setDoc(doc(db, 'publicProfiles', uid), { displayName: 'SHS Virtual Academy', role: 'admin' }, { merge: true }).catch(() => {});
+          }
+          if (postAuthorPhotoURL && !uData?.photoURL) {
+            setDoc(userDocRef, { photoURL: postAuthorPhotoURL }, { merge: true }).catch(() => {});
+          }
+        } else {
+          // Priority: displayName -> username -> name -> postAuthorName -> fallback
+          cleanName = sanitizeStudentDisplayName(candidateName, shortCode);
+        }
+
+        const equipped = uData?.equipped || pubData?.equipped || {};
+        // Avatar priority: 1. equippedAvatar, 2. avatarUrl, 3. photoURL, 4. avatarKey, 5. default
+        const avatar =
+          (equipped?.avatar as string) ||
+          (uData?.avatar as string) ||
+          (pubData?.avatar as string) ||
+          postAuthorEquippedAvatar ||
+          null;
+        const avatarUrl =
+          (uData?.avatarUrl as string) ||
+          (pubData?.avatarUrl as string) ||
+          (postAuthorAvatar && !postAuthorAvatar.startsWith('pfp_') && !postAuthorAvatar.includes('googleusercontent') ? postAuthorAvatar : null) ||
+          null;
+        const photoURL =
+          (uData?.photoURL as string) ||
+          (pubData?.photoURL as string) ||
+          postAuthorPhotoURL ||
+          (postAuthorAvatar?.includes('googleusercontent') ? postAuthorAvatar : null) ||
+          null;
+        const frame =
+          (equipped?.frame as string) ||
+          (uData?.frame as string) ||
+          (pubData?.frame as string) ||
+          postAuthorFrame ||
+          null;
+        const nameplate = (equipped?.nameplate as string) || (uData?.nameplate as string) || (pubData?.nameplate as string) || null;
+        const banner = (equipped?.banner as string) || (uData?.banner as string) || (pubData?.banner as string) || null;
+        const effectId = (equipped?.effect as string) || (uData?.effectId as string) || (pubData?.effectId as string) || null;
+
+        const stats = {
+          streak: Number(uData?.streak ?? pubData?.stats?.streak ?? 0),
+          longestStreak: Number(uData?.longestStreak ?? pubData?.stats?.longestStreak ?? uData?.streak ?? 0),
+          mcqs: Number(uData?.totalQuestionsSolved ?? uData?.mcqsSolved ?? pubData?.stats?.mcqs ?? 0),
+          accuracy: Number(uData?.accuracy ?? pubData?.stats?.accuracy ?? 0),
+        };
+
+        const resolvedProfile: PublicProfile = {
+          uid,
+          displayName: cleanName,
+          studentId: shortCode,
+          shortId: shortCode,
+          avatar,
+          banner,
+          frame,
+          nameplate,
+          effectId,
+          badges: uData?.badges || pubData?.badges || [],
+          bio: uData?.bio || pubData?.bio || '',
+          status: uData?.status || pubData?.status || '',
+          accent: uData?.accent || pubData?.accent || '#D71921',
+          memberSince: uData?.createdAt || pubData?.memberSince || null,
+          crewName: uData?.crewName || pubData?.crewName || null,
+          stats,
+          followersCount: typeof uData?.followersCount === 'number' ? Math.max(0, uData.followersCount) : (pubData?.followersCount || 0),
+          followingCount: typeof uData?.followingCount === 'number' ? Math.max(0, uData.followingCount) : (pubData?.followingCount || 0),
+          lastActiveAt: uData?.lastActiveDate || pubData?.lastActiveAt || null,
+          role: isAdminAccountUser ? 'admin' : (uData?.role || pubData?.role || 'student'),
+          equipped,
+          avatarUrl,
+          photoURL,
+          avatarKey: uData?.avatarKey || null,
+          avatarVariant: uData?.avatarVariant || null,
+        };
+
+        if (!isMounted) return;
+        setProfile(resolvedProfile);
+
+        // Check follow relationship directly from users/{currentUid}/following/{uid}
         if (currentUid && uid !== currentUid) {
-          const [followingTarget, followedByTarget] = await Promise.all([
-            isFollowing(currentUid, uid),
-            isFollowing(uid, currentUid),
-          ]);
+          const followSnap = await getDoc(doc(db, 'users', currentUid, 'following', uid));
           if (!isMounted) return;
-          setIsFollowedByMe(followingTarget);
-          setFollowsMe(followedByTarget);
+          setIsFollowedByMe(followSnap.exists());
         }
       } catch (err: any) {
         if (!isMounted) return;
-        console.warn('[ProfileView] error loading profile:', err);
+        console.error('[ProfileView] error loading profile:', err?.code || 'ERROR', `users/${uid}`, err);
         setFetchError(err?.message || 'Could not load student profile.');
       } finally {
         if (isMounted) setLoading(false);
@@ -190,14 +336,67 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     return () => {
       isMounted = false;
     };
+  }, [targetUid, currentUid, isAdmin, authUser?.email]);
+
+  // Live real-time listener for followersCount, followingCount and follow state
+  useEffect(() => {
+    const resolvedUid = targetUid || currentUid;
+    if (!resolvedUid) return;
+
+    // Listen to target's user document for live followersCount & followingCount
+    const unsubTarget = onSnapshot(
+      doc(db, 'users', resolvedUid),
+      (snap) => {
+        if (snap.exists()) {
+          const d = snap.data();
+          setProfile((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              followersCount: typeof d.followersCount === 'number' ? Math.max(0, d.followersCount) : (prev.followersCount || 0),
+              followingCount: typeof d.followingCount === 'number' ? Math.max(0, d.followingCount) : (prev.followingCount || 0),
+            };
+          });
+        }
+      },
+      (err) => {
+        console.error('[ProfileView] live counts onSnapshot error:', err?.code || 'ERROR', `users/${resolvedUid}`, err);
+      }
+    );
+
+    // Listen to users/{currentUid}/following/{resolvedUid} for live button state
+    let unsubFollowing: (() => void) | undefined;
+    if (currentUid && resolvedUid !== currentUid) {
+      unsubFollowing = onSnapshot(
+        doc(db, 'users', currentUid, 'following', resolvedUid),
+        (snap) => {
+          setIsFollowedByMe(snap.exists());
+        },
+        (err) => {
+          console.error('[ProfileView] following doc onSnapshot error:', err?.code || 'ERROR', `users/${currentUid}/following/${resolvedUid}`, err);
+        }
+      );
+    }
+
+    return () => {
+      unTargetCleanup();
+      if (unsubFollowing) unsubFollowing();
+    };
+
+    function unTargetCleanup() {
+      unsubTarget();
+    }
   }, [targetUid, currentUid]);
 
   // When viewing self in own mode, keep profile in sync with ownProfile/ownEquipped
   useEffect(() => {
     if (isViewingSelf && ownProfile && !previewAsPublic) {
       const op = ownProfile as any;
+      const isAdminAccountUser = isAdmin || isAdminAccount(currentUid) || op.role === 'admin' || isAdminAccount(authUser?.email);
       const shortCode = op.studentId || op.shortId || deriveFallbackShortId(currentUid || '0');
-      const cleanName = sanitizeStudentDisplayName(op.displayName || authUser?.displayName, shortCode);
+      const cleanName = isAdminAccountUser
+        ? 'SHS Virtual Academy'
+        : sanitizeStudentDisplayName(op.displayName || authUser?.displayName, shortCode);
 
       setProfile((prev) => ({
         uid: currentUid || 'guest',
@@ -223,10 +422,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         followersCount: prev?.followersCount ?? 0,
         followingCount: prev?.followingCount ?? 0,
         lastActiveAt: op.lastActiveDate || prev?.lastActiveAt || null,
+        role: isAdminAccountUser ? 'admin' : (op.role || 'student'),
         equipped: ownEquipped,
       }));
     }
-  }, [isViewingSelf, ownProfile, ownEquipped, previewAsPublic, currentUid, authUser?.displayName]);
+  }, [isViewingSelf, ownProfile, ownEquipped, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin]);
 
   // Rank title computation
   const rank = useMemo(() => {
@@ -267,6 +467,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     try {
       await followUser(currentUid, targetId);
     } catch (err: any) {
+      console.error('[ProfileView] followUser failed:', err?.code || 'ERROR', `users/${currentUid}/following/${targetId}`, err);
       // Rollback
       setIsFollowedByMe(false);
       setProfile((prev) => (prev ? { ...prev, followersCount: Math.max(0, (prev.followersCount || 1) - 1) } : null));
@@ -289,6 +490,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       await unfollowUser(currentUid, targetId);
       setUnfollowModalOpen(false);
     } catch (err: any) {
+      console.error('[ProfileView] unfollowUser failed:', err?.code || 'ERROR', `users/${currentUid}/following/${targetId}`, err);
       // Rollback
       setIsFollowedByMe(true);
       setProfile((prev) => (prev ? { ...prev, followersCount: (prev.followersCount || 0) + 1 } : null));
@@ -476,11 +678,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </button>
           )}
 
-          {/* Student ID watermark badge on banner */}
-          <div className="absolute bottom-3 right-3 z-30 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-md border border-white/15 text-white/90 font-mono text-xs font-semibold select-none flex items-center gap-1 shadow-sm">
-            <span>#{profile?.studentId || profile?.shortId || (profile?.uid ? profile.uid.slice(0, 5) : '00000')}</span>
           </div>
-        </div>
 
         {/* ── 2. AVATAR & HEADER DETAILS ── */}
         <div className="px-4 sm:px-6 pb-4 flex flex-col gap-3">
@@ -499,13 +697,22 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 size={window.innerWidth < 640 ? 76 : 104}
               />
               {/* Level Badge anchored to bottom-right of avatar */}
-              <div
-                className="absolute -bottom-1 -right-1 z-30 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-600 to-amber-500 text-white font-mono font-black text-[10px] sm:text-[11px] shadow-md border-2 border-[var(--card)] flex items-center gap-0.5 select-none"
-                title={`Level ${studentLevel} Student`}
-              >
-                <span className="text-[8px] font-extrabold text-amber-200">LV</span>
-                <span>{studentLevel}</span>
-              </div>
+              {profile?.role === 'admin' ? (
+                <div
+                  className="absolute -bottom-1 -right-1 z-30 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 to-red-500 text-white font-mono font-black text-[9px] sm:text-[10px] shadow-md border-2 border-[var(--card)] flex items-center gap-0.5 select-none"
+                  title="Administrator"
+                >
+                  <span>ADMIN</span>
+                </div>
+              ) : (
+                <div
+                  className="absolute -bottom-1 -right-1 z-30 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-600 to-amber-500 text-white font-mono font-black text-[10px] sm:text-[11px] shadow-md border-2 border-[var(--card)] flex items-center gap-0.5 select-none"
+                  title={`Level ${studentLevel} Student`}
+                >
+                  <span className="text-[8px] font-extrabold text-amber-200">LV</span>
+                  <span>{studentLevel}</span>
+                </div>
+              )}
             </div>
 
             {/* Kobans Chip (OWN MODE ONLY) */}
@@ -526,15 +733,19 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           {/* ── 3. NAME ROW ── */}
           <div className="flex flex-col gap-1 mt-1">
             <div className="flex items-center gap-2 flex-wrap">
-              {/* Nameplate */}
+              {/* Nameplate: ID shown only once inside the nameplate */}
               {profile?.nameplate ? (
                 <Nameplate
                   itemId={profile.nameplate}
                   name={profile?.displayName || 'Student'}
+                  shortId={profile?.studentId || profile?.shortId || deriveFallbackShortId(profile?.uid || '0')}
                 />
               ) : (
-                <h1 className="font-heading font-bold text-lg sm:text-xl text-[var(--text)] truncate">
-                  {profile?.displayName || 'Student'}
+                <h1 className="font-heading font-bold text-lg sm:text-xl text-[var(--text)] truncate flex items-center gap-1.5">
+                  <span>{profile?.displayName || 'Student'}</span>
+                  <span className="font-mono text-xs font-normal text-[var(--muted)]">
+                    #{profile?.studentId || profile?.shortId || deriveFallbackShortId(profile?.uid || '0')}
+                  </span>
                 </h1>
               )}
 
@@ -548,14 +759,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
             {/* Rank title & status line */}
             <div className="flex items-center gap-2 flex-wrap text-xs">
-              <span
-                className="font-mono font-semibold px-2 py-0.5 rounded flex items-center gap-1.5"
-                style={{ backgroundColor: rank.badgeBg, color: rank.badgeColor }}
-              >
-                <span className="font-bold opacity-85 text-[10px]">Lv.{studentLevel}</span>
-                <span>·</span>
-                <span>{rank.title}</span>
-              </span>
+              {profile?.role === 'admin' ? (
+                <span className="font-mono font-semibold px-2.5 py-0.5 rounded flex items-center gap-1.5 bg-red-950/60 text-red-400 border border-red-800/50">
+                  <Shield size={12} className="text-red-400" />
+                  <span>Administrator</span>
+                </span>
+              ) : (
+                <span
+                  className="font-mono font-semibold px-2 py-0.5 rounded flex items-center gap-1.5"
+                  style={{ backgroundColor: rank.badgeBg, color: rank.badgeColor }}
+                >
+                  <span className="font-bold opacity-85 text-[10px]">Lv.{studentLevel}</span>
+                  <span>·</span>
+                  <span>{rank.title}</span>
+                </span>
+              )}
 
               {profile?.status ? (
                 <div className="flex items-center gap-1.5 text-[var(--muted)] italic truncate max-w-sm">
@@ -1890,7 +2108,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         <div className="fixed inset-0 z-[170] flex items-center justify-center p-4 bg-black/70 animate-fade-in">
           <div className="w-full max-w-sm rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 shadow-2xl flex flex-col gap-4">
             <h3 className="font-heading font-bold text-base text-[var(--text)]">
-              Unfollow @{profile.displayName}?
+              Unfollow @{sanitizeStudentDisplayName(profile.displayName, profile.studentId)}?
             </h3>
             <p className="text-xs text-[var(--muted)] leading-relaxed">
               Their shared materials will no longer show in your Following feed.

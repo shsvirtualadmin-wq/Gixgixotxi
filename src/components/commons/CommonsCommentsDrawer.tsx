@@ -65,7 +65,14 @@ export function CommonsCommentsDrawer({
       });
       setComments((prev) => [...prev, added]);
       setNewText('');
+      setIsAnonymous(false);
     } catch (err: any) {
+      console.error(
+        '[CommonsCommentsDrawer] handleSend error:',
+        err?.code || 'ERROR',
+        `commonsPosts/${post.id}/comments`,
+        err
+      );
       setError(err?.message || 'Could not post comment.');
     } finally {
       setSubmitting(false);
@@ -122,7 +129,7 @@ export function CommonsCommentsDrawer({
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     {comment.isAnonymous ? (
-                      <div className="w-6 h-6 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[10px] font-mono text-neutral-400 shrink-0">
+                      <div className="w-6 h-6 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[10px] font-mono text-neutral-400 shrink-0 select-none">
                         ?
                       </div>
                     ) : (
@@ -135,9 +142,13 @@ export function CommonsCommentsDrawer({
                         size={24}
                       />
                     )}
-                    <span className="font-semibold text-neutral-200">
-                      {sanitizeStudentDisplayName(comment.authorName, comment.authorUid)}
-                    </span>
+                    {comment.isAnonymous ? (
+                      <span className="font-semibold text-neutral-400">Anonymous</span>
+                    ) : (
+                      <span className="font-semibold text-neutral-200">
+                        {sanitizeStudentDisplayName(comment.authorName, comment.authorUid)}
+                      </span>
+                    )}
                     {comment.isAnonymous && (
                       <span className="text-[10px] text-amber-400/90 font-mono bg-amber-950/40 px-1 rounded">
                         ANON
