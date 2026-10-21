@@ -21,6 +21,7 @@ import { WeakChapters } from '@/components/dashboard/WeakChapters';
 import { DotRowStreak } from '@/components/ui/DotRowStreak';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { DashboardErrorBoundary } from '@/components/dashboard/DashboardErrorBoundary';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { collection, doc, serverTimestamp, getDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
@@ -534,20 +535,20 @@ export function OverviewPage() {
           {/* Blueprint Sections Split Breakdown */}
           <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs">
             <span className="text-[10px] uppercase font-semibold text-[var(--muted)] block mb-1.5">
-              Section Breakdown ({blueprint.sections.length} Sections)
+              Section Breakdown ({(blueprint?.sections || []).length} Sections)
             </span>
             <div className="flex flex-wrap items-center gap-2">
-              {blueprint.sections.map((s, idx) => (
+              {(blueprint?.sections || []).map((s, idx) => (
                 <span
                   key={idx}
                   className="px-2.5 py-1 rounded-lg bg-[var(--card)] border border-[var(--border)] font-medium text-[var(--text)] text-[11px]"
                 >
-                  <strong className="font-semibold">{s.name}:</strong> {s.count} Qs
-                  <span className="text-[10px] text-[var(--muted)] ml-1">({s.badgeLabel})</span>
+                  <strong className="font-semibold">{s?.name || 'Section'}:</strong> {s?.count ?? 0} Qs
+                  <span className="text-[10px] text-[var(--muted)] ml-1">({s?.badgeLabel || 'Standard'})</span>
                 </span>
               ))}
             </div>
-            {blueprint.sourceNote && (
+            {blueprint?.sourceNote && (
               <p className="text-[10px] text-[var(--muted)] mt-2 italic">
                 Source: {blueprint.sourceNote}
               </p>
@@ -607,7 +608,9 @@ export function OverviewPage() {
             <span className="text-xs text-[var(--muted)]">Auto-Diagnosed</span>
           </div>
 
-          <WeakChapters uid={currentUid} onDrill={handleDrillWeakChapter} />
+          <DashboardErrorBoundary fallbackTitle="Chapters unavailable">
+            <WeakChapters uid={currentUid} onDrill={handleDrillWeakChapter} />
+          </DashboardErrorBoundary>
         </Card>
 
         {/* Column 2: Recent Attempts */}
@@ -625,7 +628,9 @@ export function OverviewPage() {
             <span className="text-xs text-[var(--muted)]">Latest 5</span>
           </div>
 
-          <RecentAttempts uid={currentUid} />
+          <DashboardErrorBoundary fallbackTitle="Attempts unavailable">
+            <RecentAttempts uid={currentUid} />
+          </DashboardErrorBoundary>
         </Card>
       </div>
 
@@ -731,7 +736,7 @@ export function OverviewPage() {
                         {criteria.durationMinutes} Minutes
                       </span>
                       <span className="text-[var(--muted)] truncate max-w-[280px]">
-                        {criteria.sections.map((s) => `${s.name}: ${s.count}`).join(' · ')}
+                        {(criteria.sections || []).map((s) => `${s?.name || 'Section'}: ${s?.count ?? 0}`).join(' · ')}
                       </span>
                     </div>
                   </div>

@@ -19,23 +19,34 @@ export function DotRowStreak({
   const renderItems = directItems && directItems.length > 0
     ? directItems
     : (() => {
-        const today = getCurrentPKTDate();
-        const list: SevenDayItem[] = [];
-        for (let offset = days - 1; offset >= 0; offset--) {
-          const dStr = shiftPKTDate(today, -offset);
-          const { narrow } = getPKTWeekday(dStr);
-          const isToday = offset === 0;
-          // If activeDays count is given as a fallback
-          const isActive = isToday ? todayActive : offset < activeDays;
-          list.push({
-            date: dStr,
-            label: narrow,
-            isActive,
-            isToday,
-            sessionCount: isActive ? 1 : 0,
-          });
+        try {
+          const today = getCurrentPKTDate();
+          const list: SevenDayItem[] = [];
+          for (let offset = days - 1; offset >= 0; offset--) {
+            const dStr = shiftPKTDate(today, -offset);
+            const { narrow } = getPKTWeekday(dStr);
+            const isToday = offset === 0;
+            // If activeDays count is given as a fallback
+            const isActive = isToday ? todayActive : offset < activeDays;
+            list.push({
+              date: dStr,
+              label: narrow || '•',
+              isActive,
+              isToday,
+              sessionCount: isActive ? 1 : 0,
+            });
+          }
+          return list;
+        } catch {
+          const fallbackDays = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+          return fallbackDays.slice(0, days).map((lbl, idx) => ({
+            date: `day-${idx}`,
+            label: lbl,
+            isActive: idx < activeDays,
+            isToday: idx === days - 1,
+            sessionCount: idx < activeDays ? 1 : 0,
+          }));
         }
-        return list;
       })();
 
   return (

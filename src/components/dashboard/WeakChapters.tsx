@@ -40,14 +40,17 @@ export function WeakChapters({ uid, onDrill }: Props) {
   }
 
   // Display top 3 weakest chapters
-  const topWeak = weakChapters.slice(0, 3);
+  const topWeak = Array.isArray(weakChapters) ? weakChapters.slice(0, 3) : [];
 
   return (
     <div className="flex flex-col gap-2.5">
-      {topWeak.map((c) => {
+      {topWeak.map((c, idx) => {
+        const chName = c?.chapter || 'Chapter Drill';
+        const subName = c?.subject || 'General';
+        const key = c?.id || `${chName}-${idx}`;
         return (
           <div
-            key={c.id}
+            key={key}
             className="p-3.5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between gap-3"
           >
             <div className="flex-1 min-w-0">
@@ -55,14 +58,14 @@ export function WeakChapters({ uid, onDrill }: Props) {
                 className="font-bold text-sm text-[var(--text)] truncate"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                {c.chapter}
+                {chName}
               </div>
               <div className="text-xs text-[var(--muted)] flex items-center gap-2 mt-0.5">
-                <span>{c.subject}</span>
+                <span>{subName}</span>
                 <span>·</span>
-                <span>{c.total} answered</span>
+                <span>{c?.total ?? 0} answered</span>
                 <span>·</span>
-                <span className="text-[var(--red)] font-semibold">{c.accuracy}% acc</span>
+                <span className="text-[var(--red)] font-semibold">{c?.accuracy ?? 0}% acc</span>
               </div>
             </div>
 
@@ -70,9 +73,9 @@ export function WeakChapters({ uid, onDrill }: Props) {
               type="button"
               onClick={() => {
                 if (onDrill) {
-                  onDrill(c.chapter, c.subject);
+                  onDrill(chName, subName);
                 } else {
-                  navigate(`/dashboard?drillChapter=${encodeURIComponent(c.chapter)}&drillSubject=${encodeURIComponent(c.subject)}`);
+                  navigate(`/dashboard?drillChapter=${encodeURIComponent(chName)}&drillSubject=${encodeURIComponent(subName)}`);
                 }
               }}
               className="px-3 py-1.5 rounded-xl border border-[var(--red)]/40 text-[var(--red)] text-xs font-semibold hover:bg-[var(--red)] hover:text-white transition-colors cursor-pointer shrink-0"

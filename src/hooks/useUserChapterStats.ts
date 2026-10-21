@@ -82,12 +82,15 @@ export function useUserChapterStats(uid?: string | null) {
           // Weak chapters defined as: at least 3 answered questions AND < 50% accuracy
           const isWeak = total >= 3 && accuracy < 50;
 
+          const chapterDisplay = formatChapterName(subjectSlug, chapterSlug) || chapterSlug || 'General Drill';
+          const subjectDisplay = formatSubjectName(subjectSlug) || 'General';
+
           const item: ChapterStatItem = {
             id: chapterSlug,
             chapterSlug,
-            chapter: formatChapterName(subjectSlug, chapterSlug),
+            chapter: chapterDisplay,
             subjectSlug,
-            subject: formatSubjectName(subjectSlug),
+            subject: subjectDisplay,
             correct,
             total,
             accuracy,
@@ -98,7 +101,9 @@ export function useUserChapterStats(uid?: string | null) {
 
           map[chapterSlug] = item;
           // Also key by display name lowercased for backward compatibility
-          map[item.chapter.toLowerCase()] = item;
+          if (item.chapter) {
+            map[item.chapter.toLowerCase()] = item;
+          }
 
           if (isWeak) {
             weakList.push(item);

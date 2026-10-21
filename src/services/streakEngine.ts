@@ -44,43 +44,99 @@ export function toPKTDateString(timestamp: unknown): string | null {
 
   if (isNaN(date.getTime())) return null;
 
-  return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
+  try {
+    const formatted = date.toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
+    if (/^\d{4}-\d{2}-\d{2}$/.test(formatted)) return formatted;
+    if (formatted.includes('/')) {
+      const parts = formatted.split('/');
+      if (parts.length === 3 && parts[0].length === 4) {
+        return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      }
+    }
+  } catch {
+    // Fall back to pure UTC+5 calculation
+  }
+
+  const pktMs = date.getTime() + 5 * 3600 * 1000;
+  const d = new Date(pktMs);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 /**
  * Returns today's calendar date in PKT as 'YYYY-MM-DD'.
  */
 export function getCurrentPKTDate(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
+  try {
+    const formatted = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
+    if (/^\d{4}-\d{2}-\d{2}$/.test(formatted)) return formatted;
+    if (formatted.includes('/')) {
+      const parts = formatted.split('/');
+      if (parts.length === 3 && parts[0].length === 4) {
+        return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+      }
+    }
+  } catch {
+    // Fall back to pure UTC+5 calculation
+  }
+
+  const pktMs = Date.now() + 5 * 3600 * 1000;
+  const d = new Date(pktMs);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 /**
  * Shifts a PKT date string 'YYYY-MM-DD' by N days using deterministic UTC arithmetic.
  * Free from browser local timezone, DST or client clock interference.
  */
-export function shiftPKTDate(pktDate: string, daysOffset: number): string {
-  const [y, m, d] = pktDate.split('-').map(Number);
-  const utcDate = new Date(Date.UTC(y, m - 1, d + daysOffset));
+export function shiftPKTDate(pktDate?: string | null, daysOffset = 0): string {
+  const base = pktDate ? String(pktDate).replace(/\//g, '-').trim() : getCurrentPKTDate();
+  const parts = base.split('-').map(Number);
+  const y = parts[0] || 2026;
+  const m = parts[1] || 1;
+  const d = (parts[2] || 1) + daysOffset;
+  const utcDate = new Date(Date.UTC(y, m - 1, d));
+  if (isNaN(utcDate.getTime())) {
+    return getCurrentPKTDate();
+  }
   return utcDate.toISOString().slice(0, 10);
 }
 
 /**
- * Returns weekday labels for a PKT date string.
- */
-/**
  * Returns deterministic date parts for any PKT date 'YYYY-MM-DD'.
  * Uses UTC noon to eliminate all local timezone, DST, and client clock offsets.
  */
-export function getPKTDateParts(pktDate: string) {
-  const [y, m, d] = pktDate.split('-').map(Number);
-  const utcDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+export function getPKTDateParts(pktDate?: string | null) {
+  const base = pktDate ? String(pktDate).replace(/\//g, '-').trim() : getCurrentPKTDate();
+  const parts = base.split('-').map(Number);
+  const y = parts[0] || 2026;
+  const m = parts[1] || 1;
+  const d = parts[2] || 1;
+  let utcDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  if (isNaN(utcDate.getTime())) {
+    utcDate = new Date();
+  }
   const dayOfWeek = utcDate.getUTCDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
   const daysSinceMonday = (dayOfWeek + 6) % 7; // 0 = Mon, 1 = Tue, ..., 6 = Sun
-  const monthShort = utcDate.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short' });
-  const monthLong = utcDate.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long' });
-  const weekdayShort = utcDate.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' });
+
+  let monthShort = 'Jan';
+  let monthLong = 'January';
+  let weekdayShort = 'Mon';
+  try {
+    monthShort = utcDate.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short' });
+    monthLong = utcDate.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long' });
+    weekdayShort = utcDate.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' });
+  } catch {
+    // ignore
+  }
+
   const initials = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-  const weekdayInitial = initials[daysSinceMonday];
+  const weekdayInitial = initials[daysSinceMonday] || 'M';
   return {
     year: y,
     monthNum: m,
@@ -94,7 +150,7 @@ export function getPKTDateParts(pktDate: string) {
   };
 }
 
-export function getPKTWeekday(pktDate: string): { short: string; narrow: string; dayNum: number; month: string } {
+export function getPKTWeekday(pktDate?: string | null): { short: string; narrow: string; dayNum: number; month: string } {
   const parts = getPKTDateParts(pktDate);
   return { short: parts.weekdayShort, narrow: parts.weekdayInitial, dayNum: parts.dayNum, month: parts.monthShort };
 }

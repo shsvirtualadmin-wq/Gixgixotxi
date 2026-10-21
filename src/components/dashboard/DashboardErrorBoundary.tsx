@@ -31,10 +31,27 @@ export class DashboardErrorBoundary extends Component<Props, State> {
     console.error('[DashboardErrorBoundary] Error message:', error?.message);
     console.error('[DashboardErrorBoundary] Error stack:', error?.stack);
     console.error('[DashboardErrorBoundary] Component stack:', errorInfo?.componentStack);
+    try {
+      sessionStorage.setItem(
+        'boardly_last_cockpit_error',
+        JSON.stringify({
+          message: error?.message,
+          stack: error?.stack,
+          time: new Date().toISOString(),
+        })
+      );
+    } catch {
+      // ignore
+    }
     this.setState({ errorInfo });
   }
 
   handleRetry = () => {
+    try {
+      sessionStorage.removeItem('boardly_last_cockpit_error');
+    } catch {
+      // ignore
+    }
     this.setState({ hasError: false, error: null, errorInfo: null });
   };
 
@@ -57,21 +74,26 @@ export class DashboardErrorBoundary extends Component<Props, State> {
       if (!showTechDetails) {
         return (
           <div className="min-h-[40vh] p-4 sm:p-6 flex items-center justify-center">
-            <div className="w-full max-w-[500px] p-6 rounded-[24px] bg-[#0D0D0D] border border-[#222222] text-center space-y-4">
+            <div className="w-full max-w-[500px] p-6 rounded-[24px] bg-[var(--surface)] border border-[var(--border)] text-center space-y-4">
               <div className="flex justify-center pb-1">
                 <Link to="/" aria-label="Boardly Home">
-                  <Logo size={28} className="text-white hover:opacity-80 transition-opacity" />
+                  <Logo size={28} className="text-[var(--text)] hover:opacity-80 transition-opacity" />
                 </Link>
               </div>
-              <div className="w-12 h-12 rounded-full bg-[#1A1A1A] border border-[#D71921] text-[#D71921] flex items-center justify-center mx-auto">
+              <div className="w-12 h-12 rounded-full bg-[rgba(215,25,33,0.1)] border border-[#D71921] text-[#D71921] flex items-center justify-center mx-auto">
                 <AlertCircle size={22} />
               </div>
-              <h2 className="text-lg font-bold text-white font-heading">
+              <h2 className="text-lg font-bold text-[var(--text)] font-heading">
                 {this.props.fallbackTitle || 'Something went wrong'}
               </h2>
               <p className="text-xs text-[var(--muted)] leading-relaxed">
                 An unexpected issue occurred while rendering this section. Please try again or refresh the page.
               </p>
+              {this.state.error?.message && (
+                <div className="text-[11px] font-mono text-[var(--muted)] bg-[var(--surface-2)] p-2.5 rounded-xl border border-[var(--border)] text-left break-words max-h-24 overflow-y-auto">
+                  {this.state.error.message}
+                </div>
+              )}
               <div className="flex items-center justify-center gap-3 pt-2">
                 <button
                   type="button"
@@ -83,7 +105,7 @@ export class DashboardErrorBoundary extends Component<Props, State> {
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
-                  className="px-5 py-2.5 rounded-full bg-[#1A1A1A] hover:bg-[#252525] border border-[#333333] text-white text-xs font-heading transition-colors cursor-pointer"
+                  className="px-5 py-2.5 rounded-full bg-[var(--surface-2)] hover:bg-[var(--card)] border border-[var(--border)] text-[var(--text)] text-xs font-heading transition-colors cursor-pointer"
                 >
                   Reload Page
                 </button>

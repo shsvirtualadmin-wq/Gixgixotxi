@@ -70,21 +70,23 @@ export function RecentAttempts({ uid }: Props) {
 
   return (
     <div className="flex flex-col gap-2.5">
-      {attempts.map((a) => {
-        const score = a.score ?? 0;
-        const total = a.totalQuestions ?? a.total ?? 10;
+      {(attempts || []).map((a, idx) => {
+        const score = Number(a?.score ?? 0);
+        const total = Number(a?.totalQuestions ?? a?.total ?? 10);
         const pct = total > 0 ? Math.round((score / total) * 100) : 0;
 
-        const rawStatus = (a.status || 'completed').toLowerCase();
+        const rawStatus = String(a?.status || 'completed').toLowerCase();
         const friendlyStatus =
           rawStatus === 'in_progress' || rawStatus === 'in-progress' || rawStatus === 'started'
             ? 'In progress'
             : 'Completed';
 
+        const attemptId = a?.id || `attempt-${idx}`;
+
         return (
           <Link
-            key={a.id}
-            to={`/test/${a.id}/result`}
+            key={attemptId}
+            to={`/test/${attemptId}/result`}
             className="p-3.5 rounded-2xl bg-[var(--surface)] border border-[var(--border)] hover:border-[var(--text-muted)] flex items-center justify-between gap-3 transition-colors"
           >
             <div className="flex-1 min-w-0">

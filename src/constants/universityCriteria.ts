@@ -331,43 +331,60 @@ export const TARGET_UNIVERSITY_CRITERIA: UniversityCriteria[] = [
   },
 ];
 
-export function getBlueprint(uniNameOrId?: string | null): UniversityCriteria {
+export function getBlueprint(uniNameOrId?: unknown): UniversityCriteria {
   return getUniversityCriteria(uniNameOrId);
 }
 
-export function getUniversityCriteria(uniNameOrId?: string | null): UniversityCriteria {
-  if (!uniNameOrId) return TARGET_UNIVERSITY_CRITERIA[0];
-  const query = uniNameOrId.trim().toLowerCase();
+export function getUniversityCriteria(uniNameOrId?: unknown): UniversityCriteria {
+  const defaultCriteria = TARGET_UNIVERSITY_CRITERIA[0];
+  if (!uniNameOrId) return defaultCriteria;
+
+  let query = '';
+  if (typeof uniNameOrId === 'string') {
+    query = uniNameOrId.trim().toLowerCase();
+  } else if (typeof uniNameOrId === 'object' && uniNameOrId !== null) {
+    const obj = uniNameOrId as Record<string, unknown>;
+    query = String(obj.id || obj.name || obj.shortName || '').trim().toLowerCase();
+  } else {
+    query = String(uniNameOrId).trim().toLowerCase();
+  }
+
+  if (!query) return defaultCriteria;
 
   if (query.includes('sprint')) {
-    const sprintCrit = TARGET_UNIVERSITY_CRITERIA.find((c) => c.id === 'Standard Sprint');
+    const sprintCrit = TARGET_UNIVERSITY_CRITERIA.find((c) =>
+      (c.id || '').toLowerCase().includes('sprint') || (c.name || '').toLowerCase().includes('sprint')
+    );
     if (sprintCrit) return sprintCrit;
   }
 
   const found = TARGET_UNIVERSITY_CRITERIA.find((c) => {
-    const id = c.id.toLowerCase();
-    const name = c.name.toLowerCase();
-    const short = c.shortName.toLowerCase();
+    const id = (c.id || '').toLowerCase();
+    const name = (c.name || '').toLowerCase();
+    const short = (c.shortName || '').toLowerCase();
     return (
       query === id ||
       query === name ||
       query === short ||
       query.includes(id) ||
       id.includes(query) ||
-      query.includes(short)
+      (short && query.includes(short))
     );
   });
 
-  return found || TARGET_UNIVERSITY_CRITERIA[0];
+  return found || defaultCriteria;
 }
 
 export function getSectionCriteria(
-  uniNameOrId?: string | null,
-  subjectSlug?: string | null
+  uniNameOrId?: unknown,
+  subjectSlug?: unknown
 ): SectionCriteria {
   const criteria = getUniversityCriteria(uniNameOrId);
-  if (!subjectSlug) {
-    return criteria.sections[0] || {
+  const cleanSubject = typeof subjectSlug === 'string' ? subjectSlug.trim().toLowerCase() : '';
+  const sections = Array.isArray(criteria.sections) ? criteria.sections : [];
+
+  if (!cleanSubject) {
+    return sections[0] || {
       subject: 'general',
       name: 'General',
       count: 10,
@@ -378,10 +395,9 @@ export function getSectionCriteria(
     };
   }
 
-  const cleanSubject = subjectSlug.trim().toLowerCase();
-  const matched = criteria.sections.find((s) => {
-    const sub = s.subject.toLowerCase();
-    const name = s.name.toLowerCase();
+  const matched = sections.find((s) => {
+    const sub = (s.subject || '').toLowerCase();
+    const name = (s.name || '').toLowerCase();
     return (
       cleanSubject === sub ||
       cleanSubject === name ||
