@@ -1,5 +1,47 @@
 @import "tailwindcss";
 
+@theme {
+  --color-background: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-text-on-accent: var(--text-on-accent);
+
+  --color-primary: var(--text-primary);
+  --color-secondary: var(--text-secondary);
+  --color-muted: var(--text-muted);
+  --color-on-accent: var(--text-on-accent);
+
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-focus-ring: var(--focus-ring);
+
+  --color-input-bg: var(--input-bg);
+  --color-input-text: var(--input-text);
+  --color-placeholder: var(--placeholder);
+
+  --color-tag-bg: var(--tag-bg);
+  --color-tag-text: var(--tag-text);
+  --color-tag-success-bg: var(--tag-success-bg);
+  --color-tag-success-text: var(--tag-success-text);
+  --color-tag-warning-bg: var(--tag-warning-bg);
+  --color-tag-warning-text: var(--tag-warning-text);
+  --color-tag-danger-bg: var(--tag-danger-bg);
+  --color-tag-danger-text: var(--tag-danger-text);
+  --color-tag-info-bg: var(--tag-info-bg);
+  --color-tag-info-text: var(--tag-info-text);
+
+  --color-overlay: var(--overlay);
+  --color-skeleton: var(--skeleton);
+}
+
 /* ===== LOCAL FONTS ===== */
 @font-face {
   font-family: 'Oblata';
@@ -9,35 +51,66 @@
   font-display: swap;
 }
 
-/* ===== DESIGN TOKENS (NOTHING OS) ===== */
+/* ===== SEMANTIC DESIGN TOKENS (SINGLE SOURCE OF TRUTH) ===== */
 :root {
-  /* Shared Base Theme: Light Mode on :root */
-  --bg: #FFFFFF;
+  /* LIGHT THEME (Default) */
+  --bg: #F8F9FA;
+  --background: #F8F9FA;
   --surface: #FFFFFF;
-  --surface-2: #F2F2F2;
-  --border: #E0E0E0;
-  --text: #0A0A0A;
-  --text-muted: #6B6B6B;
+  --surface-raised: #FFFFFF;
+  --surface-muted: #F1F3F5;
+  --border: #E5E7EB;
+  --border-strong: #D1D5DB;
+
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6B7280;
+  --text-on-accent: #FFFFFF;
+
   --accent: #D71921;
-  --nav-bg: #FFFFFF;
-  --nav-active-bg: #0A0A0A;
-  --nav-active-text: #FFFFFF;
+  --accent-hover: #B8141B;
+  --accent-soft: rgba(215, 25, 33, 0.08);
+  --focus-ring: rgba(215, 25, 33, 0.35);
+
+  --input-bg: #FFFFFF;
+  --input-text: #111827;
+  --placeholder: #9CA3AF;
+
+  --tag-bg: #F3F4F6;
+  --tag-text: #374151;
+
+  --tag-success-bg: #ECFDF5;
+  --tag-success-text: #065F46;
+  --tag-warning-bg: #FFFBEB;
+  --tag-warning-text: #92400E;
+  --tag-danger-bg: #FEF2F2;
+  --tag-danger-text: #991B1B;
+  --tag-info-bg: #EFF6FF;
+  --tag-info-text: #1E40AF;
+
+  --overlay: rgba(15, 23, 42, 0.5);
+  --shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+  --skeleton: #E5E7EB;
 
   /* Aliases strictly mapping to tokens */
-  --fg: var(--text);
+  --fg: var(--text-primary);
+  --text: var(--text-primary);
   --card: var(--surface);
-  --card-2: var(--surface-2);
-  --bg-2: var(--surface-2);
+  --card-2: var(--surface-muted);
+  --bg-2: var(--surface-muted);
   --muted: var(--text-muted);
   --text-faint: var(--text-muted);
-  --surface-hover: var(--surface-2);
+  --surface-hover: var(--surface-muted);
   --red: var(--accent);
   --brand: var(--accent);
-  --brand-2: var(--text);
+  --brand-2: var(--text-primary);
   --violet: var(--accent);
   --danger: var(--accent);
-  --success: var(--text);
-  --warning: var(--text);
+  --success: var(--tag-success-text);
+  --warning: var(--tag-warning-text);
+  --nav-bg: #FFFFFF;
+  --nav-active-bg: #111827;
+  --nav-active-text: #FFFFFF;
 
   /* Layout & Sizing */
   --container-w: 1200px;
@@ -74,60 +147,151 @@
 .dark,
 [data-theme="dark"] {
   --bg: #000000;
-  --surface: #111111;
-  --surface-2: #1A1A1A;
-  --border: #2A2A2A;
-  --text: #F5F5F5;
-  --text-muted: #A0A0A0;
-  --accent: #D71921;
-  --nav-bg: #1C1C1C;
-  --nav-active-bg: #D71921;
-  --nav-active-text: #FFFFFF;
+  --background: #000000;
+  --surface: #0D0D10;
+  --surface-raised: #141418;
+  --surface-muted: #1A1A20;
+  --border: #26262B;
+  --border-strong: #383842;
 
-  --fg: var(--text);
+  --text-primary: #F5F5F7;
+  --text-secondary: #C4C4CC;
+  --text-muted: #8E8E98;
+  --text-on-accent: #FFFFFF;
+
+  --accent: #D71921;
+  --accent-hover: #E3242C;
+  --accent-soft: rgba(215, 25, 33, 0.15);
+  --focus-ring: rgba(215, 25, 33, 0.5);
+
+  --input-bg: #121216;
+  --input-text: #F5F5F7;
+  --placeholder: #73737C;
+
+  --tag-bg: #1A1A22;
+  --tag-text: #D1D1DB;
+
+  --tag-success-bg: rgba(16, 185, 129, 0.15);
+  --tag-success-text: #34D399;
+  --tag-warning-bg: rgba(245, 158, 11, 0.15);
+  --tag-warning-text: #FBBF24;
+  --tag-danger-bg: rgba(239, 68, 68, 0.15);
+  --tag-danger-text: #F87171;
+  --tag-info-bg: rgba(59, 130, 246, 0.15);
+  --tag-info-text: #60A5FA;
+
+  --overlay: rgba(0, 0, 0, 0.75);
+  --shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.6);
+  --skeleton: #1C1C22;
+
+  --fg: var(--text-primary);
+  --text: var(--text-primary);
   --card: var(--surface);
-  --card-2: var(--surface-2);
-  --bg-2: var(--surface-2);
+  --card-2: var(--surface-muted);
+  --bg-2: var(--surface-muted);
   --muted: var(--text-muted);
   --text-faint: var(--text-muted);
-  --surface-hover: var(--surface-2);
+  --surface-hover: var(--surface-muted);
   --red: var(--accent);
   --brand: var(--accent);
-  --brand-2: var(--text);
+  --brand-2: var(--text-primary);
   --violet: var(--accent);
   --danger: var(--accent);
-  --success: var(--text);
-  --warning: var(--text);
+  --success: var(--tag-success-text);
+  --warning: var(--tag-warning-text);
+  --nav-bg: #141414;
+  --nav-active-bg: #D71921;
+  --nav-active-text: #FFFFFF;
 }
 
 /* ===== EXPLICIT LIGHT THEME ===== */
+.light,
 [data-theme="light"] {
-  --bg: #FFFFFF;
+  --bg: #F8F9FA;
+  --background: #F8F9FA;
   --surface: #FFFFFF;
-  --surface-2: #F2F2F2;
-  --border: #E0E0E0;
-  --text: #0A0A0A;
-  --text-muted: #6B6B6B;
-  --accent: #D71921;
-  --nav-bg: #FFFFFF;
-  --nav-active-bg: #0A0A0A;
-  --nav-active-text: #FFFFFF;
+  --surface-raised: #FFFFFF;
+  --surface-muted: #F1F3F5;
+  --border: #E5E7EB;
+  --border-strong: #D1D5DB;
 
-  --fg: var(--text);
+  --text-primary: #111827;
+  --text-secondary: #374151;
+  --text-muted: #6B7280;
+  --text-on-accent: #FFFFFF;
+
+  --accent: #D71921;
+  --accent-hover: #B8141B;
+  --accent-soft: rgba(215, 25, 33, 0.08);
+  --focus-ring: rgba(215, 25, 33, 0.35);
+
+  --input-bg: #FFFFFF;
+  --input-text: #111827;
+  --placeholder: #9CA3AF;
+
+  --tag-bg: #F3F4F6;
+  --tag-text: #374151;
+
+  --tag-success-bg: #ECFDF5;
+  --tag-success-text: #065F46;
+  --tag-warning-bg: #FFFBEB;
+  --tag-warning-text: #92400E;
+  --tag-danger-bg: #FEF2F2;
+  --tag-danger-text: #991B1B;
+  --tag-info-bg: #EFF6FF;
+  --tag-info-text: #1E40AF;
+
+  --overlay: rgba(15, 23, 42, 0.5);
+  --shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.06), 0 2px 6px -1px rgba(0, 0, 0, 0.04);
+  --skeleton: #E5E7EB;
+
+  --fg: var(--text-primary);
+  --text: var(--text-primary);
   --card: var(--surface);
-  --card-2: var(--surface-2);
-  --bg-2: var(--surface-2);
+  --card-2: var(--surface-muted);
+  --bg-2: var(--surface-muted);
   --muted: var(--text-muted);
   --text-faint: var(--text-muted);
-  --surface-hover: var(--surface-2);
+  --surface-hover: var(--surface-muted);
   --red: var(--accent);
   --brand: var(--accent);
-  --brand-2: var(--text);
+  --brand-2: var(--text-primary);
   --violet: var(--accent);
   --danger: var(--accent);
-  --success: var(--text);
-  --warning: var(--text);
+  --success: var(--tag-success-text);
+  --warning: var(--tag-warning-text);
+  --nav-bg: #FFFFFF;
+  --nav-active-bg: #111827;
+  --nav-active-text: #FFFFFF;
 }
+
+/* ===== TAILWIND TOKEN UTILITY SHORTCUTS ===== */
+.bg-background { background-color: var(--bg) !important; }
+.bg-surface { background-color: var(--surface) !important; }
+.bg-surface-raised { background-color: var(--surface-raised) !important; }
+.bg-surface-muted { background-color: var(--surface-muted) !important; }
+
+.border-border { border-color: var(--border) !important; }
+.border-border-strong { border-color: var(--border-strong) !important; }
+
+.text-primary { color: var(--text-primary) !important; }
+.text-secondary { color: var(--text-secondary) !important; }
+.text-muted { color: var(--text-muted) !important; }
+.text-on-accent { color: var(--text-on-accent) !important; }
+
+.bg-accent { background-color: var(--accent) !important; }
+.text-accent { color: var(--accent) !important; }
+.border-accent { border-color: var(--accent) !important; }
+
+.bg-input-bg { background-color: var(--input-bg) !important; }
+.text-input-text { color: var(--input-text) !important; }
+.placeholder-placeholder::placeholder { color: var(--placeholder) !important; }
+
+.bg-tag-bg { background-color: var(--tag-bg) !important; }
+.text-tag-text { color: var(--tag-text) !important; }
+.bg-overlay { background-color: var(--overlay) !important; }
+.bg-skeleton { background-color: var(--skeleton) !important; }
+
 
 /* ===== BRAND LOGO THEME ADAPTATION ===== */
 .boardly-brand-logo {

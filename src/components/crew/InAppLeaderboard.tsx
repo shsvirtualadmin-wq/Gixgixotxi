@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, Plus, Trophy, Sparkles, Lock, Unlock, Eye, AlertCircle, ChevronLeft, ChevronRight, Flame } from 'lucide-react';
 import { MatrixAvatar } from '@/lib/matrixAvatars';
 import type { PublicCrewSummary } from '@/types/crew';
@@ -134,28 +134,28 @@ export const InAppLeaderboard: React.FC<InAppLeaderboardProps> = ({
   };
 
   // Filter and sort crews based on active tab and sort criterion
-  const filteredCrews = [...crews]
-    .filter((c) => {
-      const eligibilityResult = evaluateUserEligibility(
-        c,
-        {
+  const filteredCrews = useMemo(() => {
+    return [...crews]
+      .filter((c) => {
+        if (filter === 'all') return true;
+        const eligibilityResult = evaluateUserEligibility(c, {
           uid: currentUser.uid,
           streak: currentUser.streak,
           crewId: currentUser.crewId,
-        }
-      );
-      const eligibility = eligibilityResult.state;
+        });
+        const eligibility = eligibilityResult.state;
 
-      if (filter === 'open') return c.joinMode === 'direct' && !c.isClosed;
-      if (filter === 'request') return c.joinMode === 'request' && !c.isClosed;
-      if (filter === 'eligible') return eligibility === 'eligible';
-      return true;
-    })
-    .sort((a, b) => {
-      if (sortBy === 'streak') return (b.streak || 0) - (a.streak || 0);
-      if (sortBy === 'accuracy') return (b.accuracy ?? 85) - (a.accuracy ?? 85);
-      return (b.questionsSolved ?? b.score ?? 0) - (a.questionsSolved ?? a.score ?? 0);
-    });
+        if (filter === 'open') return c.joinMode === 'direct' && !c.isClosed;
+        if (filter === 'request') return c.joinMode === 'request' && !c.isClosed;
+        if (filter === 'eligible') return eligibility === 'eligible';
+        return true;
+      })
+      .sort((a, b) => {
+        if (sortBy === 'streak') return (b.streak || 0) - (a.streak || 0);
+        if (sortBy === 'accuracy') return (b.accuracy ?? 85) - (a.accuracy ?? 85);
+        return (b.questionsSolved ?? b.score ?? 0) - (a.questionsSolved ?? a.score ?? 0);
+      });
+  }, [crews, filter, sortBy, currentUser.uid, currentUser.streak, currentUser.crewId]);
 
   const totalPages = Math.max(1, Math.ceil(totalCount / limit));
 

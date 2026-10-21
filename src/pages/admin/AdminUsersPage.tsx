@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Search, RefreshCw, UserCheck, Loader2, Shield, Users as UsersIcon, Clock, Tag } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { UserOverrideDrawer } from '@/components/admin/UserOverrideDrawer';
@@ -30,9 +30,17 @@ export function AdminUsersPage() {
 
   // Filters
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [planFilter, setPlanFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // Selected user for drawer/sheet
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
@@ -77,7 +85,7 @@ export function AdminUsersPage() {
     setError(null);
     try {
       const res = await fetchUsersPaginated({
-        limitCount: 100,
+        limitCount: 25,
       });
       cachedAdminUsers = res.users;
       setAllUsers(res.users);
@@ -102,7 +110,7 @@ export function AdminUsersPage() {
     setLoadingMore(true);
     try {
       const res = await fetchUsersPaginated({
-        limitCount: 50,
+        limitCount: 25,
         role: roleFilter,
         plan: planFilter,
         startAfterDoc: lastDoc,
@@ -151,46 +159,48 @@ export function AdminUsersPage() {
   };
 
   // ── Client-side filtering in memory across all dimensions ──────────────────
-  const filteredUsers = allUsers.filter((u) => {
-    // 1. Role Filter
-    if (roleFilter !== 'all') {
-      const isSuper = u.email?.toLowerCase() === 'shsvirtualadmin@gmail.com';
-      const isAdmin = isSuper || u.role === 'admin';
-      if (roleFilter === 'admin' && !isAdmin) return false;
-      if (roleFilter === 'student' && (isAdmin || (u.role && u.role !== 'student'))) return false;
-      if (roleFilter === 'captain' && u.role !== 'captain') return false;
-      if (roleFilter === 'crew' && u.role !== 'crew') return false;
-    }
-
-    // 2. Plan Filter
-    if (planFilter !== 'all') {
-      const isPro = u.plan === 'pro' || !!u.isPremium;
-      if (planFilter === 'pro' && !isPro) return false;
-      if (planFilter === 'free' && isPro) return false;
-    }
-
-    // 3. Status Filter
-    if (statusFilter === 'active') {
-      if (u.suspended || u.isSuspended) return false;
-    }
-    if (statusFilter === 'suspended') {
-      if (!u.suspended && !u.isSuspended) return false;
-    }
-
-    // 4. Search Filter
-    if (search.trim()) {
-      const st = search.toLowerCase().trim();
-      const name = getUserDisplayName(u).toLowerCase();
-      const email = (u.email || '').toLowerCase();
-      const uid = (u.uid || '').toLowerCase();
-      const uni = (u.targetUniversity || '').toLowerCase();
-      if (!name.includes(st) && !email.includes(st) && !uid.includes(st) && !uni.includes(st)) {
-        return false;
+  const filteredUsers = useMemo(() => {
+    return allUsers.filter((u) => {
+      // 1. Role Filter
+      if (roleFilter !== 'all') {
+        const isSuper = u.email?.toLowerCase() === 'shsvirtualadmin@gmail.com';
+        const isAdmin = isSuper || u.role === 'admin';
+        if (roleFilter === 'admin' && !isAdmin) return false;
+        if (roleFilter === 'student' && (isAdmin || (u.role && u.role !== 'student'))) return false;
+        if (roleFilter === 'captain' && u.role !== 'captain') return false;
+        if (roleFilter === 'crew' && u.role !== 'crew') return false;
       }
-    }
 
-    return true;
-  });
+      // 2. Plan Filter
+      if (planFilter !== 'all') {
+        const isPro = u.plan === 'pro' || !!u.isPremium;
+        if (planFilter === 'pro' && !isPro) return false;
+        if (planFilter === 'free' && isPro) return false;
+      }
+
+      // 3. Status Filter
+      if (statusFilter === 'active') {
+        if (u.suspended || u.isSuspended) return false;
+      }
+      if (statusFilter === 'suspended') {
+        if (!u.suspended && !u.isSuspended) return false;
+      }
+
+      // 4. Search Filter
+      if (debouncedSearch.trim()) {
+        const st = debouncedSearch.toLowerCase().trim();
+        const name = getUserDisplayName(u).toLowerCase();
+        const email = (u.email || '').toLowerCase();
+        const uid = (u.uid || '').toLowerCase();
+        const uni = (u.targetUniversity || '').toLowerCase();
+        if (!name.includes(st) && !email.includes(st) && !uid.includes(st) && !uni.includes(st)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [allUsers, roleFilter, planFilter, statusFilter, debouncedSearch]);
 
   return (
     <div className="flex flex-col gap-6 w-full max-w-full">

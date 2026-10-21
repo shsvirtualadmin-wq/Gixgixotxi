@@ -15,16 +15,21 @@ interface UsageData {
 
 import { ReactNode } from 'react';
 
+import { memo, useRef } from 'react';
+
 interface Props {
   uid: string;
   isPremium?: boolean;
   onUsageChange?: (used: number) => void;
 }
 
-export const DailyLimitsMeter = function DailyLimitsMeter({ uid, isPremium, onUsageChange }: Props) {
+export const DailyLimitsMeter = memo(function DailyLimitsMeter({ uid, isPremium, onUsageChange }: Props) {
   const [usage, setUsage] = useState<UsageData | null>(null);
   const [loading, setLoading] = useState(true);
   const effectivePlan = useEffectivePlan();
+
+  const onUsageChangeRef = useRef(onUsageChange);
+  onUsageChangeRef.current = onUsageChange;
 
   const dateKey = getPKTDateKey();
 
@@ -42,7 +47,7 @@ export const DailyLimitsMeter = function DailyLimitsMeter({ uid, isPremium, onUs
         const u = snap.exists() ? (snap.data() as UsageData) : {};
         setUsage(u);
         const count = Number(u.testsStarted ?? u.practiceAttempts ?? 0);
-        if (onUsageChange) onUsageChange(count);
+        if (onUsageChangeRef.current) onUsageChangeRef.current(count);
         setLoading(false);
       },
       () => {
@@ -50,8 +55,8 @@ export const DailyLimitsMeter = function DailyLimitsMeter({ uid, isPremium, onUs
       }
     );
 
-    return unsubscribe;
-  }, [uid, dateKey, onUsageChange]);
+    return () => unsubscribe();
+  }, [uid, dateKey]);
 
   if (loading || effectivePlan.loading) return <Skeleton height={70} />;
 
@@ -108,6 +113,7 @@ export const DailyLimitsMeter = function DailyLimitsMeter({ uid, isPremium, onUs
       </div>
     </div>
   );
-}
+});
 
 export default DailyLimitsMeter;
+

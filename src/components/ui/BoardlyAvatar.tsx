@@ -26,7 +26,7 @@ export interface BoardlyAvatarProps {
  * Renders the equipped frame around the avatar if equipped.
  * Used across Commons post headers, comments, and student profile page.
  */
-export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = ({
+export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = React.memo(({
   equippedAvatar,
   avatarUrl,
   photoURL,
@@ -72,6 +72,10 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = ({
       <img
         src={cleanAvatarUrl}
         alt={name || 'Student'}
+        loading="lazy"
+        decoding="async"
+        width={size}
+        height={size}
         onError={() => setImageError(true)}
         className="w-full h-full object-cover rounded-full select-none"
       />
@@ -82,6 +86,10 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = ({
       <img
         src={cleanPhotoURL}
         alt={name || 'Student'}
+        loading="lazy"
+        decoding="async"
+        width={size}
+        height={size}
         referrerPolicy="no-referrer"
         onError={() => setImageError(true)}
         className="w-full h-full object-cover rounded-full select-none"
@@ -136,4 +144,4 @@ export const BoardlyAvatar: React.FC<BoardlyAvatarProps> = ({
       {innerAvatar}
     </div>
   );
-};
+});

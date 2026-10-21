@@ -437,6 +437,9 @@ export async function fetchCommonsPosts(params: {
   }
 }
 
+const voteStatusCache = new Map<string, boolean>();
+const saveStatusCache = new Map<string, boolean>();
+
 /**
  * Toggle upvote on a post with atomic counter update.
  */
@@ -472,6 +475,9 @@ export async function togglePostVote(
 
   await batch.commit();
 
+  // Update in-memory vote cache
+  voteStatusCache.set(`${postId}_${userId}`, !isVoted);
+
   // Read latest upvotes
   const updatedSnap = await getDoc(postRef);
   const count = Number(updatedSnap.data()?.upvotes ?? 0);
@@ -480,13 +486,23 @@ export async function togglePostVote(
 }
 
 /**
- * Check if the user has voted on a post.
+ * Check if the user has voted on a post with in-memory caching.
  */
 export async function checkUserVoted(postId: string, userId: string): Promise<boolean> {
   if (!userId) return false;
-  const voteRef = doc(db, 'commonsPosts', postId, 'votes', userId);
-  const snap = await getDoc(voteRef);
-  return snap.exists();
+  const key = `${postId}_${userId}`;
+  if (voteStatusCache.has(key)) {
+    return voteStatusCache.get(key)!;
+  }
+  try {
+    const voteRef = doc(db, 'commonsPosts', postId, 'votes', userId);
+    const snap = await getDoc(voteRef);
+    const hasVoted = snap.exists();
+    voteStatusCache.set(key, hasVoted);
+    return hasVoted;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -513,17 +529,29 @@ export async function toggleSavePost(
   }
 
   await batch.commit();
+
+  saveStatusCache.set(`${postId}_${userId}`, !isSaved);
   return { saved: !isSaved };
 }
 
 /**
- * Check if user has saved a post.
+ * Check if user has saved a post with in-memory caching.
  */
 export async function checkUserSaved(postId: string, userId: string): Promise<boolean> {
   if (!userId) return false;
-  const saveRef = doc(db, 'users', userId, 'savedCommons', postId);
-  const snap = await getDoc(saveRef);
-  return snap.exists();
+  const key = `${postId}_${userId}`;
+  if (saveStatusCache.has(key)) {
+    return saveStatusCache.get(key)!;
+  }
+  try {
+    const saveRef = doc(db, 'users', userId, 'savedCommons', postId);
+    const snap = await getDoc(saveRef);
+    const isSaved = snap.exists();
+    saveStatusCache.set(key, isSaved);
+    return isSaved;
+  } catch {
+    return false;
+  }
 }
 
 /**

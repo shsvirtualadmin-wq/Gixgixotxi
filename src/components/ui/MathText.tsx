@@ -158,6 +158,9 @@ function renderInlineMarkdown(text: string, keyPrefix: string): React.ReactNode[
   });
 }
 
+const katexHtmlCache = new Map<string, string>();
+const MAX_KATEX_CACHE = 1200;
+
 function renderMathSegment(seg: ParsedSegment, index: number, prefix: string) {
   if (seg.type === 'text') {
     return (
@@ -168,23 +171,33 @@ function renderMathSegment(seg: ParsedSegment, index: number, prefix: string) {
   }
 
   const isDisplay = seg.type === 'display-math';
-  let html = '';
+  const trimmed = seg.content.trim();
+  const cacheKey = `${isDisplay ? 'D' : 'I'}:${trimmed}`;
+  let html = katexHtmlCache.get(cacheKey) || '';
   let hasError = false;
 
-  try {
-    html = katex.renderToString(seg.content.trim(), {
-      displayMode: isDisplay,
-      throwOnError: false,
-      errorColor: '#D71921',
-      strict: 'warn',
-      trust: false,
-      output: 'htmlAndMathml',
-      maxSize: 20,
-      maxExpand: 1000,
-    });
-  } catch (err) {
-    console.warn('[MathText] Rendering error fallback:', err, seg.content);
-    hasError = true;
+  if (!html) {
+    try {
+      html = katex.renderToString(trimmed, {
+        displayMode: isDisplay,
+        throwOnError: false,
+        errorColor: '#D71921',
+        strict: 'warn',
+        trust: false,
+        output: 'htmlAndMathml',
+        maxSize: 20,
+        maxExpand: 1000,
+      });
+
+      if (katexHtmlCache.size >= MAX_KATEX_CACHE) {
+        const first = katexHtmlCache.keys().next().value;
+        if (first) katexHtmlCache.delete(first);
+      }
+      katexHtmlCache.set(cacheKey, html);
+    } catch (err) {
+      console.warn('[MathText] Rendering error fallback:', err, seg.content);
+      hasError = true;
+    }
   }
 
   if (hasError || !html) {
@@ -233,13 +246,13 @@ export interface MathTextProps {
 }
 
 /**
- * Universal MathText renderer.
+ * Universal MathText renderer with KaTeX string caching.
  * - Renders markdown headers (###), bold (**text**), italics (*text*), and lists cleanly
  * - Never shows raw asterisks or unformatted hashes
  * - Math segments rendered safely via KaTeX with fallback to raw text on error
  * - Display math scrolls horizontally inside its own overflow-x:auto box
  */
-export function MathText({ children, text, className = '', block = false, style }: MathTextProps) {
+export const MathText = React.memo(function MathText({ children, text, className = '', block = false, style }: MathTextProps) {
   const content = text ?? children ?? '';
 
   const renderedContent = useMemo(() => {
@@ -357,6 +370,6 @@ export function MathText({ children, text, className = '', block = false, style 
       {renderedContent}
     </span>
   );
-}
+});
 
 export default MathText;

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, memo } from 'react';
 import {
   Bookmark,
   ChevronLeft,
@@ -47,7 +47,7 @@ interface QuestionCardProps {
 
 const OPTION_LABELS = ['A', 'B', 'C', 'D'];
 
-export function QuestionCard({
+export const QuestionCard = memo(function QuestionCard({
   question,
   index,
   total,
@@ -484,6 +484,6 @@ export function QuestionCard({
       )}
     </div>
   );
-}
+});
 
 export default QuestionCard;

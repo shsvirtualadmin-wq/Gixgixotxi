@@ -387,7 +387,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
             {/* Author Avatar Thumbnail */}
             <div className="w-9 h-9 rounded-full bg-[var(--card)] border border-[var(--border)] overflow-hidden shrink-0 flex items-center justify-center font-heading font-bold text-xs text-[var(--text)]">
               {currentUserAvatar ? (
-                <img src={currentUserAvatar} alt="You" className="w-full h-full object-cover" />
+                <img src={currentUserAvatar} alt="You" loading="lazy" decoding="async" className="w-full h-full object-cover" />
               ) : (
                 <span>{(currentUserDisplayName || 'U').charAt(0).toUpperCase()}</span>
               )}
@@ -540,7 +540,7 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-full bg-[var(--card-2)] border border-[var(--border)] overflow-hidden shrink-0 flex items-center justify-center font-heading font-bold text-xs text-[var(--text)]">
                       {post.author_avatar ? (
-                        <img src={post.author_avatar} alt={post.author_name || 'Author'} className="w-full h-full object-cover" />
+                        <img src={post.author_avatar} alt={post.author_name || 'Author'} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                       ) : (
                         <span>{(post.author_name || 'S').charAt(0).toUpperCase()}</span>
                       )}

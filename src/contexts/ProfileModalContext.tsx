@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, lazy, Suspense } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 
 const LazyProfileView = lazy(() =>
   import('@/components/profile/ProfileView').then((m) => ({ default: m.ProfileView }))
@@ -63,8 +63,13 @@ export const ProfileModalProvider: React.FC<{ children: React.ReactNode }> = ({ 
     };
   }, [isOpen]);
 
+  const contextValue = useMemo(
+    () => ({ openProfile, closeProfile, isOpen, activeUid }),
+    [openProfile, closeProfile, isOpen, activeUid]
+  );
+
   return (
-    <ProfileModalContext.Provider value={{ openProfile, closeProfile, isOpen, activeUid }}>
+    <ProfileModalContext.Provider value={contextValue}>
       {children}
     </ProfileModalContext.Provider>
   );

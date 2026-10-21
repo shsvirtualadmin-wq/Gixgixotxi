@@ -4,6 +4,7 @@ import {
   useEffect,
   useState,
   useCallback,
+  useMemo,
   type ReactNode,
 } from 'react';
 import {
@@ -174,69 +175,55 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       let loadedProfile: UserProfile | null = null;
 
-      // 1. Transactional check & create: ONLY create when doc truly does not exist
+      // 1. Fast path read: 99.9% of users already have a profile document
       try {
-        await runTransaction(db, async (tx) => {
-          const freshSnap = await tx.get(docRef);
-          if (freshSnap.exists()) {
-            loadedProfile = freshSnap.data() as UserProfile;
-          } else {
-            // Truly new user: initialize clean defaults
-            const baseUserDoc: UserProfile = {
-              uid: firebaseUser.uid,
-              name: fallbackName,
-              displayName: fallbackName,
-              email: emailLower,
-              photoURL: firebaseUser.photoURL ?? null,
-              role: isSuperAdminAccount ? 'admin' : 'student',
-              plan: isSuperAdminAccount ? 'pro' : 'free',
-              status: 'active',
-              profileCompleted: isSuperAdminAccount ? true : false,
-              onboardingCompleted: isSuperAdminAccount ? true : false,
-              streak: 0,
-              shortId: deriveFallbackShortId(firebaseUser.uid),
-            };
-            tx.set(docRef, {
-              ...baseUserDoc,
-              createdAt: serverTimestamp(),
-              updatedAt: serverTimestamp(),
-            });
-            loadedProfile = baseUserDoc;
-            createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '').catch(() => {});
-            processAmbassadorReferralOnSignup({
-              newUid: firebaseUser.uid,
-              newEmail: firebaseUser.email ?? '',
-              newName: fallbackName,
-              newShortId: baseUserDoc.shortId || deriveFallbackShortId(firebaseUser.uid),
-            }).catch(() => {});
-            ensureUserShortId(firebaseUser.uid, baseUserDoc.shortId).catch(() => {});
-          }
-        });
-      } catch (txErr: unknown) {
-        console.warn(`[Boardly] User doc transaction check deferred at ${path}:`, txErr);
-        const code = (txErr as { code?: string })?.code;
+        const snap = await Promise.race([
+          getDoc(docRef),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+        ]);
+        if (snap && typeof snap.exists === 'function' && snap.exists()) {
+          loadedProfile = snap.data() as UserProfile;
+        } else if (snap && typeof snap.exists === 'function' && !snap.exists()) {
+          // Truly new user: initialize clean defaults
+          const baseUserDoc: UserProfile = {
+            uid: firebaseUser.uid,
+            name: fallbackName,
+            displayName: fallbackName,
+            email: emailLower,
+            photoURL: firebaseUser.photoURL ?? null,
+            role: isSuperAdminAccount ? 'admin' : 'student',
+            plan: isSuperAdminAccount ? 'pro' : 'free',
+            status: 'active',
+            profileCompleted: isSuperAdminAccount ? true : false,
+            onboardingCompleted: isSuperAdminAccount ? true : false,
+            streak: 0,
+            shortId: deriveFallbackShortId(firebaseUser.uid),
+          };
+          await setDoc(docRef, {
+            ...baseUserDoc,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
+          });
+          loadedProfile = baseUserDoc;
+          createReferralDoc(firebaseUser.uid, firebaseUser.email ?? '').catch(() => {});
+          processAmbassadorReferralOnSignup({
+            newUid: firebaseUser.uid,
+            newEmail: firebaseUser.email ?? '',
+            newName: fallbackName,
+            newShortId: baseUserDoc.shortId || deriveFallbackShortId(firebaseUser.uid),
+          }).catch(() => {});
+          ensureUserShortId(firebaseUser.uid, baseUserDoc.shortId).catch(() => {});
+        }
+      } catch (readErr: unknown) {
+        console.warn(`[Boardly] User doc read notice at ${path}:`, readErr);
+        const code = (readErr as { code?: string })?.code;
         if (code === 'permission-denied') {
           debugTracker.recordPlanLog({
             action: 'auth_load_profile',
             status: 'permission_denied',
             errorCode: code,
-            details: (txErr as Error)?.message,
+            details: (readErr as Error)?.message,
           });
-        }
-      }
-
-      // If transaction did not set loadedProfile (e.g. timeout or race), try one non-mutating getDoc read
-      if (!loadedProfile) {
-        try {
-          const snap = await Promise.race([
-            getDoc(docRef),
-            new Promise<null>((resolve) => setTimeout(() => resolve(null), 3000)),
-          ]);
-          if (snap && typeof snap.exists === 'function' && snap.exists()) {
-            loadedProfile = snap.data() as UserProfile;
-          }
-        } catch (readErr) {
-          console.warn(`[Boardly] Fallback profile read deferred at ${path}:`, readErr);
         }
       }
 
@@ -483,29 +470,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user, updateLocalProfile]
   );
 
+  const contextValue = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      profile,
+      profileLoading,
+      profileError,
+      authError,
+      clearAuthError,
+      clearProfileError,
+      isAdmin,
+      signIn,
+      signUp,
+      signInWithGoogle,
+      signOutUser,
+      sendVerificationEmail,
+      resetPassword,
+      retryProfile,
+      getRoleRedirectUrl,
+      updateProfile,
+      updateLocalProfile,
+    }),
+    [
+      user,
+      profile,
+      profileLoading,
+      profileError,
+      authError,
+      clearAuthError,
+      clearProfileError,
+      isAdmin,
+      signIn,
+      signUp,
+      signInWithGoogle,
+      signOutUser,
+      sendVerificationEmail,
+      resetPassword,
+      retryProfile,
+      getRoleRedirectUrl,
+      updateProfile,
+      updateLocalProfile,
+    ]
+  );
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        profile,
-        profileLoading,
-        profileError,
-        authError,
-        clearAuthError,
-        clearProfileError,
-        isAdmin,
-        signIn,
-        signUp,
-        signInWithGoogle,
-        signOutUser,
-        sendVerificationEmail,
-        resetPassword,
-        retryProfile,
-        getRoleRedirectUrl,
-        updateProfile,
-        updateLocalProfile,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

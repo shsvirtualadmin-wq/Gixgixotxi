@@ -22,7 +22,7 @@ export interface LogoProps extends React.ImgHTMLAttributes<HTMLImageElement> {
  * Never display separate 'Boardly' text beside this logo.
  * Automatically adapts for dark and light themes via CSS filter in index.css.
  */
-export function Logo({
+export const Logo = React.memo(function Logo({
   size = 'navbar',
   height,
   className = '',
@@ -72,6 +72,6 @@ export function Logo({
       {...rest}
     />
   );
-}
+});
 
 export default Logo;

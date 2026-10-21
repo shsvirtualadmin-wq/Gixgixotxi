@@ -227,14 +227,46 @@ const MidnightArtwork = React.memo(function MidnightArtwork({ isThumbnail = fals
   );
 });
 
+import { useTheme } from '@/hooks/useTheme';
+
+const LightCanvasArtwork = React.memo(function LightCanvasArtwork() {
+  return (
+    <div className="absolute inset-0 w-full h-full overflow-hidden bg-[var(--bg)]">
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background:
+            'radial-gradient(circle at 88% 12%, rgba(215, 25, 33, 0.04) 0%, transparent 60%), radial-gradient(circle at 15% 85%, rgba(0, 0, 0, 0.02) 0%, transparent 50%)',
+        }}
+      />
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        viewBox="0 0 1440 900"
+        preserveAspectRatio="xMidYMid slice"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <pattern id="light-dot-grid" width="32" height="32" patternUnits="userSpaceOnUse">
+            <circle cx="2" cy="2" r="1" fill="rgba(0, 0, 0, 0.05)" />
+            <circle cx="18" cy="18" r="0.8" fill="rgba(215, 25, 33, 0.06)" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#light-dot-grid)" />
+      </svg>
+    </div>
+  );
+});
+
 /**
  * Global Wallpaper Background layer rendered behind the app at all times.
  * Rendered at position: fixed; inset: 0; z-index: -1.
- * Dark overlay (~58%) ensures minimum 4.5:1 text contrast for all direct content.
+ * Supports dark mode (custom chosen wallpaper + contrast overlay) and light mode (Nothing OS light dot-matrix).
  * Hardware-accelerated with contain: strict and zero offscreen blur compositing passes.
  */
 export const WallpaperBackground = React.memo(function WallpaperBackground() {
   const { wallpaper } = useWallpaper();
+  const { isDark } = useTheme();
 
   return (
     <div
@@ -250,22 +282,27 @@ export const WallpaperBackground = React.memo(function WallpaperBackground() {
         width: '100vw',
         height: '100vh',
         contain: 'strict',
-        willChange: 'transform',
-        transform: 'translateZ(0)',
       }}
     >
-      {/* Base Wallpaper SVG Artwork */}
-      {wallpaper === 'crimson-arc' && <CrimsonArcArtwork />}
-      {wallpaper === 'ember-grid' && <EmberGridArtwork />}
-      {wallpaper === 'midnight' && <MidnightArtwork />}
+      {isDark ? (
+        <>
+          {/* Base Dark Wallpaper SVG Artwork */}
+          {wallpaper === 'crimson-arc' && <CrimsonArcArtwork />}
+          {wallpaper === 'ember-grid' && <EmberGridArtwork />}
+          {wallpaper === 'midnight' && <MidnightArtwork />}
 
-      {/* 58% Dark Overlay to guarantee >= 4.5:1 text contrast for foreground text */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundColor: 'rgba(0, 0, 0, 0.58)',
-        }}
-      />
+          {/* 58% Dark Overlay to guarantee >= 4.5:1 text contrast for foreground text */}
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{
+              backgroundColor: 'rgba(0, 0, 0, 0.58)',
+            }}
+          />
+        </>
+      ) : (
+        <LightCanvasArtwork />
+      )}
     </div>
   );
 });
+

@@ -170,17 +170,24 @@ export function resolveEffectivePlan(input: PlanResolverInput): EffectivePlanRes
   };
 }
 
+interface SharedCrewEntry {
+  data: PlanResolverInput['crew'];
+  loading: boolean;
+  error: string | null;
+  subscribers: Set<() => void>;
+  unsub: (() => void) | null;
+}
+
+const crewSubscriptionRegistry = new Map<string, SharedCrewEntry>();
+
 /**
  * Single source of truth hook for user's effective plan.
  * Guarantees zero flicker for Superadmin, 3 states (loading, ready, error),
- * and in-memory plan caching per uid.
+ * and in-memory plan caching per uid with shared crew doc subscription.
  */
 export function useEffectivePlan(): EffectivePlanResult {
   const { user: authUser } = useAuth();
   const { profile, loading: profileLoading, error: profileError } = useUserProfile();
-  const [crewData, setCrewData] = useState<PlanResolverInput['crew']>(null);
-  const [crewLoading, setCrewLoading] = useState(false);
-  const [crewError, setCrewError] = useState<string | null>(null);
 
   // Immediate synchronous Superadmin resolution before ANY Firestore load
   const currentEmail = authUser?.email || auth.currentUser?.email || profile?.email;
@@ -191,44 +198,92 @@ export function useEffectivePlan(): EffectivePlanResult {
   const crewId = profile?.crewId;
   const inCrew = Boolean(profile?.isCrewMember || crewId);
 
-  // Listen to crew doc if user is in a crew and not personally Pro
+  const [crewState, setCrewState] = useState<{
+    data: PlanResolverInput['crew'];
+    loading: boolean;
+    error: string | null;
+  }>(() => {
+    if (isSuper || !crewId) return { data: null, loading: false, error: null };
+    const existing = crewSubscriptionRegistry.get(crewId);
+    return existing
+      ? { data: existing.data, loading: existing.loading, error: existing.error }
+      : { data: null, loading: true, error: null };
+  });
+
+  // Single shared listener to crew doc if user is in a crew and not personally Pro
   useEffect(() => {
     if (isSuper || !crewId) {
-      setCrewData(null);
-      setCrewLoading(false);
-      setCrewError(null);
+      setCrewState({ data: null, loading: false, error: null });
       return;
     }
 
-    setCrewLoading(true);
-    setCrewError(null);
-    const crewRef = doc(db, 'crews', crewId);
-
-    const unsubscribe = onSnapshot(
-      crewRef,
-      (snap) => {
-        if (snap.exists()) {
-          setCrewData(snap.data() as PlanResolverInput['crew']);
-        } else {
-          setCrewData(null);
-        }
-        setCrewLoading(false);
-      },
-      (err) => {
-        console.warn('[useEffectivePlan] Error reading crew plan:', err);
-        setCrewError(err.message);
-        setCrewLoading(false);
-        debugTracker.recordPlanLog({
-          action: 'read_crew_plan',
-          status: err.code === 'permission-denied' ? 'permission_denied' : 'error',
-          errorCode: err.code,
-          details: err.message,
-        });
+    const onUpdate = () => {
+      const entry = crewSubscriptionRegistry.get(crewId);
+      if (entry) {
+        setCrewState({ data: entry.data, loading: entry.loading, error: entry.error });
       }
-    );
+    };
 
-    return () => unsubscribe();
+    let entry = crewSubscriptionRegistry.get(crewId);
+    if (!entry) {
+      entry = {
+        data: null,
+        loading: true,
+        error: null,
+        subscribers: new Set(),
+        unsub: null,
+      };
+      crewSubscriptionRegistry.set(crewId, entry);
+
+      const crewRef = doc(db, 'crews', crewId);
+      entry.unsub = onSnapshot(
+        crewRef,
+        (snap) => {
+          const cur = crewSubscriptionRegistry.get(crewId);
+          if (!cur) return;
+          cur.data = snap.exists() ? (snap.data() as PlanResolverInput['crew']) : null;
+          cur.loading = false;
+          cur.error = null;
+          for (const cb of cur.subscribers) {
+            try {
+              cb();
+            } catch (notifyErr) {
+              console.warn('[useEffectivePlan] subscriber notify error:', notifyErr);
+            }
+          }
+        },
+        (err) => {
+          console.warn('[useEffectivePlan] Error reading crew plan:', err);
+          const cur = crewSubscriptionRegistry.get(crewId);
+          if (!cur) return;
+          cur.error = err.message;
+          cur.loading = false;
+          for (const cb of cur.subscribers) {
+            try {
+              cb();
+            } catch (notifyErr) {
+              console.warn('[useEffectivePlan] subscriber notify error:', notifyErr);
+            }
+          }
+        }
+      );
+    }
+
+    entry.subscribers.add(onUpdate);
+    setCrewState({ data: entry.data, loading: entry.loading, error: entry.error });
+
+    return () => {
+      const cur = crewSubscriptionRegistry.get(crewId);
+      if (!cur) return;
+      cur.subscribers.delete(onUpdate);
+      if (cur.subscribers.size === 0) {
+        if (cur.unsub) cur.unsub();
+        crewSubscriptionRegistry.delete(crewId);
+      }
+    };
   }, [isSuper, crewId]);
+
+  const { data: crewData, loading: crewLoading, error: crewError } = crewState;
 
   // Immediate synchronous Superadmin resolution before ANY Firestore load
   if (isSuper) {

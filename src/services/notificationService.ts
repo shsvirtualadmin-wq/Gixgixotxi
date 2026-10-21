@@ -98,6 +98,7 @@ export async function createAnnouncement(params: {
     createdAt: serverTimestamp(),
   });
 
+  invalidateAnnouncementsCache();
   return docRef.id;
 }
 
@@ -113,12 +114,24 @@ export async function deleteAnnouncement(
   }
 
   await deleteDoc(doc(db, 'announcements', announcementId));
+  invalidateAnnouncementsCache();
+}
+
+let cachedAnnouncements: { data: AnnouncementItem[]; expires: number } | null = null;
+
+export function invalidateAnnouncementsCache() {
+  cachedAnnouncements = null;
 }
 
 /**
  * Fetches all global announcements ordered newest first.
+ * Cached in-memory for 2 minutes to prevent repeated Firestore reads on page switches.
  */
 export async function fetchAnnouncements(limitCount = 50): Promise<AnnouncementItem[]> {
+  if (cachedAnnouncements && Date.now() < cachedAnnouncements.expires) {
+    return cachedAnnouncements.data.slice(0, limitCount);
+  }
+
   try {
     const q = query(
       collection(db, 'announcements'),
@@ -126,7 +139,7 @@ export async function fetchAnnouncements(limitCount = 50): Promise<AnnouncementI
       limit(limitCount)
     );
     const snap = await getDocs(q);
-    return snap.docs.map((d) => {
+    const list = snap.docs.map((d) => {
       const data = d.data();
       return {
         id: d.id,
@@ -138,9 +151,11 @@ export async function fetchAnnouncements(limitCount = 50): Promise<AnnouncementI
         createdAt: data.createdAt || null,
       };
     });
+    cachedAnnouncements = { data: list, expires: Date.now() + 120000 };
+    return list;
   } catch (err: unknown) {
     console.warn('[notificationService] Error fetching announcements:', err);
-    return [];
+    return cachedAnnouncements?.data ? cachedAnnouncements.data.slice(0, limitCount) : [];
   }
 }
 

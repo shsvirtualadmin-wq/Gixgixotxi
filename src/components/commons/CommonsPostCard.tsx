@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, memo } from 'react';
 import {
   ThumbsUp,
   MessageSquare,
@@ -23,6 +23,7 @@ import { togglePostVote, toggleSavePost, checkUserVoted, checkUserSaved } from '
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { useTheme } from '@/hooks/useTheme';
 
 interface CommonsPostCardProps {
   post: CommonsPost;
@@ -34,7 +35,7 @@ interface CommonsPostCardProps {
   onAuthorClick?: (authorUid: string) => void;
 }
 
-export function CommonsPostCard({
+export const CommonsPostCard = memo(function CommonsPostCard({
   post,
   currentUserId,
   isAdmin,
@@ -43,6 +44,7 @@ export function CommonsPostCard({
   onDeletePost,
 }: CommonsPostCardProps) {
   const { openProfile } = useProfileModal();
+  const { isDark } = useTheme();
   const [upvotes, setUpvotes] = useState(post.upvotes || 0);
   const [hasVoted, setHasVoted] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
@@ -138,8 +140,37 @@ export function CommonsPostCard({
   const isAuthor = currentUserId && (post.authorUid === currentUserId);
   const canDelete = isAuthor || isAdmin;
 
+  // High contrast theme-aware badge coloring
+  const badgeColor = isDark
+    ? (post.type === 'discussion'
+        ? '#94A3B8'
+        : post.type === 'past_paper'
+        ? '#60A5FA'
+        : post.type === 'solved_paper'
+        ? '#34D399'
+        : post.type === 'formula_sheet'
+        ? '#A78BFA'
+        : post.type === 'doubt'
+        ? '#FB923C'
+        : post.type === 'resource_link'
+        ? '#2DD4BF'
+        : '#F87171')
+    : (post.type === 'discussion'
+        ? '#334155'
+        : post.type === 'past_paper'
+        ? '#1D4ED8'
+        : post.type === 'solved_paper'
+        ? '#047857'
+        : post.type === 'formula_sheet'
+        ? '#6D28D9'
+        : post.type === 'doubt'
+        ? '#C2410C'
+        : post.type === 'resource_link'
+        ? '#0F766E'
+        : '#B91C1C');
+
   return (
-    <article className="group relative rounded-2xl border border-neutral-800 bg-[#0c0c0e]/95 p-5 shadow-sm transition-all duration-200 hover:border-neutral-700/80 hover:bg-[#111114]">
+    <article className="group relative rounded-2xl border border-border bg-surface p-5 shadow-xs transition-all duration-200 hover:border-border-strong hover:shadow-sm">
       {/* ── Header Metadata Row (Unboxed metadata with typographic separators) ── */}
       <div className="flex items-center justify-between gap-2 mb-3">
         <div
@@ -155,7 +186,7 @@ export function CommonsPostCard({
         >
           {/* Author avatar */}
           {post.isAnonymous ? (
-            <div className="w-8 h-8 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-xs font-mono text-neutral-400 shrink-0">
+            <div className="w-8 h-8 rounded-full bg-surface-muted border border-border flex items-center justify-center text-xs font-mono text-muted shrink-0">
               ?
             </div>
           ) : (
@@ -172,19 +203,19 @@ export function CommonsPostCard({
           {/* Author details */}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-neutral-100 group-hover/author:text-red-400 transition-colors truncate">
+              <span className="text-sm font-semibold text-primary group-hover/author:text-accent transition-colors truncate">
                 {sanitizeStudentDisplayName(post.authorName, post.authorUid)}
               </span>
               {post.isAnonymous && (
-                <span className="text-[10px] font-mono tracking-wider uppercase text-amber-400/90 bg-amber-950/40 border border-amber-800/40 px-1.5 py-0.2 rounded">
+                <span className="text-[10px] font-mono tracking-wider uppercase text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.2 rounded">
                   ANON
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1.5 text-xs text-neutral-400">
+            <div className="flex items-center gap-1.5 text-xs text-muted">
               <span>{formatTime(post.createdAt)}</span>
               <span aria-hidden="true">·</span>
-              <span className="text-neutral-300 font-medium truncate">{post.target}</span>
+              <span className="text-secondary font-medium truncate">{post.target}</span>
             </div>
           </div>
         </div>
@@ -192,11 +223,11 @@ export function CommonsPostCard({
         {/* Post Type Badge & Options Menu */}
         <div className="flex items-center gap-2 shrink-0">
           <span
-            className="text-xs font-medium px-2.5 py-0.5 rounded-md border text-neutral-200"
+            className="text-xs font-medium px-2.5 py-0.5 rounded-md border"
             style={{
-              backgroundColor: `${typeMeta.color}15`,
-              borderColor: `${typeMeta.color}35`,
-              color: typeMeta.color,
+              backgroundColor: isDark ? `${badgeColor}22` : `${badgeColor}12`,
+              borderColor: `${badgeColor}40`,
+              color: badgeColor,
             }}
           >
             {typeMeta.badgeLabel}
@@ -205,7 +236,7 @@ export function CommonsPostCard({
           <div className="relative">
             <button
               onClick={() => setMenuOpen(!menuOpen)}
-              className="p-1.5 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60 transition-colors"
+              className="p-1.5 rounded-lg text-muted hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
               aria-label="Post options"
             >
               <MoreVertical size={16} />
@@ -213,7 +244,7 @@ export function CommonsPostCard({
 
             {menuOpen && (
               <div
-                className="absolute right-0 top-8 z-20 w-44 rounded-xl border border-neutral-800 bg-neutral-900/95 py-1.5 shadow-xl backdrop-blur-md"
+                className="absolute right-0 top-8 z-20 w-44 rounded-xl border border-border-strong bg-surface-raised py-1.5 shadow-xl backdrop-blur-md"
                 onMouseLeave={() => setMenuOpen(false)}
               >
                 <button
@@ -221,7 +252,7 @@ export function CommonsPostCard({
                     setMenuOpen(false);
                     onOpenReport(post);
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-neutral-300 hover:bg-neutral-800/70 hover:text-red-400 text-left transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-secondary hover:bg-surface-muted hover:text-accent text-left transition-colors cursor-pointer"
                 >
                   <Flag size={14} />
                   <span>Report post</span>
@@ -232,7 +263,7 @@ export function CommonsPostCard({
                       setMenuOpen(false);
                       onDeletePost(post.id);
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-950/40 text-left transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-accent hover:bg-accent-soft text-left transition-colors cursor-pointer"
                   >
                     <Trash2 size={14} />
                     <span>Delete post</span>
@@ -245,22 +276,22 @@ export function CommonsPostCard({
       </div>
 
       {/* ── Subject & Chapter quiet taxonomy line ── */}
-      <div className="flex items-center gap-2 text-xs text-neutral-400 mb-2">
-        <span className="text-red-400/90 font-medium uppercase tracking-wider text-[11px]">
+      <div className="flex items-center gap-2 text-xs text-muted mb-2">
+        <span className="text-accent font-medium uppercase tracking-wider text-[11px]">
           {post.subject}
         </span>
-        <span aria-hidden="true" className="text-neutral-600">/</span>
-        <span className="truncate text-neutral-300">{post.chapter}</span>
+        <span aria-hidden="true" className="text-muted">/</span>
+        <span className="truncate text-secondary font-medium">{post.chapter}</span>
       </div>
 
       {/* ── Post Title ── */}
-      <h2 className="text-base font-bold text-neutral-100 mb-2 tracking-tight line-clamp-2">
+      <h2 className="text-base font-bold text-primary mb-2 tracking-tight line-clamp-2">
         {post.title}
       </h2>
 
       {/* ── Post Description ── */}
       {post.description && (
-        <div className="text-sm text-neutral-300 mb-3 whitespace-pre-line leading-relaxed font-normal">
+        <div className="text-sm text-secondary mb-3 whitespace-pre-line leading-relaxed font-normal">
           {expanded || post.description.length <= 220 ? (
             post.description
           ) : (
@@ -268,7 +299,7 @@ export function CommonsPostCard({
               {post.description.slice(0, 220)}...{' '}
               <button
                 onClick={() => setExpanded(true)}
-                className="text-red-400 hover:text-red-300 font-medium text-xs ml-1 underline underline-offset-2"
+                className="text-accent hover:underline font-medium text-xs ml-1 cursor-pointer"
               >
                 Read more
               </button>
@@ -279,11 +310,11 @@ export function CommonsPostCard({
 
       {/* ── Tags (quiet unboxed typographic styling) ── */}
       {post.tags && post.tags.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 mb-3 text-xs text-neutral-400">
+        <div className="flex flex-wrap items-center gap-1.5 mb-3 text-xs text-muted">
           {post.tags.map((tag, idx) => (
             <span
               key={idx}
-              className="text-neutral-400 bg-neutral-900/80 px-2 py-0.5 rounded text-[11px] font-mono border border-neutral-800/80"
+              className="text-muted bg-surface-muted px-2 py-0.5 rounded text-[11px] font-mono border border-border"
             >
               #{tag}
             </span>
@@ -301,27 +332,27 @@ export function CommonsPostCard({
       )}
 
       {/* ── Action Bar: Votes, Comments, Save, Share ── */}
-      <div className="flex items-center justify-between pt-3 border-t border-neutral-800/80 text-xs">
+      <div className="flex items-center justify-between pt-3 border-t border-border text-xs">
         <div className="flex items-center gap-1.5">
           {/* Upvote button */}
           <button
             onClick={handleVote}
             disabled={!currentUserId}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium transition-colors cursor-pointer ${
               hasVoted
-                ? 'bg-red-950/60 border border-red-800/80 text-red-400 font-semibold'
-                : 'text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800/70 border border-transparent'
+                ? 'bg-accent-soft border border-accent text-accent font-semibold'
+                : 'text-secondary hover:text-primary hover:bg-surface-muted border border-transparent'
             }`}
             title={currentUserId ? 'Upvote' : 'Sign in to vote'}
           >
-            <ThumbsUp size={15} className={hasVoted ? 'fill-red-400 text-red-400' : ''} />
+            <ThumbsUp size={15} className={hasVoted ? 'fill-current text-accent' : ''} />
             <span>{upvotes}</span>
           </button>
 
           {/* Comments button */}
           <button
             onClick={() => onOpenComments(post)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-neutral-300 hover:text-neutral-100 hover:bg-neutral-800/70 transition-colors"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-secondary hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
           >
             <MessageSquare size={15} />
             <span>{post.commentCount || 0}</span>
@@ -333,30 +364,30 @@ export function CommonsPostCard({
           <button
             onClick={handleSave}
             disabled={!currentUserId}
-            className={`p-1.5 rounded-lg transition-colors ${
+            className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
               isSaved
-                ? 'text-red-400 bg-red-950/40'
-                : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60'
+                ? 'text-accent bg-accent-soft'
+                : 'text-muted hover:text-primary hover:bg-surface-muted'
             }`}
             title="Save for later"
           >
-            <Bookmark size={16} className={isSaved ? 'fill-red-400' : ''} />
+            <Bookmark size={16} className={isSaved ? 'fill-current text-accent' : ''} />
           </button>
 
           {/* Share button */}
           <button
             onClick={handleShare}
-            className="flex items-center gap-1 p-1.5 rounded-lg text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/60 transition-colors"
+            className="flex items-center gap-1 p-1.5 rounded-lg text-muted hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
             title="Copy share link"
           >
             <Share2 size={16} />
-            {copied && <span className="text-[10px] text-emerald-400 font-mono">Copied!</span>}
+            {copied && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">Copied!</span>}
           </button>
         </div>
       </div>
     </article>
   );
-}
+});
 
 function FileAttachmentItem({ file }: { file: CommonsFileAttachment }) {
   const fileName = file?.name || 'attachment';
@@ -371,14 +402,14 @@ function FileAttachmentItem({ file }: { file: CommonsFileAttachment }) {
   };
 
   return (
-    <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl border border-neutral-800/90 bg-neutral-900/60 hover:bg-neutral-900 hover:border-neutral-700 transition-colors">
+    <div className="flex items-center justify-between gap-3 p-2.5 rounded-xl border border-border bg-surface-muted hover:border-border-strong transition-colors">
       <div className="flex items-center gap-2.5 min-w-0">
-        <div className="w-8 h-8 rounded-lg bg-neutral-800 flex items-center justify-center text-neutral-300 shrink-0">
+        <div className="w-8 h-8 rounded-lg bg-surface border border-border flex items-center justify-center text-secondary shrink-0">
           {isImage ? <ImageIcon size={16} /> : isPdf ? <FileText size={16} /> : <File size={16} />}
         </div>
         <div className="min-w-0">
-          <p className="text-xs font-medium text-neutral-200 truncate">{file.name}</p>
-          <p className="text-[10px] text-neutral-400 font-mono">{formatSize(file.size)}</p>
+          <p className="text-xs font-medium text-primary truncate">{file.name}</p>
+          <p className="text-[10px] text-muted font-mono">{formatSize(file.size)}</p>
         </div>
       </div>
 
@@ -387,7 +418,7 @@ function FileAttachmentItem({ file }: { file: CommonsFileAttachment }) {
         target="_blank"
         rel="noopener noreferrer"
         download={file.name}
-        className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-neutral-200 bg-neutral-800 hover:bg-neutral-700 rounded-lg shrink-0 transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-secondary bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg shrink-0 transition-colors shadow-xs"
       >
         <Download size={13} />
         <span>Open</span>

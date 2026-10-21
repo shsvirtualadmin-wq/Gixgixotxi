@@ -1,3 +1,4 @@
+import { memo } from 'react';
 import { X, Bookmark } from 'lucide-react';
 
 interface QuestionPaletteProps {
@@ -10,7 +11,7 @@ interface QuestionPaletteProps {
   onSelectIndex: (index: number) => void;
 }
 
-export function QuestionPalette({
+export const QuestionPalette = memo(function QuestionPalette({
   open,
   onClose,
   totalQuestions,
@@ -227,4 +228,4 @@ export function QuestionPalette({
       </div>
     </div>
   );
-}
+});

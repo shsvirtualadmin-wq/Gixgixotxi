@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Search,
   Plus,
@@ -84,13 +84,13 @@ export function CommonsFeedPage() {
     loadPosts();
   }, [loadPosts]);
 
-  const handleLoadMore = async () => {
+  const handleLoadMore = useCallback(async () => {
     if (!lastDoc || loadingMore) return;
     setLoadingMore(true);
     try {
       const res = await fetchCommonsPosts({
         feedTab,
-        searchQuery,
+        searchQuery: debouncedQuery,
         lastVisibleDoc: lastDoc,
         pageSize: 20,
         currentUid: user?.uid,
@@ -98,39 +98,66 @@ export function CommonsFeedPage() {
       setPosts((prev) => [...prev, ...res.posts]);
       setLastDoc(res.lastDoc);
       setHasMore(res.hasMore);
+    } catch (err: unknown) {
+      console.warn('[CommonsFeedPage] load more notice:', err);
     } finally {
       setLoadingMore(false);
     }
-  };
+  }, [lastDoc, loadingMore, feedTab, debouncedQuery, user?.uid]);
 
-  const handlePostCreated = () => {
+  // Infinite scroll trigger via IntersectionObserver sentinel
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!hasMore || loadingMore || loading) return;
+    const el = sentinelRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          handleLoadMore();
+        }
+      },
+      { rootMargin: '300px' }
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loading, handleLoadMore]);
+
+  const handlePostCreated = useCallback(() => {
     loadPosts();
-  };
+  }, [loadPosts]);
 
-  const handleDeletePost = async (postId: string) => {
+  const handleDeletePost = useCallback(async (postId: string) => {
     if (!user) return;
     try {
       await deleteCommonsPost(postId, user.uid, isAdmin);
       setPosts((prev) => prev.filter((p) => p.id !== postId));
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Could not delete post.';
-      alert(msg);
+      console.warn('[CommonsFeedPage] Delete failed:', msg);
     }
-  };
+  }, [user, isAdmin]);
+
+  const handleOpenComments = useCallback((p: CommonsPost) => setCommentsPost(p), []);
+  const handleOpenReport = useCallback((p: CommonsPost) => setReportPost(p), []);
+  const handleAuthorClick = useCallback((authorUid: string) => openProfile(authorUid), [openProfile]);
 
   return (
     <div className="space-y-5 pb-24 max-w-4xl mx-auto">
       {/* ── Top Header Bar with Red Dot Matrix Accent ── */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 text-xs font-mono text-red-500 uppercase tracking-widest">
-            <span className="w-2 h-2 rounded-full bg-red-600 animate-pulse" />
+          <div className="flex items-center gap-2 text-xs font-mono text-accent uppercase tracking-widest">
+            <span className="w-2 h-2 rounded-full bg-accent animate-pulse" />
             <span>COMMUNITY RESOURCE EXCHANGE</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-neutral-100 font-mono mt-1">
+          <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-primary font-mono mt-1">
             BOARDLY COMMONS
           </h1>
-          <p className="text-xs text-neutral-400 mt-0.5">
+          <p className="text-xs text-muted mt-0.5">
             Peer notes, solved entrance past papers, high-yield formula sheets &amp; doubts.
           </p>
         </div>
@@ -139,15 +166,15 @@ export function CommonsFeedPage() {
         <div className="flex items-center gap-2.5">
           <Link
             to="/commons/guidelines"
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-mono text-neutral-400 hover:text-white rounded-xl border border-neutral-800 hover:border-neutral-700 bg-neutral-900/60 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 text-xs font-mono text-secondary hover:text-primary rounded-xl border border-border hover:border-border-strong bg-surface hover:bg-surface-muted transition-colors shadow-xs"
           >
-            <Shield size={14} className="text-neutral-500" />
+            <Shield size={14} className="text-muted" />
             <span>Guidelines</span>
           </Link>
 
           <button
             onClick={() => setWizardOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-red-600 hover:bg-red-500 text-white shadow-lg shadow-red-950/40 transition-all hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-accent hover:opacity-90 text-on-accent shadow-md transition-all hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus size={16} />
             <span>Share Resource</span>
@@ -159,33 +186,33 @@ export function CommonsFeedPage() {
       <div className="relative">
         <button
           onClick={() => setSearchModalOpen(true)}
-          className="w-full flex items-center justify-between p-3 sm:p-3.5 rounded-2xl border border-neutral-800 bg-[#0c0c0e] hover:border-neutral-700 text-left transition-colors group cursor-text"
+          className="w-full flex items-center justify-between p-3 sm:p-3.5 rounded-2xl border border-border bg-surface hover:border-border-strong text-left transition-colors group cursor-text shadow-xs"
         >
           <div className="flex items-center gap-3">
-            <Search size={18} className="text-red-500 shrink-0 group-hover:scale-110 transition-transform" />
-            <span className="text-xs sm:text-sm text-neutral-400">
+            <Search size={18} className="text-accent shrink-0 group-hover:scale-110 transition-transform" />
+            <span className="text-xs sm:text-sm text-muted">
               Search high-yield formulas, past papers, doubts, or classmates...
             </span>
           </div>
-          <div className="hidden sm:flex items-center gap-1 text-[11px] text-neutral-500 font-mono bg-neutral-900 px-2 py-0.5 rounded border border-neutral-800">
+          <div className="hidden sm:flex items-center gap-1 text-[11px] text-muted font-mono bg-surface-muted px-2 py-0.5 rounded border border-border">
             <span>⌘K</span>
           </div>
         </button>
       </div>
 
       {/* ── Feed Options: ONLY "Following" and "All" (No Shortcuts) ── */}
-      <div className="flex items-center justify-between border-b border-neutral-800/80 pb-3">
+      <div className="flex items-center justify-between border-b border-border pb-3">
         <div className="flex items-center gap-2">
           {/* Option 1: Following */}
           <button
             onClick={() => setFeedTab('following')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold font-mono transition-all ${
               feedTab === 'following'
-                ? 'bg-neutral-800 text-white shadow-sm border border-neutral-700 font-bold'
-                : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/60'
+                ? 'bg-surface-raised text-primary shadow-sm border border-border-strong font-bold'
+                : 'text-muted hover:text-primary hover:bg-surface-muted border border-transparent'
             }`}
           >
-            <Users size={15} className={feedTab === 'following' ? 'text-red-500' : ''} />
+            <Users size={15} className={feedTab === 'following' ? 'text-accent' : ''} />
             <span>Following</span>
           </button>
 
@@ -194,11 +221,11 @@ export function CommonsFeedPage() {
             onClick={() => setFeedTab('all')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-semibold font-mono transition-all ${
               feedTab === 'all'
-                ? 'bg-neutral-800 text-white shadow-sm border border-neutral-700 font-bold'
-                : 'text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900/60'
+                ? 'bg-surface-raised text-primary shadow-sm border border-border-strong font-bold'
+                : 'text-muted hover:text-primary hover:bg-surface-muted border border-transparent'
             }`}
           >
-            <Compass size={15} className={feedTab === 'all' ? 'text-red-500' : ''} />
+            <Compass size={15} className={feedTab === 'all' ? 'text-accent' : ''} />
             <span>All</span>
           </button>
         </div>
@@ -206,7 +233,7 @@ export function CommonsFeedPage() {
         <button
           onClick={() => loadPosts()}
           disabled={loading}
-          className="p-2 text-neutral-500 hover:text-neutral-300 rounded-lg hover:bg-neutral-900 transition-colors"
+          className="p-2 text-muted hover:text-primary rounded-lg hover:bg-surface-muted transition-colors cursor-pointer"
           title="Refresh Feed"
         >
           <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
@@ -217,33 +244,33 @@ export function CommonsFeedPage() {
       <div className="space-y-4">
         {loading ? (
           <div className="py-20 text-center space-y-3">
-            <div className="w-6 h-6 border-2 border-red-600 border-t-transparent rounded-full animate-spin mx-auto" />
-            <p className="text-xs text-neutral-500 font-mono">Loading Commons stream...</p>
+            <div className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-xs text-muted font-mono">Loading Commons stream...</p>
           </div>
         ) : loadError ? (
-          <div className="p-8 text-center rounded-2xl border border-red-900/40 bg-[#160b0c] space-y-3">
-            <AlertTriangle size={28} className="mx-auto text-red-500" />
-            <h3 className="text-sm font-semibold text-neutral-200 font-mono uppercase tracking-wider">
+          <div className="p-8 text-center rounded-2xl border border-tag-danger-text/30 bg-tag-danger-bg space-y-3 shadow-xs">
+            <AlertTriangle size={28} className="mx-auto text-accent" />
+            <h3 className="text-sm font-semibold text-primary font-mono uppercase tracking-wider">
               Couldn't Load Posts
             </h3>
-            <p className="text-xs text-neutral-400 max-w-sm mx-auto leading-relaxed">
+            <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
               We encountered an issue fetching the latest community resources. Your connection might have timed out or been interrupted.
             </p>
             <button
               onClick={() => loadPosts()}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-neutral-900 border border-neutral-700 text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-surface border border-border text-primary hover:bg-surface-muted transition-colors cursor-pointer shadow-xs"
             >
               <RefreshCw size={14} />
               <span>Retry</span>
             </button>
           </div>
         ) : posts.length === 0 ? (
-          <div className="p-12 text-center rounded-2xl border border-neutral-800 bg-[#0c0c0e] space-y-3">
-            <BookOpen size={32} className="mx-auto text-neutral-600" />
-            <h3 className="text-sm font-semibold text-neutral-200 font-mono uppercase tracking-wider">
+          <div className="p-12 text-center rounded-2xl border border-border bg-surface space-y-3 shadow-xs">
+            <BookOpen size={32} className="mx-auto text-muted" />
+            <h3 className="text-sm font-semibold text-primary font-mono uppercase tracking-wider">
               {feedTab === 'following' ? 'NO POSTS FROM FOLLOWED USERS' : 'NO STUDY POSTS YET'}
             </h3>
-            <p className="text-xs text-neutral-400 max-w-sm mx-auto leading-relaxed">
+            <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
               {feedTab === 'following'
                 ? 'Follow peers and study creators to see their notes and papers here, or switch to "All" to browse the community feed.'
                 : 'Be the first to share handwritten notes, solved past papers, or high-yield formula sheets for your peers!'}
@@ -252,15 +279,15 @@ export function CommonsFeedPage() {
               {feedTab === 'following' && (
                 <button
                   onClick={() => setFeedTab('all')}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-mono font-semibold rounded-xl border border-neutral-800 hover:border-neutral-700 bg-neutral-900 text-neutral-300 hover:text-white transition-colors"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-mono font-semibold rounded-xl border border-border hover:border-border-strong bg-surface-muted text-secondary hover:text-primary transition-colors cursor-pointer"
                 >
-                  <Compass size={14} className="text-red-500" />
+                  <Compass size={14} className="text-accent" />
                   <span>Browse All Posts</span>
                 </button>
               )}
               <button
                 onClick={() => setWizardOpen(true)}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-red-600 text-white hover:bg-red-500 transition-colors cursor-pointer shadow-md shadow-red-950/40"
+                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-sm"
               >
                 <Plus size={15} />
                 <span>Create first post</span>
@@ -274,21 +301,24 @@ export function CommonsFeedPage() {
               post={post}
               currentUserId={user?.uid}
               isAdmin={isAdmin}
-              onOpenComments={(p) => setCommentsPost(p)}
-              onOpenReport={(p) => setReportPost(p)}
+              onOpenComments={handleOpenComments}
+              onOpenReport={handleOpenReport}
               onDeletePost={handleDeletePost}
-              onAuthorClick={(authorUid: string) => openProfile(authorUid)}
+              onAuthorClick={handleAuthorClick}
             />
           ))
         )}
 
-        {/* Load More Button */}
+        {/* Infinite Scroll Sentinel */}
+        {hasMore && <div ref={sentinelRef} className="h-4 w-full" />}
+
+        {/* Load More Button / Indicator */}
         {hasMore && (
-          <div className="text-center pt-4">
+          <div className="text-center pt-2">
             <button
               onClick={handleLoadMore}
               disabled={loadingMore}
-              className="px-5 py-2 text-xs font-semibold rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-300 hover:text-white hover:border-neutral-700 transition-colors"
+              className="px-5 py-2 text-xs font-semibold rounded-xl bg-surface-muted border border-border text-secondary hover:text-primary hover:border-border-strong transition-colors cursor-pointer shadow-xs"
             >
               {loadingMore ? 'Loading more posts...' : 'Load more resources'}
             </button>
