@@ -237,6 +237,8 @@ export async function createCommonsPost(params: {
   let authorFrame: string | null = currentUser.frame || null;
   let authorEquippedAvatar: string | null = currentUser.equippedAvatar || null;
   let authorPhotoURL: string | null = currentUser.photoURL || null;
+  let authorRole: string | null = (currentUser as any).role || 'Student';
+  let authorCustomRole: string | null = (currentUser as any).customRole || null;
   let authorAlias: string | undefined = undefined;
 
   if (params.isAnonymous) {
@@ -247,6 +249,8 @@ export async function createCommonsPost(params: {
     authorFrame = null;
     authorEquippedAvatar = null;
     authorPhotoURL = null;
+    authorRole = null;
+    authorCustomRole = null;
   }
 
   const searchKeywords = generateSearchKeywords({
@@ -277,6 +281,8 @@ export async function createCommonsPost(params: {
     authorFrame,
     authorEquippedAvatar,
     authorPhotoURL,
+    authorRole,
+    authorCustomRole,
     upvotes: 0,
     commentCount: 0,
     saveCount: 0,
@@ -595,6 +601,8 @@ export async function addPostComment(params: {
   const authorFrame = isAnon ? null : params.author.frame || null;
   const authorEquippedAvatar = isAnon ? null : params.author.equippedAvatar || null;
   const authorPhotoURL = isAnon ? null : params.author.photoURL || null;
+  const authorRole = isAnon ? null : ((params.author as any).role || 'Student');
+  const authorCustomRole = isAnon ? null : ((params.author as any).customRole || null);
 
   const commentData: Omit<CommonsComment, 'id'> = {
     postId: params.postId,
@@ -605,6 +613,8 @@ export async function addPostComment(params: {
     authorFrame,
     authorEquippedAvatar,
     authorPhotoURL,
+    authorRole,
+    authorCustomRole,
     isAnonymous: isAnon,
     text: cleanText,
     createdAt: serverTimestamp(),

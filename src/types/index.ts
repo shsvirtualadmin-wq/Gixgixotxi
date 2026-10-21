@@ -8,8 +8,12 @@ export interface UserProfile {
   email: string;
   displayName: string | null;
   name?: string | null;
+  nickname?: string | null;
+  username?: string | null;
   photoURL?: string | null;
-  role: UserRole;
+  role: UserRole | string;
+  customRole?: string | null;
+  hasChosenRole?: boolean;
   plan: UserPlan;
   status?: string;
   isPremium?: boolean;
@@ -93,6 +97,9 @@ export interface PublicProfileStats {
 export interface PublicProfile {
   uid: string;
   displayName: string;
+  nickname?: string | null;
+  username?: string | null;
+  customRole?: string | null;
   studentId: string;
   avatar: string | null;
   banner: string | null;

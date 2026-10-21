@@ -58,6 +58,15 @@ service cloud.firestore {
       );
     }
 
+    // Checks whether a role title attempts to impersonate administrator or superadmin
+    function isForbiddenAdminRole(roleStr) {
+      return roleStr is string && (
+        roleStr.lower().matches('.*admin.*') ||
+        roleStr.lower().matches('.*superadmin.*') ||
+        roleStr.lower().matches('.*administrator.*')
+      );
+    }
+
     // =========================================================================
     // 3. STORE CATALOG ITEMS (STOREITEMS & STORE_ITEMS)
     // =========================================================================
@@ -92,7 +101,8 @@ service cloud.firestore {
       // Account creation on signup
       allow create: if isOwner(userId) &&
         request.resource.data.uid == userId &&
-        (!('role' in request.resource.data) || request.resource.data.role == 'student' || isAdmin()) &&
+        (!('role' in request.resource.data) || (!isForbiddenAdminRole(request.resource.data.role) || isAdmin())) &&
+        (!('customRole' in request.resource.data) || request.resource.data.customRole == null || (!isForbiddenAdminRole(request.resource.data.customRole) || isAdmin())) &&
         (!('plan' in request.resource.data) || request.resource.data.plan == 'free' || isAdmin()) &&
         (!('status' in request.resource.data) || request.resource.data.status == 'active' || isAdmin()) &&
         (!('isPremium' in request.resource.data) || request.resource.data.isPremium == false || isAdmin()) &&
@@ -108,11 +118,14 @@ service cloud.firestore {
         // Case A: Owner editing preferences
         isOwner(userId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'displayName', 'name', 'bio', 'status', 'accent', 'targetUniversity',
-          'targetTestDate', 'selectedSubjects', 'updatedAt', 'onboardingCompleted',
-          'profileCompleted', 'streakFreezeActive', 'equipped', 'avatarKey',
-          'avatarVariant', 'photoURL', 'shortId', 'studentId', 'role'
-        ])
+          'displayName', 'name', 'nickname', 'username', 'bio', 'status', 'accent',
+          'targetUniversity', 'targetTestDate', 'selectedSubjects', 'updatedAt',
+          'onboardingCompleted', 'profileCompleted', 'streakFreezeActive', 'equipped',
+          'avatarKey', 'avatarVariant', 'photoURL', 'shortId', 'studentId', 'role',
+          'customRole', 'hasChosenRole'
+        ]) &&
+        (!('role' in request.resource.data) || !isForbiddenAdminRole(request.resource.data.role)) &&
+        (!('customRole' in request.resource.data) || request.resource.data.customRole == null || !isForbiddenAdminRole(request.resource.data.customRole))
       ) || (
         // Case B: Owner updating followingCount by exactly +1 or -1
         isOwner(userId) &&
@@ -201,12 +214,14 @@ service cloud.firestore {
       allow update: if isAdmin() || (
         isOwner(userId) &&
         request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'displayName', 'bio', 'status', 'accent', 'avatar', 'frame',
+          'displayName', 'nickname', 'username', 'bio', 'status', 'accent', 'avatar', 'frame',
           'nameplate', 'banner', 'effectId', 'equipped', 'badges',
           'crewName', 'updatedAt', 'stats', 'publicStats', 'lastActiveAt',
           'followersCount', 'followingCount', 'rankTitle', 'pinnedBadges',
-          'pinnedStamps', 'shortId', 'studentId', 'role'
-        ])
+          'pinnedStamps', 'shortId', 'studentId', 'role', 'customRole'
+        ]) &&
+        (!('role' in request.resource.data) || !isForbiddenAdminRole(request.resource.data.role)) &&
+        (!('customRole' in request.resource.data) || request.resource.data.customRole == null || !isForbiddenAdminRole(request.resource.data.customRole))
       ) || (
         // Allow peer follower/unfollower to update public follower count
         isSignedIn() &&
@@ -224,6 +239,21 @@ service cloud.firestore {
         allow read: if isSignedIn();
         allow write: if isOwner(followerUid) || isAdmin();
       }
+    }
+
+    // =========================================================================
+    // 5b. UNIQUE USERNAMES DIRECTORY (USERNAMES/{USERNAME})
+    // =========================================================================
+
+    match /usernames/{username} {
+      allow read: if true;
+      allow create: if isSignedIn() &&
+        request.resource.data.uid == request.auth.uid &&
+        request.resource.data.username == username &&
+        isValidString(username, 3, 20) &&
+        username.matches('^[a-z0-9._]+$');
+      allow update: if false;
+      allow delete: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
     }
 
     // =========================================================================

@@ -138,13 +138,16 @@ export async function syncPublicProfile(
     pinnedBadges,
     pinnedStamps,
 
-    // Legacy compatibility fields
+    // Legacy compatibility fields & identity
+    nickname: (p.nickname as string) || cleanDisplayName,
+    username: (p.username as string) || existingCached?.username || null,
     shortId: shortCode,
     avatarKey: (profileData.avatarKey as string) || avatar || null,
     avatarVariant: (profileData.avatarVariant as string) || null,
     photoURL: (profileData.photoURL as string) || avatar || null,
     crewId: (profileData.crewId as string) || null,
-    role: (profileData.role as string) || 'student',
+    role: (profileData.role as string) || existingCached?.role || 'student',
+    customRole: (profileData.customRole as string) || (existingCached as any)?.customRole || null,
     equipped: {
       effect: effectId,
       frame,

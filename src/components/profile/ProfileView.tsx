@@ -64,6 +64,7 @@ import { db } from '@/lib/firebase';
 import { deriveFallbackShortId } from '@/utils/shortId';
 import { sanitizeStudentDisplayName, isAdminAccount } from '@/utils/privacy';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
+import { RoleBadge } from '@/components/ui/RoleBadge';
 import type { PublicProfile } from '@/types';
 
 export interface ProfileViewProps {
@@ -696,23 +697,14 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 avatarVariant={profile?.avatarVariant}
                 size={window.innerWidth < 640 ? 76 : 104}
               />
-              {/* Level Badge anchored to bottom-right of avatar */}
-              {profile?.role === 'admin' ? (
-                <div
-                  className="absolute -bottom-1 -right-1 z-30 px-2 py-0.5 rounded-full bg-gradient-to-r from-red-600 to-red-500 text-white font-mono font-black text-[9px] sm:text-[10px] shadow-md border-2 border-[var(--card)] flex items-center gap-0.5 select-none"
-                  title="Administrator"
-                >
-                  <span>ADMIN</span>
-                </div>
-              ) : (
-                <div
-                  className="absolute -bottom-1 -right-1 z-30 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-600 to-amber-500 text-white font-mono font-black text-[10px] sm:text-[11px] shadow-md border-2 border-[var(--card)] flex items-center gap-0.5 select-none"
-                  title={`Level ${studentLevel} Student`}
-                >
-                  <span className="text-[8px] font-extrabold text-amber-200">LV</span>
-                  <span>{studentLevel}</span>
-                </div>
-              )}
+              {/* Level Badge anchored to bottom-right of avatar (duplicate ADMIN tag removed) */}
+              <div
+                className="absolute -bottom-1 -right-1 z-30 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-600 to-amber-500 text-white font-mono font-black text-[10px] sm:text-[11px] shadow-md border-2 border-[var(--card)] flex items-center gap-0.5 select-none"
+                title={`Level ${studentLevel} Student`}
+              >
+                <span className="text-[8px] font-extrabold text-amber-200">LV</span>
+                <span>{studentLevel}</span>
+              </div>
             </div>
 
             {/* Kobans Chip (OWN MODE ONLY) */}
@@ -757,40 +749,32 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               )}
             </div>
 
-            {/* Rank title & status line */}
-            <div className="flex items-center gap-2 flex-wrap text-xs">
-              {profile?.role === 'admin' ? (
-                <span className="font-mono font-semibold px-2.5 py-0.5 rounded flex items-center gap-1.5 bg-red-950/60 text-red-400 border border-red-800/50">
-                  <Shield size={12} className="text-red-400" />
-                  <span>Administrator</span>
-                </span>
-              ) : (
-                <span
-                  className="font-mono font-semibold px-2 py-0.5 rounded flex items-center gap-1.5"
-                  style={{ backgroundColor: rank.badgeBg, color: rank.badgeColor }}
-                >
-                  <span className="font-bold opacity-85 text-[10px]">Lv.{studentLevel}</span>
-                  <span>·</span>
-                  <span>{rank.title}</span>
-                </span>
-              )}
+            {/* Role badge & Active status line (shown once under the nameplate) */}
+            <div className="flex items-center gap-2 flex-wrap text-xs mt-0.5">
+              <RoleBadge
+                role={profile?.role || (isViewingSelf ? ownProfile?.role : 'Student')}
+                customRole={profile?.customRole || (isViewingSelf ? ownProfile?.customRole : undefined)}
+                isSuperAdmin={
+                  isAdminAccount(profile?.uid) ||
+                  (isViewingSelf && isAdmin) ||
+                  profile?.role === 'superadmin' ||
+                  profile?.role === 'admin'
+                }
+                size="md"
+              />
 
-              {profile?.status ? (
-                <div className="flex items-center gap-1.5 text-[var(--muted)] italic truncate max-w-sm">
-                  {isStudyingNow && (
-                    <span
-                      className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse"
-                      title="Studying now"
-                    />
-                  )}
-                  <span>"{profile.status}"</span>
+              {/* Green dot with "Active" next to it (no quote marks) */}
+              <div className="flex items-center gap-1.5 text-xs text-emerald-500 font-sans font-medium select-none">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0 animate-pulse" />
+                <span>Active</span>
+              </div>
+
+              {profile?.status && profile.status.toLowerCase() !== 'active' && (
+                <div className="flex items-center gap-1.5 text-[var(--muted)] text-xs truncate max-w-sm">
+                  <span>·</span>
+                  <span className="truncate">{profile.status.replace(/^["']|["']$/g, '')}</span>
                 </div>
-              ) : isStudyingNow ? (
-                <div className="flex items-center gap-1.5 text-xs text-emerald-500 font-mono">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>Studying now</span>
-                </div>
-              ) : null}
+              )}
             </div>
           </div>
 

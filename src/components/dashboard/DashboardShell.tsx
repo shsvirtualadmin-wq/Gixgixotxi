@@ -3,6 +3,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
 import { DashboardBottomNav } from './DashboardBottomNav';
 import { DashboardErrorBoundary } from './DashboardErrorBoundary';
+import { RoleSelectionPromptModal } from '@/components/profile/RoleSelectionPromptModal';
 import { useEffect, useState } from 'react';
 
 export function DashboardShell() {
@@ -33,6 +34,7 @@ export function DashboardShell() {
       className="min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-hidden"
     >
       <VerificationBanner />
+      <RoleSelectionPromptModal />
 
       {/* Main Content Container: when on profile route, remove bottom nav padding and use safe-area padding */}
       <main

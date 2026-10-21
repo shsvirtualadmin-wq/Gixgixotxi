@@ -23,6 +23,7 @@ import { togglePostVote, toggleSavePost, checkUserVoted, checkUserSaved } from '
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { RoleBadge } from '@/components/ui/RoleBadge';
 import { useTheme } from '@/hooks/useTheme';
 
 interface CommonsPostCardProps {
@@ -202,21 +203,42 @@ export const CommonsPostCard = memo(function CommonsPostCard({
 
           {/* Author details */}
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-semibold text-primary group-hover/author:text-accent transition-colors truncate">
-                {sanitizeStudentDisplayName(post.authorName, post.authorUid)}
-              </span>
-              {post.isAnonymous && (
-                <span className="text-[10px] font-mono tracking-wider uppercase text-amber-600 dark:text-amber-400 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.2 rounded">
-                  ANON
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-muted">
-              <span>{formatTime(post.createdAt)}</span>
-              <span aria-hidden="true">·</span>
-              <span className="text-secondary font-medium truncate">{post.target}</span>
-            </div>
+            {post.isAnonymous ? (
+              <div className="flex items-center gap-1.5 text-xs text-muted">
+                <span className="font-medium text-muted">Anonymous</span>
+                <span aria-hidden="true">·</span>
+                <span>{formatTime(post.createdAt)}</span>
+                {post.target && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className="text-secondary font-medium truncate">{post.target}</span>
+                  </>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm font-semibold text-primary group-hover/author:text-accent transition-colors truncate">
+                    {sanitizeStudentDisplayName(post.authorName, post.authorUid)}
+                  </span>
+                  <RoleBadge
+                    role={(post as any).authorRole || 'Student'}
+                    customRole={(post as any).authorCustomRole}
+                    isSuperAdmin={
+                      (post as any).authorRole === 'superadmin' ||
+                      (post as any).authorRole === 'admin' ||
+                      post.authorUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
+                    }
+                    size="sm"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5 text-xs text-muted">
+                  <span>{formatTime(post.createdAt)}</span>
+                  <span aria-hidden="true">·</span>
+                  <span className="text-secondary font-medium truncate">{post.target}</span>
+                </div>
+              </>
+            )}
           </div>
         </div>
 

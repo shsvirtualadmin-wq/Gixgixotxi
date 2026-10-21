@@ -120,6 +120,8 @@ export interface CommonsPost {
   authorEquippedAvatar?: string | null;
   authorPhotoURL?: string | null;
   authorAlias?: string;
+  authorRole?: string | null;
+  authorCustomRole?: string | null;
   upvotes: number;
   commentCount: number;
   saveCount: number;
@@ -149,6 +151,8 @@ export interface CommonsComment {
   authorFrame?: string | null;
   authorEquippedAvatar?: string | null;
   authorPhotoURL?: string | null;
+  authorRole?: string | null;
+  authorCustomRole?: string | null;
   isAnonymous: boolean;
   text: string;
   createdAt: any;

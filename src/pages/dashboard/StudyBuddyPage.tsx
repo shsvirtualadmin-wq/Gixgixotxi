@@ -7,6 +7,7 @@ import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { Badge } from '@/components/ui/Badge';
+import { RoleBadge } from '@/components/ui/RoleBadge';
 import {
   Users,
   Radio,
@@ -52,6 +53,8 @@ interface StudyBuddyMessage {
   senderName: string;
   senderShortId: string;
   senderUid: string;
+  senderRole?: string;
+  senderCustomRole?: string;
   text: string;
   timestamp: string;
 }
@@ -219,8 +222,10 @@ export function StudyBuddyPage() {
           msgs.push({
             id: docSnap.id,
             senderName: d.senderName || 'Student',
-            senderShortId: d.senderShortId || '00000',
+            senderShortId: d.studentShortId || d.senderShortId || '00000',
             senderUid: d.senderUid,
+            senderRole: d.senderRole || 'Student',
+            senderCustomRole: d.senderCustomRole || undefined,
             text: d.text || '',
             timestamp: timeStr,
           });
@@ -248,6 +253,8 @@ export function StudyBuddyPage() {
         senderUid: user.uid,
         senderName: profile?.displayName || user.displayName || 'Student',
         senderShortId: profile?.shortId || user.uid.slice(0, 5),
+        senderRole: profile?.role || 'Student',
+        senderCustomRole: profile?.customRole || null,
         text: newMessage.trim(),
         createdAt: serverTimestamp(),
       });
@@ -491,8 +498,21 @@ export function StudyBuddyPage() {
                           : 'bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)]'
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-2 mb-0.5 text-[10px] font-mono text-[var(--text-faint)]">
-                        <span>{m.senderName} #{m.senderShortId}</span>
+                      <div className="flex items-center justify-between gap-2 mb-1 text-[10px] font-mono text-[var(--text-faint)]">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-sans font-bold text-[var(--text)]">{m.senderName}</span>
+                          <span className="text-[10px] font-mono text-[var(--muted)]">#{m.senderShortId}</span>
+                          <RoleBadge
+                            role={m.senderRole || 'Student'}
+                            customRole={m.senderCustomRole}
+                            isSuperAdmin={
+                              m.senderRole === 'superadmin' ||
+                              m.senderRole === 'admin' ||
+                              m.senderUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
+                            }
+                            size="sm"
+                          />
+                        </div>
                         <span>{m.timestamp}</span>
                       </div>
                       <p className="text-xs leading-relaxed">{m.text}</p>

@@ -4,6 +4,7 @@ import type { CommonsPost, CommonsComment } from '@/types/commons';
 import { addPostComment, fetchPostComments } from '@/services/commonsService';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { RoleBadge } from '@/components/ui/RoleBadge';
 
 interface CommonsCommentsDrawerProps {
   post: CommonsPost | null;
@@ -127,7 +128,7 @@ export function CommonsCommentsDrawer({
                 className="p-3 rounded-xl border border-neutral-800/80 bg-neutral-900/40 space-y-1.5"
               >
                 <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {comment.isAnonymous ? (
                       <div className="w-6 h-6 rounded-full bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[10px] font-mono text-neutral-400 shrink-0 select-none">
                         ?
@@ -145,14 +146,21 @@ export function CommonsCommentsDrawer({
                     {comment.isAnonymous ? (
                       <span className="font-semibold text-neutral-400">Anonymous</span>
                     ) : (
-                      <span className="font-semibold text-neutral-200">
-                        {sanitizeStudentDisplayName(comment.authorName, comment.authorUid)}
-                      </span>
-                    )}
-                    {comment.isAnonymous && (
-                      <span className="text-[10px] text-amber-400/90 font-mono bg-amber-950/40 px-1 rounded">
-                        ANON
-                      </span>
+                      <>
+                        <span className="font-semibold text-neutral-200">
+                          {sanitizeStudentDisplayName(comment.authorName, comment.authorUid)}
+                        </span>
+                        <RoleBadge
+                          role={(comment as any).authorRole || 'Student'}
+                          customRole={(comment as any).authorCustomRole}
+                          isSuperAdmin={
+                            (comment as any).authorRole === 'superadmin' ||
+                            (comment as any).authorRole === 'admin' ||
+                            comment.authorUid === 'A5YMRimdHRcmeDWutxtUGt2e4hf2'
+                          }
+                          size="sm"
+                        />
+                      </>
                     )}
                   </div>
                   <span className="text-[10px] text-neutral-500 font-mono">
