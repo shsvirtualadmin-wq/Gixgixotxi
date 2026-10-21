@@ -5,23 +5,23 @@ import { Card } from '../ui/Card';
 const STEPS = [
   {
     step: '01',
-    title: 'Pick Your Target Test',
+    title: 'Select Subject & Topics',
     description:
-      'Choose your target university (FAST-NUCES, NUST NET, GIKI, LUMS, NED, MDCAT, ECAT) and your planned test date. Boardly customizes your question weights and countdown.',
+      'Choose from core subjects including Mathematics, Physics, Chemistry, Biology, and Computer Science. Pick chapters to focus on and set your practice length.',
     icon: Compass,
   },
   {
     step: '02',
-    title: 'Drill High-Yield Sprints',
+    title: 'Drill Focused MCQ Sprints',
     description:
-      'Practice 10-minute micro-sprints or full past papers with authentic negative marking. If stuck, inspect step-by-step KaTeX derivations and ask Boardy AI.',
+      'Practice quick micro-sprints with instant feedback. If stuck, review step-by-step KaTeX derivations and get concept breakdowns from Boardy AI.',
     icon: Zap,
   },
   {
     step: '03',
-    title: 'Secure Your Aggregate',
+    title: 'Target Weak Chapters & Grow',
     description:
-      'Track chapter accuracy on your dashboard. Use the Merit Meter to simulate your Matric, FSc, and entrance score requirements for your desired engineering or CS discipline.',
+      'Review your detailed accuracy scores across every chapter. Pinpoint your weak topics, maintain your daily practice streak, and build mastery step by step.',
     icon: TrendingUp,
   },
 ];
@@ -35,7 +35,7 @@ export function HowItWorks() {
           <Badge color="muted">Simple 3-Step Strategy</Badge>
           <h2>How Boardly Works</h2>
           <p>
-            No endless unorganized PDF drives. A structured study pipeline engineered to maximize your marks in minimum time.
+            A structured study routine designed to help you practice with clarity, stay consistent, and improve every day.
           </p>
         </div>
 

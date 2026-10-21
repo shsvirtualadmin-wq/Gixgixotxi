@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { Cpu, Target, Calculator, Users, Flame } from 'lucide-react';
+import { Cpu, MessageSquare, Calculator, Users, Flame } from 'lucide-react';
 import { Badge } from '../ui/Badge';
 import { Card } from '../ui/Card';
 import { MathText } from '../ui/MathText';
@@ -11,9 +11,9 @@ export function FeaturesGrid() {
         {/* Section Header */}
         <div className="section-header">
           <Badge color="muted">Platform Capabilities</Badge>
-          <h2>Engineered for Entrance Excellence</h2>
+          <h2>Engineered for Student Excellence</h2>
           <p>
-            Every feature is calibrated around the real challenges of Pakistani entrance tests — negative marking, speed calculation, and dense formulas.
+            Every feature is calibrated to help students master core subjects, build consistent practice habits, and learn together with clear derivations.
           </p>
         </div>
 
@@ -33,7 +33,7 @@ export function FeaturesGrid() {
                   KaTeX Derivation Engine
                 </h3>
                 <p className="text-sm text-[var(--muted)] leading-relaxed">
-                  No more blurry screenshots or cryptic notation. Every physics and calculus explanation is formatted with pure LaTeX derivations so you see exactly how terms cancel.
+                  No more blurry screenshots or cryptic notation. Every math and physics explanation is formatted with pure LaTeX derivations so you see exactly how terms cancel.
                 </p>
               </div>
 
@@ -60,32 +60,36 @@ export function FeaturesGrid() {
             </div>
           </Card>
 
-          {/* Card 2: Negative Marking */}
+          {/* Card 2: Boardly Commons */}
           <Card className="justify-between">
             <div className="space-y-4">
               <div className="w-12 h-12 rounded-2xl bg-[#0A0A0A] border border-[rgba(255,255,255,0.12)] text-[#FFFFFF] flex items-center justify-center shrink-0">
-                <Target size={22} />
+                <MessageSquare size={22} />
               </div>
               <h3
                 className="text-xl font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
               >
-                Actual Exam Rules
+                Boardly Commons
               </h3>
               <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Test yourself under real conditions — FAST-NUCES 0.25 negative marking, NET time-per-question constraints, and GIKI penalty rules.
+                An open student community to share study material free with no limits, talk to the whole community, talk anonymously, and message peers directly to solve doubts together.
               </p>
             </div>
             {/* Callout: solid red #D71921 with white text */}
             <div
-              className="mt-5 p-3.5 rounded-xl text-xs font-semibold"
+              className="mt-5 p-3.5 rounded-xl text-xs font-semibold flex flex-col gap-1.5"
               style={{
                 backgroundColor: '#D71921',
                 color: '#FFFFFF',
                 border: '1px solid #D71921',
               }}
             >
-              Stop losing aggregate to careless wild guesses.
+              <span>Free, unlimited sharing and peer learning for everyone.</span>
+              <Link to="/commons/about" className="inline-flex items-center gap-1 text-[11px] font-bold underline hover:opacity-90">
+                <span>Learn more about Commons</span>
+                <span aria-hidden="true">&rarr;</span>
+              </Link>
             </div>
           </Card>
 

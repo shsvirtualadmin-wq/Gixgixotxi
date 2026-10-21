@@ -56,14 +56,14 @@ export function PhoneMockup({
             {/* SCREEN 0: COCKPIT */}
             {activeScreen === 0 && (
               <div className="space-y-2 flex-1 flex flex-col justify-between">
-                {/* Target Countdown */}
+                {/* Daily Goal & Track */}
                 <div className="p-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
                   <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)] mb-0.5">
-                    <span>Target Test</span>
-                    <span className="text-[var(--accent)] font-semibold">FAST-NUCES CS</span>
+                    <span>Active Track</span>
+                    <span className="text-[var(--accent)] font-semibold">Mathematics &amp; Science</span>
                   </div>
                   <div className="text-base font-bold text-[var(--text)] font-doto tracking-tight">
-                    42d 14h 28m
+                    Daily Goal: 25 MCQs
                   </div>
                 </div>
 
@@ -220,7 +220,7 @@ export function PhoneMockup({
                 {/* Arena details */}
                 <div className="space-y-1.5">
                   <div className="p-1.5 px-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between text-[10px]">
-                    <span className="text-[var(--text)] font-medium">Live Exam Timer</span>
+                    <span className="text-[var(--text)] font-medium">Live Test Timer</span>
                     <span className="font-doto text-[var(--accent)]">Synchronized</span>
                   </div>
                   <div className="p-1.5 px-2 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between text-[10px]">

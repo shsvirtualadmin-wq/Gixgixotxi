@@ -4,16 +4,20 @@ import { Badge } from '../ui/Badge';
 
 const FAQS = [
   {
-    q: 'Does Boardly simulate actual negative marking?',
-    a: 'Yes. For tests like FAST-NUCES that deduct 0.25 marks per incorrect answer, Boardly applies the exact deduction formula. Your test engine results show raw score, net score, and total penalty marks so you learn when to skip.',
+    q: 'Can I practice with timed conditions and penalty marking?',
+    a: 'Yes. You can test yourself in timed sprint mode, and for selective tests that penalize guessing, you can practice with negative marking to build disciplined accuracy and time management.',
   },
   {
     q: 'When do daily practice limits refresh?',
-    a: 'All Free and Pro quotas refresh precisely at 12:00 AM (midnight) Pakistan Standard Time (PKT, UTC+5). If you study at 11:30 PM, your new allowance is available right at midnight.',
+    a: 'All Free and Pro quotas refresh precisely at 12:00 AM (midnight) Pakistan Standard Time (PKT, UTC+5). If you study late at night, your new allowance is available right at midnight.',
   },
   {
-    q: 'Which universities and tests are included?',
-    a: 'We have dedicated question banks and past paper formats for FAST-NUCES (CS & Engineering), NUST NET (Engineering, Computing, Applied Sciences), GIKI, LUMS LCAT, NED Karachi, ECAT Punjab, and MDCAT (PMDC syllabus).',
+    q: 'Which subjects and levels are covered?',
+    a: 'Boardly covers core subjects including Mathematics, Physics, Chemistry, Biology, and Computer Science, structured for intermediate and secondary students as well as competitive university entry requirements.',
+  },
+  {
+    q: 'What is Boardly Commons?',
+    a: 'Boardly Commons is our student community space where learners share study notes, discuss difficult questions, post concept doubts, and collaborate with peers across Pakistan in a safe, moderated environment.',
   },
   {
     q: 'How do I pay if I do not have an international credit card?',
@@ -21,11 +25,7 @@ const FAQS = [
   },
   {
     q: 'Can I study effectively on my smartphone?',
-    a: 'Absolutely. Boardly is engineered mobile-first with a high-contrast dark cockpit, 48px touch targets, sticky timers, and responsive KaTeX math rendering that requires zero zooming.',
-  },
-  {
-    q: 'What is the Boardly Ambassador & Captain program?',
-    a: 'Students can become Campus Captains or Crew Ambassadors to represent Boardly at their colleges and academies. Top ambassadors earn milestone rewards, official certificates, and paid stipend tiers.',
+    a: 'Absolutely. Boardly is engineered mobile-first with a high-contrast dark theme, 48px touch targets, sticky timers, and responsive KaTeX math rendering that requires zero zooming.',
   },
 ];
 
@@ -44,7 +44,7 @@ export function FaqSection() {
           <Badge color="muted">Got Questions?</Badge>
           <h2>Frequently Asked Questions</h2>
           <p>
-            Everything you need to know about preparing with Boardly.
+            Everything you need to know about practicing and learning with Boardly.
           </p>
         </div>
 

@@ -1,29 +1,27 @@
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
-import { Link } from 'react-router-dom';
 
 const TOC = [
-  { id: 'identity', title: '1. Who We Are & Contact' },
+  { id: 'identity', title: '1. Who We Are & Operator' },
   { id: 'collection', title: '2. Information We Collect' },
-  { id: 'public-profile', title: '3. Student Public Profiles & Cosmetics Privacy' },
-  { id: 'purpose', title: '4. Why We Use Your Information' },
-  { id: 'processors', title: '5. Third-Party Services We Use' },
-  { id: 'no-sale', title: '6. We Do Not Sell Personal Data' },
-  { id: 'cookies', title: '7. Cookies & Local Storage' },
-  { id: 'retention', title: '8. Data Retention' },
-  { id: 'rights', title: '9. Access, Correction & Deletion Requests' },
-  { id: 'security', title: '10. Security Measures' },
-  { id: 'minors', title: '11. Children, Minors & Parental Permission' },
-  { id: 'changes', title: '12. Policy Changes & Effective Date' },
+  { id: 'commons-privacy', title: '3. Boardly Commons & Anonymous Posting' },
+  { id: 'payments', title: '4. Payments & Verification' },
+  { id: 'purpose', title: '5. How We Use Your Information' },
+  { id: 'services', title: '6. Service Providers We Use' },
+  { id: 'no-sale', title: '7. We Never Sell Your Data' },
+  { id: 'cookies', title: '8. Cookies & Local Storage' },
+  { id: 'security-retention', title: '9. Security & Data Retention' },
+  { id: 'rights', title: '10. Your Rights & Data Deletion' },
+  { id: 'contact', title: '11. Contact Information' },
 ];
 
 export function PrivacyPage() {
   return (
     <>
       <PageMeta
-        title="Privacy Policy — Boardly Technologies"
-        description="Learn how Boardly Technologies collects, uses, and safeguards student preparation data in compliance with data privacy standards. Last updated: 20 October 2026."
+        title="Privacy Policy — Boardly"
+        description="Learn how SHS Virtual Academy and Boardly protect student data. Details on Firebase authentication, Commons posting, anonymous posts, and data privacy."
       />
 
       <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12">
@@ -37,7 +35,7 @@ export function PrivacyPage() {
             Privacy Policy
           </h1>
           <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed">
-            Last updated: <strong className="text-[var(--text)]">20 October 2026</strong> &bull; Boardly Technologies, Pakistan
+            Last updated: <strong className="text-[var(--text)]">20 October 2026</strong> &bull; SHS Virtual Academy
           </p>
         </div>
 
@@ -80,15 +78,20 @@ export function PrivacyPage() {
                 className="text-xl font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                1. Who We Are &amp; Contact Details
+                1. Who We Are &amp; Operator Information
               </h2>
               <p className="text-sm text-[var(--muted)] leading-relaxed">
-                This Privacy Policy applies to the online services, web application, and digital platforms operated by <strong className="text-[var(--text)]">Boardly Technologies</strong> (&ldquo;Boardly&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;, or &ldquo;our&rdquo;), registered in Pakistan.
+                This Privacy Policy applies to <strong className="text-[var(--text)]">Boardly</strong> (&ldquo;Boardly&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;, or &ldquo;our&rdquo;), a general MCQ practice and learning platform built to make quality education accessible to every student.
+              </p>
+              <p className="text-sm text-[var(--muted)] leading-relaxed">
+                Boardly is owned and operated by <strong className="text-[var(--text)]">SHS Virtual Academy</strong> (<a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" className="text-[var(--red)] hover:underline">https://shsvirtualacademy.pro</a>), founded by <strong className="text-[var(--text)]">Muhammad Hashir</strong>.
               </p>
               <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs space-y-1.5">
+                <p><strong className="text-[var(--text)]">Organization:</strong> SHS Virtual Academy</p>
+                <p><strong className="text-[var(--text)]">Founder:</strong> Muhammad Hashir</p>
                 <p><strong className="text-[var(--text)]">Email:</strong> <a href="mailto:support@boardly.cfd" className="text-[var(--red)] hover:underline">support@boardly.cfd</a></p>
-                <p><strong className="text-[var(--text)]">Phone / WhatsApp:</strong> <a href="tel:+923058969050" className="hover:underline">0305 8969050</a> (<a href="https://wa.me/923058969050" target="_blank" rel="noopener noreferrer" className="text-[#10b981] hover:underline">WhatsApp direct</a>)</p>
-                <p><strong className="text-[var(--text)]">Official Web Domain:</strong> <a href="https://boardly.cfd" className="hover:underline">https://boardly.cfd</a></p>
+                <p><strong className="text-[var(--text)]">Official Helpline:</strong> <a href="tel:+923058969050" className="hover:underline">0305 8969050</a></p>
+                <p><strong className="text-[var(--text)]">Website:</strong> <a href="https://boardly.cfd" className="hover:underline">https://boardly.cfd</a></p>
               </div>
             </Card>
 
@@ -101,205 +104,162 @@ export function PrivacyPage() {
                 2. Information We Collect
               </h2>
               <p className="text-sm text-[var(--muted)] leading-relaxed">
-                We collect only the minimum personal and academic data necessary to provide a high-performance entrance test-prep experience:
+                We collect only the minimum information necessary to operate your learning account and provide practice features:
               </p>
-              <ul className="space-y-2 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5">
-                <li><strong className="text-[var(--text)]">Account Profile:</strong> Full name, display name, email address, optional contact phone number, and avatar when registering directly or through Google Sign-In.</li>
-                <li><strong className="text-[var(--text)]">Academic Preferences:</strong> Target university (e.g. FAST-NUCES, NUST NET, GIKI, MDCAT), target examination date, academic track (FSc Pre-Engineering, Pre-Medical, ICS, A-Levels), and subject priorities.</li>
-                <li><strong className="text-[var(--text)]">Practice Test Responses:</strong> Questions answered, option choices, time taken per question, test scores, net scores after negative marking deductions, and consecutive daily streak logs.</li>
-                <li><strong className="text-[var(--text)]">Wallet &amp; Payment Records:</strong> Kobans balance, immutable wallet ledger transactions, payment transaction IDs (TRX), sender wallet phone or account numbers, payment method (JazzCash, EasyPaisa, SadaPay, Bank Transfer), and uploaded receipt screenshots for manual verification.</li>
-                <li><strong className="text-[var(--text)]">Support Inquiries:</strong> Messages, ticket logs, and technical questions submitted through the helpdesk or contact form.</li>
-                <li><strong className="text-[var(--text)]">Technical &amp; Device Data:</strong> IP address, browser type, operating system, and HTTP request headers to protect against automated scraping and enforce rate limits.</li>
+              <ul className="space-y-2 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5 leading-relaxed">
+                <li><strong className="text-[var(--text)]">Account Credentials:</strong> Email address and password created via Firebase Authentication, or your Google account profile information (display name, email address, profile picture) if you choose to sign in with Google.</li>
+                <li><strong className="text-[var(--text)]">Student Profile Details:</strong> Your chosen display name, avatar style, and optional grade or subject preferences.</li>
+                <li><strong className="text-[var(--text)]">Learning &amp; Practice Activity:</strong> MCQ practice history, test scores, chosen answers, chapter-level accuracy metrics, and daily practice streaks stored in Google Cloud Firestore.</li>
+                <li><strong className="text-[var(--text)]">Virtual Economy (Kobans):</strong> Your virtual Koban coin balance and equipped cosmetic items (frames, nameplates, and effects).</li>
               </ul>
             </Card>
 
-            {/* Section 3: Public Profiles & Privacy */}
-            <Card id="public-profile" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
+            {/* Section 3 */}
+            <Card id="commons-privacy" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
               <h2
                 className="text-xl font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                3. Student Public Profiles &amp; Cosmetics Privacy
+                3. Boardly Commons &amp; Anonymous Posting
               </h2>
               <p className="text-sm text-[var(--muted)] leading-relaxed">
-                We enforce strict data minimization for student identities across social and competitive platform features:
+                Boardly Commons is our student community feed where learners share study notes, ask questions, and discuss solutions. All content in Commons is user-generated.
               </p>
-              <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs sm:text-sm text-[var(--muted)] space-y-2">
-                <p>
-                  <strong className="text-[var(--text)]">What other users see:</strong> Other students on public leaderboards, Grand Line rankings, and Study Crew squad lists can see <strong>ONLY</strong> your sanitized display name, avatar, equipped cosmetics (avatar frame, nameplate, aura effect), squad name, and public academic stats (streak, test score, rank).
+              <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs space-y-2 leading-relaxed">
+                <p className="font-bold text-[var(--text)]">How Anonymous Posting Works:</p>
+                <p className="text-[var(--muted)]">
+                  When you select &ldquo;Post Anonymously&rdquo;, your real name and avatar are hidden from other students in the public feed, allowing you to ask questions freely without social anxiety.
                 </p>
-                <p>
-                  <strong className="text-[var(--text)]">Never exposed publicly:</strong> Your registered <strong>email address and phone number are NEVER shown to other users</strong>, crew leaders, or competitors. They are strictly confidential and visible only to the superadmin for administrative verification, account recovery, and payment audit.
+                <p className="text-[var(--muted)]">
+                  However, Boardly&apos;s system retains an internal, private record linking the post to your account identifier (<code className="font-mono text-[var(--text)]">authorUid</code>). This internal record is accessible only to authorized administrators strictly for student safety, spam prevention, and community rule enforcement.
                 </p>
-                <p>
-                  <strong className="text-[var(--text)]">Wallet &amp; Ledger Security:</strong> Your Kobans balance, ledger transactions, and payment reference numbers are private records accessible solely to you and the superadmin.
+                <p className="text-[var(--muted)]">
+                  Posting anonymously does not shield abusive conduct. Any user who bullies, harasses, posts harmful scripts, or violates community rules can be identified, moderated, and suspended from the platform.
                 </p>
               </div>
             </Card>
 
             {/* Section 4 */}
+            <Card id="payments" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
+              <h2
+                className="text-xl font-bold text-[var(--text)]"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                4. Payments &amp; Verification Data
+              </h2>
+              <p className="text-sm text-[var(--muted)] leading-relaxed">
+                Boardly offers simple and transparent paid options: Unlimited access at 199 PKR, and Koban cosmetic packs at 50 PKR for 500 kobans.
+              </p>
+              <p className="text-sm text-[var(--muted)] leading-relaxed">
+                Payments are made through local Pakistani payment services (JazzCash, EasyPaisa, SadaPay, or direct bank transfer). When submitting payment proof, you provide your Transaction ID (TRX) and an optional receipt image for manual verification. We do not process or store credit card numbers, debit card details, or automated bank mandates.
+              </p>
+            </Card>
+
+            {/* Section 5 */}
             <Card id="purpose" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
               <h2
                 className="text-xl font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                4. Why We Use Your Information
+                5. How We Use Your Information
               </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                We process your data exclusively for legitimate educational and platform operations:
-              </p>
-              <ul className="space-y-2 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5">
-                <li>To deliver personalized practice tests, 10-minute sprints, and chapter-level drills.</li>
-                <li>To calculate authentic university negative marking penalties (such as FAST-NUCES -0.25).</li>
-                <li>To diagnose weak chapters and plot historical accuracy curves over your preparation season.</li>
-                <li>To maintain predictable daily usage quotas (10 tests/day on Free) refreshing at midnight Pakistan Standard Time (PKT).</li>
-                <li>To operate Study Crew squad rooms, squad leaderboards, and national competitive Arena sessions.</li>
-                <li>To verify Pro subscription payments and Kobans credit requests against mobile banking logs.</li>
+              <ul className="space-y-1.5 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5 leading-relaxed">
+                <li>To maintain your student account and provide uninterrupted access to practice tests.</li>
+                <li>To calculate your chapter accuracy and help you identify weak topics.</li>
+                <li>To display your public display name, avatar, and rank on leaderboards and in Commons.</li>
+                <li>To calculate and preserve your consecutive daily practice streaks.</li>
+                <li>To verify and activate paid Unlimited access or credit Koban balances upon receipt verification.</li>
+                <li>To ensure community safety and enforce our anti-harassment standards.</li>
               </ul>
             </Card>
 
-            {/* Section 5 */}
-            <Card id="processors" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
+            {/* Section 6 */}
+            <Card id="services" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
               <h2
                 className="text-xl font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                5. Third-Party Services We Use
+                6. Service Providers We Use
               </h2>
               <p className="text-sm text-[var(--muted)] leading-relaxed">
-                We rely on trusted enterprise infrastructure providers to host, secure, and deliver Boardly:
+                We partner with established cloud infrastructure providers to run Boardly:
               </p>
-              <div className="space-y-3 pt-1 text-xs sm:text-sm text-[var(--muted)]">
-                <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                  <strong className="text-[var(--text)]">Google Firebase (Authentication &amp; Cloud Firestore):</strong> Manages encrypted user credentials, OAuth tokens, and stores user profiles, test sessions, wallets, and support tickets under strict security rules.
-                </div>
-                <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                  <strong className="text-[var(--text)]">Cloudflare:</strong> Provides global Content Delivery Network (CDN) caching, SSL/TLS encryption, DDoS defense, and serverless edge functions.
-                </div>
-                <div className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-                  <strong className="text-[var(--text)]">Resend:</strong> Used solely to transmit email notifications for support tickets and account verifications from our verified domain (<code className="text-[var(--text)]">boardly.cfd</code>).
-                </div>
-              </div>
+              <ul className="space-y-2 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5 leading-relaxed">
+                <li><strong className="text-[var(--text)]">Google Firebase:</strong> Manages authentication securely, hosts encrypted database records in Firestore, and stores user-uploaded study attachments in Firebase Storage.</li>
+                <li><strong className="text-[var(--text)]">Google Gemini AI:</strong> Powers the Boardy 24/7 AI tutor to generate step-by-step math and science explanations.</li>
+                <li><strong className="text-[var(--text)]">Resend:</strong> Delivers transactional messages sent via the contact support form.</li>
+              </ul>
             </Card>
 
-            {/* Section 6 */}
+            {/* Section 7 */}
             <Card id="no-sale" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
               <h2
                 className="text-xl font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                6. We Do Not Sell Personal Data
+                7. We Never Sell Your Data
               </h2>
               <p className="text-sm text-[var(--muted)] leading-relaxed">
-                We do not sell, rent, license, or monetize your personal information, test scores, or contact details to third-party advertisers, data brokers, or private academies. Your academic scores and mistakes exist solely for your own preparation.
+                Boardly does not sell, rent, monetize, or trade student personal information, test scores, or study notes to third-party advertisers, data brokers, or coaching institutes. Your learning journey belongs strictly to you.
               </p>
             </Card>
 
-            {/* Section 7 */}
+            {/* Section 8 */}
             <Card id="cookies" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
               <h2
                 className="text-xl font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                7. Cookies &amp; Local Storage
+                8. Cookies &amp; Local Storage
               </h2>
               <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Boardly does not use invasive cross-site advertising trackers. We utilize modern browser <code className="text-[var(--text)]">localStorage</code> strictly for functional platform features:
-              </p>
-              <ul className="space-y-1.5 text-xs sm:text-sm text-[var(--muted)] list-disc pl-5">
-                <li><code className="text-[var(--text)]">boardly-theme</code>: Remembers your light or dark mode visual preference.</li>
-                <li><code className="text-[var(--text)]">boardly-wallpaper</code>: Remembers your selected Nothing OS background wallpaper.</li>
-                <li><code className="text-[var(--text)]">pending_join_crew_code</code>: Preserves your squad invite code during sign-in.</li>
-                <li>Session authentication tokens required by Firebase to keep you signed in securely.</li>
-              </ul>
-            </Card>
-
-            {/* Section 8 */}
-            <Card id="retention" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
-              <h2
-                className="text-xl font-bold text-[var(--text)]"
-                style={{ fontFamily: 'var(--font-heading)' }}
-              >
-                8. Data Retention
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                We retain your account profile and test history as long as your account remains active. If you discontinue using Boardly and request account removal, your records are deleted or permanently anonymized in accordance with Section 9.
+                We use browser <code className="font-mono text-xs text-[var(--text)]">localStorage</code> strictly for functional purposes: keeping you signed in across browser refreshes and saving your preferred theme mode (dark or light). We do not use third-party tracking pixels or cross-site advertising cookies.
               </p>
             </Card>
 
             {/* Section 9 */}
+            <Card id="security-retention" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
+              <h2
+                className="text-xl font-bold text-[var(--text)]"
+                style={{ fontFamily: 'var(--font-heading)' }}
+              >
+                9. Security &amp; Data Retention
+              </h2>
+              <p className="text-sm text-[var(--muted)] leading-relaxed">
+                All data transmission between your browser and our servers is encrypted using standard HTTPS/TLS protocols. Access to administrative moderation tools is strictly restricted to verified staff members. We retain your practice data and study records as long as your account remains active.
+              </p>
+            </Card>
+
+            {/* Section 10 */}
             <Card id="rights" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
               <h2
                 className="text-xl font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                9. Access, Correction &amp; Deletion Requests
+                10. Your Rights &amp; Data Deletion
               </h2>
               <p className="text-sm text-[var(--muted)] leading-relaxed">
-                You have the right to request a copy of your stored personal data, request corrections to inaccurate profile details, or request permanent deletion of your account and test attempts.
-              </p>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                To submit a privacy or data deletion request, email our desk from your registered email address at <a href="mailto:support@boardly.cfd" className="text-[var(--red)] font-semibold hover:underline">support@boardly.cfd</a> with the subject line &ldquo;Data Request&rdquo;. Requests are processed within 7 business days. You can also self-delete your account directly via Settings.
-              </p>
-            </Card>
-
-            {/* Section 10 */}
-            <Card id="security" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
-              <h2
-                className="text-xl font-bold text-[var(--text)]"
-                style={{ fontFamily: 'var(--font-heading)' }}
-              >
-                10. Security Measures
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                We implement industry-standard technical measures including full-site HTTPS encryption, secure Firestore granular security rules forbidding cross-user unauthorized reads, edge DDoS mitigation, and encrypted password authentication.
+                You have the right to request access to your stored personal information, update your profile details, or request full deletion of your student account and associated data. To submit a deletion or correction request, email our team at <a href="mailto:support@boardly.cfd" className="text-[var(--red)] font-semibold hover:underline">support@boardly.cfd</a>.
               </p>
             </Card>
 
             {/* Section 11 */}
-            <Card id="minors" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
+            <Card id="contact" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
               <h2
                 className="text-xl font-bold text-[var(--text)]"
                 style={{ fontFamily: 'var(--font-heading)' }}
               >
-                11. Children, Minors &amp; Parental Permission
+                11. Contact Information
               </h2>
               <p className="text-sm text-[var(--muted)] leading-relaxed">
-                Boardly is designed for secondary school (Matric/FSc), A-Level, and college students preparing for university entrance exams.
+                If you have any questions regarding this Privacy Policy or our data handling practices, please contact us:
               </p>
-              <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--text)] space-y-1.5">
-                <p className="font-bold text-[var(--red)]">Parental Permission Requirement:</p>
-                <p>
-                  Account holders under 18 years of age must obtain the explicit knowledge and permission of a parent or legal guardian before creating an account, upgrading to Pro, or purchasing Kobans virtual currency.
-                </p>
+              <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-xs space-y-1">
+                <p><strong className="text-[var(--text)]">Email:</strong> support@boardly.cfd</p>
+                <p><strong className="text-[var(--text)]">Phone / WhatsApp:</strong> 0305 8969050</p>
+                <p><strong className="text-[var(--text)]">Organization:</strong> SHS Virtual Academy (<a href="https://shsvirtualacademy.pro" target="_blank" rel="noopener noreferrer" className="text-[var(--red)] hover:underline">shsvirtualacademy.pro</a>)</p>
               </div>
             </Card>
-
-            {/* Section 12 */}
-            <Card id="changes" className="p-6 sm:p-8 space-y-3 scroll-mt-28">
-              <h2
-                className="text-xl font-bold text-[var(--text)]"
-                style={{ fontFamily: 'var(--font-heading)' }}
-              >
-                12. Policy Changes &amp; Effective Date
-              </h2>
-              <p className="text-sm text-[var(--muted)] leading-relaxed">
-                We may periodically update this Privacy Policy to reflect platform improvements or statutory compliance requirements. The current effective version is dated <strong className="text-[var(--text)]">20 October 2026</strong>. Continued use of Boardly after changes are published constitutes your acceptance of the updated terms.
-              </p>
-            </Card>
-
-            {/* Helpdesk banner */}
-            <div className="p-6 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--muted)] flex flex-col sm:flex-row items-center justify-between gap-4">
-              <span>Have additional privacy questions?</span>
-              <div className="flex gap-2">
-                <Link to="/contact" className="btn-outline text-xs px-4" style={{ height: '38px' }}>
-                  Contact Desk
-                </Link>
-                <Link to="/terms" className="btn-red text-xs px-4" style={{ height: '38px' }}>
-                  Terms of Service
-                </Link>
-              </div>
-            </div>
           </div>
         </div>
       </div>

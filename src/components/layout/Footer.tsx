@@ -72,46 +72,55 @@ export function Footer() {
               />
             </Link>
             <p className="text-sm text-white/80 leading-relaxed mb-4 max-w-sm break-words">
-              Pakistan&apos;s premier MCQ test-prep platform for FAST-NUCES, NUST NET, GIKI, LUMS, NED, MDCAT, ECAT, and intermediate boards.
+              Boardly: MCQ practice and learning for every student. A project of{' '}
+              <a
+                href="https://shsvirtualacademy.pro"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-white underline font-semibold hover:opacity-90"
+              >
+                SHS Virtual Academy
+              </a>
+              .
             </p>
             <div className="text-xs text-white/80 break-words">
-              Built with precision for Pakistani aspirants.
+              Built with precision for learners across Pakistan.
             </div>
           </div>
 
-          {/* Test prep -> all point to real /features page */}
+          {/* Subjects & Practice -> all point to real /features page */}
           <div className="min-w-0">
             <h4
               className="text-sm font-bold text-white mb-4"
               style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
             >
-              Test prep
+              Subjects &amp; Practice
             </h4>
             <ul className="space-y-2.5 text-sm text-white/80">
               <li>
                 <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
-                  FAST-NUCES CS &amp; Eng
+                  Mathematics
                 </Link>
               </li>
               <li>
                 <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
-                  NUST NET Applied / Eng
+                  Physics
                 </Link>
               </li>
               <li>
                 <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
-                  GIKI Engineering Mock
+                  Chemistry &amp; Biology
                 </Link>
               </li>
               <li>
                 <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
-                  MDCAT &amp; ECAT Vaults
+                  Computer Science
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Platform -> /features, /crew, /pricing, /nakama-captains, /grand-line/about, /contact */}
+          {/* Platform -> /features, /commons/about, /crew, /pricing, /nakama-captains, /grand-line/about, /contact */}
           <div className="min-w-0">
             <h4
               className="text-sm font-bold text-white mb-4"
@@ -123,6 +132,11 @@ export function Footer() {
               <li>
                 <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
                   Platform features
+                </Link>
+              </li>
+              <li>
+                <Link to="/commons/about" className="hover:text-white hover:underline transition-colors block break-words">
+                  Boardly Commons
                 </Link>
               </li>
               <li>
@@ -181,6 +195,16 @@ export function Footer() {
                 <Link to="/terms" className="hover:text-white hover:underline transition-colors block break-words">
                   Terms of service
                 </Link>
+              </li>
+              <li>
+                <a
+                  href="https://shsvirtualacademy.pro"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:text-white hover:underline transition-colors block break-words"
+                >
+                  SHS Virtual Academy &rarr;
+                </a>
               </li>
               <li>
                 <span className="text-xs text-white/80 block break-words">

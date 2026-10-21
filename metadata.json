@@ -1,6 +1,6 @@
 {
   "name": "Boardly — MCQ Practice for FSC & Matric",
-  "description": "Boardly by SHS Virtual Academy provides MCQ practice and test prep for FSC Matric and Post FSC students.",
+  "description": "Boardly: making education accessible to everyone. Free to start, affordable to grow. A project of SHS Virtual Academy.",
   "requestFramePermissions": [],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

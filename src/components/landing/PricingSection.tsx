@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { Badge } from '../ui/Badge';
 import { Card } from '../ui/Card';
+import { KobanIcon } from '../koban/KobanIcon';
 
 export function PricingSection() {
   return (
@@ -8,44 +9,39 @@ export function PricingSection() {
       <div className="boardly-container">
         {/* Centered section header */}
         <div className="section-header">
-          <Badge color="muted">Affordable Test Prep</Badge>
-          <h2>Transparent Pricing. Made for Students.</h2>
+          <Badge color="muted">Simple, Fair Pricing</Badge>
+          <h2>Honest Pricing. Accessible for Everyone.</h2>
           <p>
-            No expensive PKR 50,000 academy fees. High-yield preparation designed to be accessible to every student in Pakistan.
+            Education should never be gated behind expensive academy fees. Our free tier is enough for students to practice and learn, with low-cost options for extras.
           </p>
         </div>
 
-        {/* Pricing: centered 2-column grid (max-width: 880px, 20px gap, equal height, 1 col on mobile) */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 max-w-[880px] mx-auto items-stretch">
+        {/* 3-Column Pricing Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-5xl mx-auto items-stretch">
           {/* Free Tier Card */}
           <Card className="justify-between">
             <div>
-              {/* Pill at top with space */}
               <div className="mb-4">
-                <Badge color="muted">Free Starter</Badge>
+                <Badge color="muted">Free</Badge>
               </div>
 
-              {/* Price row with dot font */}
               <div className="flex items-baseline gap-2 mb-2">
-                <span className="text-4xl font-bold text-[var(--text)] font-doto">PKR 0</span>
-                <span className="text-sm text-[var(--muted)]">/ forever</span>
+                <span className="text-4xl font-bold text-[var(--text)] font-doto">0 PKR</span>
               </div>
 
-              {/* One-line description */}
               <p className="text-xs text-[var(--muted)] mb-5">
-                Essential daily practice for disciplined self-studying students.
+                Enough for students to practice and learn every day.
               </p>
 
-              {/* 1px divider */}
               <div className="border-t border-[var(--border)] pt-4">
-                {/* List: 12px gap, red dot INSIDE the card with 12px space before text */}
                 <div className="flex flex-col gap-3">
                   {[
-                    '10 tests per day (Practice, Sprints, Papers)',
-                    '5 Boardy AI queries per day',
-                    'Full KaTeX formula derivations',
-                    'PKT midnight quota reset (Asia/Karachi)',
-                    'Grand Line & Arena participation',
+                    'The free tier is enough to practice and learn',
+                    'Sharing material in Commons is always free with no limit',
+                    '10 practice tests per day',
+                    'Boardy AI queries with KaTeX formula derivations',
+                    'Join or create Study Crew squads',
+                    'Daily midnight quota reset (PKT)',
                   ].map(feature => (
                     <div key={feature} className="flex items-center gap-3 text-sm text-[var(--muted)]">
                       <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
@@ -56,46 +52,38 @@ export function PricingSection() {
               </div>
             </div>
 
-            {/* Pinned to bottom: 20px clear space above, full width 52px tall outline button */}
             <div className="mt-auto pt-5">
               <Link to="/signup" className="btn-outline w-full" style={{ height: '52px' }}>
-                Get Started Free
+                Start Free
               </Link>
             </div>
           </Card>
 
-          {/* Pro Tier Card: 1px red border */}
+          {/* Unlimited Tier Card: 1px red border */}
           <Card variant="red" className="justify-between relative">
             <div>
-              {/* Pill at top with space */}
               <div className="flex items-center justify-between mb-4">
-                <Badge color="red">Most Popular</Badge>
+                <Badge color="red">Unlimited</Badge>
                 <span className="text-xs text-[var(--muted)] font-medium">Full Access</span>
               </div>
 
-              {/* Price row with dot font */}
               <div className="flex items-baseline gap-2 mb-2">
-                <span className="text-4xl font-bold text-[var(--text)] font-doto">PKR 199</span>
-                <span className="text-sm text-[var(--muted)]">/ month</span>
+                <span className="text-4xl font-bold text-[var(--text)] font-doto">199 PKR</span>
               </div>
 
-              {/* One-line description */}
               <p className="text-xs text-[var(--muted)] mb-5">
-                Less than the cost of a single shawarma. Everything unlocked.
+                199 PKR for unlimited use across the platform.
               </p>
 
-              {/* 1px divider */}
               <div className="border-t border-[var(--border)] pt-4">
-                {/* List: 12px gap, red dot INSIDE the card with 12px space before text */}
                 <div className="flex flex-col gap-3">
                   {[
-                    'Unlimited practice sprints & drills',
-                    '100 Boardy AI questions / day with step derivations',
-                    'All past paper vaults (FAST, NUST, GIKI, MDCAT)',
-                    'Merit Meter aggregate simulator & closing merits',
-                    'Create private Study Circle squad rooms',
-                    'Detailed chapter weakness analytics & historical curves',
-                    'Priority support & ad-free experience',
+                    'Unlimited practice tests and sprint drills',
+                    'Unlimited Boardy AI questions with step derivations',
+                    'Complete subject question banks unlocked',
+                    'Detailed chapter weakness diagnostics and mistake curves',
+                    'Unlimited public Grand Line & Arena tests',
+                    'Priority support desk via WhatsApp & Email',
                   ].map(feature => (
                     <div key={feature} className="flex items-center gap-3 text-sm text-[var(--text)]">
                       <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
@@ -106,14 +94,58 @@ export function PricingSection() {
               </div>
             </div>
 
-            {/* Pinned to bottom: 20px clear space above, full width 52px tall solid red button */}
             <div className="mt-auto pt-5 flex flex-col gap-2.5">
               <Link to="/signup" className="btn-red w-full" style={{ height: '52px' }}>
-                Upgrade to Pro
+                Get Unlimited
               </Link>
               <div className="text-center text-[11px] text-[var(--muted)]">
-                Local payments accepted: JazzCash, EasyPaisa, SadaPay, NayaPay &amp; Bank Transfer.
+                Pay locally: JazzCash, EasyPaisa, SadaPay, or Bank Transfer.
               </div>
+            </div>
+          </Card>
+
+          {/* Koban Pack Card */}
+          <Card className="justify-between">
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <Badge color="muted">Koban Pack</Badge>
+                <div className="flex items-center gap-1 text-xs text-[#E8A317] font-semibold">
+                  <KobanIcon size={14} />
+                  <span>500 Kobans</span>
+                </div>
+              </div>
+
+              <div className="flex items-baseline gap-2 mb-2">
+                <span className="text-4xl font-bold text-[var(--text)] font-doto">50 PKR</span>
+              </div>
+
+              <p className="text-xs text-[var(--muted)] mb-5">
+                50 PKR for 500 kobans. Kobans are used to customize your profile.
+              </p>
+
+              <div className="border-t border-[var(--border)] pt-4">
+                <div className="flex flex-col gap-3">
+                  {[
+                    '50 PKR for 500 kobans to personalize your student profile',
+                    'Unlock dot-matrix avatar frames in the Store',
+                    'Equip animated student nameplates',
+                    'Collect rising profile card aura effects',
+                    '100% aesthetic with zero unfair academic advantage',
+                    'Purchased Kobans never expire in your student wallet',
+                  ].map(feature => (
+                    <div key={feature} className="flex items-center gap-3 text-sm text-[var(--muted)]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#E8A317] shrink-0" />
+                      <span>{feature}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-auto pt-5">
+              <Link to="/store" className="btn-outline w-full" style={{ height: '52px' }}>
+                Explore Store &amp; Kobans
+              </Link>
             </div>
           </Card>
         </div>
@@ -124,7 +156,7 @@ export function PricingSection() {
             to="/pricing"
             className="btn-outline inline-flex items-center gap-2 text-xs sm:text-sm font-semibold px-6 py-3 rounded-full"
           >
-            <span>View full plan comparison &amp; payment guide</span>
+            <span>View complete pricing guide &amp; local payment instructions</span>
             <span aria-hidden="true">&rarr;</span>
           </Link>
         </div>
@@ -132,3 +164,5 @@ export function PricingSection() {
     </section>
   );
 }
+
+export default PricingSection;

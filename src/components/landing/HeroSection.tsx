@@ -19,8 +19,8 @@ export function HeroSection() {
           <div className="flex flex-col items-center lg:items-start text-center lg:text-left">
             {/* Badges: outlined grey pills (no colors) */}
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2.5 mb-6">
-              <Badge color="muted">2026 Admissions Cohort Open</Badge>
-              <Badge color="muted">FAST · NUST · GIKI · MDCAT</Badge>
+              <Badge color="muted">Education For Everyone</Badge>
+              <Badge color="muted">Practice &amp; Learn Together</Badge>
             </div>
 
             {/* H1 Heading in Doto Font */}
@@ -34,19 +34,30 @@ export function HeroSection() {
                 fontSize: 'clamp(28px, 6.5vw, 56px)',
               }}
             >
-              Crush Your Entrance Test.{' '}
-              <span className="block mt-1 text-[var(--text)]">Zero Blind Spots.</span>
+              Education For Everyone.{' '}
+              <span className="block mt-1 text-[var(--text)]">Practice MCQs. Learn Together.</span>
             </h1>
 
             {/* Subtext */}
-            <p className="text-base sm:text-lg text-[var(--muted)] max-w-xl mb-8 leading-relaxed">
-              Pakistan&apos;s high-velocity MCQ cockpit. Official university marking schemes, step-by-step KaTeX formula derivations, timed sprints, and live national Arena battles.
+            <p className="text-base sm:text-lg text-[var(--muted)] max-w-xl mb-4 leading-relaxed">
+              Pakistan&apos;s accessible MCQ practice and collaborative learning platform. Master key concepts with step-by-step KaTeX derivations, timed practice sprints, chapter analytics, and free community study sharing.
             </p>
 
-            {/* Hero CTAs:
-                "Start Practicing Free" is a solid red pill (padding 14px 24px)
-                "Explore Live Arena" is an outline pill
-                side by side with gap 12px, wrapping on mobile */}
+            {/* Short About line */}
+            <p className="text-xs sm:text-sm text-[var(--text)] font-medium mb-8">
+              Boardly is built and run by{' '}
+              <a
+                href="https://shsvirtualacademy.pro"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[var(--red)] font-semibold hover:underline"
+              >
+                SHS Virtual Academy
+              </a>
+              .
+            </p>
+
+            {/* Hero CTAs */}
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3 w-full sm:w-auto">
               <Link to="/signup" className="btn-red w-full sm:w-auto group">
                 <span>Start Practicing Free</span>
@@ -58,13 +69,11 @@ export function HeroSection() {
               </Link>
             </div>
 
-            {/* Checklist row:
-                (Authentic Past Papers / Step-by-step KaTeX / PKT Midnight Resets)
-                uses flex-wrap, margin-top 24px, with small red dots instead of colored icons */}
+            {/* Checklist row */}
             <div className="mt-6 pt-6 border-t border-[var(--border)] flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-3 w-full">
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
-                <span className="text-xs text-[var(--muted)] font-medium">Authentic Past Papers</span>
+                <span className="text-xs text-[var(--muted)] font-medium">Comprehensive MCQ Banks</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />

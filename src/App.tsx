@@ -178,6 +178,9 @@ const CommonsFeedPage = lazyWithRetry(() =>
 const CommunityGuidelinesPage = lazyWithRetry(() =>
   import('./pages/commons/CommunityGuidelinesPage').then(m => ({ default: m.CommunityGuidelinesPage }))
 );
+const CommonsAboutPage = lazyWithRetry(() =>
+  import('./pages/commons/CommonsAboutPage').then(m => ({ default: m.CommonsAboutPage }))
+);
 
 import { NinjaFightLoader } from './components/ui/NinjaFightLoader';
 
@@ -286,6 +289,8 @@ function AppInner() {
         <Route element={<PublicLayout />}>
           <Route path="/" element={<LandingPage />} />
           <Route path="/features" element={<FeaturesPage />} />
+          <Route path="/commons/about" element={<CommonsAboutPage />} />
+          <Route path="/about-commons" element={<Navigate to="/commons/about" replace />} />
           <Route path="/arena" element={<ArenaPage />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/nakama-captains" element={<NakamaCaptainsPage />} />

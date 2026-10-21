@@ -8,27 +8,27 @@ const PREVIEWS = [
     screen: 0 as const,
     title: 'Student Study Cockpit',
     subtitle: 'Everything in one view',
-    desc: 'Target exam countdown, daily sprint progress bar, accuracy % per chapter, and priority weak areas identified automatically.',
+    desc: 'Daily sprint progress, streak tracking, accuracy % per chapter, and priority weak areas identified automatically.',
     icon: Laptop,
   },
   {
     screen: 1 as const,
-    title: 'Ambassador Crew Hub',
-    subtitle: 'Share & Earn Rewards',
-    desc: 'Track referral milestones, copy unique student discount codes, and see real-time active student numbers.',
+    title: 'Study Crew & Squads',
+    subtitle: 'Learn & Grow Together',
+    desc: 'Join study squads, compare solve times, coordinate practice drills, and stay accountable with squad mates.',
     icon: Users,
   },
   {
     screen: 2 as const,
-    title: 'Campus Captain Desk',
-    subtitle: 'Lead your college wing',
-    desc: 'Campus rankings, weekly outreach missions, mock pass distribution counters, and ambassador leaderboards.',
+    title: 'Nakama Captains',
+    subtitle: 'Campus Student Leaders',
+    desc: 'Lead student wings, share unique referral invites, organize study groups, and earn community rewards.',
     icon: Trophy,
   },
   {
     screen: 3 as const,
-    title: 'Grand Line & Live Arena',
-    subtitle: 'National tests by Nakama Captains',
+    title: 'Grand Line & Arena',
+    subtitle: 'Public Tests by Student Leaders',
     desc: 'Compete in open test sessions created by student leaders across Pakistan with live percentiles and rankings.',
     icon: Sparkles,
   },
@@ -43,9 +43,9 @@ export function ScrollDrivenPreview() {
         {/* Centered section header */}
         <div className="section-header">
           <Badge color="muted">Interactive Experience</Badge>
-          <h2>Designed for Every Aspiring Leader</h2>
+          <h2>Designed for Every Student</h2>
           <p>
-            Whether you&apos;re an ambitious student, a study squad captain, or a campus ambassador, Boardly equips you with dedicated tools.
+            Whether you&apos;re practicing independently, studying with your crew, or exploring the public test Arena, Boardly equips you with dedicated tools.
           </p>
         </div>
 

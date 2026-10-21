@@ -8,6 +8,7 @@ import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 
 const NAV_LINKS = [
   { to: '/features', label: 'Features' },
+  { to: '/commons/about', label: 'Boardly Commons', shortLabel: 'Commons' },
   { to: '/crew', label: 'Crew' },
   { to: '/store', label: 'Store' },
   { to: '/nakama-captains', label: NAKAMA_CAPTAINS_NAME },
@@ -62,7 +63,9 @@ export function Navbar() {
   }, [isMounted]);
 
   const isLinkActive = (to: string) => {
-    return location.pathname === to;
+    if (location.pathname === to) return true;
+    if (to === '/commons/about' && (location.pathname === '/commons/about' || location.pathname === '/about-commons')) return true;
+    return false;
   };
 
   return (
@@ -101,13 +104,13 @@ export function Navbar() {
                   <Link
                     key={link.to}
                     to={link.to}
-                    className={`text-xs xl:text-sm font-medium px-4 py-2 rounded-full transition-all duration-200 ${
+                    className={`text-xs xl:text-sm font-medium px-3 xl:px-4 py-2 rounded-full transition-all duration-200 ${
                       active
                         ? 'bg-white text-black font-semibold shadow-sm'
                         : 'text-[rgba(255,255,255,0.7)] hover:text-white'
                     }`}
                   >
-                    {link.label}
+                    {link.shortLabel || link.label}
                   </Link>
                 );
               })}

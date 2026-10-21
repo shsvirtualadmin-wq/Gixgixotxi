@@ -3,17 +3,18 @@ import { PageMeta } from '@/components/ui/PageMeta';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Check, X, Shield } from 'lucide-react';
+import { KobanIcon } from '@/components/koban/KobanIcon';
 import { FREE_DAILY_TESTS, FREE_DAILY_TOKEN_LIMIT, FREE_DAILY_ARENA_LIMIT } from '@/constants/limits';
 
 const COMPARISON_ROWS = [
   { feature: 'Daily Practice Tests & Sprints', free: `${FREE_DAILY_TESTS} / day`, pro: 'Unlimited' },
-  { feature: 'Boardy AI Derivation Tokens', free: `${FREE_DAILY_TOKEN_LIMIT} / day`, pro: 'Unlimited' },
-  { feature: 'Live Arena Grand Mocks', free: `${FREE_DAILY_ARENA_LIMIT} / day`, pro: 'Unlimited' },
+  { feature: 'Sharing Study Material in Commons', free: 'Free & Unlimited', pro: 'Free & Unlimited' },
+  { feature: 'Boardy AI Concept Explanations', free: `${FREE_DAILY_TOKEN_LIMIT} / day`, pro: 'Unlimited' },
+  { feature: 'Public Grand Line Tests', free: `${FREE_DAILY_ARENA_LIMIT} / day`, pro: 'Unlimited' },
   { feature: 'KaTeX Formula Step Derivations', free: true, pro: true },
-  { feature: 'FAST-NUCES Negative Marking (-0.25)', free: true, pro: true },
   { feature: 'Study Crew Squad Membership (up to 30)', free: true, pro: true },
-  { feature: 'Full University Past Paper Vaults', free: 'Basic Sets', pro: 'All Full Papers' },
-  { feature: 'Mistakes & Weak Chapter Analytics', free: 'Basic', pro: 'Comprehensive' },
+  { feature: 'Complete Subject Question Bank Access', free: 'Core Sets', pro: 'Full Access' },
+  { feature: 'Weak Chapter Analytics & Mistake Tracking', free: 'Basic', pro: 'Comprehensive' },
   { feature: 'PKT Midnight Quota Refresh (Asia/Karachi)', free: true, pro: true },
   { feature: 'Priority Support via WhatsApp & Email', free: false, pro: true },
 ];
@@ -45,8 +46,8 @@ export function PricingPage() {
   return (
     <>
       <PageMeta
-        title="Pricing — Free & Pro Monthly Plans"
-        description="Transparent student pricing for Pakistan: Free forever tier (10 tests/day) and Pro full entrance mastery for PKR 199/month. Pay locally with JazzCash, EasyPaisa, or SadaPay."
+        title="Pricing — Honest & Accessible for Every Student"
+        description="Simple and fair pricing for every student: Free tier is enough to practice and learn, 199 PKR for unlimited use, and 50 PKR for 500 kobans to customize your profile."
       />
 
       <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-16">
@@ -60,36 +61,36 @@ export function PricingPage() {
             Simple, Transparent Pricing
           </h1>
           <p className="text-base sm:text-lg text-[var(--muted)] leading-relaxed">
-            No expensive PKR 50,000 physical academy fee burdens. Prepare with real university-standard test patterns for the price of a snack.
+            Education should never be a privilege. Our free tier is enough for students to practice and learn, with low-cost options for extras.
           </p>
         </div>
 
-        {/* 2-Column Pricing Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-[880px] mx-auto items-stretch">
+        {/* 3-Column Pricing Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto items-stretch">
           {/* Free Tier Card */}
           <Card className="p-7 sm:p-8 flex flex-col justify-between">
             <div className="space-y-5">
-              <Badge color="muted">Free Starter</Badge>
+              <Badge color="muted">Free</Badge>
               <div>
                 <div className="flex items-baseline gap-2">
                   <span
                     className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-doto"
                     style={{ fontFamily: 'var(--font-dot)' }}
                   >
-                    PKR 0
+                    0 PKR
                   </span>
-                  <span className="text-sm text-[var(--muted)]">/ forever</span>
                 </div>
                 <p className="text-xs sm:text-sm text-[var(--muted)] mt-2">
-                  Essential daily practice for disciplined self-studying candidates.
+                  The free tier is enough for students to practice and learn.
                 </p>
               </div>
 
               <div className="border-t border-[var(--border)] pt-5 space-y-3">
                 {[
-                  `${FREE_DAILY_TESTS} tests per day (Sprints & Drills)`,
+                  'The free tier is enough to practice and learn',
+                  'Sharing material in Commons is always free with no limit',
+                  `${FREE_DAILY_TESTS} practice tests per day`,
                   `${FREE_DAILY_TOKEN_LIMIT} Boardy AI derivation tokens / day`,
-                  `${FREE_DAILY_ARENA_LIMIT} Live Arena Mocks per day`,
                   'KaTeX mathematical derivations for all questions',
                   'Join or create Study Crews (up to 30 members)',
                   'PKT midnight quota reset (Asia/Karachi UTC+5)',
@@ -104,18 +105,18 @@ export function PricingPage() {
 
             <div className="pt-8">
               <Link to="/signup" className="btn-outline w-full" style={{ height: '52px' }}>
-                Get Started Free
+                Start Free
               </Link>
             </div>
           </Card>
 
-          {/* Pro Tier Card */}
+          {/* Unlimited Tier Card */}
           <Card variant="red" className="p-7 sm:p-8 flex flex-col justify-between relative">
             <div className="space-y-5">
               <div className="flex items-center justify-between">
-                <Badge color="red">Full Entrance Mastery</Badge>
+                <Badge color="red">Unlimited</Badge>
                 <span className="text-xs font-semibold text-[var(--red)] uppercase tracking-wider">
-                  30-Day Access
+                  Full Access
                 </span>
               </div>
 
@@ -125,23 +126,22 @@ export function PricingPage() {
                     className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-doto"
                     style={{ fontFamily: 'var(--font-dot)' }}
                   >
-                    PKR 199
+                    199 PKR
                   </span>
-                  <span className="text-sm text-[var(--muted)]">/ month</span>
                 </div>
                 <p className="text-xs sm:text-sm text-[var(--muted)] mt-2">
-                  Unrestricted access to all full-length papers, unlimited tests, and analytics.
+                  199 PKR for unlimited use across the platform.
                 </p>
               </div>
 
               <div className="border-t border-[var(--border)] pt-5 space-y-3">
                 {[
-                  'Unlimited practice tests & 10-minute sprints',
+                  '199 PKR for unlimited use',
+                  'Unlimited practice tests & sprint drills',
                   'Unlimited Boardy AI step derivations',
-                  'Unlimited Live Arena Grand National Mocks',
-                  'All full-length university past papers (FAST, NET, GIKI)',
+                  'Complete subject question banks unlocked',
                   'Advanced weak chapter diagnostics & mistake curves',
-                  'Negative marking optimizer heuristics (-0.25)',
+                  'Unlimited Grand Line & public Arena tests',
                   'Priority support desk via WhatsApp & Email',
                 ].map((item) => (
                   <div key={item} className="flex items-center gap-3 text-xs sm:text-sm text-[var(--text)]">
@@ -154,7 +154,56 @@ export function PricingPage() {
 
             <div className="pt-8">
               <Link to="/dashboard/plans" className="btn-red w-full" style={{ height: '52px' }}>
-                Upgrade to Pro (PKR 199)
+                Get Unlimited (199 PKR)
+              </Link>
+            </div>
+          </Card>
+
+          {/* Koban Pack Card */}
+          <Card className="p-7 sm:p-8 flex flex-col justify-between">
+            <div className="space-y-5">
+              <div className="flex items-center justify-between">
+                <Badge color="muted">Koban Pack</Badge>
+                <div className="flex items-center gap-1 text-xs text-[#E8A317] font-semibold">
+                  <KobanIcon size={14} />
+                  <span>500 Kobans</span>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-baseline gap-2">
+                  <span
+                    className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-doto"
+                    style={{ fontFamily: 'var(--font-dot)' }}
+                  >
+                    50 PKR
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm text-[var(--muted)] mt-2">
+                  50 PKR for 500 kobans. Kobans are used to customize your profile.
+                </p>
+              </div>
+
+              <div className="border-t border-[var(--border)] pt-5 space-y-3">
+                {[
+                  '50 PKR for 500 kobans to personalize your student profile',
+                  'Unlock dot-matrix avatar frames in the Store',
+                  'Equip animated student nameplates',
+                  'Collect rising profile card aura effects',
+                  '100% aesthetic with zero unfair academic advantage',
+                  'Purchased Kobans never expire in your student wallet',
+                ].map((item) => (
+                  <div key={item} className="flex items-center gap-3 text-xs sm:text-sm text-[var(--muted)]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#E8A317] shrink-0" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="pt-8">
+              <Link to="/store" className="btn-outline w-full" style={{ height: '52px' }}>
+                Explore Store &amp; Kobans
               </Link>
             </div>
           </Card>
@@ -174,7 +223,7 @@ export function PricingPage() {
                   <th className="p-4 sm:p-5 font-bold text-[var(--text)]">Feature</th>
                   <th className="p-4 sm:p-5 font-bold text-[var(--muted)] text-center">Free Starter</th>
                   <th className="p-4 sm:p-5 font-bold text-[var(--red)] text-center font-doto">
-                    Pro Tier (PKR 199/mo)
+                    Unlimited (199 PKR)
                   </th>
                 </tr>
               </thead>
@@ -275,7 +324,7 @@ export function PricingPage() {
               <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-xs space-y-2">
                 <span className="font-bold text-[var(--red)]">3. Admin Approval &amp; Unlock</span>
                 <p className="text-[var(--muted)]">
-                  An administrator verifies the slip against bank ledger entries and approves your request, immediately unlocking 30 days of full Pro access.
+                  An administrator verifies the slip against bank ledger entries and approves your request, immediately unlocking full Unlimited access.
                 </p>
               </div>
             </div>
