@@ -88,7 +88,13 @@ export function PillNav({
                         <span className={`shrink-0 flex items-center justify-center relative ${active ? 'text-white' : ''}`}>
                           {item.icon}
                           {Boolean(item.badge) && (
-                            <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 bg-[#D71921] text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none border border-black shadow-sm">
+                            <span
+                              className={`absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 text-[9px] font-bold rounded-full flex items-center justify-center leading-none shadow-sm ${
+                                active
+                                  ? 'bg-white text-[#D71921] border border-black/20'
+                                  : 'bg-[#D71921] text-white border border-black'
+                              }`}
+                            >
                               {Number(item.badge) > 9 ? '9+' : item.badge}
                             </span>
                           )}
