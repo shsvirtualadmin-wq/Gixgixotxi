@@ -67,19 +67,57 @@ export function shiftPKTDate(pktDate: string, daysOffset: number): string {
 /**
  * Returns weekday labels for a PKT date string.
  */
-export function getPKTWeekday(pktDate: string): { short: string; narrow: string; dayNum: number; month: string } {
+/**
+ * Returns deterministic date parts for any PKT date 'YYYY-MM-DD'.
+ * Uses UTC noon to eliminate all local timezone, DST, and client clock offsets.
+ */
+export function getPKTDateParts(pktDate: string) {
   const [y, m, d] = pktDate.split('-').map(Number);
-  // Noon UTC on that calendar day is unambiguous
-  const date = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
-  const short = date.toLocaleDateString('en-US', { timeZone: 'Asia/Karachi', weekday: 'short' });
-  const narrow = date.toLocaleDateString('en-US', { timeZone: 'Asia/Karachi', weekday: 'narrow' });
-  const month = date.toLocaleDateString('en-US', { timeZone: 'Asia/Karachi', month: 'short' });
-  return { short, narrow, dayNum: d, month };
+  const utcDate = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  const dayOfWeek = utcDate.getUTCDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+  const daysSinceMonday = (dayOfWeek + 6) % 7; // 0 = Mon, 1 = Tue, ..., 6 = Sun
+  const monthShort = utcDate.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short' });
+  const monthLong = utcDate.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'long' });
+  const weekdayShort = utcDate.toLocaleDateString('en-US', { timeZone: 'UTC', weekday: 'short' });
+  const initials = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  const weekdayInitial = initials[daysSinceMonday];
+  return {
+    year: y,
+    monthNum: m,
+    dayNum: d,
+    dayOfWeek,
+    daysSinceMonday,
+    monthShort,
+    monthLong,
+    weekdayShort,
+    weekdayInitial,
+  };
+}
+
+export function getPKTWeekday(pktDate: string): { short: string; narrow: string; dayNum: number; month: string } {
+  const parts = getPKTDateParts(pktDate);
+  return { short: parts.weekdayShort, narrow: parts.weekdayInitial, dayNum: parts.dayNum, month: parts.monthShort };
 }
 
 /**
  * ─── STREAK CALCULATION INTERFACES ──────────────────────────────────────────
  */
+
+export interface StreakCalendarDay {
+  date: string;
+  dayNum: number;
+  month: string;
+  monthLong: string;
+  weekday: string;
+  weekdayInitial: string;
+  isPracticed: boolean;
+  isToday: boolean;
+  isFrozen: boolean;
+  isFuture: boolean;
+  sessionCount: number;
+  mcqsSolved: number;
+  monthLabel?: string;
+}
 
 export interface StreakDayInfo {
   date: string;
@@ -107,23 +145,41 @@ export interface StreakComputationResult {
   longestStreak: number;
   todayActive: boolean;
   todayPending: boolean;
+  todayStatus: {
+    isDone: boolean;
+    isPending: boolean;
+    todayPKT: string;
+    text: string;
+  };
   freezeActive: boolean;
   freezeUsed: boolean;
   freezeDate?: string | null;
   activePKTDays: string[];
   activePKTDaysSet: Set<string>;
   sessionsByDay: Record<string, number>;
+  dayDetails: Record<
+    string,
+    { practiceAttempts: number; mcqsSolved: number; aiTutorTokens: number; arenaSessions: number }
+  >;
+  thisWeek: StreakCalendarDay[];
+  last7Days: StreakCalendarDay[];
+  last28Days: StreakCalendarDay[];
   history28: StreakDayInfo[];
-  last7Days: SevenDayItem[];
   totalCompletedSessions: number;
 }
 
 /**
- * Authoritative streak calculation function:
- * Single source of truth for Dashboard card, Streaks page, Profile, Badges, and Crew Leaderboard.
+ * ONE shared authoritative streak calculation function:
+ * Takes the user's activity days (as PKT calendar dates or detail map) and returns:
+ * - currentStreak
+ * - longestStreak
+ * - todayStatus
+ * - last7Days (Monday through Sunday of the current week in PKT)
+ * - last28Days (4 full calendar weeks of 7 days: M T W T F S S in PKT)
+ * All views must use this function, and the day boundary is midnight PKT everywhere.
  */
-export function computeStreakFromSessions(
-  sessionPKTDates: string[],
+export function computeStreakData(
+  activityInput: string[] | Record<string, any>,
   options?: {
     freezeActive?: boolean;
     todayPKT?: string;
@@ -133,36 +189,74 @@ export function computeStreakFromSessions(
   const yesterday = shiftPKTDate(today, -1);
   const freezeActive = Boolean(options?.freezeActive);
 
-  // 1. Group sessions by PKT day
+  // 1. Normalize activity inputs into dayDetails map & activePKTDaysSet
   const sessionsByDay: Record<string, number> = {};
-  for (const date of sessionPKTDates) {
-    if (date) {
-      sessionsByDay[date] = (sessionsByDay[date] || 0) + 1;
+  const dayDetails: Record<
+    string,
+    { practiceAttempts: number; mcqsSolved: number; aiTutorTokens: number; arenaSessions: number }
+  > = {};
+
+  if (Array.isArray(activityInput)) {
+    for (const d of activityInput) {
+      if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) {
+        sessionsByDay[d] = (sessionsByDay[d] || 0) + 1;
+        dayDetails[d] = {
+          practiceAttempts: (dayDetails[d]?.practiceAttempts || 0) + 1,
+          mcqsSolved: (dayDetails[d]?.mcqsSolved || 0) + 10,
+          aiTutorTokens: dayDetails[d]?.aiTutorTokens || 0,
+          arenaSessions: dayDetails[d]?.arenaSessions || 0,
+        };
+      }
+    }
+  } else if (activityInput && typeof activityInput === 'object') {
+    for (const [dateStr, rawVal] of Object.entries(activityInput)) {
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        const val = rawVal as Record<string, unknown> | undefined;
+        const practiceCount = Number(val?.practiceAttempts ?? val?.testsUsed ?? val?.sessions ?? 0);
+        const mcqCount = Number(val?.mcqsSolved ?? val?.questionsSolved ?? practiceCount * 10);
+        const arenaCount = Number(val?.arenaSessions ?? 0);
+        const aiCount = Number(val?.aiTutorTokens ?? 0);
+        const isCompleted = Boolean(
+          practiceCount > 0 ||
+          arenaCount > 0 ||
+          mcqCount > 0 ||
+          val?.hasActivity === true
+        );
+        if (isCompleted) {
+          sessionsByDay[dateStr] = Math.max(1, practiceCount || 1);
+          dayDetails[dateStr] = {
+            practiceAttempts: practiceCount || 1,
+            mcqsSolved: mcqCount || 10,
+            aiTutorTokens: aiCount,
+            arenaSessions: arenaCount,
+          };
+        }
+      }
     }
   }
 
   const activePKTDaysSet = new Set(Object.keys(sessionsByDay));
   const activePKTDays = Array.from(activePKTDaysSet).sort();
-  const totalCompletedSessions = sessionPKTDates.length;
+  const totalCompletedSessions = Object.values(sessionsByDay).reduce((a, b) => a + b, 0);
 
   const todayActive = activePKTDaysSet.has(today);
   const todayPending = !todayActive;
 
-  // 2. Current streak calculation
-  // "Current streak = consecutive streak days ending today, or ending yesterday while today is still pending.
-  // A pending today never breaks the streak. A Freeze covers one missed day and keeps the chain unbroken."
+  // 2. Authoritative Current Streak Calculation
+  // Current streak = consecutive streak days ending today (if practiced today),
+  // or ending yesterday while today is still pending.
+  // A pending today NEVER breaks the streak.
+  // A Streak Freeze covers one missed day and keeps the chain unbroken.
   let currentStreak = 0;
   let freezeUsed = false;
   let freezeDate: string | null = null;
 
-  // Chain starts at today if active, else from yesterday while today is pending
   let checkDate = todayActive ? today : yesterday;
   let chainBroken = false;
 
-  // If today is not active and yesterday is also not active:
+  // If today is not active and yesterday was also not active:
   if (!todayActive && !activePKTDaysSet.has(yesterday)) {
     if (freezeActive) {
-      // Freeze can cover yesterday
       freezeUsed = true;
       freezeDate = yesterday;
       checkDate = shiftPKTDate(yesterday, -1);
@@ -178,7 +272,6 @@ export function computeStreakFromSessions(
         currentStreak += 1;
         dayCursor = shiftPKTDate(dayCursor, -1);
       } else if (freezeActive && !freezeUsed) {
-        // Freeze covers one missed day in the streak chain
         freezeUsed = true;
         freezeDate = dayCursor;
         dayCursor = shiftPKTDate(dayCursor, -1);
@@ -188,10 +281,9 @@ export function computeStreakFromSessions(
     }
   }
 
-  // 3. Longest streak calculation across all time
+  // 3. Longest Streak Calculation across all history
   let longestStreak = currentStreak;
   if (activePKTDays.length > 0) {
-    // Check all contiguous chains in history
     let maxChain = 0;
     const sortedDays = [...activePKTDays];
     for (let i = 0; i < sortedDays.length; i++) {
@@ -215,58 +307,109 @@ export function computeStreakFromSessions(
     longestStreak = Math.max(longestStreak, maxChain);
   }
 
-  // 4. Build 28-day matrix (ending today in PKT)
+  // 4. Build 4-week calendar grid (28 cells: 4 full weeks of Monday to Sunday in PKT)
+  const { daysSinceMonday } = getPKTDateParts(today);
+  const currentWeekMonday = shiftPKTDate(today, -daysSinceMonday);
+  const gridStartMonday = shiftPKTDate(currentWeekMonday, -21); // 3 weeks prior
+
+  const last28Days: StreakCalendarDay[] = [];
   const history28: StreakDayInfo[] = [];
-  for (let offset = 27; offset >= 0; offset--) {
-    const dStr = shiftPKTDate(today, -offset);
-    const { short, narrow, dayNum, month } = getPKTWeekday(dStr);
-    const hasActivity = activePKTDaysSet.has(dStr);
-    const isFrozen = freezeUsed && freezeDate === dStr;
+  let previousMonth = '';
+
+  for (let offset = 0; offset < 28; offset++) {
+    const dStr = shiftPKTDate(gridStartMonday, offset);
+    const parts = getPKTDateParts(dStr);
+    const isToday = dStr === today;
+    const isFuture = dStr > today;
+    const isPracticed = activePKTDaysSet.has(dStr);
+    const isFrozen = Boolean(freezeUsed && freezeDate === dStr);
+    const details = dayDetails[dStr];
+
+    let monthLabel: string | undefined = undefined;
+    if (offset === 0) {
+      monthLabel = parts.monthShort;
+      previousMonth = parts.monthShort;
+    } else if (parts.monthShort !== previousMonth) {
+      monthLabel = parts.monthShort;
+      previousMonth = parts.monthShort;
+    }
+
+    const dayItem: StreakCalendarDay = {
+      date: dStr,
+      dayNum: parts.dayNum,
+      month: parts.monthShort,
+      monthLong: parts.monthLong,
+      weekday: parts.weekdayShort,
+      weekdayInitial: parts.weekdayInitial,
+      isPracticed,
+      isToday,
+      isFrozen,
+      isFuture,
+      sessionCount: details?.practiceAttempts || (isPracticed ? 1 : 0),
+      mcqsSolved: details?.mcqsSolved || (isPracticed ? 10 : 0),
+      monthLabel,
+    };
+
+    last28Days.push(dayItem);
+
+    // Backwards-compatible history28 entry
     history28.push({
       date: dStr,
-      dayNum,
-      month,
-      weekday: short,
-      weekdayNarrow: narrow,
-      hasActivity,
-      sessionCount: sessionsByDay[dStr] || 0,
-      isToday: dStr === today,
+      dayNum: parts.dayNum,
+      month: parts.monthShort,
+      weekday: parts.weekdayShort,
+      weekdayNarrow: parts.weekdayInitial,
+      hasActivity: isPracticed,
+      sessionCount: dayItem.sessionCount,
+      isToday,
       isFrozen,
     });
   }
 
-  // 5. Build 7-day row (last 7 days ending today in PKT)
-  const last7Days: SevenDayItem[] = [];
-  for (let offset = 6; offset >= 0; offset--) {
-    const dStr = shiftPKTDate(today, -offset);
-    const { narrow } = getPKTWeekday(dStr);
-    const hasActivity = activePKTDaysSet.has(dStr);
-    const isFrozen = freezeUsed && freezeDate === dStr;
-    last7Days.push({
-      date: dStr,
-      label: narrow,
-      isActive: hasActivity || isFrozen,
-      isToday: dStr === today,
-      isFrozen,
-      sessionCount: sessionsByDay[dStr] || 0,
-    });
-  }
+  // 5. Build 7-day row ("This week": Monday through Sunday of current week in PKT)
+  // These are the last 7 items in last28Days (offset 21 to 27)
+  const thisWeek: StreakCalendarDay[] = last28Days.slice(21, 28);
+  const last7Days: StreakCalendarDay[] = thisWeek;
 
   return {
     currentStreak,
     longestStreak,
     todayActive,
     todayPending,
+    todayStatus: {
+      isDone: todayActive,
+      isPending: todayPending,
+      todayPKT: today,
+      text: todayActive
+        ? "Today's practice done"
+        : 'Practice today to keep your streak. Ends 11:59 PM PKT',
+    },
     freezeActive,
     freezeUsed,
     freezeDate,
     activePKTDays,
     activePKTDaysSet,
     sessionsByDay,
-    history28,
+    dayDetails,
+    thisWeek,
     last7Days,
+    last28Days,
+    history28,
     totalCompletedSessions,
   };
+}
+
+/**
+ * Backwards compatibility wrapper for computeStreakFromSessions
+ */
+export function computeStreakFromSessions(
+  sessionPKTDates: string[],
+  options?: {
+    freezeActive?: boolean;
+    todayPKT?: string;
+  }
+): StreakComputationResult {
+  return computeStreakData(sessionPKTDates, options);
 }
 
 /**

@@ -18,9 +18,18 @@ export function AnimeBadgeEmblem({
   size = 64,
   className = '',
 }: AnimeBadgeEmblemProps) {
-  const accent = isUnlocked ? badge.accentColor : '#4b5563';
+  const accent = isUnlocked ? badge.accentColor : '#64748b';
   const glow = isUnlocked ? badge.glowColor : 'transparent';
   const filterId = `glow-${badge.id}-${size}`;
+
+  // Match either modern or legacy badge IDs, or by day milestone
+  const isTier1 = badge.id === 'genin-spark' || badge.id === 'initiation' || badge.days === 3;
+  const isTier2 = badge.id === 'haki-awakening' || badge.id === 'discipline' || badge.days === 7;
+  const isTier3 = badge.id === 'shonen-resolve' || badge.id === 'habit-locked' || badge.days === 14;
+  const isTier4 = badge.id === 'bankai-mode' || badge.id === 'unstoppable' || badge.days === 30;
+  const isTier5 = badge.id === 'super-saiyan-streak' || badge.id === 'master-of-momentum' || badge.days === 60;
+  const isTier6 = badge.id === 'hokage-rank' || badge.id === 'legend-of-consistency' || badge.days === 100;
+  const isTier7 = badge.id === 'pirate-king' || badge.id === 'ascendant' || badge.id === 'eternal-vanguard' || badge.days >= 150;
 
   return (
     <svg
@@ -29,11 +38,11 @@ export function AnimeBadgeEmblem({
       viewBox="0 0 100 100"
       className={`shrink-0 transition-transform duration-200 select-none ${className}`}
       style={{
-        filter: isUnlocked ? `drop-shadow(0 0 8px ${glow})` : 'grayscale(1) opacity(0.35)',
+        filter: isUnlocked ? `drop-shadow(0 0 8px ${glow})` : 'brightness(0.7) opacity(0.5)',
       }}
     >
       <defs>
-        <radialGradient id={`bg-${badge.id}`} cx="50%" cy="50%" r="50%">
+        <radialGradient id={`bg-${badge.id}-${size}`} cx="50%" cy="50%" r="50%">
           <stop offset="0%" stopColor="#1a1a24" />
           <stop offset="100%" stopColor="#0b0b10" />
         </radialGradient>
@@ -46,7 +55,7 @@ export function AnimeBadgeEmblem({
       {/* Hexagonal Outer Frame */}
       <polygon
         points="50,4 92,26 92,74 50,96 8,74 8,26"
-        fill={`url(#bg-${badge.id})`}
+        fill={`url(#bg-${badge.id}-${size})`}
         stroke={accent}
         strokeWidth="2.5"
         strokeLinejoin="round"
@@ -59,24 +68,24 @@ export function AnimeBadgeEmblem({
         stroke={accent}
         strokeWidth="1.2"
         strokeDasharray="4 2"
-        opacity={isUnlocked ? 0.75 : 0.25}
+        opacity={isUnlocked ? 0.75 : 0.3}
       />
 
-      {/* Tier 1: Initiation (3 Days - Soft Green Flame / Seed) */}
-      {badge.id === 'initiation' && (
-        <g transform="translate(50, 48)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
+      {/* Tier 1: Genin Spark (3 Days - Leaf Flame / Chakra Seed) */}
+      {isTier1 && (
+        <g transform="translate(50, 50)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
           <path
             d="M0,-22 C8,-12 14,-4 14,6 C14,16 6,22 0,22 C-6,22 -14,16 -14,6 C-14,-4 -8,-12 0,-22 Z"
             fill={accent}
             opacity="0.9"
           />
-          <circle cx="0" cy="8" r="4.5" fill="#ffffff" />
+          <circle cx="0" cy="6" r="4.5" fill="#ffffff" />
         </g>
       )}
 
-      {/* Tier 2: Discipline (7 Days - Electric Blue Lightning Bolt) */}
-      {badge.id === 'discipline' && (
-        <g transform="translate(50, 48)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
+      {/* Tier 2: Haki Awakening (7 Days - Electric Lightning Bolt) */}
+      {isTier2 && (
+        <g transform="translate(50, 50)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
           <circle cx="0" cy="0" r="18" fill="none" stroke={accent} strokeWidth="2.5" />
           <path
             d="M-2,-20 L-8,0 L2,0 L-2,20 L10,-2 L0,-2 Z"
@@ -86,18 +95,18 @@ export function AnimeBadgeEmblem({
         </g>
       )}
 
-      {/* Tier 3: Habit Locked (14 Days - Vivid Purple Dual Blades / Diamond) */}
-      {badge.id === 'habit-locked' && (
-        <g transform="translate(50, 48)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
+      {/* Tier 3: Shonen Resolve (14 Days - Vivid Purple Dual Blades / Diamond) */}
+      {isTier3 && (
+        <g transform="translate(50, 50)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
           <polygon points="0,-22 18,0 0,22 -18,0" fill="none" stroke={accent} strokeWidth="2.5" />
           <polygon points="0,-12 10,0 0,12 -10,0" fill={accent} />
           <circle cx="0" cy="0" r="3" fill="#ffffff" />
         </g>
       )}
 
-      {/* Tier 4: Unstoppable (30 Days - Amber Gold Starburst Sun) */}
-      {badge.id === 'unstoppable' && (
-        <g transform="translate(50, 48)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
+      {/* Tier 4: Bankai Mode (30 Days - Amber Gold Starburst Sun) */}
+      {isTier4 && (
+        <g transform="translate(50, 50)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
           <path
             d="M0,-22 L5,-7 L20,-7 L8,3 L13,18 L0,9 L-13,18 L-8,3 L-20,-7 L-5,-7 Z"
             fill={accent}
@@ -107,9 +116,9 @@ export function AnimeBadgeEmblem({
         </g>
       )}
 
-      {/* Tier 5: Master of Momentum (60 Days - Ruby Red Tri-Force Aura) */}
-      {badge.id === 'master-of-momentum' && (
-        <g transform="translate(50, 48)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
+      {/* Tier 5: Super Saiyan Streak (60 Days - Crimson Aura Tri-Force) */}
+      {isTier5 && (
+        <g transform="translate(50, 50)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
           <polygon points="0,-24 20,12 -20,12" fill="none" stroke={accent} strokeWidth="3" />
           <polygon points="0,24 20,-12 -20,-12" fill="none" stroke={accent} strokeWidth="1.5" opacity="0.6" />
           <circle cx="0" cy="0" r="7" fill={accent} />
@@ -117,9 +126,9 @@ export function AnimeBadgeEmblem({
         </g>
       )}
 
-      {/* Tier 6: Legend of Consistency (90 Days - Neon Cyan Cybernetic Core) */}
-      {badge.id === 'legend-of-consistency' && (
-        <g transform="translate(50, 48)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
+      {/* Tier 6: Hokage Rank (100 Days - Neon Cyan Cybernetic Core) */}
+      {isTier6 && (
+        <g transform="translate(50, 50)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
           <circle cx="0" cy="0" r="20" fill="none" stroke={accent} strokeWidth="2" strokeDasharray="6 3" />
           <circle cx="0" cy="0" r="12" fill={accent} opacity="0.4" />
           <polygon points="0,-16 14,0 0,16 -14,0" fill={accent} />
@@ -127,21 +136,9 @@ export function AnimeBadgeEmblem({
         </g>
       )}
 
-      {/* Tier 7: Ascendant (180 Days - Prismatic Iridescent Wings) */}
-      {badge.id === 'ascendant' && (
-        <g transform="translate(50, 48)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
-          <path
-            d="M-22,10 C-18,-10 0,-22 0,-22 C0,-22 18,-10 22,10 C12,16 -12,16 -22,10 Z"
-            fill={accent}
-          />
-          <circle cx="0" cy="-2" r="5" fill="#ffffff" />
-          <path d="M-10,14 L0,22 L10,14" stroke={accent} strokeWidth="2.5" fill="none" />
-        </g>
-      )}
-
-      {/* Tier 8: Eternal Vanguard (365 Days - Celestial White-Gold Crown) */}
-      {badge.id === 'eternal-vanguard' && (
-        <g transform="translate(50, 48)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
+      {/* Tier 7: Pirate King (150 Days - Celestial Pirate Crown) */}
+      {isTier7 && (
+        <g transform="translate(50, 50)" filter={isUnlocked ? `url(#${filterId})` : undefined}>
           <path
             d="M-22,14 L-18,-10 L-8,0 L0,-24 L8,0 L18,-10 L22,14 Z"
             fill={accent}
@@ -152,20 +149,6 @@ export function AnimeBadgeEmblem({
           <ellipse cx="0" cy="7" rx="8" ry="3.5" fill="#0b0b10" />
         </g>
       )}
-
-      {/* Days Label at the base of the emblem */}
-      <text
-        x="50"
-        y="83"
-        textAnchor="middle"
-        fontSize="10"
-        fontWeight="800"
-        fontFamily="sans-serif"
-        fill={isUnlocked ? '#ffffff' : '#6b7280'}
-        letterSpacing="0.05em"
-      >
-        {badge.days}D
-      </text>
     </svg>
   );
 }

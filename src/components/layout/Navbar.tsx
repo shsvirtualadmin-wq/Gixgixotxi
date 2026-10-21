@@ -20,7 +20,7 @@ const NAV_LINKS = [
 export function Navbar() {
   const [isMounted, setIsMounted] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
-  const { theme, setTheme } = useTheme();
+  const { theme, resolvedTheme, setTheme } = useTheme();
   const location = useLocation();
   const closeTimerRef = useRef<NodeJS.Timeout | null>(null);
 
