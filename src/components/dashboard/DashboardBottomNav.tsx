@@ -33,19 +33,19 @@ function DashboardBottomNavComponent() {
     Boolean(profile?.isAmbassador);
   const crewLink = '/dashboard/crew';
 
-  // Unified Student Nav: Home, Commons, Notifications, Streaks, Crew, [Captain], Menu
+  // Unified Student Nav: Commons, Home, Notifications, Streaks, Squad, [Captain], Menu
   const navItems: PillNavItem[] = useMemo(
     () => [
+      {
+        to: '/dashboard/commons',
+        label: 'Commons',
+        icon: <Compass size={18} />,
+      },
       {
         to: '/dashboard',
         label: 'Home',
         icon: <LayoutDashboard size={18} />,
         end: true,
-      },
-      {
-        to: '/dashboard/commons',
-        label: 'Commons',
-        icon: <Compass size={18} />,
       },
       {
         to: '/dashboard/notifications',
