@@ -96,20 +96,21 @@ export function GrandLinePage() {
   }, [activeLeaderboardTestId]);
 
   const handleStartTestClick = async (test: AmbassadorTestDoc) => {
+    setGuestError(null);
     if (user) {
       // Logged in student: check if already attempted
       const userEmail = user.email || '';
       try {
         const already = await hasUserAttemptedTest(test.id, userEmail);
         if (already) {
-          alert('You have already taken this test. In Grand Line drills, only 1 verified attempt per student is permitted.');
+          setGuestError('You have already taken this test. In Grand Line drills, only 1 verified attempt per student is permitted.');
           return;
         }
         // Save candidate details in sessionStorage for the runner
         sessionStorage.setItem(`grandline_taker_${test.id}`, JSON.stringify({
           name: profile?.displayName || user.displayName || 'Student',
           email: userEmail,
-          entryTest: profile?.targetUniversity || 'General Prep',
+          entryTest: 'General Prep',
         }));
         navigate(`/grand-line/test/${test.id}`);
       } catch (err) {
@@ -119,7 +120,6 @@ export function GrandLinePage() {
     } else {
       // Guest visitor: show modal to collect Gmail, name, entry test
       setSelectedTestForStart(test);
-      setGuestError(null);
     }
   };
 
@@ -244,6 +244,22 @@ export function GrandLinePage() {
 
         {/* ── Test List (Dedicated Captain Tests Section) ── */}
         <div className="max-w-4xl mx-auto space-y-4">
+          {guestError && !selectedTestForStart && (
+            <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/40 text-red-300 text-xs flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={15} className="shrink-0 text-red-400" />
+                <span>{guestError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setGuestError(null)}
+                className="text-red-200 hover:text-white underline font-semibold shrink-0 cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
+
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold font-heading text-[var(--text)]">
               Captain Tests ({filteredTests.length})

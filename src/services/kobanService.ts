@@ -106,16 +106,17 @@ export async function purchaseCosmeticItem(
         effectivePrice = 0;
       }
 
-      // Read current balance from users doc (preferred) or wallets doc
+      // Read current balance from wallets doc and users doc (use highest synced balance)
       const userData = userSnap.exists() ? userSnap.data() : null;
-      let currentBalance = 0;
-      if (userData && typeof userData.kobans === 'number') {
-        currentBalance = userData.kobans;
-      } else if (userData && typeof userData.kobanBalance === 'number') {
-        currentBalance = userData.kobanBalance;
-      } else if (walletData && typeof walletData.balance === 'number') {
-        currentBalance = walletData.balance;
-      }
+      const userKobans =
+        userData && typeof userData.kobans === 'number'
+          ? userData.kobans
+          : userData && typeof userData.kobanBalance === 'number'
+          ? userData.kobanBalance
+          : 0;
+      const walletBalance =
+        walletData && typeof walletData.balance === 'number' ? walletData.balance : 0;
+      const currentBalance = Math.max(userKobans, walletBalance);
 
       if (currentBalance < effectivePrice) {
         throw new Error(
@@ -294,10 +295,14 @@ export async function approveKobanRequest(
   if (amount <= 0) throw new Error('Approved amount must be greater than zero');
 
   const walletRef = doc(db, 'wallets', targetUserId);
+  const userRef = doc(db, 'users', targetUserId);
   const reqRef = doc(db, 'kobanRequests', requestId);
 
   await runTransaction(db, async (tx) => {
-    const walletSnap = await tx.get(walletRef);
+    const [walletSnap, userSnap] = await Promise.all([
+      tx.get(walletRef),
+      tx.get(userRef),
+    ]);
     let curBalance = 0;
     let curOwned: string[] = [];
     let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null, banner: null };
@@ -307,6 +312,9 @@ export async function approveKobanRequest(
       curBalance = typeof wData.balance === 'number' ? wData.balance : 0;
       curOwned = Array.isArray(wData.owned) ? wData.owned : [];
       curEquipped = wData.equipped || curEquipped;
+    } else if (userSnap.exists()) {
+      const uData = userSnap.data();
+      curBalance = typeof uData.kobans === 'number' ? uData.kobans : 0;
     }
 
     const newBalance = curBalance + amount;
@@ -319,13 +327,23 @@ export async function approveKobanRequest(
       approvedBy: superadminEmail,
     });
 
-    // 2. Credit wallet
+    // 2. Credit wallet & sync users/{uid}.kobans
     tx.set(
       walletRef,
       {
         balance: newBalance,
         owned: curOwned,
         equipped: curEquipped,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    tx.set(
+      userRef,
+      {
+        kobans: newBalance,
+        kobanBalance: newBalance,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
@@ -422,9 +440,13 @@ export async function adminAdjustKobans(
   if (delta === 0) throw new Error('Adjustment amount cannot be zero');
 
   const walletRef = doc(db, 'wallets', targetUserId);
+  const userRef = doc(db, 'users', targetUserId);
 
   const newBalance = await runTransaction(db, async (tx) => {
-    const snap = await tx.get(walletRef);
+    const [snap, userSnap] = await Promise.all([
+      tx.get(walletRef),
+      tx.get(userRef),
+    ]);
     let curBalance = 0;
     let curOwned: string[] = [];
     let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null };
@@ -434,6 +456,9 @@ export async function adminAdjustKobans(
       curBalance = typeof wData.balance === 'number' ? wData.balance : 0;
       curOwned = Array.isArray(wData.owned) ? wData.owned : [];
       curEquipped = wData.equipped || curEquipped;
+    } else if (userSnap.exists()) {
+      const uData = userSnap.data();
+      curBalance = typeof uData.kobans === 'number' ? uData.kobans : 0;
     }
 
     const calculated = curBalance + delta;
@@ -445,6 +470,16 @@ export async function adminAdjustKobans(
         balance: finalBalance,
         owned: curOwned,
         equipped: curEquipped,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    tx.set(
+      userRef,
+      {
+        kobans: finalBalance,
+        kobanBalance: finalBalance,
         updatedAt: serverTimestamp(),
       },
       { merge: true }
@@ -577,6 +612,7 @@ export async function grantCaptainMonthlyAllotment(
   const docId = `captain_allotment_${captainUid}_${monthKey}`;
   const ledgerDocRef = doc(db, 'wallets', captainUid, 'ledger', docId);
   const walletRef = doc(db, 'wallets', captainUid);
+  const userRef = doc(db, 'users', captainUid);
 
   const newBalance = await runTransaction(db, async (tx) => {
     // 1. Check if already granted
@@ -585,8 +621,11 @@ export async function grantCaptainMonthlyAllotment(
       throw new Error(`Captain allotment for ${monthLabel} has already been granted to this captain.`);
     }
 
-    // 2. Fetch current wallet
-    const walletSnap = await tx.get(walletRef);
+    // 2. Fetch current wallet & user
+    const [walletSnap, userSnap] = await Promise.all([
+      tx.get(walletRef),
+      tx.get(userRef),
+    ]);
     let curBalance = 0;
     let curOwned: string[] = [];
     let curEquipped = { effect: null, frame: null, nameplate: null, avatar: null };
@@ -596,17 +635,30 @@ export async function grantCaptainMonthlyAllotment(
       curBalance = typeof wData.balance === 'number' ? wData.balance : 0;
       curOwned = Array.isArray(wData.owned) ? wData.owned : [];
       curEquipped = wData.equipped || curEquipped;
+    } else if (userSnap.exists()) {
+      const uData = userSnap.data();
+      curBalance = typeof uData.kobans === 'number' ? uData.kobans : 0;
     }
 
     const finalBalance = curBalance + 5000;
 
-    // 3. Update wallet
+    // 3. Update wallet & sync users/{uid}.kobans
     tx.set(
       walletRef,
       {
         balance: finalBalance,
         owned: curOwned,
         equipped: curEquipped,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    tx.set(
+      userRef,
+      {
+        kobans: finalBalance,
+        kobanBalance: finalBalance,
         updatedAt: serverTimestamp(),
       },
       { merge: true }

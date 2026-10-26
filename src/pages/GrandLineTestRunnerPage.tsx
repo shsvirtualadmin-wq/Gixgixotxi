@@ -131,16 +131,8 @@ export function GrandLineTestRunnerPage() {
 
   const handleSubmit = async () => {
     if (!candidate) {
-      alert('Candidate info is missing. Please restart from the Grand Line page.');
       navigate('/grand-line');
       return;
-    }
-
-    const answeredCount = Object.keys(answers).length;
-    if (answeredCount < totalQ) {
-      if (!confirm(`You have answered ${answeredCount} of ${totalQ} questions. Submit anyway?`)) {
-        return;
-      }
     }
 
     setSubmitting(true);
@@ -167,7 +159,7 @@ export function GrandLineTestRunnerPage() {
 
       setResult(attemptRecord);
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'Error submitting test attempt.');
+      setError(err instanceof Error ? err.message : 'Error submitting test attempt.');
     } finally {
       setSubmitting(false);
     }

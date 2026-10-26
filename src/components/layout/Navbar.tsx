@@ -7,13 +7,13 @@ import { useTheme } from '@/hooks/useTheme';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 
 const NAV_LINKS = [
-  { to: '/features', label: 'Features' },
+  { to: '/grand-line', label: GRAND_LINE_NAME, highlight: true },
   { to: '/commons/about', label: 'Boardly Commons', shortLabel: 'Commons' },
+  { to: '/features', label: 'Features' },
   { to: '/crew', label: 'Crew' },
   { to: '/store', label: 'Store' },
   { to: '/nakama-captains', label: NAKAMA_CAPTAINS_NAME },
   { to: '/pricing', label: 'Pricing' },
-  { to: '/grand-line', label: GRAND_LINE_NAME },
   { to: '/contact', label: 'Contact' },
 ];
 
@@ -79,7 +79,7 @@ export function Navbar() {
       >
         <nav
           aria-label="Main Navigation"
-          className="w-full max-w-[1200px] h-[72px] md:h-[80px] rounded-[20px] px-5 sm:px-6 flex items-center justify-between pointer-events-auto border transition-colors select-none text-[var(--text)]"
+          className="w-full max-w-[1200px] h-[72px] md:h-[80px] rounded-[20px] px-5 sm:px-6 flex items-center justify-between gap-4 pointer-events-auto border transition-colors select-none text-[var(--text)]"
           style={{
             backgroundColor: 'var(--surface)',
             borderColor: 'var(--border)',
@@ -100,20 +100,99 @@ export function Navbar() {
             />
           </Link>
 
-          {/* Right side: Clean 24px Hamburger / Close Icon with 44px tap area */}
-          <button
-            type="button"
-            onClick={() => (isOpen ? handleClose() : handleOpen())}
-            aria-label={isOpen ? 'Close menu' : 'Open menu'}
-            aria-expanded={isOpen}
-            className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text)] hover:text-[var(--accent)] transition-colors cursor-pointer bg-transparent border-0 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-lg p-0"
-          >
-            {isOpen ? (
-              <X size={24} className="stroke-[2.25]" />
-            ) : (
-              <Menu size={24} className="stroke-[2.25]" />
-            )}
-          </button>
+          {/* Center Desktop Navigation with Grand Line Prominent */}
+          <div className="hidden lg:flex items-center gap-1.5">
+            <Link
+              to="/grand-line"
+              onClick={handleClose}
+              className={`px-3.5 py-1.5 rounded-full text-xs font-heading font-bold transition-all border ${
+                isLinkActive('/grand-line')
+                  ? 'bg-[#D71921] text-white border-[#D71921]'
+                  : 'bg-[#D71921]/10 text-[#D71921] border-[#D71921]/30 hover:bg-[#D71921] hover:text-white'
+              }`}
+            >
+              {GRAND_LINE_NAME}
+            </Link>
+            <Link
+              to="/commons/about"
+              onClick={handleClose}
+              className={`px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors ${
+                isLinkActive('/commons/about')
+                  ? 'text-[#D71921] font-bold'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+              }`}
+            >
+              Commons
+            </Link>
+            <Link
+              to="/features"
+              onClick={handleClose}
+              className={`px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors ${
+                isLinkActive('/features')
+                  ? 'text-[#D71921] font-bold'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+              }`}
+            >
+              Features
+            </Link>
+            <Link
+              to="/store"
+              onClick={handleClose}
+              className={`px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors ${
+                isLinkActive('/store')
+                  ? 'text-[#D71921] font-bold'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+              }`}
+            >
+              Store
+            </Link>
+            <Link
+              to="/nakama-captains"
+              onClick={handleClose}
+              className={`px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors ${
+                isLinkActive('/nakama-captains')
+                  ? 'text-[#D71921] font-bold'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+              }`}
+            >
+              {NAKAMA_CAPTAINS_NAME}
+            </Link>
+            <Link
+              to="/pricing"
+              onClick={handleClose}
+              className={`px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors ${
+                isLinkActive('/pricing')
+                  ? 'text-[#D71921] font-bold'
+                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+              }`}
+            >
+              Pricing
+            </Link>
+          </div>
+
+          {/* Right side: Quick Grand Line pill on mobile/tablet + Clean 24px Hamburger / Close Icon with 44px tap area */}
+          <div className="flex items-center gap-2">
+            <Link
+              to="/grand-line"
+              onClick={handleClose}
+              className="lg:hidden px-3 py-1.5 rounded-full text-xs font-heading font-bold bg-[#D71921]/10 text-[#D71921] border border-[#D71921]/30 hover:bg-[#D71921] hover:text-white transition-colors"
+            >
+              {GRAND_LINE_NAME}
+            </Link>
+            <button
+              type="button"
+              onClick={() => (isOpen ? handleClose() : handleOpen())}
+              aria-label={isOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={isOpen}
+              className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text)] hover:text-[var(--accent)] transition-colors cursor-pointer bg-transparent border-0 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-lg p-0"
+            >
+              {isOpen ? (
+                <X size={24} className="stroke-[2.25]" />
+              ) : (
+                <Menu size={24} className="stroke-[2.25]" />
+              )}
+            </button>
+          </div>
         </nav>
       </header>
 

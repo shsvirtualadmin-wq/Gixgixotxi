@@ -99,7 +99,28 @@ export function DashboardSidebar() {
           <span>Commons</span>
         </NavLink>
 
-        {/* 3. Arena */}
+        {/* 3. Grand Line */}
+        <NavLink
+          to="/grand-line"
+          className={({ isActive }) =>
+            `flex items-center justify-between px-3.5 py-2.5 rounded-xl text-sm font-semibold transition-colors ${
+              isActive
+                ? 'bg-[var(--text)] text-[var(--bg)] font-bold'
+                : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)]'
+            }`
+          }
+          style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+        >
+          <div className="flex items-center gap-3">
+            <BookOpen size={18} />
+            <span>Grand Line</span>
+          </div>
+          <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-[var(--red)]/15 text-[var(--red)] font-bold">
+            Live
+          </span>
+        </NavLink>
+
+        {/* 4. Arena */}
         <NavLink
           to="/dashboard/arena"
           className={({ isActive }) =>

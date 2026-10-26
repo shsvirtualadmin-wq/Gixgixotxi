@@ -1,331 +1,742 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import {
+  doc,
+  setDoc,
+  runTransaction,
+  serverTimestamp,
+} from 'firebase/firestore';
+import {
+  EmailAuthProvider,
+  linkWithCredential,
+  reauthenticateWithCredential,
+  updatePassword,
+} from 'firebase/auth';
+import { db, auth } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
-import { updateProfile } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { PageMeta } from '@/components/ui/PageMeta';
+import { Badge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import {
-  ArrowLeft,
-  CreditCard,
-  User,
+  Sparkles,
   LogOut,
-  CheckCircle2,
+  Check,
   AlertCircle,
+  ArrowRight,
+  User as UserIcon,
+  Mail,
+  Shield,
+  Lock,
+  Send,
   Loader2,
-  Edit3,
-  X,
+  CheckCircle2,
+  AtSign,
 } from 'lucide-react';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { validateNickname, validateUsernameFormat, isForbiddenAdminRole } from '@/utils/usernameValidation';
+import { submitNameRequest } from '@/services/nameRequestService';
+
+const SELECTABLE_USER_ROLES = [
+  'Student',
+  'FSc Student',
+  'Matric Student',
+  'Post-FSc / Entry Test',
+  'MDCAT Aspirant',
+  'ECAT / NET Aspirant',
+  'ICS / CS Student',
+  'Educator',
+] as const;
 
 export function SettingsPage() {
-  const navigate = useNavigate();
-  const { user, signOutUser } = useAuth();
-  const { profile, updateProfileData } = useUserProfile();
+  const { user, signOutUser, updateLocalProfile, isAdmin } = useAuth();
+  const { profile, loading } = useUserProfile();
   const effectivePlan = useEffectivePlan();
+  const navigate = useNavigate();
 
-  // ── Display Name Edit State ──────────────────────────────────────────────
-  const [isEditingName, setIsEditingName] = useState(false);
-  const [nameInput, setNameInput] = useState('');
+  // Display Name state
+  const [displayName, setDisplayName] = useState('');
   const [savingName, setSavingName] = useState(false);
+  const [nameSaved, setNameSaved] = useState(false);
   const [nameError, setNameError] = useState<string | null>(null);
-  const [nameSuccess, setNameSuccess] = useState<string | null>(null);
+  const [sendingNameRequest, setSendingNameRequest] = useState(false);
+  const [nameRequestSentMsg, setNameRequestSentMsg] = useState<string | null>(null);
 
-  // ── Sign Out Confirmation State ──────────────────────────────────────────
-  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
+  // Username & Role state
+  const [usernameInput, setUsernameInput] = useState('');
+  const [selectedRole, setSelectedRole] = useState('Student');
+  const [savingIdentity, setSavingIdentity] = useState(false);
+  const [identitySaved, setIdentitySaved] = useState(false);
+  const [identityError, setIdentityError] = useState<string | null>(null);
 
-  // Current Plan determination
-  // The superadmin also sees "Unlimited", per requirements
-  const isUnlimited = Boolean(effectivePlan.isUnlimited || effectivePlan.isSuperAdmin);
-  const planName = isUnlimited ? 'Unlimited' : 'Free';
+  // Password state (Set Password for Google-only users / Change Password for email users)
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordSavedMsg, setPasswordSavedMsg] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
 
-  // Open Name Edit Modal
-  const handleOpenNameEdit = () => {
-    setNameInput(profile?.displayName || user?.displayName || '');
-    setNameError(null);
-    setNameSuccess(null);
-    setIsEditingName(true);
-  };
+  const isPro = effectivePlan.isUnlimited;
 
-  // Save Display Name
+  // Detect whether current Firebase Auth user already has a 'password' provider linked
+  const hasPasswordProvider = Boolean(
+    auth.currentUser?.providerData?.some((p) => p.providerId === 'password')
+  );
+
+  // Populate fields from profile
+  useEffect(() => {
+    const raw =
+      profile?.displayName ||
+      profile?.nickname ||
+      profile?.name ||
+      user?.displayName ||
+      (user?.email ? user.email.split('@')[0] : 'Student');
+    const clean = sanitizeStudentDisplayName(raw, profile?.shortId || user?.uid);
+    setDisplayName(clean);
+    if (profile?.username) {
+      setUsernameInput(profile.username);
+    }
+    if (profile?.customRole || profile?.role) {
+      setSelectedRole(profile.customRole || profile.role || 'Student');
+    }
+  }, [
+    profile?.displayName,
+    profile?.nickname,
+    profile?.name,
+    profile?.shortId,
+    profile?.username,
+    profile?.customRole,
+    profile?.role,
+    user?.displayName,
+    user?.email,
+    user?.uid,
+  ]);
+
   const handleSaveName = async (e: React.FormEvent) => {
     e.preventDefault();
-    const trimmed = nameInput.trim();
+    if (!user) return;
+
+    const trimmed = displayName.trim();
     if (!trimmed) {
       setNameError('Display name cannot be empty.');
       return;
     }
-    if (trimmed.length > 40) {
-      setNameError('Display name must be 40 characters or fewer.');
+
+    setNameError(null);
+    setNameRequestSentMsg(null);
+
+    // Enforce reserved names (SHS Virtual Academy, Boardly, Scholario) & format rules
+    const validation = validateNickname(trimmed, user.uid, isAdmin);
+    if (!validation.valid) {
+      setNameError(validation.error || 'This name is reserved. Send a request to the admin.');
       return;
     }
 
+    const cleanName = sanitizeStudentDisplayName(trimmed, profile?.shortId || user.uid);
+
     setSavingName(true);
+    setNameSaved(false);
+
+    try {
+      const userRef = doc(db, 'users', user.uid);
+      const pubRef = doc(db, 'publicProfiles', user.uid);
+
+      await Promise.all([
+        setDoc(
+          userRef,
+          {
+            displayName: cleanName,
+            nickname: cleanName,
+            name: cleanName,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ),
+        setDoc(
+          pubRef,
+          {
+            uid: user.uid,
+            displayName: cleanName,
+            nickname: cleanName,
+            updatedAt: serverTimestamp(),
+          },
+          { merge: true }
+        ).catch(() => {}),
+      ]);
+
+      updateLocalProfile({
+        displayName: cleanName,
+        nickname: cleanName,
+        name: cleanName,
+      });
+
+      setDisplayName(cleanName);
+      setSavingName(false);
+      setNameSaved(true);
+      setTimeout(() => setNameSaved(false), 3000);
+    } catch (err: unknown) {
+      setSavingName(false);
+      setNameError((err as { message?: string })?.message || 'Failed to update display name.');
+    }
+  };
+
+  const handleSendReservedNameRequest = async () => {
+    if (!user || !displayName.trim()) return;
+    setSendingNameRequest(true);
     setNameError(null);
     try {
-      if (auth.currentUser) {
-        await updateProfile(auth.currentUser, { displayName: trimmed });
-      }
-      await updateProfileData({ displayName: trimmed });
-      setNameSuccess('Display name updated successfully.');
-      setTimeout(() => {
-        setIsEditingName(false);
-        setNameSuccess(null);
-      }, 1200);
+      await submitNameRequest({
+        uid: user.uid,
+        userEmail: user.email || '',
+        requestedName: displayName.trim(),
+        currentDisplayName: profile?.displayName || user.displayName || 'Student',
+      });
+      setNameRequestSentMsg(
+        `Your request for "${displayName.trim()}" has been sent to the Superadmin for approval.`
+      );
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : 'Failed to update display name.';
-      setNameError(msg);
+      setNameError((err as { message?: string })?.message || 'Failed to send name request.');
     } finally {
-      setSavingName(false);
+      setSendingNameRequest(false);
     }
   };
 
-  // Sign out confirmation handler
-  const handleConfirmSignOut = async () => {
-    setSigningOut(true);
+  const handleSaveIdentity = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    setIdentityError(null);
+    setIdentitySaved(false);
+
+    const cleanUsername = usernameInput.trim().toLowerCase().replace(/^@/, '');
+    if (cleanUsername) {
+      const uVal = validateUsernameFormat(cleanUsername, user.uid, isAdmin);
+      if (!uVal.valid) {
+        setIdentityError(uVal.error || 'Invalid username format.');
+        return;
+      }
+    }
+    if (!isAdmin && isForbiddenAdminRole(selectedRole)) {
+      setIdentityError('Cannot assign administrator role.');
+      return;
+    }
+
+    setSavingIdentity(true);
     try {
-      await signOutUser();
-      navigate('/login', { replace: true });
-    } catch (err) {
-      console.error('[SettingsPage] Sign out failed:', err);
-      setSigningOut(false);
-      setShowSignOutConfirm(false);
+      const oldUsername = (profile?.username || '').trim().toLowerCase();
+      if (cleanUsername && cleanUsername !== oldUsername) {
+        await runTransaction(db, async (tx) => {
+          const newUsernameRef = doc(db, 'usernames', cleanUsername);
+          const existingSnap = await tx.get(newUsernameRef);
+          if (existingSnap.exists() && existingSnap.data()?.uid !== user.uid) {
+            throw new Error(`@${cleanUsername} is already taken by another student.`);
+          }
+          if (oldUsername && oldUsername !== cleanUsername) {
+            const oldRef = doc(db, 'usernames', oldUsername);
+            const oldSnap = await tx.get(oldRef);
+            if (oldSnap.exists() && oldSnap.data()?.uid === user.uid) {
+              tx.delete(oldRef);
+            }
+          }
+          tx.set(newUsernameRef, {
+            uid: user.uid,
+            username: cleanUsername,
+            updatedAt: serverTimestamp(),
+          });
+          tx.set(
+            doc(db, 'users', user.uid),
+            {
+              username: cleanUsername,
+              customRole: selectedRole,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+          tx.set(
+            doc(db, 'publicProfiles', user.uid),
+            {
+              uid: user.uid,
+              username: cleanUsername,
+              customRole: selectedRole,
+              updatedAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        });
+      } else {
+        await Promise.all([
+          setDoc(
+            doc(db, 'users', user.uid),
+            { customRole: selectedRole, updatedAt: serverTimestamp() },
+            { merge: true }
+          ),
+          setDoc(
+            doc(db, 'publicProfiles', user.uid),
+            { uid: user.uid, customRole: selectedRole, updatedAt: serverTimestamp() },
+            { merge: true }
+          ).catch(() => {}),
+        ]);
+      }
+
+      updateLocalProfile({
+        ...(cleanUsername ? { username: cleanUsername } : {}),
+        customRole: selectedRole,
+      });
+      setIdentitySaved(true);
+      setTimeout(() => setIdentitySaved(false), 3000);
+    } catch (err: unknown) {
+      setIdentityError((err as { message?: string })?.message || 'Failed to update username or role.');
+    } finally {
+      setSavingIdentity(false);
     }
   };
 
-  const accountEmail = user?.email || profile?.email || 'No email attached';
-  const currentDisplayName = profile?.displayName || user?.displayName || 'Student';
+  const handleSavePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordError(null);
+    setPasswordSavedMsg(null);
+
+    const currentUser = auth.currentUser;
+    if (!currentUser || !currentUser.email) {
+      setPasswordError('You must be signed in with a valid email account.');
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setPasswordError('Password must be at least 6 characters long.');
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError('Passwords do not match.');
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      if (!hasPasswordProvider) {
+        // Google-only user setting a password for the first time
+        const credential = EmailAuthProvider.credential(currentUser.email, newPassword);
+        await linkWithCredential(currentUser, credential);
+        setPasswordSavedMsg(
+          'Password set! You can now sign in using either Google or your email and password.'
+        );
+      } else {
+        // Existing email/password user changing their password
+        if (!currentPassword) {
+          setPasswordError('Please enter your current password to verify your identity.');
+          setSavingPassword(false);
+          return;
+        }
+        const credential = EmailAuthProvider.credential(currentUser.email, currentPassword);
+        await reauthenticateWithCredential(currentUser, credential);
+        await updatePassword(currentUser, newPassword);
+        setPasswordSavedMsg('Your password has been updated.');
+      }
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code || '';
+      if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
+        setPasswordError('Current password is incorrect.');
+      } else if (code === 'auth/requires-recent-login') {
+        setPasswordError('For security, please sign out and sign back in before changing your password.');
+      } else if (code === 'auth/provider-already-linked') {
+        setPasswordError('A password is already linked to this account.');
+      } else {
+        setPasswordError((err as { message?: string })?.message || 'Could not update password.');
+      }
+    } finally {
+      setSavingPassword(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOutUser();
+    navigate('/login');
+  };
+
+  if (loading && !profile) {
+    return (
+      <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4">
+        <div className="h-8 w-40 rounded-lg bg-[var(--surface-2)] animate-pulse" />
+        <div className="h-36 rounded-2xl bg-[var(--surface-2)] animate-pulse" />
+        <div className="h-36 rounded-2xl bg-[var(--surface-2)] animate-pulse" />
+      </div>
+    );
+  }
 
   return (
-    <div className="w-full max-w-2xl mx-auto px-4 py-4 sm:py-8 space-y-6">
-      {/* ── Top Bar with Back Button to Profile ─────────────────────────── */}
-      <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
-        <button
-          type="button"
-          onClick={() => navigate('/dashboard/profile')}
-          className="inline-flex items-center gap-2 text-xs sm:text-sm font-semibold text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer py-1.5 px-2.5 -ml-2.5 rounded-lg hover:bg-[var(--card)]"
-          title="Back to profile"
-        >
-          <ArrowLeft size={16} />
-          <span>Back to Profile</span>
-        </button>
+    <>
+      <PageMeta
+        title="Settings — Boardly"
+        description="Manage your plan, account email, display name, username, role, password, and session settings on Boardly."
+      />
 
-        <h1
-          className="text-lg sm:text-xl font-bold text-[var(--text)]"
-          style={{ fontFamily: 'var(--font-heading)' }}
-        >
-          Settings
-        </h1>
-        <div className="w-16 sm:w-24" aria-hidden="true" />
-      </div>
-
-      {/* ── Section A: Plan ─────────────────────────────────────────────── */}
-      <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 sm:p-6 space-y-4 shadow-xs">
-        <div className="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-          <CreditCard size={16} className="text-[var(--accent)]" />
-          <span>Plan</span>
-        </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="text-xl sm:text-2xl font-bold text-[var(--text)] font-heading">
-                {planName}
-              </span>
-              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 border border-emerald-500/20 text-emerald-500">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                Active
-              </span>
-            </div>
-            <p className="text-xs text-[var(--muted)]">
-              {isUnlimited
-                ? 'Full access to all university question banks, sprints, and full mocks.'
-                : 'Free tier with daily practice allowances. Upgrade anytime for unlimited access.'}
-            </p>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => navigate('/dashboard/plans')}
-            className="h-10 px-4 rounded-xl text-xs font-semibold bg-[var(--card-2)] hover:bg-[var(--card)] border border-[var(--border)] text-[var(--text)] transition-colors cursor-pointer whitespace-nowrap self-start sm:self-center"
+      <div className="max-w-2xl mx-auto p-4 sm:p-6 pb-28 space-y-6">
+        {/* Page Header */}
+        <div className="pb-3 border-b border-[var(--border)]">
+          <span className="text-[11px] uppercase tracking-wider text-[var(--text-faint)] font-heading font-semibold">
+            ACCOUNT
+          </span>
+          <h1
+            className="text-2xl sm:text-3xl font-extrabold text-[var(--text)] mt-1"
+            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
           >
-            Manage Subscription
-          </button>
-        </div>
-      </div>
-
-      {/* ── Section B: Account ──────────────────────────────────────────── */}
-      <div className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 sm:p-6 space-y-4 shadow-xs">
-        <div className="flex items-center gap-2.5 text-xs font-semibold uppercase tracking-wider text-[var(--muted)]">
-          <User size={16} className="text-[var(--accent)]" />
-          <span>Account</span>
+            Settings
+          </h1>
+          <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-1">
+            Manage your plan, display name, username, role, password, and account session.
+          </p>
         </div>
 
-        <div className="space-y-4 pt-1">
-          {/* Read-only email */}
-          <div className="space-y-1">
-            <label className="text-xs text-[var(--muted)] font-medium block">
-              Account Email
-            </label>
-            <div className="text-sm font-normal text-[var(--text)] break-all select-all py-1">
-              {accountEmail}
-            </div>
-            <p className="text-[11px] text-[var(--muted)] leading-relaxed">
-              Your email is private and never shown on your profile or in Commons.
-            </p>
-          </div>
-
-          <div className="pt-2 border-t border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <span className="text-xs text-[var(--muted)] font-medium block">Display Name</span>
-              <span className="text-sm font-semibold text-[var(--text)] font-heading">
-                {currentDisplayName}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleOpenNameEdit}
-              className="h-9 px-3.5 rounded-xl text-xs font-semibold bg-[var(--card-2)] hover:bg-[var(--card)] border border-[var(--border)] text-[var(--text)] transition-colors flex items-center gap-1.5 cursor-pointer self-start sm:self-center"
-            >
-              <Edit3 size={13} />
-              <span>Change Display Name</span>
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* ── Section C: Sign Out ─────────────────────────────────────────── */}
-      <div className="rounded-2xl bg-[var(--card)] border border-red-500/20 overflow-hidden shadow-xs">
-        <button
-          type="button"
-          onClick={() => setShowSignOutConfirm(true)}
-          className="w-full px-5 py-4 flex items-center justify-between text-left text-red-500 hover:bg-red-500/10 active:bg-red-500/15 transition-colors cursor-pointer"
-        >
-          <div className="flex items-center gap-3">
-            <LogOut size={16} className="text-red-500" />
-            <span className="text-sm font-semibold font-heading">Sign Out</span>
-          </div>
-          <span className="text-xs text-red-400 font-medium">Leave this session</span>
-        </button>
-      </div>
-
-      {/* ── Change Display Name Modal ───────────────────────────────────── */}
-      {isEditingName && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 sm:p-6 space-y-4 shadow-2xl animate-in zoom-in-95"
-          >
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
-              <h3 className="text-base font-bold text-[var(--text)] font-heading">
-                Change Display Name
-              </h3>
-              <button
-                type="button"
-                onClick={() => setIsEditingName(false)}
-                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)] cursor-pointer"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveName} className="space-y-4">
-              <div>
-                <label className="text-xs font-medium text-[var(--muted)] block mb-1.5">
-                  New Display Name
-                </label>
-                <input
-                  type="text"
-                  maxLength={40}
-                  value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
-                  placeholder="e.g. Ali Khan"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-[var(--accent)]"
-                  autoFocus
-                />
-              </div>
-
-              {nameError && (
-                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-400">
-                  <AlertCircle size={14} className="shrink-0" />
-                  <span>{nameError}</span>
-                </div>
-              )}
-
-              {nameSuccess && (
-                <div className="flex items-center gap-2 p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
-                  <CheckCircle2 size={14} className="shrink-0" />
-                  <span>{nameSuccess}</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-end gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setIsEditingName(false)}
-                  disabled={savingName}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)] transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingName}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold bg-[var(--red)] hover:bg-[var(--red-dark)] text-white transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
-                >
-                  {savingName && <Loader2 size={13} className="animate-spin" />}
-                  <span>Save Name</span>
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ── Sign Out Confirmation Modal ─────────────────────────────────── */}
-      {showSignOutConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in">
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 sm:p-6 space-y-4 shadow-2xl animate-in zoom-in-95 text-center"
-          >
-            <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center mx-auto">
-              <LogOut size={22} />
-            </div>
-
+        {/* ── 1. Current Plan & Upgrade Section ──────────────────────────── */}
+        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="space-y-1">
-              <h3 className="text-base font-bold text-[var(--text)] font-heading">
-                Sign out of Boardly?
-              </h3>
-              <p className="text-xs text-[var(--muted)]">
-                You will need to sign in again to access your study history and sprints.
+              <div className="flex items-center gap-2">
+                <Sparkles size={16} className="text-[var(--red)]" />
+                <h2 className="text-base font-bold text-[var(--text)] font-heading">
+                  Current Plan
+                </h2>
+                <Badge color={isPro ? 'green' : 'default'}>
+                  {effectivePlan.isSuperAdmin
+                    ? 'Superadmin · Unlimited'
+                    : isPro
+                    ? effectivePlan.source === 'crew'
+                      ? `Unlimited (${effectivePlan.crewName || 'Crew'})`
+                      : 'Pro Unlimited'
+                    : 'Free Plan'}
+                </Badge>
+              </div>
+              <p className="text-xs text-[var(--muted)] leading-relaxed">
+                {effectivePlan.isSuperAdmin
+                  ? 'Full superadmin authority and unlimited access across Boardly.'
+                  : isPro
+                  ? 'You have unlimited practice tests, past papers, and AI tutor derivations.'
+                  : 'You are on the Free plan. Upgrade to Pro (PKR 199/month) for unlimited tests and AI derivations.'}
               </p>
             </div>
 
-            <div className="flex items-center justify-center gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowSignOutConfirm(false)}
-                disabled={signingOut}
-                className="w-full py-2.5 rounded-xl text-xs font-semibold border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] transition-colors cursor-pointer"
+            {!isPro && !effectivePlan.isSuperAdmin ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate('/dashboard/plans')}
+                className="shrink-0"
               >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmSignOut}
-                disabled={signingOut}
-                className="w-full py-2.5 rounded-xl text-xs font-semibold bg-[var(--red)] hover:bg-[var(--red-dark)] text-white transition-colors cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-60"
+                <span>Upgrade to Pro</span>
+                <ArrowRight size={14} />
+              </Button>
+            ) : (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => navigate('/dashboard/plans')}
+                className="shrink-0"
               >
-                {signingOut && <Loader2 size={13} className="animate-spin" />}
-                <span>Sign Out</span>
-              </button>
-            </div>
+                <span>View Plan Details</span>
+              </Button>
+            )}
           </div>
-        </div>
-      )}
-    </div>
+        </section>
+
+        {/* ── 2. Account Email (Read-Only) ───────────────────────────────── */}
+        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-3">
+          <div className="flex items-center gap-2">
+            <Mail size={16} className="text-[var(--muted)]" />
+            <h2 className="text-base font-bold text-[var(--text)] font-heading">
+              Account Email
+            </h2>
+          </div>
+
+          <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+            <span className="text-sm font-mono text-[var(--text)] truncate">
+              {user?.email || 'No email linked'}
+            </span>
+            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-500 shrink-0">
+              <Shield size={12} />
+              <span>Verified</span>
+            </span>
+          </div>
+          <p className="text-[11px] text-[var(--muted)]">
+            Your email is kept strictly private and is never shown on your public profile or in Commons.
+          </p>
+        </section>
+
+        {/* ── 3. Display Name Section (with Reserved Name Admin Request) ─── */}
+        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <UserIcon size={16} className="text-[var(--muted)]" />
+            <h2 className="text-base font-bold text-[var(--text)] font-heading">
+              Display Name
+            </h2>
+          </div>
+
+          <form onSubmit={handleSaveName} className="space-y-3">
+            <div>
+              <input
+                type="text"
+                value={displayName}
+                onChange={(e) => {
+                  setDisplayName(e.target.value);
+                  if (nameError) setNameError(null);
+                }}
+                maxLength={40}
+                placeholder="Enter your display name"
+                className="w-full h-11 px-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
+              />
+              <p className="text-[11px] text-[var(--muted)] mt-1.5">
+                Shown on your profile card, leaderboards, and public Commons posts. Official names (SHS Virtual Academy, Boardly, Scholario) require admin approval.
+              </p>
+            </div>
+
+            {nameError && (
+              <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs flex flex-col gap-2">
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={14} className="shrink-0 text-red-400" />
+                  <span>{nameError}</span>
+                </div>
+                {(nameError.includes('reserved') || nameError.includes('Send a request')) && (
+                  <button
+                    type="button"
+                    disabled={sendingNameRequest}
+                    onClick={handleSendReservedNameRequest}
+                    className="self-start px-3 py-1.5 rounded-lg bg-[var(--red)] hover:opacity-90 text-white font-heading font-semibold text-xs flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {sendingNameRequest ? (
+                      <>
+                        <Loader2 size={13} className="animate-spin" />
+                        <span>Sending Request...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Send size={13} />
+                        <span>Send Request to Admin</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {nameRequestSentMsg && (
+              <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+                <CheckCircle2 size={14} className="shrink-0 text-emerald-400" />
+                <span>{nameRequestSentMsg}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                {nameSaved && (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                    <Check size={14} />
+                    <span>Display name updated</span>
+                  </span>
+                )}
+              </div>
+              <Button type="submit" variant="primary" size="sm" disabled={savingName}>
+                {savingName ? 'Saving...' : 'Save Name'}
+              </Button>
+            </div>
+          </form>
+        </section>
+
+        {/* ── 4. Username (@handle) & Study Role Selection ───────────────── */}
+        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <AtSign size={16} className="text-[var(--muted)]" />
+            <h2 className="text-base font-bold text-[var(--text)] font-heading">
+              Username &amp; Study Role
+            </h2>
+          </div>
+
+          <form onSubmit={handleSaveIdentity} className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-heading font-semibold text-[var(--text)] block">
+                Unique Username (@handle)
+              </label>
+              <input
+                type="text"
+                value={usernameInput}
+                onChange={(e) => {
+                  setUsernameInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''));
+                  if (identityError) setIdentityError(null);
+                }}
+                maxLength={20}
+                placeholder="e.g. hashir_fsc"
+                className="w-full h-11 px-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm font-mono text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
+              />
+              <p className="text-[11px] text-[var(--muted)]">
+                3–20 characters, lowercase letters, numbers, and underscores only.
+              </p>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-heading font-semibold text-[var(--text)] block">
+                Academic Role Badge
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {SELECTABLE_USER_ROLES.map((roleOpt) => {
+                  const active = selectedRole === roleOpt;
+                  return (
+                    <button
+                      key={roleOpt}
+                      type="button"
+                      onClick={() => setSelectedRole(roleOpt)}
+                      className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer border ${
+                        active
+                          ? 'bg-[var(--red)] text-white border-[var(--red)]'
+                          : 'bg-[var(--surface-2)] text-[var(--muted)] border-[var(--border)] hover:text-[var(--text)]'
+                      }`}
+                    >
+                      {roleOpt}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {identityError && (
+              <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
+                <AlertCircle size={14} className="shrink-0 text-red-400" />
+                <span>{identityError}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                {identitySaved && (
+                  <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-400">
+                    <Check size={14} />
+                    <span>Username &amp; role saved</span>
+                  </span>
+                )}
+              </div>
+              <Button type="submit" variant="primary" size="sm" disabled={savingIdentity}>
+                {savingIdentity ? 'Saving...' : 'Save Username & Role'}
+              </Button>
+            </div>
+          </form>
+        </section>
+
+        {/* ── 5. Set Password (for Google-only users) / Change Password ──── */}
+        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 space-y-4">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex items-center gap-2">
+              <Lock size={16} className="text-[var(--muted)]" />
+              <h2 className="text-base font-bold text-[var(--text)] font-heading">
+                {hasPasswordProvider ? 'Change Password' : 'Set Account Password'}
+              </h2>
+            </div>
+            {!hasPasswordProvider && (
+              <Badge color="default">Signed in with Google</Badge>
+            )}
+          </div>
+
+          <p className="text-xs text-[var(--muted)] leading-relaxed">
+            {hasPasswordProvider
+              ? 'Update your account password. Make sure to choose a strong password with at least 6 characters.'
+              : 'You signed in with Google. Set a password below so you can also sign in directly with your email and password anytime.'}
+          </p>
+
+          <form onSubmit={handleSavePassword} className="space-y-3">
+            {hasPasswordProvider && (
+              <div>
+                <label className="text-xs font-heading font-semibold text-[var(--text)] block mb-1">
+                  Current Password
+                </label>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="Enter current password"
+                  className="w-full h-11 px-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
+                />
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-heading font-semibold text-[var(--text)] block mb-1">
+                  New Password
+                </label>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  minLength={6}
+                  placeholder="At least 6 characters"
+                  className="w-full h-11 px-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-heading font-semibold text-[var(--text)] block mb-1">
+                  Confirm New Password
+                </label>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  minLength={6}
+                  placeholder="Re-enter new password"
+                  className="w-full h-11 px-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:border-[var(--red)] focus:outline-none transition-colors"
+                />
+              </div>
+            </div>
+
+            {passwordError && (
+              <div className="p-3 rounded-xl bg-red-950/30 border border-red-500/40 text-red-300 text-xs flex items-center gap-2">
+                <AlertCircle size={14} className="shrink-0 text-red-400" />
+                <span>{passwordError}</span>
+              </div>
+            )}
+
+            {passwordSavedMsg && (
+              <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/40 text-emerald-300 text-xs flex items-center gap-2">
+                <CheckCircle2 size={14} className="shrink-0 text-emerald-400" />
+                <span>{passwordSavedMsg}</span>
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <Button type="submit" variant="primary" size="sm" disabled={savingPassword}>
+                {savingPassword
+                  ? 'Saving...'
+                  : hasPasswordProvider
+                  ? 'Update Password'
+                  : 'Set Password'}
+              </Button>
+            </div>
+          </form>
+        </section>
+
+        {/* ── 6. Sign Out Section ────────────────────────────────────────── */}
+        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="text-base font-bold text-[var(--text)] font-heading">
+              Sign Out
+            </h2>
+            <p className="text-xs text-[var(--muted)] mt-0.5">
+              End your current session on this device.
+            </p>
+          </div>
+
+          <Button
+            variant="danger"
+            size="sm"
+            onClick={handleSignOut}
+          >
+            <LogOut size={14} />
+            <span>Sign Out</span>
+          </Button>
+        </section>
+      </div>
+    </>
   );
 }
 

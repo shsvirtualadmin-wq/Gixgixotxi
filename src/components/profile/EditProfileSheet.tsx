@@ -127,7 +127,7 @@ export const EditProfileSheet: React.FC<EditProfileSheetProps> = ({
                 <AlertCircle size={15} className="shrink-0 text-red-500" />
                 <span>{error}</span>
               </div>
-              {error.includes('Send a request to the admin') && (
+              {(error.includes('reserved') || error.includes('Send a request')) && (
                 <button
                   type="button"
                   disabled={isSendingRequest}

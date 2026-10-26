@@ -321,6 +321,39 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
                 />
               </button>
 
+              {/* Grand Line Public Tests */}
+              <button
+                type="button"
+                onClick={() => handleNav('/grand-line')}
+                className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between text-left hover:bg-surface-muted active:bg-surface-muted/80 transition-colors cursor-pointer group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <Award
+                    size={20}
+                    className="text-accent shrink-0 transition-colors"
+                    strokeWidth={1.75}
+                  />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-[15px] sm:text-[16px] font-medium text-primary leading-snug">
+                        Grand Line
+                      </p>
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-accent/15 text-accent leading-none">
+                        Mock Tests
+                      </span>
+                    </div>
+                    <p className="text-[12px] sm:text-[13px] text-muted truncate leading-snug">
+                      Captain-authored tests & national leaderboard
+                    </p>
+                  </div>
+                </div>
+                <ChevronRight
+                  size={16}
+                  className="text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all shrink-0 ml-2"
+                  strokeWidth={1.75}
+                />
+              </button>
+
               {/* Notifications */}
               <button
                 type="button"

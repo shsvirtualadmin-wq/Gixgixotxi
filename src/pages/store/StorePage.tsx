@@ -196,7 +196,7 @@ export function StorePage() {
       setEquipNotice(isCurrentlyEquipped ? `Unequipped ${item.name}` : `Equipped ${item.name}!`);
       setTimeout(() => setEquipNotice(null), 2500);
     } catch (err: unknown) {
-      alert((err as Error).message || 'Failed to equip cosmetic');
+      setPurchaseError((err as Error).message || 'Failed to equip cosmetic');
     } finally {
       setEquippingId(null);
     }

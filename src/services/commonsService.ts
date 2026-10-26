@@ -665,8 +665,9 @@ export async function addPostComment(params: {
 
   const isAnon = Boolean(params.isAnonymous);
 
-  // For anonymous comments, store real UID for moderation, but hide personal info in display fields
-  const authorUid = params.author.uid;
+  // For anonymous comments, NEVER store real UID in the public comment document;
+  // store moderation ownership in postsPrivate/{postId}_comment_{commentId}.
+  const publicAuthorUid = isAnon ? null : params.author.uid;
   const authorName = isAnon
     ? 'Anonymous'
     : sanitizeStudentDisplayName(params.author.displayName, params.author.uid);
@@ -683,8 +684,8 @@ export async function addPostComment(params: {
 
   const commentData: Omit<CommonsComment, 'id'> = {
     postId: params.postId,
-    authorUid,
-    uid: authorUid, // for rules compatibility
+    authorUid: publicAuthorUid,
+    uid: publicAuthorUid || undefined,
     authorName,
     authorAvatar,
     authorFrame,
@@ -700,6 +701,17 @@ export async function addPostComment(params: {
   try {
     const batch = writeBatch(db);
     batch.set(commentRef, commentData);
+    if (isAnon) {
+      const commentPrivateRef = doc(db, 'postsPrivate', `${params.postId}_comment_${commentRef.id}`);
+      batch.set(commentPrivateRef, {
+        postId: params.postId,
+        commentId: commentRef.id,
+        authorUid: params.author.uid,
+        authorEmail: params.author.email || null,
+        isAnonymous: true,
+        createdAt: serverTimestamp(),
+      });
+    }
     batch.update(postRef, {
       commentCount: increment(1),
       commentsCount: increment(1),
@@ -835,23 +847,35 @@ export async function searchPeople(queryText: string): Promise<CommonsUserPrevie
  */
 export async function deleteCommonsPost(postId: string, userUid: string, isAdmin = false): Promise<void> {
   const postRef = doc(db, 'commonsPosts', postId);
-  const privateRef = doc(db, 'postPrivate', postId);
+  const postsPrivateRef = doc(db, 'postsPrivate', postId);
+  const legacyPrivateRef = doc(db, 'postPrivate', postId);
 
-  // Author verification check
-  const privateSnap = await getDoc(privateRef);
-  const authorUid = privateSnap.data()?.authorUid;
+  // Author verification check across public post and postsPrivate
+  const [postSnap, postsPrivateSnap] = await Promise.all([
+    getDoc(postRef),
+    getDoc(postsPrivateRef).catch(() => null),
+  ]);
 
-  if (!isAdmin && authorUid !== userUid) {
+  const publicAuthorUid = postSnap.data()?.authorUid;
+  const privateAuthorUid = postsPrivateSnap?.data()?.authorUid;
+
+  if (!isAdmin && publicAuthorUid !== userUid && privateAuthorUid !== userUid) {
     throw new Error('Unauthorized to delete this post.');
   }
 
   const batch = writeBatch(db);
   batch.delete(postRef);
-  if (privateSnap.exists()) {
-    batch.delete(privateRef);
+  if (postsPrivateSnap?.exists()) {
+    batch.delete(postsPrivateRef);
   }
-  const postsPrivateRef = doc(db, 'postsPrivate', postId);
-  batch.delete(postsPrivateRef);
+  try {
+    const legacySnap = await getDoc(legacyPrivateRef);
+    if (legacySnap.exists()) {
+      batch.delete(legacyPrivateRef);
+    }
+  } catch {
+    // Ignore legacy collection permission notice
+  }
   await batch.commit();
 }
 
@@ -989,7 +1013,6 @@ export async function togglePostAnonymity(
 ): Promise<void> {
   const postRef = doc(db, 'commonsPosts', postId);
   const postsPrivateRef = doc(db, 'postsPrivate', postId);
-  const postPrivateRef = doc(db, 'postPrivate', postId);
 
   const now = serverTimestamp();
   const batch = writeBatch(db);
@@ -1000,20 +1023,23 @@ export async function togglePostAnonymity(
       authorUid: null,
       authorName: 'Anonymous',
       authorAvatar: null,
+      authorFrame: null,
+      authorEquippedAvatar: null,
+      authorPhotoURL: null,
+      authorRole: null,
+      authorCustomRole: null,
       updatedAt: now,
     });
     batch.set(postsPrivateRef, { authorUid: user.uid, isAnonymous: true, updatedAt: now }, { merge: true });
-    batch.set(postPrivateRef, { authorUid: user.uid, isAnonymous: true, updatedAt: now }, { merge: true });
   } else {
     batch.update(postRef, {
       isAnonymous: false,
       authorUid: user.uid,
-      authorName: user.displayName || 'Student',
+      authorName: sanitizeStudentDisplayName(user.displayName, user.uid),
       authorAvatar: user.photoURL || null,
       updatedAt: now,
     });
     batch.set(postsPrivateRef, { authorUid: user.uid, isAnonymous: false, updatedAt: now }, { merge: true });
-    batch.set(postPrivateRef, { authorUid: user.uid, isAnonymous: false, updatedAt: now }, { merge: true });
   }
 
   await batch.commit();
