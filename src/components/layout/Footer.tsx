@@ -48,7 +48,7 @@ export function Footer() {
 
   return (
     <footer
-      className="w-full mt-auto bg-[#D71921] text-white rounded-t-[48px] md:rounded-t-[64px] pt-14 sm:pt-16 md:pt-20 select-none"
+      className="w-full mt-auto bg-[#D71921] text-white rounded-t-[20px] pt-12 sm:pt-14 md:pt-16 select-none"
       style={{
         backgroundColor: '#D71921',
         width: '100%',
@@ -60,18 +60,18 @@ export function Footer() {
     >
       <div className="boardly-container w-full max-w-[1200px] mx-auto px-5 sm:px-6 md:px-8 box-border">
         {/* 4-column grid on desktop, 2 columns on mobile with brand on top */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8 w-full [grid-template-columns:repeat(2,minmax(0,1fr))] lg:[grid-template-columns:repeat(4,minmax(0,1fr))]">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10 w-full [grid-template-columns:repeat(2,minmax(0,1fr))] lg:[grid-template-columns:1.25fr_repeat(3,minmax(0,1fr))] items-start">
           {/* Brand info (Full width on mobile, 1 col on desktop) */}
           <div className="col-span-2 lg:col-span-1 min-w-0">
-            <Link to="/" className="inline-flex items-center mb-6 group text-white" aria-label="Boardly Home">
+            <Link to="/" className="inline-flex items-center mb-4 group text-white" aria-label="Boardly Home">
               <Logo
                 size="footer"
-                className="h-[72px] sm:h-[88px] w-auto max-w-none text-white"
+                className="h-[52px] sm:h-[60px] w-auto max-w-none text-white"
                 style={{ maxHeight: 'none' }}
                 alt="Boardly"
               />
             </Link>
-            <p className="text-sm text-white/80 leading-relaxed mb-4 max-w-sm break-words">
+            <p className="text-sm text-white/85 leading-relaxed mb-3 max-w-xs break-words">
               Boardly: MCQ practice and learning for every student. A project of{' '}
               <a
                 href="https://shsvirtualacademy.pro"
@@ -83,7 +83,7 @@ export function Footer() {
               </a>
               .
             </p>
-            <div className="text-xs text-white/80 break-words">
+            <div className="text-xs text-white/75 break-words">
               Built with precision for learners across Pakistan.
             </div>
           </div>
@@ -217,12 +217,12 @@ export function Footer() {
 
         {/* 1px divider */}
         <div
-          className="w-full mt-12 mb-8"
-          style={{ borderTop: '1px solid rgba(255, 255, 255, 0.25)' }}
+          className="w-full mt-10 mb-6"
+          style={{ borderTop: '1px solid rgba(255, 255, 255, 0.22)' }}
         />
 
         {/* Copyright and contact info */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm text-white/80 pb-6">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm text-white/85 pb-4">
           <div className="break-words">
             &copy; {new Date().getFullYear()} Boardly Technologies. All rights reserved.
           </div>
@@ -253,10 +253,10 @@ export function Footer() {
         </div>
       </div>
 
-      {/* Huge dot-matrix "Boardly" wordmark in Doto font */}
+      {/* Dot-matrix "Boardly" wordmark in Doto font with balanced spacing */}
       <div
         ref={wordmarkContainerRef}
-        className="w-full flex items-center justify-center text-center px-4 pt-2 pb-6 sm:pb-8 select-none pointer-events-none"
+        className="w-full flex items-center justify-center text-center px-4 pt-2 pb-5 sm:pb-6 select-none pointer-events-none"
         style={{
           boxSizing: 'border-box',
         }}
@@ -267,8 +267,8 @@ export function Footer() {
           style={{
             fontFamily: 'var(--font-dot)',
             fontSize: fittedFontSize,
-            lineHeight: 1.15,
-            paddingBottom: '0.25em',
+            lineHeight: 1.05,
+            paddingBottom: '0.12em',
             letterSpacing: '-0.02em',
           }}
           aria-hidden="true"

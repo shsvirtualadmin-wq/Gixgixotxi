@@ -56,10 +56,10 @@ service firebase.storage {
         allow delete: if isOwner(userId) || isAdmin();
       }
 
-      // User Profile Feed Post Attachments: Signed-in students can view, max 5 MB
+      // User Profile Feed Post Attachments: Publicly viewable, max 25 MB
       match /posts/{fileName} {
-        allow read: if isSignedIn();
-        allow write: if isOwner(userId) && isValidImage(5 * 1024 * 1024);
+        allow read: if true;
+        allow write: if isOwner(userId) && isValidImage(25 * 1024 * 1024);
         allow delete: if isOwner(userId) || isAdmin();
       }
     }
@@ -68,8 +68,8 @@ service firebase.storage {
     // POSTS ALIAS (/posts/{userId}/{fileName})
     // -------------------------------------------------------------------------
     match /posts/{userId}/{fileName} {
-      allow read: if isSignedIn();
-      allow write: if isOwner(userId) && isValidImage(5 * 1024 * 1024);
+      allow read: if true;
+      allow write: if isOwner(userId) && isValidImage(25 * 1024 * 1024);
       allow delete: if isOwner(userId) || isAdmin();
     }
 

@@ -8,7 +8,7 @@ export function MissionSection() {
     <section id="mission" className="landing-section relative">
       <div className="boardly-container">
         <div className="max-w-3xl mx-auto">
-          <Card className="p-7 sm:p-10 space-y-6 text-center border-[var(--border)] bg-[var(--card)]">
+          <Card className="p-6 sm:p-8 space-y-5 text-center border-[var(--border)] bg-[var(--card)]">
             <div className="flex justify-center">
               <Badge color="red-outline" dot>
                 Why We Built Boardly
@@ -16,18 +16,19 @@ export function MissionSection() {
             </div>
 
             <h2
-              className="font-dot text-2xl sm:text-4xl font-extrabold text-[var(--text)] tracking-tight leading-tight"
+              className="font-dot font-extrabold text-[var(--text)] tracking-tight leading-tight"
               style={{
                 fontFamily: 'var(--font-dot)',
                 letterSpacing: '0.01em',
-                fontWeight: 900,
+                fontWeight: 800,
+                fontSize: 'clamp(22px, 3.4vw, 34px)',
               }}
             >
               Our Mission
             </h2>
 
-            <div className="space-y-4 text-sm sm:text-base text-[var(--text)] leading-relaxed max-w-2xl mx-auto">
-              <p>
+            <div className="space-y-3 text-sm sm:text-[15px] text-[var(--text)] leading-relaxed max-w-2xl mx-auto">
+              <p className="font-medium">
                 Boardly was made to make education accessible to everyone, no matter who they are, where they live, or what they can afford.
               </p>
               <p className="text-[var(--muted)]">

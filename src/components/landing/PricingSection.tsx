@@ -16,25 +16,25 @@ export function PricingSection() {
           </p>
         </div>
 
-        {/* 3-Column Pricing Grid */}
+        {/* 3-Column Pricing Grid: equal height, aligned headers/prices/lists/buttons */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-5xl mx-auto items-stretch">
           {/* Free Tier Card */}
-          <Card className="justify-between">
-            <div>
-              <div className="mb-4">
+          <Card className="h-full flex flex-col justify-between">
+            <div className="flex flex-col flex-1">
+              <div className="flex items-center justify-between min-h-[26px] mb-3">
                 <Badge color="muted">Free</Badge>
               </div>
 
-              <div className="flex items-baseline gap-2 mb-2">
-                <span className="text-4xl font-bold text-[var(--text)] font-doto">0 PKR</span>
+              <div className="flex items-baseline gap-2 mb-1.5">
+                <span className="text-3xl sm:text-4xl font-bold text-[var(--text)] font-doto">0 PKR</span>
               </div>
 
-              <p className="text-xs text-[var(--muted)] mb-5">
+              <p className="text-xs text-[var(--muted)] mb-4 min-h-[34px] leading-relaxed">
                 Enough for students to practice and learn every day.
               </p>
 
-              <div className="border-t border-[var(--border)] pt-4">
-                <div className="flex flex-col gap-3">
+              <div className="border-t border-[var(--border)] pt-4 flex-1">
+                <div className="flex flex-col gap-2.5">
                   {[
                     'The free tier is enough to practice and learn',
                     'Sharing material in Commons is always free with no limit',
@@ -43,8 +43,8 @@ export function PricingSection() {
                     'Join or create Study Crew squads',
                     'Daily midnight quota reset (PKT)',
                   ].map(feature => (
-                    <div key={feature} className="flex items-center gap-3 text-sm text-[var(--muted)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
+                    <div key={feature} className="flex items-start gap-2.5 text-xs sm:text-[13px] text-[var(--muted)] leading-snug">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0 mt-1.5" />
                       <span>{feature}</span>
                     </div>
                   ))}
@@ -52,31 +52,31 @@ export function PricingSection() {
               </div>
             </div>
 
-            <div className="mt-auto pt-5">
-              <Link to="/signup" className="btn-outline w-full" style={{ height: '52px' }}>
+            <div className="mt-auto pt-6">
+              <Link to="/signup" className="btn-outline w-full">
                 Start Free
               </Link>
             </div>
           </Card>
 
-          {/* Unlimited Tier Card: 1px red border */}
-          <Card variant="red" className="justify-between relative">
-            <div>
-              <div className="flex items-center justify-between mb-4">
+          {/* Unlimited Tier Card: 1px red border only, aligned with neighbors */}
+          <Card variant="red" className="h-full flex flex-col justify-between relative">
+            <div className="flex flex-col flex-1">
+              <div className="flex items-center justify-between min-h-[26px] mb-3">
                 <Badge color="red">Unlimited</Badge>
                 <span className="text-xs text-[var(--muted)] font-medium">Full Access</span>
               </div>
 
-              <div className="flex items-baseline gap-2 mb-2">
-                <span className="text-4xl font-bold text-[var(--text)] font-doto">199 PKR</span>
+              <div className="flex items-baseline gap-2 mb-1.5">
+                <span className="text-3xl sm:text-4xl font-bold text-[var(--text)] font-doto">199 PKR</span>
               </div>
 
-              <p className="text-xs text-[var(--muted)] mb-5">
+              <p className="text-xs text-[var(--muted)] mb-4 min-h-[34px] leading-relaxed">
                 199 PKR for unlimited use across the platform.
               </p>
 
-              <div className="border-t border-[var(--border)] pt-4">
-                <div className="flex flex-col gap-3">
+              <div className="border-t border-[var(--border)] pt-4 flex-1 flex flex-col justify-between">
+                <div className="flex flex-col gap-2.5">
                   {[
                     'Unlimited practice tests and sprint drills',
                     'Unlimited Boardy AI questions with step derivations',
@@ -85,29 +85,30 @@ export function PricingSection() {
                     'Unlimited public Grand Line & Arena tests',
                     'Priority support desk via WhatsApp & Email',
                   ].map(feature => (
-                    <div key={feature} className="flex items-center gap-3 text-sm text-[var(--text)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
+                    <div key={feature} className="flex items-start gap-2.5 text-xs sm:text-[13px] text-[var(--text)] leading-snug">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0 mt-1.5" />
                       <span>{feature}</span>
                     </div>
                   ))}
                 </div>
+
+                <div className="mt-4 pt-3 border-t border-[var(--border)]/60 text-[11px] text-[var(--muted)] leading-snug">
+                  Pay locally: JazzCash, EasyPaisa, SadaPay, or Bank Transfer.
+                </div>
               </div>
             </div>
 
-            <div className="mt-auto pt-5 flex flex-col gap-2.5">
-              <Link to="/signup" className="btn-red w-full" style={{ height: '52px' }}>
+            <div className="mt-auto pt-6">
+              <Link to="/signup" className="btn-red w-full">
                 Get Unlimited
               </Link>
-              <div className="text-center text-[11px] text-[var(--muted)]">
-                Pay locally: JazzCash, EasyPaisa, SadaPay, or Bank Transfer.
-              </div>
             </div>
           </Card>
 
           {/* Koban Pack Card */}
-          <Card className="justify-between">
-            <div>
-              <div className="flex items-center justify-between mb-4">
+          <Card className="h-full flex flex-col justify-between">
+            <div className="flex flex-col flex-1">
+              <div className="flex items-center justify-between min-h-[26px] mb-3">
                 <Badge color="muted">Koban Pack</Badge>
                 <div className="flex items-center gap-1 text-xs text-[#E8A317] font-semibold">
                   <KobanIcon size={14} />
@@ -115,16 +116,16 @@ export function PricingSection() {
                 </div>
               </div>
 
-              <div className="flex items-baseline gap-2 mb-2">
-                <span className="text-4xl font-bold text-[var(--text)] font-doto">50 PKR</span>
+              <div className="flex items-baseline gap-2 mb-1.5">
+                <span className="text-3xl sm:text-4xl font-bold text-[var(--text)] font-doto">50 PKR</span>
               </div>
 
-              <p className="text-xs text-[var(--muted)] mb-5">
+              <p className="text-xs text-[var(--muted)] mb-4 min-h-[34px] leading-relaxed">
                 50 PKR for 500 kobans. Kobans are used to customize your profile.
               </p>
 
-              <div className="border-t border-[var(--border)] pt-4">
-                <div className="flex flex-col gap-3">
+              <div className="border-t border-[var(--border)] pt-4 flex-1">
+                <div className="flex flex-col gap-2.5">
                   {[
                     '50 PKR for 500 kobans to personalize your student profile',
                     'Unlock dot-matrix avatar frames in the Store',
@@ -133,8 +134,8 @@ export function PricingSection() {
                     '100% aesthetic with zero unfair academic advantage',
                     'Purchased Kobans never expire in your student wallet',
                   ].map(feature => (
-                    <div key={feature} className="flex items-center gap-3 text-sm text-[var(--muted)]">
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#E8A317] shrink-0" />
+                    <div key={feature} className="flex items-start gap-2.5 text-xs sm:text-[13px] text-[var(--muted)] leading-snug">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#E8A317] shrink-0 mt-1.5" />
                       <span>{feature}</span>
                     </div>
                   ))}
@@ -142,8 +143,8 @@ export function PricingSection() {
               </div>
             </div>
 
-            <div className="mt-auto pt-5">
-              <Link to="/store" className="btn-outline w-full" style={{ height: '52px' }}>
+            <div className="mt-auto pt-6">
+              <Link to="/store" className="btn-outline w-full">
                 Explore Store &amp; Kobans
               </Link>
             </div>
@@ -151,10 +152,10 @@ export function PricingSection() {
         </div>
 
         {/* Link to /pricing */}
-        <div className="text-center mt-10">
+        <div className="text-center mt-8">
           <Link
             to="/pricing"
-            className="btn-outline inline-flex items-center gap-2 text-xs sm:text-sm font-semibold px-6 py-3 rounded-full"
+            className="btn-outline inline-flex items-center gap-2 text-xs sm:text-sm font-semibold px-5 rounded-full"
           >
             <span>View complete pricing guide &amp; local payment instructions</span>
             <span aria-hidden="true">&rarr;</span>

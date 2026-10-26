@@ -529,12 +529,25 @@ export const ProfilePostsSection: React.FC<ProfilePostsSectionProps> = ({
                 {/* ── Post Header: Author info, time & Menu ── */}
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-[var(--card-2)] border border-[var(--border)] overflow-hidden shrink-0 flex items-center justify-center font-heading font-bold text-xs text-[var(--text)]">
-                      {post.author_avatar ? (
-                        <img src={post.author_avatar} alt={post.author_name || 'Author'} loading="lazy" decoding="async" className="w-full h-full object-cover" />
-                      ) : (
-                        <span>{(post.author_name || 'S').charAt(0).toUpperCase()}</span>
-                      )}
+                    <div className="shrink-0">
+                      <BoardlyAvatar
+                        equippedAvatar={
+                          post.author_avatar && !post.author_avatar.startsWith('http') && !post.author_avatar.startsWith('data:')
+                            ? post.author_avatar
+                            : isOwnProfile
+                            ? equippedAvatar
+                            : undefined
+                        }
+                        avatarUrl={
+                          post.author_avatar && (post.author_avatar.startsWith('http') || post.author_avatar.startsWith('data:'))
+                            ? post.author_avatar
+                            : undefined
+                        }
+                        avatarKey={isOwnProfile ? avatarKey : undefined}
+                        avatarVariant={isOwnProfile ? avatarVariant : undefined}
+                        name={post.author_name || 'Student'}
+                        size={32}
+                      />
                     </div>
                     <div className="flex flex-col min-w-0">
                       <span className="font-heading font-semibold text-xs text-[var(--text)] truncate">

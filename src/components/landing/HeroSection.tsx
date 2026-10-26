@@ -8,30 +8,30 @@ export function HeroSection() {
     <section
       className="relative overflow-hidden"
       style={{
-        paddingTop: 'calc(88px + 32px + env(safe-area-inset-top, 0px))',
-        paddingBottom: '64px',
+        paddingTop: 'calc(64px + 44px + env(safe-area-inset-top, 0px))',
+        paddingBottom: '56px',
       }}
     >
       <div className="boardly-container">
-        {/* 2-column hero grid (1.1fr .9fr, gap 48px, align-items: center), 1 column on mobile */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-12 items-center">
+        {/* 2-column hero grid (1.12fr .88fr, gap 48px, align-items: center), 1 column on mobile */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1.12fr_0.88fr] gap-10 lg:gap-12 items-center">
           {/* Left Column: Hero Content */}
           <div className="flex flex-col items-center lg:items-start text-center lg:text-left">
-            {/* Badges: outlined grey pills (no colors) */}
-            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2.5 mb-6">
+            {/* Badges: compact outlined pills */}
+            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 mb-5">
               <Badge color="muted">Education For Everyone</Badge>
               <Badge color="muted">Practice &amp; Learn Together</Badge>
             </div>
 
-            {/* H1 Heading in Doto Font */}
+            {/* H1 Heading in Doto Font: sized to fit in 3 lines max on desktop */}
             <h1
-              className="font-dot text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-[var(--text)] mb-6"
+              className="font-dot font-extrabold tracking-tight text-[var(--text)] mb-4 max-w-[600px]"
               style={{
                 fontFamily: 'var(--font-dot)',
                 letterSpacing: '0.01em',
-                fontWeight: 900,
-                lineHeight: 1.15,
-                fontSize: 'clamp(28px, 6.5vw, 56px)',
+                fontWeight: 800,
+                lineHeight: 1.18,
+                fontSize: 'clamp(26px, 3.6vw, 42px)',
               }}
             >
               Education For Everyone.{' '}
@@ -39,12 +39,12 @@ export function HeroSection() {
             </h1>
 
             {/* Subtext */}
-            <p className="text-base sm:text-lg text-[var(--muted)] max-w-xl mb-4 leading-relaxed">
+            <p className="text-[15px] sm:text-base text-[var(--muted)] max-w-xl mb-4 leading-relaxed">
               Pakistan&apos;s accessible MCQ practice and collaborative learning platform. Master key concepts with step-by-step KaTeX derivations, timed practice sprints, chapter analytics, and free community study sharing.
             </p>
 
             {/* Short About line */}
-            <p className="text-xs sm:text-sm text-[var(--text)] font-medium mb-8">
+            <p className="text-xs sm:text-sm text-[var(--text)] font-medium mb-6">
               Boardly is built and run by{' '}
               <a
                 href="https://shsvirtualacademy.pro"
@@ -61,7 +61,7 @@ export function HeroSection() {
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3 w-full sm:w-auto">
               <Link to="/signup" className="btn-red w-full sm:w-auto group">
                 <span>Start Practicing Free</span>
-                <ArrowRight size={18} className="transition-transform group-hover:translate-x-1" />
+                <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
               </Link>
 
               <Link to="/features" className="btn-outline w-full sm:w-auto">
@@ -70,17 +70,17 @@ export function HeroSection() {
             </div>
 
             {/* Checklist row */}
-            <div className="mt-6 pt-6 border-t border-[var(--border)] flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-3 w-full">
+            <div className="mt-6 pt-5 border-t border-[var(--border)] flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-2.5 w-full">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
                 <span className="text-xs text-[var(--muted)] font-medium">Comprehensive MCQ Banks</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
                 <span className="text-xs text-[var(--muted)] font-medium">Step-by-step KaTeX</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[var(--red)] shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
                 <span className="text-xs text-[var(--muted)] font-medium">PKT Midnight Resets</span>
               </div>
             </div>

@@ -58,19 +58,83 @@ export async function syncPublicProfile(
   if (!uid) throw new Error('Cannot sync public profile: missing UID');
 
   const p = profileData as Record<string, any>;
-  const existingCached = publicProfileCache.get(uid)?.profile;
+  let existingCached = publicProfileCache.get(uid)?.profile || getSessionCachedProfile(uid)?.profile || null;
+
+  // If cache is cold and partial data is passed (e.g., equipping an item), read existing publicProfiles/{uid} first
+  if (!existingCached && (!p.displayName || !p.equipped)) {
+    try {
+      const snap = await getDoc(doc(db, 'publicProfiles', uid));
+      if (snap.exists()) {
+        existingCached = snap.data() as PublicProfile;
+      }
+    } catch (_e) {
+      // Ignore read errors and proceed with available fields
+    }
+  }
+
   const shortCode = (p.studentId as string) || (p.shortId as string) || existingCached?.studentId || deriveFallbackShortId(uid);
   const cleanDisplayName = sanitizeStudentDisplayName(
-    (p.displayName as string) || (p.name as string) || existingCached?.displayName,
+    (p.displayName as string) || (p.username as string) || (p.name as string) || existingCached?.displayName,
     shortCode
   );
 
-  const equipped = (p.equipped as Record<string, unknown>) || existingCached?.equipped || {};
-  const frame = (p.frame as string) || (equipped.frame as string) || existingCached?.frame || null;
-  const nameplate = (p.nameplate as string) || (equipped.nameplate as string) || existingCached?.nameplate || null;
-  const effectId = (p.effectId as string) || (equipped.effect as string) || existingCached?.effectId || null;
-  const avatar = (p.avatar as string) || (equipped.avatar as string) || (p.photoURL as string) || (p.avatarKey as string) || existingCached?.avatar || null;
-  const banner = (p.banner as string) || (equipped.banner as string) || existingCached?.banner || null;
+  const existingEquipped = (existingCached?.equipped as Record<string, unknown>) || {};
+  const incomingEquipped = (p.equipped as Record<string, unknown>) || {};
+  const equipped = { ...existingEquipped, ...incomingEquipped };
+
+  const frame =
+    p.frame !== undefined
+      ? (p.frame as string | null)
+      : incomingEquipped.frame !== undefined
+      ? (incomingEquipped.frame as string | null)
+      : (existingEquipped.frame as string) || existingCached?.frame || null;
+
+  const nameplate =
+    p.nameplate !== undefined
+      ? (p.nameplate as string | null)
+      : incomingEquipped.nameplate !== undefined
+      ? (incomingEquipped.nameplate as string | null)
+      : (existingEquipped.nameplate as string) || existingCached?.nameplate || null;
+
+  const effectId =
+    p.effectId !== undefined
+      ? (p.effectId as string | null)
+      : incomingEquipped.effect !== undefined
+      ? (incomingEquipped.effect as string | null)
+      : (existingEquipped.effect as string) || existingCached?.effectId || null;
+
+  const banner =
+    p.banner !== undefined
+      ? (p.banner as string | null)
+      : incomingEquipped.banner !== undefined
+      ? (incomingEquipped.banner as string | null)
+      : (existingEquipped.banner as string) || existingCached?.banner || null;
+
+  // Avatar priority: 1) equipped store avatar, 2) custom chosen avatar, 3) existing saved avatar (NEVER let Google photoURL overwrite a Boardly avatar)
+  const rawCandidateAvatar =
+    p.avatar !== undefined
+      ? (p.avatar as string | null)
+      : incomingEquipped.avatar !== undefined
+      ? (incomingEquipped.avatar as string | null)
+      : (existingEquipped.avatar as string) || existingCached?.avatar || (p.avatarKey as string) || null;
+
+  // Ensure a Google photoURL is never stored as the equipped store avatar ID
+  const avatar =
+    rawCandidateAvatar && !String(rawCandidateAvatar).includes('googleusercontent.com')
+      ? rawCandidateAvatar
+      : existingCached?.avatar && !String(existingCached.avatar).includes('googleusercontent.com')
+      ? existingCached.avatar
+      : null;
+
+  const avatarUrl =
+    (p.avatarUrl as string) ||
+    (existingCached as any)?.avatarUrl ||
+    null;
+
+  const photoURL =
+    (p.photoURL as string) ||
+    existingCached?.photoURL ||
+    null;
 
   const rawBadges = p.badges ?? p.equippedBadges ?? existingCached?.badges ?? [];
   const badges: string[] = Array.isArray(rawBadges) ? rawBadges.map(String) : [];
@@ -87,18 +151,25 @@ export async function syncPublicProfile(
   const lastActiveAt = (p.lastActiveAt as any) || serverTimestamp();
 
   const inputStats = (p.stats as Record<string, unknown>) || (p.publicStats as Record<string, unknown>) || existingCached?.stats || {};
-  const streak = Number(inputStats.streak ?? p.streak ?? 0);
-  const longestStreak = Number(inputStats.longestStreak ?? p.longestStreak ?? streak);
-  const mcqs = Number(inputStats.mcqs ?? inputStats.mcqsSolved ?? inputStats.totalQuestionsSolved ?? p.totalQuestionsSolved ?? 0);
-  const accuracy = Number(inputStats.accuracy ?? p.accuracy ?? 0);
+  const streak = Number(inputStats.streak ?? p.streak ?? existingCached?.stats?.streak ?? 0);
+  const longestStreak = Number(inputStats.longestStreak ?? p.longestStreak ?? existingCached?.stats?.longestStreak ?? streak);
+  const mcqs = Number(
+    inputStats.mcqs ??
+      inputStats.mcqsSolved ??
+      inputStats.totalQuestionsSolved ??
+      p.totalQuestionsSolved ??
+      existingCached?.stats?.mcqs ??
+      0
+  );
+  const accuracy = Number(inputStats.accuracy ?? p.accuracy ?? existingCached?.stats?.accuracy ?? 0);
 
   const stats = {
     streak,
     longestStreak,
     mcqs,
     accuracy,
-    score: Number(inputStats.score ?? p.score ?? 0),
-    testsCompleted: Number(inputStats.testsCompleted ?? p.testsCompleted ?? 0),
+    score: Number(inputStats.score ?? p.score ?? existingCached?.stats?.score ?? 0),
+    testsCompleted: Number(inputStats.testsCompleted ?? p.testsCompleted ?? existingCached?.stats?.testsCompleted ?? 0),
     totalQuestionsSolved: mcqs,
     mcqsSolved: mcqs,
   };
@@ -142,10 +213,11 @@ export async function syncPublicProfile(
     nickname: (p.nickname as string) || cleanDisplayName,
     username: (p.username as string) || existingCached?.username || null,
     shortId: shortCode,
-    avatarKey: (profileData.avatarKey as string) || avatar || null,
-    avatarVariant: (profileData.avatarVariant as string) || null,
-    photoURL: (profileData.photoURL as string) || avatar || null,
-    crewId: (profileData.crewId as string) || null,
+    avatarKey: (profileData.avatarKey as string) || existingCached?.avatarKey || avatar || null,
+    avatarVariant: (profileData.avatarVariant as string) || existingCached?.avatarVariant || null,
+    avatarUrl,
+    photoURL,
+    crewId: (profileData.crewId as string) || existingCached?.crewId || null,
     role: (profileData.role as string) || existingCached?.role || 'student',
     customRole: (profileData.customRole as string) || (existingCached as any)?.customRole || null,
     equipped: {
@@ -153,6 +225,7 @@ export async function syncPublicProfile(
       frame,
       nameplate,
       avatar,
+      banner,
     },
     publicStats: stats,
     updatedAt: serverTimestamp(),

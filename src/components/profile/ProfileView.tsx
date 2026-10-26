@@ -97,6 +97,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     equipCosmetic,
     owned: ownedCosmetics,
     purchaseCosmetic,
+    loading: walletLoading,
   } = useWallet();
   const effectivePlan = useEffectivePlan();
 
@@ -157,21 +158,27 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     }
     setLoading(true);
     setFetchError(null);
+    setProfile(null);
 
     async function fetchProfileData() {
       const uid = targetUid || currentUid;
       if (!uid) return;
 
       try {
-        // 1. Read directly from users collection as primary source of truth, and publicProfiles
+        // 1. Read publicProfiles/{uid} for everyone; only read users/{uid} when viewing self or as admin
+        //    (reading users/{uid} for another user as a non-admin throws permission-denied and would reject Promise.all!)
         const userDocRef = doc(db, 'users', uid);
+        const canReadPrivateUserDoc = uid === currentUid || isAdmin;
+
         const [userSnap, publicSnap] = await Promise.all([
-          getDoc(userDocRef),
-          getDoc(doc(db, 'publicProfiles', uid)),
+          canReadPrivateUserDoc
+            ? getDoc(userDocRef).catch(() => null)
+            : Promise.resolve(null),
+          getDoc(doc(db, 'publicProfiles', uid)).catch(() => null),
         ]);
 
-        const uData = userSnap.exists() ? userSnap.data() : null;
-        const pubData = publicSnap.exists() ? publicSnap.data() : null;
+        const uData = userSnap && userSnap.exists() ? userSnap.data() : null;
+        const pubData = publicSnap && publicSnap.exists() ? publicSnap.data() : null;
 
         // 2. Fallback check: Read author details from recent post if user doc lacks displayName / photo
         let postAuthorName: string | null = null;
@@ -248,14 +255,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           cleanName = sanitizeStudentDisplayName(candidateName, shortCode);
         }
 
-        const equipped = uData?.equipped || pubData?.equipped || {};
-        // Avatar priority: 1. equippedAvatar, 2. avatarUrl, 3. photoURL, 4. avatarKey, 5. default
-        const avatar =
-          (equipped?.avatar as string) ||
+        const mergedEquipped = {
+          ...(pubData?.equipped || {}),
+          ...(uData?.equipped || {}),
+        };
+        // Avatar priority: 1. equipped store avatar, 2. custom uploaded/chosen avatar, 3. Google photo only if nothing set, 4. default placeholder
+        const rawEquippedAvatar =
+          (mergedEquipped?.avatar as string) ||
           (uData?.avatar as string) ||
           (pubData?.avatar as string) ||
           postAuthorEquippedAvatar ||
           null;
+        const avatar =
+          rawEquippedAvatar && !String(rawEquippedAvatar).includes('googleusercontent.com')
+            ? rawEquippedAvatar
+            : null;
         const avatarUrl =
           (uData?.avatarUrl as string) ||
           (pubData?.avatarUrl as string) ||
@@ -268,14 +282,33 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           (postAuthorAvatar?.includes('googleusercontent') ? postAuthorAvatar : null) ||
           null;
         const frame =
-          (equipped?.frame as string) ||
+          (mergedEquipped?.frame as string) ||
           (uData?.frame as string) ||
           (pubData?.frame as string) ||
           postAuthorFrame ||
           null;
-        const nameplate = (equipped?.nameplate as string) || (uData?.nameplate as string) || (pubData?.nameplate as string) || null;
-        const banner = (equipped?.banner as string) || (uData?.banner as string) || (pubData?.banner as string) || null;
-        const effectId = (equipped?.effect as string) || (uData?.effectId as string) || (pubData?.effectId as string) || null;
+        const nameplate =
+          (mergedEquipped?.nameplate as string) ||
+          (uData?.nameplate as string) ||
+          (pubData?.nameplate as string) ||
+          null;
+        const banner =
+          (mergedEquipped?.banner as string) ||
+          (uData?.banner as string) ||
+          (pubData?.banner as string) ||
+          null;
+        const effectId =
+          (mergedEquipped?.effect as string) ||
+          (uData?.effectId as string) ||
+          (pubData?.effectId as string) ||
+          null;
+        const equipped = {
+          effect: effectId,
+          frame,
+          nameplate,
+          avatar,
+          banner,
+        };
 
         const stats = {
           streak: Number(uData?.streak ?? pubData?.stats?.streak ?? 0),
@@ -342,21 +375,37 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     };
   }, [targetUid, currentUid, isAdmin, authUser?.email]);
 
-  // Live real-time listener for followersCount, followingCount and follow state
+  // Live real-time listener for followersCount, followingCount, cosmetics, and follow state
   useEffect(() => {
     const resolvedUid = targetUid || currentUid;
     if (!resolvedUid) return;
 
-    // Listen to target's user document for live followersCount & followingCount
+    // Listen to users/{resolvedUid} ONLY when viewing self or admin; otherwise listen to publicProfiles/{resolvedUid}
+    const targetDocRef =
+      resolvedUid === currentUid || isAdmin
+        ? doc(db, 'users', resolvedUid)
+        : doc(db, 'publicProfiles', resolvedUid);
+
     const unsubTarget = onSnapshot(
-      doc(db, 'users', resolvedUid),
+      targetDocRef,
       (snap) => {
         if (snap.exists()) {
           const d = snap.data();
           setProfile((prev) => {
-            if (!prev) return prev;
+            if (!prev || prev.uid !== resolvedUid) return prev;
+            const eq = d.equipped || {};
+            const nextAvatar =
+              (eq.avatar as string) ||
+              (d.avatar as string) ||
+              prev.avatar ||
+              null;
             return {
               ...prev,
+              avatar: nextAvatar && !String(nextAvatar).includes('googleusercontent.com') ? nextAvatar : prev.avatar,
+              frame: (eq.frame as string) || (d.frame as string) || prev.frame || null,
+              banner: (eq.banner as string) || (d.banner as string) || prev.banner || null,
+              nameplate: (eq.nameplate as string) || (d.nameplate as string) || prev.nameplate || null,
+              effectId: (eq.effect as string) || (d.effectId as string) || prev.effectId || null,
               followersCount: typeof d.followersCount === 'number' ? Math.max(0, d.followersCount) : (prev.followersCount || 0),
               followingCount: typeof d.followingCount === 'number' ? Math.max(0, d.followingCount) : (prev.followingCount || 0),
             };
@@ -364,7 +413,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         }
       },
       (err) => {
-        console.error('[ProfileView] live counts onSnapshot error:', err?.code || 'ERROR', `users/${resolvedUid}`, err);
+        console.warn('[ProfileView] live profile onSnapshot notice:', err?.code || 'ERROR');
       }
     );
 
@@ -377,24 +426,20 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           setIsFollowedByMe(snap.exists());
         },
         (err) => {
-          console.error('[ProfileView] following doc onSnapshot error:', err?.code || 'ERROR', `users/${currentUid}/following/${resolvedUid}`, err);
+          console.warn('[ProfileView] following doc onSnapshot notice:', err?.code || 'ERROR');
         }
       );
     }
 
     return () => {
-      unTargetCleanup();
+      unsubTarget();
       if (unsubFollowing) unsubFollowing();
     };
+  }, [targetUid, currentUid, isAdmin]);
 
-    function unTargetCleanup() {
-      unsubTarget();
-    }
-  }, [targetUid, currentUid]);
-
-  // When viewing self in own mode, keep profile in sync with ownProfile/ownEquipped
+  // When viewing self in own mode, safely merge ownProfile/ownEquipped without wiping loaded cosmetics or replacing Boardly avatars with Google photoURL
   useEffect(() => {
-    if (isViewingSelf && ownProfile && !previewAsPublic) {
+    if (isViewingSelf && ownProfile && !previewAsPublic && !walletLoading) {
       const op = ownProfile as any;
       const isAdminAccountUser = isAdmin || isAdminAccount(currentUid) || op.role === 'admin' || isAdminAccount(authUser?.email);
       const shortCode = op.studentId || op.shortId || deriveFallbackShortId(currentUid || '0');
@@ -402,35 +447,85 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         ? 'SHS Virtual Academy'
         : sanitizeStudentDisplayName(op.displayName || authUser?.displayName, shortCode);
 
-      setProfile((prev) => ({
-        uid: currentUid || 'guest',
-        displayName: cleanName,
-        studentId: shortCode,
-        avatar: (ownEquipped?.avatar as string) || (op.avatar as string) || op.avatarKey || null,
-        banner: (ownEquipped?.banner as string) || (op.banner as string) || null,
-        frame: (ownEquipped?.frame as string) || (op.frame as string) || null,
-        nameplate: (ownEquipped?.nameplate as string) || (op.nameplate as string) || null,
-        effectId: (ownEquipped?.effect as string) || (op.effectId as string) || null,
-        badges: op.badges || prev?.badges || [],
-        bio: op.bio || prev?.bio || '',
-        status: op.status || prev?.status || '',
-        accent: op.accent || prev?.accent || '#D71921',
-        memberSince: op.createdAt || op.memberSince || prev?.memberSince || null,
-        crewName: op.crewName || prev?.crewName || null,
-        stats: {
-          streak: Number(op.streak ?? prev?.stats?.streak ?? 0),
-          longestStreak: Number(op.longestStreak ?? op.streak ?? prev?.stats?.longestStreak ?? 0),
-          mcqs: Number(op.totalQuestionsSolved ?? op.mcqsSolved ?? prev?.stats?.mcqs ?? 0),
-          accuracy: Number(op.accuracy ?? prev?.stats?.accuracy ?? 0),
-        },
-        followersCount: prev?.followersCount ?? 0,
-        followingCount: prev?.followingCount ?? 0,
-        lastActiveAt: op.lastActiveDate || prev?.lastActiveAt || null,
-        role: isAdminAccountUser ? 'admin' : (op.role || 'student'),
-        equipped: ownEquipped,
-      }));
+      setProfile((prev) => {
+        const candidateAvatar =
+          (ownEquipped?.avatar as string) ||
+          (op.equipped?.avatar as string) ||
+          (op.avatar as string) ||
+          prev?.avatar ||
+          op.avatarKey ||
+          prev?.avatarKey ||
+          null;
+        const resolvedAvatar =
+          candidateAvatar && !String(candidateAvatar).includes('googleusercontent.com')
+            ? candidateAvatar
+            : prev?.avatar || null;
+        const resolvedBanner =
+          (ownEquipped?.banner as string) ||
+          (op.equipped?.banner as string) ||
+          (op.banner as string) ||
+          prev?.banner ||
+          null;
+        const resolvedFrame =
+          (ownEquipped?.frame as string) ||
+          (op.equipped?.frame as string) ||
+          (op.frame as string) ||
+          prev?.frame ||
+          null;
+        const resolvedNameplate =
+          (ownEquipped?.nameplate as string) ||
+          (op.equipped?.nameplate as string) ||
+          (op.nameplate as string) ||
+          prev?.nameplate ||
+          null;
+        const resolvedEffectId =
+          (ownEquipped?.effect as string) ||
+          (op.equipped?.effect as string) ||
+          (op.effectId as string) ||
+          prev?.effectId ||
+          null;
+
+        return {
+          uid: currentUid || 'guest',
+          displayName: cleanName,
+          studentId: shortCode,
+          shortId: shortCode,
+          avatar: resolvedAvatar,
+          banner: resolvedBanner,
+          frame: resolvedFrame,
+          nameplate: resolvedNameplate,
+          effectId: resolvedEffectId,
+          badges: op.badges || prev?.badges || [],
+          bio: op.bio ?? prev?.bio ?? '',
+          status: op.status ?? prev?.status ?? '',
+          accent: op.accent || prev?.accent || '#D71921',
+          memberSince: op.createdAt || op.memberSince || prev?.memberSince || null,
+          crewName: op.crewName || prev?.crewName || null,
+          stats: {
+            streak: Number(op.streak ?? prev?.stats?.streak ?? 0),
+            longestStreak: Number(op.longestStreak ?? op.streak ?? prev?.stats?.longestStreak ?? 0),
+            mcqs: Number(op.totalQuestionsSolved ?? op.mcqsSolved ?? prev?.stats?.mcqs ?? 0),
+            accuracy: Number(op.accuracy ?? prev?.stats?.accuracy ?? 0),
+          },
+          followersCount: prev?.followersCount ?? 0,
+          followingCount: prev?.followingCount ?? 0,
+          lastActiveAt: op.lastActiveDate || prev?.lastActiveAt || null,
+          role: isAdminAccountUser ? 'admin' : (op.role || prev?.role || 'student'),
+          equipped: {
+            effect: resolvedEffectId,
+            frame: resolvedFrame,
+            nameplate: resolvedNameplate,
+            avatar: resolvedAvatar,
+            banner: resolvedBanner,
+          },
+          avatarUrl: op.avatarUrl || prev?.avatarUrl || null,
+          photoURL: op.photoURL || prev?.photoURL || null,
+          avatarKey: op.avatarKey || prev?.avatarKey || null,
+          avatarVariant: op.avatarVariant || prev?.avatarVariant || null,
+        };
+      });
     }
-  }, [isViewingSelf, ownProfile, ownEquipped, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin]);
+  }, [isViewingSelf, ownProfile, ownEquipped, walletLoading, previewAsPublic, currentUid, authUser?.displayName, authUser?.email, isAdmin]);
 
   // Rank title computation
   const rank = useMemo(() => {
@@ -615,7 +710,36 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   const accentColor = profile?.accent || '#D71921';
-  const effectiveEffectId = profile?.effectId || ownEquipped?.effect || null;
+  const effectiveEffectId =
+    profile?.effectId ||
+    (isViewingSelf && !previewAsPublic ? ownEquipped?.effect : null) ||
+    null;
+
+  if (loading && !profile) {
+    return (
+      <div
+        className={`relative w-full flex flex-col bg-[var(--background)] text-[var(--text)] ${
+          isFullPage ? 'max-w-4xl mx-auto py-2 sm:py-6 px-0 sm:px-4' : 'max-w-xl mx-auto'
+        }`}
+      >
+        <div className="relative w-full rounded-2xl sm:rounded-3xl border border-[var(--border)] bg-[var(--card)] shadow-lg overflow-hidden flex flex-col animate-pulse">
+          <div className="w-full h-[160px] sm:h-[200px] bg-[var(--card-2)]" />
+          <div className="px-4 sm:px-6 pb-6 flex flex-col gap-4">
+            <div className="flex items-end justify-between -mt-[44px] sm:-mt-[60px]">
+              <div className="w-[84px] h-[84px] sm:w-[112px] sm:h-[112px] rounded-full bg-[var(--card-2)] border-4 border-[var(--card)]" />
+            </div>
+            <div className="h-6 w-48 rounded-lg bg-[var(--card-2)]" />
+            <div className="h-4 w-32 rounded-lg bg-[var(--card-2)]" />
+            <div className="grid grid-cols-3 gap-2.5 pt-2">
+              <div className="h-20 rounded-2xl bg-[var(--card-2)]" />
+              <div className="h-20 rounded-2xl bg-[var(--card-2)]" />
+              <div className="h-20 rounded-2xl bg-[var(--card-2)]" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -695,7 +819,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <BoardlyAvatar
                 equippedAvatar={profile?.avatar || (profile?.equipped?.avatar as string)}
                 avatarUrl={profile?.avatarUrl}
-                photoURL={profile?.photoURL || (authUser?.photoURL as string)}
+                photoURL={
+                  profile?.avatar || (profile?.equipped?.avatar as string) || profile?.avatarUrl || profile?.avatarKey
+                    ? null
+                    : profile?.photoURL || (isViewingSelf ? (authUser?.photoURL as string) : null)
+                }
                 frame={profile?.frame || (profile?.equipped?.frame as string) || 'none'}
                 name={profile?.displayName || 'Student'}
                 avatarKey={profile?.avatarKey}
@@ -1087,18 +1215,29 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 isOwnProfile={Boolean(isViewingSelf && !previewAsPublic)}
                 readOnly={Boolean(isPublicMode)}
                 currentUserId={currentUid}
-                currentUserDisplayName={ownProfile?.displayName || authUser?.displayName || profile?.displayName}
-                currentUserAvatar={
-                  (ownEquipped?.avatar as string) ||
-                  ((ownProfile as any)?.avatar as string) ||
-                  (ownProfile?.photoURL as string) ||
-                  (authUser?.photoURL as string) ||
-                  profile?.avatar ||
-                  null
+                currentUserDisplayName={
+                  isViewingSelf
+                    ? ownProfile?.displayName || authUser?.displayName || profile?.displayName
+                    : profile?.displayName
                 }
-                equippedAvatar={ownEquipped?.avatar || (profile?.equipped?.avatar as string) || profile?.avatar}
-                avatarKey={profile?.avatarKey || ownProfile?.avatarKey}
-                avatarVariant={profile?.avatarVariant || ownProfile?.avatarVariant}
+                currentUserAvatar={
+                  isViewingSelf
+                    ? (ownEquipped?.avatar as string) ||
+                      ((ownProfile as any)?.avatar as string) ||
+                      (ownProfile as any)?.avatarUrl ||
+                      (ownProfile?.photoURL as string) ||
+                      (authUser?.photoURL as string) ||
+                      profile?.avatar ||
+                      null
+                    : profile?.avatar || profile?.avatarUrl || profile?.photoURL || null
+                }
+                equippedAvatar={
+                  isViewingSelf
+                    ? ownEquipped?.avatar || (profile?.equipped?.avatar as string) || profile?.avatar
+                    : (profile?.equipped?.avatar as string) || profile?.avatar
+                }
+                avatarKey={isViewingSelf ? profile?.avatarKey || ownProfile?.avatarKey : profile?.avatarKey}
+                avatarVariant={isViewingSelf ? profile?.avatarVariant || ownProfile?.avatarVariant : profile?.avatarVariant}
                 accentColor={accentColor}
               />
             </div>

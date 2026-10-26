@@ -19,7 +19,7 @@ export function GlassCard({
   hover = false,
   onClick,
 }: GlassCardProps) {
-  const borderRadius = radius === 'input' ? '12px' : radius === 'hero' ? '24px' : '24px';
+  const borderRadius = radius === 'input' ? '10px' : radius === 'hero' ? '16px' : '14px';
 
   return (
     <div

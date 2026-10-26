@@ -70,23 +70,20 @@ export function Navbar() {
 
   return (
     <>
-      {/* Floating card navbar inset 16px from edges, 12px from top, fixed while scrolling */}
+      {/* Slim full-width top bar with solid surface background, 1px bottom border, and subtle blur */}
       <header
-        className="fixed top-0 inset-x-0 z-[1002] flex justify-center px-4 pointer-events-none"
+        className="fixed top-0 inset-x-0 z-[1002] w-full border-b border-[var(--border)] backdrop-blur-md transition-colors select-none"
         style={{
-          paddingTop: 'calc(12px + env(safe-area-inset-top, 0px))',
+          backgroundColor:
+            resolvedTheme === 'dark' ? 'rgba(13, 13, 16, 0.94)' : 'rgba(255, 255, 255, 0.94)',
+          paddingTop: 'env(safe-area-inset-top, 0px)',
         }}
       >
         <nav
           aria-label="Main Navigation"
-          className="w-full max-w-[1200px] h-[72px] md:h-[80px] rounded-[20px] px-5 sm:px-6 flex items-center justify-between gap-4 pointer-events-auto border transition-colors select-none text-[var(--text)]"
-          style={{
-            backgroundColor: 'var(--surface)',
-            borderColor: 'var(--border)',
-            boxShadow: resolvedTheme === 'dark' ? 'none' : '0 4px 20px rgba(0,0,0,0.06)',
-          }}
+          className="boardly-container h-16 flex items-center justify-between gap-4 text-[var(--text)]"
         >
-          {/* Left side: Brand Logo vertically centered, sized 40-48px height, linked to home */}
+          {/* Left side: Brand Logo vertically centered */}
           <Link
             to="/"
             onClick={handleClose}
@@ -95,87 +92,72 @@ export function Navbar() {
           >
             <Logo
               size="navbar"
-              className="h-[40px] sm:h-[46px] md:h-[48px] w-auto text-[var(--text)]"
+              className="h-[34px] sm:h-[38px] w-auto text-[var(--text)]"
               alt="Boardly"
             />
           </Link>
 
           {/* Center Desktop Navigation with Grand Line Prominent */}
-          <div className="hidden lg:flex items-center gap-1.5">
+          <div className="hidden lg:flex items-center gap-1 xl:gap-1.5">
+            {NAV_LINKS.map((link) => {
+              const active = isLinkActive(link.to);
+              if (link.highlight) {
+                return (
+                  <Link
+                    key={link.to}
+                    to={link.to}
+                    onClick={handleClose}
+                    className={`px-3 py-1.5 rounded-full text-xs font-heading font-bold transition-all border whitespace-nowrap ${
+                      active
+                        ? 'bg-[#D71921] text-white border-[#D71921]'
+                        : 'bg-[#D71921]/10 text-[#D71921] border-[#D71921]/30 hover:bg-[#D71921] hover:text-white'
+                    }`}
+                  >
+                    {link.shortLabel || link.label}
+                  </Link>
+                );
+              }
+              return (
+                <Link
+                  key={link.to}
+                  to={link.to}
+                  onClick={handleClose}
+                  className={`px-2.5 xl:px-3 py-1.5 rounded-lg text-[13px] font-heading font-medium transition-colors whitespace-nowrap ${
+                    active
+                      ? 'text-[var(--text)] font-semibold bg-[var(--surface-muted)]'
+                      : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface-muted)]/60'
+                  }`}
+                >
+                  {link.shortLabel || link.label}
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* Right side on Desktop: Inline Sign In & Get Started buttons */}
+          <div className="hidden lg:flex items-center gap-2.5 shrink-0">
             <Link
-              to="/grand-line"
+              to="/login"
               onClick={handleClose}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-heading font-bold transition-all border ${
-                isLinkActive('/grand-line')
-                  ? 'bg-[#D71921] text-white border-[#D71921]'
-                  : 'bg-[#D71921]/10 text-[#D71921] border-[#D71921]/30 hover:bg-[#D71921] hover:text-white'
-              }`}
+              className="h-9 px-4 rounded-full inline-flex items-center justify-center text-xs font-heading font-semibold border border-[var(--border-strong)] text-[var(--text)] hover:border-[var(--text)] hover:bg-[var(--surface-muted)] transition-colors whitespace-nowrap"
             >
-              {GRAND_LINE_NAME}
+              Sign In
             </Link>
             <Link
-              to="/commons/about"
+              to="/signup"
               onClick={handleClose}
-              className={`px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors ${
-                isLinkActive('/commons/about')
-                  ? 'text-[#D71921] font-bold'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-              }`}
+              className="h-9 px-4 rounded-full inline-flex items-center justify-center text-xs font-heading font-semibold bg-[#D71921] hover:opacity-90 text-white transition-opacity whitespace-nowrap"
             >
-              Commons
-            </Link>
-            <Link
-              to="/features"
-              onClick={handleClose}
-              className={`px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors ${
-                isLinkActive('/features')
-                  ? 'text-[#D71921] font-bold'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-              }`}
-            >
-              Features
-            </Link>
-            <Link
-              to="/store"
-              onClick={handleClose}
-              className={`px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors ${
-                isLinkActive('/store')
-                  ? 'text-[#D71921] font-bold'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-              }`}
-            >
-              Store
-            </Link>
-            <Link
-              to="/nakama-captains"
-              onClick={handleClose}
-              className={`px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors ${
-                isLinkActive('/nakama-captains')
-                  ? 'text-[#D71921] font-bold'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-              }`}
-            >
-              {NAKAMA_CAPTAINS_NAME}
-            </Link>
-            <Link
-              to="/pricing"
-              onClick={handleClose}
-              className={`px-3 py-1.5 rounded-full text-xs font-heading font-semibold transition-colors ${
-                isLinkActive('/pricing')
-                  ? 'text-[#D71921] font-bold'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)]'
-              }`}
-            >
-              Pricing
+              Get Started
             </Link>
           </div>
 
-          {/* Right side: Quick Grand Line pill on mobile/tablet + Clean 24px Hamburger / Close Icon with 44px tap area */}
-          <div className="flex items-center gap-2">
+          {/* Right side on Mobile/Tablet: Quick Grand Line pill + Hamburger Icon */}
+          <div className="flex lg:hidden items-center gap-2">
             <Link
               to="/grand-line"
               onClick={handleClose}
-              className="lg:hidden px-3 py-1.5 rounded-full text-xs font-heading font-bold bg-[#D71921]/10 text-[#D71921] border border-[#D71921]/30 hover:bg-[#D71921] hover:text-white transition-colors"
+              className="px-3 py-1.5 rounded-full text-xs font-heading font-bold bg-[#D71921]/10 text-[#D71921] border border-[#D71921]/30 hover:bg-[#D71921] hover:text-white transition-colors"
             >
               {GRAND_LINE_NAME}
             </Link>
@@ -184,12 +166,12 @@ export function Navbar() {
               onClick={() => (isOpen ? handleClose() : handleOpen())}
               aria-label={isOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={isOpen}
-              className="w-11 h-11 min-w-[44px] min-h-[44px] flex items-center justify-center text-[var(--text)] hover:text-[var(--accent)] transition-colors cursor-pointer bg-transparent border-0 outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-lg p-0"
+              className="w-10 h-10 min-w-[40px] min-h-[40px] flex items-center justify-center text-[var(--text)] hover:text-[var(--accent)] transition-colors cursor-pointer bg-transparent border border-[var(--border)] outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-lg p-0"
             >
               {isOpen ? (
-                <X size={24} className="stroke-[2.25]" />
+                <X size={20} className="stroke-[2.25]" />
               ) : (
-                <Menu size={24} className="stroke-[2.25]" />
+                <Menu size={20} className="stroke-[2.25]" />
               )}
             </button>
           </div>
@@ -202,21 +184,21 @@ export function Navbar() {
           role="dialog"
           aria-modal="true"
           aria-label="Mobile Navigation"
-          className="fixed inset-0 z-[1001] w-full h-[100dvh] max-h-[100dvh] overflow-y-auto overscroll-contain select-none transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none"
+          className="fixed inset-0 z-[1001] lg:hidden w-full h-[100dvh] max-h-[100dvh] overflow-y-auto overscroll-contain select-none transition-[opacity,transform] duration-300 ease-out motion-reduce:transition-none"
           style={{
             backgroundColor: 'var(--bg)',
             color: 'var(--text)',
-            paddingTop: 'calc(100px + env(safe-area-inset-top, 0px))',
+            paddingTop: 'calc(80px + env(safe-area-inset-top, 0px))',
             paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
-            paddingLeft: 'max(1.5rem, env(safe-area-inset-left, 0px))',
-            paddingRight: 'max(1.5rem, env(safe-area-inset-right, 0px))',
+            paddingLeft: 'max(1.25rem, env(safe-area-inset-left, 0px))',
+            paddingRight: 'max(1.25rem, env(safe-area-inset-right, 0px))',
             opacity: isOpen ? 1 : 0,
             transform: isOpen ? 'translateY(0)' : 'translateY(-10px)',
           }}
         >
           <div className="min-h-full flex flex-col justify-between gap-6 w-full max-w-lg mx-auto">
-            {/* Large Navigation Links in the dot font with Staggered Transition */}
-            <div className="flex flex-col gap-4 sm:gap-5 my-auto py-2 shrink-0">
+            {/* Navigation Links in the dot font with Staggered Transition */}
+            <div className="flex flex-col gap-3 sm:gap-4 my-auto py-2 shrink-0">
               {NAV_LINKS.map((link, idx) => {
                 const active = isLinkActive(link.to);
                 const forwardDelay = idx * 40;
@@ -226,7 +208,7 @@ export function Navbar() {
                     key={link.to}
                     to={link.to}
                     onClick={handleClose}
-                    className="font-dot text-[30px] sm:text-[36px] leading-tight transition-[opacity,transform,color] tracking-tight motion-reduce:transition-none hover:text-[#D71921] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-lg"
+                    className="font-dot text-[24px] sm:text-[28px] leading-tight transition-[opacity,transform,color] tracking-tight motion-reduce:transition-none hover:text-[#D71921] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)] rounded-lg"
                     style={{
                       fontFamily: 'var(--font-dot)',
                       fontWeight: 800,
@@ -247,15 +229,15 @@ export function Navbar() {
 
             {/* Bottom Auth Buttons & Appearance segmented control */}
             <div
-              className="flex flex-col gap-3 pt-5 shrink-0"
+              className="flex flex-col gap-2.5 pt-4 shrink-0"
               style={{ borderTop: '1px solid var(--border)' }}
             >
               <Link
                 to="/login"
                 onClick={handleClose}
-                className="w-full flex items-center justify-center rounded-full transition-colors text-[15px] font-semibold border border-[var(--border-strong)] hover:border-[var(--text)] text-[var(--text)] hover:bg-[var(--surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+                className="w-full flex items-center justify-center rounded-full transition-colors text-[14px] font-semibold border border-[var(--border-strong)] hover:border-[var(--text)] text-[var(--text)] hover:bg-[var(--surface-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
                 style={{
-                  height: '52px',
+                  height: '46px',
                   fontFamily: 'var(--font-heading)',
                   letterSpacing: '-0.02em',
                 }}
@@ -265,9 +247,9 @@ export function Navbar() {
               <Link
                 to="/signup"
                 onClick={handleClose}
-                className="w-full flex items-center justify-center rounded-full transition-colors text-[15px] font-semibold bg-[#D71921] hover:bg-[#b0131a] text-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+                className="w-full flex items-center justify-center rounded-full transition-colors text-[14px] font-semibold bg-[#D71921] hover:bg-[#b0131a] text-white shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
                 style={{
-                  height: '52px',
+                  height: '46px',
                   fontFamily: 'var(--font-heading)',
                   letterSpacing: '-0.02em',
                 }}

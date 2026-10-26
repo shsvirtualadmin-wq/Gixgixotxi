@@ -39,30 +39,30 @@ export function HowItWorks() {
           </p>
         </div>
 
-        {/* 3 cards: no fixed height or min-height, equal height only on desktop via items-stretch */}
+        {/* 3 equal-height cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch">
           {STEPS.map((item, idx) => {
             const Icon = item.icon;
             return (
               <Card
                 key={item.step}
-                className="justify-between"
+                className="h-full flex flex-col justify-between"
               >
                 <div>
                   {/* Top row: number in dot font, icon box top-right */}
                   <div className="flex items-center justify-between mb-4">
                     <span
-                      className="font-doto text-[40px] leading-none font-bold text-[var(--text-muted)]"
+                      className="font-doto text-[32px] leading-none font-bold text-[var(--text-muted)]"
                     >
                       {item.step}
                     </span>
-                    <div className="w-12 h-12 rounded-2xl bg-[#0A0A0A] border border-[rgba(255,255,255,0.12)] flex items-center justify-center text-[#FFFFFF] shrink-0">
-                      <Icon size={22} />
+                    <div className="icon-tile">
+                      <Icon size={20} />
                     </div>
                   </div>
 
                   <h3
-                    className="text-xl font-bold text-[var(--text)] mb-2"
+                    className="text-lg font-bold text-[var(--text)] mb-1.5"
                     style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                   >
                     {item.title}
@@ -74,7 +74,7 @@ export function HowItWorks() {
 
                 {/* Step X of 3 at the bottom after a 1px divider */}
                 <div
-                  className="mt-auto pt-4 border-t border-[var(--border)] text-[13px] text-[var(--text-muted)] font-medium"
+                  className="mt-auto pt-4 border-t border-[var(--border)] text-xs text-[var(--text-muted)] font-medium"
                   style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                 >
                   Step {idx + 1} of 3

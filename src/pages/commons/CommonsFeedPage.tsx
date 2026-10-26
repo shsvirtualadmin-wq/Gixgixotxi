@@ -195,9 +195,16 @@ export function CommonsFeedPage() {
     }
   };
 
-  const handlePostCreated = useCallback(() => {
-    loadPosts();
-  }, [loadPosts]);
+  const handlePostCreated = useCallback(
+    (_postId: string, optimisticPost?: CommonsPost) => {
+      if (optimisticPost) {
+        setPosts((prev) => [optimisticPost, ...prev.filter((p) => p.id !== optimisticPost.id)]);
+      }
+      // Sync with Firestore in background
+      void loadPosts();
+    },
+    [loadPosts]
+  );
 
   const handleDeletePost = useCallback(
     async (postId: string) => {
@@ -544,6 +551,15 @@ export function CommonsFeedPage() {
             email: user.email,
             displayName: profile?.displayName || user.displayName,
             photoURL: profile?.photoURL || user.photoURL,
+            equippedAvatar:
+              profile?.equipped?.avatar ||
+              (profile as any)?.avatar ||
+              (profile as any)?.equippedAvatar ||
+              null,
+            frame: profile?.equipped?.frame || (profile as any)?.frame || null,
+            avatarUrl: (profile as any)?.avatarUrl || null,
+            role: profile?.role || 'Student',
+            customRole: (profile as any)?.customRole || null,
           }}
           initialType={wizardConfig.initialType}
           initialAnonymous={wizardConfig.initialAnonymous}

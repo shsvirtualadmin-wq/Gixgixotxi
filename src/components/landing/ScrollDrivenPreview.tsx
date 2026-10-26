@@ -49,7 +49,7 @@ export function ScrollDrivenPreview() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.12fr_0.88fr] gap-10 lg:gap-12 items-center">
           {/* Left Column: Selector list */}
           <div className="space-y-3">
             {PREVIEWS.map(p => {
@@ -59,24 +59,24 @@ export function ScrollDrivenPreview() {
                 <div
                   key={p.title}
                   onClick={() => setActiveScreen(p.screen)}
-                  className={`p-5 rounded-[20px] cursor-pointer transition-colors duration-150 border ${
+                  className={`p-4 sm:p-5 rounded-[14px] cursor-pointer transition-colors duration-150 border ${
                     isSelected
                       ? 'bg-[var(--card-2)] border-[var(--red)]'
                       : 'bg-[var(--card)] border-[var(--border)] hover:bg-[var(--card-2)]'
                   }`}
                 >
-                  <div className="flex items-start gap-4">
+                  <div className="flex items-start gap-3.5">
                     <div
-                      className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${
+                      className={`w-10 h-10 rounded-[10px] flex items-center justify-center shrink-0 border ${
                         isSelected
                           ? 'bg-[var(--red)] text-[#FFFFFF] border-[var(--red)]'
-                          : 'bg-[#0A0A0A] text-[#FFFFFF] border-[rgba(255,255,255,0.12)]'
+                          : 'bg-[var(--surface-muted)] text-[var(--text)] border-[var(--border)]'
                       }`}
                     >
                       <Icon size={18} />
                     </div>
                     <div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
                         <h3
                           className="text-base font-bold text-[var(--text)]"
                           style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}

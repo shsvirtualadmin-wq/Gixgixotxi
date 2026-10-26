@@ -48,33 +48,34 @@ export function FaqSection() {
           </p>
         </div>
 
-        {/* FAQ list: centered at max-width 800px, 12px gap between rows */}
-        <div className="max-w-[800px] mx-auto flex flex-col gap-3">
+        {/* FAQ list: centered at max-width 760px, 10px gap between slimmer rows */}
+        <div className="max-w-[760px] mx-auto flex flex-col gap-2.5">
           {FAQS.map((faq, idx) => {
             const isOpen = openIndex === idx;
             return (
               <div
                 key={faq.q}
                 onClick={() => toggle(idx)}
-                className="rounded-[16px] bg-[var(--surface)] border border-[var(--border)] cursor-pointer transition-colors hover:bg-[var(--surface-2)]"
-                style={{
-                  padding: '20px',
-                }}
+                className={`rounded-[12px] bg-[var(--surface)] border transition-colors cursor-pointer px-5 py-3.5 ${
+                  isOpen
+                    ? 'border-[var(--border-strong)] bg-[var(--surface-raised)]'
+                    : 'border-[var(--border)] hover:bg-[var(--surface-muted)]/60'
+                }`}
               >
-                {/* Question row: Space Grotesk 16px, + / - toggle icon */}
-                <div className="flex items-center justify-between gap-4">
+                {/* Question row: Space Grotesk 15px, neat + / - toggle icon on the right */}
+                <div className="flex items-center justify-between gap-4 min-h-[28px]">
                   <h3
-                    className="text-[16px] font-semibold text-[var(--text)] leading-snug"
+                    className="text-[15px] font-semibold text-[var(--text)] leading-snug"
                     style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                   >
                     {faq.q}
                   </h3>
-                  <div className="text-[var(--muted)] shrink-0 w-6 h-6 flex items-center justify-center">
-                    {isOpen ? <Minus size={18} /> : <Plus size={18} />}
+                  <div className="w-7 h-7 rounded-[8px] bg-[var(--surface-muted)] border border-[var(--border)] text-[var(--muted)] shrink-0 flex items-center justify-center">
+                    {isOpen ? <Minus size={15} /> : <Plus size={15} />}
                   </div>
                 </div>
 
-                {/* Answer text: Space Grotesk 14px, #9A9A9A, 12px space below question when open */}
+                {/* Answer text when open */}
                 {isOpen && (
                   <div
                     className="mt-3 pt-3 border-t border-[var(--border)] text-[14px] text-[var(--text-muted)] leading-relaxed"
@@ -87,9 +88,6 @@ export function FaqSection() {
             );
           })}
         </div>
-
-        {/* Thin dotted divider between sections */}
-        <div className="divider-dotted mt-16 sm:mt-24" />
       </div>
     </section>
   );

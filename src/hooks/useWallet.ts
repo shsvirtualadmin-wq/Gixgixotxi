@@ -141,9 +141,26 @@ export function useWallet() {
         });
       });
 
-      // Synchronize to public profile so leaderboards and crew roster display it
+      const topLevelSlotField =
+        type === 'effect' ? { effectId: itemId } : { [type]: itemId };
+
+      // Persist equipped cosmetics to users/{uid} so useUserProfile listener stays in sync
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
+          equipped: updatedEquipped,
+          ...topLevelSlotField,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      ).catch((err) => {
+        console.warn('[useWallet] Failed to mirror equipped cosmetic to users doc:', err);
+      });
+
+      // Synchronize to public profile so leaderboards, crew roster, and other viewers display it
       await syncPublicProfile(user.uid, {
         equipped: updatedEquipped,
+        ...topLevelSlotField,
       });
 
       const updated: WalletDoc = {

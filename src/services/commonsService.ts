@@ -296,7 +296,7 @@ export async function createCommonsPost(params: {
   const privateData: CommonsPrivatePost = {
     postId,
     authorUid: currentUser.uid,
-    authorEmail: currentUser.email || undefined,
+    ...(currentUser.email ? { authorEmail: currentUser.email } : {}),
     authorName: currentUser.displayName || 'Student',
     isAnonymous: Boolean(params.isAnonymous),
     createdAt: now,
@@ -304,33 +304,34 @@ export async function createCommonsPost(params: {
 
   const batch = writeBatch(db);
   batch.set(postRef, publicData);
-  // Author & admin private audit doc (postsPrivate and postPrivate)
+  // Author & admin private audit doc (postsPrivate)
   const postsPrivateRef = doc(db, 'postsPrivate', postId);
   batch.set(postsPrivateRef, privateData);
-  const postPrivateRef = doc(db, 'postPrivate', postId);
-  batch.set(postPrivateRef, privateData);
 
   await batch.commit();
-  await recordPostUsage(currentUser.uid);
 
-  // Notify followers if post is public (strictly skip if anonymous)
+  // Fire-and-forget post usage counter and follower notifications so the UI never hangs
+  void recordPostUsage(currentUser.uid);
+
   if (!params.isAnonymous && currentUser.uid) {
-    try {
-      const followers = await fetchUserFollowers(currentUser.uid, 100);
-      const followerUids = followers.map((f) => f.uid).filter(Boolean);
-      if (followerUids.length > 0) {
-        await notifyFollowersOfPost({
-          followerUids,
-          authorId: currentUser.uid,
-          authorName: publicAuthorName,
-          postId,
-          postTitle: params.title,
-          isAnonymous: false,
-        });
+    void (async () => {
+      try {
+        const followers = await fetchUserFollowers(currentUser.uid, 100);
+        const followerUids = followers.map((f) => f.uid).filter(Boolean);
+        if (followerUids.length > 0) {
+          await notifyFollowersOfPost({
+            followerUids,
+            authorId: currentUser.uid,
+            authorName: publicAuthorName,
+            postId,
+            postTitle: params.title,
+            isAnonymous: false,
+          });
+        }
+      } catch (notifErr) {
+        console.warn('[commonsService] Failed to notify followers:', notifErr);
       }
-    } catch (notifErr) {
-      console.warn('[commonsService] Failed to notify followers:', notifErr);
-    }
+    })();
   }
 
   return postId;

@@ -33,17 +33,17 @@ export function Button({
   } else if (variant === 'secondary' || variant === 'outline') {
     bg = 'transparent';
     color = 'var(--text)';
-    border = '1px solid var(--border)';
+    border = '1px solid var(--border-strong)';
   } else if (variant === 'ghost') {
     bg = 'transparent';
     color = 'var(--muted)';
     border = '1px solid transparent';
   }
 
-  // Button sizes: 52px tall standard
-  const height = size === 'sm' ? '38px' : '52px';
-  const paddingInline = size === 'sm' ? '16px' : size === 'lg' ? '28px' : '24px';
-  const fontSize = size === 'sm' ? '14px' : '15px';
+  // Button sizes: 46px tall standard
+  const height = size === 'sm' ? '36px' : '46px';
+  const paddingInline = size === 'sm' ? '14px' : size === 'lg' ? '24px' : '20px';
+  const fontSize = size === 'sm' ? '13px' : '14px';
 
   return (
     <button

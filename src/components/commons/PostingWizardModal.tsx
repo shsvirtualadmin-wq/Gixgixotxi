@@ -19,10 +19,29 @@ import { compressPhoto } from '@/utils/imageCompression';
 import {
   COMMONS_POST_TYPES,
   COMMONS_POST_TYPES_LIST,
+  type CommonsPost,
   type CommonsPostType,
   type CommonsFileAttachment,
 } from '@/types/commons';
 import { createCommonsPost, isExecutableFile } from '@/services/commonsService';
+import { sanitizeStudentDisplayName } from '@/utils/privacy';
+
+function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(timeoutMessage));
+    }, ms);
+    promise
+      .then((val) => {
+        clearTimeout(timer);
+        resolve(val);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
 
 interface StagedAttachment {
   file?: File;
@@ -36,12 +55,17 @@ interface StagedAttachment {
 interface PostingWizardModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onPostCreated: (postId: string) => void;
+  onPostCreated: (postId: string, optimisticPost?: CommonsPost) => void;
   currentUser: {
     uid: string;
     email?: string | null;
     displayName?: string | null;
     photoURL?: string | null;
+    equippedAvatar?: string | null;
+    frame?: string | null;
+    avatarUrl?: string | null;
+    role?: string | null;
+    customRole?: string | null;
   };
   initialType?: CommonsPostType;
   initialAnonymous?: boolean;
@@ -215,7 +239,7 @@ export function PostingWizardModal({
     try {
       const finalAttachments: CommonsFileAttachment[] = [];
 
-      // 1. Upload files to Firebase Storage first and await download URLs
+      // 1. Upload files to Firebase Storage first and await download URLs (with 20s timeout per file)
       for (let i = 0; i < stagedFiles.length; i++) {
         const item = stagedFiles[i];
         if (item.file) {
@@ -229,11 +253,19 @@ export function PostingWizardModal({
             : `commons/${currentUser.uid}/${Date.now()}_${cleanFileName}`;
 
           const fileRef = ref(storage, storagePath);
-          const uploadSnapshot = await uploadBytes(fileRef, item.file, {
-            contentType: item.file.type || (item.isImage ? 'image/jpeg' : 'application/octet-stream'),
-          });
+          const uploadSnapshot = await withTimeout(
+            uploadBytes(fileRef, item.file, {
+              contentType: item.file.type || (item.isImage ? 'image/jpeg' : 'application/octet-stream'),
+            }),
+            20000,
+            `Uploading "${item.name}" timed out. Please check your internet connection and try again.`
+          );
 
-          const downloadUrl = await getDownloadURL(uploadSnapshot.ref);
+          const downloadUrl = await withTimeout(
+            getDownloadURL(uploadSnapshot.ref),
+            15000,
+            `Fetching download link for "${item.name}" timed out. Please try again.`
+          );
 
           finalAttachments.push({
             name: item.name,
@@ -246,23 +278,65 @@ export function PostingWizardModal({
 
       setUploadStatus('Publishing post...');
 
-      // 2. Create post document with persistent download URLs
-      const newPostId = await createCommonsPost({
-        currentUser,
+      // 2. Create post document with persistent download URLs (with 18s timeout)
+      const newPostId = await withTimeout(
+        createCommonsPost({
+          currentUser,
+          type: selectedType,
+          title: title.trim(),
+          description: description.trim(),
+          tags,
+          files: finalAttachments,
+          isAnonymous,
+        }),
+        18000,
+        'Publishing timed out due to a slow connection. Please check your network and try again.'
+      );
+
+      const cleanAuthorName = isAnonymous
+        ? 'Anonymous'
+        : sanitizeStudentDisplayName(currentUser.displayName, currentUser.uid);
+
+      const optimisticPost: CommonsPost = {
+        id: newPostId,
         type: selectedType,
         title: title.trim(),
         description: description.trim(),
-        tags,
+        subject: '',
+        chapter: '',
+        target: '',
+        tags: tags.map((t) => t.trim().toLowerCase()).filter(Boolean),
         files: finalAttachments,
-        isAnonymous,
-      });
+        isAnonymous: Boolean(isAnonymous),
+        authorUid: isAnonymous ? null : currentUser.uid,
+        authorName: cleanAuthorName,
+        authorAvatar: isAnonymous
+          ? null
+          : currentUser.equippedAvatar || currentUser.avatarUrl || currentUser.photoURL || null,
+        authorFrame: isAnonymous ? null : currentUser.frame || null,
+        authorEquippedAvatar: isAnonymous ? null : currentUser.equippedAvatar || null,
+        authorPhotoURL: isAnonymous ? null : currentUser.photoURL || null,
+        authorRole: isAnonymous ? null : currentUser.role || 'Student',
+        authorCustomRole: isAnonymous ? null : currentUser.customRole || null,
+        upvotes: 0,
+        commentCount: 0,
+        saveCount: 0,
+        reportCount: 0,
+        isHidden: false,
+        searchKeywords: [],
+        createdAt: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 },
+        updatedAt: { seconds: Math.floor(Date.now() / 1000), nanoseconds: 0 },
+      };
 
-      onPostCreated(newPostId);
+      onPostCreated(newPostId, optimisticPost);
       onClose();
     } catch (err: unknown) {
       console.error('[PostingWizard] publish error:', err);
-      const msg = err instanceof Error ? err.message : 'Failed to publish post.';
-      setErrorMsg(msg);
+      const rawMsg = err instanceof Error ? err.message : 'Failed to publish post.';
+      const friendlyMsg = rawMsg.includes('permission-denied') || rawMsg.includes('Missing or insufficient permissions')
+        ? 'Permission denied while publishing your post. Please refresh and try again.'
+        : rawMsg;
+      setErrorMsg(friendlyMsg);
     } finally {
       setIsSubmitting(false);
       setUploadStatus(null);
