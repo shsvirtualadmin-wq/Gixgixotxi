@@ -23,16 +23,19 @@ export function PublicLayout() {
     location.pathname === '/about-kobans';
 
   const isContact = location.pathname === '/contact';
+  const isCommonsFeed = location.pathname === '/commons';
 
-  const isDashboardAppRoute = Boolean(user && (isStoreOrKobans || isContact));
+  const isDashboardAppRoute =
+    isCommonsFeed || Boolean(user && (isStoreOrKobans || isContact));
 
   if (isDashboardAppRoute) {
     return (
-      <div className="min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-hidden">
-        <main className="flex-1 w-full max-w-6xl mx-auto px-3 sm:px-6 pt-2 pb-28">
+      <div className="relative min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-hidden">
+        <BackgroundCanvas />
+        <main className="flex-1 w-full max-w-6xl mx-auto px-3 sm:px-6 pt-3 sm:pt-4 pb-28">
           <Outlet />
         </main>
-        {/* Floating bottom nav with Menu icon highlighted inside /store */}
+        {/* Floating bottom nav at the bottom (no top navbar hiding Commons search) */}
         <DashboardBottomNav />
       </div>
     );

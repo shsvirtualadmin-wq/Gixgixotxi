@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Image as ImageIcon, RefreshCw, AlertCircle } from 'lucide-react';
+import { Image as ImageIcon, RefreshCw } from 'lucide-react';
 import { ref, getDownloadURL } from 'firebase/storage';
 import { storage } from '@/lib/firebase';
+import { resolveCommonsAttachmentUrl } from '@/services/commonsUploadService';
 import type { CommonsFileAttachment } from '@/types/commons';
 
 interface CommonsImageAttachmentProps {
@@ -29,23 +30,40 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
       const rawUrl = file?.url?.trim() || '';
       const rawName = file?.name?.trim() || '';
 
-      // Case 1: Already a valid Firebase Storage or HTTP(S) URL (not a dead blob)
-      if (rawUrl.startsWith('https://') && !rawUrl.includes('blob:')) {
+      // Case 1: Relative server URL (/api/commons/files/...), data: URL, or HTTP(S) URL
+      if (
+        (rawUrl.startsWith('/api/commons/files/') ||
+          rawUrl.startsWith('https://') ||
+          rawUrl.startsWith('http://') ||
+          rawUrl.startsWith('data:image/')) &&
+        !rawUrl.includes('blob:')
+      ) {
         if (!isCancelled) {
           setResolvedUrl(rawUrl);
         }
         return;
       }
 
-      // Case 2: Resolve from Firebase Storage path or filename
+      // Case 2: Firestore chunked attachment URL (firestore://commons_attachments/...)
+      if (rawUrl.startsWith('firestore://')) {
+        try {
+          const hydrated = await resolveCommonsAttachmentUrl(rawUrl);
+          if (!isCancelled && hydrated) {
+            setResolvedUrl(hydrated);
+            return;
+          }
+        } catch (err) {
+          console.warn('[CommonsImageAttachment] Failed to resolve firestore:// attachment:', err);
+        }
+      }
+
+      // Case 3: Resolve from Firebase Storage path or filename
       const candidatePaths: string[] = [];
 
-      // If rawUrl is a path (e.g. users/... or posts/...)
       if (rawUrl && (rawUrl.startsWith('users/') || rawUrl.startsWith('posts/') || rawUrl.startsWith('commons/'))) {
         candidatePaths.push(rawUrl);
       }
 
-      // If authorUid exists, check standard post storage folders
       const fileNameTarget = rawName || rawUrl.split('/').pop() || '';
       if (authorUid && fileNameTarget && !fileNameTarget.startsWith('blob:')) {
         candidatePaths.push(`users/${authorUid}/posts/${fileNameTarget}`);
@@ -67,7 +85,7 @@ export const CommonsImageAttachment: React.FC<CommonsImageAttachmentProps> = ({
       }
 
       // If rawUrl was a blob and still loadable in this session, attempt it
-      if (rawUrl.startsWith('blob:') || rawUrl.startsWith('http://localhost')) {
+      if (rawUrl.startsWith('blob:')) {
         if (!isCancelled) {
           setResolvedUrl(rawUrl);
         }

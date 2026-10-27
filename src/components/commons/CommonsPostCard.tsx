@@ -636,6 +636,7 @@ function FileAttachmentChip({
   currentUserId?: string | null;
   onRequireAuth: () => void;
 }) {
+  const [downloading, setDownloading] = useState(false);
   const fileName = file?.name || 'attachment';
   const fileType = file?.type || '';
   const isPdf =
@@ -645,6 +646,29 @@ function FileAttachmentChip({
     if (!bytes || isNaN(bytes)) return '';
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const handleDownloadClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
+    if (!file?.url?.startsWith('firestore://')) return;
+    e.preventDefault();
+    if (downloading) return;
+    setDownloading(true);
+    try {
+      const { resolveCommonsAttachmentUrl } = await import('@/services/commonsUploadService');
+      const resolved = await resolveCommonsAttachmentUrl(file.url);
+      if (resolved) {
+        const a = document.createElement('a');
+        a.href = resolved;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch (err) {
+      console.error('[CommonsPostCard] Failed to download attachment:', err);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   return (
@@ -662,13 +686,14 @@ function FileAttachmentChip({
       {currentUserId ? (
         <a
           href={file.url}
+          onClick={handleDownloadClick}
           target="_blank"
           rel="ugc nofollow noopener noreferrer"
           download={file.name}
           className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-secondary bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg shrink-0 transition-colors shadow-xs"
         >
           <Download size={13} />
-          <span>Download</span>
+          <span>{downloading ? 'Preparing...' : 'Download'}</span>
         </a>
       ) : (
         <button
@@ -683,4 +708,5 @@ function FileAttachmentChip({
     </div>
   );
 }
+
 

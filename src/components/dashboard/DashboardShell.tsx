@@ -15,6 +15,11 @@ export function DashboardShell() {
   const [authGraceFinished, setAuthGraceFinished] = useState(false);
 
   const isProfileRoute = location.pathname.startsWith('/dashboard/profile');
+  const isCommonsRoute =
+    location.pathname.startsWith('/dashboard/commons') ||
+    location.pathname.startsWith('/commons') ||
+    location.pathname === '/messages' ||
+    location.pathname === '/saved';
 
   useEffect(() => {
     // 2.5s grace period so Firebase Auth restores without flashing empty/redirect
@@ -43,7 +48,7 @@ export function DashboardShell() {
       />
       <VerificationBanner />
       <RoleSelectionPromptModal />
-      {!isProfileRoute && <DashboardTopBar />}
+      {!isProfileRoute && !isCommonsRoute && <DashboardTopBar />}
 
       {/* Main Content Container: when on profile route, remove bottom nav padding and use safe-area padding */}
       <main

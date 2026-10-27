@@ -7,14 +7,11 @@ import {
   AlertCircle,
   CheckCircle2,
   FileText,
-  File,
-  Image as ImageIcon,
   Trash2,
   Sparkles,
   Loader2,
+  RefreshCw,
 } from 'lucide-react';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '@/lib/firebase';
 import { compressPhoto } from '@/utils/imageCompression';
 import {
   COMMONS_POST_TYPES,
@@ -24,6 +21,7 @@ import {
   type CommonsFileAttachment,
 } from '@/types/commons';
 import { createCommonsPost, isExecutableFile } from '@/services/commonsService';
+import { uploadCommonsAttachment, CommonsUploadError } from '@/services/commonsUploadService';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 
 function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string): Promise<T> {
@@ -43,13 +41,34 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMessage: string)
   });
 }
 
+const ALLOWED_EXTENSIONS = [
+  '.pdf',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.doc',
+  '.docx',
+  '.ppt',
+  '.pptx',
+  '.txt',
+];
+const MAX_ATTACHMENT_BYTES = 25 * 1024 * 1024; // 25 MB
+
 interface StagedAttachment {
-  file?: File;
+  id: string;
+  file: File;
+  originalFile: File;
   name: string;
   size: number;
   type: string;
   previewUrl: string;
   isImage: boolean;
+  status: 'compressing' | 'staged' | 'uploading' | 'uploaded' | 'error';
+  progress: number;
+  uploadedUrl?: string;
+  errorMessage?: string;
 }
 
 interface PostingWizardModalProps {
@@ -90,6 +109,9 @@ export function PostingWizardModal({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [stagedFiles, setStagedFiles] = useState<StagedAttachment[]>([]);
+  const stagedFilesRef = useRef<StagedAttachment[]>([]);
+  stagedFilesRef.current = stagedFiles;
+  const activeUploadsRef = useRef<Map<string, Promise<CommonsFileAttachment>>>(new Map());
 
   // Custom Tags
   const [tagInput, setTagInput] = useState('');
@@ -123,15 +145,21 @@ export function PostingWizardModal({
   // Clean up object URLs on unmount
   useEffect(() => {
     return () => {
-      stagedFiles.forEach((f) => {
+      stagedFilesRef.current.forEach((f) => {
         if (f.previewUrl?.startsWith('blob:')) {
           URL.revokeObjectURL(f.previewUrl);
         }
       });
     };
-  }, [stagedFiles]);
+  }, []);
 
   if (!isOpen) return null;
+
+  const formatFileSize = (bytes: number): string => {
+    if (!bytes || bytes < 1024) return `${bytes || 0} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
 
   const handleAddTag = () => {
     const trimmed = tagInput.trim().replace(/^#/, '').toLowerCase();
@@ -145,71 +173,316 @@ export function PostingWizardModal({
     setTags(tags.filter((t) => t !== tagToRemove));
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedList = e.target.files;
     if (!selectedList || selectedList.length === 0) return;
 
     setErrorMsg(null);
-    if (stagedFiles.length + selectedList.length > 5) {
-      setErrorMsg('You can attach a maximum of 5 files per post.');
+    const filesArray = Array.from(selectedList);
+
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
+    if (stagedFiles.length + filesArray.length > 5) {
+      setErrorMsg(
+        `You can attach a maximum of 5 files per post (currently ${stagedFiles.length}/5 attached).`
+      );
       return;
     }
 
-    const newlyAdded: StagedAttachment[] = [];
+    const validationErrors: string[] = [];
+    const validEntries: StagedAttachment[] = [];
 
-    for (let i = 0; i < selectedList.length; i++) {
-      const file = selectedList[i];
+    for (let i = 0; i < filesArray.length; i++) {
+      const file = filesArray[i];
+      const lowerName = file.name.toLowerCase();
 
-      // Block executable files
+      // 1. Block executable files
       if (isExecutableFile(file.name)) {
-        setErrorMsg(`Blocked file "${file.name}". Executables & script files are strictly prohibited.`);
-        return;
+        const msg = `Blocked file "${file.name}": executable and script files are strictly prohibited.`;
+        console.error('[PostingWizard] File validation failed:', {
+          step: 'file_picker_validation',
+          code: 'UNSUPPORTED_TYPE',
+          fileName: file.name,
+          fileSize: file.size,
+        });
+        validationErrors.push(msg);
+        continue;
       }
 
-      // Max 25 MB
-      if (file.size > 25 * 1024 * 1024) {
-        setErrorMsg(`File "${file.name}" exceeds the 25 MB maximum size limit.`);
-        return;
+      // 2. Check supported extensions
+      const hasSupportedExt = ALLOWED_EXTENSIONS.some((ext) => lowerName.endsWith(ext));
+      const isSupportedMime =
+        file.type.startsWith('image/') ||
+        file.type === 'application/pdf' ||
+        file.type.includes('word') ||
+        file.type.includes('presentation') ||
+        file.type.includes('powerpoint') ||
+        file.type === 'text/plain';
+
+      if (!hasSupportedExt && !isSupportedMime) {
+        const msg = `Unsupported file format for "${file.name}". Allowed formats: PNG, JPG, WEBP, GIF, PDF, DOC, DOCX, PPT, PPTX, TXT.`;
+        console.error('[PostingWizard] File validation failed:', {
+          step: 'file_picker_validation',
+          code: 'UNSUPPORTED_TYPE',
+          fileName: file.name,
+          fileType: file.type,
+        });
+        validationErrors.push(msg);
+        continue;
+      }
+
+      // 3. Check empty file
+      if (file.size === 0) {
+        const msg = `File "${file.name}" is empty (0 bytes).`;
+        console.error('[PostingWizard] File validation failed:', {
+          step: 'file_picker_validation',
+          code: 'EMPTY_FILE',
+          fileName: file.name,
+        });
+        validationErrors.push(msg);
+        continue;
+      }
+
+      // 4. Max 25 MB
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        const sizeMb = (file.size / (1024 * 1024)).toFixed(1);
+        const msg = `File "${file.name}" (${sizeMb} MB) exceeds the 25 MB maximum size limit.`;
+        console.error('[PostingWizard] File validation failed:', {
+          step: 'file_picker_validation',
+          code: 'FILE_TOO_LARGE',
+          fileName: file.name,
+          fileSize: file.size,
+        });
+        validationErrors.push(msg);
+        continue;
       }
 
       const isImage =
-        file.type.startsWith('image/') ||
-        /\.(png|jpe?g|webp|gif)$/i.test(file.name);
+        file.type.startsWith('image/') || /\.(png|jpe?g|webp|gif)$/i.test(file.name);
+      const shouldCompress = isImage && !/\.gif$/i.test(file.name) && file.type !== 'image/gif';
 
-      let processedFile = file;
-      if (isImage) {
-        // Compress photo client-side before staging (max 1600px, quality 0.8)
-        try {
-          processedFile = await compressPhoto(file, { maxDimension: 1600, quality: 0.8 });
-        } catch (err) {
-          console.warn('[PostingWizard] Compression fallback:', err);
-          processedFile = file;
-        }
-      }
+      const id = `staged_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`;
+      const previewUrl = URL.createObjectURL(file);
 
-      const previewUrl = URL.createObjectURL(processedFile);
-      newlyAdded.push({
-        file: processedFile,
-        name: processedFile.name,
-        size: processedFile.size,
-        type: processedFile.type || (isImage ? 'image/jpeg' : 'application/octet-stream'),
+      const entry: StagedAttachment = {
+        id,
+        file,
+        originalFile: file,
+        name: file.name,
+        size: file.size,
+        type: file.type || (isImage ? 'image/jpeg' : 'application/octet-stream'),
         previewUrl,
         isImage,
-      });
+        status: shouldCompress ? 'compressing' : 'staged',
+        progress: 0,
+      };
+
+      validEntries.push(entry);
+
+      // Run compression non-blockingly in the background with fallback to original file, then start upload
+      if (shouldCompress) {
+        void compressPhoto(file, { maxDimension: 1600, quality: 0.82, timeoutMs: 4000 })
+          .then((compressed) => {
+            const updatedEntry: StagedAttachment = {
+              ...entry,
+              file: compressed,
+              size: compressed.size,
+              type: compressed.type || entry.type,
+              status: 'staged',
+            };
+            setStagedFiles((prev) =>
+              prev.map((item) => (item.id === id ? updatedEntry : item))
+            );
+            if (currentUser?.uid) {
+              void uploadSingleAttachmentItem(updatedEntry).catch(() => {});
+            }
+          })
+          .catch((err) => {
+            console.warn(`[PostingWizard] Non-blocking compression fallback for "${file.name}":`, err);
+            const fallbackEntry: StagedAttachment = {
+              ...entry,
+              file,
+              status: 'staged',
+            };
+            setStagedFiles((prev) =>
+              prev.map((item) => (item.id === id ? fallbackEntry : item))
+            );
+            if (currentUser?.uid) {
+              void uploadSingleAttachmentItem(fallbackEntry).catch(() => {});
+            }
+          });
+      } else if (currentUser?.uid) {
+        setTimeout(() => {
+          void uploadSingleAttachmentItem(entry).catch(() => {});
+        }, 20);
+      }
     }
 
-    setStagedFiles((prev) => [...prev, ...newlyAdded]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    if (validationErrors.length > 0) {
+      setErrorMsg(validationErrors.join(' '));
+    }
+
+    if (validEntries.length > 0) {
+      setStagedFiles((prev) => [...prev, ...validEntries]);
     }
   };
 
   const handleRemoveFile = (index: number) => {
     const target = stagedFiles[index];
-    if (target?.previewUrl?.startsWith('blob:')) {
-      URL.revokeObjectURL(target.previewUrl);
+    if (target) {
+      activeUploadsRef.current.delete(target.id);
+      if (target.previewUrl?.startsWith('blob:')) {
+        URL.revokeObjectURL(target.previewUrl);
+      }
     }
     setStagedFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadSingleAttachmentItem = async (
+    item: StagedAttachment,
+    indexLabel?: string
+  ): Promise<CommonsFileAttachment> => {
+    // Check latest state in ref in case background upload already finished
+    const latest = stagedFilesRef.current.find((f) => f.id === item.id) || item;
+    if (latest.status === 'uploaded' && latest.uploadedUrl) {
+      return {
+        name: latest.name,
+        size: latest.size,
+        type: latest.type,
+        url: latest.uploadedUrl,
+      };
+    }
+
+    // Reuse any in-flight upload promise for this item
+    const existingPromise = activeUploadsRef.current.get(item.id);
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const uploadPromise = (async (): Promise<CommonsFileAttachment> => {
+    // If still compressing, wait briefly (max 1.5s) or use original file immediately
+    let fileToUpload = latest.file || latest.originalFile;
+    if (latest.status === 'compressing') {
+      try {
+        fileToUpload = await compressPhoto(latest.originalFile, {
+          maxDimension: 1600,
+          quality: 0.82,
+          timeoutMs: 1500,
+        });
+      } catch {
+        fileToUpload = latest.originalFile;
+      }
+    }
+
+    setStagedFiles((prev) =>
+      prev.map((f) =>
+        f.id === item.id
+          ? {
+              ...f,
+              file: fileToUpload,
+              size: fileToUpload.size,
+              status: 'uploading',
+              progress: 1,
+              errorMessage: undefined,
+            }
+          : f
+      )
+    );
+
+    try {
+      const result = await uploadCommonsAttachment({
+        file: fileToUpload,
+        displayName: item.name,
+        userId: currentUser.uid,
+        isImage: item.isImage,
+        inactivityTimeoutMs: 30000,
+        maxAttempts: 3,
+        onProgress: (pct) => {
+          setStagedFiles((prev) =>
+            prev.map((f) =>
+              f.id === item.id ? { ...f, status: 'uploading', progress: pct } : f
+            )
+          );
+          if (indexLabel) {
+            setUploadStatus(`${indexLabel} (${pct}%)...`);
+          }
+        },
+        onRetry: (attempt, maxAttempts) => {
+          if (indexLabel) {
+            setUploadStatus(`${indexLabel} — retrying (attempt ${attempt}/${maxAttempts})...`);
+          }
+        },
+      });
+
+      setStagedFiles((prev) =>
+        prev.map((f) =>
+          f.id === item.id
+            ? {
+                ...f,
+                status: 'uploaded',
+                progress: 100,
+                uploadedUrl: result.url,
+                errorMessage: undefined,
+              }
+            : f
+        )
+      );
+
+      return {
+        name: item.name,
+        size: result.size,
+        type: result.type,
+        url: result.url,
+      };
+    } catch (err: any) {
+      const specificMsg =
+        err instanceof CommonsUploadError
+          ? err.message
+          : err?.message || `Failed to upload "${item.name}".`;
+
+      setStagedFiles((prev) =>
+        prev.map((f) =>
+          f.id === item.id
+            ? {
+                ...f,
+                status: 'error',
+                progress: 0,
+                errorMessage: specificMsg,
+              }
+            : f
+        )
+      );
+
+      throw err;
+    } finally {
+      activeUploadsRef.current.delete(item.id);
+    }
+    })();
+
+    activeUploadsRef.current.set(item.id, uploadPromise);
+    return uploadPromise;
+  };
+
+  const handleRetryFile = async (itemId: string) => {
+    const target = stagedFilesRef.current.find((f) => f.id === itemId);
+    if (!target || !currentUser?.uid) return;
+
+    setErrorMsg(null);
+    activeUploadsRef.current.delete(itemId);
+    try {
+      await uploadSingleAttachmentItem({
+        ...target,
+        status: 'staged',
+        progress: 0,
+        errorMessage: undefined,
+      });
+    } catch (err: any) {
+      setErrorMsg(
+        err?.message || `Upload failed for "${target.name}". Please check the error on the file and try again.`
+      );
+    }
   };
 
   const handlePublish = async () => {
@@ -229,56 +502,29 @@ export function PostingWizardModal({
     }
 
     if (!currentUser?.uid) {
-      setErrorMsg('You must be signed in to create a post.');
+      setErrorMsg('Authentication error: You must be signed in to create a post.');
       return;
     }
 
     setIsSubmitting(true);
-    setUploadStatus('Uploading attachments...');
+    setUploadStatus(stagedFiles.length > 0 ? 'Uploading attachments...' : 'Publishing post...');
 
     try {
+      const currentFiles = [...stagedFilesRef.current];
       const finalAttachments: CommonsFileAttachment[] = [];
 
-      // 1. Upload files to Firebase Storage first and await download URLs (with 20s timeout per file)
-      for (let i = 0; i < stagedFiles.length; i++) {
-        const item = stagedFiles[i];
-        if (item.file) {
-          setUploadStatus(`Uploading file ${i + 1} of ${stagedFiles.length}...`);
-
-          const cleanFileName = item.file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
-          // Images go into users/{uid}/posts/{timestamp}_{filename}
-          // Documents go into commons/{uid}/{timestamp}_{filename}
-          const storagePath = item.isImage
-            ? `users/${currentUser.uid}/posts/${Date.now()}_${cleanFileName}`
-            : `commons/${currentUser.uid}/${Date.now()}_${cleanFileName}`;
-
-          const fileRef = ref(storage, storagePath);
-          const uploadSnapshot = await withTimeout(
-            uploadBytes(fileRef, item.file, {
-              contentType: item.file.type || (item.isImage ? 'image/jpeg' : 'application/octet-stream'),
-            }),
-            20000,
-            `Uploading "${item.name}" timed out. Please check your internet connection and try again.`
-          );
-
-          const downloadUrl = await withTimeout(
-            getDownloadURL(uploadSnapshot.ref),
-            15000,
-            `Fetching download link for "${item.name}" timed out. Please try again.`
-          );
-
-          finalAttachments.push({
-            name: item.name,
-            size: item.size,
-            type: item.type,
-            url: downloadUrl,
-          });
-        }
+      // 1. Upload files with progress-based inactivity timeout & automatic retry
+      for (let i = 0; i < currentFiles.length; i++) {
+        const item = currentFiles[i];
+        const label = `Uploading file ${i + 1} of ${currentFiles.length}`;
+        setUploadStatus(`${label}...`);
+        const uploadedAttachment = await uploadSingleAttachmentItem(item, label);
+        finalAttachments.push(uploadedAttachment);
       }
 
       setUploadStatus('Publishing post...');
 
-      // 2. Create post document with persistent download URLs (with 18s timeout)
+      // 2. Create post document with persistent download URLs (with 25s timeout)
       const newPostId = await withTimeout(
         createCommonsPost({
           currentUser,
@@ -289,8 +535,8 @@ export function PostingWizardModal({
           files: finalAttachments,
           isAnonymous,
         }),
-        18000,
-        'Publishing timed out due to a slow connection. Please check your network and try again.'
+        25000,
+        'Saving post to database timed out (25s). Your files are already uploaded — click Publish Resource to try again.'
       );
 
       const cleanAuthorName = isAnonymous
@@ -330,12 +576,20 @@ export function PostingWizardModal({
 
       onPostCreated(newPostId, optimisticPost);
       onClose();
-    } catch (err: unknown) {
-      console.error('[PostingWizard] publish error:', err);
+    } catch (err: any) {
+      console.error('[PostingWizard] Publish failed:', {
+        step: err instanceof CommonsUploadError ? err.step : 'create_commons_post',
+        code: err instanceof CommonsUploadError ? err.code : err?.code || 'PUBLISH_ERROR',
+        statusCode: err instanceof CommonsUploadError ? err.statusCode : undefined,
+        responseBody: err instanceof CommonsUploadError ? err.responseBody : undefined,
+        message: err?.message,
+        error: err,
+      });
       const rawMsg = err instanceof Error ? err.message : 'Failed to publish post.';
-      const friendlyMsg = rawMsg.includes('permission-denied') || rawMsg.includes('Missing or insufficient permissions')
-        ? 'Permission denied while publishing your post. Please refresh and try again.'
-        : rawMsg;
+      const friendlyMsg =
+        rawMsg.includes('permission-denied') || rawMsg.includes('Missing or insufficient permissions')
+          ? 'Permission denied by database security rules while publishing your post. Please verify you are signed in and try again.'
+          : rawMsg;
       setErrorMsg(friendlyMsg);
     } finally {
       setIsSubmitting(false);
@@ -542,39 +796,103 @@ export function PostingWizardModal({
                   </p>
                 </div>
 
-                {/* Staged Files List with previews */}
+                {/* Staged Files List with previews, progress bar, error message & Retry button */}
                 {stagedFiles.length > 0 && (
                   <div className="space-y-1.5 pt-1">
                     {stagedFiles.map((file, idx) => (
                       <div
-                        key={idx}
-                        className="flex items-center justify-between p-2 rounded-lg bg-surface border border-border text-xs"
+                        key={file.id || idx}
+                        className={`p-2.5 rounded-lg bg-surface border text-xs transition-colors ${
+                          file.status === 'error'
+                            ? 'border-tag-danger-text/50 bg-tag-danger-bg/20'
+                            : 'border-border'
+                        }`}
                       >
-                        <div className="flex items-center gap-2.5 truncate">
-                          {file.isImage ? (
-                            <div className="w-8 h-8 rounded-md overflow-hidden bg-surface-muted shrink-0 border border-border">
-                              <img
-                                src={file.previewUrl}
-                                alt={file.name}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                          ) : (
-                            <FileText size={16} className="text-accent shrink-0 ml-1" />
-                          )}
-                          <span className="truncate text-primary font-medium">{file.name}</span>
-                          <span className="text-[11px] text-muted shrink-0">
-                            ({(file.size / 1024).toFixed(0)} KB)
-                          </span>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                            {file.isImage ? (
+                              <div className="w-8 h-8 rounded-md overflow-hidden bg-surface-muted shrink-0 border border-border">
+                                <img
+                                  src={file.previewUrl}
+                                  alt={file.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            ) : (
+                              <FileText size={16} className="text-accent shrink-0 ml-1" />
+                            )}
+                            <span className="truncate text-primary font-medium">{file.name}</span>
+                            <span className="text-[11px] text-muted shrink-0">
+                              ({formatFileSize(file.size)})
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {file.status === 'compressing' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-medium text-muted px-1.5 py-0.5 rounded bg-surface-muted">
+                                <Loader2 size={11} className="animate-spin text-accent" />
+                                <span>Optimizing...</span>
+                              </span>
+                            )}
+                            {file.status === 'uploading' && (
+                              <span className="inline-flex items-center gap-1 text-[10px] font-mono font-semibold text-accent px-1.5 py-0.5 rounded bg-accent-soft">
+                                <Loader2 size={11} className="animate-spin" />
+                                <span>{file.progress}%</span>
+                              </span>
+                            )}
+                            {file.status === 'uploaded' && (
+                              <span
+                                className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-500 px-1.5 py-0.5 rounded bg-emerald-500/10"
+                                title="Uploaded and ready"
+                              >
+                                <CheckCircle2 size={12} />
+                                <span>Ready</span>
+                              </span>
+                            )}
+                            {file.status === 'error' && (
+                              <button
+                                type="button"
+                                onClick={() => handleRetryFile(file.id)}
+                                className="inline-flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-semibold bg-accent text-on-accent hover:opacity-90 transition-opacity cursor-pointer"
+                                title="Retry uploading this file"
+                              >
+                                <RefreshCw size={11} />
+                                <span>Retry</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveFile(idx)}
+                              className="text-muted hover:text-accent p-1 transition-colors cursor-pointer"
+                              aria-label="Remove attachment"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveFile(idx)}
-                          className="text-muted hover:text-accent p-1 transition-colors cursor-pointer"
-                          aria-label="Remove attachment"
-                        >
-                          <Trash2 size={13} />
-                        </button>
+
+                        {/* Real upload progress bar */}
+                        {(file.status === 'uploading' || file.status === 'compressing') && (
+                          <div className="mt-2 h-1.5 w-full rounded-full bg-surface-muted overflow-hidden">
+                            <div
+                              className="h-full bg-accent transition-all duration-150 rounded-full"
+                              style={{
+                                width:
+                                  file.status === 'compressing'
+                                    ? '15%'
+                                    : `${Math.max(4, Math.min(100, file.progress))}%`,
+                              }}
+                            />
+                          </div>
+                        )}
+
+                        {/* Per-file specific error message */}
+                        {file.status === 'error' && file.errorMessage && (
+                          <div className="mt-1.5 flex items-start gap-1.5 text-[11px] text-tag-danger-text leading-snug">
+                            <AlertCircle size={12} className="shrink-0 mt-0.5 text-accent" />
+                            <span>{file.errorMessage}</span>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>

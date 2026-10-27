@@ -30,6 +30,7 @@ import {
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useAuthGate } from '@/contexts/AuthGateContext';
+import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { WalletModal } from './WalletModal';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
@@ -89,6 +90,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const navigate = useNavigate();
   const { user: authUser, isAdmin, signOutUser } = useAuth();
   const { requireAuth } = useAuthGate();
+  const { openProfile } = useProfileModal();
   const {
     profile: ownProfile,
     updateProfileData,
@@ -1949,7 +1951,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           currentUserId={currentUid}
           onSelectUser={(uid) => {
             setFollowListTab(null);
-            navigate(`/dashboard/profile?uid=${uid}`);
+            if (!isFullPage) {
+              openProfile(uid);
+            } else {
+              navigate(`/dashboard/profile?uid=${uid}`);
+            }
           }}
         />
       )}

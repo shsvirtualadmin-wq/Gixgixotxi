@@ -1,0 +1,3 @@
+F = ma
+E = mc^2
+PV = nRT

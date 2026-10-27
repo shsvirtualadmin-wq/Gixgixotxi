@@ -206,17 +206,25 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
           <div
             onClick={() => {
               onClose();
-              openProfile();
+              if (user) {
+                openProfile();
+              } else {
+                navigate('/login');
+              }
             }}
             className="flex items-center justify-between p-3 rounded-2xl bg-surface-muted/60 hover:bg-surface-muted border border-border transition-colors cursor-pointer group"
-            title="Open Profile"
+            title={user ? 'Open Profile' : 'Sign In'}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 onClose();
-                openProfile();
+                if (user) {
+                  openProfile();
+                } else {
+                  navigate('/login');
+                }
               }
             }}
           >
@@ -237,16 +245,16 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
               {/* Middle: Nickname (bold plain text), Username (muted), Role badge + Plan */}
               <div className="min-w-0 flex-1 pr-2">
                 <h2 className="font-semibold text-[16px] text-primary truncate leading-tight group-hover:text-accent transition-colors">
-                  {cleanNickname}
+                  {user ? cleanNickname : 'Guest Student'}
                 </h2>
 
-                {username ? (
+                {user && username ? (
                   <p className="text-[13px] text-muted truncate mt-0.5 leading-tight">
                     @{username}
                   </p>
                 ) : (
                   <p className="text-[13px] text-muted truncate mt-0.5 leading-tight">
-                    Student
+                    {user ? 'Student' : 'Tap to sign in or create account'}
                   </p>
                 )}
 
@@ -268,16 +276,18 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
 
             {/* Right: Koban balance chip + Chevron */}
             <div className="flex items-center gap-1.5 shrink-0">
-              <div
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleNav('/store');
-                }}
-                title="Boardly Store"
-                className="cursor-pointer transition-transform hover:scale-105"
-              >
-                <KobanChip balance={kobanBalance} loading={walletLoading} />
-              </div>
+              {user && (
+                <div
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleNav('/store');
+                  }}
+                  title="Boardly Store"
+                  className="cursor-pointer transition-transform hover:scale-105"
+                >
+                  <KobanChip balance={kobanBalance} loading={walletLoading} />
+                </div>
+              )}
               <ChevronRight
                 size={18}
                 className="text-muted group-hover:text-primary group-hover:translate-x-0.5 transition-all"
@@ -296,7 +306,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
               {/* Boardly Commons */}
               <button
                 type="button"
-                onClick={() => handleNav('/dashboard/commons')}
+                onClick={() => handleNav(user ? '/dashboard/commons' : '/commons')}
                 className="w-full min-h-[52px] px-4 py-3 flex items-center justify-between text-left hover:bg-surface-muted active:bg-surface-muted/80 transition-colors cursor-pointer group"
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -709,8 +719,16 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
 
           {/* ── 4. FOOTER: Links, Version & Sign Out ── */}
           <div className="pt-2 pb-1 space-y-3.5">
-            {/* Sign Out Row (Plain full-width in red text with logout icon, no outline box) */}
-            {!showSignOutConfirm ? (
+            {!user ? (
+              <button
+                type="button"
+                onClick={() => handleNav('/login')}
+                className="w-full min-h-[48px] flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-accent hover:bg-accent-hover text-white font-semibold text-[15px] sm:text-[16px] transition-colors cursor-pointer select-none shadow-xs"
+              >
+                <User size={18} strokeWidth={1.75} />
+                <span>Sign In / Create Account</span>
+              </button>
+            ) : !showSignOutConfirm ? (
               <button
                 type="button"
                 onClick={() => setShowSignOutConfirm(true)}

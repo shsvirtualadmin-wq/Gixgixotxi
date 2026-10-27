@@ -29,6 +29,12 @@ export {
 export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+try {
+  storage.maxUploadRetryTime = 8000;
+  storage.maxOperationRetryTime = 8000;
+} catch {
+  // Ignore if read-only in test environment
+}
 export const functions = getFunctions(app);
 
 // Initialize Firestore with the unified database:

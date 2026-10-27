@@ -10,12 +10,14 @@ import {
   Award,
 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
+import { useAuthGate } from '@/contexts/AuthGateContext';
 import { PillNav, type PillNavItem } from '@/components/ui/PillNav';
 import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { HamburgerMenuSheet } from './HamburgerMenuSheet';
 
 function DashboardBottomNavComponent() {
-  const { profile } = useUserProfile();
+  const { user, profile } = useUserProfile();
+  const { requireAuth } = useAuthGate();
   const unreadCount = useUnreadNotificationsCount();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -31,33 +33,51 @@ function DashboardBottomNavComponent() {
     role === 'ambassador' ||
     Boolean(profile?.isCaptain) ||
     Boolean(profile?.isAmbassador);
-  const crewLink = '/dashboard/crew';
+  const crewLink = user ? '/dashboard/crew' : '/crew';
+  const commonsLink =
+    !user || location.pathname.startsWith('/commons')
+      ? '/commons'
+      : '/dashboard/commons';
 
   // Unified Student Nav: Commons, Home, Notifications, Streaks, Squad, [Captain], Menu
   const navItems: PillNavItem[] = useMemo(
     () => [
       {
-        to: '/dashboard/commons',
+        to: commonsLink,
         label: 'Commons',
         icon: <Compass size={18} />,
       },
       {
-        to: '/dashboard',
+        to: user ? '/dashboard' : '/',
         label: 'Home',
         icon: <LayoutDashboard size={18} />,
         end: true,
       },
-      {
-        to: '/dashboard/notifications',
-        label: 'Notifications',
-        icon: <Bell size={18} />,
-        badge: unreadCount > 0 ? unreadCount : undefined,
-      },
-      {
-        to: '/dashboard/streaks',
-        label: 'Streaks',
-        icon: <Flame size={18} />,
-      },
+      user
+        ? {
+            to: '/dashboard/notifications',
+            label: 'Notifications',
+            icon: <Bell size={18} />,
+            badge: unreadCount > 0 ? unreadCount : undefined,
+          }
+        : {
+            id: 'notifications',
+            label: 'Notifications',
+            icon: <Bell size={18} />,
+            onClick: () => requireAuth('view your notifications'),
+          },
+      user
+        ? {
+            to: '/dashboard/streaks',
+            label: 'Streaks',
+            icon: <Flame size={18} />,
+          }
+        : {
+            id: 'streaks',
+            label: 'Streaks',
+            icon: <Flame size={18} />,
+            onClick: () => requireAuth('track your daily study streaks'),
+          },
       {
         to: crewLink,
         label: 'Squad',
@@ -79,7 +99,7 @@ function DashboardBottomNavComponent() {
         onClick: () => setIsMenuOpen(true),
       },
     ],
-    [unreadCount, crewLink, isApprovedCaptain]
+    [user, commonsLink, unreadCount, crewLink, isApprovedCaptain, requireAuth]
   );
 
   return (

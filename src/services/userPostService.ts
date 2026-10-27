@@ -148,16 +148,30 @@ export async function fetchUserPosts(params: FetchUserPostsParams): Promise<Fetc
   const userId = params.userId || '';
   const currentUserId = params.currentUserId || '';
 
-  let postsList: UserPost[] = [];
-  let totalCount = 0;
-  let hasMorePosts = false;
+  const mergedMap = new Map<string, UserPost>();
+
+  const parseTimestampIso = (val: any): string => {
+    if (!val) return new Date(0).toISOString();
+    if (typeof val === 'string') return val;
+    if (typeof val?.toDate === 'function') {
+      try {
+        return val.toDate().toISOString();
+      } catch {
+        return new Date().toISOString();
+      }
+    }
+    if (typeof val?.seconds === 'number') {
+      return new Date(val.seconds * 1000).toISOString();
+    }
+    return new Date().toISOString();
+  };
 
   // 1. Try server API endpoint /api/posts
   try {
     const url = new URL('/api/posts', window.location.origin);
     if (userId) url.searchParams.set('userId', userId);
-    url.searchParams.set('page', String(page));
-    url.searchParams.set('limit', String(limitCount));
+    url.searchParams.set('page', '1');
+    url.searchParams.set('limit', '50');
 
     const res = await fetch(url.toString(), {
       method: 'GET',
@@ -167,53 +181,109 @@ export async function fetchUserPosts(params: FetchUserPostsParams): Promise<Fetc
     if (res.ok) {
       const data = await res.json();
       if (data && data.success && Array.isArray(data.posts)) {
-        postsList = data.posts;
-        totalCount = data.total ?? data.posts.length;
-        hasMorePosts = Boolean(data.hasMore);
+        for (const p of data.posts) {
+          if (p && p.id && (!userId || p.user_id === userId)) {
+            mergedMap.set(p.id, p);
+          }
+        }
       }
     }
   } catch (apiErr) {
     console.warn('[userPostService] /api/posts fetch notice (falling back to Firestore):', apiErr);
   }
 
-  // 2. Firestore fallback if API is unavailable or offline
-  if (postsList.length === 0) {
-    try {
-      const postsRef = collection(db, 'posts');
-      let q = query(postsRef, orderBy('created_at', 'desc'), firestoreLimit(limitCount * page));
+  // 2. Query Firestore 'posts' collection (avoid composite index requirement by sorting client-side)
+  try {
+    const postsRef = collection(db, 'posts');
+    const q = userId
+      ? query(postsRef, where('user_id', '==', userId), firestoreLimit(50))
+      : query(postsRef, orderBy('created_at', 'desc'), firestoreLimit(50));
 
-      if (userId) {
-        q = query(postsRef, where('user_id', '==', userId), orderBy('created_at', 'desc'), firestoreLimit(limitCount * page));
-      }
-
-      const snap = await getDocs(q);
-      const allFetched = snap.docs.map((d) => {
-        const data = d.data();
-        return {
-          id: d.id,
-          user_id: data.user_id || data.userId,
-          text: data.text || '',
-          image_url: data.image_url || data.imageUrl || null,
-          author_name: data.author_name || data.authorName || 'Student',
-          author_avatar: data.author_avatar || data.authorAvatar || null,
-          likes_count: data.likes_count ?? data.likesCount ?? 0,
-          comments_count: data.comments_count ?? data.commentCount ?? 0,
-          liked_by: Array.isArray(data.liked_by) ? data.liked_by : Array.isArray(data.likedBy) ? data.likedBy : [],
-          created_at: data.created_at || new Date().toISOString(),
-          updated_at: data.updated_at || new Date().toISOString(),
-        } as UserPost;
+    const snap = await getDocs(q);
+    for (const d of snap.docs) {
+      if (d.id.startsWith('att_')) continue; // skip chunked attachment docs
+      const data = d.data();
+      const postUid = data.user_id || data.userId || '';
+      if (userId && postUid !== userId) continue;
+      mergedMap.set(d.id, {
+        id: d.id,
+        user_id: postUid,
+        text: data.text || '',
+        image_url: data.image_url || data.imageUrl || null,
+        author_name: data.author_name || data.authorName || 'Student',
+        author_avatar: data.author_avatar || data.authorAvatar || null,
+        likes_count: data.likes_count ?? data.likesCount ?? 0,
+        comments_count: data.comments_count ?? data.commentCount ?? 0,
+        liked_by: Array.isArray(data.liked_by)
+          ? data.liked_by
+          : Array.isArray(data.likedBy)
+          ? data.likedBy
+          : [],
+        created_at: parseTimestampIso(data.created_at || data.createdAt),
+        updated_at: parseTimestampIso(data.updated_at || data.updatedAt || data.created_at),
       });
+    }
+  } catch (fsErr: any) {
+    console.warn('[userPostService] Firestore posts query notice:', fsErr);
+  }
 
-      const startIndex = (page - 1) * limitCount;
-      postsList = allFetched.slice(startIndex, startIndex + limitCount);
-      totalCount = allFetched.length;
-      hasMorePosts = allFetched.length > page * limitCount;
-    } catch (fsErr: any) {
-      console.warn('[userPostService] Firestore query error:', fsErr);
+  // 3. Also query 'commonsPosts' authored by this user (non-anonymous) so Commons resources appear on their profile
+  if (userId) {
+    try {
+      const commonsRef = collection(db, 'commonsPosts');
+      const commonsQuery = query(commonsRef, where('authorUid', '==', userId), firestoreLimit(50));
+      const commonsSnap = await getDocs(commonsQuery);
+
+      for (const d of commonsSnap.docs) {
+        const data = d.data();
+        if (data.isAnonymous || data.isHidden) continue;
+
+        const files = Array.isArray(data.files) ? data.files : [];
+        const firstImage = files.find(
+          (f: any) =>
+            f?.url &&
+            !String(f.url).startsWith('blob:') &&
+            (f?.type?.startsWith('image/') || /\.(png|jpe?g|webp|gif|svg)$/i.test(f?.name || ''))
+        );
+
+        const titleText = (data.title || '').trim();
+        const descText = (data.description || '').trim();
+        const combinedText =
+          titleText && descText
+            ? `${titleText}\n\n${descText}`
+            : titleText || descText || 'Shared a study resource';
+
+        if (!mergedMap.has(d.id)) {
+          mergedMap.set(d.id, {
+            id: d.id,
+            user_id: userId,
+            text: combinedText,
+            image_url: firstImage?.url || null,
+            author_name: data.authorName || 'Student',
+            author_avatar: data.authorAvatar || data.authorPhotoURL || null,
+            likes_count: Number(data.upvotes ?? 0),
+            comments_count: Number(data.commentCount ?? 0),
+            liked_by: [],
+            created_at: parseTimestampIso(data.createdAt || data.created_at),
+            updated_at: parseTimestampIso(data.updatedAt || data.createdAt),
+          });
+        }
+      }
+    } catch (commonsErr) {
+      console.warn('[userPostService] Firestore commonsPosts query notice:', commonsErr);
     }
   }
 
-  // 3. Hydrate like state for current user from posts/{id}/likes/{currentUserId} if needed
+  const allSorted = Array.from(mergedMap.values()).sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
+
+  const totalCount = allSorted.length;
+  const startIndex = (page - 1) * limitCount;
+  const postsList = allSorted.slice(startIndex, startIndex + limitCount);
+  const hasMorePosts = totalCount > page * limitCount;
+
+  // 4. Hydrate like state for current user from posts/{id}/likes/{currentUserId} if needed
   if (currentUserId && postsList.length > 0) {
     try {
       await Promise.all(

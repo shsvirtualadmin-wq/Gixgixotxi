@@ -7045,6 +7045,264 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
     }
   });
 
+  // --- BOARDLY COMMONS FILE STORAGE (SIGNED URL + DIRECT STREAM UPLOAD UP TO 25 MB) ---
+  const COMMONS_UPLOADS_DIR = path.join(process.cwd(), "data", "commons-uploads");
+  if (!fs.existsSync(COMMONS_UPLOADS_DIR)) {
+    fs.mkdirSync(COMMONS_UPLOADS_DIR, { recursive: true });
+  }
+
+  const COMMONS_DISALLOWED_EXTS = [
+    ".exe", ".bat", ".cmd", ".sh", ".bin", ".msi", ".apk",
+    ".jar", ".scr", ".vbs", ".js", ".com", ".wsf", ".ps1",
+  ];
+  const COMMONS_MAX_UPLOAD_BYTES = 25 * 1024 * 1024; // 25 MB
+
+  function getCommonsMimeFromExt(filename: string, fallback = "application/octet-stream"): string {
+    const ext = path.extname(filename).toLowerCase();
+    const map: Record<string, string> = {
+      ".png": "image/png",
+      ".jpg": "image/jpeg",
+      ".jpeg": "image/jpeg",
+      ".webp": "image/webp",
+      ".gif": "image/gif",
+      ".pdf": "application/pdf",
+      ".doc": "application/msword",
+      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ".ppt": "application/vnd.ms-powerpoint",
+      ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      ".txt": "text/plain; charset=utf-8",
+    };
+    return map[ext] || fallback;
+  }
+
+  app.options("/api/commons/upload-url", (_req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-File-Name, X-File-Type, X-User-Id");
+    return res.status(204).end();
+  });
+
+  app.post("/api/commons/upload-url", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    const body = req.body || {};
+    const fileName = String(body.fileName || "resource.bin").trim();
+    const fileSize = Number(body.fileSize || 0);
+    const contentType = String(body.contentType || getCommonsMimeFromExt(fileName));
+    const uid = String(body.uid || "user").replace(/[^a-zA-Z0-9_-]/g, "_");
+
+    const lowerName = fileName.toLowerCase();
+    if (COMMONS_DISALLOWED_EXTS.some((ext) => lowerName.endsWith(ext))) {
+      return res.status(415).json({
+        success: false,
+        code: "UNSUPPORTED_TYPE",
+        error: `File "${fileName}" has a blocked executable extension.`,
+      });
+    }
+
+    if (fileSize > COMMONS_MAX_UPLOAD_BYTES) {
+      return res.status(413).json({
+        success: false,
+        code: "FILE_TOO_LARGE",
+        error: `File "${fileName}" (${(fileSize / (1024 * 1024)).toFixed(1)} MB) exceeds the 25 MB limit.`,
+      });
+    }
+
+    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const token = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const storedFileName = `${uid}_${token}_${safeName}`;
+    const uploadUrl = `/api/commons/upload?key=${encodeURIComponent(storedFileName)}&name=${encodeURIComponent(fileName)}&type=${encodeURIComponent(contentType)}`;
+    const downloadUrl = `/api/commons/files/${encodeURIComponent(storedFileName)}`;
+
+    return res.status(200).json({
+      success: true,
+      method: "PUT",
+      uploadUrl,
+      downloadUrl,
+      storedFileName,
+      maxBytes: COMMONS_MAX_UPLOAD_BYTES,
+    });
+  });
+
+  app.options("/api/commons/upload", (_req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "PUT, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-File-Name, X-File-Type, X-User-Id");
+    return res.status(204).end();
+  });
+
+  app.all("/api/commons/upload", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    if (req.method !== "PUT" && req.method !== "POST") {
+      return res.status(405).json({
+        success: false,
+        code: "METHOD_NOT_ALLOWED",
+        error: "Use PUT or POST to upload files.",
+      });
+    }
+
+    try {
+      const rawName = String(
+        req.query.name ||
+        decodeURIComponent(String(req.headers["x-file-name"] || "")) ||
+        "resource.bin"
+      ).trim();
+      const contentType = String(
+        req.query.type ||
+        req.headers["x-file-type"] ||
+        req.headers["content-type"] ||
+        getCommonsMimeFromExt(rawName)
+      );
+      const uid = String(req.query.uid || req.headers["x-user-id"] || "user").replace(/[^a-zA-Z0-9_-]/g, "_");
+
+      const lowerName = rawName.toLowerCase();
+      if (COMMONS_DISALLOWED_EXTS.some((ext) => lowerName.endsWith(ext))) {
+        return res.status(415).json({
+          success: false,
+          code: "UNSUPPORTED_TYPE",
+          error: `Blocked file "${rawName}". Executable and script files are prohibited.`,
+        });
+      }
+
+      const safeName = rawName.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const requestedKey = typeof req.query.key === "string" ? req.query.key : "";
+      const storedFileName = requestedKey
+        ? path.basename(requestedKey).replace(/[^a-zA-Z0-9._-]/g, "_")
+        : `${uid}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${safeName}`;
+
+      const destPath = path.join(COMMONS_UPLOADS_DIR, storedFileName);
+      const writeStream = fs.createWriteStream(destPath);
+      let receivedBytes = 0;
+      let aborted = false;
+
+      req.on("data", (chunk: Buffer) => {
+        if (aborted) return;
+        receivedBytes += chunk.length;
+        if (receivedBytes > COMMONS_MAX_UPLOAD_BYTES) {
+          aborted = true;
+          writeStream.destroy();
+          try {
+            if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+          } catch {}
+          res.status(413).json({
+            success: false,
+            code: "FILE_TOO_LARGE",
+            error: `File "${rawName}" exceeds the 25 MB maximum size limit.`,
+          });
+          return;
+        }
+        writeStream.write(chunk);
+      });
+
+      req.on("end", () => {
+        if (aborted) return;
+        writeStream.end(async () => {
+          if (receivedBytes === 0) {
+            try {
+              if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+            } catch {}
+            return res.status(400).json({
+              success: false,
+              code: "EMPTY_FILE",
+              error: `File "${rawName}" is empty (0 bytes).`,
+            });
+          }
+
+          const finalMime = getCommonsMimeFromExt(rawName, contentType);
+          try {
+            fs.writeFileSync(
+              `${destPath}.meta.json`,
+              JSON.stringify({
+                originalName: rawName,
+                contentType: finalMime,
+                size: receivedBytes,
+                uploadedAt: new Date().toISOString(),
+              }),
+              "utf-8"
+            );
+          } catch {}
+
+          let fileUrl = `/api/commons/files/${encodeURIComponent(storedFileName)}`;
+
+          // Also push to R2 if configured
+          const r2Client = getR2Client();
+          if (r2Client && receivedBytes <= 25 * 1024 * 1024) {
+            try {
+              const r2Bucket = getEnvVar("R2_BUCKET_NAME") || getEnvVar("RESOURCES_BUCKET") || "boardly-resources";
+              const objectKey = `commons/${storedFileName}`;
+              await r2Client.send(
+                new PutObjectCommand({
+                  Bucket: r2Bucket,
+                  Key: objectKey,
+                  Body: fs.readFileSync(destPath),
+                  ContentType: finalMime,
+                })
+              );
+            } catch (r2Err: any) {
+              console.warn("[Commons R2 upload notice, using local URL]:", r2Err?.message);
+            }
+          }
+
+          return res.status(200).json({
+            success: true,
+            url: fileUrl,
+            name: rawName,
+            size: receivedBytes,
+            type: finalMime,
+          });
+        });
+      });
+
+      req.on("error", (err: any) => {
+        if (aborted) return;
+        aborted = true;
+        writeStream.destroy();
+        try {
+          if (fs.existsSync(destPath)) fs.unlinkSync(destPath);
+        } catch {}
+        return res.status(500).json({
+          success: false,
+          code: "STREAM_ERROR",
+          error: err?.message || "Error reading upload stream.",
+        });
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        code: "SERVER_ERROR",
+        error: err?.message || "Internal server error during upload.",
+      });
+    }
+  });
+
+  app.get("/api/commons/files/:filename", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    const filename = path.basename(req.params.filename || "");
+    const filePath = path.join(COMMONS_UPLOADS_DIR, filename);
+    if (!filename || !fs.existsSync(filePath)) {
+      return res.status(404).json({ error: "File not found" });
+    }
+    const stat = fs.statSync(filePath);
+    let contentType = getCommonsMimeFromExt(filename);
+    let originalName = filename;
+    const metaPath = `${filePath}.meta.json`;
+    if (fs.existsSync(metaPath)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaPath, "utf-8"));
+        if (meta.contentType) contentType = meta.contentType;
+        if (meta.originalName) originalName = meta.originalName;
+      } catch {}
+    }
+    const isInline = contentType.startsWith("image/") || contentType === "application/pdf";
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Length", stat.size);
+    res.setHeader(
+      "Content-Disposition",
+      `${isInline ? "inline" : "attachment"}; filename="${originalName.replace(/"/g, "")}"`
+    );
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    return fs.createReadStream(filePath).pipe(res);
+  });
+
   // Helper to check for private, local, and internal IPs/hostnames
   function isBlockedIpOrHost(hostname: string): boolean {
     const h = hostname.toLowerCase().trim();

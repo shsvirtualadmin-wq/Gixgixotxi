@@ -283,7 +283,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className={`pb-28 max-w-2xl mx-auto space-y-3 ${isPublicRoute ? 'pt-24 px-4' : ''}`}
+      className="pb-28 max-w-2xl mx-auto space-y-3"
     >
       {isPublicRoute && (
         <PageMeta
@@ -294,7 +294,7 @@ export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: b
       )}
 
       {/* ── Sticky Top Bar: "Commons", Search, Material Library, Guidelines, Refresh ── */}
-      <header className="sticky top-0 z-30 glass-card allow-backdrop-blur rounded-[24px] px-4 py-3 flex items-center justify-between transition-colors">
+      <header className="sticky top-2 z-30 glass-card allow-backdrop-blur rounded-[24px] px-4 py-3 flex items-center justify-between transition-colors">
         <div>
           <h1
             className="text-lg sm:text-xl font-bold tracking-tight text-primary font-dot"

@@ -26,9 +26,12 @@ export const ProfileModalProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   const openProfile = useCallback((uid?: string | null) => {
     setActiveUid(uid || null);
-    setIsOpen(true);
-    // Push history state so mobile back gesture closes modal
-    window.history.pushState({ profileModal: true }, '');
+    setIsOpen((prevOpen) => {
+      if (!prevOpen) {
+        window.history.pushState({ profileModal: true }, '');
+      }
+      return true;
+    });
   }, []);
 
   const closeProfile = useCallback((skipHistoryBack = false) => {
@@ -41,7 +44,7 @@ export const ProfileModalProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
   // Listen for browser / mobile back gesture (popstate)
   useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
+    const handlePopState = () => {
       if (isOpen) {
         setIsOpen(false);
         setActiveUid(null);
@@ -101,6 +104,7 @@ export const ProfileModalHost: React.FC = () => {
           }
         >
           <LazyProfileView
+            key={activeUid || 'self'}
             targetUid={activeUid}
             isFullPage={false}
             onClose={closeProfile}
