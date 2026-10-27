@@ -158,9 +158,9 @@ export function AiTutorPage() {
     >
       {/* Top Header Bar */}
       <div
-        className="glass"
+        className="glass-card"
         style={{
-          borderRadius: 'var(--r-card)',
+          borderRadius: 28,
           padding: '1rem 1.5rem',
           display: 'flex',
           alignItems: 'center',
@@ -175,26 +175,26 @@ export function AiTutorPage() {
               width: 40,
               height: 40,
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, var(--brand), var(--brand-2))',
+              background: '#D71921',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               color: 'white',
-              boxShadow: '0 0 16px rgba(47, 107, 255, 0.4)',
+              boxShadow: '0 8px 20px -4px rgba(215, 25, 33, 0.45)',
             }}
           >
             <Bot size={22} />
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <h2 className="font-display" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
+              <h2 className="font-dot" style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
                 Boardy AI Tutor
               </h2>
               <span style={{ fontSize: 11, background: 'rgba(52, 211, 153, 0.15)', color: 'var(--success)', padding: '2px 8px', borderRadius: 999, fontWeight: 700 }}>
                 ● Active
               </span>
             </div>
-            <p style={{ fontSize: 12, color: 'var(--text-faint)' }}>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Step-by-step derivations & entrance test problem solver
             </p>
           </div>
@@ -207,20 +207,18 @@ export function AiTutorPage() {
               ✦ Pro Unlimited Access
             </span>
           ) : (
-            <span style={{ fontSize: 12, color: isOverLimit ? 'var(--danger)' : 'var(--text-muted)', background: 'var(--surface)', border: '1px solid var(--border)', padding: '4px 10px', borderRadius: 'var(--r-pill)' }}>
-              Daily Prompts: <strong style={{ color: isOverLimit ? 'var(--danger)' : 'var(--text)' }}>{tokensUsed}/{FREE_DAILY_TOKEN_LIMIT}</strong>
+            <span className="glass-pill" style={{ fontSize: 12, color: isOverLimit ? 'var(--danger)' : 'var(--text-muted)', padding: '4px 12px', borderRadius: 999 }}>
+              Daily Prompts: <strong className="font-dot" style={{ color: isOverLimit ? 'var(--danger)' : 'var(--text)' }}>{tokensUsed}/{FREE_DAILY_TOKEN_LIMIT}</strong>
             </span>
           )}
 
           <button
             onClick={handleClearHistory}
-            className="glass-hover"
+            className="glass-pill"
             style={{
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--r-input)',
-              padding: '6px 10px',
-              color: 'var(--text-faint)',
+              borderRadius: 999,
+              padding: '6px 12px',
+              color: 'var(--text-muted)',
               fontSize: 12,
               cursor: 'pointer',
               display: 'flex',
@@ -237,10 +235,10 @@ export function AiTutorPage() {
 
       {/* Chat Messages Scroll View */}
       <div
-        className="glass"
+        className="glass-card"
         style={{
           flex: 1,
-          borderRadius: 'var(--r-card)',
+          borderRadius: 28,
           padding: '1.5rem',
           overflowY: 'auto',
           display: 'flex',
@@ -266,7 +264,7 @@ export function AiTutorPage() {
                     width: 32,
                     height: 32,
                     borderRadius: '50%',
-                    background: 'linear-gradient(135deg, var(--brand), var(--brand-2))',
+                    background: '#D71921',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -280,18 +278,17 @@ export function AiTutorPage() {
               )}
 
               <div
+                className={isUser ? '' : 'glass-row'}
                 style={{
                   maxWidth: '82%',
                   padding: '14px 18px',
-                  borderRadius: isUser ? '18px 18px 4px 18px' : '18px 18px 18px 4px',
-                  background: isUser
-                    ? 'linear-gradient(135deg, var(--brand), #2284FF)'
-                    : 'var(--surface)',
-                  border: isUser ? 'none' : '1px solid var(--border)',
-                  color: 'var(--text)',
+                  borderRadius: isUser ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
+                  background: isUser ? '#D71921' : undefined,
+                  border: isUser ? '1px solid rgba(255, 255, 255, 0.22)' : undefined,
+                  color: isUser ? '#ffffff' : 'var(--text)',
                   fontSize: 14,
                   lineHeight: 1.65,
-                  boxShadow: isUser ? '0 8px 24px -8px rgba(47, 107, 255, 0.4)' : undefined,
+                  boxShadow: isUser ? '0 8px 24px -8px rgba(215, 25, 33, 0.45)' : undefined,
                 }}
               >
                 {isUser ? (
@@ -302,7 +299,7 @@ export function AiTutorPage() {
                 <div
                   style={{
                     fontSize: 10,
-                    color: isUser ? 'rgba(255,255,255,0.7)' : 'var(--text-faint)',
+                    color: isUser ? 'rgba(255,255,255,0.75)' : 'var(--text-muted)',
                     marginTop: 6,
                     textAlign: 'right',
                   }}
@@ -321,21 +318,20 @@ export function AiTutorPage() {
                 width: 32,
                 height: 32,
                 borderRadius: '50%',
-                background: 'linear-gradient(135deg, var(--brand), var(--brand-2))',
+                background: '#D71921',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 color: 'white',
-                animation: 'pulse-glow 1.5s infinite',
               }}
             >
               <Sparkles size={16} />
             </div>
             <div
-              className="glass"
+              className="glass-row"
               style={{
                 padding: '12px 18px',
-                borderRadius: '18px 18px 18px 4px',
+                borderRadius: '20px 20px 20px 4px',
                 color: 'var(--text-muted)',
                 fontSize: 13,
                 display: 'flex',
@@ -348,8 +344,7 @@ export function AiTutorPage() {
                   width: 8,
                   height: 8,
                   borderRadius: '50%',
-                  background: 'var(--brand-2)',
-                  animation: 'pulse-glow 1s infinite',
+                  background: '#D71921',
                 }}
               />
               Boardy is solving with step-by-step KaTeX derivations...
@@ -367,12 +362,10 @@ export function AiTutorPage() {
             key={prompt}
             onClick={() => handleSendMessage(prompt.replace(/^[^\s]+\s/, ''))}
             disabled={loading || isOverLimit}
-            className="glass-hover"
+            className="glass-pill"
             style={{
-              padding: '6px 12px',
-              borderRadius: 'var(--r-pill)',
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
+              padding: '6px 14px',
+              borderRadius: 999,
               color: 'var(--text-muted)',
               fontSize: 12,
               whiteSpace: 'nowrap',
@@ -388,9 +381,9 @@ export function AiTutorPage() {
       {/* Input Bar or Upgrade Warning */}
       {isOverLimit ? (
         <div
-          className="glass"
+          className="glass-card"
           style={{
-            borderRadius: 'var(--r-card)',
+            borderRadius: 24,
             padding: '1rem 1.5rem',
             display: 'flex',
             alignItems: 'center',
@@ -400,10 +393,10 @@ export function AiTutorPage() {
           }}
         >
           <div>
-            <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--warning)' }}>
+            <p className="font-dot" style={{ fontSize: 14, fontWeight: 700, color: 'var(--warning)' }}>
               Daily Free Limit Reached (5 of 5 prompts used)
             </p>
-            <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 2 }}>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
               Your quota resets at midnight PKT. Upgrade to Boardly Pro for unlimited derivations.
             </p>
           </div>
@@ -428,17 +421,7 @@ export function AiTutorPage() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question, formula derivation, or past-paper trap..."
             disabled={loading}
-            style={{
-              flex: 1,
-              background: 'var(--surface)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--r-input)',
-              color: 'var(--text)',
-              fontSize: 14,
-              padding: '12px 18px',
-              outline: 'none',
-              fontFamily: 'inherit',
-            }}
+            className="glass-input flex-1 text-sm"
           />
 
           <Button

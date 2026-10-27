@@ -10,6 +10,7 @@ import {
   ProfileEffectCardPreview,
   type ProfileCardEffectProps,
 } from './artwork/effectArtwork';
+import { useSmoothMode } from '@/utils/smoothMode';
 
 export { ProfileEffectCardPreview };
 
@@ -77,16 +78,17 @@ export const ProfileEffect = ProfileCardEffect;
 /**
  * Hook to determine if cosmetic should execute animations:
  * 1. Must be marked animated: true in catalog (single source of truth)
- * 2. If forceStatic is true, immediately return false
+ * 2. If forceStatic or Smooth Mode is true, immediately return false
  * 3. Element is observed for viewport presence (defaults to true for instant render)
  */
 function useCosmeticAnimation(itemId: string, _isNameplate = false, forceStatic = false) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isVisible, setIsVisible] = useState(true);
+  const { smoothMode } = useSmoothMode();
 
   const item = itemId ? getCosmeticById(itemId) : undefined;
   // Catalog animated flag is the single source of truth
-  const isCatalogAnimated = Boolean(item?.animated && !forceStatic);
+  const isCatalogAnimated = Boolean(item?.animated && !forceStatic && !smoothMode);
 
   useEffect(() => {
     if (!isCatalogAnimated) {

@@ -1,13 +1,25 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 
-interface PageMetaProps {
+export interface PageMetaProps {
   title: string;
   description: string;
   ogImage?: string;
+  canonicalPath?: string;
+  noindex?: boolean;
+  ogType?: 'website' | 'article' | 'profile';
+  jsonLd?: Record<string, unknown> | Array<Record<string, unknown>>;
 }
 
-export function PageMeta({ title, description, ogImage = '/assets/og-image.png' }: PageMetaProps) {
+export function PageMeta({
+  title,
+  description,
+  ogImage = '/assets/og-image.png',
+  canonicalPath,
+  noindex = false,
+  ogType = 'website',
+  jsonLd,
+}: PageMetaProps) {
   const location = useLocation();
 
   useEffect(() => {
@@ -15,17 +27,29 @@ export function PageMeta({ title, description, ogImage = '/assets/og-image.png' 
     const fullTitle = title.includes('Boardly') ? title : `${title} — Boardly`;
     document.title = fullTitle;
 
-    // 2. Meta description
-    let metaDesc = document.querySelector('meta[name="description"]');
-    if (!metaDesc) {
-      metaDesc = document.createElement('meta');
-      metaDesc.setAttribute('name', 'description');
-      document.head.appendChild(metaDesc);
-    }
-    metaDesc.setAttribute('content', description);
+    // Helper for standard meta tags
+    const setMetaTag = (name: string, content: string) => {
+      let el = document.querySelector(`meta[name="${name}"]`);
+      if (!el) {
+        el = document.createElement('meta');
+        el.setAttribute('name', name);
+        document.head.appendChild(el);
+      }
+      el.setAttribute('content', content);
+    };
 
-    // 3. Canonical URL
-    const canonicalHref = `https://boardly.cfd${location.pathname}`;
+    // 2. Meta description & robots
+    setMetaTag('description', description);
+    setMetaTag(
+      'robots',
+      noindex
+        ? 'noindex, nofollow'
+        : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'
+    );
+
+    // 3. Canonical URL (strip tracking params, normalize path)
+    const cleanPath = (canonicalPath || location.pathname).replace(/\/+$/, '') || '/';
+    const canonicalHref = `https://boardly.cfd${cleanPath}`;
     let canonical = document.querySelector('link[rel="canonical"]');
     if (!canonical) {
       canonical = document.createElement('link');
@@ -45,15 +69,38 @@ export function PageMeta({ title, description, ogImage = '/assets/og-image.png' 
       el.setAttribute('content', content);
     };
 
+    const fullImageUrl = ogImage.startsWith('http') ? ogImage : `https://boardly.cfd${ogImage}`;
     setOgMeta('og:title', fullTitle);
     setOgMeta('og:description', description);
     setOgMeta('og:url', canonicalHref);
-    setOgMeta('og:image', ogImage.startsWith('http') ? ogImage : `https://boardly.cfd${ogImage}`);
+    setOgMeta('og:image', fullImageUrl);
     setOgMeta('og:site_name', 'Boardly');
-    setOgMeta('og:type', 'website');
-  }, [title, description, ogImage, location.pathname]);
+    setOgMeta('og:type', ogType);
+
+    // 5. Twitter Card Tags
+    setMetaTag('twitter:card', 'summary_large_image');
+    setMetaTag('twitter:title', fullTitle);
+    setMetaTag('twitter:description', description);
+    setMetaTag('twitter:image', fullImageUrl);
+
+    // 6. Structured Data (JSON-LD)
+    const scriptId = 'boardly-page-jsonld';
+    let scriptEl = document.getElementById(scriptId) as HTMLScriptElement | null;
+    if (jsonLd) {
+      if (!scriptEl) {
+        scriptEl = document.createElement('script');
+        scriptEl.id = scriptId;
+        scriptEl.type = 'application/ld+json';
+        document.head.appendChild(scriptEl);
+      }
+      scriptEl.textContent = JSON.stringify(jsonLd);
+    } else if (scriptEl) {
+      scriptEl.remove();
+    }
+  }, [title, description, ogImage, canonicalPath, noindex, ogType, jsonLd, location.pathname]);
 
   return null;
 }
 
 export default PageMeta;
+

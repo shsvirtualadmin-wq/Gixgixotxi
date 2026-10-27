@@ -66,77 +66,45 @@ export function CaptainLeaderboardPage() {
   });
 
   return (
-    <div style={{ maxWidth: 880, margin: '0 auto', padding: '2rem 1.25rem 5rem', display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div className="max-w-[880px] mx-auto py-8 px-4 sm:px-6 pb-24 flex flex-col gap-6">
       <Link
-        to="/captain"
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: 6,
-          color: 'var(--text-muted)',
-          fontSize: 13,
-          textDecoration: 'none',
-        }}
+        to="/captains"
+        className="glass-pill px-3.5 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--text)] transition-colors self-start"
       >
         <ArrowLeft size={15} />
-        Back to Captain Cockpit
+        <span>Back to Nakama Captains</span>
       </Link>
 
       {/* Hero Header */}
-      <div
-        className="glass glass-animated-border"
-        style={{
-          borderRadius: 'var(--r-hero)',
-          padding: '2.5rem 2rem',
-          textAlign: 'center',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 12,
-        }}
-      >
-        <div
-          style={{
-            width: 52,
-            height: 52,
-            borderRadius: '50%',
-            background: 'linear-gradient(135deg, var(--captain-from), var(--captain-to))',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: 'white',
-            boxShadow: '0 0 20px rgba(245, 158, 11, 0.4)',
-          }}
-        >
+      <div className="glass-panel p-8 sm:p-10 rounded-[32px] text-center flex flex-col items-center gap-3">
+        <div className="w-13 h-13 rounded-full bg-amber-500/15 border border-amber-500/35 flex items-center justify-center text-amber-400 shadow-[0_0_20px_rgba(245,158,11,0.3)]">
           <Trophy size={26} />
         </div>
 
-        <h1 className="font-display" style={{ fontSize: 'clamp(26px, 5vw, 36px)', fontWeight: 800, color: 'var(--text)' }}>
+        <h1
+          className="text-2xl sm:text-4xl font-extrabold text-[var(--text)] font-dot tracking-tight"
+          style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
+        >
           National Campus Captain Leaderboard
         </h1>
-        <p style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 520, lineHeight: 1.6 }}>
+        <p className="text-sm text-[var(--muted)] max-w-lg leading-relaxed">
           Top university test leaders across Pakistan ranked by verified student activations and mock test participation.
         </p>
 
         {/* Campus Filter Chips */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginTop: 8 }}>
+        <div className="flex flex-wrap gap-2 justify-center mt-2">
           {campuses.map((camp) => {
             const active = selectedCampus === camp;
             return (
               <button
                 key={camp}
+                type="button"
                 onClick={() => setSelectedCampus(camp)}
-                style={{
-                  padding: '5px 14px',
-                  borderRadius: 'var(--r-pill)',
-                  border: `1px solid ${active ? 'var(--captain-from)' : 'var(--border)'}`,
-                  background: active ? 'rgba(245, 158, 11, 0.18)' : 'var(--surface)',
-                  color: active ? 'var(--captain-from)' : 'var(--text-muted)',
-                  fontSize: 12,
-                  fontWeight: active ? 700 : 500,
-                  cursor: 'pointer',
-                  transition: 'all 160ms',
-                }}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                  active
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                    : 'glass-pill text-[var(--muted)] hover:text-white'
+                }`}
               >
                 {camp}
               </button>
@@ -146,14 +114,14 @@ export function CaptainLeaderboardPage() {
       </div>
 
       {/* Leaderboard Table / Cards */}
-      <div className="glass" style={{ borderRadius: 'var(--r-card)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div className="glass-panel p-4 sm:p-6 rounded-[28px] flex flex-col gap-2.5">
         {loading ? (
           <Skeleton height={60} count={5} />
         ) : filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-faint)' }}>
-            <Building2 size={36} style={{ margin: '0 auto 8px', opacity: 0.5 }} />
-            <p style={{ fontSize: 14, color: 'var(--text-muted)', fontWeight: 600 }}>No captains registered under {selectedCampus} yet</p>
-            <p style={{ fontSize: 12, marginTop: 4 }}>Be the first captain to represent your campus!</p>
+          <div className="text-center py-12 px-4 text-[var(--muted)]">
+            <Building2 size={36} className="mx-auto mb-2 opacity-40" />
+            <p className="text-sm font-semibold text-[var(--text)]">No captains registered under {selectedCampus} yet</p>
+            <p className="text-xs mt-1">Be the first captain to represent your campus!</p>
           </div>
         ) : (
           filtered.map((cap, idx) => {
@@ -164,57 +132,40 @@ export function CaptainLeaderboardPage() {
             return (
               <div
                 key={cap.id}
-                className="glass-hover"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '14px 18px',
-                  borderRadius: 'var(--r-input)',
-                  background: isTop3 ? 'rgba(245, 158, 11, 0.05)' : 'var(--surface)',
-                  border: isTop3 ? '1px solid rgba(245, 158, 11, 0.2)' : '1px solid var(--border)',
-                  gap: 12,
-                }}
+                className={`flex items-center justify-between p-3.5 sm:p-4 rounded-2xl transition-all duration-200 ${
+                  isTop3
+                    ? 'glass-row border-amber-500/30 bg-amber-500/[0.06]'
+                    : 'glass-row hover:bg-white/[0.04]'
+                }`}
               >
                 {/* Left: Rank & Captain details */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div className="flex items-center gap-3 sm:gap-4 min-w-0">
                   <div
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: '50%',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: 14,
-                      fontWeight: 800,
-                      color: rankColor,
-                      background: isTop3 ? 'rgba(255,255,255,0.06)' : 'transparent',
-                      flexShrink: 0,
-                    }}
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-extrabold shrink-0 font-dot"
+                    style={{ color: rankColor }}
                   >
                     {rank === 1 ? <Trophy size={18} /> : rank <= 3 ? <Medal size={18} /> : `#${rank}`}
                   </div>
 
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                      <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm sm:text-base font-bold text-[var(--text)] truncate">
                         {maskName(cap.studentName)}
                       </p>
                       {cap.tier && <Badge color={isTop3 ? 'warning' : 'muted'}>{cap.tier}</Badge>}
                     </div>
-                    <p style={{ fontSize: 12, color: 'var(--text-faint)', marginTop: 2 }}>
+                    <p className="text-xs text-[var(--muted)] mt-0.5 truncate">
                       {cap.institution ?? 'University Campus'} {cap.city ? `· ${cap.city}` : ''}
                     </p>
                   </div>
                 </div>
 
                 {/* Right: Activations & Points */}
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <p className="tabular-nums" style={{ fontSize: 16, fontWeight: 800, color: 'var(--captain-from)' }}>
+                <div className="text-right shrink-0 pl-3">
+                  <p className="font-dot text-sm sm:text-base font-extrabold text-amber-400">
                     {cap.points?.toLocaleString() ?? 0} pts
                   </p>
-                  <p style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                  <p className="text-[11px] text-[var(--muted)]">
                     {cap.activeUsersCount ?? 0} active students
                   </p>
                 </div>

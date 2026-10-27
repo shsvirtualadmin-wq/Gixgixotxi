@@ -62,16 +62,48 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
   const getDestinationUrl = useCallback(() => {
     const searchParams = new URLSearchParams(window.location.search);
     const redirectParam = searchParams.get('redirect');
+    const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
     const pendingCrew = sessionStorage.getItem('pending_join_crew_code');
 
     if (redirectParam && redirectParam.startsWith('/')) {
+      sessionStorage.removeItem('boardly_post_login_redirect');
       return redirectParam;
+    }
+    if (storedRedirect && storedRedirect.startsWith('/')) {
+      sessionStorage.removeItem('boardly_post_login_redirect');
+      return storedRedirect;
     }
     if (pendingCrew) {
       return `/join/${pendingCrew}`;
     }
     return profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
   }, [profile, getRoleRedirectUrl]);
+
+  const handleContinueAsGuest = useCallback(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const redirectParam = searchParams.get('redirect');
+    sessionStorage.removeItem('boardly_post_login_redirect');
+
+    // Only redirect to public routes if a redirect param exists; avoid private routes that would bounce back to /login
+    const isPrivateTarget =
+      redirectParam &&
+      (/^\/(dashboard|practice|results|messages|notifications|saved|settings|profile|wallet|checkout|admin|onboarding|test)(\/|$)/.test(
+        redirectParam
+      ) ||
+        redirectParam.startsWith('/commons/new') ||
+        redirectParam.startsWith('/crew/my') ||
+        redirectParam.startsWith('/crew/dashboard'));
+
+    if (redirectParam && redirectParam.startsWith('/') && !isPrivateTarget) {
+      navigate(redirectParam);
+      return;
+    }
+    if (typeof window !== 'undefined' && window.history.length > 2) {
+      navigate(-1);
+      return;
+    }
+    navigate('/');
+  }, [navigate]);
 
   // Navigate after successful auth (immediate fallback navigation if user is logged in)
   useEffect(() => {
@@ -176,6 +208,15 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
       if (mode === 'signin') {
         await signIn(email.trim(), password);
       } else {
+        const searchParams = new URLSearchParams(window.location.search);
+        const redirectParam = searchParams.get('redirect');
+        if (redirectParam && redirectParam.startsWith('/')) {
+          try {
+            sessionStorage.setItem('boardly_post_login_redirect', redirectParam);
+          } catch {
+            // ignore storage errors
+          }
+        }
         await signUp(email.trim(), password, displayName.trim());
         navigate('/onboarding', { replace: true });
       }
@@ -279,7 +320,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           onClick={() => {
             setMode('signin');
             if (typeof window !== 'undefined') {
-              window.history.replaceState(null, '', '/login');
+              window.history.replaceState(null, '', `/login${window.location.search}`);
             }
           }}
           className={`h-full rounded-full text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
@@ -296,7 +337,7 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
           onClick={() => {
             setMode('signup');
             if (typeof window !== 'undefined') {
-              window.history.replaceState(null, '', '/signup');
+              window.history.replaceState(null, '', `/signup${window.location.search}`);
             }
           }}
           className={`h-full rounded-full text-xs sm:text-[13px] font-semibold transition-colors flex items-center justify-center cursor-pointer ${
@@ -615,6 +656,54 @@ export function AuthCard({ initialMode = 'signin' }: AuthCardProps) {
             .
           </p>
         )}
+
+        {/* Mode switch link + Continue without an account */}
+        <div className="pt-2 border-t border-[var(--border)] flex flex-col items-center gap-3 text-center">
+          <p className="text-xs text-[var(--muted)]">
+            {mode === 'signin' ? (
+              <>
+                New here?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signup');
+                    if (typeof window !== 'undefined') {
+                      window.history.replaceState(null, '', `/signup${window.location.search}`);
+                    }
+                  }}
+                  className="text-[var(--text)] font-semibold hover:text-[#D71921] underline underline-offset-4 transition-colors cursor-pointer"
+                >
+                  Create an account
+                </button>
+              </>
+            ) : (
+              <>
+                Already have an account?{' '}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signin');
+                    if (typeof window !== 'undefined') {
+                      window.history.replaceState(null, '', `/login${window.location.search}`);
+                    }
+                  }}
+                  className="text-[var(--text)] font-semibold hover:text-[#D71921] underline underline-offset-4 transition-colors cursor-pointer"
+                >
+                  Sign in
+                </button>
+              </>
+            )}
+          </p>
+
+          <button
+            type="button"
+            onClick={handleContinueAsGuest}
+            className="w-full py-2.5 px-4 rounded-full border border-[var(--border)] bg-[var(--surface-2)] hover:border-[var(--text-muted)] text-xs font-medium text-[var(--muted)] hover:text-[var(--text)] transition-all cursor-pointer"
+            style={{ fontFamily: 'var(--font-heading)' }}
+          >
+            Continue without an account
+          </button>
+        </div>
       </form>
     </div>
   );

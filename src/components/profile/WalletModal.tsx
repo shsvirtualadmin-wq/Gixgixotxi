@@ -20,7 +20,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-[var(--overlay-bg)] animate-in fade-in duration-150"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -28,7 +28,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="relative w-full max-w-sm rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 sm:p-6 shadow-2xl flex flex-col gap-5 animate-in zoom-in-95 duration-150"
+        className="relative w-full max-w-sm rounded-[32px] glass-panel allow-backdrop-blur p-5 sm:p-6 flex flex-col gap-5 animate-in zoom-in-95 duration-150"
       >
         {/* Header with Close */}
         <div className="flex items-center justify-between">
@@ -37,7 +37,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
               <Coins size={16} />
             </div>
             <div>
-              <h3 className="font-heading font-bold text-sm sm:text-base text-[var(--text)]">
+              <h3 className="font-dot font-bold text-sm sm:text-base text-[var(--text)]">
                 Koban Wallet
               </h3>
               <p className="text-[11px] text-[var(--muted)]">
@@ -49,7 +49,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-lg hover:bg-[var(--card-2)] text-[var(--muted)] hover:text-[var(--text)] flex items-center justify-center transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full glass-pill text-[var(--muted)] hover:text-[var(--text)] flex items-center justify-center transition-colors cursor-pointer"
             aria-label="Close"
           >
             <X size={16} />
@@ -57,13 +57,13 @@ export const WalletModal: React.FC<WalletModalProps> = ({
         </div>
 
         {/* Balance Card */}
-        <div className="p-4 rounded-xl bg-gradient-to-br from-[#E8A317]/10 via-[var(--card-2)] to-[var(--card-2)] border border-[#E8A317]/30 flex flex-col items-center justify-center text-center gap-1.5 py-6">
+        <div className="p-4 rounded-[22px] glass-row bg-gradient-to-br from-[#E8A317]/10 via-transparent to-transparent border border-[#E8A317]/30 flex flex-col items-center justify-center text-center gap-1.5 py-6">
           <span className="text-[10px] font-mono uppercase tracking-wider text-[var(--muted)] font-bold">
             Available Balance
           </span>
           <div className="flex items-center gap-2.5 my-1">
             <KobanIcon size={28} />
-            <span className="font-mono font-black text-3xl sm:text-4xl text-[#D97706] dark:text-[#FBBF24] tracking-tight">
+            <span className="font-dot font-black text-3xl sm:text-4xl text-[#D97706] dark:text-[#FBBF24] tracking-tight">
               {balance.toLocaleString()}
             </span>
           </div>
@@ -80,7 +80,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
               onClose();
               navigate('/store');
             }}
-            className="h-11 px-4 rounded-xl bg-[var(--red)] hover:bg-[var(--red-dark)] text-white text-xs font-heading font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+            className="btn-primary h-11 px-4 rounded-full text-xs font-heading font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
             <ShoppingBag size={14} />
             <span>Get Kobans</span>
@@ -92,7 +92,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
               onClose();
               navigate('/dashboard/plans');
             }}
-            className="h-11 px-4 rounded-xl border border-[var(--border)] hover:bg-[var(--card-2)] text-[var(--text)] text-xs font-heading font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
+            className="btn-secondary h-11 px-4 rounded-full text-xs font-heading font-semibold transition-colors flex items-center justify-center gap-2 cursor-pointer"
           >
             <History size={14} />
             <span>Ledger History</span>
@@ -100,7 +100,7 @@ export const WalletModal: React.FC<WalletModalProps> = ({
         </div>
 
         {/* How to Earn Kobans info */}
-        <div className="p-3.5 rounded-xl bg-[var(--card-2)] border border-[var(--border)] flex flex-col gap-1.5 text-xs">
+        <div className="p-3.5 rounded-[18px] glass-row flex flex-col gap-1.5 text-xs">
           <span className="font-heading font-semibold text-[11px] text-[var(--text)] flex items-center gap-1.5">
             <Sparkles size={12} className="text-[#E8A317]" />
             How to Earn Kobans

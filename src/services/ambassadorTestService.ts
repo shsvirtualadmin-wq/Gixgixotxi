@@ -285,22 +285,43 @@ export async function submitGrandLineAttempt(params: {
   };
 
   await setDoc(attemptRef, attemptData);
+
+  // Also write a sanitized public entry (strictly NO email) to grand_line_leaderboard for guest read access
+  try {
+    const publicRef = doc(db, 'grand_line_leaderboard', attemptDocId);
+    await setDoc(publicRef, {
+      id: attemptDocId,
+      testId,
+      testTitle,
+      name: name.trim() || 'Anonymous Student',
+      entryTest: entryTest.trim(),
+      score,
+      totalQuestions,
+      timeTakenSeconds,
+      date: dateStr,
+      submittedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn('[ambassadorTestService] Non-fatal public leaderboard sync notice:', err);
+  }
+
   return attemptData;
 }
 
 /**
  * Retrieves the public leaderboard for a Grand Line test.
- * Strictly hides emails! Ranked by score desc, then timeTakenSeconds asc.
+ * Reads from sanitized `grand_line_leaderboard` collection (strictly no emails!).
+ * Ranked by score desc, then timeTakenSeconds asc.
  */
 export async function getTestLeaderboard(testId: string): Promise<PublicLeaderboardEntry[]> {
   try {
     const q = query(
-      collection(db, 'ambassador_test_attempts'),
+      collection(db, 'grand_line_leaderboard'),
       where('testId', '==', testId)
     );
     const snap = await getDocs(q);
 
-    const raw = snap.docs.map((d) => d.data() as GrandLineAttempt);
+    const raw = snap.docs.map((d) => d.data() as Omit<GrandLineAttempt, 'email'>);
 
     // Sort: highest score first, ties broken by shorter time taken
     raw.sort((a, b) => {
@@ -392,13 +413,13 @@ export function convertToRunnerQuestion(aq: AmbassadorQuestion, index: number): 
 export async function getGlobalGrandLineTopScorers(limitCount = 4): Promise<Array<{ name: string; score: number }>> {
   try {
     const q = query(
-      collection(db, 'ambassador_test_attempts'),
+      collection(db, 'grand_line_leaderboard'),
       limit(limitCount * 3)
     );
     const snap = await getDocs(q);
     if (snap.empty) return [];
 
-    const attempts = snap.docs.map((d) => d.data() as GrandLineAttempt);
+    const attempts = snap.docs.map((d) => d.data() as Omit<GrandLineAttempt, 'email'>);
     // Sort by score descending
     attempts.sort((a, b) => (b.score || 0) - (a.score || 0));
 

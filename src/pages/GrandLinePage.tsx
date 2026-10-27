@@ -26,6 +26,8 @@ import {
 } from '@/services/ambassadorTestService';
 import { GRAND_LINE_NAME, NAKAMA_CAPTAINS_NAME } from '@/constants/branding';
 
+import { useAuthGate } from '@/contexts/AuthGateContext';
+
 const ENTRY_TEST_CHOICES = [
   'FAST-NUCES (CS/SE/AI)',
   'NUST NET (Engineering & CS)',
@@ -40,6 +42,7 @@ const ENTRY_TEST_CHOICES = [
 export function GrandLinePage() {
   const { user } = useAuth();
   const { profile } = useUserProfile();
+  const { requireAuth } = useAuthGate();
   const navigate = useNavigate();
 
   const [tests, setTests] = useState<AmbassadorTestDoc[]>([]);
@@ -97,29 +100,31 @@ export function GrandLinePage() {
 
   const handleStartTestClick = async (test: AmbassadorTestDoc) => {
     setGuestError(null);
-    if (user) {
-      // Logged in student: check if already attempted
-      const userEmail = user.email || '';
-      try {
-        const already = await hasUserAttemptedTest(test.id, userEmail);
-        if (already) {
-          setGuestError('You have already taken this test. In Grand Line drills, only 1 verified attempt per student is permitted.');
-          return;
-        }
-        // Save candidate details in sessionStorage for the runner
-        sessionStorage.setItem(`grandline_taker_${test.id}`, JSON.stringify({
-          name: profile?.displayName || user.displayName || 'Student',
-          email: userEmail,
-          entryTest: 'General Prep',
-        }));
-        navigate(`/grand-line/test/${test.id}`);
-      } catch (err) {
-        console.warn('Error checking attempt status:', err);
-        navigate(`/grand-line/test/${test.id}`);
+    if (!user) {
+      requireAuth(
+        `take "${test.title}" on Grand Line`,
+        undefined,
+        `/grand-line/test/${test.id}/run`
+      );
+      return;
+    }
+
+    const userEmail = user.email || '';
+    try {
+      const already = await hasUserAttemptedTest(test.id, userEmail);
+      if (already) {
+        setGuestError('You have already taken this test. In Grand Line drills, only 1 verified attempt per student is permitted.');
+        return;
       }
-    } else {
-      // Guest visitor: show modal to collect Gmail, name, entry test
-      setSelectedTestForStart(test);
+      sessionStorage.setItem(`grandline_taker_${test.id}`, JSON.stringify({
+        name: profile?.displayName || user.displayName || 'Student',
+        email: userEmail,
+        entryTest: 'General Prep',
+      }));
+      navigate(`/grand-line/test/${test.id}/run`);
+    } catch (err) {
+      console.warn('Error checking attempt status:', err);
+      navigate(`/grand-line/test/${test.id}/run`);
     }
   };
 
@@ -190,10 +195,13 @@ export function GrandLinePage() {
       <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-14">
         {/* Hero Header */}
         <div className="text-center max-w-3xl mx-auto space-y-4">
-          <Badge color="red">Public Testing Arena</Badge>
+          <div className="section-chip section-chip-red">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] animate-pulse" />
+            <span>Public Testing Arena</span>
+          </div>
           <h1
-            className="text-3xl sm:text-5xl font-extrabold text-[var(--text)] tracking-tight leading-tight"
-            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+            className="text-3xl sm:text-5xl font-extrabold text-[var(--text)] tracking-tight leading-tight font-dot"
+            style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
           >
             The {GRAND_LINE_NAME}
           </h1>
@@ -204,7 +212,7 @@ export function GrandLinePage() {
           <div className="pt-2 flex items-center justify-center gap-3">
             <Link
               to="/grand-line/about"
-              className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-[var(--text)] transition-colors underline"
+              className="glass-pill px-3.5 py-1.5 text-xs text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
             >
               <Info size={14} />
               <span>How {GRAND_LINE_NAME} Works</span>
@@ -221,19 +229,20 @@ export function GrandLinePage() {
               placeholder="Search tests or captains..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921]"
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-white/[0.04] border border-white/12 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921]"
             />
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto scrollbar-none">
+          <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto scrollbar-none py-1">
             {['all', 'mathematics', 'physics', 'chemistry', 'biology', 'english'].map((subj) => (
               <button
                 key={subj}
+                type="button"
                 onClick={() => setSubjectFilter(subj)}
-                className={`px-3 py-1.5 rounded-full text-xs font-mono capitalize transition-all cursor-pointer ${
+                className={`px-3.5 py-1.5 rounded-full text-xs font-mono capitalize transition-all cursor-pointer ${
                   subjectFilter === subj
-                    ? 'bg-[#D71921] text-white font-bold'
-                    : 'bg-[var(--surface-2)] text-[var(--muted)] hover:text-white border border-[var(--border)]'
+                    ? 'bg-[#D71921] text-white font-bold shadow-[0_2px_12px_rgba(215,25,33,0.3)]'
+                    : 'glass-pill text-[var(--muted)] hover:text-white'
                 }`}
               >
                 {subj}
@@ -245,7 +254,7 @@ export function GrandLinePage() {
         {/* ── Test List (Dedicated Captain Tests Section) ── */}
         <div className="max-w-4xl mx-auto space-y-4">
           {guestError && !selectedTestForStart && (
-            <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-500/40 text-red-300 text-xs flex items-center justify-between gap-2">
+            <div className="p-3.5 rounded-2xl bg-red-950/40 border border-red-500/40 text-red-300 text-xs flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <AlertCircle size={15} className="shrink-0 text-red-400" />
                 <span>{guestError}</span>
@@ -261,7 +270,10 @@ export function GrandLinePage() {
           )}
 
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-bold font-heading text-[var(--text)]">
+            <h2
+              className="text-lg font-bold text-[var(--text)] font-dot"
+              style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
+            >
               Captain Tests ({filteredTests.length})
             </h2>
             <span className="text-xs font-mono text-[var(--text-faint)]">
@@ -276,7 +288,7 @@ export function GrandLinePage() {
               <Skeleton height={80} />
             </div>
           ) : filteredTests.length === 0 ? (
-            <div className="p-12 text-center rounded-2xl bg-[var(--surface)] border border-[var(--border)] text-[var(--muted)] text-sm space-y-2">
+            <div className="p-12 text-center rounded-[28px] glass-panel text-[var(--muted)] text-sm space-y-2">
               <Compass size={32} className="mx-auto text-[var(--text-faint)]" />
               <p>No tests match your filter right now.</p>
               <p className="text-xs text-[var(--text-faint)]">Check back soon or apply as an ambassador to author your own mock!</p>
@@ -284,19 +296,19 @@ export function GrandLinePage() {
           ) : (
             <div className="grid grid-cols-1 gap-3.5">
               {filteredTests.map((test) => (
-                <Card
+                <div
                   key={test.id}
-                  className="p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:border-[var(--red)]/40 transition-colors"
+                  className="glass-card glass-card-interactive p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 rounded-[24px]"
                 >
-                  <div className="space-y-1 min-w-0">
+                  <div className="space-y-1.5 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-base font-bold text-[var(--text)] font-heading">
                         {test.title}
                       </span>
-                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)] text-[#D71921]">
+                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-[#D71921]/15 border border-[#D71921]/30 text-[#D71921]">
                         {test.subject}
                       </span>
-                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)]">
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-white/[0.05] border border-white/10 text-[var(--muted)]">
                         {test.questionCount} Questions
                       </span>
                     </div>
@@ -325,19 +337,22 @@ export function GrandLinePage() {
                       <span>Take Test</span>
                     </Button>
                   </div>
-                </Card>
+                </div>
               ))}
             </div>
           )}
         </div>
 
         {/* ── Test Leaderboard Section ── */}
-        <div className="max-w-4xl mx-auto pt-8 border-t border-[var(--border)] space-y-6">
+        <div className="max-w-4xl mx-auto pt-8 border-t border-white/10 space-y-6">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
               <div className="flex items-center gap-2">
                 <Trophy size={20} className="text-[#D71921]" />
-                <h2 className="text-xl font-bold font-heading text-[var(--text)]">
+                <h2
+                  className="text-xl font-bold text-[var(--text)] font-dot"
+                  style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
+                >
                   {activeTest ? `Leaderboard: ${activeTest.title}` : 'Test Leaderboard'}
                 </h2>
               </div>
@@ -347,7 +362,7 @@ export function GrandLinePage() {
             </div>
 
             {activeTest && (
-              <span className="text-xs font-mono px-2.5 py-1 rounded bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)]">
+              <span className="glass-pill px-3 py-1 text-xs font-mono text-[var(--muted)]">
                 {leaderboard.length} Attempts Recorded
               </span>
             )}
@@ -359,27 +374,27 @@ export function GrandLinePage() {
               <Skeleton height={50} />
             </div>
           ) : leaderboard.length === 0 ? (
-            <div className="p-8 text-center rounded-xl bg-[var(--surface)] border border-[var(--border)] text-xs text-[var(--muted)]">
+            <div className="p-8 text-center rounded-2xl glass-panel text-xs text-[var(--muted)]">
               No attempts submitted yet for this test. Be the first to claim rank #1!
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="glass-panel p-4 sm:p-6 rounded-[28px] space-y-2">
               {leaderboard.map((entry) => {
                 return (
                   <div
                     key={entry.rank}
-                    className="p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-between text-xs"
+                    className="p-3.5 rounded-2xl glass-row flex items-center justify-between text-xs"
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                        className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-xs shrink-0 font-dot ${
                           entry.rank === 1
                             ? 'bg-amber-400 text-black'
                             : entry.rank === 2
                             ? 'bg-slate-300 text-black'
                             : entry.rank === 3
                             ? 'bg-amber-600 text-white'
-                            : 'bg-[var(--surface)] text-[var(--muted)] border border-[var(--border)]'
+                            : 'bg-white/[0.05] text-[var(--muted)] border border-white/10'
                         }`}
                       >
                         {entry.rank}
@@ -396,7 +411,7 @@ export function GrandLinePage() {
                     </div>
 
                     <div className="text-right">
-                      <span className="text-sm font-bold font-mono text-[#D71921]">
+                      <span className="text-sm font-bold font-dot text-[#D71921]">
                         {entry.score} / {entry.totalQuestions}
                       </span>
                       <span className="text-[10px] text-[var(--text-faint)] block">
@@ -413,16 +428,21 @@ export function GrandLinePage() {
 
       {/* ── Guest Registration Modal for Visitors ── */}
       {selectedTestForStart && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-150">
-          <div className="w-full max-w-md rounded-2xl bg-[var(--card)] border border-[var(--border)] p-6 shadow-2xl flex flex-col gap-4">
-            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
+          <div className="w-full max-w-md rounded-[28px] glass-panel p-6 sm:p-7 shadow-2xl flex flex-col gap-4 border border-white/15">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <div>
-                <h3 className="text-lg font-bold font-display text-[var(--text)]">Start {GRAND_LINE_NAME} Mock</h3>
+                <h3
+                  className="text-lg font-bold text-[var(--text)] font-dot"
+                  style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
+                >
+                  Start {GRAND_LINE_NAME} Mock
+                </h3>
                 <p className="text-xs text-[var(--muted)]">Please enter your candidate information to start.</p>
               </div>
               <button
                 onClick={() => setSelectedTestForStart(null)}
-                className="text-[var(--muted)] hover:text-white cursor-pointer"
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[var(--muted)] hover:text-white hover:bg-white/[0.08] cursor-pointer transition-colors"
               >
                 ✕
               </button>
@@ -441,7 +461,7 @@ export function GrandLinePage() {
                     value={guestName}
                     onChange={(e) => setGuestName(e.target.value)}
                     placeholder="e.g. Daniyal Tariq"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl bg-white/[0.04] border border-white/12 text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
                   />
                 </div>
               </div>
@@ -458,7 +478,7 @@ export function GrandLinePage() {
                     value={guestEmail}
                     onChange={(e) => setGuestEmail(e.target.value)}
                     placeholder="yourname@gmail.com"
-                    className="w-full pl-10 pr-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                    className="w-full pl-10 pr-3.5 py-2.5 rounded-2xl bg-white/[0.04] border border-white/12 text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
                   />
                 </div>
                 <span className="text-[10px] text-[var(--text-faint)] mt-1 block">
@@ -473,10 +493,10 @@ export function GrandLinePage() {
                 <select
                   value={guestEntryTest}
                   onChange={(e) => setGuestEntryTest(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
+                  className="w-full px-3.5 py-2.5 rounded-2xl bg-white/[0.04] border border-white/12 text-sm text-[var(--text)] focus:outline-none focus:border-[#D71921]"
                 >
                   {ENTRY_TEST_CHOICES.map((choice) => (
-                    <option key={choice} value={choice}>
+                    <option key={choice} value={choice} className="bg-[#121216] text-white">
                       {choice}
                     </option>
                   ))}
@@ -490,7 +510,7 @@ export function GrandLinePage() {
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-[var(--border)]">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/10">
                 <Button variant="ghost" size="sm" type="button" onClick={() => setSelectedTestForStart(null)}>
                   Cancel
                 </Button>

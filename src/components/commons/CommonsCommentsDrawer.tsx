@@ -5,6 +5,7 @@ import { addPostComment, fetchPostComments } from '@/services/commonsService';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { RoleBadge } from '@/components/ui/RoleBadge';
+import { useAuthGate } from '@/contexts/AuthGateContext';
 
 interface CommonsCommentsDrawerProps {
   post: CommonsPost | null;
@@ -26,6 +27,7 @@ export function CommonsCommentsDrawer({
   onClose,
   currentUser,
 }: CommonsCommentsDrawerProps) {
+  const { requireAuth } = useAuthGate();
   const [comments, setComments] = useState<CommonsComment[]>([]);
   const [newText, setNewText] = useState('');
   const [isAnonymous, setIsAnonymous] = useState(false);
@@ -51,7 +53,7 @@ export function CommonsCommentsDrawer({
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) {
-      setError('Please sign in to comment.');
+      requireAuth('comment on this post in Boardly Commons');
       return;
     }
     if (!newText.trim()) return;
@@ -77,6 +79,10 @@ export function CommonsCommentsDrawer({
   };
 
   const toggleCommentLike = (commentId: string) => {
+    if (!currentUser) {
+      requireAuth('like this comment in Boardly Commons');
+      return;
+    }
     setLikedCommentIds((prev) => {
       const next = new Set(prev);
       if (next.has(commentId)) {
@@ -89,6 +95,10 @@ export function CommonsCommentsDrawer({
   };
 
   const handleReplyTo = (authorName: string) => {
+    if (!currentUser) {
+      requireAuth(`reply to ${authorName} in Boardly Commons`);
+      return;
+    }
     setNewText(`@${authorName} `);
     inputRef.current?.focus();
   };
@@ -114,19 +124,19 @@ export function CommonsCommentsDrawer({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center sm:items-center bg-black/60 backdrop-blur-xs p-0 sm:p-4 animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex flex-col justify-end sm:justify-center sm:items-center bg-black/60 p-0 sm:p-4 animate-in fade-in duration-150"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full sm:max-w-lg bg-surface border-t sm:border border-border rounded-t-3xl sm:rounded-2xl flex flex-col max-h-[85vh] sm:max-h-[80vh] shadow-2xl overflow-hidden"
+        className="w-full sm:max-w-lg glass-panel allow-backdrop-blur rounded-t-[28px] sm:rounded-[28px] flex flex-col max-h-[85vh] sm:max-h-[80vh] overflow-hidden"
       >
         {/* Mobile drag bar */}
-        <div className="w-10 h-1 bg-border-strong rounded-full mx-auto my-2.5 sm:hidden shrink-0" />
+        <div className="w-10 h-1 bg-[var(--glass-border-hover)] rounded-full mx-auto my-2.5 sm:hidden shrink-0" />
 
         {/* Header */}
-        <div className="px-5 py-3.5 border-b border-border flex items-center justify-between bg-surface-raised shrink-0">
+        <div className="px-5 py-3.5 border-b border-[var(--glass-border)] flex items-center justify-between shrink-0">
           <div>
-            <h3 className="text-sm font-bold text-primary">
+            <h3 className="text-sm font-bold text-primary font-dot">
               Comments ({comments.length})
             </h3>
             <p className="text-xs text-muted truncate max-w-[260px] sm:max-w-md mt-0.5">
@@ -135,9 +145,9 @@ export function CommonsCommentsDrawer({
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-lg text-muted hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-muted hover:text-primary transition-colors cursor-pointer"
           >
-            <X size={18} />
+            <X size={16} />
           </button>
         </div>
 

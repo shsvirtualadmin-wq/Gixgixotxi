@@ -110,18 +110,18 @@ export function NakamaCaptainsPage() {
       />
 
       <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] pt-6 sm:pt-10 pb-20 page-enter">
-        <div className="boardly-container max-w-5xl mx-auto px-4 sm:px-6 space-y-20">
+        <div className="boardly-container max-w-5xl mx-auto px-4 sm:px-6 space-y-16 sm:space-y-20">
           
           {/* ── Section A: Hero ── */}
           <section className="text-center space-y-6 pt-4 max-w-3xl mx-auto">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-red-500/10 border border-red-500/30 text-[#D71921] text-xs font-mono uppercase tracking-wider">
-              <Sparkles size={14} />
+            <div className="section-chip section-chip-red">
+              <Sparkles size={14} className="text-[#D71921]" />
               <span>Official Leadership Program</span>
             </div>
 
             <h1
-              className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.1]"
-              style={{ fontFamily: 'var(--font-heading)' }}
+              className="text-3xl sm:text-5xl lg:text-6xl font-black text-white tracking-tight leading-[1.1] font-dot"
+              style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
             >
               Become a <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D71921] via-red-500 to-amber-400">{NAKAMA_CAPTAIN_SINGULAR}</span>.
               <br />
@@ -135,7 +135,7 @@ export function NakamaCaptainsPage() {
             <div className="pt-2 flex flex-wrap items-center justify-center gap-4">
               <Link
                 to="/captain/apply"
-                className="btn-red text-sm sm:text-base px-8 py-3.5 rounded-full font-bold shadow-lg shadow-red-600/20 hover:scale-105 transition-all flex items-center gap-2"
+                className="btn-primary text-sm sm:text-base px-8 rounded-full font-bold flex items-center gap-2"
                 style={{ height: '54px' }}
               >
                 <span>Apply Now</span>
@@ -144,7 +144,7 @@ export function NakamaCaptainsPage() {
               <button
                 type="button"
                 onClick={scrollToSteps}
-                className="btn-outline text-sm sm:text-base px-6 py-3.5 rounded-full font-semibold border-white/20 text-white/80 hover:text-white hover:border-white transition-all flex items-center gap-2 cursor-pointer"
+                className="btn-secondary text-sm sm:text-base px-6 rounded-full font-semibold flex items-center gap-2 cursor-pointer"
                 style={{ height: '54px' }}
               >
                 <span>How it works</span>
@@ -155,17 +155,11 @@ export function NakamaCaptainsPage() {
 
           {/* ── Section B: Name Meaning Glass Card ── */}
           <section className="max-w-2xl mx-auto">
-            <div
-              className="relative p-7 sm:p-8 rounded-3xl border border-red-500/40 backdrop-blur-xl overflow-hidden"
-              style={{
-                background: 'linear-gradient(135deg, rgba(215, 25, 33, 0.08) 0%, rgba(10, 10, 10, 0.95) 100%)',
-                boxShadow: '0 0 35px -5px rgba(215, 25, 33, 0.3)',
-              }}
-            >
+            <div className="glass-card relative p-7 sm:p-8 rounded-[28px] border-[#D71921]/40 shadow-[0_20px_50px_rgba(215,25,33,0.18)] overflow-hidden">
               <div className="absolute top-0 right-0 w-32 h-32 bg-red-500/10 rounded-full blur-2xl pointer-events-none" />
 
               <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5 text-center sm:text-left">
-                <div className="shrink-0 flex flex-col items-center justify-center p-3 sm:p-4 rounded-2xl bg-black/60 border border-red-500/30">
+                <div className="shrink-0 flex flex-col items-center justify-center p-3 sm:p-4 rounded-2xl bg-black/70 border border-red-500/35 shadow-inner">
                   <span
                     className="text-3xl sm:text-4xl font-extrabold text-[#D71921] drop-shadow-[0_0_12px_rgba(215,25,33,0.8)]"
                     style={{ fontFamily: 'sans-serif' }}
@@ -192,10 +186,10 @@ export function NakamaCaptainsPage() {
           {/* ── Section C: Perks and Powers (Cards) ── */}
           <section className="space-y-8">
             <div className="text-center space-y-2">
-              <Badge color="red">Captains Arsenal</Badge>
+              <div className="section-chip section-chip-red">Captains Arsenal</div>
               <h2
-                className="text-2xl sm:text-4xl font-bold text-white tracking-tight"
-                style={{ fontFamily: 'var(--font-heading)' }}
+                className="text-2xl sm:text-4xl font-bold text-white tracking-tight font-dot"
+                style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
               >
                 Perks &amp; Powers of a {NAKAMA_CAPTAIN_SINGULAR}
               </h2>
@@ -206,19 +200,14 @@ export function NakamaCaptainsPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {PERKS_AND_POWERS.map((perk) => (
-                <GlassCard
+                <div
                   key={perk.title}
-                  className="p-6 flex flex-col justify-between rounded-2xl transition-all duration-200 hover:-translate-y-1 hover:border-white/30"
-                  style={{
-                    background: 'rgba(20, 20, 20, 0.7)',
-                    borderColor: 'rgba(255, 255, 255, 0.1)',
-                  }}
+                  className="glass-card glass-card-interactive p-6 flex flex-col justify-between rounded-[24px]"
                 >
                   <div className="space-y-3.5">
                     <div
-                      className="w-12 h-12 rounded-xl flex items-center justify-center border border-white/10"
+                      className="w-12 h-12 rounded-2xl flex items-center justify-center border border-white/10 bg-white/[0.05]"
                       style={{
-                        background: 'rgba(255, 255, 255, 0.05)',
                         boxShadow: `0 0 20px -3px ${perk.glow}`,
                       }}
                     >
@@ -236,7 +225,7 @@ export function NakamaCaptainsPage() {
                       {perk.desc}
                     </p>
                   </div>
-                </GlassCard>
+                </div>
               ))}
             </div>
           </section>
@@ -244,10 +233,10 @@ export function NakamaCaptainsPage() {
           {/* ── Section D: How It Works in 4 Steps ── */}
           <section id="how-it-works-section" className="space-y-8 scroll-mt-32">
             <div className="text-center space-y-2">
-              <Badge color="muted">Clear Pathway</Badge>
+              <div className="section-chip">Clear Pathway</div>
               <h2
-                className="text-2xl sm:text-4xl font-bold text-white tracking-tight"
-                style={{ fontFamily: 'var(--font-heading)' }}
+                className="text-2xl sm:text-4xl font-bold text-white tracking-tight font-dot"
+                style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
               >
                 How It Works in 4 Steps
               </h2>
@@ -260,11 +249,11 @@ export function NakamaCaptainsPage() {
               {FOUR_STEPS.map((step) => (
                 <div
                   key={step.step}
-                  className="p-6 rounded-2xl bg-[var(--surface)] border border-[var(--border)] space-y-3 relative overflow-hidden"
+                  className="glass-card p-6 rounded-[24px] space-y-3 relative overflow-hidden"
                 >
                   <span
-                    className="font-mono text-3xl font-extrabold text-[#D71921] opacity-70 block"
-                    style={{ fontFamily: 'var(--font-heading)' }}
+                    className="font-dot text-3xl font-extrabold text-[#D71921] opacity-75 block"
+                    style={{ fontFamily: 'var(--font-dot)' }}
                   >
                     {step.step}
                   </span>
@@ -281,13 +270,7 @@ export function NakamaCaptainsPage() {
 
           {/* ── Section E: Your Journey (Certificate & Paid Internship) ── */}
           <section className="max-w-3xl mx-auto">
-            <div
-              className="p-8 sm:p-10 rounded-3xl border border-amber-500/40 relative overflow-hidden text-center sm:text-left space-y-6"
-              style={{
-                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(10, 10, 10, 0.95) 100%)',
-                boxShadow: '0 0 35px -5px rgba(245, 158, 11, 0.25)',
-              }}
-            >
+            <div className="glass-card p-8 sm:p-10 rounded-[30px] border-amber-500/35 shadow-[0_20px_50px_rgba(245,158,11,0.15)] relative overflow-hidden text-center sm:text-left space-y-6">
               <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
                 <div className="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-500/40 text-amber-400 flex items-center justify-center shrink-0">
                   <GraduationCap size={30} />
@@ -297,8 +280,8 @@ export function NakamaCaptainsPage() {
                     Official Recognition &amp; Growth
                   </span>
                   <h3
-                    className="text-xl sm:text-2xl font-bold text-white"
-                    style={{ fontFamily: 'var(--font-heading)' }}
+                    className="text-xl sm:text-2xl font-bold text-white font-dot"
+                    style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
                   >
                     Your Journey as a {NAKAMA_CAPTAIN_SINGULAR}
                   </h3>
@@ -309,13 +292,13 @@ export function NakamaCaptainsPage() {
               </div>
 
               <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 rounded-xl bg-black/40 border border-white/10 flex items-center gap-3">
+                <div className="p-4 rounded-2xl glass-row flex items-center gap-3">
                   <CheckCircle2 size={18} className="text-amber-400 shrink-0" />
                   <span className="text-xs font-semibold text-white/90">
                     Official SHS Virtual Academy Certificate
                   </span>
                 </div>
-                <div className="p-4 rounded-xl bg-black/40 border border-white/10 flex items-center gap-3">
+                <div className="p-4 rounded-2xl glass-row flex items-center gap-3">
                   <Briefcase size={18} className="text-amber-400 shrink-0" />
                   <span className="text-xs font-semibold text-white/90">
                     Merit-Based Paid Internship Opportunities
@@ -326,10 +309,10 @@ export function NakamaCaptainsPage() {
           </section>
 
           {/* ── Section F: Bottom Apply Now CTA ── */}
-          <section className="text-center p-8 sm:p-12 rounded-3xl bg-[var(--surface-2)] border border-[var(--border)] space-y-6 max-w-3xl mx-auto">
+          <section className="text-center p-8 sm:p-12 rounded-[32px] glass-panel space-y-6 max-w-3xl mx-auto">
             <h2
-              className="text-2xl sm:text-4xl font-extrabold text-white"
-              style={{ fontFamily: 'var(--font-heading)' }}
+              className="text-2xl sm:text-4xl font-extrabold text-white font-dot"
+              style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
             >
               Ready to Command Your Crew?
             </h2>
@@ -339,7 +322,7 @@ export function NakamaCaptainsPage() {
             <div className="pt-2 flex justify-center">
               <Link
                 to="/captain/apply"
-                className="btn-red text-sm sm:text-base px-8 py-3.5 rounded-full font-bold shadow-lg shadow-red-600/25 hover:scale-105 transition-all flex items-center gap-2"
+                className="btn-primary text-sm sm:text-base px-8 rounded-full font-bold flex items-center gap-2"
                 style={{ height: '54px' }}
               >
                 <span>Apply for {NAKAMA_CAPTAIN_SINGULAR}</span>

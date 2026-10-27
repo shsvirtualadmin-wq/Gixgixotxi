@@ -209,16 +209,16 @@ export function CommonsSearchModal({
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-50 flex items-start justify-center pt-3 sm:pt-14 px-3 sm:px-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+      className="fixed inset-0 z-50 flex items-start justify-center pt-3 sm:pt-14 px-3 sm:px-4 bg-black/60 animate-in fade-in duration-150"
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-2xl rounded-2xl border border-border bg-surface text-primary shadow-2xl flex flex-col max-h-[88vh] overflow-hidden"
+        className="w-full max-w-2xl rounded-[28px] glass-panel allow-backdrop-blur text-primary flex flex-col max-h-[88vh] overflow-hidden"
       >
         {/* Search Input Bar */}
-        <div className="p-3.5 sm:p-4 border-b border-border bg-surface-raised space-y-3">
+        <div className="p-3.5 sm:p-4 border-b border-[var(--glass-border)] space-y-3">
           <div className="flex items-center gap-2.5">
-            <div className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-surface-muted border border-border focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20 transition-all">
+            <div className="flex-1 flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl glass-row focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/20 transition-all">
               <Search size={18} className="text-muted shrink-0" />
               <input
                 ref={inputRef}
@@ -248,10 +248,10 @@ export function CommonsSearchModal({
             <button
               type="button"
               onClick={onClose}
-              className="p-2.5 rounded-xl text-muted hover:text-primary hover:bg-surface-muted transition-colors cursor-pointer shrink-0"
+              className="w-10 h-10 rounded-full glass-pill flex items-center justify-center text-muted hover:text-primary transition-colors cursor-pointer shrink-0"
               title="Close search"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
           </div>
 

@@ -344,16 +344,16 @@ export function PostingWizardModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm overflow-y-auto font-sans">
-      <div className="relative w-full max-w-2xl bg-surface border border-border rounded-2xl shadow-2xl overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 overflow-y-auto font-sans">
+      <div className="relative w-full max-w-2xl glass-panel allow-backdrop-blur rounded-[28px] overflow-hidden my-auto animate-in fade-in zoom-in-95 duration-150">
         {/* Header Bar */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-border bg-surface-raised">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--glass-border)]">
           <div className="flex items-center gap-2.5">
             <div className="w-2.5 h-2.5 rounded-full bg-accent animate-pulse" />
-            <h2 className="text-sm sm:text-base font-bold tracking-tight text-primary font-sans">
+            <h2 className="text-sm sm:text-base font-bold tracking-tight text-primary font-dot">
               Share Study Resource
             </h2>
-            <span className="text-[11px] font-mono text-muted bg-surface-muted border border-border px-2 py-0.5 rounded-full">
+            <span className="text-[11px] font-dot font-bold text-muted glass-pill px-2.5 py-0.5 rounded-full">
               Step {currentStep} of 2
             </span>
           </div>

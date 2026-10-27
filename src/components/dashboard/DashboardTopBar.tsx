@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, CreditCard, LogOut, Sun, Moon, Shield, Award, ShoppingBag, Settings } from 'lucide-react';
+import { User, CreditCard, LogOut, Sun, Moon, Shield, Award, ShoppingBag, Settings, Bell } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { Logo } from '@/components/ui/Logo';
 import { useEffectivePlan } from '@/hooks/useEffectivePlan';
 import { useTheme } from '@/hooks/useTheme';
 import { useWallet } from '@/hooks/useWallet';
+import { useUnreadNotificationsCount } from '@/hooks/useUnreadNotificationsCount';
 import { KobanChip } from '@/components/koban/KobanIcon';
 import { AvatarFrame, AvatarPicture, Nameplate } from '@/components/koban/CosmeticRenderers';
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
@@ -26,6 +27,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   const menuRef = useRef<HTMLDivElement>(null);
 
   const { theme, toggle: toggleTheme } = useTheme();
+  const unreadCount = useUnreadNotificationsCount();
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -45,90 +47,126 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
   };
 
   const effectivePlan = useEffectivePlan();
-  const { balance: kobanBalance, equipped } = useWallet();
+  const { balance: kobanBalance, loading: walletLoading, equipped } = useWallet();
   const isPro = effectivePlan.isUnlimited;
   const role = profile?.role || 'student';
   const cleanName = sanitizeStudentDisplayName(profile?.displayName || user?.displayName, profile?.shortId || user?.uid);
 
   return (
-    <header
-      className="h-16 w-full border-b border-[var(--border)] px-4 sm:px-8 flex items-center justify-between shrink-0 sticky top-0 z-[50]"
-      style={{ backgroundColor: 'var(--card)' }}
-    >
-      {/* Left side: Mobile brand logo */}
-      <div className="flex items-center gap-3">
-        <Link to="/dashboard" className="flex items-center md:hidden" aria-label="Boardly Dashboard">
-          <Logo size="navbar" />
-        </Link>
-      </div>
-
-      {/* Right side: theme toggle, upgrade button, and Avatar Menu */}
-      <div className="flex items-center gap-3 ml-auto">
-        {/* Superadmin button */}
-        {isAdmin && (
-          <button
-            onClick={() => navigate('/admin')}
-            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-[var(--card-2)] border border-[var(--red)] text-[var(--red)] hover:bg-[var(--red)] hover:text-white transition-colors cursor-pointer"
-            style={{ fontFamily: 'var(--font-heading)' }}
-          >
-            <Shield size={13} />
-            <span>Admin Portal</span>
-          </button>
-        )}
-
-        {/* Upgrade pill for free students */}
-        {!isPro && !isAdmin && (
-          <Link
-            to="/pricing"
-            className="btn-red text-xs py-1.5 px-3.5 rounded-full"
-            style={{ height: '36px', fontSize: '13px' }}
-          >
-            Upgrade to Pro
+    <header className="sticky top-0 z-[50] w-full px-3 sm:px-6 pt-3 pb-1 shrink-0 pointer-events-none">
+      <div
+        className="max-w-5xl mx-auto h-14 sm:h-16 px-3.5 sm:px-5 rounded-full allow-backdrop-blur border flex items-center justify-between pointer-events-auto transition-all duration-200"
+        style={{
+          backgroundColor: 'var(--nav-bg)',
+          borderColor: 'var(--glass-border)',
+          boxShadow: 'var(--glass-card-shadow)',
+        }}
+      >
+        {/* Left side: Brand logo + Pro badge */}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Link to="/dashboard" className="flex items-center shrink-0" aria-label="Boardly Dashboard">
+            <Logo size="navbar" />
           </Link>
-        )}
-
-        {/* Theme Toggle */}
-        <button
-          onClick={toggleTheme}
-          aria-label="Toggle theme"
-          className="w-9 h-9 rounded-full flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--card-2)] transition-colors cursor-pointer border border-[var(--border)]"
-        >
-          {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
-        </button>
-
-        {/* Avatar Menu Container */}
-        {/* Avatar Dropdown Menu */}
-        <div className="relative" ref={menuRef}>
-          <button
-            onClick={() => setMenuOpen(!menuOpen)}
-            aria-label="User profile menu"
-            className="flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
+          <span
+            className={`hidden xs:inline-flex items-center text-[10px] sm:text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0 ${
+              isPro ? 'badge-pill-red' : 'glass-pill text-[var(--text-muted)]'
+            }`}
           >
-            <AvatarFrame itemId={equipped?.frame || 'none'} size={42}>
-              <AvatarPicture
-                avatarId={equipped?.avatar}
-                avatarKey={profile?.avatarKey}
-                variant={profile?.avatarVariant}
-                seed={user?.uid}
-                size={34}
-              />
-            </AvatarFrame>
+            {isPro ? 'PRO' : 'FREE'}
+          </span>
+        </div>
+
+        {/* Right side: Kobans wallet chip, notification bell, theme toggle, upgrade button, and Avatar Menu */}
+        <div className="flex items-center gap-2 sm:gap-2.5 ml-auto">
+          {/* Superadmin button */}
+          {isAdmin && (
+            <button
+              onClick={() => navigate('/admin')}
+              className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold glass-pill border border-[var(--red)]/50 text-[var(--red)] hover:bg-[var(--red)] hover:text-white transition-colors cursor-pointer"
+              style={{ fontFamily: 'var(--font-heading)' }}
+            >
+              <Shield size={13} />
+              <span>Admin Portal</span>
+            </button>
+          )}
+
+          {/* Upgrade pill for free students */}
+          {!isPro && !isAdmin && (
+            <Link
+              to="/dashboard/plans"
+              className="hidden sm:inline-flex btn-primary text-xs py-1.5 px-3.5 rounded-full items-center"
+              style={{ height: '34px', fontSize: '12px' }}
+            >
+              Upgrade to Pro
+            </Link>
+          )}
+
+          {/* Kobans Wallet Chip */}
+          <Link
+            to="/store"
+            title="Boardly Store & Kobans Wallet"
+            className="flex items-center transition-transform hover:scale-105"
+          >
+            <KobanChip balance={kobanBalance} loading={walletLoading} />
+          </Link>
+
+          {/* Notification Bell */}
+          <Link
+            to="/dashboard/notifications"
+            aria-label="Notifications"
+            title="Notifications"
+            className="relative w-9 h-9 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+          >
+            <Bell size={16} />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-[16px] h-[16px] px-1 rounded-full bg-[#D71921] text-white text-[9px] font-bold flex items-center justify-center leading-none border border-black/30 shadow-sm">
+                {unreadCount > 9 ? '9+' : unreadCount}
+              </span>
+            )}
+          </Link>
+
+          {/* Theme Toggle */}
+          <button
+            onClick={toggleTheme}
+            aria-label="Toggle theme"
+            title="Toggle theme"
+            className="w-9 h-9 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
+          >
+            {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
           </button>
 
           {/* Avatar Dropdown Menu */}
-          {menuOpen && (
-            <div
-              className="absolute right-0 mt-2 w-64 rounded-2xl bg-[var(--card)] border border-[var(--border)] p-2 shadow-xl z-50 flex flex-col gap-1"
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen(!menuOpen)}
+              aria-label="User profile menu"
+              className="flex items-center justify-center cursor-pointer hover:opacity-90 transition-opacity"
             >
-              {/* User summary header (No Email) */}
+              <AvatarFrame itemId={equipped?.frame || 'none'} size={40}>
+                <AvatarPicture
+                  avatarId={equipped?.avatar}
+                  avatarKey={profile?.avatarKey}
+                  variant={profile?.avatarVariant}
+                  seed={user?.uid}
+                  size={32}
+                />
+              </AvatarFrame>
+            </button>
+
+            {/* Avatar Dropdown Menu */}
+            {menuOpen && (
               <div
-                onClick={() => {
-                  setMenuOpen(false);
-                  openProfile();
-                }}
-                className="p-3 border-b border-[var(--border)] space-y-1 cursor-pointer hover:bg-[var(--card-2)] transition-colors rounded-t-xl"
-                title="View your profile"
+                className="absolute right-0 mt-2.5 w-64 rounded-[24px] glass-card allow-backdrop-blur p-2 z-50 flex flex-col gap-1"
               >
+                {/* User summary header (No Email) */}
+                <div
+                  onClick={() => {
+                    setMenuOpen(false);
+                    openProfile();
+                  }}
+                  className="p-3 border-b border-[var(--glass-border)] space-y-1 cursor-pointer hover:bg-[var(--glass-pill-bg)] transition-colors rounded-t-[18px]"
+                  title="View your profile"
+                >
                 {equipped?.nameplate ? (
                   <Nameplate
                     itemId={equipped.nameplate}
@@ -268,6 +306,7 @@ export function DashboardTopBar({ sidebarCollapsed: _sidebarCollapsed }: Props) 
             </div>
           )}
         </div>
+      </div>
       </div>
     </header>
   );

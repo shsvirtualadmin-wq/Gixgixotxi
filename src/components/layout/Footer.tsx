@@ -48,7 +48,7 @@ export function Footer() {
 
   return (
     <footer
-      className="w-full mt-auto bg-[#D71921] text-white rounded-t-[20px] pt-12 sm:pt-14 md:pt-16 select-none"
+      className="boardly-red-footer relative w-full mt-auto bg-[#D71921] text-white rounded-t-[36px] sm:rounded-t-[48px] lg:rounded-t-[58px] pt-16 sm:pt-20 lg:pt-24 select-none border-t border-white/25 shadow-[0_-24px_50px_-10px_rgba(215,25,33,0.38),0_-8px_25px_rgba(0,0,0,0.6),inset_0_1.5px_1px_rgba(255,255,255,0.35)]"
       style={{
         backgroundColor: '#D71921',
         width: '100%',
@@ -58,141 +58,174 @@ export function Footer() {
         containerType: 'inline-size',
       }}
     >
+      {/* Soft specular sheen line on the top curved edge */}
+      <div
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 max-w-[800px] h-[1.5px] bg-gradient-to-r from-transparent via-white/45 to-transparent pointer-events-none"
+        aria-hidden="true"
+      />
+
       <div className="boardly-container w-full max-w-[1200px] mx-auto px-5 sm:px-6 md:px-8 box-border">
         {/* 4-column grid on desktop, 2 columns on mobile with brand on top */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10 w-full [grid-template-columns:repeat(2,minmax(0,1fr))] lg:[grid-template-columns:1.25fr_repeat(3,minmax(0,1fr))] items-start">
           {/* Brand info (Full width on mobile, 1 col on desktop) */}
           <div className="col-span-2 lg:col-span-1 min-w-0">
-            <Link to="/" className="inline-flex items-center mb-4 group text-white" aria-label="Boardly Home">
+            <Link to="/" className="inline-flex items-center mb-5 group text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white rounded-lg" aria-label="Boardly Home">
               <Logo
                 size="footer"
-                className="h-[52px] sm:h-[60px] w-auto max-w-none text-white"
+                className="h-[52px] sm:h-[60px] w-auto max-w-none text-white transition-transform group-hover:scale-[1.02]"
                 style={{ maxHeight: 'none' }}
                 alt="Boardly"
               />
             </Link>
-            <p className="text-sm text-white/85 leading-relaxed mb-3 max-w-xs break-words">
+            <p className="text-sm text-white/90 leading-relaxed mb-3 max-w-xs break-words">
               Boardly: MCQ practice and learning for every student. A project of{' '}
               <a
                 href="https://shsvirtualacademy.pro"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-white underline font-semibold hover:opacity-90"
+                className="text-white underline font-semibold hover:opacity-90 underline-offset-2 transition-opacity"
               >
                 SHS Virtual Academy
               </a>
               .
             </p>
-            <div className="text-xs text-white/75 break-words">
+            <div className="text-xs text-white/80 break-words">
               Built with precision for learners across Pakistan.
             </div>
           </div>
 
-          {/* Subjects & Practice -> all point to real /features page */}
+          {/* Subjects & Practice -> real /mcqs subject & material hubs */}
           <div className="min-w-0">
             <h4
-              className="text-sm font-bold text-white mb-4"
-              style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+              className="text-xs sm:text-sm font-bold uppercase tracking-wider text-white mb-4 sm:mb-5 font-heading drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]"
             >
               Subjects &amp; Practice
             </h4>
-            <ul className="space-y-2.5 text-sm text-white/80">
+            <ul className="space-y-2.5 text-sm text-white/85">
               <li>
-                <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/mcqs/mathematics" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Mathematics
                 </Link>
               </li>
               <li>
-                <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/mcqs/physics" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Physics
                 </Link>
               </li>
               <li>
-                <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/mcqs/chemistry" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Chemistry &amp; Biology
                 </Link>
               </li>
               <li>
-                <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/mcqs/computer-science" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Computer Science
+                </Link>
+              </li>
+              <li>
+                <Link to="/mcqs" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
+                  All Subject MCQs
+                </Link>
+              </li>
+              <li>
+                <Link to="/material" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
+                  Study Material Library
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Platform -> /features, /commons/about, /crew, /pricing, /nakama-captains, /grand-line/about, /contact */}
+          {/* Platform -> /features, /commons, /commons/about, /crew, /store, /kobans, /pricing, /captains, /grand-line, /how-it-works, /contact */}
           <div className="min-w-0">
             <h4
-              className="text-sm font-bold text-white mb-4"
-              style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+              className="text-xs sm:text-sm font-bold uppercase tracking-wider text-white mb-4 sm:mb-5 font-heading drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]"
             >
               Platform
             </h4>
-            <ul className="space-y-2.5 text-sm text-white/80">
+            <ul className="space-y-2.5 text-sm text-white/85">
               <li>
-                <Link to="/features" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/features" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Platform features
                 </Link>
               </li>
               <li>
-                <Link to="/commons/about" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/how-it-works" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
+                  How Boardly Works
+                </Link>
+              </li>
+              <li>
+                <Link to="/commons" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Boardly Commons
                 </Link>
               </li>
               <li>
-                <Link to="/crew" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/crew" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Study Crew &amp; Squads
                 </Link>
               </li>
               <li>
-                <Link to="/store" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/store" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Boardly Store
                 </Link>
               </li>
               <li>
-                <Link to="/kobans" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/kobans" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   About Kobans
                 </Link>
               </li>
               <li>
-                <Link to="/pricing" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/pricing" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Pricing &amp; plans
                 </Link>
               </li>
               <li>
-                <Link to="/nakama-captains" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/captains" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Nakama Captains
                 </Link>
               </li>
               <li>
-                <Link to="/grand-line/about" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/grand-line" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   {GRAND_LINE_NAME} (Public Mocks)
                 </Link>
               </li>
               <li>
-                <Link to="/contact" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/contact" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Contact support
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Legal & trust -> /privacy, /terms */}
+          {/* Legal & trust -> /about, /faq, /guidelines, /privacy, /terms */}
           <div className="min-w-0">
             <h4
-              className="text-sm font-bold text-white mb-4"
-              style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+              className="text-xs sm:text-sm font-bold uppercase tracking-wider text-white mb-4 sm:mb-5 font-heading drop-shadow-[0_1px_2px_rgba(0,0,0,0.2)]"
             >
               Legal &amp; trust
             </h4>
-            <ul className="space-y-2.5 text-sm text-white/80">
+            <ul className="space-y-2.5 text-sm text-white/85">
               <li>
-                <Link to="/privacy" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/about" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
+                  About Boardly
+                </Link>
+              </li>
+              <li>
+                <Link to="/faq" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
+                  FAQ
+                </Link>
+              </li>
+              <li>
+                <Link to="/guidelines" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
+                  Community guidelines
+                </Link>
+              </li>
+              <li>
+                <Link to="/privacy" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Privacy policy
                 </Link>
               </li>
               <li>
-                <Link to="/terms" className="hover:text-white hover:underline transition-colors block break-words">
+                <Link to="/terms" className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words">
                   Terms of service
                 </Link>
               </li>
@@ -201,13 +234,13 @@ export function Footer() {
                   href="https://shsvirtualacademy.pro"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="hover:text-white hover:underline transition-colors block break-words"
+                  className="hover:text-white hover:underline hover:translate-x-0.5 transition-all duration-200 inline-block break-words"
                 >
                   SHS Virtual Academy &rarr;
                 </a>
               </li>
               <li>
-                <span className="text-xs text-white/80 block break-words">
+                <span className="text-xs text-white/80 block break-words mt-1">
                   Not affiliated with any university official testing body.
                 </span>
               </li>
@@ -215,39 +248,39 @@ export function Footer() {
           </div>
         </div>
 
-        {/* 1px divider */}
+        {/* Thin semi-transparent gradient line separating columns from bottom bar */}
         <div
-          className="w-full mt-10 mb-6"
-          style={{ borderTop: '1px solid rgba(255, 255, 255, 0.22)' }}
+          className="w-full my-8 sm:my-10 h-[1px] bg-gradient-to-r from-transparent via-white/25 to-transparent"
+          aria-hidden="true"
         />
 
         {/* Copyright and contact info */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs sm:text-sm text-white/85 pb-4">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs sm:text-sm text-white/90 pb-4">
           <div className="break-words">
             &copy; {new Date().getFullYear()} Boardly Technologies. All rights reserved.
           </div>
-          <div className="flex flex-wrap items-center gap-4 break-words">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center sm:justify-end gap-3 sm:gap-4 break-words">
+            <div className="flex items-center gap-1.5 flex-wrap">
               <span>Phone / WhatsApp:</span>
-              <a href="tel:+923058969050" className="hover:text-white hover:underline">
+              <a href="tel:+923058969050" className="hover:text-white hover:underline underline-offset-2">
                 0305 8969050
               </a>
-              <span>(</span>
+              <span className="opacity-75">(</span>
               <a
                 href="https://wa.me/923058969050"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover:text-white hover:underline underline font-medium"
+                className="hover:text-white underline underline-offset-2 font-medium"
               >
                 WhatsApp
               </a>
-              <span>)</span>
+              <span className="opacity-75">)</span>
             </div>
-            <span>&bull;</span>
-            <a href="mailto:support@boardly.cfd" className="hover:text-white hover:underline">
+            <span className="opacity-60 hidden sm:inline">&bull;</span>
+            <a href="mailto:support@boardly.cfd" className="hover:text-white hover:underline underline-offset-2">
               support@boardly.cfd
             </a>
-            <span>&bull;</span>
+            <span className="opacity-60 hidden sm:inline">&bull;</span>
             <span>Asia/Karachi (PKT)</span>
           </div>
         </div>
@@ -256,7 +289,7 @@ export function Footer() {
       {/* Dot-matrix "Boardly" wordmark in Doto font with balanced spacing */}
       <div
         ref={wordmarkContainerRef}
-        className="w-full flex items-center justify-center text-center px-4 pt-2 pb-5 sm:pb-6 select-none pointer-events-none"
+        className="w-full flex items-center justify-center text-center px-4 pt-2 pb-6 sm:pb-8 select-none pointer-events-none"
         style={{
           boxSizing: 'border-box',
         }}

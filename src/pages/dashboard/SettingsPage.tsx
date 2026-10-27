@@ -37,6 +37,7 @@ import {
 import { sanitizeStudentDisplayName } from '@/utils/privacy';
 import { validateNickname, validateUsernameFormat, isForbiddenAdminRole } from '@/utils/usernameValidation';
 import { submitNameRequest } from '@/services/nameRequestService';
+import { useSmoothMode } from '@/utils/smoothMode';
 
 const SELECTABLE_USER_ROLES = [
   'Student',
@@ -53,6 +54,7 @@ export function SettingsPage() {
   const { user, signOutUser, updateLocalProfile, isAdmin } = useAuth();
   const { profile, loading } = useUserProfile();
   const effectivePlan = useEffectivePlan();
+  const { smoothMode, setSmoothMode } = useSmoothMode();
   const navigate = useNavigate();
 
   // Display Name state
@@ -715,7 +717,40 @@ export function SettingsPage() {
           </form>
         </section>
 
-        {/* ── 6. Sign Out Section ────────────────────────────────────────── */}
+        {/* ── 6. Smooth Mode (Performance & Battery) ─────────────────────── */}
+        <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap">
+          <div className="space-y-1 max-w-lg">
+            <div className="flex items-center gap-2">
+              <Sparkles size={16} className="text-[var(--muted)]" />
+              <h2 className="text-base font-bold text-[var(--text)] font-heading">
+                Smooth Mode
+              </h2>
+              {smoothMode && <Badge color="green">Active</Badge>}
+            </div>
+            <p className="text-xs text-[var(--muted)] leading-relaxed">
+              Optimizes scrolling and battery life on phones by turning off backdrop blur, idle floating animations, and animated cosmetic effects.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            role="switch"
+            aria-checked={smoothMode}
+            onClick={() => setSmoothMode(!smoothMode)}
+            className={`relative inline-flex h-7 w-12 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+              smoothMode ? 'bg-[var(--red)]' : 'bg-[var(--surface-2)] border-[var(--border)]'
+            }`}
+          >
+            <span className="sr-only">Toggle Smooth Mode</span>
+            <span
+              className={`pointer-events-none inline-block h-6 w-6 transform rounded-full bg-white shadow-md ring-0 transition duration-200 ease-in-out ${
+                smoothMode ? 'translate-x-5' : 'translate-x-0'
+              }`}
+            />
+          </button>
+        </section>
+
+        {/* ── 7. Sign Out Section ────────────────────────────────────────── */}
         <section className="rounded-2xl bg-[var(--card)] border border-[var(--border)] p-5 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <h2 className="text-base font-bold text-[var(--text)] font-heading">

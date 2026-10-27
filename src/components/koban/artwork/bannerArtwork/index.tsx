@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useSmoothMode } from '@/utils/smoothMode';
 import { BANNER_BATCH_1 } from './batch1';
 import { BANNER_BATCH_2 } from './batch2';
 import { BANNER_BATCH_3 } from './batch3';
@@ -182,9 +183,12 @@ export const BannerRenderer: React.FC<BannerRendererProps> = ({
     return () => observer.disconnect();
   }, []);
 
+  const { smoothMode } = useSmoothMode();
+
   const canAnimate =
     animated &&
     !forceStatic &&
+    !smoothMode &&
     !prefersReducedMotion &&
     isTabVisible &&
     isIntersecting;

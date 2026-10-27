@@ -101,15 +101,45 @@ export function GrandLineTestRunnerPage() {
     );
   }
 
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex items-center justify-center p-4">
+        <div className="glass-panel max-w-md w-full p-8 text-center">
+          <AlertCircle size={32} className="mx-auto text-[#D71921] mb-3" />
+          <h2 className="font-dot text-2xl font-bold text-[var(--text)] mb-2">
+            Sign in to Take Test
+          </h2>
+          <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed mb-6">
+            You must be signed in to attempt this Grand Line test and record your score on the live leaderboard.
+          </p>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Link
+              to={`/login?redirect=${encodeURIComponent(`/grand-line/test/${testId}/run`)}`}
+              className="btn-primary px-6 py-2.5 text-xs font-semibold"
+            >
+              Sign in to Start Test
+            </Link>
+            <Link
+              to={`/grand-line/test/${testId}`}
+              className="btn-secondary px-5 py-2.5 text-xs font-semibold"
+            >
+              View Test Info
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (error || !test) {
     return (
       <div style={{ maxWidth: 640, margin: '4rem auto', padding: '1rem', textAlign: 'center' }}>
         <GlassCard style={{ padding: '32px 24px' }}>
           <AlertCircle size={36} className="mx-auto text-red-400 mb-3" />
-          <h2 className="text-xl font-bold font-heading text-[var(--text)]">Cannot Start Test</h2>
+          <h2 className="text-xl font-bold font-dot text-[var(--text)]">Cannot Start Test</h2>
           <p className="text-xs text-[var(--muted)] mt-1.5 leading-relaxed">{error || 'Test not found.'}</p>
           <div className="pt-4">
-            <Link to="/grand-line" className="btn-red px-5 py-2 text-xs font-bold">
+            <Link to="/grand-line" className="btn-primary px-5 py-2 text-xs font-bold">
               Back to {GRAND_LINE_NAME}
             </Link>
           </div>
@@ -171,14 +201,14 @@ export function GrandLineTestRunnerPage() {
     return (
       <div style={{ maxWidth: 640, margin: '4rem auto', padding: '1rem' }}>
         <GlassCard style={{ padding: '36px 24px', textAlign: 'center' }}>
-          <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto mb-4">
+          <div className="w-16 h-16 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-500 flex items-center justify-center mx-auto mb-4">
             <Trophy size={32} />
           </div>
 
-          <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-400 font-bold block mb-1">
+          <span className="text-[10px] font-mono uppercase tracking-widest text-emerald-500 font-bold block mb-1">
             Test Submitted Successfully
           </span>
-          <h2 className="text-2xl font-bold font-display text-[var(--text)]">
+          <h2 className="text-2xl font-bold font-dot text-[var(--text)]">
             {test.title}
           </h2>
           <p className="text-xs text-[var(--muted)] mt-1">
@@ -186,23 +216,23 @@ export function GrandLineTestRunnerPage() {
           </p>
 
           <div className="grid grid-cols-3 gap-3 my-6 text-center">
-            <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-              <span className="text-[10px] font-mono uppercase text-[var(--text-faint)] block">Score</span>
-              <span className="text-2xl font-display font-bold text-[#D71921]">
+            <div className="p-3 rounded-[18px] glass-row">
+              <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] block">Score</span>
+              <span className="text-2xl font-dot font-bold text-[#D71921]">
                 {result.score} / {result.totalQuestions}
               </span>
             </div>
 
-            <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-              <span className="text-[10px] font-mono uppercase text-[var(--text-faint)] block">Accuracy</span>
-              <span className="text-2xl font-display font-bold text-[var(--text)]">
+            <div className="p-3 rounded-[18px] glass-row">
+              <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] block">Accuracy</span>
+              <span className="text-2xl font-dot font-bold text-[var(--text)]">
                 {accuracy}%
               </span>
             </div>
 
-            <div className="p-3 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
-              <span className="text-[10px] font-mono uppercase text-[var(--text-faint)] block">Time</span>
-              <span className="text-2xl font-display font-bold text-[var(--text)]">
+            <div className="p-3 rounded-[18px] glass-row">
+              <span className="text-[10px] font-mono uppercase text-[var(--text-muted)] block">Time</span>
+              <span className="text-2xl font-dot font-bold text-[var(--text)]">
                 {result.timeTakenSeconds}s
               </span>
             </div>
@@ -235,19 +265,19 @@ export function GrandLineTestRunnerPage() {
   return (
     <div style={{ maxWidth: 840, margin: '2rem auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: 20 }}>
       {/* Test Header */}
-      <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-[var(--border)]">
+      <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-[var(--glass-border)]">
         <div>
           <div className="flex items-center gap-2">
             <Badge color="red">{test.subject.toUpperCase()}</Badge>
             <span className="text-xs font-mono text-[var(--muted)]">{test.title}</span>
           </div>
-          <p className="text-xs text-[var(--text-faint)] mt-1">
+          <p className="text-xs text-[var(--text-muted)] mt-1">
             Candidate: <strong>{candidate?.name || 'Student'}</strong> ({candidate?.entryTest || 'General'})
           </p>
         </div>
 
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-xs font-mono">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full glass-pill text-xs font-dot font-bold">
             <Clock size={13} className="text-[#D71921]" />
             <span>{Math.floor(timeElapsed / 60)}:{String(timeElapsed % 60).padStart(2, '0')}</span>
           </div>
@@ -269,12 +299,12 @@ export function GrandLineTestRunnerPage() {
           <button
             key={i}
             onClick={() => setCurrentIndex(i)}
-            className={`w-8 h-8 rounded-lg text-xs font-mono font-bold flex items-center justify-center transition-all cursor-pointer ${
+            className={`w-8 h-8 rounded-lg text-xs font-dot font-bold flex items-center justify-center transition-all cursor-pointer ${
               currentIndex === i
                 ? 'bg-[#D71921] text-white ring-2 ring-red-400/50'
                 : answers[i] !== undefined
-                ? 'bg-emerald-950/60 border border-emerald-500/50 text-emerald-400'
-                : 'bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-white'
+                ? 'bg-[#D71921]/15 border border-[#D71921]/50 text-[#D71921]'
+                : 'glass-pill text-[var(--muted)] hover:text-[var(--text)]'
             }`}
           >
             {i + 1}
@@ -285,7 +315,7 @@ export function GrandLineTestRunnerPage() {
       {/* Question Card */}
       {currentQuestion && (
         <GlassCard style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: 20 }}>
-          <div className="flex items-center justify-between text-xs text-[var(--text-faint)] font-mono">
+          <div className="flex items-center justify-between text-xs text-[var(--text-muted)] font-dot font-bold">
             <span>QUESTION {currentIndex + 1} OF {totalQ}</span>
             {currentQuestion.chapter && <span>{currentQuestion.chapter}</span>}
           </div>
@@ -305,17 +335,17 @@ export function GrandLineTestRunnerPage() {
                   key={optIdx}
                   type="button"
                   onClick={() => handleSelectOption(optIdx)}
-                  className={`w-full text-left p-3.5 rounded-xl border transition-all flex items-center gap-3.5 cursor-pointer ${
+                  className={`w-full text-left p-3.5 rounded-[18px] border transition-all flex items-center gap-3.5 cursor-pointer ${
                     isSelected
-                      ? 'bg-[#D71921]/15 border-[#D71921] text-white ring-1 ring-[#D71921]'
-                      : 'bg-[var(--surface-2)] border-[var(--border)] text-[var(--text)] hover:bg-[var(--surface-hover)]'
+                      ? 'bg-[#D71921]/15 border-[#D71921] text-[var(--text)] ring-1 ring-[#D71921]'
+                      : 'glass-row text-[var(--text)] hover:border-[var(--glass-border-hover)]'
                   }`}
                 >
                   <span
-                    className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 font-mono ${
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center font-bold text-xs shrink-0 font-dot ${
                       isSelected
                         ? 'bg-[#D71921] text-white'
-                        : 'bg-[var(--surface)] text-[var(--muted)] border border-[var(--border)]'
+                        : 'glass-pill text-[var(--muted)]'
                     }`}
                   >
                     {letter}

@@ -87,9 +87,9 @@ export function AdminLayout() {
   return (
     <div className="min-h-screen bg-[var(--bg)] text-[var(--text)] flex flex-col md:flex-row antialiased overflow-x-clip">
       {/* ─── DESKTOP LEFT SIDEBAR (240px) ─────────────────────────────────── */}
-      <aside className="hidden md:flex md:w-[240px] md:flex-col md:fixed md:inset-y-0 md:left-0 bg-[var(--bg)] border-r border-[var(--border)] z-30">
+      <aside className="hidden md:flex md:w-[240px] md:flex-col md:fixed md:inset-y-0 md:left-0 bg-[var(--glass-surface)] border-r border-[var(--glass-border)] z-30">
         {/* Sidebar Header */}
-        <div className="h-16 px-5 border-b border-[var(--border)] flex items-center">
+        <div className="h-16 px-5 border-b border-[var(--glass-border)] flex items-center">
           <Link to="/admin" className="flex items-center" aria-label="Boardly Admin">
             <Logo size="admin" />
           </Link>
@@ -103,16 +103,16 @@ export function AdminLayout() {
               to={to}
               end={end}
               className={({ isActive }) =>
-                `flex items-center gap-3 px-3 py-2.5 rounded-[12px] text-[13px] font-heading transition-colors ${
+                `flex items-center gap-3 px-3 py-2.5 rounded-[14px] text-[13px] font-heading transition-colors ${
                   isActive
-                    ? 'bg-[var(--card-2)] text-[var(--text)] font-semibold border border-[var(--border)]'
+                    ? 'glass-row text-[var(--text)] font-semibold border-[var(--glass-border)]'
                     : 'text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] border border-transparent'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <Icon size={16} className={isActive ? 'text-[var(--text)]' : 'text-[var(--muted)]'} />
+                  <Icon size={16} className={isActive ? 'text-[#D71921]' : 'text-[var(--muted)]'} />
                   <span className="flex-1">{label}</span>
                   {isActive && (
                     <span
@@ -127,10 +127,10 @@ export function AdminLayout() {
         </nav>
 
         {/* Sidebar Footer with Signed-in Info & Avatar Menu Trigger */}
-        <div className="p-3 border-t border-[var(--border)] bg-[var(--bg)]">
-          <div className="p-2 rounded-[16px] bg-[var(--card)] border border-[var(--border)] flex flex-col gap-2">
+        <div className="p-3 border-t border-[var(--glass-border)]">
+          <div className="p-2.5 rounded-[18px] glass-row flex flex-col gap-2">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-[var(--card-2)] border border-[var(--border)] flex items-center justify-center text-[12px] font-heading font-bold text-[var(--text)] shrink-0">
+              <div className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-[12px] font-heading font-bold text-[var(--text)] shrink-0">
                 {userInitial}
               </div>
               <div className="min-w-0 flex-1">
@@ -145,10 +145,10 @@ export function AdminLayout() {
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 pt-1.5 border-t border-[var(--border)]">
+            <div className="flex items-center gap-1.5 pt-1.5 border-t border-[var(--glass-border)]">
               <Link
                 to="/dashboard"
-                className="flex-1 flex items-center justify-center gap-1.5 text-[11px] font-heading text-[var(--muted)] hover:text-[var(--text)] py-1.5 rounded-[8px] hover:bg-[var(--surface-hover)] transition-colors border border-transparent hover:border-[var(--border)]"
+                className="flex-1 flex items-center justify-center gap-1.5 text-[11px] font-heading text-[var(--muted)] hover:text-[var(--text)] py-1.5 rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors border border-transparent hover:border-[var(--glass-border)]"
                 title="Open student dashboard"
               >
                 <ExternalLink size={12} />
@@ -157,7 +157,7 @@ export function AdminLayout() {
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="flex items-center justify-center p-1.5 text-[var(--muted)] hover:text-[var(--red)] rounded-[8px] hover:bg-[var(--surface-hover)] transition-colors"
+                className="flex items-center justify-center p-1.5 text-[var(--muted)] hover:text-[var(--red)] rounded-[10px] hover:bg-[var(--surface-hover)] transition-colors"
                 title="Sign out"
               >
                 <LogOut size={13} />
@@ -168,7 +168,7 @@ export function AdminLayout() {
       </aside>
 
       {/* ─── MOBILE TOP BAR ─────────────────────────────────────────────────── */}
-      <header className="md:hidden sticky top-0 z-30 h-16 bg-[var(--bg)] px-4 flex items-center">
+      <header className="md:hidden sticky top-0 z-30 h-16 bg-[var(--nav-bg)] allow-backdrop-blur border-b border-[var(--glass-border)] px-4 flex items-center">
         <Link to="/admin" className="flex items-center" aria-label="Boardly Admin">
           <Logo size="admin" />
         </Link>
@@ -193,8 +193,8 @@ export function AdminLayout() {
           <Navigate to="/login?redirect=/admin" replace />
         ) : !isAdmin ? (
           <div className="flex items-center justify-center py-12 px-4">
-            <div className="max-w-[480px] w-full p-6 sm:p-8 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center shadow-none">
-              <div className="w-14 h-14 rounded-full bg-[var(--card-2)] border border-[var(--red)]/40 text-[var(--red)] flex items-center justify-center mx-auto mb-5">
+            <div className="max-w-[480px] w-full p-6 sm:p-8 rounded-[28px] glass-card text-center">
+              <div className="w-14 h-14 rounded-full glass-row border border-[var(--red)]/40 text-[var(--red)] flex items-center justify-center mx-auto mb-5">
                 <ShieldAlert size={28} />
               </div>
               <h1 className="font-dot text-[22px] font-bold text-[var(--text)] mb-3">
@@ -204,7 +204,7 @@ export function AdminLayout() {
                 This portal is strictly reserved for the Boardly platform super-administrator.
                 Your account (<strong className="text-[var(--text)] font-semibold">{user.email}</strong>) does not have administrator authority.
               </p>
-              <div className="bg-[var(--card-2)] p-3 rounded-[12px] border border-[var(--border)] text-[12px] font-heading text-[var(--muted)] mb-6">
+              <div className="glass-row p-3 rounded-[14px] text-[12px] font-heading text-[var(--muted)] mb-6">
                 Authorized: shsvirtualadmin@gmail.com
               </div>
               <Link to="/dashboard" className="inline-block w-full">
@@ -228,9 +228,10 @@ export function AdminLayout() {
           role="tablist"
           style={{
             backgroundColor: 'var(--nav-bg)',
-            borderColor: 'var(--border)',
+            borderColor: 'var(--glass-border)',
+            boxShadow: 'var(--glass-card-shadow), var(--glass-highlight)',
           }}
-          className="rounded-full backdrop-blur-md border p-1 flex items-center justify-between shadow-2xl select-none relative overflow-hidden h-[54px]"
+          className="rounded-full allow-backdrop-blur border p-1 flex items-center justify-between select-none relative overflow-hidden h-[54px]"
         >
           {PRIMARY_NAV.map(({ to, label, icon: Icon, end }) => {
             const isQuestions = to.includes('questions');
@@ -249,7 +250,10 @@ export function AdminLayout() {
                       <motion.div
                         layoutId="adminActiveNavPill"
                         className="absolute inset-0 rounded-full z-0"
-                        style={{ backgroundColor: '#D71921' }}
+                        style={{
+                          backgroundColor: '#D71921',
+                          boxShadow: '0 4px 14px -2px rgba(215, 25, 33, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
+                        }}
                         transition={{
                           type: 'spring',
                           stiffness: 450,
@@ -293,7 +297,10 @@ export function AdminLayout() {
               <motion.div
                 layoutId="adminActiveNavPill"
                 className="absolute inset-0 rounded-full z-0"
-                style={{ backgroundColor: '#D71921' }}
+                style={{
+                  backgroundColor: '#D71921',
+                  boxShadow: '0 4px 14px -2px rgba(215, 25, 33, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.25)',
+                }}
                 transition={{
                   type: 'spring',
                   stiffness: 450,
@@ -322,21 +329,21 @@ export function AdminLayout() {
       {isMoreOpen && (
         <div className="md:hidden fixed inset-0 z-50 flex items-end">
           <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
+            className="fixed inset-0 bg-[var(--overlay-bg)] transition-opacity"
             onClick={() => setIsMoreOpen(false)}
           />
-          <div className="relative w-full max-h-[80vh] bg-[var(--card)] border-t border-[var(--border)] rounded-t-[24px] p-5 flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom duration-200">
+          <div className="relative w-full max-h-[80vh] glass-panel allow-backdrop-blur rounded-t-[28px] p-5 flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom duration-200">
             {/* Grab handle */}
-            <div className="w-10 h-1 bg-[var(--border)] rounded-full mx-auto -mt-1 mb-1" />
+            <div className="w-10 h-1 bg-[var(--glass-border)] rounded-full mx-auto -mt-1 mb-1" />
 
-            <div className="flex items-center justify-between pb-2 border-b border-[var(--border)]">
-              <h2 className="font-heading font-semibold text-[15px] text-[var(--text)]">
+            <div className="flex items-center justify-between pb-2 border-b border-[var(--glass-border)]">
+              <h2 className="font-dot font-bold text-[15px] text-[var(--text)]">
                 More admin sections
               </h2>
               <button
                 type="button"
                 onClick={() => setIsMoreOpen(false)}
-                className="p-1 rounded-full text-[var(--muted)] hover:text-[var(--text)]"
+                className="p-1.5 rounded-full glass-pill text-[var(--muted)] hover:text-[var(--text)]"
               >
                 <X size={18} />
               </button>
@@ -348,10 +355,10 @@ export function AdminLayout() {
                   key={to}
                   to={to}
                   onClick={() => setIsMoreOpen(false)}
-                  className={`flex items-center justify-between p-3 rounded-[16px] border text-[13px] font-heading transition-colors ${
+                  className={`flex items-center justify-between p-3 rounded-[18px] text-[13px] font-heading transition-colors ${
                     location.pathname.startsWith(to)
-                      ? 'bg-[var(--card-2)] border-[var(--border)] text-[var(--text)] font-semibold'
-                      : 'bg-transparent border-[var(--border)] text-[var(--muted)] hover:text-[var(--text)]'
+                      ? 'glass-row border-[var(--red)]/40 text-[var(--text)] font-semibold'
+                      : 'glass-row text-[var(--muted)] hover:text-[var(--text)]'
                   }`}
                 >
                   <div className="flex items-center gap-3">
@@ -363,11 +370,11 @@ export function AdminLayout() {
               ))}
             </div>
 
-            <div className="pt-2 border-t border-[var(--border)] flex flex-col gap-2">
+            <div className="pt-2 border-t border-[var(--glass-border)] flex flex-col gap-2">
               <Link
                 to="/dashboard"
                 onClick={() => setIsMoreOpen(false)}
-                className="flex items-center justify-between p-3 rounded-[16px] border border-[var(--border)] text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)]"
+                className="flex items-center justify-between p-3 rounded-[18px] glass-row text-[13px] font-heading text-[var(--muted)] hover:text-[var(--text)]"
               >
                 <div className="flex items-center gap-3">
                   <ExternalLink size={16} />
@@ -379,7 +386,7 @@ export function AdminLayout() {
               <button
                 type="button"
                 onClick={handleSignOut}
-                className="w-full flex items-center justify-center gap-2 p-3 rounded-[16px] border border-[var(--red)]/40 text-[var(--red)] font-heading text-[13px] font-medium"
+                className="w-full flex items-center justify-center gap-2 p-3 rounded-[18px] glass-row border-[var(--red)]/40 text-[var(--red)] font-heading text-[13px] font-medium"
               >
                 <LogOut size={15} />
                 <span>Sign out</span>

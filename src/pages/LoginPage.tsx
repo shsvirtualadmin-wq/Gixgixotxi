@@ -4,6 +4,7 @@ import { AuthLayout } from '@/components/auth/AuthLayout';
 import { AuthCard } from '@/components/auth/AuthCard';
 import { useAuth } from '@/contexts/AuthContext';
 import { logRedirect } from '@/utils/debugTracker';
+import { PageMeta } from '@/components/ui/PageMeta';
 
 export function LoginPage() {
   const { user, profile, profileLoading, getRoleRedirectUrl } = useAuth();
@@ -14,15 +15,19 @@ export function LoginPage() {
     if (user && !profileLoading) {
       const searchParams = new URLSearchParams(window.location.search);
       const redirectParam = searchParams.get('redirect');
+      const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
       const pendingCrew = sessionStorage.getItem('pending_join_crew_code');
 
       let dest = profile ? getRoleRedirectUrl(profile.role) : '/dashboard';
       if (redirectParam && redirectParam.startsWith('/')) {
         dest = redirectParam;
+      } else if (storedRedirect && storedRedirect.startsWith('/')) {
+        dest = storedRedirect;
       } else if (pendingCrew) {
         dest = `/join/${pendingCrew}`;
       }
 
+      sessionStorage.removeItem('boardly_post_login_redirect');
       logRedirect('/login', dest, 'LoginPage.tsx (authenticated)');
       navigate(dest, { replace: true });
     }
@@ -30,9 +35,15 @@ export function LoginPage() {
 
   return (
     <AuthLayout>
+      <PageMeta
+        title="Sign In to Boardly — Entrance Exam & Board Test Preparation"
+        description="Sign in to your Boardly account to practice timed MCQs, download study material, join Study Crews, and participate in Boardly Commons."
+        canonicalPath="/login"
+      />
       <AuthCard initialMode="signin" />
     </AuthLayout>
   );
 }
 
 export default LoginPage;
+

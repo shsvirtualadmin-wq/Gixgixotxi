@@ -19,19 +19,14 @@ export function GlassCard({
   hover = false,
   onClick,
 }: GlassCardProps) {
-  const borderRadius = radius === 'input' ? '10px' : radius === 'hero' ? '16px' : '14px';
+  const borderRadius = radius === 'input' ? '16px' : radius === 'hero' ? '32px' : '28px';
 
   return (
     <div
       onClick={onClick}
-      className={`glass ${hover ? 'glass-hover' : ''} ${className}`}
+      className={`glass-card ${animated ? 'glass-animated-border' : ''} ${hover ? 'glass-hover glass-card-interactive' : ''} ${className}`}
       style={{
         borderRadius,
-        backgroundColor: 'var(--card)',
-        border: animated ? '1px solid var(--red)' : '1px solid var(--border)',
-        boxShadow: 'none',
-        backdropFilter: 'none',
-        WebkitBackdropFilter: 'none',
         ...style,
       }}
     >

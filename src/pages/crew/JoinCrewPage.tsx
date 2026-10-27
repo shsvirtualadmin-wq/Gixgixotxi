@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useStudyCrew, type CrewDoc } from '@/hooks/useStudyCrew';
 import { GlassCard } from '@/components/ui/GlassCard';
 import { Button } from '@/components/ui/Button';
@@ -14,6 +15,7 @@ export function JoinCrewPage() {
   const { code } = useParams<{ code?: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { requireAuth } = useAuthGate();
   const { joinCrewByCode } = useStudyCrew();
 
   const [crewPreview, setCrewPreview] = useState<CrewDoc | null>(null);
@@ -66,7 +68,11 @@ export function JoinCrewPage() {
 
   const handleJoin = async () => {
     if (!user) {
-      navigate(`/login?redirect=/join/${cleanCode}`);
+      requireAuth(
+        `join "${crewPreview?.name || cleanCode}" Study Crew`,
+        undefined,
+        `/join/${cleanCode}`
+      );
       return;
     }
 
@@ -106,11 +112,11 @@ export function JoinCrewPage() {
     <div className="min-h-screen bg-[var(--bg)] flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-md">
         <Link
-          to="/dashboard"
+          to={user ? '/dashboard' : '/crew'}
           className="inline-flex items-center gap-1.5 text-xs text-[var(--muted)] hover:text-white mb-4 transition-colors font-heading"
         >
           <ArrowLeft size={14} />
-          <span>Return to Dashboard</span>
+          <span>{user ? 'Return to Dashboard' : 'Back to Study Crews'}</span>
         </Link>
 
         {loading ? (
@@ -124,9 +130,11 @@ export function JoinCrewPage() {
               <Button variant="secondary" onClick={() => navigate('/crew')}>
                 Open Crew Hub
               </Button>
-              <Button variant="primary" onClick={() => navigate('/dashboard')}>
-                Go to Dashboard
-              </Button>
+              {user && (
+                <Button variant="primary" onClick={() => navigate('/dashboard')}>
+                  Go to Dashboard
+                </Button>
+              )}
             </div>
           </GlassCard>
         ) : crewPreview ? (
@@ -197,9 +205,15 @@ export function JoinCrewPage() {
                 variant="primary"
                 size="lg"
                 fullWidth
-                onClick={() => navigate(`/login?redirect=/join/${cleanCode}`)}
+                onClick={() =>
+                  requireAuth(
+                    `join "${crewPreview.name}" Study Crew`,
+                    undefined,
+                    `/join/${cleanCode}`
+                  )
+                }
               >
-                <LogIn size={16} /> Sign in to Join Crew
+                <LogIn size={16} /> Join {crewPreview.name}
               </Button>
             )}
 

@@ -7,14 +7,74 @@
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5" />
     <meta name="theme-color" content="#000000" />
-    <meta name="description" content="Boardly: making education accessible to everyone. Free to start, affordable to grow. A project of SHS Virtual Academy." />
-    <meta property="og:title" content="Boardly — MCQ Practice for FSC & Matric" />
+    <title>Boardly — Education for everyone. Practice MCQs. Learn together.</title>
+    <meta name="description" content="Boardly: making education accessible to everyone. Free to start, affordable to grow. Practice Class 11 &amp; 12, MDCAT, ECAT &amp; NUST NET MCQs with KaTeX derivations. A project of SHS Virtual Academy." />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
+    <link rel="canonical" href="https://boardly.cfd/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Boardly" />
+    <meta property="og:url" content="https://boardly.cfd/" />
+    <meta property="og:title" content="Boardly — Education for everyone. Practice MCQs. Learn together." />
     <meta property="og:description" content="Boardly: making education accessible to everyone. Free to start, affordable to grow. A project of SHS Virtual Academy." />
-    <meta property="og:image" content="/assets/og-image.png" />
+    <meta property="og:image" content="https://boardly.cfd/assets/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Boardly — Education for everyone. Practice MCQs. Learn together." />
+    <meta name="twitter:description" content="Boardly: making education accessible to everyone. Free to start, affordable to grow. A project of SHS Virtual Academy." />
+    <meta name="twitter:image" content="https://boardly.cfd/assets/og-image.png" />
+    <script id="boardly-page-jsonld" type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "EducationalOrganization",
+            "@id": "https://boardly.cfd/#organization",
+            "name": "Boardly",
+            "url": "https://boardly.cfd",
+            "logo": "https://boardly.cfd/favicon.svg",
+            "founder": {
+              "@type": "Person",
+              "name": "Muhammad Hashir",
+              "jobTitle": "Founder"
+            },
+            "parentOrganization": {
+              "@type": "EducationalOrganization",
+              "name": "SHS Virtual Academy",
+              "url": "https://shsvirtualacademy.pro"
+            }
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://boardly.cfd/#website",
+            "name": "Boardly",
+            "url": "https://boardly.cfd",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "https://boardly.cfd/search?q={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          }
+        ]
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Doto:wght@400..900&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
-    <title>Boardly — MCQ Practice for FSC & Matric</title>
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Doto:wght@700;800&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Doto:wght@700;800&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        href="https://fonts.googleapis.com/css2?family=Doto:wght@700;800&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap"
+        rel="stylesheet"
+      />
+    </noscript>
     <script>
       (function() {
         try {
@@ -38,6 +98,28 @@
           var metaThemeColor = document.querySelector('meta[name="theme-color"]');
           if (metaThemeColor) {
             metaThemeColor.setAttribute('content', effective === 'dark' ? '#000000' : '#FFFFFF');
+          }
+
+          // Automatic Smooth Mode (Lite Mode) detection for low-end phones & slow connections
+          var smoothPref = localStorage.getItem('boardly-smooth-mode');
+          var smoothActive = false;
+          if (smoothPref === 'true' || smoothPref === '1' || smoothPref === 'on') {
+            smoothActive = true;
+          } else if (smoothPref === 'false' || smoothPref === '0' || smoothPref === 'off') {
+            smoothActive = false;
+          } else {
+            var reducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            var lowMem = typeof navigator.deviceMemory === 'number' && navigator.deviceMemory <= 4;
+            var lowCpu = typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4;
+            var conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+            var slowNet = conn && (conn.saveData || conn.effectiveType === 'slow-2g' || conn.effectiveType === '2g' || conn.effectiveType === '3g');
+            smoothActive = Boolean(reducedMotion || lowMem || lowCpu || slowNet);
+          }
+          if (smoothActive) {
+            document.documentElement.classList.add('smooth-mode');
+            document.documentElement.setAttribute('data-smooth-mode', 'true');
+          } else {
+            document.documentElement.setAttribute('data-smooth-mode', 'false');
           }
         } catch (e) {}
       })();

@@ -236,7 +236,7 @@ const LightCanvasArtwork = React.memo(function LightCanvasArtwork() {
         className="absolute inset-0 pointer-events-none"
         style={{
           background:
-            'radial-gradient(circle at 88% 12%, rgba(215, 25, 33, 0.04) 0%, transparent 60%), radial-gradient(circle at 15% 85%, rgba(0, 0, 0, 0.02) 0%, transparent 50%)',
+            'radial-gradient(circle at 86% 14%, rgba(215, 25, 33, 0.055) 0%, transparent 55%), radial-gradient(circle at 14% 82%, rgba(245, 158, 11, 0.045) 0%, transparent 50%), radial-gradient(circle at 50% 45%, rgba(215, 25, 33, 0.025) 0%, transparent 65%)',
         }}
       />
       <svg
@@ -248,8 +248,8 @@ const LightCanvasArtwork = React.memo(function LightCanvasArtwork() {
       >
         <defs>
           <pattern id="light-dot-grid" width="32" height="32" patternUnits="userSpaceOnUse">
-            <circle cx="2" cy="2" r="1" fill="rgba(0, 0, 0, 0.05)" />
-            <circle cx="18" cy="18" r="0.8" fill="rgba(215, 25, 33, 0.06)" />
+            <circle cx="2" cy="2" r="1" fill="rgba(0, 0, 0, 0.055)" />
+            <circle cx="18" cy="18" r="0.8" fill="rgba(215, 25, 33, 0.065)" />
           </pattern>
         </defs>
         <rect width="100%" height="100%" fill="url(#light-dot-grid)" />

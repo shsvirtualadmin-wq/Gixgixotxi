@@ -51,25 +51,24 @@ export function ConfirmSubmitModal({
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'rgba(7, 11, 20, 0.75)',
-          backdropFilter: 'blur(8px)',
+          background: 'rgba(0, 0, 0, 0.72)',
         }}
       />
 
       {/* Modal Card */}
       <div
-        className="glass"
+        className="glass-panel"
         style={{
           position: 'relative',
           width: '100%',
           maxWidth: 440,
-          borderRadius: 'var(--r-card)',
+          borderRadius: 28,
           padding: '2rem',
           display: 'flex',
           flexDirection: 'column',
           gap: 20,
           textAlign: 'center',
-          animation: 'page-enter 240ms var(--ease-out)',
+          animation: 'page-enter 200ms var(--ease-out)',
         }}
       >
         <div
@@ -78,10 +77,10 @@ export function ConfirmSubmitModal({
             height: 52,
             borderRadius: '50%',
             background: hasUnanswered
-              ? 'rgba(251, 191, 36, 0.15)'
+              ? 'rgba(245, 158, 11, 0.15)'
               : 'rgba(52, 211, 153, 0.15)',
             border: `1px solid ${
-              hasUnanswered ? 'rgba(251, 191, 36, 0.3)' : 'rgba(52, 211, 153, 0.3)'
+              hasUnanswered ? 'rgba(245, 158, 11, 0.35)' : 'rgba(52, 211, 153, 0.35)'
             }`,
             color: hasUnanswered ? 'var(--warning)' : 'var(--success)',
             display: 'flex',
@@ -95,8 +94,8 @@ export function ConfirmSubmitModal({
 
         <div>
           <h3
-            className="font-display"
-            style={{ fontSize: 20, fontWeight: 700, color: 'var(--text)' }}
+            className="font-dot"
+            style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)' }}
           >
             Submit Test Attempt?
           </h3>
@@ -109,41 +108,41 @@ export function ConfirmSubmitModal({
 
         {/* Stats Pill Matrix */}
         <div
+          className="glass-row"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
             gap: 10,
-            padding: '12px',
-            borderRadius: 'var(--r-input)',
-            background: 'var(--surface)',
-            border: '1px solid var(--border)',
+            padding: '14px 12px',
+            borderRadius: 20,
           }}
         >
           <div>
-            <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--brand)' }}>
+            <p className="font-dot" style={{ fontSize: 20, fontWeight: 800, color: '#D71921' }}>
               {answeredCount}
             </p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Answered</p>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Answered</p>
           </div>
 
           <div>
             <p
+              className="font-dot"
               style={{
-                fontSize: 18,
+                fontSize: 20,
                 fontWeight: 800,
                 color: hasUnanswered ? 'var(--warning)' : 'var(--text-muted)',
               }}
             >
               {unansweredCount}
             </p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Unanswered</p>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Unanswered</p>
           </div>
 
           <div>
-            <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--warning)' }}>
+            <p className="font-dot" style={{ fontSize: 20, fontWeight: 800, color: 'var(--warning)' }}>
               {flaggedCount}
             </p>
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>Flagged</p>
+            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Flagged</p>
           </div>
         </div>
 

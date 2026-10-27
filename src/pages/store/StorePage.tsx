@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAuthGate } from '@/contexts/AuthGateContext';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
 import { PageMeta } from '@/components/ui/PageMeta';
@@ -39,6 +40,7 @@ type SortOption = 'default' | 'price-asc' | 'price-desc' | 'name';
 
 export function StorePage() {
   const { user } = useAuth();
+  const { requireAuth } = useAuthGate();
   const { profile } = useUserProfile();
   const navigate = useNavigate();
   const location = useLocation();
@@ -146,6 +148,18 @@ export function StorePage() {
     return list;
   }, [selectedCategory, animationFilter, rarityFilter, sortBy, storePricesMap, isSuperAdmin]);
 
+  // Paginate catalog grid so all 100 heavy SVG/animated cosmetics don't mount at once
+  const [visibleCount, setVisibleCount] = useState(16);
+
+  useEffect(() => {
+    setVisibleCount(16);
+  }, [selectedCategory, animationFilter, rarityFilter, sortBy, activeView]);
+
+  const visibleCatalog = useMemo(
+    () => filteredCatalog.slice(0, visibleCount),
+    [filteredCatalog, visibleCount]
+  );
+
   // Dedicated type filter for My Collection
   const [collectionCategory, setCollectionCategory] = useState<CosmeticType | 'all'>('all');
 
@@ -186,7 +200,7 @@ export function StorePage() {
 
   const handleEquip = async (item: CosmeticItem) => {
     if (!isLoggedIn) {
-      navigate('/login?redirect=/store');
+      requireAuth(`equip "${item.name}" on your profile`, undefined, '/store');
       return;
     }
     setEquippingId(item.id);
@@ -204,7 +218,7 @@ export function StorePage() {
 
   const handlePurchase = async (item: CosmeticItem) => {
     if (!isLoggedIn) {
-      navigate('/login?redirect=/store');
+      requireAuth(`unlock "${item.name}" in the Boardly Store`, undefined, '/store');
       return;
     }
 
@@ -298,35 +312,39 @@ export function StorePage() {
 
         {/* ─── PUBLIC TOP HEADER (When logged out) ───────────────────────────── */}
         {!isLoggedIn && (
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[var(--border)]">
+          <div className="glass-panel p-5 sm:p-6 rounded-[28px] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-2xl bg-[#E8A317]/15 border border-[#E8A317]/30 flex items-center justify-center text-[#E8A317]">
-                  <ShoppingBag size={18} />
+                <div className="w-10 h-10 rounded-2xl bg-[#E8A317]/15 border border-[#E8A317]/35 flex items-center justify-center text-[#E8A317] shadow-[0_0_15px_rgba(232,163,23,0.2)]">
+                  <ShoppingBag size={20} />
                 </div>
-                <h1 className="text-xl sm:text-2xl font-bold font-heading text-[var(--text)] tracking-tight">
+                <h1
+                  className="text-xl sm:text-2xl font-extrabold text-[var(--text)] tracking-tight font-dot"
+                  style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
+                >
                   Boardly Store
                 </h1>
               </div>
-              <p className="text-xs sm:text-sm text-[var(--muted)] mt-1">
+              <p className="text-xs sm:text-sm text-[var(--muted)] mt-1.5 leading-relaxed">
                 Customize your identity with full-art Profile Pictures, Avatar Frames, Chat Nameplates, and Profile Effects.
               </p>
             </div>
 
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 shrink-0">
               <Link
                 to="/kobans"
-                className="px-3.5 py-2 rounded-xl text-xs font-semibold bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] hover:text-white flex items-center gap-1.5 transition-colors"
+                className="glass-pill px-3.5 py-2 text-xs font-semibold text-[var(--muted)] hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
               >
                 <span>About Kobans</span>
                 <ChevronRight size={13} />
               </Link>
-              <Link
-                to="/login?redirect=/store"
-                className="btn-red text-xs px-4 py-2 rounded-xl font-bold flex items-center gap-1.5 shadow-sm"
+              <button
+                type="button"
+                onClick={() => requireAuth('unlock cosmetics in the Boardly Store', undefined, '/store')}
+                className="btn-primary text-xs px-4 py-2 font-bold flex items-center gap-1.5 shadow-sm cursor-pointer"
               >
                 <span>Sign In to Unlock</span>
-              </Link>
+              </button>
             </div>
           </div>
         )}
@@ -625,6 +643,17 @@ export function StorePage() {
               <button
                 type="button"
                 onClick={() => {
+                  if (!isLoggedIn) {
+                    requireAuth(
+                      'purchase Kobans for your student wallet',
+                      () => {
+                        setGetKobansInitialAmount(1000);
+                        setIsGetKobansOpen(true);
+                      },
+                      '/store/get-kobans'
+                    );
+                    return;
+                  }
                   setGetKobansInitialAmount(1000);
                   setIsGetKobansOpen(true);
                 }}
@@ -712,7 +741,7 @@ export function StorePage() {
 
             {/* Catalog Grid */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-              {filteredCatalog.map((item) => {
+              {visibleCatalog.map((item) => {
                 const isOwned = owned.includes(item.id);
                 const isEquipped = equipped[item.type] === item.id;
 
@@ -829,6 +858,18 @@ export function StorePage() {
                 );
               })}
             </div>
+
+            {visibleCount < filteredCatalog.length && (
+              <div className="pt-4 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((prev) => prev + 20)}
+                  className="px-6 py-2.5 rounded-xl bg-[var(--card)] border border-[var(--border)] hover:border-[var(--text)] text-xs font-heading font-bold text-[var(--text)] transition-colors cursor-pointer"
+                >
+                  Show More Drops ({filteredCatalog.length - visibleCount} remaining)
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -1160,13 +1201,22 @@ export function StorePage() {
               {/* Actions */}
               <div className="pt-2">
                 {!isLoggedIn ? (
-                  <Link
-                    to="/login?redirect=/store"
-                    className="btn-red w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm"
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const itemToUnlock = selectedDetailItem;
+                      setSelectedDetailItem(null);
+                      requireAuth(
+                        `unlock "${itemToUnlock.name}" (${itemToUnlock.priceKobans} Kobans)`,
+                        undefined,
+                        `/store/${itemToUnlock.id}`
+                      );
+                    }}
+                    className="btn-red w-full py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm cursor-pointer"
                   >
                     <span>Sign In to Unlock</span>
                     <ArrowRight size={14} />
-                  </Link>
+                  </button>
                 ) : (isSuperAdmin || owned.includes(selectedDetailItem.id)) ? (
                   <button
                     type="button"

@@ -13612,69 +13612,309 @@ Please explain step-by-step why Option ${optionLetters[mcqContext.correctOption 
   };
 
   app.get("/api/admin/verify-user-deletion", handleVerifyUserDeletion);
-  // Dedicated Social Share & Crawler Metadata Responder for /crew routes
+  // Universal Crawler, Search Engine & Social Share Metadata Responder
   app.use((req, res, next) => {
-    const rawPath = req.path.toLowerCase().replace(/\/$/, '') || '/';
-    if (!rawPath.startsWith('/crew')) return next();
+    const rawPath = req.path.replace(/\/+$/, '') || '/';
+    if (
+      rawPath.startsWith('/api') ||
+      rawPath.startsWith('/assets') ||
+      rawPath.startsWith('/src') ||
+      rawPath.startsWith('/@') ||
+      /\.(js|css|png|jpg|jpeg|webp|svg|ico|xml|txt|json|woff2?)$/i.test(rawPath)
+    ) {
+      return next();
+    }
 
     const ua = (req.headers['user-agent'] || '').toLowerCase();
-    const isBot = /facebookexternalhit|whatsapp|twitterbot|telegrambot|discordbot|linkedinbot|slackbot|googlebot|bingbot|crawler|spider/i.test(ua);
+    const isBot =
+      /facebookexternalhit|whatsapp|twitterbot|telegrambot|discordbot|linkedinbot|slackbot|googlebot|bingbot|yandex|duckduckbot|applebot|crawler|spider/i.test(
+        ua
+      );
     const forceCrawler = req.query.crawler === '1' || req.query.crawler === 'true';
 
     if (!isBot && !forceCrawler) {
       return next();
     }
 
-    let title = 'Boardly Crew: Lead your campus';
-    let description = 'Represent Boardly at your college or university as an official student ambassador. Unlock 30 days of free Premium, peer referral rewards, and paid internship opportunities.';
+    const lowerPath = rawPath.toLowerCase();
+    let statusCode = 200;
+    let title = 'Boardly — Education for everyone. Practice MCQs. Learn together.';
+    let description =
+      'Boardly: making education accessible to everyone. Free to start, affordable to grow. Practice Class 11 & 12, MDCAT, ECAT & NUST NET MCQs with KaTeX derivations. A project of SHS Virtual Academy.';
+    let robots = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+    let ogType = 'website';
+    let ogImage = 'https://boardly.cfd/assets/og-image.png';
     const canonical = `https://boardly.cfd${rawPath}`;
+    let h1Text = 'Boardly — Education for everyone. Practice MCQs. Learn together.';
+    let jsonLd: Record<string, any> = {
+      '@context': 'https://schema.org',
+      '@type': 'EducationalOrganization',
+      name: 'Boardly',
+      url: 'https://boardly.cfd',
+      founder: { '@type': 'Person', name: 'Muhammad Hashir' },
+      parentOrganization: { '@type': 'EducationalOrganization', name: 'SHS Virtual Academy' },
+    };
 
-    if (rawPath === '/crew/apply') {
-      title = 'Apply to Boardly Crew | Student Campus Ambassador Program';
-      description = 'Submit your student ambassador application for Boardly Crew. Lead your batch, share test prep resources, and unlock student leader perks.';
-    } else if (rawPath === '/crew/how-it-works') {
-      title = 'How Boardly Crew Works | Campus Ambassador Program';
-      description = 'Discover the 4 steps to becoming a verified Boardly Crew Ambassador: Apply, get verified, unlock Premium & dashboard, and earn rewards.';
-    } else if (rawPath === '/crew/perks') {
-      title = 'Boardly Crew Perks & Benefits | Lead Your Campus';
-      description = 'Explore ambassador perks: 30 days free Premium, 1-year tenure, live referral dashboard, verifiable CV credentials, and paid internship tracks.';
-    } else if (rawPath === '/crew/faq') {
-      title = 'Boardly Crew FAQ | Ambassador Program Questions Answered';
-      description = 'Got questions about Boardly Crew? Learn who can join, how to apply, eligibility, reward counting, and ambassador responsibilities.';
+    const humanizeSlug = (s: string) =>
+      s
+        .replace(/^[a-zA-Z0-9]{15,28}-/, '')
+        .split('-')
+        .filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
+
+    // 1. Check 410 Gone
+    if (lowerPath === '/410') {
+      statusCode = 410;
+      title = '410 Gone — Content Removed | Boardly';
+      description = 'This post or study material has been permanently removed from Boardly.';
+      robots = 'noindex, nofollow';
+      h1Text = 'This Content Has Been Removed (410)';
+    }
+    // 2. Check Private / Auth / Noindex routes
+    else if (
+      lowerPath.startsWith('/dashboard') ||
+      lowerPath.startsWith('/practice') ||
+      lowerPath.startsWith('/test/') ||
+      lowerPath.endsWith('/run') ||
+      lowerPath.startsWith('/results') ||
+      lowerPath.startsWith('/commons/new') ||
+      lowerPath.startsWith('/messages') ||
+      lowerPath.startsWith('/notifications') ||
+      lowerPath.startsWith('/saved') ||
+      lowerPath.startsWith('/settings') ||
+      lowerPath.startsWith('/profile') ||
+      lowerPath.startsWith('/wallet') ||
+      lowerPath.startsWith('/checkout') ||
+      lowerPath.startsWith('/admin') ||
+      lowerPath.startsWith('/login') ||
+      lowerPath.startsWith('/signup') ||
+      lowerPath.startsWith('/forgot-password') ||
+      lowerPath.startsWith('/verify-email') ||
+      lowerPath.startsWith('/onboarding') ||
+      lowerPath.startsWith('/u/') ||
+      lowerPath.startsWith('/search')
+    ) {
+      robots = 'noindex, nofollow';
+      title = `${humanizeSlug(lowerPath.replace(/^\//, '')) || 'Student Portal'} — Boardly`;
+      h1Text = title;
+    }
+    // 3. Public Static & Dynamic Routes
+    else if (lowerPath === '/') {
+      // Homepage defaults already set
+    } else if (lowerPath === '/about') {
+      title = 'About Boardly — Mission, Muhammad Hashir & SHS Virtual Academy';
+      description =
+        'Learn why Boardly was built by Founder Muhammad Hashir and SHS Virtual Academy to make high-rigor board and university entrance exam preparation accessible to every student in Pakistan.';
+      h1Text = 'Built for Student Excellence Across Pakistan.';
+    } else if (lowerPath === '/features') {
+      title = 'Features — Engineered for Entrance Excellence | Boardly';
+      description =
+        'Explore Boardly features: timed MCQ cockpit, authentic negative marking simulator, KaTeX formula derivations, Boardly Commons, Study Crew squads, and Grand Line public mocks.';
+      h1Text = 'Engineered for Entrance Excellence';
+    } else if (lowerPath === '/how-it-works') {
+      title = 'How Boardly Works — 3 Steps to Exam Mastery | Boardly';
+      description =
+        'See how Boardly works in 3 simple steps: pick your Class 11/12 or university entrance track, practice timed MCQs with KaTeX derivations, and learn together in Boardly Commons.';
+      h1Text = 'How Boardly Works';
+    } else if (lowerPath === '/pricing') {
+      title = 'Pricing — Honest & Accessible for Every Student | Boardly';
+      description =
+        'Simple and fair pricing for every student: Free tier is enough to practice and learn, 199 PKR for unlimited use, and 50 PKR for 500 Kobans. Pay locally via JazzCash, EasyPaisa, SadaPay, or Bank Transfer.';
+      h1Text = 'Honest Pricing. Accessible for Everyone.';
+    } else if (lowerPath === '/faq') {
+      title = 'Frequently Asked Questions (FAQ) — Boardly';
+      description =
+        'Answers to common questions about Boardly Class 11 & 12 MCQ bank, timed entrance exam mocks, Boardly Commons, PKT midnight resets, and local JazzCash/EasyPaisa payments.';
+      h1Text = 'Frequently Asked Questions';
+    } else if (lowerPath === '/contact') {
+      title = 'Contact Support — Boardly';
+      description =
+        'Reach the Boardly student support team via email (support@boardly.cfd), WhatsApp (+92 305 8969050), or our contact ticket form.';
+      h1Text = 'Contact Boardly Support';
+    } else if (lowerPath === '/privacy') {
+      title = 'Privacy Policy — Boardly';
+      description =
+        'Learn how SHS Virtual Academy and Boardly protect student data, anonymous Commons posts, and account privacy.';
+      h1Text = 'Privacy Policy';
+    } else if (lowerPath === '/terms') {
+      title = 'Terms of Service — Boardly';
+      description =
+        'Official terms governing Boardly MCQ practice platform, Study Crews, Boardly Commons, 199 PKR Unlimited access, and 50 PKR Koban packs.';
+      h1Text = 'Terms of Service';
+    } else if (lowerPath === '/guidelines' || lowerPath === '/commons/guidelines') {
+      title = 'Community Guidelines — Boardly Commons';
+      description =
+        'Simple community rules for Boardly Commons: keep posts academic, respect classmates, protect privacy, and share verified notes.';
+      h1Text = 'Boardly Commons Community Guidelines';
+    } else if (lowerPath === '/mcqs') {
+      title = 'Class 11 & 12 Subject MCQs with KaTeX Solutions — MDCAT, ECAT, FBISE & Punjab | Boardly';
+      description =
+        'Practice chapter-by-chapter Class 11 & 12 MCQs for Mathematics, Physics, Chemistry, Biology, Computer Science, and English with instant KaTeX step-by-step solutions.';
+      h1Text = 'Subject & Chapter MCQ Bank';
+    } else if (lowerPath.startsWith('/mcqs/')) {
+      const parts = lowerPath.split('/').filter(Boolean);
+      const subName = humanizeSlug(parts[1] || 'Physics');
+      if (parts.length === 2) {
+        title = `${subName} MCQs — Class 11 & 12 Chapters, MDCAT & ECAT Practice — Boardly`;
+        description = `Practice ${subName} chapter-by-chapter MCQs for Class 11 (HSSC-I), Class 12 (HSSC-II), FBISE, Punjab Board, MDCAT, and ECAT with step-by-step KaTeX solutions.`;
+        h1Text = `${subName} Chapters & MCQs`;
+        jsonLd = {
+          '@context': 'https://schema.org',
+          '@type': 'Course',
+          name: `${subName} Class 11 & 12 Board & Entrance Exam MCQs`,
+          description,
+          provider: { '@type': 'EducationalOrganization', name: 'Boardly', sameAs: 'https://boardly.cfd' },
+        };
+      } else {
+        const chapName = humanizeSlug(parts[2] || 'Chapter');
+        title = `${chapName} MCQs — ${subName} Class 11 & 12 / Entrance Prep — Boardly`;
+        description = `Practice interactive ${chapName} MCQs in ${subName} with instant answer verification and step-by-step KaTeX derivations for FBISE, Punjab Board, MDCAT, and ECAT.`;
+        h1Text = `${chapName} — ${subName} MCQs`;
+        jsonLd = {
+          '@context': 'https://schema.org',
+          '@type': 'Quiz',
+          name: `${chapName} — ${subName} MCQs with Step-by-Step Solutions`,
+          about: { '@type': 'Thing', name: `${subName}: ${chapName}` },
+        };
+      }
+    } else if (lowerPath === '/commons' || lowerPath === '/commons/about') {
+      title = 'Boardly Commons — Student Notes, Past Papers & Academic Q&A | Boardly';
+      description =
+        'Browse handwritten student notes, solved past papers, formula sheets, and academic discussions across Physics, Chemistry, Biology, Mathematics, and Computer Science.';
+      h1Text = 'Boardly Commons';
+    } else if (lowerPath.startsWith('/commons/subject/')) {
+      const subName = humanizeSlug(lowerPath.replace('/commons/subject/', ''));
+      title = `${subName} Discussions, Notes & Doubts — Boardly Commons`;
+      description = `Read public student discussions, solved numericals, and shared notes for ${subName} in Boardly Commons.`;
+      h1Text = `${subName} in Boardly Commons`;
+    } else if (lowerPath.startsWith('/commons/post/')) {
+      const postTitle = humanizeSlug(rawPath.replace('/commons/post/', '')) || 'Student Discussion';
+      title = `${postTitle} — Boardly Commons`;
+      description = `Read "${postTitle}" and join the student academic discussion on Boardly Commons.`;
+      ogType = 'article';
+      h1Text = postTitle;
+      jsonLd = {
+        '@context': 'https://schema.org',
+        '@type': 'DiscussionForumPosting',
+        headline: postTitle,
+        url: canonical,
+      };
+    } else if (lowerPath === '/material') {
+      title = 'Study Material Library — Free Class 11, 12, MDCAT & ECAT Notes & Past Papers | Boardly';
+      description =
+        'Browse and preview free student-shared PDFs, handwritten notes, formula sheets, and past papers for Class 11, Class 12, MDCAT, ECAT, and NUST NET.';
+      h1Text = 'Study Material Library';
+    } else if (lowerPath.startsWith('/material/subject/')) {
+      const subName = humanizeSlug(lowerPath.replace('/material/subject/', ''));
+      title = `${subName} Notes, Formula Sheets & Past Papers — Boardly Study Material`;
+      description = `Browse and preview ${subName} PDF notes, formula sheets, and solved past papers shared by students on Boardly.`;
+      h1Text = `${subName} Study Material`;
+    } else if (lowerPath.startsWith('/material/')) {
+      const matTitle = humanizeSlug(rawPath.replace('/material/', '')) || 'Study Material';
+      title = `${matTitle} — Study Material PDF & Notes — Boardly`;
+      description = `Preview and download "${matTitle}" study notes and exam preparation material on Boardly.`;
+      ogType = 'article';
+      h1Text = matTitle;
+      jsonLd = {
+        '@context': 'https://schema.org',
+        '@type': 'LearningResource',
+        name: matTitle,
+        url: canonical,
+      };
+    } else if (lowerPath.startsWith('/grand-line')) {
+      title = 'Grand Line — Public Entrance Mock Tests by Nakama Captains | Boardly';
+      description =
+        'Compete in public mock exams published by verified Nakama Captains on Boardly Grand Line and track live national standings.';
+      h1Text = 'Grand Line: Public Tests by Nakama Captains';
+    } else if (lowerPath.startsWith('/captains') || lowerPath === '/nakama-captains') {
+      title = 'Nakama Captains — Campus Student Leaders | Boardly';
+      description =
+        'Meet Boardly Nakama Captains: campus student leaders who publish public tests on Grand Line and mentor peers across Pakistan.';
+      h1Text = 'Nakama Captains — Campus Student Leaders';
+    } else if (lowerPath.startsWith('/crew')) {
+      title = 'Study Crew & Campus Squads — Collaborative Exam Prep | Boardly';
+      description =
+        'Form collaborative study squads with classmates, compare solve times, and climb campus leaderboards on Boardly Study Crew.';
+      ogImage = 'https://boardly.cfd/assets/boardly-crew-og.png';
+      h1Text = 'Study Crew & Campus Squads';
+    } else if (lowerPath === '/store' || lowerPath === '/kobans') {
+      title =
+        lowerPath === '/kobans'
+          ? 'About Kobans — Student Reward Coins & Cosmetics | Boardly'
+          : 'Boardly Store — Profile Avatars, Frames, Banners & Nameplates | Boardly';
+      description =
+        'Customize your Boardly student profile with animated avatars, frames, banners, and nameplates unlocked using Kobans.';
+      h1Text = lowerPath === '/kobans' ? 'About Kobans' : 'Boardly Cosmetic Store';
+    } else if (lowerPath.startsWith('/store/')) {
+      const itemName = humanizeSlug(rawPath.replace('/store/', '').replace(/^pfp_/, ''));
+      title = `${itemName} — Boardly Store`;
+      description = `Preview and unlock the ${itemName} profile cosmetic in the Boardly Store using Kobans.`;
+      h1Text = itemName;
+      jsonLd = {
+        '@context': 'https://schema.org',
+        '@type': 'Product',
+        name: `${itemName} — Boardly Cosmetic Store`,
+        brand: { '@type': 'Brand', name: 'Boardly' },
+        offers: {
+          '@type': 'Offer',
+          price: '50',
+          priceCurrency: 'PKR',
+          availability: 'https://schema.org/InStock',
+          url: canonical,
+        },
+      };
+    } else {
+      statusCode = 404;
+      title = '404 Page Not Found — Boardly';
+      description = 'The page you are looking for does not exist on Boardly.';
+      robots = 'noindex, nofollow';
+      h1Text = '404 — Page Not Found';
     }
 
-    const ogImage = 'https://boardly.cfd/assets/boardly-crew-og.png';
-
     const crawlerHtml = `<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${title}</title>
   <meta name="description" content="${description}" />
+  <meta name="robots" content="${robots}" />
   <link rel="canonical" href="${canonical}" />
-  <meta property="og:type" content="website" />
+  <meta property="og:type" content="${ogType}" />
   <meta property="og:site_name" content="Boardly" />
   <meta property="og:title" content="${title}" />
   <meta property="og:description" content="${description}" />
   <meta property="og:url" content="${canonical}" />
   <meta property="og:image" content="${ogImage}" />
-  <meta property="og:image:width" content="1200" />
-  <meta property="og:image:height" content="630" />
-  <meta property="og:image:alt" content="Boardly Crew Campus Ambassador Program" />
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="${title}" />
   <meta name="twitter:description" content="${description}" />
   <meta name="twitter:image" content="${ogImage}" />
+  <script type="application/ld+json">${JSON.stringify(jsonLd)}</script>
 </head>
-<body style="font-family: sans-serif; background-color: #06061a; color: #ffffff; padding: 24px;">
-  <h1>${title}</h1>
-  <p>${description}</p>
-  <p><a href="${canonical}" style="color: #6d4aff;">Visit Boardly Crew</a></p>
+<body style="font-family: sans-serif; background-color: #000000; color: #ffffff; padding: 24px;">
+  <header>
+    <nav aria-label="Main Navigation">
+      <a href="https://boardly.cfd/">Boardly Home</a> |
+      <a href="https://boardly.cfd/mcqs">Subject MCQs</a> |
+      <a href="https://boardly.cfd/commons">Boardly Commons</a> |
+      <a href="https://boardly.cfd/material">Study Material</a> |
+      <a href="https://boardly.cfd/grand-line">Grand Line</a> |
+      <a href="https://boardly.cfd/captains">Nakama Captains</a> |
+      <a href="https://boardly.cfd/crew">Study Crew</a> |
+      <a href="https://boardly.cfd/store">Store</a> |
+      <a href="https://boardly.cfd/pricing">Pricing</a>
+    </nav>
+  </header>
+  <main>
+    <h1>${h1Text}</h1>
+    <p>${description}</p>
+  </main>
 </body>
 </html>`;
 
-    return res.status(200).type('text/html').send(crawlerHtml);
+    return res.status(statusCode).type('text/html').send(crawlerHtml);
   });
 
   // Vite middleware for development

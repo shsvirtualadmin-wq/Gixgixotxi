@@ -281,12 +281,12 @@ export function StreaksPage() {
           type="button"
           onClick={() => navigate(-1)}
           aria-label="Go back"
-          className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-full flex items-center justify-center border border-[var(--border)] text-[var(--text)] hover:bg-[var(--surface-muted)] active:scale-95 transition-all cursor-pointer shrink-0 mt-0.5"
+          className="w-10 h-10 min-w-[40px] min-h-[40px] rounded-full flex items-center justify-center glass-pill text-[var(--text)] active:scale-95 transition-all cursor-pointer shrink-0 mt-0.5"
         >
           <ArrowLeft size={18} />
         </button>
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl sm:text-2xl font-bold text-[var(--text)] tracking-tight">
+          <h1 className="font-dot text-xl sm:text-2xl font-bold text-[var(--text)] tracking-tight">
             Streaks
           </h1>
           <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-0.5">
@@ -317,7 +317,7 @@ export function StreaksPage() {
       )}
 
       {/* ── 2. Hero Card ────────────────────────────────────────────────── */}
-      <div className="w-full rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 sm:p-8 flex flex-col items-center text-center gap-5 shadow-sm relative overflow-hidden">
+      <div className="w-full glass-panel rounded-[32px] p-6 sm:p-8 flex flex-col items-center text-center gap-5 relative overflow-hidden">
         {/* Solid 140px Progress Ring */}
         <div className="relative flex items-center justify-center">
           <svg
@@ -332,7 +332,7 @@ export function StreaksPage() {
               cy={70}
               r={58}
               fill="transparent"
-              stroke="var(--border)"
+              stroke="var(--glass-border)"
               strokeWidth={9}
             />
             {/* Solid Red Progress Stroke */}
@@ -352,7 +352,7 @@ export function StreaksPage() {
 
           {/* Centered Number and Label */}
           <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-            <span className="text-4xl sm:text-5xl font-extrabold text-[var(--text)] tracking-tight">
+            <span className="font-dot text-4xl sm:text-5xl font-extrabold text-[var(--text)] tracking-tight">
               {currentStreak}
             </span>
             <span className="text-xs font-semibold text-[var(--text-muted)] mt-0.5">
@@ -374,14 +374,14 @@ export function StreaksPage() {
               : `Milestone reached: ${nextBadge.name}!`}
           </span>
           {longestStreak > 0 && (
-            <span className="text-xs text-[var(--text-muted)]">
+            <span className="text-xs text-[var(--text-muted)] font-dot">
               Longest: {longestStreak} {longestStreak === 1 ? 'day' : 'days'}
             </span>
           )}
         </div>
 
         {/* Today's Status Row */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[var(--surface-muted)] border border-[var(--border)] text-xs font-medium text-[var(--text)]">
+        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full glass-pill text-xs font-medium text-[var(--text)]">
           {isTodayDone ? (
             <>
               <Check size={16} className="text-emerald-500 shrink-0 stroke-[2.5]" />
@@ -400,7 +400,7 @@ export function StreaksPage() {
           <button
             type="button"
             onClick={() => navigate('/dashboard/practice')}
-            className="w-full h-12 rounded-full bg-[#D71921] hover:bg-[#b0131a] text-white font-semibold text-sm transition-all shadow-sm flex items-center justify-center cursor-pointer min-h-[44px]"
+            className="w-full h-12 rounded-full btn-primary font-semibold text-sm transition-all flex items-center justify-center cursor-pointer min-h-[44px]"
           >
             Practice Now to Lock Streak
           </button>
@@ -417,7 +417,7 @@ export function StreaksPage() {
         <button
           type="button"
           onClick={() => setShareModalOpen(true)}
-          className="h-11 sm:h-12 rounded-full border border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-muted)] text-[var(--text)] font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer min-h-[44px]"
+          className="h-11 sm:h-12 rounded-full btn-secondary text-[var(--text)] font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer min-h-[44px]"
         >
           <Share2 size={16} className="shrink-0" />
           <span>Share Streak</span>
@@ -432,8 +432,8 @@ export function StreaksPage() {
             freezeActive
               ? 'border-sky-500/50 bg-sky-500/10 text-sky-400 hover:bg-sky-500/15 cursor-pointer'
               : streakFreezes > 0
-              ? 'border-[var(--border)] bg-[var(--card)] hover:bg-[var(--surface-muted)] text-[var(--text)] cursor-pointer'
-              : 'border-[var(--border)] bg-[var(--surface-muted)] text-[var(--text-muted)] opacity-50 cursor-not-allowed'
+              ? 'btn-secondary text-[var(--text)] cursor-pointer'
+              : 'glass-pill text-[var(--text-muted)] opacity-50 cursor-not-allowed'
           }`}
         >
           <Snowflake size={16} className="shrink-0" />
@@ -448,8 +448,8 @@ export function StreaksPage() {
       </div>
 
       {/* ── 4. Last 7 Days ("This week") ─────────────────────────────────── */}
-      <div className="w-full rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-5 flex flex-col gap-3 shadow-sm">
-        <h3 className="text-sm font-semibold text-[var(--text)]">This week</h3>
+      <div className="w-full glass-card rounded-[28px] p-4 sm:p-5 flex flex-col gap-3">
+        <h3 className="font-dot text-sm font-bold text-[var(--text)]">This week</h3>
         <div className="grid grid-cols-7 gap-2 items-center">
           {streakData.thisWeek.map((day) => {
             return (
@@ -461,10 +461,10 @@ export function StreaksPage() {
                       : day.isFrozen
                       ? 'bg-sky-500/20 text-sky-400 border border-sky-400/60'
                       : day.isToday
-                      ? 'border-2 border-dashed border-[#D71921] bg-[var(--surface-muted)] text-[var(--text)]'
+                      ? 'border-2 border-dashed border-[#D71921] glass-pill text-[var(--text)]'
                       : day.isFuture
-                      ? 'bg-[var(--surface-muted)]/40 border border-dashed border-[var(--border)] text-[var(--text-muted)] opacity-40'
-                      : 'bg-[var(--surface-muted)] border border-[var(--border)] text-[var(--text-muted)]'
+                      ? 'glass-pill border-dashed text-[var(--text-muted)] opacity-40'
+                      : 'glass-pill text-[var(--text-muted)]'
                   } ${day.isToday && day.isPracticed ? 'ring-2 ring-[#D71921]/30 ring-offset-2 ring-offset-[var(--card)]' : ''}`}
                   title={`${day.date}: ${
                     day.isPracticed
@@ -483,7 +483,7 @@ export function StreaksPage() {
                   ) : day.isFrozen ? (
                     <Snowflake size={15} />
                   ) : (
-                    <span className="text-xs font-medium">{day.dayNum}</span>
+                    <span className="text-xs font-dot font-medium">{day.dayNum}</span>
                   )}
                 </div>
                 <span
@@ -504,9 +504,9 @@ export function StreaksPage() {
       </div>
 
       {/* ── 5. Calendar ("Last 4 weeks") ─────────────────────────────────── */}
-      <div className="w-full rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-5 flex flex-col gap-4 shadow-sm">
+      <div className="w-full glass-card rounded-[28px] p-4 sm:p-5 flex flex-col gap-4">
         <div className="flex flex-col">
-          <h3 className="text-base sm:text-lg font-bold text-[var(--text)]">Last 4 weeks</h3>
+          <h3 className="font-dot text-base sm:text-lg font-bold text-[var(--text)]">Last 4 weeks</h3>
           <p className="text-xs text-[var(--text-muted)]">Pakistan Standard Time</p>
         </div>
 
@@ -535,22 +535,22 @@ export function StreaksPage() {
                   type="button"
                   key={day.date}
                   onClick={() => setSelectedDay(day)}
-                  className={`relative w-full aspect-square rounded-xl flex items-center justify-center text-xs transition-all cursor-pointer ${
+                  className={`relative w-full aspect-square rounded-xl flex items-center justify-center text-xs font-dot transition-all cursor-pointer ${
                     day.isPracticed
                       ? 'bg-[#D71921] text-white font-bold shadow-xs'
                       : day.isFrozen
                       ? 'bg-sky-500/20 text-sky-400 border border-sky-400/50 font-semibold'
                       : day.isToday
-                      ? 'border-2 border-dashed border-[#D71921] bg-[var(--surface-muted)] text-[var(--text)] font-bold'
+                      ? 'border-2 border-dashed border-[#D71921] glass-row text-[var(--text)] font-bold'
                       : day.isFuture
-                      ? 'bg-[var(--surface-muted)]/30 border border-dashed border-[var(--border)] text-[var(--text-muted)] opacity-35'
-                      : 'bg-[var(--surface-muted)] border border-[var(--border)] text-[var(--text)] hover:border-[var(--text-muted)]'
+                      ? 'glass-row border-dashed text-[var(--text-muted)] opacity-35'
+                      : 'glass-row text-[var(--text)] hover:border-[var(--glass-border-hover)]'
                   }`}
                   aria-label={`${day.date}: ${day.isPracticed ? 'Practiced' : 'No practice'}`}
                 >
                   {/* Subtle month label badge on day 1 transition */}
                   {day.monthLabel && day.date !== streakData.last28Days[0]?.date && (
-                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-1 text-[9px] font-bold rounded bg-[var(--card)] border border-[var(--border)] text-[var(--text)]">
+                    <span className="absolute -top-2 left-1/2 -translate-x-1/2 px-1 text-[9px] font-bold rounded glass-pill text-[var(--text)]">
                       {day.monthLabel}
                     </span>
                   )}
@@ -562,7 +562,7 @@ export function StreaksPage() {
         </div>
 
         {/* Legend Row */}
-        <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t border-[var(--border)] text-xs text-[var(--text-muted)]">
+        <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t border-[var(--glass-border)] text-xs text-[var(--text-muted)]">
           <div className="flex items-center gap-1.5">
             <span className="w-3 h-3 rounded bg-[#D71921]" />
             <span>Practiced</span>
@@ -578,7 +578,7 @@ export function StreaksPage() {
             <span>Today</span>
           </div>
           <div className="flex items-center gap-1.5">
-            <span className="w-3 h-3 rounded bg-[var(--surface-muted)] border border-[var(--border)]" />
+            <span className="w-3 h-3 rounded glass-row" />
             <span>Missed</span>
           </div>
         </div>
@@ -589,12 +589,12 @@ export function StreaksPage() {
         {/* Section Header */}
         <div className="flex flex-col sm:flex-row sm:items-baseline justify-between gap-1">
           <div>
-            <h2 className="text-lg sm:text-xl font-bold text-[var(--text)]">Streak badges</h2>
+            <h2 className="font-dot text-lg sm:text-xl font-bold text-[var(--text)]">Streak badges</h2>
             <p className="text-xs sm:text-sm text-[var(--text-muted)] mt-0.5">
               Reach a streak milestone to unlock a badge and a reward. You can equip up to 3.
             </p>
           </div>
-          <span className="text-xs sm:text-sm text-[var(--text-muted)] shrink-0 self-start sm:self-auto">
+          <span className="font-dot text-xs sm:text-sm text-[var(--text-muted)] shrink-0 self-start sm:self-auto">
             Equipped {equippedBadges.length} of 3
           </span>
         </div>
@@ -603,7 +603,7 @@ export function StreaksPage() {
         {nextBadge && (
           <div
             onClick={() => setSelectedBadge(nextBadge)}
-            className="w-full rounded-2xl bg-[var(--card)] border border-[var(--border)] p-4 sm:p-5 flex flex-col gap-4 shadow-sm cursor-pointer hover:border-[var(--text-muted)] transition-colors"
+            className="w-full glass-card rounded-[28px] p-4 sm:p-5 flex flex-col gap-4 cursor-pointer hover:border-[var(--glass-border-hover)] transition-colors"
           >
             <div className="flex items-center gap-4">
               <AnimeBadgeEmblem
@@ -613,10 +613,10 @@ export function StreaksPage() {
               />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-base font-bold text-[var(--text)] truncate">
+                  <h3 className="font-dot text-base font-bold text-[var(--text)] truncate">
                     {nextBadge.name}
                   </h3>
-                  <span className="text-xs font-semibold text-[var(--text-muted)] shrink-0">
+                  <span className="font-dot text-xs font-semibold text-[var(--text-muted)] shrink-0">
                     {nextBadge.days} days
                   </span>
                 </div>
@@ -628,7 +628,7 @@ export function StreaksPage() {
 
             {/* Full-width 8px progress bar with clear track */}
             <div className="flex flex-col gap-1.5">
-              <div className="w-full h-2 rounded-full bg-[var(--surface-muted)] overflow-hidden">
+              <div className="w-full h-2 rounded-full bg-[var(--glass-pill-bg)] overflow-hidden">
                 <div
                   className="h-full rounded-full bg-[#D71921] transition-all duration-500"
                   style={{ width: `${nextBadgeProgress}%` }}
@@ -640,7 +640,7 @@ export function StreaksPage() {
                     ? `${daysToNextBadge} more ${daysToNextBadge === 1 ? 'day' : 'days'} to unlock`
                     : 'Milestone reached!'}
                 </span>
-                <span>{nextBadgeProgress}%</span>
+                <span className="font-dot font-bold">{nextBadgeProgress}%</span>
               </div>
             </div>
           </div>
@@ -651,40 +651,39 @@ export function StreaksPage() {
           {ANIME_STREAK_BADGES.map((b) => {
             const isEarned = currentStreak >= b.days || redeemedBadges.includes(b.id);
             const isEquipped = equippedBadges.includes(b.id);
-            const isLocked = !isEarned;
 
             return (
               <div
                 key={b.id}
                 onClick={() => setSelectedBadge(b)}
-                className={`p-3.5 rounded-2xl border transition-all flex flex-col justify-between gap-3 cursor-pointer ${
+                className={`p-3.5 rounded-[24px] transition-all flex flex-col justify-between gap-3 cursor-pointer ${
                   isEquipped
-                    ? 'bg-[var(--card)] border-[#D71921] shadow-xs ring-1 ring-[#D71921]/30'
+                    ? 'glass-card glass-animated-border'
                     : isEarned
-                    ? 'bg-[var(--card)] border-[var(--border)] hover:border-[var(--text-muted)]'
-                    : 'bg-[var(--card)] border-[var(--border)] opacity-70'
+                    ? 'glass-card hover:border-[var(--glass-border-hover)]'
+                    : 'glass-card opacity-70'
                 }`}
               >
                 {/* Badge Emblem & Tier Pill */}
                 <div className="flex items-start justify-between gap-2">
                   <AnimeBadgeEmblem badge={b} isUnlocked={isEarned} size={56} />
-                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--surface-muted)] border border-[var(--border)] text-[var(--text-muted)] shrink-0">
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full glass-pill text-[var(--text-muted)] shrink-0">
                     {b.tierName}
                   </span>
                 </div>
 
                 {/* Name & Days */}
                 <div className="flex flex-col min-w-0">
-                  <h4 className="text-xs sm:text-sm font-bold text-[var(--text)] truncate">
+                  <h4 className="font-dot text-xs sm:text-sm font-bold text-[var(--text)] truncate">
                     {b.name}
                   </h4>
-                  <span className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                  <span className="font-dot text-[11px] text-[var(--text-muted)] mt-0.5">
                     {b.days} days
                   </span>
                 </div>
 
                 {/* State: Equip / Equipped button or Lock icon */}
-                <div className="pt-2 border-t border-[var(--border)] flex items-center justify-between">
+                <div className="pt-2 border-t border-[var(--glass-border)] flex items-center justify-between">
                   {isEarned ? (
                     <button
                       type="button"
@@ -698,8 +697,8 @@ export function StreaksPage() {
                       }}
                       className={`w-full py-1.5 px-3 rounded-full text-xs font-semibold transition-colors flex items-center justify-center min-h-[36px] ${
                         isEquipped
-                          ? 'bg-[#D71921] text-white'
-                          : 'border border-[var(--border)] text-[var(--text)] hover:bg-[var(--surface-muted)]'
+                          ? 'btn-primary'
+                          : 'btn-secondary'
                       }`}
                     >
                       {isEquipped
@@ -724,16 +723,16 @@ export function StreaksPage() {
       </div>
 
       {/* ── 7. How Streaks Work Accordion ───────────────────────────────── */}
-      <div className="w-full rounded-2xl bg-[var(--card)] border border-[var(--border)] overflow-hidden shadow-sm">
+      <div className="w-full glass-card rounded-[28px] overflow-hidden">
         <button
           type="button"
           onClick={() => setHowStreaksWorkOpen((prev) => !prev)}
-          className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-[var(--surface-muted)]/50 transition-colors cursor-pointer min-h-[48px]"
+          className="w-full p-4 sm:p-5 flex items-center justify-between text-left hover:bg-[var(--glass-pill-bg)] transition-colors cursor-pointer min-h-[48px]"
           aria-expanded={howStreaksWorkOpen}
         >
           <div className="flex items-center gap-2.5">
             <Info size={18} className="text-[#D71921] shrink-0" />
-            <h3 className="text-sm sm:text-base font-semibold text-[var(--text)]">
+            <h3 className="font-dot text-sm sm:text-base font-bold text-[var(--text)]">
               How streaks work
             </h3>
           </div>
@@ -746,7 +745,7 @@ export function StreaksPage() {
         </button>
 
         {howStreaksWorkOpen && (
-          <div className="px-5 pb-5 pt-1 border-t border-[var(--border)] text-xs sm:text-sm text-[var(--text-muted)] flex flex-col gap-2.5 leading-relaxed">
+          <div className="px-5 pb-5 pt-2 border-t border-[var(--glass-border)] text-xs sm:text-sm text-[var(--text-muted)] flex flex-col gap-2.5 leading-relaxed">
             <p>• A new day starts at 12:00 AM Pakistan Standard Time (PKT).</p>
             <p>• Finish any practice test during the day to add 1 day to your streak.</p>
             <p>• If you miss a day, your streak goes back to 0, unless a Streak Freeze is active.</p>
@@ -757,19 +756,19 @@ export function StreaksPage() {
       {/* ── Day Details Bottom Sheet ────────────────────────────────────── */}
       {selectedDay && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 animate-in fade-in duration-150"
           onClick={() => setSelectedDay(null)}
         >
           <div
-            className="w-full max-w-sm rounded-t-3xl sm:rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 shadow-2xl flex flex-col gap-4 max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-sm rounded-t-[28px] sm:rounded-[28px] glass-panel allow-backdrop-blur p-6 flex flex-col gap-4 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+            <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-3">
               <div>
                 <span className="text-xs text-[var(--text-muted)]">
                   {selectedDay.weekday} · PKT
                 </span>
-                <h3 className="text-base sm:text-lg font-bold text-[var(--text)]">
+                <h3 className="font-dot text-base sm:text-lg font-bold text-[var(--text)]">
                   {selectedDay.month} {selectedDay.dayNum}, {selectedDay.date.slice(0, 4)}
                 </h3>
               </div>
@@ -777,7 +776,7 @@ export function StreaksPage() {
                 type="button"
                 onClick={() => setSelectedDay(null)}
                 aria-label="Close"
-                className="w-8 h-8 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--surface-muted)] cursor-pointer"
+                className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-[var(--text)] cursor-pointer"
               >
                 <X size={15} />
               </button>
@@ -812,13 +811,13 @@ export function StreaksPage() {
                 <>
                   <div className="flex justify-between items-center">
                     <span className="text-[var(--text-muted)]">MCQs Solved</span>
-                    <span className="font-semibold text-[var(--text)]">
+                    <span className="font-dot font-semibold text-[var(--text)]">
                       {selectedDay.mcqsSolved}
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
                     <span className="text-[var(--text-muted)]">Practice Sessions</span>
-                    <span className="font-semibold text-[var(--text)]">
+                    <span className="font-dot font-semibold text-[var(--text)]">
                       {selectedDay.sessionCount}
                     </span>
                   </div>
@@ -833,7 +832,7 @@ export function StreaksPage() {
                   setSelectedDay(null);
                   navigate('/dashboard/practice');
                 }}
-                className="w-full h-11 rounded-full bg-[#D71921] hover:bg-[#b0131a] text-white font-semibold text-sm transition-colors cursor-pointer min-h-[44px]"
+                className="w-full h-11 rounded-full btn-primary font-semibold text-sm transition-colors cursor-pointer min-h-[44px]"
               >
                 Practice Now
               </button>
@@ -842,7 +841,7 @@ export function StreaksPage() {
             <button
               type="button"
               onClick={() => setSelectedDay(null)}
-              className="w-full h-10 rounded-full border border-[var(--border)] hover:bg-[var(--surface-muted)] text-[var(--text)] font-medium text-xs sm:text-sm transition-colors cursor-pointer min-h-[44px]"
+              className="w-full h-10 rounded-full btn-secondary text-[var(--text)] font-medium text-xs sm:text-sm transition-colors cursor-pointer min-h-[44px]"
             >
               Close
             </button>
@@ -853,11 +852,11 @@ export function StreaksPage() {
       {/* ── Badge Details Bottom Sheet ──────────────────────────────────── */}
       {selectedBadge && (
         <div
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 animate-in fade-in duration-150"
           onClick={() => setSelectedBadge(null)}
         >
           <div
-            className="w-full max-w-sm rounded-t-3xl sm:rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 shadow-2xl flex flex-col items-center text-center gap-4 max-h-[85vh] overflow-y-auto"
+            className="w-full max-w-sm rounded-t-[28px] sm:rounded-[28px] glass-panel allow-backdrop-blur p-6 flex flex-col items-center text-center gap-4 max-h-[85vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-full flex justify-end">
@@ -865,7 +864,7 @@ export function StreaksPage() {
                 type="button"
                 onClick={() => setSelectedBadge(null)}
                 aria-label="Close"
-                className="w-8 h-8 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--surface-muted)] cursor-pointer"
+                className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-[var(--text)] cursor-pointer"
               >
                 <X size={15} />
               </button>
@@ -878,10 +877,10 @@ export function StreaksPage() {
             />
 
             <div className="flex flex-col items-center gap-1">
-              <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-[var(--surface-muted)] border border-[var(--border)] text-[var(--text-muted)]">
+              <span className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full glass-pill text-[var(--text-muted)]">
                 {selectedBadge.tierName} · {selectedBadge.days} days
               </span>
-              <h3 className="text-lg font-bold text-[var(--text)] mt-1">
+              <h3 className="font-dot text-lg font-bold text-[var(--text)] mt-1">
                 {selectedBadge.name}
               </h3>
               <p className="text-xs text-[var(--text-muted)] leading-relaxed mt-1 max-w-xs">
@@ -890,7 +889,7 @@ export function StreaksPage() {
             </div>
 
             {/* Reward Box */}
-            <div className="w-full p-3.5 rounded-2xl bg-[var(--surface-muted)] border border-[var(--border)] text-left flex flex-col gap-1">
+            <div className="w-full p-3.5 rounded-[20px] glass-row text-left flex flex-col gap-1">
               <span className="text-[11px] font-semibold text-[var(--text-muted)]">
                 Customization Reward:
               </span>
@@ -915,8 +914,8 @@ export function StreaksPage() {
                 }}
                 className={`w-full h-11 rounded-full font-semibold text-sm transition-colors cursor-pointer min-h-[44px] ${
                   equippedBadges.includes(selectedBadge.id)
-                    ? 'bg-[#D71921] text-white hover:bg-[#b0131a]'
-                    : 'border border-[var(--border)] text-[var(--text)] hover:bg-[var(--surface-muted)]'
+                    ? 'btn-primary'
+                    : 'btn-secondary'
                 }`}
               >
                 {equippedBadges.includes(selectedBadge.id)
@@ -927,7 +926,7 @@ export function StreaksPage() {
               </button>
             ) : (
               <div className="w-full flex flex-col gap-1 text-center">
-                <div className="w-full h-2 rounded-full bg-[var(--surface-muted)] overflow-hidden">
+                <div className="w-full h-2 rounded-full bg-[var(--glass-pill-bg)] overflow-hidden">
                   <div
                     className="h-full rounded-full bg-[#D71921]"
                     style={{
@@ -950,11 +949,11 @@ export function StreaksPage() {
       {/* ── Streak Freeze Confirmation Modal ────────────────────────────── */}
       {freezeConfirmOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in duration-150"
           onClick={() => !freezeToggling && setFreezeConfirmOpen(false)}
         >
           <div
-            className="w-full max-w-sm rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 shadow-2xl flex flex-col gap-4 text-center"
+            className="w-full max-w-sm rounded-[28px] glass-panel allow-backdrop-blur p-6 flex flex-col gap-4 text-center"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="w-12 h-12 rounded-full bg-sky-500/15 text-sky-400 mx-auto flex items-center justify-center">
@@ -962,7 +961,7 @@ export function StreaksPage() {
             </div>
 
             <div className="flex flex-col gap-1">
-              <h3 className="text-base sm:text-lg font-bold text-[var(--text)]">
+              <h3 className="font-dot text-base sm:text-lg font-bold text-[var(--text)]">
                 {freezeActive ? 'Turn Off Streak Freeze?' : 'Activate Streak Freeze?'}
               </h3>
               <p className="text-xs sm:text-sm text-[var(--text-muted)] leading-relaxed mt-1">
@@ -977,7 +976,7 @@ export function StreaksPage() {
                 type="button"
                 disabled={freezeToggling}
                 onClick={handleConfirmFreezeToggle}
-                className="w-full h-11 rounded-full bg-[#D71921] hover:bg-[#b0131a] text-white font-semibold text-sm transition-colors cursor-pointer min-h-[44px]"
+                className="w-full h-11 rounded-full btn-primary font-semibold text-sm transition-colors cursor-pointer min-h-[44px]"
               >
                 {freezeToggling
                   ? 'Updating...'
@@ -989,7 +988,7 @@ export function StreaksPage() {
                 type="button"
                 disabled={freezeToggling}
                 onClick={() => setFreezeConfirmOpen(false)}
-                className="w-full h-11 rounded-full border border-[var(--border)] hover:bg-[var(--surface-muted)] text-[var(--text)] font-medium text-sm transition-colors cursor-pointer min-h-[44px]"
+                className="w-full h-11 rounded-full btn-secondary text-[var(--text)] font-medium text-sm transition-colors cursor-pointer min-h-[44px]"
               >
                 Cancel
               </button>
@@ -1001,31 +1000,31 @@ export function StreaksPage() {
       {/* ── Share Modal ─────────────────────────────────────────────────── */}
       {shareModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 animate-in fade-in duration-150"
           onClick={() => setShareModalOpen(false)}
         >
           <div
-            className="w-full max-w-sm rounded-3xl bg-[var(--card)] border border-[var(--border)] p-6 shadow-2xl flex flex-col gap-4 text-center"
+            className="w-full max-w-sm rounded-[28px] glass-panel allow-backdrop-blur p-6 flex flex-col gap-4 text-center"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
-              <h3 className="text-base font-bold text-[var(--text)]">Share Your Streak</h3>
+            <div className="flex items-center justify-between border-b border-[var(--glass-border)] pb-3">
+              <h3 className="font-dot text-base font-bold text-[var(--text)]">Share Your Streak</h3>
               <button
                 type="button"
                 onClick={() => setShareModalOpen(false)}
                 aria-label="Close"
-                className="w-8 h-8 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--text)] hover:bg-[var(--surface-muted)] cursor-pointer"
+                className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-[var(--text)] cursor-pointer"
               >
                 <X size={15} />
               </button>
             </div>
 
             {/* Achievement Preview Card */}
-            <div className="p-6 rounded-2xl bg-[var(--surface-muted)] border border-[var(--border)] flex flex-col items-center gap-2">
+            <div className="p-6 rounded-[22px] glass-row flex flex-col items-center gap-2">
               <div className="p-2.5 rounded-full bg-red-500/15 text-[#D71921]">
                 <Flame size={28} className="fill-[#D71921]" />
               </div>
-              <span className="text-3xl font-extrabold text-[var(--text)]">
+              <span className="font-dot text-3xl font-extrabold text-[var(--text)]">
                 {currentStreak} DAYS
               </span>
               <span className="text-xs font-semibold text-[#D71921]">
@@ -1040,7 +1039,7 @@ export function StreaksPage() {
               <button
                 type="button"
                 onClick={handleCopyShare}
-                className="w-full h-11 rounded-full border border-[var(--border)] hover:bg-[var(--surface-muted)] text-[var(--text)] font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer min-h-[44px]"
+                className="w-full h-11 rounded-full btn-secondary text-[var(--text)] font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer min-h-[44px]"
               >
                 {copiedShare ? (
                   <>
@@ -1057,7 +1056,7 @@ export function StreaksPage() {
               <button
                 type="button"
                 onClick={handleWhatsAppShare}
-                className="w-full h-11 rounded-full bg-[#D71921] hover:bg-[#b0131a] text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer min-h-[44px]"
+                className="w-full h-11 rounded-full btn-primary font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 transition-colors cursor-pointer min-h-[44px]"
               >
                 <Share2 size={16} />
                 <span>Share to WhatsApp</span>

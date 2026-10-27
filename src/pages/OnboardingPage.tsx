@@ -43,6 +43,13 @@ export function OnboardingPage() {
   }, [user, profileLoading, navigate]);
 
   const handleComplete = () => {
+    const storedRedirect = sessionStorage.getItem('boardly_post_login_redirect');
+    if (storedRedirect && storedRedirect.startsWith('/')) {
+      sessionStorage.removeItem('boardly_post_login_redirect');
+      logRedirect('/onboarding', storedRedirect, 'OnboardingPage (Save successful -> return to target)');
+      navigate(storedRedirect, { replace: true });
+      return;
+    }
     logRedirect('/onboarding', '/dashboard', 'OnboardingPage (Save successful)');
     navigate('/dashboard', { replace: true });
   };

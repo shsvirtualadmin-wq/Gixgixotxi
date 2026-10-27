@@ -16,10 +16,13 @@ service firebase.storage {
         request.auth.token.admin == true ||
         request.auth.token.role == 'admin' ||
         request.auth.token.role == 'superadmin' ||
+        request.auth.uid == 'A5YMRimdHRcmeDWutxtUGt2e4hf2' ||
         (request.auth.token.email != null && (
           request.auth.token.email.lower() == 'shsvirtualadmin@gmail.com' ||
+          request.auth.token.email.lower() == 'admin@shsvirtual.org' ||
           request.auth.token.email.lower() == 'support@boardly.cfd' ||
-          request.auth.token.email.lower() == 'support@scholario.me'
+          request.auth.token.email.lower() == 'support@scholario.me' ||
+          request.auth.token.email.lower() == 'hashir@boardly.pk'
         ))
       );
     }
@@ -38,7 +41,7 @@ service firebase.storage {
     }
 
     // -------------------------------------------------------------------------
-    // USER ASSETS (Avatar, Profile Banner, Feed Post Media)
+    // USER PUBLIC ASSETS (Avatar, Profile Banner, Feed Post Media)
     // -------------------------------------------------------------------------
     match /users/{userId} {
 
@@ -56,11 +59,18 @@ service firebase.storage {
         allow delete: if isOwner(userId) || isAdmin();
       }
 
-      // User Profile Feed Post Attachments: Publicly viewable, max 25 MB
+      // User Profile Feed Post Images: Publicly viewable, max 25 MB
       match /posts/{fileName} {
         allow read: if true;
         allow write: if isOwner(userId) && isValidImage(25 * 1024 * 1024);
         allow delete: if isOwner(userId) || isAdmin();
+      }
+
+      // Private Payment Screenshots / Receipts (if stored in Storage): Owner or Admin ONLY
+      match /receipts/{fileName} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isOwner(userId) && isValidImage(10 * 1024 * 1024);
+        allow delete: if isAdmin();
       }
     }
 
@@ -74,7 +84,8 @@ service firebase.storage {
     }
 
     // -------------------------------------------------------------------------
-    // COMMONS UPLOADS (Shared PDFs, handwritten notes, study resources up to 25 MB)
+    // COMMONS STUDY MATERIAL UPLOADS (PDFs, notes, study resources up to 25 MB)
+    // Public metadata is read from Firestore; downloading the actual file requires login
     // -------------------------------------------------------------------------
     match /commons/{uploaderId}/{fileName} {
       allow read: if isSignedIn();

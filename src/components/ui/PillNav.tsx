@@ -38,9 +38,10 @@ export function PillNav({
       role="tablist"
       style={{
         backgroundColor: 'var(--nav-bg)',
-        borderColor: 'var(--border)',
+        borderColor: 'var(--glass-border)',
+        boxShadow: 'var(--glass-card-shadow)',
       }}
-      className={`rounded-full backdrop-blur-md border p-1 flex items-center justify-between w-full shadow-2xl select-none relative overflow-hidden h-[54px] ${className}`}
+      className={`rounded-full allow-backdrop-blur border p-1.5 flex items-center justify-between w-full select-none relative overflow-hidden h-[56px] ${className}`}
     >
       {items.map((item, index) => {
         const id = item.id ?? item.to ?? index;
@@ -68,7 +69,10 @@ export function PillNav({
                       <motion.div
                         layoutId={layoutId}
                         className="absolute inset-0 rounded-full z-0"
-                        style={{ backgroundColor: '#D71921' }}
+                        style={{
+                          backgroundColor: '#D71921',
+                          boxShadow: '0 8px 20px -4px rgba(215, 25, 33, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.3)',
+                        }}
                         transition={{
                           type: 'spring',
                           stiffness: 450,

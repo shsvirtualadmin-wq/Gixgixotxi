@@ -452,8 +452,8 @@ export function NotificationsPage() {
 
         {/* ── Announcement Modal View ───────────────────────────────────── */}
         {selectedAnnouncement && (
-          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-            <Card className="w-full max-w-lg p-6 sm:p-7 space-y-5 bg-[var(--card)] border-[var(--border)] relative shadow-2xl">
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/70">
+            <div className="w-full max-w-lg p-6 sm:p-7 space-y-5 glass-panel allow-backdrop-blur rounded-[28px] relative">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-2.5">
                   <div className="w-9 h-9 rounded-xl bg-[var(--red)]/15 border border-[var(--red)]/30 text-[var(--red)] flex items-center justify-center shrink-0">
@@ -464,8 +464,7 @@ export function NotificationsPage() {
                       Official Announcement
                     </span>
                     <h3
-                      className="text-lg font-bold text-[var(--text)] mt-1"
-                      style={{ fontFamily: 'var(--font-heading)' }}
+                      className="text-lg font-bold text-[var(--text)] mt-1 font-dot"
                     >
                       {selectedAnnouncement.title}
                     </h3>
@@ -475,17 +474,17 @@ export function NotificationsPage() {
                 <button
                   type="button"
                   onClick={() => setSelectedAnnouncement(null)}
-                  className="w-8 h-8 rounded-full border border-[var(--border)] flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer shrink-0"
+                  className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-[var(--muted)] hover:text-[var(--text)] transition-colors cursor-pointer shrink-0"
                 >
                   <X size={16} />
                 </button>
               </div>
 
-              <div className="text-xs sm:text-sm text-[var(--text)] leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto p-3.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)]">
+              <div className="text-xs sm:text-sm text-[var(--text)] leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto p-3.5 rounded-[18px] glass-row">
                 {selectedAnnouncement.message}
               </div>
 
-              <div className="flex items-center justify-between text-xs text-[var(--muted)] pt-2 border-t border-[var(--border)]">
+              <div className="flex items-center justify-between text-xs text-[var(--muted)] pt-2 border-t border-[var(--glass-border)]">
                 <span className="flex items-center gap-1 font-medium">
                   <Shield size={13} className="text-[var(--red)]" />
                   <span>{selectedAnnouncement.authorName || 'Superadmin'}</span>
@@ -496,12 +495,12 @@ export function NotificationsPage() {
               <button
                 type="button"
                 onClick={() => setSelectedAnnouncement(null)}
-                className="btn-red w-full"
+                className="btn-primary w-full rounded-full"
                 style={{ height: '44px' }}
               >
                 Close
               </button>
-            </Card>
+            </div>
           </div>
         )}
       </div>

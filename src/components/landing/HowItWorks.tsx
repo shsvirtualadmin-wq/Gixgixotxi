@@ -1,6 +1,5 @@
+import { useState, useEffect, useRef } from 'react';
 import { Compass, Zap, TrendingUp } from 'lucide-react';
-import { Badge } from '../ui/Badge';
-import { Card } from '../ui/Card';
 
 const STEPS = [
   {
@@ -9,6 +8,7 @@ const STEPS = [
     description:
       'Choose from core subjects including Mathematics, Physics, Chemistry, Biology, and Computer Science. Pick chapters to focus on and set your practice length.',
     icon: Compass,
+    floatClass: 'animate-float-1',
   },
   {
     step: '02',
@@ -16,6 +16,7 @@ const STEPS = [
     description:
       'Practice quick micro-sprints with instant feedback. If stuck, review step-by-step KaTeX derivations and get concept breakdowns from Boardy AI.',
     icon: Zap,
+    floatClass: 'animate-float-2',
   },
   {
     step: '03',
@@ -23,65 +24,140 @@ const STEPS = [
     description:
       'Review your detailed accuracy scores across every chapter. Pinpoint your weak topics, maintain your daily practice streak, and build mastery step by step.',
     icon: TrendingUp,
+    floatClass: 'animate-float-3',
   },
 ];
 
 export function HowItWorks() {
+  const [isVisible, setIsVisible] = useState(false);
+  const sectionRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!sectionRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            observer.disconnect();
+          }
+        });
+      },
+      { threshold: 0.15 }
+    );
+    observer.observe(sectionRef.current);
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <section className="landing-section relative">
+    <section
+      ref={sectionRef}
+      className="relative py-14 sm:py-20 lg:py-28 cv-auto-section"
+    >
       <div className="boardly-container">
-        {/* Centered section header */}
-        <div className="section-header">
-          <Badge color="muted">Simple 3-Step Strategy</Badge>
-          <h2>How Boardly Works</h2>
-          <p>
+        {/* Centered Section Header */}
+        <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+          {/* Simple 3-Step Strategy Chip */}
+          <div className="flex justify-center mb-4">
+            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide text-white/90 bg-white/[0.05] border border-white/12 shadow-[0_2px_8px_rgba(0,0,0,0.25)]">
+              <span
+                className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0"
+                aria-hidden="true"
+              />
+              Simple 3-Step Strategy
+            </span>
+          </div>
+
+          {/* Heading in pixel font */}
+          <h2
+            className="font-dot font-extrabold text-white tracking-tight leading-tight mb-4"
+            style={{
+              fontFamily: 'var(--font-dot)',
+              letterSpacing: '0.01em',
+              fontWeight: 800,
+              fontSize: 'clamp(26px, 3.6vw, 38px)',
+            }}
+          >
+            How Boardly Works
+          </h2>
+
+          {/* Subtext in muted gray */}
+          <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed">
             A structured study routine designed to help you practice with clarity, stay consistent, and improve every day.
           </p>
         </div>
 
-        {/* 3 equal-height cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch">
-          {STEPS.map((item, idx) => {
-            const Icon = item.icon;
-            return (
-              <Card
-                key={item.step}
-                className="h-full flex flex-col justify-between"
-              >
-                <div>
-                  {/* Top row: number in dot font, icon box top-right */}
-                  <div className="flex items-center justify-between mb-4">
-                    <span
-                      className="font-doto text-[32px] leading-none font-bold text-[var(--text-muted)]"
-                    >
-                      {item.step}
-                    </span>
-                    <div className="icon-tile">
-                      <Icon size={20} />
+        {/* Floating Cards Container */}
+        <div className="relative">
+          {/* Ambient red radial glow behind cards */}
+          <div
+            className="absolute -inset-4 sm:-inset-10 -z-10 pointer-events-none opacity-60"
+            aria-hidden="true"
+          >
+            <div className="w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(215,25,33,0.12)_0%,rgba(215,25,33,0.03)_50%,transparent_70%)]" />
+          </div>
+
+          {/* Subtly connected connector line behind the row at the height of the numbers */}
+          <div
+            className="hidden md:block absolute top-[58px] left-[10%] right-[10%] h-[1px] bg-gradient-to-r from-transparent via-white/15 to-transparent pointer-events-none z-0"
+            aria-hidden="true"
+          />
+
+          {/* 3 equal-height floating glass cards with even gaps */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 lg:gap-7 items-stretch relative z-10">
+            {STEPS.map((item, idx) => {
+              const Icon = item.icon;
+              return (
+                <div
+                  key={item.step}
+                  className={`h-full flex flex-col justify-between rounded-[28px] sm:rounded-[32px] p-8 sm:p-9 bg-[#0e0e13]/90 border border-white/12 shadow-[0_20px_45px_-10px_rgba(0,0,0,0.7),inset_0_1px_1px_rgba(255,255,255,0.14)] transition-all duration-500 ease-out select-none ${
+                    isVisible ? 'opacity-100 translate-y-0' : 'opacity-80 translate-y-3'
+                  }`}
+                  style={{
+                    transitionDelay: `${idx * 90}ms`,
+                  }}
+                >
+                  <div>
+                    {/* Top row: Big dot-matrix number (higher visibility with faint red tint), icon tile top-right */}
+                    <div className="flex items-center justify-between mb-5">
+                      <span
+                        className="font-doto text-[34px] sm:text-[38px] leading-none font-bold text-white/95 drop-shadow-[0_0_12px_rgba(215,25,33,0.35)]"
+                      >
+                        {item.step}
+                      </span>
+                      <div
+                        className={`w-12 h-12 rounded-[18px] bg-white/[0.06] border border-white/12 text-white flex items-center justify-center shrink-0 shadow-[0_2px_10px_rgba(0,0,0,0.3)] ${item.floatClass}`}
+                      >
+                        <Icon size={20} />
+                      </div>
                     </div>
+
+                    <h3
+                      className="text-lg sm:text-[19px] font-bold text-white mb-2.5 font-heading tracking-tight leading-snug"
+                    >
+                      {item.title}
+                    </h3>
+                    <p className="text-sm sm:text-[14.5px] text-[var(--muted)] leading-[1.68]">
+                      {item.description}
+                    </p>
                   </div>
 
-                  <h3
-                    className="text-lg font-bold text-[var(--text)] mb-1.5"
-                    style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-                  >
-                    {item.title}
-                  </h3>
-                  <p className="text-sm text-[var(--muted)] leading-relaxed">
-                    {item.description}
-                  </p>
+                  {/* Step X of 3 footer pinned to the bottom, separated by a thin soft gradient line */}
+                  <div className="mt-auto pt-6">
+                    <div
+                      className="h-[1px] w-full bg-gradient-to-r from-transparent via-white/12 to-transparent mb-3.5"
+                      aria-hidden="true"
+                    />
+                    <div
+                      className="min-h-[20px] flex items-center text-xs text-[var(--muted)] font-medium font-heading tracking-tight"
+                    >
+                      Step {idx + 1} of 3
+                    </div>
+                  </div>
                 </div>
-
-                {/* Step X of 3 at the bottom after a 1px divider */}
-                <div
-                  className="mt-auto pt-4 border-t border-[var(--border)] text-xs text-[var(--text-muted)] font-medium"
-                  style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
-                >
-                  Step {idx + 1} of 3
-                </div>
-              </Card>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
     </section>

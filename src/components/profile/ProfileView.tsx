@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
+import { useAuthGate } from '@/contexts/AuthGateContext';
 import { WalletModal } from './WalletModal';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useWallet } from '@/hooks/useWallet';
@@ -87,6 +88,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 }) => {
   const navigate = useNavigate();
   const { user: authUser, isAdmin, signOutUser } = useAuth();
+  const { requireAuth } = useAuthGate();
   const {
     profile: ownProfile,
     updateProfileData,
@@ -550,7 +552,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   // Follow / Unfollow handler
   const handleFollowToggle = async () => {
-    if (!currentUid || !profile?.uid || followWorking) return;
+    if (!currentUid) {
+      requireAuth(`follow ${profile?.displayName || 'this student'}`);
+      return;
+    }
+    if (!profile?.uid || followWorking) return;
     const targetId = profile.uid;
 
     if (isFollowedByMe) {
@@ -1076,8 +1082,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             ) : (
               // ── PUBLIC MODE ACTIONS ──
               <>
-                {/* Follow Button */}
-                {currentUid && currentUid !== profile?.uid && (
+                {/* Follow Button (shown to both signed-in visitors and guests) */}
+                {currentUid !== profile?.uid && (
                   <button
                     onClick={handleFollowToggle}
                     disabled={followWorking}

@@ -100,22 +100,22 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/85 backdrop-blur-md overflow-hidden"
+      className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-[var(--overlay-bg)] overflow-hidden"
       role="dialog"
       aria-modal="true"
     >
-      <div className="relative w-full max-w-lg bg-[var(--card)] border border-[var(--border)] rounded-t-[28px] sm:rounded-3xl p-5 sm:p-7 shadow-2xl space-y-5 my-0 sm:my-auto text-[var(--text)] max-h-[94vh] sm:max-h-[90vh] overflow-y-auto animate-in fade-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200">
+      <div className="relative w-full max-w-lg glass-panel allow-backdrop-blur rounded-t-[28px] sm:rounded-[32px] p-5 sm:p-7 space-y-5 my-0 sm:my-auto text-[var(--text)] max-h-[94vh] sm:max-h-[90vh] overflow-y-auto animate-in fade-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200">
         {/* Mobile Drag Indicator */}
-        <div className="sm:hidden w-10 h-1 bg-[var(--border)] rounded-full mx-auto -mt-1 mb-2 pointer-events-none" />
+        <div className="sm:hidden w-10 h-1 bg-[var(--glass-border)] rounded-full mx-auto -mt-1 mb-2 pointer-events-none" />
 
         {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+        <div className="flex items-center justify-between pb-3 border-b border-[var(--glass-border)]">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 rounded-2xl bg-[#E8A317]/10 border border-[#E8A317]/30 flex items-center justify-center">
               <KobanIcon size={24} />
             </div>
             <div>
-              <h2 className="font-heading font-extrabold text-lg sm:text-xl text-[var(--text)]">
+              <h2 className="font-dot font-extrabold text-lg sm:text-xl text-[var(--text)]">
                 Get Kobans
               </h2>
               <p className="text-xs text-[var(--muted)] font-mono">10 Kobans = PKR 1</p>
@@ -125,7 +125,7 @@ export const GetKobansModal: React.FC<GetKobansModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-[var(--muted)] hover:text-[var(--text)] hover:bg-[var(--surface-hover)] transition-colors"
+            className="p-2 rounded-full glass-pill text-[var(--muted)] hover:text-[var(--text)] transition-colors"
             title="Close"
           >
             <X size={18} />

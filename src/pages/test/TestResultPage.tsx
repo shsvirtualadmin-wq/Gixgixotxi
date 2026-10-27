@@ -150,15 +150,15 @@ export function TestResultPage() {
   return (
     <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 py-6 sm:py-10 pb-20 flex flex-col gap-6 min-w-0 max-w-full overflow-x-hidden">
       {/* Hero Scorecard */}
-      <div className="glass glass-animated-border rounded-3xl p-4 sm:p-8 flex flex-col items-center text-center gap-4 w-full max-w-full min-w-0">
-        <span className="text-xs font-bold uppercase tracking-widest text-[var(--brand-2)] break-words max-w-full text-center px-2">
+      <div className="glass-panel glass-animated-border rounded-[32px] p-5 sm:p-8 flex flex-col items-center text-center gap-4 w-full max-w-full min-w-0">
+        <span className="section-chip break-words max-w-full text-center">
           Session Complete · {attempt.subject ?? 'Practice Drill'}
         </span>
 
         {/* Big percentage & score */}
         <div className="flex items-baseline justify-center gap-3 flex-wrap max-w-full">
           <span
-            className="font-display tabular-nums text-5xl sm:text-7xl font-extrabold leading-none"
+            className="font-dot tabular-nums text-5xl sm:text-7xl font-extrabold leading-none"
             style={{
               background:
                 percentage >= 70
@@ -173,7 +173,7 @@ export function TestResultPage() {
           >
             {percentage}%
           </span>
-          <span className="text-xl sm:text-2xl font-bold text-[var(--text-muted)]">
+          <span className="font-dot text-xl sm:text-2xl font-bold text-[var(--text-muted)]">
             ({score} / {attempt.maxMarks || total})
           </span>
         </div>
@@ -193,7 +193,7 @@ export function TestResultPage() {
             (attempt.university && attempt.university.toLowerCase().includes('sprint'));
           if (isSprint) {
             return (
-              <p className="text-xs text-[var(--text-muted)] bg-[var(--surface-2)] px-3.5 py-1.5 rounded-2xl sm:rounded-full border border-[var(--border)] max-w-full break-words text-center leading-relaxed">
+              <p className="text-xs text-[var(--text-muted)] glass-pill px-3.5 py-1.5 rounded-2xl sm:rounded-full max-w-full break-words text-center leading-relaxed">
                 ⚡ 10-Minute Sprint marking scheme: Standard (+1.0 / 0.0) · No negative marking
               </p>
             );
@@ -224,8 +224,8 @@ export function TestResultPage() {
 
           return (
             <p
-              className={`text-xs px-3.5 py-1.5 rounded-2xl sm:rounded-full border border-[var(--border)] max-w-full break-words text-center leading-relaxed ${
-                uniCriteria.hasNegativeMarking ? 'text-[var(--warning)] bg-amber-500/10' : 'text-[var(--text-muted)] bg-[var(--surface-2)]'
+              className={`text-xs px-3.5 py-1.5 rounded-2xl sm:rounded-full border border-[var(--glass-border)] max-w-full break-words text-center leading-relaxed ${
+                uniCriteria.hasNegativeMarking ? 'text-[var(--warning)] bg-amber-500/10' : 'text-[var(--text-muted)] glass-pill'
               }`}
             >
               ⚡ {uniCriteria.name} marking scheme: {markingDetail}
@@ -235,26 +235,26 @@ export function TestResultPage() {
 
         {/* Key Metrics Row: 2-column grid on mobile, 4-column on desktop */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full max-w-xl mt-2 min-w-0">
-          <div className="glass rounded-xl p-3 min-w-0 text-center">
-            <p className="text-xl sm:text-2xl font-extrabold text-[var(--success)]">{correctCount}</p>
-            <p className="text-xs text-[var(--text-faint)] mt-0.5">Correct</p>
+          <div className="glass-row rounded-[20px] p-3.5 min-w-0 text-center">
+            <p className="font-dot text-xl sm:text-2xl font-extrabold text-[var(--success)]">{correctCount}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">Correct</p>
           </div>
 
-          <div className="glass rounded-xl p-3 min-w-0 text-center">
-            <p className="text-xl sm:text-2xl font-extrabold text-[var(--danger)]">{wrongCount}</p>
-            <p className="text-xs text-[var(--text-faint)] mt-0.5">Incorrect</p>
+          <div className="glass-row rounded-[20px] p-3.5 min-w-0 text-center">
+            <p className="font-dot text-xl sm:text-2xl font-extrabold text-[var(--danger)]">{wrongCount}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">Incorrect</p>
           </div>
 
-          <div className="glass rounded-xl p-3 min-w-0 text-center">
-            <p className="text-xl sm:text-2xl font-extrabold text-[var(--text-faint)]">{unansweredCount}</p>
-            <p className="text-xs text-[var(--text-faint)] mt-0.5">Skipped</p>
+          <div className="glass-row rounded-[20px] p-3.5 min-w-0 text-center">
+            <p className="font-dot text-xl sm:text-2xl font-extrabold text-[var(--text-muted)]">{unansweredCount}</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">Skipped</p>
           </div>
 
-          <div className="glass rounded-xl p-3 min-w-0 text-center">
-            <p className="text-xl sm:text-2xl font-extrabold text-[var(--text)]">
+          <div className="glass-row rounded-[20px] p-3.5 min-w-0 text-center">
+            <p className="font-dot text-xl sm:text-2xl font-extrabold text-[var(--text)]">
               {formatTime(attempt.timeTakenSeconds)}
             </p>
-            <p className="text-xs text-[var(--text-faint)] mt-0.5">Time Spent</p>
+            <p className="text-xs text-[var(--text-muted)] mt-0.5">Time Spent</p>
           </div>
         </div>
 
@@ -288,7 +288,7 @@ export function TestResultPage() {
       <div className="min-w-0 max-w-full">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 min-w-0 max-w-full">
           <div>
-            <h3 className="font-display text-lg sm:text-xl font-bold text-[var(--text)]">
+            <h3 className="font-dot text-lg sm:text-xl font-bold text-[var(--text)]">
               Question Breakdown
             </h3>
             <p className="text-xs sm:text-sm text-[var(--text-muted)]">
@@ -310,10 +310,10 @@ export function TestResultPage() {
                 <button
                   key={tab.id}
                   onClick={() => setFilter(tab.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-colors border ${
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-colors ${
                     active
-                      ? 'border-[var(--brand)] bg-[var(--brand)]/15 text-[var(--brand)] font-semibold'
-                      : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-muted)] hover:text-[var(--text)]'
+                      ? 'bg-[#D71921] text-white font-semibold shadow-sm'
+                      : 'glass-pill text-[var(--text-muted)] hover:text-[var(--text)]'
                   }`}
                 >
                   {tab.label}
@@ -439,12 +439,12 @@ export function TestResultPage() {
                           {/* Letter Badge on EVERY option + Check/X marker */}
                           <div className="flex items-center gap-1.5 shrink-0">
                             <span
-                              className={`text-[11px] font-mono font-bold px-1.5 py-0.5 rounded border border-[var(--border)] ${
+                              className={`text-[11px] font-dot font-bold px-1.5 py-0.5 rounded border border-[var(--glass-border)] ${
                                 isOptionCorrect
                                   ? 'bg-[var(--success)] text-white'
                                   : isUserChoice
                                   ? 'bg-[var(--danger)] text-white'
-                                  : 'bg-white/10 text-[var(--text-faint)]'
+                                  : 'glass-pill text-[var(--text-muted)]'
                               }`}
                             >
                               {['A', 'B', 'C', 'D'][optIdx] || String(optIdx + 1)}

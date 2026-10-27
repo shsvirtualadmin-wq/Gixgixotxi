@@ -1,9 +1,11 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { VerificationBanner } from '@/components/auth/VerificationBanner';
+import { DashboardTopBar } from './DashboardTopBar';
 import { DashboardBottomNav } from './DashboardBottomNav';
 import { DashboardErrorBoundary } from './DashboardErrorBoundary';
 import { RoleSelectionPromptModal } from '@/components/profile/RoleSelectionPromptModal';
+import { PageMeta } from '@/components/ui/PageMeta';
 import { useEffect, useState } from 'react';
 
 export function DashboardShell() {
@@ -24,24 +26,31 @@ export function DashboardShell() {
 
   useEffect(() => {
     if (authGraceFinished && !profileLoading && !user) {
-      navigate('/login', { replace: true });
+      const target = `${location.pathname}${location.search}`;
+      navigate(`/login?redirect=${encodeURIComponent(target)}`, { replace: true });
     }
-  }, [user, profileLoading, authGraceFinished, navigate]);
+  }, [user, profileLoading, authGraceFinished, navigate, location.pathname, location.search]);
 
   // NEVER return null or blank screen — always render shell and bottom nav immediately
   return (
     <div
       className="min-h-screen flex flex-col bg-[var(--bg)] text-[var(--text)] antialiased overflow-x-hidden"
     >
+      <PageMeta
+        title="Student Cockpit — Boardly"
+        description="Private Boardly student dashboard and practice cockpit."
+        noindex={true}
+      />
       <VerificationBanner />
       <RoleSelectionPromptModal />
+      {!isProfileRoute && <DashboardTopBar />}
 
       {/* Main Content Container: when on profile route, remove bottom nav padding and use safe-area padding */}
       <main
         className={`flex-1 w-full max-w-5xl mx-auto transition-all duration-200 ${
           isProfileRoute
             ? 'px-0 sm:px-4 md:px-6 pt-0 sm:pt-4 pb-[calc(24px+env(safe-area-inset-bottom,0px))]'
-            : 'px-4 sm:px-6 lg:px-8 pt-6 pb-28'
+            : 'px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 pb-28'
         }`}
       >
         <DashboardErrorBoundary fallbackTitle="Cockpit Section Error">
@@ -56,3 +65,4 @@ export function DashboardShell() {
 }
 
 export default DashboardShell;
+

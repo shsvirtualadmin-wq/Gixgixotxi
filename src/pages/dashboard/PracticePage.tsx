@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, memo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { collection, doc, getDoc, getDocs, query, where, limit, serverTimestamp } from 'firebase/firestore';
@@ -37,6 +37,37 @@ import {
   TARGET_UNIVERSITY_CRITERIA,
   getUniversityCriteria,
 } from '@/constants/universityCriteria';
+
+const PKTMidnightCountdown = memo(function PKTMidnightCountdown() {
+  const [timeToMidnight, setTimeToMidnight] = useState('');
+
+  useEffect(() => {
+    function updateCountdown() {
+      const now = new Date();
+      const pktOffset = 5 * 60;
+      const localOffset = now.getTimezoneOffset();
+      const pktNow = new Date(now.getTime() + (pktOffset + localOffset) * 60 * 1000);
+
+      const midnight = new Date(pktNow);
+      midnight.setHours(24, 0, 0, 0);
+
+      const diffMs = midnight.getTime() - pktNow.getTime();
+      const hrs = Math.floor(diffMs / (1000 * 60 * 60));
+      const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+      const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
+
+      setTimeToMidnight(
+        `${String(hrs).padStart(2, '0')}h ${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`
+      );
+    }
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return <>{timeToMidnight || 'Calculating...'}</>;
+});
 
 export function PracticePage() {
   const { user, profile, university } = useUserProfile();
@@ -89,34 +120,6 @@ export function PracticePage() {
   const effectivePlan = useEffectivePlan();
   const isPro = effectivePlan.isUnlimited;
   const testsLeft = isPro ? 'Unlimited' : Math.max(0, FREE_DAILY_TESTS - todayAttempts);
-
-  // PKT midnight reset timer countdown
-  const [timeToMidnight, setTimeToMidnight] = useState('');
-
-  useEffect(() => {
-    function updateCountdown() {
-      const now = new Date();
-      const pktOffset = 5 * 60;
-      const localOffset = now.getTimezoneOffset();
-      const pktNow = new Date(now.getTime() + (pktOffset + localOffset) * 60 * 1000);
-
-      const midnight = new Date(pktNow);
-      midnight.setHours(24, 0, 0, 0);
-
-      const diffMs = midnight.getTime() - pktNow.getTime();
-      const hrs = Math.floor(diffMs / (1000 * 60 * 60));
-      const mins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-      const secs = Math.floor((diffMs % (1000 * 60)) / 1000);
-
-      setTimeToMidnight(
-        `${String(hrs).padStart(2, '0')}h ${String(mins).padStart(2, '0')}m ${String(secs).padStart(2, '0')}s`
-      );
-    }
-
-    updateCountdown();
-    const interval = setInterval(updateCountdown, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Fetch today's usage from Firestore
   useEffect(() => {
@@ -341,7 +344,7 @@ export function PracticePage() {
                   <span>PKT Midnight Reset</span>
                 </div>
                 <div className="font-doto text-sm sm:text-base font-bold text-[var(--text)] mt-0.5">
-                  {timeToMidnight || 'Calculating...'}
+                  <PKTMidnightCountdown />
                 </div>
               </div>
             </div>
@@ -605,17 +608,16 @@ export function PracticePage() {
 
         {/* ── TARGET TRACK PICKER BOTTOM-SHEET / POPUP MODAL ── */}
         {trackPickerOpen && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 animate-in fade-in">
             <div
               onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-xl max-h-[85vh] bg-[var(--surface)] border border-[var(--border)] rounded-t-[28px] sm:rounded-3xl p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto shadow-2xl animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 text-[var(--text)]"
+              className="relative w-full max-w-xl max-h-[85vh] glass-panel allow-backdrop-blur rounded-t-[28px] sm:rounded-[28px] p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 text-[var(--text)]"
             >
               {/* Header */}
-              <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <div className="flex items-center justify-between pb-3 border-b border-[var(--glass-border)]">
                 <div>
                   <h3
-                    className="text-lg font-bold text-[var(--text)]"
-                    style={{ fontFamily: 'var(--font-heading)' }}
+                    className="text-lg font-bold text-[var(--text)] font-dot"
                   >
                     Select Test Track
                   </h3>
@@ -626,9 +628,9 @@ export function PracticePage() {
                 <button
                   type="button"
                   onClick={() => setTrackPickerOpen(false)}
-                  className="p-1 rounded-full text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                  className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
                 >
-                  <X size={18} />
+                  <X size={16} />
                 </button>
               </div>
 
@@ -643,10 +645,10 @@ export function PracticePage() {
                         setSelectedUniversity(criteria.name);
                         setTrackPickerOpen(false);
                       }}
-                      className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2.5 ${
+                      className={`p-4 rounded-[20px] transition-all cursor-pointer flex flex-col gap-2.5 ${
                         isSelected
-                          ? 'border-[var(--accent)] bg-[var(--surface-2)] ring-1 ring-[var(--accent)]'
-                          : 'border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-2)]'
+                          ? 'glass-row border-[var(--accent)] ring-1 ring-[var(--accent)]'
+                          : 'glass-row hover:border-[var(--glass-border-hover)]'
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2">
@@ -655,7 +657,7 @@ export function PracticePage() {
                             className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
                               isSelected
                                 ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
-                                : 'border-[var(--border)]'
+                                : 'border-[var(--glass-border)]'
                             }`}
                           >
                             {isSelected && <Check size={12} strokeWidth={3} />}
@@ -664,7 +666,7 @@ export function PracticePage() {
                             <span className="font-bold text-sm text-[var(--text)]">
                               {criteria.name}
                             </span>
-                            <span className="ml-2 text-[10px] font-mono px-2 py-0.5 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)]">
+                            <span className="ml-2 text-[10px] font-mono px-2 py-0.5 rounded-full glass-pill text-[var(--muted)]">
                               {criteria.badge}
                             </span>
                           </div>
@@ -674,7 +676,7 @@ export function PracticePage() {
                           className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
                             criteria.hasNegativeMarking
                               ? 'border-red-500/40 bg-red-500/10 text-red-500'
-                              : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--muted)]'
+                              : 'glass-pill text-[var(--muted)]'
                           }`}
                         >
                           {criteria.negativeMarking}
@@ -686,11 +688,11 @@ export function PracticePage() {
                       </p>
 
                       {/* Criteria Highlights: MCQs, Time, Split */}
-                      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[var(--border)]/60 text-[10px]">
-                        <span className="px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--border)] font-mono text-[var(--text)]">
+                      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[var(--glass-border)] text-[10px]">
+                        <span className="px-2 py-0.5 rounded-md glass-pill font-dot font-bold text-[var(--text)]">
                           {criteria.totalQuestions} MCQs
                         </span>
-                        <span className="px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--border)] font-mono text-[var(--text)]">
+                        <span className="px-2 py-0.5 rounded-md glass-pill font-dot font-bold text-[var(--text)]">
                           {criteria.durationMinutes} Minutes
                         </span>
                         <span className="text-[var(--muted)] truncate max-w-[280px]">
@@ -703,11 +705,11 @@ export function PracticePage() {
               </div>
 
               {/* Footer */}
-              <div className="pt-2 border-t border-[var(--border)] flex justify-end">
+              <div className="pt-2 border-t border-[var(--glass-border)] flex justify-end">
                 <button
                   type="button"
                   onClick={() => setTrackPickerOpen(false)}
-                  className="btn-outline px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                  className="btn-secondary px-4 py-2 rounded-full text-xs font-semibold cursor-pointer"
                 >
                   Close
                 </button>
@@ -718,24 +720,23 @@ export function PracticePage() {
 
         {/* ── STEP-BY-STEP TARGETED CHAPTER DRILL POPUP MODAL ── */}
         {drillModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
+          <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 animate-in fade-in">
             <div
               onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-xl max-h-[90vh] bg-[var(--surface)] border border-[var(--border)] rounded-t-[28px] sm:rounded-3xl p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto shadow-2xl animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 text-[var(--text)]"
+              className="relative w-full max-w-xl max-h-[90vh] glass-panel allow-backdrop-blur rounded-t-[28px] sm:rounded-[28px] p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 text-[var(--text)]"
             >
               {/* Modal Top Header with Steps Indicator */}
-              <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+              <div className="flex items-center justify-between pb-3 border-b border-[var(--glass-border)]">
                 <div>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[var(--accent)]">
+                    <span className="text-[10px] font-dot font-bold uppercase tracking-wider text-[var(--accent)]">
                       Step {drillStep} of 2
                     </span>
                     <span className="text-[10px] text-[var(--muted)]">·</span>
                     <span className="text-[10px] text-[var(--muted)]">Practice Drill</span>
                   </div>
                   <h3
-                    className="text-lg font-bold text-[var(--text)]"
-                    style={{ fontFamily: 'var(--font-heading)' }}
+                    className="text-lg font-bold text-[var(--text)] font-dot"
                   >
                     {drillStep === 1 ? 'Choose Subject' : `${formatSubjectName(drillSubject)} Drill Settings`}
                   </h3>
@@ -744,9 +745,9 @@ export function PracticePage() {
                 <button
                   type="button"
                   onClick={() => setDrillModalOpen(false)}
-                  className="p-1 rounded-full text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                  className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
                 >
-                  <X size={18} />
+                  <X size={16} />
                 </button>
               </div>
 

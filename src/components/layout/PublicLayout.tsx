@@ -47,9 +47,15 @@ export function PublicLayout() {
     >
       <BackgroundCanvas />
       {isHomePage ? <Navbar /> : <PublicPageHeader />}
-      <div className="flex-1 flex flex-col">
-        <Outlet />
-      </div>
+      {isHomePage ? (
+        <div className="flex-1 flex flex-col">
+          <Outlet />
+        </div>
+      ) : (
+        <main className="flex-1 flex flex-col pt-20 sm:pt-24">
+          <Outlet />
+        </main>
+      )}
       <Footer />
     </div>
   );

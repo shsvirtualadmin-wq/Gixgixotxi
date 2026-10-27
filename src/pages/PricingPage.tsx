@@ -1,4 +1,6 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { useAuthGate } from '@/contexts/AuthGateContext';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
@@ -43,6 +45,10 @@ const PAYMENT_METHODS = [
 ];
 
 export function PricingPage() {
+  const { user } = useAuth();
+  const { requireAuth } = useAuthGate();
+  const navigate = useNavigate();
+
   return (
     <>
       <PageMeta
@@ -53,10 +59,13 @@ export function PricingPage() {
       <div className="pt-6 sm:pt-10 pb-20 boardly-container page-enter space-y-12 sm:space-y-16">
         {/* Header */}
         <div className="section-header max-w-3xl mx-auto text-center space-y-4">
-          <Badge color="red">Accessible To Every Student</Badge>
+          <div className="section-chip section-chip-red">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] animate-pulse" />
+            <span>Accessible To Every Student</span>
+          </div>
           <h1
-            className="text-3xl sm:text-5xl font-extrabold text-[var(--text)] tracking-tight"
-            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+            className="text-3xl sm:text-5xl font-extrabold text-[var(--text)] tracking-tight font-dot"
+            style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
           >
             Simple, Transparent Pricing
           </h1>
@@ -68,13 +77,13 @@ export function PricingPage() {
         {/* 3-Column Pricing Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto items-stretch">
           {/* Free Tier Card */}
-          <Card className="p-7 sm:p-8 flex flex-col justify-between">
+          <div className="glass-card p-7 sm:p-8 flex flex-col justify-between rounded-[28px]">
             <div className="space-y-5">
-              <Badge color="muted">Free</Badge>
+              <span className="glass-pill px-3 py-1 text-xs font-semibold text-[var(--muted)]">Free</span>
               <div>
                 <div className="flex items-baseline gap-2">
                   <span
-                    className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-doto"
+                    className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-dot"
                     style={{ fontFamily: 'var(--font-dot)' }}
                   >
                     0 PKR
@@ -85,7 +94,7 @@ export function PricingPage() {
                 </p>
               </div>
 
-              <div className="border-t border-[var(--border)] pt-5 space-y-3">
+              <div className="border-t border-white/10 dark:border-white/10 pt-5 space-y-3">
                 {[
                   'The free tier is enough to practice and learn',
                   'Sharing material in Commons is always free with no limit',
@@ -104,18 +113,20 @@ export function PricingPage() {
             </div>
 
             <div className="pt-8">
-              <Link to="/signup" className="btn-outline w-full" style={{ height: '52px' }}>
+              <Link to="/signup" className="btn-secondary w-full" style={{ height: '52px' }}>
                 Start Free
               </Link>
             </div>
-          </Card>
+          </div>
 
           {/* Unlimited Tier Card */}
-          <Card variant="red" className="p-7 sm:p-8 flex flex-col justify-between relative">
+          <div className="glass-card p-7 sm:p-8 flex flex-col justify-between rounded-[28px] relative border-[#D71921]/60 shadow-[0_20px_50px_rgba(215,25,33,0.18),inset_0_1px_1px_rgba(255,255,255,0.18)]">
             <div className="space-y-5">
               <div className="flex items-center justify-between">
-                <Badge color="red">Unlimited</Badge>
-                <span className="text-xs font-semibold text-[var(--red)] uppercase tracking-wider">
+                <span className="glass-pill px-3 py-1 text-xs font-bold text-[#D71921] border-[#D71921]/40 bg-[#D71921]/15">
+                  Unlimited
+                </span>
+                <span className="text-xs font-semibold text-[var(--red)] uppercase tracking-wider font-mono">
                   Full Access
                 </span>
               </div>
@@ -123,7 +134,7 @@ export function PricingPage() {
               <div>
                 <div className="flex items-baseline gap-2">
                   <span
-                    className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-doto"
+                    className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-dot"
                     style={{ fontFamily: 'var(--font-dot)' }}
                   >
                     199 PKR
@@ -134,7 +145,7 @@ export function PricingPage() {
                 </p>
               </div>
 
-              <div className="border-t border-[var(--border)] pt-5 space-y-3">
+              <div className="border-t border-white/10 dark:border-white/10 pt-5 space-y-3">
                 {[
                   '199 PKR for unlimited use',
                   'Unlimited practice tests & sprint drills',
@@ -153,17 +164,34 @@ export function PricingPage() {
             </div>
 
             <div className="pt-8">
-              <Link to="/dashboard/plans" className="btn-red w-full" style={{ height: '52px' }}>
-                Get Unlimited (199 PKR)
-              </Link>
+              {user ? (
+                <Link to="/dashboard/plans" className="btn-primary w-full" style={{ height: '52px' }}>
+                  Get Unlimited (199 PKR)
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() =>
+                    requireAuth(
+                      'upgrade to the Unlimited plan (199 PKR)',
+                      () => navigate('/dashboard/plans'),
+                      '/dashboard/plans'
+                    )
+                  }
+                  className="btn-primary w-full cursor-pointer"
+                  style={{ height: '52px' }}
+                >
+                  Get Unlimited (199 PKR)
+                </button>
+              )}
             </div>
-          </Card>
+          </div>
 
           {/* Koban Pack Card */}
-          <Card className="p-7 sm:p-8 flex flex-col justify-between">
+          <div className="glass-card p-7 sm:p-8 flex flex-col justify-between rounded-[28px] relative border-amber-500/35 shadow-[0_20px_50px_rgba(232,163,23,0.12),inset_0_1px_1px_rgba(255,255,255,0.14)]">
             <div className="space-y-5">
               <div className="flex items-center justify-between">
-                <Badge color="muted">Koban Pack</Badge>
+                <span className="glass-pill px-3 py-1 text-xs font-semibold text-[var(--muted)]">Koban Pack</span>
                 <div className="flex items-center gap-1 text-xs text-[#E8A317] font-semibold">
                   <KobanIcon size={14} />
                   <span>500 Kobans</span>
@@ -173,7 +201,7 @@ export function PricingPage() {
               <div>
                 <div className="flex items-baseline gap-2">
                   <span
-                    className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-doto"
+                    className="text-4xl sm:text-5xl font-bold text-[var(--text)] font-dot"
                     style={{ fontFamily: 'var(--font-dot)' }}
                   >
                     50 PKR
@@ -184,7 +212,7 @@ export function PricingPage() {
                 </p>
               </div>
 
-              <div className="border-t border-[var(--border)] pt-5 space-y-3">
+              <div className="border-t border-white/10 dark:border-white/10 pt-5 space-y-3">
                 {[
                   '50 PKR for 500 kobans to personalize your student profile',
                   'Unlock dot-matrix avatar frames in the Store',
@@ -202,69 +230,71 @@ export function PricingPage() {
             </div>
 
             <div className="pt-8">
-              <Link to="/store" className="btn-outline w-full" style={{ height: '52px' }}>
+              <Link to="/store" className="btn-secondary w-full" style={{ height: '52px' }}>
                 Explore Store &amp; Kobans
               </Link>
             </div>
-          </Card>
+          </div>
         </div>
 
         {/* Feature Comparison Table */}
         <div className="space-y-6 max-w-[880px] mx-auto">
           <div className="section-header text-center">
-            <Badge color="muted">Direct Comparison</Badge>
-            <h2>Plan Capabilities Matrix</h2>
+            <div className="section-chip">Direct Comparison</div>
+            <h2 className="font-dot">Plan Capabilities Matrix</h2>
           </div>
 
-          <div className="rounded-[24px] bg-[var(--card)] border border-[var(--border)] overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs sm:text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] bg-[var(--surface-2)]">
-                  <th className="p-4 sm:p-5 font-bold text-[var(--text)]">Feature</th>
-                  <th className="p-4 sm:p-5 font-bold text-[var(--muted)] text-center">Free Starter</th>
-                  <th className="p-4 sm:p-5 font-bold text-[var(--red)] text-center font-doto">
-                    Unlimited (199 PKR)
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)]">
-                {COMPARISON_ROWS.map((row) => (
-                  <tr key={row.feature} className="hover:bg-[var(--surface-2)] transition-colors">
-                    <td className="p-4 sm:p-5 text-[var(--text)] font-medium">{row.feature}</td>
-                    <td className="p-4 sm:p-5 text-center text-[var(--muted)]">
-                      {typeof row.free === 'boolean' ? (
-                        row.free ? (
-                          <Check size={18} className="text-[var(--text)] mx-auto" />
-                        ) : (
-                          <X size={18} className="text-[var(--muted)] mx-auto opacity-30" />
-                        )
-                      ) : (
-                        row.free
-                      )}
-                    </td>
-                    <td className="p-4 sm:p-5 text-center text-[var(--text)] font-semibold">
-                      {typeof row.pro === 'boolean' ? (
-                        row.pro ? (
-                          <Check size={18} className="text-[var(--red)] mx-auto" />
-                        ) : (
-                          <X size={18} className="text-[var(--muted)] mx-auto opacity-30" />
-                        )
-                      ) : (
-                        row.pro
-                      )}
-                    </td>
+          <div className="glass-panel rounded-[28px] overflow-hidden p-2 sm:p-4">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse text-xs sm:text-sm">
+                <thead>
+                  <tr className="border-b border-white/10 bg-white/[0.04]">
+                    <th className="p-4 sm:p-5 font-bold text-[var(--text)]">Feature</th>
+                    <th className="p-4 sm:p-5 font-bold text-[var(--muted)] text-center">Free Starter</th>
+                    <th className="p-4 sm:p-5 font-bold text-[var(--red)] text-center font-dot">
+                      Unlimited (199 PKR)
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-white/10">
+                  {COMPARISON_ROWS.map((row) => (
+                    <tr key={row.feature} className="hover:bg-white/[0.04] transition-colors">
+                      <td className="p-4 sm:p-5 text-[var(--text)] font-medium">{row.feature}</td>
+                      <td className="p-4 sm:p-5 text-center text-[var(--muted)]">
+                        {typeof row.free === 'boolean' ? (
+                          row.free ? (
+                            <Check size={18} className="text-[var(--text)] mx-auto" />
+                          ) : (
+                            <X size={18} className="text-[var(--muted)] mx-auto opacity-30" />
+                          )
+                        ) : (
+                          row.free
+                        )}
+                      </td>
+                      <td className="p-4 sm:p-5 text-center text-[var(--text)] font-semibold">
+                        {typeof row.pro === 'boolean' ? (
+                          row.pro ? (
+                            <Check size={18} className="text-[var(--red)] mx-auto" />
+                          ) : (
+                            <X size={18} className="text-[var(--muted)] mx-auto opacity-30" />
+                          )
+                        ) : (
+                          row.pro
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
         {/* ── Payment Methods & Verification Flow ── */}
         <div className="space-y-8 max-w-[880px] mx-auto">
           <div className="section-header text-center">
-            <Badge color="muted">Local Payment Support</Badge>
-            <h2>How Payment &amp; Activation Works</h2>
+            <div className="section-chip">Local Payment Support</div>
+            <h2 className="font-dot">How Payment &amp; Activation Works</h2>
             <p>
               Designed for Pakistani students without credit cards. Transparent, manual verification with zero recurring auto-debits.
             </p>
@@ -272,7 +302,7 @@ export function PricingPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {PAYMENT_METHODS.map((pm) => (
-              <Card key={pm.name} className="p-5 flex flex-col justify-between">
+              <div key={pm.name} className="glass-card p-5 flex flex-col justify-between rounded-[22px]">
                 <div>
                   <div className="text-2xl mb-2">{pm.icon}</div>
                   <h3
@@ -283,14 +313,14 @@ export function PricingPage() {
                   </h3>
                   <p className="text-xs text-[var(--muted)] mt-1.5 leading-relaxed">{pm.desc}</p>
                 </div>
-              </Card>
+              </div>
             ))}
           </div>
 
           {/* Verification Step Box */}
-          <Card className="p-6 sm:p-8 space-y-4">
+          <div className="glass-card p-6 sm:p-8 space-y-4 rounded-[28px]">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[var(--surface-2)] text-[var(--red)] flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-full bg-white/[0.06] border border-white/10 text-[var(--red)] flex items-center justify-center shrink-0">
                 <Shield size={20} />
               </div>
               <div>
@@ -307,35 +337,35 @@ export function PricingPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-              <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-xs space-y-2">
+              <div className="p-4 rounded-2xl glass-row text-xs space-y-2">
                 <span className="font-bold text-[var(--red)]">1. Transfer PKR 199</span>
                 <p className="text-[var(--muted)]">
                   Send PKR 199 via JazzCash, EasyPaisa, SadaPay, or local bank transfer to the account details provided on your dashboard.
                 </p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-xs space-y-2">
+              <div className="p-4 rounded-2xl glass-row text-xs space-y-2">
                 <span className="font-bold text-[var(--red)]">2. Submit Transaction Proof</span>
                 <p className="text-[var(--muted)]">
                   Enter your Transaction ID (TRX) and attach your payment screenshot on the Plans &amp; Billing page. Your request is logged as &ldquo;pending&rdquo;.
                 </p>
               </div>
 
-              <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-xs space-y-2">
+              <div className="p-4 rounded-2xl glass-row text-xs space-y-2">
                 <span className="font-bold text-[var(--red)]">3. Admin Approval &amp; Unlock</span>
                 <p className="text-[var(--muted)]">
                   An administrator verifies the slip against bank ledger entries and approves your request, immediately unlocking full Unlimited access.
                 </p>
               </div>
             </div>
-          </Card>
+          </div>
         </div>
 
         {/* Bottom CTA */}
-        <div className="p-8 sm:p-12 rounded-[24px] bg-[var(--card)] border border-[var(--border)] text-center space-y-6 max-w-3xl mx-auto">
+        <div className="p-8 sm:p-12 rounded-[32px] glass-panel text-center space-y-6 max-w-3xl mx-auto">
           <h2
-            className="text-2xl sm:text-3xl font-bold text-[var(--text)]"
-            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+            className="text-2xl sm:text-3xl font-bold text-[var(--text)] font-dot"
+            style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
           >
             Have a question about plans or billing?
           </h2>
@@ -343,14 +373,14 @@ export function PricingPage() {
             Our student desk is available on WhatsApp at <strong className="text-[var(--text)]">0305 8969050</strong> or via email at <strong className="text-[var(--text)]">support@boardly.cfd</strong>.
           </p>
           <div className="flex flex-wrap justify-center gap-3">
-            <Link to="/contact" className="btn-red" style={{ height: '52px' }}>
+            <Link to="/contact" className="btn-primary" style={{ height: '52px' }}>
               Contact Student Support
             </Link>
             <a
               href="https://wa.me/923058969050"
               target="_blank"
               rel="noopener noreferrer"
-              className="btn-outline"
+              className="btn-secondary"
               style={{ height: '52px' }}
             >
               WhatsApp Us (0305 8969050)

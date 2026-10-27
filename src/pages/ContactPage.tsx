@@ -186,10 +186,13 @@ export function ContactPage() {
 
         {/* Header */}
         <div className="section-header max-w-3xl mx-auto text-center space-y-4">
-          <Badge color="red">Student Helpdesk</Badge>
+          <div className="section-chip section-chip-red">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] animate-pulse" />
+            <span>Student Helpdesk</span>
+          </div>
           <h1
-            className="text-3xl sm:text-5xl font-extrabold text-[var(--text)] tracking-tight"
-            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+            className="text-3xl sm:text-5xl font-extrabold text-[var(--text)] tracking-tight font-dot"
+            style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
           >
             Contact Boardly Support
           </h1>
@@ -202,8 +205,8 @@ export function ContactPage() {
           {/* Contact Details Column */}
           <div className="lg:col-span-5 space-y-4">
             {/* Phone & WhatsApp Card */}
-            <Card className="p-6 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-[var(--surface-2)] text-[var(--red)] flex items-center justify-center">
+            <div className="glass-card p-6 space-y-3 rounded-[24px]">
+              <div className="w-10 h-10 rounded-2xl bg-white/[0.05] border border-white/10 text-[var(--red)] flex items-center justify-center">
                 <MessageCircle size={20} />
               </div>
               <div>
@@ -219,7 +222,7 @@ export function ContactPage() {
               </div>
 
               <div className="pt-2 space-y-2">
-                <div className="text-base font-bold text-[var(--text)] font-mono">
+                <div className="text-base font-bold text-[var(--text)] font-dot">
                   0305 8969050
                 </div>
 
@@ -228,24 +231,24 @@ export function ContactPage() {
                     href="https://wa.me/923058969050"
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-[#10b981] hover:bg-[#059669] text-white transition-colors"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-full bg-[#10b981] hover:bg-[#059669] text-white transition-colors shadow-sm"
                   >
                     <span>Open WhatsApp</span>
                   </a>
                   <a
                     href="tel:+923058969050"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--text)] hover:border-[var(--red)] transition-colors"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold px-4 py-2 rounded-full glass-pill text-[var(--text)] hover:border-[var(--red)] transition-colors"
                   >
                     <Phone size={12} />
                     <span>Call Direct</span>
                   </a>
                 </div>
               </div>
-            </Card>
+            </div>
 
             {/* Email Card */}
-            <Card className="p-6 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-[var(--surface-2)] text-[var(--text)] flex items-center justify-center">
+            <div className="glass-card p-6 space-y-3 rounded-[24px]">
+              <div className="w-10 h-10 rounded-2xl bg-white/[0.05] border border-white/10 text-[var(--text)] flex items-center justify-center">
                 <Mail size={20} />
               </div>
               <div>
@@ -268,11 +271,11 @@ export function ContactPage() {
                   support@boardly.cfd
                 </a>
               </div>
-            </Card>
+            </div>
 
             {/* Operating Hours Card */}
-            <Card className="p-6 space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-[var(--surface-2)] text-[var(--muted)] flex items-center justify-center">
+            <div className="glass-card p-6 space-y-3 rounded-[24px]">
+              <div className="w-10 h-10 rounded-2xl bg-white/[0.05] border border-white/10 text-[var(--muted)] flex items-center justify-center">
                 <Clock size={20} />
               </div>
               <div>
@@ -286,16 +289,16 @@ export function ContactPage() {
                   Monday &ndash; Saturday: 10:00 AM &ndash; 10:00 PM PKT (Asia/Karachi). Inquiries sent late at night are resolved the following morning.
                 </p>
               </div>
-            </Card>
+            </div>
           </div>
 
           {/* Contact Form Column */}
           <div className="lg:col-span-7">
-            <Card className="p-6 sm:p-8 space-y-6">
+            <div className="glass-panel p-6 sm:p-8 space-y-6 rounded-[32px]">
               <div>
                 <h2
-                  className="text-xl font-bold text-[var(--text)]"
-                  style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+                  className="text-xl font-bold text-[var(--text)] font-dot"
+                  style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
                 >
                   Send an Inquiry
                 </h2>
@@ -305,7 +308,7 @@ export function ContactPage() {
               </div>
 
               {submittedSuccess && (
-                <div className="p-5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-center space-y-2">
+                <div className="p-6 rounded-[24px] glass-row text-center space-y-2">
                   <CheckCircle2 size={32} className="text-[#10b981] mx-auto" />
                   <h3 className="text-base font-bold text-[var(--text)]">Message Sent Successfully!</h3>
                   <p className="text-xs sm:text-sm text-[var(--muted)] leading-relaxed">
@@ -313,7 +316,7 @@ export function ContactPage() {
                   </p>
                   <button
                     onClick={() => setSubmittedSuccess(false)}
-                    className="btn-outline text-xs mt-3"
+                    className="btn-secondary text-xs mt-3"
                     style={{ height: '40px' }}
                   >
                     Send Another Message
@@ -322,7 +325,7 @@ export function ContactPage() {
               )}
 
               {ticketSavedOnly && (
-                <div className="p-5 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] space-y-2">
+                <div className="p-5 rounded-2xl glass-row space-y-2">
                   <div className="flex items-center gap-2 text-[var(--text)] font-semibold text-sm">
                     <CheckCircle2 size={18} className="text-[var(--red)]" />
                     <span>Inquiry Logged on Helpdesk</span>
@@ -345,8 +348,8 @@ export function ContactPage() {
               )}
 
               {serverError && (
-                <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-400 flex items-start gap-2.5">
-                  <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/40 text-xs text-red-300 flex items-start gap-2.5">
+                  <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-400" />
                   <span>{serverError}</span>
                 </div>
               )}
@@ -381,8 +384,8 @@ export function ContactPage() {
                       value={formData.name}
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       placeholder="e.g. Ayesha Khan"
-                      className={`w-full rounded-2xl px-4 py-3 bg-[var(--surface-2)] border text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors ${
-                        fieldErrors.name ? 'border-[var(--red)]' : 'border-[var(--border)]'
+                      className={`w-full rounded-2xl px-4 py-3 bg-white/[0.04] border text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors ${
+                        fieldErrors.name ? 'border-[var(--red)]' : 'border-white/12'
                       }`}
                       style={{ height: '52px' }}
                     />
@@ -406,8 +409,8 @@ export function ContactPage() {
                         value={formData.email}
                         onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                         placeholder="student@example.com"
-                        className={`w-full rounded-2xl px-4 py-3 bg-[var(--surface-2)] border text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors ${
-                          fieldErrors.email ? 'border-[var(--red)]' : 'border-[var(--border)]'
+                        className={`w-full rounded-2xl px-4 py-3 bg-white/[0.04] border text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors ${
+                          fieldErrors.email ? 'border-[var(--red)]' : 'border-white/12'
                         }`}
                         style={{ height: '52px' }}
                       />
@@ -429,7 +432,7 @@ export function ContactPage() {
                         value={formData.phone}
                         onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                         placeholder="0300 1234567"
-                        className="w-full rounded-2xl px-4 py-3 bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors"
+                        className="w-full rounded-2xl px-4 py-3 bg-white/[0.04] border border-white/12 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors"
                         style={{ height: '52px' }}
                       />
                     </div>
@@ -450,8 +453,8 @@ export function ContactPage() {
                       onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                       placeholder="Describe your inquiry, payment slip reference, or technical question..."
                       maxLength={2000}
-                      className={`w-full rounded-2xl p-4 bg-[var(--surface-2)] border text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors ${
-                        fieldErrors.message ? 'border-[var(--red)]' : 'border-[var(--border)]'
+                      className={`w-full rounded-2xl p-4 bg-white/[0.04] border text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors ${
+                        fieldErrors.message ? 'border-[var(--red)]' : 'border-white/12'
                       }`}
                     />
                     <div className="flex justify-between items-center text-[11px] text-[var(--muted)] mt-1">
@@ -479,7 +482,7 @@ export function ContactPage() {
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="btn-red w-full flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                    className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer shadow-lg"
                     style={{ height: '52px' }}
                   >
                     {submitting ? (
@@ -496,7 +499,7 @@ export function ContactPage() {
                   </button>
                 </form>
               )}
-            </Card>
+            </div>
           </div>
         </div>
       </div>

@@ -455,7 +455,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
               Account
             </p>
 
-            <div className="bg-surface border border-border rounded-2xl overflow-hidden divide-y divide-border shadow-xs">
+            <div className="glass-row rounded-[22px] overflow-hidden divide-y divide-[var(--glass-border)]">
               {/* Profile */}
               <button
                 type="button"
@@ -568,7 +568,7 @@ export const HamburgerMenuSheet: React.FC<HamburgerMenuSheetProps> = ({
                 Admin
               </p>
 
-              <div className="bg-surface border border-border rounded-2xl overflow-hidden shadow-xs">
+              <div className="glass-row rounded-[22px] overflow-hidden">
                 <button
                   type="button"
                   onClick={() => handleNav('/admin')}

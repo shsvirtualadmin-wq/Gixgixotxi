@@ -104,3 +104,56 @@ export function maskEmail(email?: string | null): string {
   }
   return `${name[0]}${'*'.repeat(Math.min(name.length - 2, 4))}${name[name.length - 1]}@${domain}`;
 }
+
+/**
+ * Automatically detects and masks phone numbers, email addresses, and WhatsApp invite/chat links
+ * in user-generated public text (posts, comments, bios) to protect student privacy.
+ */
+export function maskPublicUserText(text?: string | null): string {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    // Mask WhatsApp links (wa.me, chat.whatsapp.com, api.whatsapp.com)
+    .replace(
+      /https?:\/\/(?:chat\.whatsapp\.com|wa\.me|api\.whatsapp\.com)\/[^\s)]+/gi,
+      '[WhatsApp link hidden for student privacy]'
+    )
+    // Mask email addresses in public text
+    .replace(
+      /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g,
+      '[email hidden]'
+    )
+    // Mask Pakistani & international phone numbers (+92 3xx xxxxxxx, 03xx-xxxxxxx, etc.)
+    .replace(
+      /(?:\+92|0092|0)[\s.-]?3\d{2}[\s.-]?\d{7}\b/g,
+      '[phone hidden]'
+    );
+}
+
+/**
+ * Builds a clean SEO-friendly `{id}-{slug}` path segment for posts, materials, tests, and crews.
+ */
+export function buildEntitySlug(id: string, title?: string | null): string {
+  const cleanId = String(id || '').trim();
+  if (!title) return cleanId;
+  const slug = title
+    .toLowerCase()
+    .trim()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 60);
+  return slug ? `${cleanId}-${slug}` : cleanId;
+}
+
+/**
+ * Extracts the Firestore document ID from an `{id}-{slug}` route parameter,
+ * or returns the raw parameter if no slug suffix is present.
+ */
+export function extractIdFromSlug(idSlug?: string | null): string {
+  if (!idSlug) return '';
+  const trimmed = decodeURIComponent(idSlug).trim();
+  const dashIndex = trimmed.indexOf('-');
+  if (dashIndex === -1) return trimmed;
+  return trimmed.slice(0, dashIndex);
+}
+

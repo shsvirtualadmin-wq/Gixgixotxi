@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Search,
   BookOpen,
@@ -11,14 +11,17 @@ import {
   HelpCircle,
   EyeOff,
   Compass,
+  FolderOpen,
 } from 'lucide-react';
 import { useUserProfile } from '@/hooks/useUserProfile';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAuthGate } from '@/contexts/AuthGateContext';
 import { CommonsPostCard } from '@/components/commons/CommonsPostCard';
 import { PostingWizardModal } from '@/components/commons/PostingWizardModal';
 import { CommonsCommentsDrawer } from '@/components/commons/CommonsCommentsDrawer';
 import { CommonsReportModal } from '@/components/commons/CommonsReportModal';
 import { CommonsSearchModal } from '@/components/commons/CommonsSearchModal';
+import { PageMeta } from '@/components/ui/PageMeta';
 import {
   fetchCommonsPosts,
   deleteCommonsPost,
@@ -26,17 +29,32 @@ import {
   fetchCommonsPostById,
 } from '@/services/commonsService';
 import type { CommonsPost, CommonsPostType } from '@/types/commons';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams, useLocation } from 'react-router-dom';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
 
-export function CommonsFeedPage() {
+const SUBJECT_FILTERS = [
+  { slug: 'all', label: 'All Subjects' },
+  { slug: 'mathematics', label: 'Mathematics' },
+  { slug: 'physics', label: 'Physics' },
+  { slug: 'chemistry', label: 'Chemistry' },
+  { slug: 'biology', label: 'Biology' },
+  { slug: 'english', label: 'English' },
+  { slug: 'computer', label: 'Computer Science' },
+];
+
+export function CommonsFeedPage({ initialCompose = false }: { initialCompose?: boolean }) {
   const { user, profile } = useUserProfile();
   const { isAdmin } = useAuth();
+  const { requireAuth } = useAuthGate();
   const { openProfile } = useProfileModal();
+  const location = useLocation();
+  const isPublicRoute = location.pathname.startsWith('/commons');
 
-  // Feed Options: Only "All" and "Following"
-  const [feedTab, setFeedTab] = useState<'all' | 'following'>('all');
+  // Feed Options: "All", "Trending", and "Following"
+  const [feedTab, setFeedTab] = useState<'all' | 'trending' | 'following'>('all');
+  const [subjectFilter, setSubjectFilter] = useState<string>('all');
+  const [classFilter, setClassFilter] = useState<string>('all');
 
   // Posts State (strictly real Firestore posts, 10 per page)
   const [posts, setPosts] = useState<CommonsPost[]>([]);
@@ -53,7 +71,7 @@ export function CommonsFeedPage() {
     initialAnonymous?: boolean;
     initialStep?: 1 | 2;
     triggerUploadOnMount?: 'photo' | 'file' | null;
-  }>({ isOpen: false });
+  }>({ isOpen: Boolean(initialCompose && user) });
 
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [commentsPost, setCommentsPost] = useState<CommonsPost | null>(null);
@@ -69,7 +87,8 @@ export function CommonsFeedPage() {
 
   useEffect(() => {
     const handleScroll = () => {
-      setShowBackToTop(window.scrollY > 380);
+      const over = window.scrollY > 380;
+      setShowBackToTop((prev) => (prev === over ? prev : over));
     };
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
@@ -93,8 +112,8 @@ export function CommonsFeedPage() {
       }
 
       const res = await fetchCommonsPosts({
-        feedTab,
-        pageSize: 10,
+        feedTab: feedTab === 'following' ? 'following' : 'all',
+        pageSize: 15,
         currentUid: user?.uid,
       });
 
@@ -128,9 +147,9 @@ export function CommonsFeedPage() {
     setLoadingMore(true);
     try {
       const res = await fetchCommonsPosts({
-        feedTab,
+        feedTab: feedTab === 'following' ? 'following' : 'all',
         lastVisibleDoc: lastDoc,
-        pageSize: 10,
+        pageSize: 15,
         currentUid: user?.uid,
       });
       setPosts((prev) => {
@@ -146,6 +165,26 @@ export function CommonsFeedPage() {
       setLoadingMore(false);
     }
   }, [lastDoc, loadingMore, feedTab, user?.uid]);
+
+  const displayedPosts = useMemo(() => {
+    let list = [...posts];
+    if (subjectFilter !== 'all') {
+      list = list.filter((p) => {
+        const sub = (p.subject || '').toLowerCase();
+        return sub.includes(subjectFilter) || (p.tags || []).some((t) => t.toLowerCase().includes(subjectFilter));
+      });
+    }
+    if (classFilter !== 'all') {
+      list = list.filter((p) => {
+        const target = `${p.target || ''} ${p.chapter || ''} ${(p.tags || []).join(' ')}`.toLowerCase();
+        return target.includes(classFilter.toLowerCase());
+      });
+    }
+    if (feedTab === 'trending') {
+      list.sort((a, b) => (b.upvotes || 0) + (b.commentCount || 0) - ((a.upvotes || 0) + (a.commentCount || 0)));
+    }
+    return list;
+  }, [posts, subjectFilter, classFilter, feedTab]);
 
   // Infinite scroll trigger via IntersectionObserver sentinel
   const sentinelRef = useRef<HTMLDivElement | null>(null);
@@ -228,55 +267,82 @@ export function CommonsFeedPage() {
     [openProfile]
   );
 
+  const openComposerWithGate = (config: {
+    initialType?: CommonsPostType;
+    initialAnonymous?: boolean;
+    initialStep?: 1 | 2;
+    triggerUploadOnMount?: 'photo' | 'file' | null;
+  }) => {
+    requireAuth('create a post or share study material in Boardly Commons', () => {
+      setWizardConfig({ isOpen: true, ...config });
+    });
+  };
+
   return (
     <div
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
       onTouchEnd={handleTouchEnd}
-      className="pb-28 max-w-2xl mx-auto space-y-3"
+      className={`pb-28 max-w-2xl mx-auto space-y-3 ${isPublicRoute ? 'pt-24 px-4' : ''}`}
     >
-      {/* ── Sticky Top Bar: "Commons", Search, Shield, Refresh ── */}
-      <header className="sticky top-0 z-30 bg-surface/95 backdrop-blur-md border-b border-border -mx-4 sm:mx-0 sm:rounded-b-2xl px-4 py-2.5 flex items-center justify-between shadow-xs transition-colors">
+      {isPublicRoute && (
+        <PageMeta
+          title="Boardly Commons — Free Student Notes, Solved Past Papers & Doubts"
+          description="Browse free peer-shared study notes, solved board past papers, formula sheets, and entrance test Q&A across Mathematics, Physics, Chemistry, Biology, and Computer Science."
+          canonicalPath="/commons"
+        />
+      )}
+
+      {/* ── Sticky Top Bar: "Commons", Search, Material Library, Guidelines, Refresh ── */}
+      <header className="sticky top-0 z-30 glass-card allow-backdrop-blur rounded-[24px] px-4 py-3 flex items-center justify-between transition-colors">
         <div>
           <h1
-            className="text-lg sm:text-xl font-bold tracking-tight text-primary font-sans"
-            style={{ fontFamily: 'var(--font-heading)' }}
+            className="text-lg sm:text-xl font-bold tracking-tight text-primary font-dot"
           >
-            Commons
+            Boardly Commons
           </h1>
           <p className="text-xs text-muted">
             Share notes, papers and doubts. Learn together.
           </p>
         </div>
 
-        {/* Right Action Icons: Search, Guidelines, Refresh */}
-        <div className="flex items-center gap-1">
+        {/* Right Action Icons: Material Library, Search, Guidelines, Refresh */}
+        <div className="flex items-center gap-1.5">
+          <Link
+            to="/material"
+            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
+            title="Study Material Library"
+            aria-label="Study Material Library"
+          >
+            <FolderOpen size={18} />
+          </Link>
+
           <button
             onClick={() => setSearchModalOpen(true)}
-            className="p-2 text-secondary hover:text-primary rounded-xl hover:bg-surface-muted transition-colors cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
+            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors cursor-pointer min-w-[40px] min-h-[40px] flex items-center justify-center"
             title="Search Commons"
             aria-label="Search"
           >
-            <Search size={19} />
+            <Search size={18} />
           </button>
 
           <Link
-            to="/commons/guidelines"
-            className="p-2 text-secondary hover:text-primary rounded-xl hover:bg-surface-muted transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+            to="/guidelines"
+            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
             title="Community Guidelines"
             aria-label="Guidelines"
           >
-            <Shield size={19} />
+            <Shield size={18} />
           </Link>
 
           <button
             onClick={() => loadPosts()}
             disabled={loading}
-            className="p-2 text-secondary hover:text-primary rounded-xl hover:bg-surface-muted transition-colors cursor-pointer min-w-[44px] min-h-[44px] flex items-center justify-center"
+            className="p-2 text-secondary hover:text-primary rounded-full glass-pill transition-colors cursor-pointer min-w-[40px] min-h-[40px] flex items-center justify-center"
             title="Refresh feed"
             aria-label="Refresh feed"
           >
-            <RefreshCw size={19} className={loading ? 'animate-spin' : ''} />
+            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
       </header>
@@ -298,18 +364,18 @@ export function CommonsFeedPage() {
       )}
 
       {/* ── Post Composer Card (Facebook style: "What's on your mind?") ── */}
-      <div className="rounded-2xl border border-border bg-surface p-3.5 sm:p-4 shadow-xs space-y-3">
+      <div className="glass-card rounded-[28px] p-4 sm:p-5 space-y-3">
         <div className="flex items-center gap-3">
           <div
-            onClick={() => user && openProfile(user.uid)}
+            onClick={() => (user ? openProfile(user.uid) : openComposerWithGate({ initialStep: 1 }))}
             className="shrink-0 cursor-pointer transition-transform hover:scale-105"
-            title="View your profile"
+            title={user ? 'View your profile' : 'Sign in to post'}
           >
             <BoardlyAvatar
               equippedAvatar={profile?.equipped?.avatar || (profile as any)?.equippedAvatar}
               avatarUrl={(profile as any)?.avatarUrl || profile?.photoURL || user?.photoURL}
               frame={profile?.equipped?.frame || (profile as any)?.frame}
-              name={profile?.displayName || user?.displayName || 'User'}
+              name={profile?.displayName || user?.displayName || 'Guest'}
               isSuperAdmin={
                 isAdmin ||
                 user?.email === 'admin@shsvirtual.org' ||
@@ -321,7 +387,7 @@ export function CommonsFeedPage() {
 
           <button
             type="button"
-            onClick={() => setWizardConfig({ isOpen: true, initialStep: 1 })}
+            onClick={() => openComposerWithGate({ initialStep: 1 })}
             className="flex-1 text-left px-4 py-2.5 rounded-full bg-surface-muted hover:bg-surface-raised border border-border text-muted text-xs sm:text-sm transition-colors cursor-pointer"
           >
             Share a resource or ask a doubt...
@@ -333,8 +399,7 @@ export function CommonsFeedPage() {
           <button
             type="button"
             onClick={() =>
-              setWizardConfig({
-                isOpen: true,
+              openComposerWithGate({
                 initialStep: 2,
                 triggerUploadOnMount: 'photo',
               })
@@ -348,8 +413,7 @@ export function CommonsFeedPage() {
           <button
             type="button"
             onClick={() =>
-              setWizardConfig({
-                isOpen: true,
+              openComposerWithGate({
                 initialStep: 2,
                 triggerUploadOnMount: 'file',
               })
@@ -363,8 +427,7 @@ export function CommonsFeedPage() {
           <button
             type="button"
             onClick={() =>
-              setWizardConfig({
-                isOpen: true,
+              openComposerWithGate({
                 initialStep: 2,
                 initialType: 'doubt',
               })
@@ -378,8 +441,7 @@ export function CommonsFeedPage() {
           <button
             type="button"
             onClick={() =>
-              setWizardConfig({
-                isOpen: true,
+              openComposerWithGate({
                 initialStep: 2,
                 initialAnonymous: true,
               })
@@ -392,34 +454,92 @@ export function CommonsFeedPage() {
         </div>
       </div>
 
-      {/* ── Feed Tabs: "All" and "Following" (Clean underlined active tab in red) ── */}
-      <div className="sticky top-[58px] z-20 bg-background/95 backdrop-blur-md border-b border-border -mx-4 sm:mx-0 px-4 flex items-center gap-6">
-        <button
-          onClick={() => setFeedTab('all')}
-          className={`py-2.5 px-1 text-xs sm:text-sm transition-all cursor-pointer select-none ${
-            feedTab === 'all'
-              ? 'border-b-2 border-accent text-accent font-bold'
-              : 'border-b-2 border-transparent text-muted hover:text-primary font-medium'
-          }`}
+      {/* ── Subject & Class Filters ── */}
+      <div className="flex flex-wrap items-center gap-1.5 pt-1">
+        {SUBJECT_FILTERS.map((s) => (
+          <button
+            key={s.slug}
+            type="button"
+            onClick={() => setSubjectFilter(s.slug)}
+            className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-colors cursor-pointer ${
+              subjectFilter === s.slug
+                ? 'bg-accent text-white border-accent'
+                : 'bg-surface border-border text-secondary hover:text-primary'
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+        <select
+          value={classFilter}
+          onChange={(e) => setClassFilter(e.target.value)}
+          aria-label="Filter by class or board"
+          className="ml-auto px-3 py-1.5 rounded-full text-xs font-medium bg-surface border border-border text-secondary focus:outline-none"
         >
-          All
-        </button>
+          <option value="all">All Classes & Boards</option>
+          <option value="11">Class 11 (HSSC-I)</option>
+          <option value="12">Class 12 (HSSC-II)</option>
+          <option value="mdcat">MDCAT</option>
+          <option value="ecat">ECAT / NET</option>
+          <option value="fbise">FBISE</option>
+          <option value="punjab">Punjab Board</option>
+        </select>
+      </div>
 
-        <button
-          onClick={() => setFeedTab('following')}
-          className={`py-2.5 px-1 text-xs sm:text-sm transition-all cursor-pointer select-none ${
-            feedTab === 'following'
-              ? 'border-b-2 border-accent text-accent font-bold'
-              : 'border-b-2 border-transparent text-muted hover:text-primary font-medium'
-          }`}
+      {/* ── Feed Tabs: "Newest", "Trending", and "Following" ── */}
+      <div className="sticky top-[58px] z-20 bg-background/95 backdrop-blur-md border-b border-border -mx-4 sm:mx-0 px-4 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-6">
+          <button
+            onClick={() => setFeedTab('all')}
+            className={`py-2.5 px-1 text-xs sm:text-sm transition-all cursor-pointer select-none ${
+              feedTab === 'all'
+                ? 'border-b-2 border-accent text-accent font-bold'
+                : 'border-b-2 border-transparent text-muted hover:text-primary font-medium'
+            }`}
+          >
+            Newest
+          </button>
+
+          <button
+            onClick={() => setFeedTab('trending')}
+            className={`py-2.5 px-1 text-xs sm:text-sm transition-all cursor-pointer select-none ${
+              feedTab === 'trending'
+                ? 'border-b-2 border-accent text-accent font-bold'
+                : 'border-b-2 border-transparent text-muted hover:text-primary font-medium'
+            }`}
+          >
+            Trending
+          </button>
+
+          <button
+            onClick={() => {
+              if (!user) {
+                requireAuth('view posts from students you follow');
+                return;
+              }
+              setFeedTab('following');
+            }}
+            className={`py-2.5 px-1 text-xs sm:text-sm transition-all cursor-pointer select-none ${
+              feedTab === 'following'
+                ? 'border-b-2 border-accent text-accent font-bold'
+                : 'border-b-2 border-transparent text-muted hover:text-primary font-medium'
+            }`}
+          >
+            Following
+          </button>
+        </div>
+
+        <Link
+          to="/search"
+          className="text-xs text-muted hover:text-accent font-medium transition-colors"
         >
-          Following
-        </button>
+          Full Search →
+        </Link>
       </div>
 
       {/* ── Posts Stream (10 at a time, skeleton loaders, Facebook style) ── */}
       <div className="space-y-3 pt-1">
-        {loading && posts.length === 0 ? (
+        {loading && displayedPosts.length === 0 ? (
           /* Skeleton Loaders (No blank screen, no spinner-only state) */
           <div className="space-y-3">
             {[1, 2, 3].map((n) => (
@@ -465,14 +585,14 @@ export function CommonsFeedPage() {
               <span>Retry</span>
             </button>
           </div>
-        ) : posts.length === 0 ? (
+        ) : displayedPosts.length === 0 ? (
           /* Empty state */
           <div className="p-10 text-center rounded-2xl border border-border bg-surface space-y-3 shadow-xs">
             <BookOpen size={32} className="mx-auto text-muted" />
             <h3 className="text-sm font-bold text-primary">
               {feedTab === 'following'
                 ? "You aren't following anyone yet."
-                : 'No posts yet'}
+                : 'No posts matching your filter'}
             </h3>
             <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
               {feedTab === 'following'
@@ -480,19 +600,21 @@ export function CommonsFeedPage() {
                 : 'Be the first to share notes, papers, or ask a doubt to learn together!'}
             </p>
             <div className="flex items-center justify-center gap-3 pt-2">
-              {feedTab === 'following' ? (
+              {feedTab === 'following' || subjectFilter !== 'all' || classFilter !== 'all' ? (
                 <button
-                  onClick={() => setFeedTab('all')}
+                  onClick={() => {
+                    setFeedTab('all');
+                    setSubjectFilter('all');
+                    setClassFilter('all');
+                  }}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
                 >
                   <Compass size={14} />
-                  <span>Switch to All</span>
+                  <span>Reset Filters</span>
                 </button>
               ) : (
                 <button
-                  onClick={() =>
-                    setWizardConfig({ isOpen: true, initialStep: 1 })
-                  }
+                  onClick={() => openComposerWithGate({ initialStep: 1 })}
                   className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-accent text-on-accent hover:opacity-90 transition-colors cursor-pointer shadow-xs"
                 >
                   <span>Share something</span>
@@ -502,7 +624,7 @@ export function CommonsFeedPage() {
           </div>
         ) : (
           /* Real Firestore posts */
-          posts.map((post) => (
+          displayedPosts.map((post) => (
             <CommonsPostCard
               key={post.id}
               post={post}

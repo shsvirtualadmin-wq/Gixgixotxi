@@ -1,6 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight } from 'lucide-react';
-import { Badge } from '../ui/Badge';
+import { ArrowRight, Sparkles } from 'lucide-react';
 import { PhoneMockup } from './PhoneMockup';
 
 export function HeroSection() {
@@ -8,37 +7,51 @@ export function HeroSection() {
     <section
       className="relative overflow-hidden"
       style={{
-        paddingTop: 'calc(64px + 44px + env(safe-area-inset-top, 0px))',
-        paddingBottom: '56px',
+        paddingTop: 'calc(80px + 36px + env(safe-area-inset-top, 0px))',
+        paddingBottom: '64px',
       }}
     >
-      <div className="boardly-container">
+      {/* Background ambient radial glow for the hero area (static gradient, zero blur filter pass) */}
+      <div
+        className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] sm:w-[900px] h-[450px] rounded-full pointer-events-none opacity-45"
+        style={{
+          background: 'radial-gradient(circle, rgba(215, 25, 33, 0.18) 0%, rgba(255, 255, 255, 0.02) 45%, transparent 72%)',
+        }}
+        aria-hidden="true"
+      />
+
+      <div className="boardly-container relative z-10">
         {/* 2-column hero grid (1.12fr .88fr, gap 48px, align-items: center), 1 column on mobile */}
-        <div className="grid grid-cols-1 lg:grid-cols-[1.12fr_0.88fr] gap-10 lg:gap-12 items-center">
+        <div className="grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-10 lg:gap-14 items-center">
           {/* Left Column: Hero Content */}
           <div className="flex flex-col items-center lg:items-start text-center lg:text-left">
-            {/* Badges: compact outlined pills */}
-            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2 mb-5">
-              <Badge color="muted">Education For Everyone</Badge>
-              <Badge color="muted">Practice &amp; Learn Together</Badge>
+            {/* Top chips: small, refined glass pills */}
+            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-2.5 mb-5">
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-heading font-medium text-white/80 bg-white/[0.06] border border-white/12 shadow-sm">
+                <Sparkles size={13} className="text-[#D71921]" />
+                Education For Everyone
+              </span>
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-heading font-medium text-white/80 bg-white/[0.06] border border-white/12 shadow-sm">
+                Practice &amp; Learn Together
+              </span>
             </div>
 
-            {/* H1 Heading in Doto Font: sized to fit in 3 lines max on desktop */}
+            {/* H1 Heading in Doto Font: prominent, large, well-proportioned line spacing */}
             <h1
-              className="font-dot font-extrabold tracking-tight text-[var(--text)] mb-4 max-w-[600px]"
+              className="font-dot font-extrabold tracking-tight text-[var(--text)] mb-4 max-w-[620px]"
               style={{
                 fontFamily: 'var(--font-dot)',
                 letterSpacing: '0.01em',
                 fontWeight: 800,
-                lineHeight: 1.18,
-                fontSize: 'clamp(26px, 3.6vw, 42px)',
+                lineHeight: 1.16,
+                fontSize: 'clamp(28px, 4vw, 46px)',
               }}
             >
               Education For Everyone.{' '}
               <span className="block mt-1 text-[var(--text)]">Practice MCQs. Learn Together.</span>
             </h1>
 
-            {/* Subtext */}
+            {/* Subtext with clean even spacing */}
             <p className="text-[15px] sm:text-base text-[var(--muted)] max-w-xl mb-4 leading-relaxed">
               Pakistan&apos;s accessible MCQ practice and collaborative learning platform. Master key concepts with step-by-step KaTeX derivations, timed practice sprints, chapter analytics, and free community study sharing.
             </p>
@@ -50,43 +63,49 @@ export function HeroSection() {
                 href="https://shsvirtualacademy.pro"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-[var(--red)] font-semibold hover:underline"
+                className="text-[#D71921] font-semibold hover:underline"
               >
                 SHS Virtual Academy
               </a>
               .
             </p>
 
-            {/* Hero CTAs */}
-            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3 w-full sm:w-auto">
-              <Link to="/signup" className="btn-red w-full sm:w-auto group">
+            {/* Hero CTAs: Red pill + Glass outline pill */}
+            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-3.5 w-full sm:w-auto">
+              <Link
+                to="/signup"
+                className="h-12 px-6 rounded-full inline-flex items-center justify-center gap-2 text-sm font-heading font-bold bg-[#D71921] hover:bg-[#b8141b] text-white shadow-[0_10px_25px_rgba(215,25,33,0.38)] hover:shadow-[0_14px_30px_rgba(215,25,33,0.5)] transition-all duration-200 hover:-translate-y-1 active:scale-[0.98] w-full sm:w-auto group cursor-pointer"
+              >
                 <span>Start Practicing Free</span>
                 <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
               </Link>
 
-              <Link to="/features" className="btn-outline w-full sm:w-auto">
+              <Link
+                to="/features"
+                className="h-12 px-6 rounded-full inline-flex items-center justify-center text-sm font-heading font-semibold bg-white/[0.06] hover:bg-white/[0.1] border border-white/15 hover:border-white/25 text-white shadow-md transition-all duration-200 hover:-translate-y-1 active:scale-[0.98] w-full sm:w-auto cursor-pointer"
+              >
                 Explore Features
               </Link>
             </div>
 
-            {/* Checklist row */}
-            <div className="mt-6 pt-5 border-t border-[var(--border)] flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-2.5 w-full">
+            {/* Feature bullets row with even spacing */}
+            <div className="mt-8 pt-5 border-t border-white/10 flex flex-wrap items-center justify-center lg:justify-start gap-x-6 gap-y-2.5 w-full">
               <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0 shadow-[0_0_8px_rgba(215,25,33,0.8)]" />
                 <span className="text-xs text-[var(--muted)] font-medium">Comprehensive MCQ Banks</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0 shadow-[0_0_8px_rgba(215,25,33,0.8)]" />
                 <span className="text-xs text-[var(--muted)] font-medium">Step-by-step KaTeX</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-[#D71921] shrink-0 shadow-[0_0_8px_rgba(215,25,33,0.8)]" />
                 <span className="text-xs text-[var(--muted)] font-medium">PKT Midnight Resets</span>
               </div>
             </div>
           </div>
 
-          {/* Right Column: Phone Mockup */}
+          {/* Right Column: Floating Glass Dashboard Preview */}
           <div className="flex justify-center items-center w-full">
             <PhoneMockup />
           </div>
@@ -95,3 +114,5 @@ export function HeroSection() {
     </section>
   );
 }
+
+export default HeroSection;

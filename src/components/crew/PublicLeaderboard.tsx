@@ -70,13 +70,13 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
       {/* Search Bar */}
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
         <div className="relative w-full sm:max-w-md">
-          <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--muted)]" />
+          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[var(--muted)] pointer-events-none" />
           <input
             type="text"
             placeholder="Search study squad by name..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[var(--red)] transition-colors"
+            className="w-full pl-11 pr-4 py-3 rounded-full bg-white/[0.05] border border-white/15 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:border-[#D71921] focus:ring-2 focus:ring-[#D71921]/40 shadow-sm backdrop-blur-md transition-all"
           />
         </div>
 
@@ -89,13 +89,13 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
       {loading ? (
         <div className="space-y-3">
           {[1, 2, 3, 4, 5].map((i) => (
-            <div key={i} className="h-16 rounded-xl bg-[var(--surface-2)] animate-pulse" />
+            <div key={i} className="h-16 rounded-[24px] bg-white/[0.04] border border-white/10 animate-pulse" />
           ))}
         </div>
       ) : crews.length === 0 ? (
         /* Empty state: Never show placeholder cards */
-        <div className="p-12 rounded-2xl bg-[var(--surface)] border border-[var(--border)] text-center space-y-3">
-          <div className="w-12 h-12 rounded-full bg-[var(--surface-2)] border border-[var(--border)] text-[var(--muted)] flex items-center justify-center mx-auto">
+        <div className="p-10 sm:p-14 rounded-[28px] glass-card text-center space-y-4">
+          <div className="w-12 h-12 rounded-2xl bg-white/[0.06] border border-white/12 text-[var(--muted)] flex items-center justify-center mx-auto">
             <Trophy size={22} />
           </div>
           <h3 className="text-base font-bold text-[var(--text)] font-heading">No Study Squads Found</h3>
@@ -106,14 +106,14 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
           </p>
           {!debouncedSearch && (
             <div className="pt-2">
-              <Link to="/login?redirect=/dashboard/crew" className="btn-red text-xs px-4 py-2">
+              <Link to="/login?redirect=/dashboard/crew" className="btn-primary text-xs px-5 py-2.5" style={{ height: '42px' }}>
                 Create First Squad
               </Link>
             </div>
           )}
         </div>
       ) : (
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           {crews.map((c) => {
             const isUserCrew = currentUser && currentUser.crewId === c.id;
 
@@ -121,10 +121,10 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
               <div
                 key={c.id}
                 onClick={() => setSelectedCrew(c)}
-                className={`p-3.5 sm:p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                className={`p-3.5 sm:p-4 rounded-[24px] border transition-all duration-200 cursor-pointer flex items-center justify-between gap-3 min-h-[68px] hover:-translate-y-1 active:scale-[0.99] ${
                   isUserCrew
-                    ? 'bg-[#181011] border-[#D71921]/60 hover:border-[#D71921] shadow-sm'
-                    : 'bg-[var(--surface)] border-[var(--border)] hover:bg-[var(--surface-2)] hover:border-[rgba(255,255,255,0.2)]'
+                    ? 'bg-[#181011]/90 border-[#D71921]/60 hover:border-[#D71921] shadow-[0_8px_24px_rgba(215,25,33,0.18)]'
+                    : 'bg-[#0e0e13]/80 backdrop-blur-md border-white/12 hover:border-white/25 shadow-[0_8px_24px_rgba(0,0,0,0.4),inset_0_1px_1px_rgba(255,255,255,0.08)]'
                 }`}
               >
                 {/* Left: Rank, Avatar, Name & Conditions */}
@@ -145,26 +145,27 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
                   </div>
 
                   {/* Dot-matrix Avatar */}
-                  <MatrixAvatar
-                    avatarKey={c.avatarKey}
-                    variant={c.avatarVariant}
-                    size={46}
-                    className="shrink-0"
-                  />
+                  <div className="rounded-2xl overflow-hidden shrink-0 border border-white/10">
+                    <MatrixAvatar
+                      avatarKey={c.avatarKey}
+                      variant={c.avatarVariant}
+                      size={46}
+                    />
+                  </div>
 
                   {/* Info */}
                   <div className="min-w-0 space-y-1">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-heading font-bold text-sm sm:text-base text-[var(--text)] truncate">
+                      <span className="font-heading font-bold text-sm sm:text-base text-[var(--text)] truncate max-w-[150px] sm:max-w-xs md:max-w-md">
                         {c.name}
                       </span>
                       {c.isPaidActive && (
-                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded bg-[#D71921]/20 border border-[#D71921]/50 text-[#D71921] flex items-center gap-0.5 shrink-0">
+                        <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-[#D71921]/20 border border-[#D71921]/50 text-[#D71921] flex items-center gap-0.5 shrink-0">
                           <Sparkles size={9} /> Large Crew
                         </span>
                       )}
                       {isUserCrew && (
-                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.2 rounded bg-emerald-950/40 border border-emerald-500/60 text-emerald-400 shrink-0">
+                        <span className="text-[9px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-950/40 border border-emerald-500/60 text-emerald-400 shrink-0">
                           Your Squad
                         </span>
                       )}
@@ -192,7 +193,7 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
                 </div>
 
                 {/* Right: Stats & View Action */}
-                <div className="flex items-center gap-4 sm:gap-6 shrink-0">
+                <div className="flex items-center gap-3 sm:gap-5 shrink-0">
                   <div className="text-right hidden xs:block">
                     <div className="text-sm sm:text-base font-bold font-heading text-[var(--text)]">
                       {c.questionsSolved ?? c.score} <span className="text-[10px] text-[var(--muted)] font-normal font-sans">solved</span>
@@ -214,7 +215,7 @@ export const PublicLeaderboard: React.FC<PublicLeaderboardProps> = ({ currentUse
                       e.stopPropagation();
                       setSelectedCrew(c);
                     }}
-                    className="p-2 sm:px-3 sm:py-1.5 rounded-lg bg-[var(--surface-2)] hover:bg-[var(--surface-hover)] border border-[var(--border)] text-xs text-[var(--text)] flex items-center gap-1 transition-colors"
+                    className="px-3.5 py-1.5 rounded-full bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 text-xs font-semibold text-[var(--text)] flex items-center gap-1.5 transition-all shadow-sm active:scale-95"
                     title="View squad details"
                   >
                     <Eye size={14} />

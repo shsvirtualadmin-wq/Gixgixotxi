@@ -59,7 +59,8 @@ service cloud.firestore {
       return clean.matches('.*(shsvirtualacademy|shsvirtual|boardly|scholario).*');
     }
 
-    // ─── 1. USERS COLLECTION (/users/{userId}) ─────────────────────────────────
+    // ─── 1. PRIVATE USERS COLLECTION (/users/{userId}) ─────────────────────────
+    // Strictly private: never readable by other users or the public
     match /users/{userId} {
       allow read: if isOwner(userId) || isAdmin();
 
@@ -81,7 +82,6 @@ service cloud.firestore {
       // Update: User can update safe profile/cosmetic/study fields or spend Kobans
       allow update: if isAdmin() || (
         isOwner(userId) &&
-        // Privileged fields must never be escalated by the user
         (!('role' in request.resource.data) || request.resource.data.role == resource.data.get('role', 'student')) &&
         (!('plan' in request.resource.data) || request.resource.data.plan == resource.data.get('plan', 'free')) &&
         (!('planStatus' in request.resource.data) || request.resource.data.planStatus == resource.data.get('planStatus', 'active')) &&
@@ -92,7 +92,6 @@ service cloud.firestore {
         (!('isAmbassador' in request.resource.data) || request.resource.data.isAmbassador == resource.data.get('isAmbassador', false)) &&
         (!('suspended' in request.resource.data) || request.resource.data.suspended == resource.data.get('suspended', false)) &&
         (!('banned' in request.resource.data) || request.resource.data.banned == resource.data.get('banned', false)) &&
-        // Kobans on user doc can never be increased by client directly
         (!('kobans' in request.resource.data) || (
           request.resource.data.kobans is int &&
           request.resource.data.kobans >= 0 &&
@@ -103,7 +102,6 @@ service cloud.firestore {
           request.resource.data.kobanBalance >= 0 &&
           request.resource.data.kobanBalance <= resource.data.get('kobanBalance', 0)
         )) &&
-        // Reserved names cannot be self-assigned unless already approved on the user doc
         (
           !('displayName' in request.resource.data) ||
           request.resource.data.displayName == resource.data.get('displayName', '') ||
@@ -162,10 +160,17 @@ service cloud.firestore {
     }
 
     // ─── 2. PUBLIC PROFILES & USERNAMES ────────────────────────────────────────
+    // Stores ONLY safe public fields; strictly forbids writing email, phone, or billing fields
     match /publicProfiles/{userId} {
       allow read: if true;
       allow create, update: if isAdmin() || (
         isOwner(userId) &&
+        !('email' in request.resource.data) &&
+        !('phone' in request.resource.data) &&
+        !('phoneNumber' in request.resource.data) &&
+        !('transactionId' in request.resource.data) &&
+        !('ipAddress' in request.resource.data) &&
+        (!('bio' in request.resource.data) || !(request.resource.data.bio is string) || request.resource.data.bio.size() <= 500) &&
         (
           !('displayName' in request.resource.data) ||
           (resource != null && request.resource.data.displayName == resource.data.get('displayName', '')) ||
@@ -180,6 +185,8 @@ service cloud.firestore {
       allow create, update: if isAdmin() || (
         isSignedIn() &&
         request.resource.data.uid == request.auth.uid &&
+        usernameLower.size() >= 2 &&
+        usernameLower.size() <= 40 &&
         !isReservedOfficialName(usernameLower)
       );
       allow delete: if isAdmin() || (
@@ -197,7 +204,6 @@ service cloud.firestore {
     match /wallets/{userId} {
       allow read: if isOwner(userId) || isAdmin();
 
-      // Client can initialize a zero-balance wallet or migrate their existing user.kobans balance
       allow create: if isAdmin() || (
         isOwner(userId) &&
         request.resource.data.balance is int &&
@@ -211,7 +217,6 @@ service cloud.firestore {
         )
       );
 
-      // Client can NEVER increase wallet balance; can only equip items or spend balance (>= 0)
       allow update: if isAdmin() || (
         isOwner(userId) &&
         request.resource.data.balance is int &&
@@ -330,8 +335,6 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
-    // Answer keys: allow individual document lookup (get) for grading submitted tests,
-    // but block bulk collection listing (list) for non-admins.
     match /questionKeys/{questionId} {
       allow get: if isSignedIn();
       allow list, write: if isAdmin();
@@ -354,15 +357,24 @@ service cloud.firestore {
     }
 
     // ─── 5. GRAND LINE & NAKAMA CAPTAINS (/ambassador_tests, /ambassador_test_attempts, /captains) ──
+    // Only published public tests are readable by the public; unpublished drafts only by creator or admin
     match /ambassador_tests/{testId} {
-      allow read: if true;
-      allow create: if isCaptainOrAdmin() && request.resource.data.creatorUid == request.auth.uid;
+      allow read: if isAdmin() ||
+        (resource.data.get('isPublic', true) == true && resource.data.get('status', 'published') != 'unpublished') ||
+        (isSignedIn() && resource.data.creatorUid == request.auth.uid);
+      allow create: if isCaptainOrAdmin() &&
+        request.resource.data.creatorUid == request.auth.uid &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() >= 2 &&
+        request.resource.data.title.size() <= 200;
       allow update, delete: if isAdmin() || (isSignedIn() && resource.data.creatorUid == request.auth.uid);
     }
 
+    // Taking a Grand Line test requires login
     match /ambassador_test_attempts/{attemptId} {
       allow read: if true;
-      allow create: if request.resource.data.testId is string &&
+      allow create: if isSignedIn() &&
+        request.resource.data.testId is string &&
         request.resource.data.score is number &&
         request.resource.data.totalQuestions is int;
       allow update, delete: if isAdmin() || (
@@ -390,29 +402,35 @@ service cloud.firestore {
     }
 
     // ─── 6. BOARDLY COMMONS (/commonsPosts, /postsPrivate, /posts, /commonsReports) ──
+    // Public read ONLY for published, non-hidden posts
     match /commonsPosts/{postId} {
-      allow read: if true;
-
-      allow create: if isSignedIn() && (
-        (
-          request.resource.data.isAnonymous == true &&
-          request.resource.data.authorUid == null
-        ) ||
-        (
-          request.resource.data.isAnonymous == false &&
-          request.resource.data.authorUid == request.auth.uid
-        )
+      allow read: if isAdmin() || (
+        !resource.data.get('isHidden', false) &&
+        resource.data.get('status', 'published') != 'removed'
       );
+
+      allow create: if isSignedIn() &&
+        request.resource.data.title is string &&
+        request.resource.data.title.size() >= 1 &&
+        request.resource.data.title.size() <= 300 &&
+        (!('description' in request.resource.data) || !(request.resource.data.description is string) || request.resource.data.description.size() <= 20000) && (
+          (
+            request.resource.data.isAnonymous == true &&
+            request.resource.data.authorUid == null
+          ) ||
+          (
+            request.resource.data.isAnonymous == false &&
+            request.resource.data.authorUid == request.auth.uid
+          )
+        );
 
       allow update: if isAdmin() || (
         isSignedIn() && (
-          // Author updating their own public or anonymous post
           resource.data.authorUid == request.auth.uid ||
           (
             exists(/databases/$(database)/documents/postsPrivate/$(postId)) &&
             get(/databases/$(database)/documents/postsPrivate/$(postId)).data.authorUid == request.auth.uid
           ) ||
-          // Community members updating vote/comment/save/report counters only
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'upvotes',
             'commentCount',
@@ -443,11 +461,14 @@ service cloud.firestore {
       }
 
       match /comments/{commentId} {
-        allow read: if true;
-        allow create: if isSignedIn() && (
-          request.resource.data.authorUid == request.auth.uid ||
-          (request.resource.data.isAnonymous == true && request.resource.data.authorUid == null)
-        );
+        allow read: if isAdmin() || !resource.data.get('isHidden', false);
+        allow create: if isSignedIn() &&
+          request.resource.data.body is string &&
+          request.resource.data.body.size() >= 1 &&
+          request.resource.data.body.size() <= 5000 && (
+            request.resource.data.authorUid == request.auth.uid ||
+            (request.resource.data.isAnonymous == true && request.resource.data.authorUid == null)
+          );
         allow update, delete: if isAdmin() || (
           isSignedIn() && resource.data.authorUid == request.auth.uid
         );
@@ -476,7 +497,7 @@ service cloud.firestore {
     }
 
     match /posts/{postId} {
-      allow read: if true;
+      allow read: if isAdmin() || !resource.data.get('isHidden', false);
       allow create: if isSignedIn() && (
         request.resource.data.get('uid', '') == request.auth.uid ||
         request.resource.data.get('user_id', '') == request.auth.uid
@@ -510,14 +531,19 @@ service cloud.firestore {
       }
     }
 
-    // ─── STUDY BUDDY COLLECTIONS ───────────────────────────────────────────────
+    // ─── STUDY BUDDY COLLECTIONS (Private to Owner/Participants & Admin) ───────
     match /study_buddy_presence/{userId} {
-      allow read: if isSignedIn();
+      allow read: if isOwner(userId) || isAdmin();
       allow create, update, delete: if isOwner(userId) || isAdmin();
     }
 
     match /study_buddy_logs/{logId} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.get('uid', '') == request.auth.uid ||
+          resource.data.get('userId', '') == request.auth.uid
+        )
+      );
       allow create: if isSignedIn() && (
         request.resource.data.get('uid', '') == request.auth.uid ||
         request.resource.data.get('userId', '') == request.auth.uid
@@ -531,7 +557,13 @@ service cloud.firestore {
     }
 
     match /study_buddy_messages/{msgId} {
-      allow read: if isSignedIn();
+      allow read: if isAdmin() || (
+        isSignedIn() && (
+          resource.data.get('senderUid', '') == request.auth.uid ||
+          resource.data.get('recipientUid', '') == request.auth.uid ||
+          resource.data.get('uid', '') == request.auth.uid
+        )
+      );
       allow create: if isSignedIn() && (
         request.resource.data.get('senderUid', '') == request.auth.uid ||
         request.resource.data.get('uid', '') == request.auth.uid
@@ -585,7 +617,9 @@ service cloud.firestore {
 
     match /programApplications/{appId} {
       allow read: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
-      allow create: if true;
+      allow create: if isSignedIn() && (
+        request.resource.data.get('uid', request.auth.uid) == request.auth.uid
+      );
       allow update, delete: if isAdmin();
     }
 
@@ -633,13 +667,14 @@ service cloud.firestore {
 
     match /contactMessages/{msgId} {
       allow read: if isAdmin();
-      allow create: if isValidEmail(request.resource.data.email);
+      allow create: if isValidEmail(request.resource.data.email) &&
+        (!('message' in request.resource.data) || (request.resource.data.message is string && request.resource.data.message.size() <= 5000));
       allow update, delete: if isAdmin();
     }
 
     match /contact_inquiries/{msgId} {
       allow read: if isAdmin();
-      allow create: if true;
+      allow create: if (!('message' in request.resource.data) || (request.resource.data.message is string && request.resource.data.message.size() <= 5000));
       allow update, delete: if isAdmin();
     }
 

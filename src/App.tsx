@@ -50,21 +50,41 @@ function lazyWithRetry<T extends React.ComponentType<any>>(
 import { ScrollToTop } from './components/ui/ScrollToTop';
 import { WallpaperBackground } from './components/WallpaperBackground';
 
-// Public pages (lazy with retry)
+// Public Marketing, Knowledge & Community routes
 const LandingPage = lazyWithRetry(() => import('./pages/LandingPage'));
+const AboutPage = lazyWithRetry(() => import('./pages/AboutPage'));
 const FeaturesPage = lazyWithRetry(() => import('./pages/FeaturesPage'));
+const HowItWorksPage = lazyWithRetry(() => import('./pages/HowItWorksPage'));
+const FaqPage = lazyWithRetry(() => import('./pages/FaqPage'));
 const CrewPage = lazyWithRetry(() => import('./pages/crew/CrewPage'));
+const CrewPublicDetailPage = lazyWithRetry(() => import('./pages/crew/CrewPublicDetailPage'));
 const ArenaPage = lazyWithRetry(() => import('./pages/ArenaPage'));
 const PricingPage = lazyWithRetry(() => import('./pages/PricingPage'));
 const NakamaCaptainsPage = lazyWithRetry(() => import('./pages/NakamaCaptainsPage'));
+const CaptainPublicProfilePage = lazyWithRetry(() => import('./pages/captain/CaptainPublicProfilePage'));
 const GrandLinePage = lazyWithRetry(() => import('./pages/GrandLinePage'));
 const GrandLineAboutPage = lazyWithRetry(() => import('./pages/GrandLineAboutPage'));
+const GrandLineLeaderboardPage = lazyWithRetry(() => import('./pages/GrandLineLeaderboardPage'));
+const GrandLineTestInfoPage = lazyWithRetry(() => import('./pages/GrandLineTestInfoPage'));
 const GrandLineTestRunnerPage = lazyWithRetry(() => import('./pages/GrandLineTestRunnerPage'));
 const PrivacyPage = lazyWithRetry(() => import('./pages/PrivacyPage'));
 const TermsPage = lazyWithRetry(() => import('./pages/TermsPage'));
 const ContactPage = lazyWithRetry(() => import('./pages/ContactPage'));
 const StorePage = lazyWithRetry(() => import('./pages/store/StorePage'));
+const StoreItemDetailPage = lazyWithRetry(() => import('./pages/store/StoreItemDetailPage'));
 const KobansPage = lazyWithRetry(() => import('./pages/KobansPage'));
+const McqsHubPage = lazyWithRetry(() => import('./pages/mcqs/McqsHubPage'));
+const McqSubjectPage = lazyWithRetry(() => import('./pages/mcqs/McqSubjectPage'));
+const McqChapterPage = lazyWithRetry(() => import('./pages/mcqs/McqChapterPage'));
+const MaterialLibraryPage = lazyWithRetry(() => import('./pages/material/MaterialLibraryPage'));
+const MaterialDetailPage = lazyWithRetry(() => import('./pages/material/MaterialDetailPage'));
+const MaterialSubjectPage = lazyWithRetry(() => import('./pages/material/MaterialSubjectPage'));
+const PublicPostDetailPage = lazyWithRetry(() => import('./pages/commons/PublicPostDetailPage'));
+const CommonsSubjectPage = lazyWithRetry(() => import('./pages/commons/CommonsSubjectPage'));
+const PublicUserProfilePage = lazyWithRetry(() => import('./pages/profile/PublicUserProfilePage'));
+const SearchPage = lazyWithRetry(() => import('./pages/SearchPage'));
+const NotFoundPage = lazyWithRetry(() => import('./pages/NotFoundPage'));
+const GonePage = lazyWithRetry(() => import('./pages/GonePage'));
 
 // Auth pages (lazy with retry) — use AuthLayout ONLY, NO public Navbar or Footer
 const LoginPage = lazyWithRetry(() => import('./pages/LoginPage'));
@@ -189,6 +209,7 @@ const CommonsAboutPage = lazyWithRetry(() =>
 );
 
 import { NinjaFightLoader } from './components/ui/NinjaFightLoader';
+import { AuthGateProvider } from './contexts/AuthGateContext';
 
 function PageLoader() {
   return <NinjaFightLoader />;
@@ -206,6 +227,7 @@ function AppInner() {
         {/* Test Engine — full-screen distraction-free, no Navbar/Footer */}
         <Route path="/test/:attemptId/result" element={<TestResultPage />} />
         <Route path="/test/:attemptId" element={<TestRunnerPage />} />
+        <Route path="/grand-line/test/:testId/run" element={<GrandLineTestRunnerPage />} />
 
         {/* Super-Admin Portal — strictly guarded for admin, no public Navbar/Footer */}
         <Route
@@ -232,11 +254,11 @@ function AppInner() {
           <Route path="*" element={<Navigate to="/admin" replace />} />
         </Route>
 
-        {/* Dashboard shell (Student Portal) — no public Navbar/Footer */}
+        {/* Dashboard shell (Student Portal) — Login-only, noindex */}
         <Route path="/dashboard" element={<DashboardShell />}>
           <Route index element={<OverviewPage />} />
           <Route path="commons" element={<CommonsFeedPage />} />
-          <Route path="practice" element={<Navigate to="/dashboard" replace />} />
+          <Route path="practice" element={<PracticePage />} />
           <Route path="notifications" element={<NotificationsPage />} />
           <Route path="weak-chapters" element={<Navigate to="/dashboard/notifications" replace />} />
           <Route path="streaks" element={<StreaksPage />} />
@@ -256,16 +278,42 @@ function AppInner() {
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Route>
 
-        {/* Global shortcuts for plans, profile and settings */}
-        <Route path="/plans" element={<Navigate to="/dashboard/plans" replace />} />
-        <Route path="/profile" element={<Navigate to="/dashboard/profile" replace />} />
-        {/* Dedicated /settings route */}
+        {/* Dedicated Login-Only Top-Level Routes (wrapped in DashboardShell, noindex) */}
+        <Route path="/practice" element={<DashboardShell />}>
+          <Route index element={<PracticePage />} />
+        </Route>
+        <Route path="/results" element={<DashboardShell />}>
+          <Route index element={<ResultsListPage />} />
+        </Route>
+        <Route path="/commons/new" element={<DashboardShell />}>
+          <Route index element={<CommonsFeedPage initialCompose={true} />} />
+        </Route>
+        <Route path="/messages" element={<DashboardShell />}>
+          <Route index element={<CommonsFeedPage />} />
+        </Route>
+        <Route path="/notifications" element={<DashboardShell />}>
+          <Route index element={<NotificationsPage />} />
+        </Route>
+        <Route path="/saved" element={<DashboardShell />}>
+          <Route index element={<CommonsFeedPage />} />
+        </Route>
         <Route path="/settings" element={<DashboardShell />}>
           <Route index element={<SettingsPage />} />
         </Route>
-        <Route path="/commons" element={<Navigate to="/dashboard/commons" replace />} />
+        <Route path="/profile/edit" element={<DashboardShell />}>
+          <Route index element={<ProfilePage />} />
+        </Route>
+        <Route path="/wallet" element={<DashboardShell />}>
+          <Route index element={<PlansBillingPage />} />
+        </Route>
+        <Route path="/checkout" element={<DashboardShell />}>
+          <Route index element={<PlansBillingPage />} />
+        </Route>
+
+        {/* Global shortcuts for plans and profile */}
+        <Route path="/plans" element={<Navigate to="/dashboard/plans" replace />} />
+        <Route path="/profile" element={<Navigate to="/dashboard/profile" replace />} />
         <Route path="/commons/contact" element={<Navigate to="/contact" replace />} />
-        <Route path="/commons/guidelines" element={<CommunityGuidelinesPage />} />
 
         {/* Auth routes ONLY (use AuthLayout ONLY, NO public Navbar or Footer) */}
         <Route path="/login" element={<LoginPage />} />
@@ -276,10 +324,7 @@ function AppInner() {
         {/* Onboarding — uses OnboardingShell */}
         <Route path="/onboarding" element={<OnboardingPage />} />
 
-        {/* Grand Line Test Runner — full-screen distraction-free, NO Navbar or Footer */}
-        <Route path="/grand-line/test/:testId" element={<GrandLineTestRunnerPage />} />
-
-        {/* Crew Standalone Portal — keeps bottom navigation bar, NO public top Navbar/Footer */}
+        {/* Crew Standalone Portal */}
         <Route path="/crew" element={<CrewPage />} />
         <Route path="/crew/my" element={<CrewDashboardPage />} />
         <Route path="/crew/dashboard" element={<CrewDashboardPage />} />
@@ -293,34 +338,75 @@ function AppInner() {
         <Route path="/captain" element={<Navigate to="/dashboard/captain" replace />} />
         <Route path="/captain/dashboard" element={<Navigate to="/dashboard/captain" replace />} />
         <Route path="/captain/apply" element={<CaptainApplyPage />} />
-        <Route path="/captain/leaderboard" element={<CaptainLeaderboardPage />} />
-        <Route path="/nakama-captain" element={<Navigate to="/nakama-captains" replace />} />
-        <Route path="/crew-ambassador" element={<Navigate to="/nakama-captains" replace />} />
-        <Route path="/ambassador" element={<Navigate to="/nakama-captains" replace />} />
+        <Route path="/captains/apply" element={<CaptainApplyPage />} />
+        <Route path="/nakama-captain" element={<Navigate to="/captains" replace />} />
+        <Route path="/crew-ambassador" element={<Navigate to="/captains" replace />} />
+        <Route path="/ambassador" element={<Navigate to="/captains" replace />} />
 
-        {/* Public Marketing routes ONLY (wrapped by PublicLayout with Navbar + Footer) */}
+        {/* Public Multi-Page Website Routes (wrapped by PublicLayout with Navbar + Footer) */}
         <Route element={<PublicLayout />}>
+          {/* Home, About, Features, How It Works, FAQ, Pricing, Legal, Contact */}
           <Route path="/" element={<LandingPage />} />
+          <Route path="/about" element={<AboutPage />} />
           <Route path="/features" element={<FeaturesPage />} />
-          <Route path="/about" element={<Navigate to="/commons/about" replace />} />
-          <Route path="/commons/about" element={<CommonsAboutPage />} />
-          <Route path="/about-commons" element={<Navigate to="/commons/about" replace />} />
-          <Route path="/arena" element={<ArenaPage />} />
+          <Route path="/how-it-works" element={<HowItWorksPage />} />
+          <Route path="/faq" element={<FaqPage />} />
           <Route path="/pricing" element={<PricingPage />} />
-          <Route path="/nakama-captains" element={<NakamaCaptainsPage />} />
-          <Route path="/grand-line" element={<GrandLinePage />} />
-          <Route path="/grand-line/about" element={<GrandLineAboutPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/contact" element={<ContactPage />} />
+          <Route path="/guidelines" element={<CommunityGuidelinesPage />} />
+          <Route path="/commons/guidelines" element={<CommunityGuidelinesPage />} />
+
+          {/* Public MCQ Subject & Chapter Pages */}
+          <Route path="/mcqs" element={<McqsHubPage />} />
+          <Route path="/mcqs/:subject" element={<McqSubjectPage />} />
+          <Route path="/mcqs/:subject/:chapter" element={<McqChapterPage />} />
+
+          {/* Public Boardly Commons Feed, Post Permalinks, Subject Feeds & Info */}
+          <Route path="/commons" element={<CommonsFeedPage />} />
+          <Route path="/commons/about" element={<CommonsAboutPage />} />
+          <Route path="/about-commons" element={<Navigate to="/commons/about" replace />} />
+          <Route path="/commons/post/:idSlug" element={<PublicPostDetailPage />} />
+          <Route path="/commons/subject/:subject" element={<CommonsSubjectPage />} />
+
+          {/* Public Study Material Library, Subject Pages & Material Detail Pages */}
+          <Route path="/material" element={<MaterialLibraryPage />} />
+          <Route path="/material/subject/:subject" element={<MaterialSubjectPage />} />
+          <Route path="/material/:idSlug" element={<MaterialDetailPage />} />
+
+          {/* Public Grand Line, Test Info & Leaderboard */}
+          <Route path="/grand-line" element={<GrandLinePage />} />
+          <Route path="/grand-line/about" element={<GrandLineAboutPage />} />
+          <Route path="/grand-line/leaderboard" element={<GrandLineLeaderboardPage />} />
+          <Route path="/grand-line/test/:idSlug" element={<GrandLineTestInfoPage />} />
+          <Route path="/arena" element={<ArenaPage />} />
+
+          {/* Public Nakama Captains Overview, Leaderboard & Public Captain Profiles */}
+          <Route path="/captains" element={<NakamaCaptainsPage />} />
+          <Route path="/nakama-captains" element={<NakamaCaptainsPage />} />
+          <Route path="/captain/leaderboard" element={<CaptainLeaderboardPage />} />
+          <Route path="/captains/leaderboard" element={<CaptainLeaderboardPage />} />
+          <Route path="/captains/:username" element={<CaptainPublicProfilePage />} />
+
+          {/* Public Study Crew Detail Page */}
+          <Route path="/crew/:idSlug" element={<CrewPublicDetailPage />} />
+
+          {/* Public Store & Cosmetic Item Detail Pages */}
           <Route path="/store" element={<StorePage />} />
           <Route path="/store/get-kobans" element={<StorePage />} />
+          <Route path="/store/:item" element={<StoreItemDetailPage />} />
           <Route path="/kobans" element={<KobansPage />} />
           <Route path="/about-kobans" element={<Navigate to="/kobans" replace />} />
-        </Route>
 
-        {/* Global Catch-all fallback: redirect unknown routes to home page */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Public User Profile & Search */}
+          <Route path="/u/:username" element={<PublicUserProfilePage />} />
+          <Route path="/search" element={<SearchPage />} />
+
+          {/* Custom 410 Gone & 404 Not Found Pages */}
+          <Route path="/410" element={<GonePage />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
       </Routes>
     </Suspense>
     <ProfileModalHost />
@@ -337,10 +423,13 @@ export function App() {
   return (
     <AuthProvider>
       <ProfileModalProvider>
-        <AppInner />
+        <AuthGateProvider>
+          <AppInner />
+        </AuthGateProvider>
       </ProfileModalProvider>
     </AuthProvider>
   );
 }
 
 export default App;
+

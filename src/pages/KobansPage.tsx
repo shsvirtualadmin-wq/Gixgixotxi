@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { useAuthGate } from '@/contexts/AuthGateContext';
 import { PageMeta } from '@/components/ui/PageMeta';
 import { KobanIcon, KobanAmount } from '@/components/koban/KobanIcon';
 import { COSMETICS_CATALOG } from '@/data/cosmeticsCatalog';
@@ -50,6 +52,9 @@ const KOBANS_FAQS = [
 ];
 
 export function KobansPage() {
+  const { user } = useAuth();
+  const { requireAuth } = useAuthGate();
+  const navigate = useNavigate();
   const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
   const toggleFaq = (idx: number) => {
@@ -68,26 +73,29 @@ export function KobansPage() {
       />
 
       {/* ─── HERO SECTION ──────────────────────────────────────────────────── */}
-      <section className="relative pt-6 sm:pt-12 pb-12 sm:pb-16 overflow-hidden border-b border-[var(--border)]">
+      <section className="relative pt-6 sm:pt-12 pb-12 sm:pb-16 overflow-hidden">
         {/* Subtle radial background glow */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] h-[480px] bg-gradient-to-tr from-[#D71920]/10 via-[#E8A317]/10 to-transparent blur-3xl pointer-events-none rounded-full" />
 
         <div className="boardly-container max-w-4xl mx-auto px-4 sm:px-6 text-center space-y-6 relative z-10">
-          {/* Animated Hero Coin */}
+          {/* Animated Hero Coin in Glass Container */}
           <div className="inline-flex items-center justify-center mb-2">
-            <div className="relative p-3 rounded-3xl bg-[var(--surface-2)] border border-[#E8A317]/40 shadow-[0_0_30px_rgba(232,163,23,0.25)]">
+            <div className="glass-card relative p-4 rounded-[28px] border-[#E8A317]/40 shadow-[0_0_35px_rgba(232,163,23,0.25)]">
               <KobanIcon size={80} animated={true} />
             </div>
           </div>
 
           <div className="space-y-3">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#E8A317]/15 border border-[#E8A317]/40 text-[#FFD66B] text-xs font-heading font-bold">
+            <div className="section-chip border-[#E8A317]/40 bg-[#E8A317]/15 text-[#FFD66B]">
               <span>🪙 Official In-App Credit</span>
               <span>•</span>
               <span>10 Kobans = PKR 1</span>
             </div>
 
-            <h1 className="text-3xl sm:text-5xl font-extrabold font-heading text-[var(--text)] tracking-tight">
+            <h1
+              className="text-3xl sm:text-5xl font-extrabold text-[var(--text)] tracking-tight font-dot"
+              style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
+            >
               About Kobans
             </h1>
 
@@ -99,27 +107,51 @@ export function KobansPage() {
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             <Link
               to="/store"
-              className="btn-red text-xs sm:text-sm px-5 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg"
+              className="btn-primary text-xs sm:text-sm px-6 py-3 rounded-full font-bold flex items-center gap-2 shadow-lg"
+              style={{ height: '50px' }}
             >
               <span>Explore Boardly Store</span>
               <ArrowRight size={16} />
             </Link>
-            <Link
-              to="/store/get-kobans"
-              className="btn-outline text-xs sm:text-sm px-5 py-3 rounded-xl font-bold flex items-center gap-2"
-            >
-              <Plus size={16} />
-              <span>Get Kobans (from PKR 50)</span>
-            </Link>
+            {user ? (
+              <Link
+                to="/store/get-kobans"
+                className="btn-secondary text-xs sm:text-sm px-6 py-3 rounded-full font-bold flex items-center gap-2"
+                style={{ height: '50px' }}
+              >
+                <Plus size={16} />
+                <span>Get Kobans (from PKR 50)</span>
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={() =>
+                  requireAuth(
+                    'purchase Kobans for your student wallet',
+                    () => navigate('/store/get-kobans'),
+                    '/store/get-kobans'
+                  )
+                }
+                className="btn-secondary text-xs sm:text-sm px-6 py-3 rounded-full font-bold flex items-center gap-2 cursor-pointer"
+                style={{ height: '50px' }}
+              >
+                <Plus size={16} />
+                <span>Get Kobans (from PKR 50)</span>
+              </button>
+            )}
           </div>
         </div>
       </section>
 
       {/* ─── KEY PILLARS / ECONOMY RULES ────────────────────────────────────── */}
-      <section className="py-14 sm:py-20 border-b border-[var(--border)]">
+      <section className="py-12 sm:py-16">
         <div className="boardly-container max-w-5xl mx-auto px-4 sm:px-6 space-y-8">
           <div className="text-center space-y-2 max-w-2xl mx-auto">
-            <h2 className="text-xl sm:text-3xl font-heading font-extrabold text-[var(--text)]">
+            <div className="section-chip">Core Economics</div>
+            <h2
+              className="text-xl sm:text-3xl font-extrabold text-[var(--text)] font-dot"
+              style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
+            >
               The Principles of the Kobans Economy
             </h2>
             <p className="text-xs sm:text-sm text-[var(--muted)]">
@@ -128,8 +160,8 @@ export function KobansPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-[#E8A317]/15 border border-[#E8A317]/40 flex items-center justify-center text-[#FFD66B]">
+            <div className="glass-card p-6 rounded-[24px] space-y-3">
+              <div className="w-10 h-10 rounded-2xl bg-[#E8A317]/15 border border-[#E8A317]/40 flex items-center justify-center text-[#FFD66B]">
                 <KobanIcon size={22} />
               </div>
               <h3 className="font-heading font-bold text-base text-[var(--text)]">Fixed 10:1 Ratio</h3>
@@ -138,8 +170,8 @@ export function KobansPage() {
               </p>
             </div>
 
-            <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-cyan-950/40 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
+            <div className="glass-card p-6 rounded-[24px] space-y-3">
+              <div className="w-10 h-10 rounded-2xl bg-cyan-950/40 border border-cyan-500/40 flex items-center justify-center text-cyan-400">
                 <ShieldCheck size={22} />
               </div>
               <h3 className="font-heading font-bold text-base text-[var(--text)]">Strictly Non-Pay-To-Win</h3>
@@ -148,8 +180,8 @@ export function KobansPage() {
               </p>
             </div>
 
-            <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-3">
-              <div className="w-10 h-10 rounded-xl bg-purple-950/40 border border-purple-500/40 flex items-center justify-center text-purple-400">
+            <div className="glass-card p-6 rounded-[24px] space-y-3">
+              <div className="w-10 h-10 rounded-2xl bg-purple-950/40 border border-purple-500/40 flex items-center justify-center text-purple-400">
                 <Lock size={22} />
               </div>
               <h3 className="font-heading font-bold text-base text-[var(--text)]">No Expiry &amp; Secure Ledger</h3>
@@ -162,13 +194,14 @@ export function KobansPage() {
       </section>
 
       {/* ─── HOW TO GET KOBANS (3-STEP PROCESS) ─────────────────────────────── */}
-      <section className="py-14 sm:py-20 border-b border-[var(--border)] bg-[var(--surface-2)]">
+      <section className="py-12 sm:py-16">
         <div className="boardly-container max-w-4xl mx-auto px-4 sm:px-6 space-y-10">
           <div className="text-center space-y-2">
-            <span className="text-xs font-mono font-bold text-[#E8A317] uppercase tracking-wider">
-              Verification Workflow
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-heading font-extrabold text-[var(--text)]">
+            <div className="section-chip">Verification Workflow</div>
+            <h2
+              className="text-2xl sm:text-3xl font-extrabold text-[var(--text)] font-dot"
+              style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
+            >
               How to Get Kobans in 3 Steps
             </h2>
             <p className="text-xs sm:text-sm text-[var(--muted)] max-w-md mx-auto">
@@ -177,8 +210,8 @@ export function KobansPage() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-3 relative">
-              <span className="w-7 h-7 rounded-full bg-[#D71920] text-white font-mono text-xs font-bold flex items-center justify-center">
+            <div className="glass-card p-6 rounded-[24px] space-y-3 relative">
+              <span className="w-7 h-7 rounded-full bg-[#D71920] text-white font-dot text-xs font-bold flex items-center justify-center">
                 1
               </span>
               <h3 className="font-heading font-bold text-base text-[var(--text)]">Choose Your Amount</h3>
@@ -187,8 +220,8 @@ export function KobansPage() {
               </p>
             </div>
 
-            <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-3 relative">
-              <span className="w-7 h-7 rounded-full bg-[#D71920] text-white font-mono text-xs font-bold flex items-center justify-center">
+            <div className="glass-card p-6 rounded-[24px] space-y-3 relative">
+              <span className="w-7 h-7 rounded-full bg-[#D71920] text-white font-dot text-xs font-bold flex items-center justify-center">
                 2
               </span>
               <h3 className="font-heading font-bold text-base text-[var(--text)]">Transfer via Mobile Bank</h3>
@@ -197,8 +230,8 @@ export function KobansPage() {
               </p>
             </div>
 
-            <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] space-y-3 relative">
-              <span className="w-7 h-7 rounded-full bg-[#D71920] text-white font-mono text-xs font-bold flex items-center justify-center">
+            <div className="glass-card p-6 rounded-[24px] space-y-3 relative">
+              <span className="w-7 h-7 rounded-full bg-[#D71920] text-white font-dot text-xs font-bold flex items-center justify-center">
                 3
               </span>
               <h3 className="font-heading font-bold text-base text-[var(--text)]">Submit TRX ID</h3>
@@ -211,14 +244,15 @@ export function KobansPage() {
       </section>
 
       {/* ─── WHAT YOU CAN UNLOCK (STORE PREVIEW) ────────────────────────────── */}
-      <section className="py-14 sm:py-20 border-b border-[var(--border)]">
+      <section className="py-12 sm:py-16">
         <div className="boardly-container max-w-5xl mx-auto px-4 sm:px-6 space-y-8">
           <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
             <div className="space-y-1.5">
-              <span className="text-xs font-mono font-bold text-[#E8A317] uppercase tracking-wider">
-                Aesthetics &amp; Loadouts
-              </span>
-              <h2 className="text-2xl sm:text-3xl font-heading font-extrabold text-[var(--text)]">
+              <div className="section-chip">Aesthetics &amp; Loadouts</div>
+              <h2
+                className="text-2xl sm:text-3xl font-extrabold text-[var(--text)] font-dot"
+                style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
+              >
                 What You Can Buy With Kobans
               </h2>
               <p className="text-xs sm:text-sm text-[var(--muted)]">
@@ -227,7 +261,7 @@ export function KobansPage() {
             </div>
             <Link
               to="/store"
-              className="btn-red text-xs px-4 py-2 rounded-xl font-bold inline-flex items-center gap-1.5 self-start sm:self-auto shrink-0 shadow-sm"
+              className="btn-primary text-xs px-5 py-2.5 rounded-full font-bold inline-flex items-center gap-1.5 self-start sm:self-auto shrink-0 shadow-sm"
             >
               <span>View Full 18-Item Store</span>
               <ArrowRight size={14} />
@@ -236,14 +270,14 @@ export function KobansPage() {
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
             {/* Sample Frame */}
-            <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between gap-4">
+            <div className="glass-card glass-card-interactive p-5 rounded-[24px] flex flex-col justify-between gap-4">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-mono uppercase font-bold px-2 py-0.5 rounded-full border border-cyan-500/40 bg-cyan-950/40 text-cyan-400">
                   Avatar Frame
                 </span>
                 <KobanAmount value={sampleFrame.priceKobans} iconSize={14} className="text-xs text-[#FFD66B]" />
               </div>
-              <div className="h-32 rounded-xl bg-[var(--surface-2)] flex items-center justify-center">
+              <div className="h-32 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center">
                 <CosmeticFrame itemId={sampleFrame.id} size={76}>
                   <MatrixAvatar avatarKey="skull-01" variant="red-on-black" size={58} />
                 </CosmeticFrame>
@@ -255,14 +289,14 @@ export function KobansPage() {
             </div>
 
             {/* Sample Nameplate */}
-            <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between gap-4">
+            <div className="glass-card glass-card-interactive p-5 rounded-[24px] flex flex-col justify-between gap-4">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-mono uppercase font-bold px-2 py-0.5 rounded-full border border-purple-500/40 bg-purple-950/40 text-purple-400">
                   Nameplate
                 </span>
                 <KobanAmount value={sampleNameplate.priceKobans} iconSize={14} className="text-xs text-[#FFD66B]" />
               </div>
-              <div className="h-32 rounded-xl bg-[var(--surface-2)] flex items-center justify-center p-2 overflow-hidden">
+              <div className="h-32 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center p-2 overflow-hidden">
                 <div className="w-full flex items-center justify-center overflow-hidden px-1">
                   <CosmeticNameplate
                     itemId={sampleNameplate.id}
@@ -280,14 +314,14 @@ export function KobansPage() {
             </div>
 
             {/* Sample Effect */}
-            <div className="p-5 rounded-2xl bg-[var(--card)] border border-[var(--border)] flex flex-col justify-between gap-4">
+            <div className="glass-card glass-card-interactive p-5 rounded-[24px] flex flex-col justify-between gap-4">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] font-mono uppercase font-bold px-2 py-0.5 rounded-full border border-pink-500/40 bg-pink-950/40 text-pink-400">
                   Aura Effect
                 </span>
                 <KobanAmount value={sampleEffect.priceKobans} iconSize={14} className="text-xs text-[#FFD66B]" />
               </div>
-              <div className="h-32 rounded-xl bg-[var(--surface-2)] flex items-center justify-center">
+              <div className="h-32 rounded-2xl bg-white/[0.04] border border-white/10 flex items-center justify-center">
                 <CosmeticEffect itemId={sampleEffect.id} size={82}>
                   <MatrixAvatar avatarKey="skull-01" variant="red-on-black" size={54} />
                 </CosmeticEffect>
@@ -302,16 +336,19 @@ export function KobansPage() {
       </section>
 
       {/* ─── NAKAMA CAPTAIN MONTHLY ALLOTMENT NOTE ─────────────────────────── */}
-      <section className="py-12 border-b border-[var(--border)] bg-gradient-to-r from-[rgba(215,25,33,0.08)] via-[rgba(232,163,23,0.06)] to-transparent">
+      <section className="py-10">
         <div className="boardly-container max-w-4xl mx-auto px-4 sm:px-6">
-          <div className="p-6 sm:p-8 rounded-3xl bg-[var(--card)] border border-[var(--border)] flex flex-col sm:flex-row items-center justify-between gap-6">
+          <div className="glass-card p-6 sm:p-8 rounded-[28px] border-[#E8A317]/35 shadow-[0_20px_50px_rgba(232,163,23,0.12)] flex flex-col sm:flex-row items-center justify-between gap-6">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#D71920]/10 border border-[#D71920]/30 flex items-center justify-center text-[#D71920] shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-[#E8A317]/15 border border-[#E8A317]/35 flex items-center justify-center text-[#FFD66B] shrink-0">
                 <Award size={26} />
               </div>
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-heading font-extrabold text-base sm:text-lg text-[var(--text)]">
+                  <h3
+                    className="font-extrabold text-base sm:text-lg text-[var(--text)] font-dot"
+                    style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
+                  >
                     Nakama Captain Monthly Allotment
                   </h3>
                   <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded-full bg-[#E8A317]/15 border border-[#E8A317]/40 text-[#FFD66B]">
@@ -326,7 +363,7 @@ export function KobansPage() {
 
             <Link
               to="/nakama-captains"
-              className="btn-outline text-xs px-4 py-2.5 rounded-xl font-bold whitespace-nowrap shrink-0 self-stretch sm:self-auto text-center"
+              className="btn-secondary text-xs px-4 py-2.5 rounded-full font-bold whitespace-nowrap shrink-0 self-stretch sm:self-auto text-center"
             >
               Captain Program Info &rarr;
             </Link>
@@ -335,13 +372,16 @@ export function KobansPage() {
       </section>
 
       {/* ─── COMPREHENSIVE FAQ SECTION ──────────────────────────────────────── */}
-      <section className="py-14 sm:py-20">
+      <section className="py-12 sm:py-16">
         <div className="boardly-container max-w-3xl mx-auto px-4 sm:px-6 space-y-8">
           <div className="text-center space-y-2">
-            <div className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-[#E8A317] uppercase">
-              <HelpCircle size={14} /> Frequently Asked Questions
+            <div className="section-chip">
+              <HelpCircle size={14} /> <span>Frequently Asked Questions</span>
             </div>
-            <h2 className="text-2xl sm:text-3xl font-heading font-extrabold text-[var(--text)]">
+            <h2
+              className="text-2xl sm:text-3xl font-extrabold text-[var(--text)] font-dot"
+              style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
+            >
               Got Questions About Kobans?
             </h2>
           </div>
@@ -352,12 +392,12 @@ export function KobansPage() {
               return (
                 <div
                   key={idx}
-                  className="rounded-2xl bg-[var(--card)] border border-[var(--border)] overflow-hidden transition-all"
+                  className="glass-row rounded-[22px] overflow-hidden transition-all"
                 >
                   <button
                     type="button"
                     onClick={() => toggleFaq(idx)}
-                    className="w-full p-4 sm:p-5 text-left flex items-center justify-between gap-4 cursor-pointer hover:bg-[var(--surface-hover)] transition-colors"
+                    className="w-full p-4 sm:p-5 text-left flex items-center justify-between gap-4 cursor-pointer hover:bg-white/[0.04] transition-colors"
                   >
                     <span className="font-heading font-bold text-sm sm:text-base text-[var(--text)]">
                       {faq.q}
@@ -368,7 +408,7 @@ export function KobansPage() {
                   </button>
 
                   {isOpen && (
-                    <div className="px-4 sm:px-5 pb-5 pt-1 text-xs sm:text-sm text-[var(--muted)] leading-relaxed border-t border-[var(--border)]/60 animate-in fade-in">
+                    <div className="px-4 sm:px-5 pb-5 pt-1 text-xs sm:text-sm text-[var(--muted)] leading-relaxed border-t border-white/10 animate-in fade-in">
                       {faq.a}
                     </div>
                   )}
@@ -378,7 +418,7 @@ export function KobansPage() {
           </div>
 
           {/* Support Helpline Note */}
-          <div className="p-4 rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] text-xs text-[var(--muted)] flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
+          <div className="glass-card p-4 rounded-2xl text-xs text-[var(--muted)] flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left">
             <div className="flex items-center gap-2">
               <Mail size={16} className="text-[#D71920] shrink-0" />
               <span>Need help with a payment? Contact <a href="mailto:support@boardly.cfd" className="text-[var(--text)] font-bold hover:underline">support@boardly.cfd</a></span>

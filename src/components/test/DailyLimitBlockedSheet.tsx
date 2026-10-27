@@ -47,26 +47,26 @@ export function DailyLimitBlockedSheet({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4 animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4 animate-in fade-in duration-200"
       onClick={onClose}
     >
       <div
-        className="w-full sm:max-w-md bg-[#0D0D0D] border border-[#222222] rounded-t-[28px] sm:rounded-[24px] p-6 text-white shadow-2xl space-y-6"
+        className="w-full sm:max-w-md glass-panel allow-backdrop-blur rounded-t-[28px] sm:rounded-[28px] p-6 text-[var(--text)] space-y-6"
         style={{ fontFamily: 'var(--font-heading)' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header with red indicator & Close */}
-        <div className="flex items-center justify-between pb-3 border-b border-[#222222]">
+        <div className="flex items-center justify-between pb-3 border-b border-[var(--glass-border)]">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-[#D71921] animate-pulse" />
-            <span className="text-[11px] font-semibold tracking-wider uppercase text-[#888888]">
+            <span className="text-[11px] font-semibold tracking-wider uppercase text-[var(--text-muted)]">
               Daily Starter Limit
             </span>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-full border border-[#222222] flex items-center justify-center text-[#888888] hover:text-white hover:border-white transition-colors cursor-pointer"
+            className="w-8 h-8 rounded-full glass-pill flex items-center justify-center text-[var(--text-muted)] hover:text-[var(--text)] transition-colors cursor-pointer"
             aria-label="Close"
           >
             <X size={15} />
@@ -76,24 +76,24 @@ export function DailyLimitBlockedSheet({
         {/* Content: Nothing-style dot counters */}
         <div className="space-y-4">
           <div>
-            <div className="text-[12px] text-[#888888] uppercase tracking-wider mb-1">
+            <div className="text-[12px] text-[var(--text-muted)] uppercase tracking-wider mb-1">
               Daily quota reached
             </div>
-            <div className="font-dot text-[30px] sm:text-[34px] font-bold text-white tracking-tight leading-none mb-1">
+            <div className="font-dot text-[30px] sm:text-[34px] font-bold text-[var(--text)] tracking-tight leading-none mb-1">
               You've used all {FREE_DAILY_TESTS} daily attempts.
             </div>
-            <p className="text-[13px] text-[#AAAAAA] leading-relaxed mt-2">
-              Free starter accounts can start up to <strong className="text-white">3 test attempts per calendar day</strong> (Pakistan Standard Time, UTC+5).
+            <p className="text-[13px] text-[var(--text-muted)] leading-relaxed mt-2">
+              Free starter accounts can start up to <strong className="text-[var(--text)]">3 test attempts per calendar day</strong> (Pakistan Standard Time, UTC+5).
             </p>
           </div>
 
           {/* Reset countdown box */}
-          <div className="p-3.5 rounded-[16px] bg-[#141414] border border-[#222222] flex items-center justify-between">
+          <div className="p-3.5 rounded-[18px] glass-row flex items-center justify-between">
             <div className="text-left">
-              <div className="text-[12px] font-medium text-amber-400">
+              <div className="text-[12px] font-semibold text-[#F59E0B]">
                 {countdownText || 'Calculating reset time...'}
               </div>
-              <div className="text-[10px] text-[#666666]">Asia/Karachi standard time</div>
+              <div className="text-[10px] text-[var(--text-muted)]">Asia/Karachi standard time</div>
             </div>
           </div>
         </div>
@@ -106,7 +106,7 @@ export function DailyLimitBlockedSheet({
               onClose();
               navigate('/dashboard/plans');
             }}
-            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-[14px] bg-[#D71921] hover:bg-[#b0141a] text-white font-semibold text-[13px] transition-all cursor-pointer shadow-lg shadow-red-950/40"
+            className="w-full btn-primary flex items-center justify-center gap-2 py-3 px-4 rounded-full font-semibold text-[13px] transition-all cursor-pointer"
           >
             <Zap size={16} />
             <span>Upgrade to Pro</span>
@@ -118,7 +118,7 @@ export function DailyLimitBlockedSheet({
               onClose();
               navigate('/crew');
             }}
-            className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-[14px] bg-[#141414] hover:bg-[#1f1f1f] border border-[#2E2E2E] text-white font-semibold text-[13px] transition-all cursor-pointer text-center"
+            className="w-full btn-secondary flex items-center justify-center gap-2 py-3 px-4 rounded-full font-semibold text-[13px] transition-all cursor-pointer text-center"
           >
             <Users size={16} className="shrink-0" />
             <span>Join a Crew / Buy Crew Pass (PKR 499) to unlock unlimited tests for your whole group</span>
@@ -129,7 +129,7 @@ export function DailyLimitBlockedSheet({
             <button
               type="button"
               onClick={onClose}
-              className="w-full py-2 px-3 rounded-lg border border-dashed border-emerald-500/50 bg-emerald-500/10 text-emerald-400 text-xs font-mono font-semibold hover:bg-emerald-500/20 transition-colors"
+              className="w-full py-2 px-3 rounded-lg border border-dashed border-emerald-500/50 bg-emerald-500/10 text-emerald-500 text-xs font-mono font-semibold hover:bg-emerald-500/20 transition-colors"
             >
               [Admin Bypass: Ignore Daily Quota]
             </button>

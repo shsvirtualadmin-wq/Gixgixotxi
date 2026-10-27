@@ -636,17 +636,16 @@ export function OverviewPage() {
 
       {/* ── TARGET BLUEPRINT PICKER MODAL ────────────────────────── */}
       {targetPickerOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-[var(--overlay-bg)] animate-in fade-in">
           <div
             onClick={(e) => e.stopPropagation()}
-            className="relative w-full max-w-xl max-h-[85vh] bg-[var(--surface)] border border-[var(--border)] rounded-t-[28px] sm:rounded-3xl p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto shadow-2xl animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 text-[var(--text)]"
+            className="relative w-full max-w-xl max-h-[85vh] glass-panel allow-backdrop-blur rounded-t-[28px] sm:rounded-[32px] p-5 sm:p-6 flex flex-col gap-4 overflow-y-auto animate-in slide-in-from-bottom-6 sm:zoom-in-95 duration-200 text-[var(--text)]"
           >
             {/* Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+            <div className="flex items-center justify-between pb-3 border-b border-[var(--glass-border)]">
               <div>
                 <h3
-                  className="text-lg font-bold text-[var(--text)]"
-                  style={{ fontFamily: 'var(--font-heading)' }}
+                  className="text-lg font-bold font-dot text-[var(--text)]"
                 >
                   Select Test Blueprint
                 </h3>
@@ -657,7 +656,7 @@ export function OverviewPage() {
               <button
                 type="button"
                 onClick={() => setTargetPickerOpen(false)}
-                className="p-1 rounded-full text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
+                className="p-1.5 rounded-full glass-pill text-[var(--text-muted)] hover:text-[var(--text)] cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -674,10 +673,10 @@ export function OverviewPage() {
                       setSelectedTarget(criteria.name);
                       setTargetPickerOpen(false);
                     }}
-                    className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2.5 ${
+                    className={`p-4 rounded-[22px] border transition-all cursor-pointer flex flex-col gap-2.5 ${
                       isSelected
-                        ? 'border-[var(--accent)] bg-[var(--surface-2)] ring-1 ring-[var(--accent)]'
-                        : 'border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-2)]'
+                        ? 'glass-row border-[var(--accent)] bg-[var(--accent-subtle)] ring-1 ring-[var(--accent)]'
+                        : 'glass-row hover:border-[var(--border-hover)]'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -686,7 +685,7 @@ export function OverviewPage() {
                           className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ${
                             isSelected
                               ? 'border-[var(--accent)] bg-[var(--accent)] text-white'
-                              : 'border-[var(--border)]'
+                              : 'border-[var(--glass-border)]'
                           }`}
                         >
                           {isSelected && <Check size={12} strokeWidth={3} />}
@@ -716,7 +715,7 @@ export function OverviewPage() {
                         className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full border ${
                           criteria.hasNegativeMarking
                             ? 'border-red-500/40 bg-red-500/10 text-red-500'
-                            : 'border-[var(--border)] bg-[var(--surface-2)] text-[var(--muted)]'
+                            : 'glass-pill text-[var(--muted)]'
                         }`}
                       >
                         {criteria.negativeMarking}
@@ -728,11 +727,11 @@ export function OverviewPage() {
                     </p>
 
                     {/* Criteria Highlights: MCQs, Time, Split */}
-                    <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[var(--border)]/60 text-[10px]">
-                      <span className="px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--border)] font-mono text-[var(--text)]">
+                    <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-[var(--glass-border)] text-[10px]">
+                      <span className="px-2 py-0.5 rounded-full glass-pill font-mono text-[var(--text)]">
                         {criteria.totalQuestions} MCQs
                       </span>
-                      <span className="px-2 py-0.5 rounded-md bg-[var(--surface-2)] border border-[var(--border)] font-mono text-[var(--text)]">
+                      <span className="px-2 py-0.5 rounded-full glass-pill font-mono text-[var(--text)]">
                         {criteria.durationMinutes} Minutes
                       </span>
                       <span className="text-[var(--muted)] truncate max-w-[280px]">
@@ -745,11 +744,11 @@ export function OverviewPage() {
             </div>
 
             {/* Footer */}
-            <div className="pt-2 border-t border-[var(--border)] flex justify-end">
+            <div className="pt-2 border-t border-[var(--glass-border)] flex justify-end">
               <button
                 type="button"
                 onClick={() => setTargetPickerOpen(false)}
-                className="btn-outline px-4 py-2 rounded-xl text-xs font-semibold cursor-pointer"
+                className="btn-secondary px-4 py-2 rounded-full text-xs font-semibold cursor-pointer"
               >
                 Close
               </button>

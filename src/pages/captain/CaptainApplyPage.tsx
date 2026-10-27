@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useAuthGate } from '@/contexts/AuthGateContext';
 import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { CheckCircle2, ArrowLeft, AlertCircle, LogIn, Clock } from 'lucide-react';
@@ -19,6 +20,7 @@ interface FieldErrors {
 
 export function CaptainApplyPage() {
   const { user, profileLoading } = useAuth();
+  const { requireAuth } = useAuthGate();
   const navigate = useNavigate();
 
   const [studentName, setStudentName] = useState(user?.displayName ?? '');
@@ -116,13 +118,9 @@ export function CaptainApplyPage() {
       submitting,
     });
 
-    // Requirement e: If not logged in, inform the user and redirect to login
+    // Requirement e: If not logged in, open the Sign in to continue modal
     if (!user) {
-      console.warn('[CaptainApply] Submit blocked: user is not logged in.');
-      setError('You must be signed in to submit an application. Redirecting to sign in...');
-      setTimeout(() => {
-        navigate('/login?redirect=/captain/apply');
-      }, 1200);
+      requireAuth(`submit your ${NAKAMA_CAPTAIN_SINGULAR} application`, undefined, '/captain/apply');
       return;
     }
 
@@ -192,19 +190,19 @@ export function CaptainApplyPage() {
   };
 
   return (
-    <div className="max-w-[640px] mx-auto py-8 px-4 sm:px-6 pb-36 sm:pb-44">
+    <div className="max-w-[680px] mx-auto py-8 px-4 sm:px-6 pb-36 sm:pb-44">
       <Link
-        to="/dashboard"
-        className="inline-flex items-center gap-2 text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--text)] transition-colors mb-6"
+        to={user ? '/dashboard' : '/captains'}
+        className="glass-pill px-3.5 py-1.5 text-xs sm:text-sm text-[var(--muted)] hover:text-[var(--text)] transition-colors mb-6 cursor-pointer"
         style={{ fontFamily: 'var(--font-heading)' }}
       >
         <ArrowLeft size={16} />
-        Back to Dashboard
+        {user ? 'Back to Dashboard' : 'Back to Nakama Captains'}
       </Link>
 
       {/* ── NOT LOGGED IN WARNING / REDIRECT CARD ──────────────────────────── */}
       {!profileLoading && !user && (
-        <Card className="p-6 mb-6 border border-amber-500/40 bg-amber-500/5">
+        <div className="glass-card p-6 mb-6 rounded-[24px] border-amber-500/35 bg-amber-500/5">
           <div className="flex items-start gap-4">
             <div className="w-10 h-10 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-500 shrink-0 mt-0.5">
               <AlertCircle size={20} />
@@ -219,8 +217,8 @@ export function CaptainApplyPage() {
               <div className="mt-4">
                 <button
                   type="button"
-                  onClick={() => navigate('/login?redirect=/captain/apply')}
-                  className="btn-red inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold cursor-pointer"
+                  onClick={() => requireAuth(`apply for ${NAKAMA_CAPTAIN_SINGULAR}`, undefined, '/captain/apply')}
+                  className="btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold cursor-pointer"
                 >
                   <LogIn size={14} />
                   <span>Sign In to Continue</span>
@@ -228,28 +226,28 @@ export function CaptainApplyPage() {
               </div>
             </div>
           </div>
-        </Card>
+        </div>
       )}
 
       {/* ── CONFIRMATION SCREEN ────────────────────────────────────────────── */}
       {submitted ? (
-        <Card className="text-center items-center py-12 px-6">
-          <div className="w-16 h-16 rounded-full bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-[var(--accent)] mb-3">
+        <div className="glass-panel text-center items-center py-12 px-6 rounded-[32px] flex flex-col">
+          <div className="w-16 h-16 rounded-full bg-white/[0.06] border border-white/10 flex items-center justify-center text-[var(--accent)] mb-3">
             <CheckCircle2 size={32} />
           </div>
 
           {/* Exact required text on confirmation screen */}
           <h2
-            className="text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight"
-            style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+            className="text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight font-dot"
+            style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
           >
             Application received. We&apos;ll email you after review.
           </h2>
 
           <div className="inline-flex items-center gap-2 mt-3 mb-2">
-            <Badge color="red-outline" dot>
+            <span className="glass-pill px-3 py-1 text-xs font-semibold text-[var(--red)] border-[#D71921]/40 bg-[#D71921]/15">
               Status: {existingApp?.status || 'Pending'}
-            </Badge>
+            </span>
           </div>
 
           <p className="text-sm text-[var(--muted)] max-w-md mt-2 leading-relaxed">
@@ -259,20 +257,23 @@ export function CaptainApplyPage() {
           <div className="pt-6 w-full max-w-xs flex flex-col gap-2">
             <button
               onClick={() => navigate('/dashboard')}
-              className="btn-red w-full cursor-pointer"
+              className="btn-primary w-full cursor-pointer"
               style={{ height: '52px' }}
             >
               Return to Student Dashboard
             </button>
           </div>
-        </Card>
+        </div>
       ) : (
-        <Card className="p-6 sm:p-8 relative">
+        <div className="glass-panel p-6 sm:p-8 rounded-[32px] relative">
           <div>
-            <span className="badge-pill mb-3">Leadership Program</span>
+            <div className="section-chip section-chip-red mb-3">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#D71921]" />
+              <span>Leadership Program</span>
+            </div>
             <h1
-              className="text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight"
-              style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+              className="text-2xl sm:text-3xl font-bold text-[var(--text)] tracking-tight font-dot"
+              style={{ fontFamily: 'var(--font-dot)', letterSpacing: '0.01em' }}
             >
               Apply for {NAKAMA_CAPTAIN_SINGULAR}
             </h1>
@@ -284,7 +285,7 @@ export function CaptainApplyPage() {
 
           {/* Actual error message on screen */}
           {error && (
-            <div className="p-4 rounded-xl bg-[var(--surface-2)] border border-[var(--red)] text-xs text-[var(--text)] flex items-start gap-2.5 my-3">
+            <div className="p-4 rounded-xl bg-red-950/40 border border-red-500/40 text-xs text-[var(--text)] flex items-start gap-2.5 my-3">
               <AlertCircle size={16} className="text-[var(--red)] shrink-0 mt-0.5" />
               <div className="flex-1 break-words">
                 <span className="font-bold text-[var(--red)]">Error: </span>
@@ -307,10 +308,10 @@ export function CaptainApplyPage() {
                   if (fieldErrors.studentName) setFieldErrors((prev) => ({ ...prev, studentName: undefined }));
                 }}
                 placeholder="e.g. Ali Ahmed"
-                className={`w-full rounded-2xl bg-[var(--surface-2)] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
+                className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
                   fieldErrors.studentName
                     ? 'border-[var(--red)] focus:ring-[var(--red)]'
-                    : 'border-[var(--border)] focus:border-[var(--red)] focus:ring-[var(--red)]'
+                    : 'border-white/12 focus:border-[var(--red)] focus:ring-[var(--red)]'
                 }`}
                 style={{ height: '52px' }}
               />
@@ -333,10 +334,10 @@ export function CaptainApplyPage() {
                     if (fieldErrors.email) setFieldErrors((prev) => ({ ...prev, email: undefined }));
                   }}
                   placeholder="student@example.com"
-                  className={`w-full rounded-2xl bg-[var(--surface-2)] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
+                  className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
                     fieldErrors.email
                       ? 'border-[var(--red)] focus:ring-[var(--red)]'
-                      : 'border-[var(--border)] focus:border-[var(--red)] focus:ring-[var(--red)]'
+                      : 'border-white/12 focus:border-[var(--red)] focus:ring-[var(--red)]'
                   }`}
                   style={{ height: '52px' }}
                 />
@@ -357,10 +358,10 @@ export function CaptainApplyPage() {
                     setPhone(e.target.value);
                     if (fieldErrors.phone) setFieldErrors((prev) => ({ ...prev, phone: undefined }));
                   }}
-                  className={`w-full rounded-2xl bg-[var(--surface-2)] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
+                  className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
                     fieldErrors.phone
                       ? 'border-[var(--red)] focus:ring-[var(--red)]'
-                      : 'border-[var(--border)] focus:border-[var(--red)] focus:ring-[var(--red)]'
+                      : 'border-white/12 focus:border-[var(--red)] focus:ring-[var(--red)]'
                   }`}
                   style={{ height: '52px' }}
                 />
@@ -384,10 +385,10 @@ export function CaptainApplyPage() {
                     setInstitution(e.target.value);
                     if (fieldErrors.institution) setFieldErrors((prev) => ({ ...prev, institution: undefined }));
                   }}
-                  className={`w-full rounded-2xl bg-[var(--surface-2)] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
+                  className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
                     fieldErrors.institution
                       ? 'border-[var(--red)] focus:ring-[var(--red)]'
-                      : 'border-[var(--border)] focus:border-[var(--red)] focus:ring-[var(--red)]'
+                      : 'border-white/12 focus:border-[var(--red)] focus:ring-[var(--red)]'
                   }`}
                   style={{ height: '52px' }}
                 />
@@ -408,10 +409,10 @@ export function CaptainApplyPage() {
                     setCity(e.target.value);
                     if (fieldErrors.city) setFieldErrors((prev) => ({ ...prev, city: undefined }));
                   }}
-                  className={`w-full rounded-2xl bg-[var(--surface-2)] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
+                  className={`w-full rounded-2xl bg-white/[0.04] border px-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
                     fieldErrors.city
                       ? 'border-[var(--red)] focus:ring-[var(--red)]'
-                      : 'border-[var(--border)] focus:border-[var(--red)] focus:ring-[var(--red)]'
+                      : 'border-white/12 focus:border-[var(--red)] focus:ring-[var(--red)]'
                   }`}
                   style={{ height: '52px' }}
                 />
@@ -429,7 +430,7 @@ export function CaptainApplyPage() {
               <select
                 value={grade}
                 onChange={(e) => setGrade(e.target.value)}
-                className="w-full rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] px-4 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--red)]"
+                className="w-full rounded-2xl bg-white/[0.04] border border-white/12 px-4 text-sm text-[var(--text)] focus:outline-none focus:border-[var(--red)]"
                 style={{ height: '52px' }}
               >
                 <option value="HSSC-I (11th Class)">HSSC-I (11th Class)</option>
@@ -453,10 +454,10 @@ export function CaptainApplyPage() {
                   setStatement(e.target.value);
                   if (fieldErrors.statement) setFieldErrors((prev) => ({ ...prev, statement: undefined }));
                 }}
-                className={`w-full rounded-2xl bg-[var(--surface-2)] border p-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
+                className={`w-full rounded-2xl bg-white/[0.04] border p-4 text-sm text-[var(--text)] placeholder-[var(--muted)] focus:outline-none focus:ring-1 ${
                   fieldErrors.statement
                     ? 'border-[var(--red)] focus:ring-[var(--red)]'
-                    : 'border-[var(--border)] focus:border-[var(--red)] focus:ring-[var(--red)]'
+                    : 'border-white/12 focus:border-[var(--red)] focus:ring-[var(--red)]'
                 }`}
               />
               {fieldErrors.statement && (
@@ -464,7 +465,7 @@ export function CaptainApplyPage() {
               )}
             </div>
 
-            {/* Submit Button: Given relative position and z-20 so it cannot be overlapped by floating widgets */}
+            {/* Submit Button */}
             <div className="relative z-20 pt-2">
               <button
                 type="submit"
@@ -472,7 +473,7 @@ export function CaptainApplyPage() {
                   console.log('[CaptainApply] Submit button clicked');
                 }}
                 disabled={submitting}
-                className="btn-red w-full cursor-pointer disabled:opacity-50 relative z-20 shadow-lg"
+                className="btn-primary w-full cursor-pointer disabled:opacity-50 relative z-20 shadow-lg"
                 style={{ height: '52px' }}
               >
                 {submitting ? (
@@ -486,7 +487,7 @@ export function CaptainApplyPage() {
               </button>
             </div>
           </form>
-        </Card>
+        </div>
       )}
     </div>
   );

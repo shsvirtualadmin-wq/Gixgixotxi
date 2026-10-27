@@ -24,16 +24,19 @@ export function Button({
 }: ButtonProps) {
   let bg = 'transparent';
   let color = 'var(--text)';
-  let border = '1px solid var(--border)';
+  let border = '1px solid var(--glass-border)';
+  let boxShadow = 'none';
 
   if (variant === 'primary' || variant === 'danger') {
     bg = 'var(--red)';
     color = '#FFFFFF';
-    border = '1px solid var(--red)';
+    border = '1px solid rgba(255, 255, 255, 0.22)';
+    boxShadow = '0 10px 24px -6px rgba(215, 25, 33, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.28)';
   } else if (variant === 'secondary' || variant === 'outline') {
-    bg = 'transparent';
+    bg = 'var(--glass-pill-bg)';
     color = 'var(--text)';
-    border = '1px solid var(--border-strong)';
+    border = '1px solid var(--glass-border)';
+    boxShadow = 'inset 0 1px 1px var(--glass-highlight)';
   } else if (variant === 'ghost') {
     bg = 'transparent';
     color = 'var(--muted)';
@@ -51,7 +54,7 @@ export function Button({
       disabled={disabled || loading}
       className={`
         inline-flex items-center justify-center gap-2 rounded-full font-semibold
-        transition-colors duration-150 cursor-pointer
+        transition-all duration-150 cursor-pointer active:scale-[0.98]
         disabled:opacity-50 disabled:cursor-not-allowed
         ${fullWidth ? 'w-full' : ''}
         ${className}
@@ -66,7 +69,7 @@ export function Button({
         color,
         border,
         fontSize,
-        boxShadow: 'none',
+        boxShadow,
         ...style,
       }}
     >

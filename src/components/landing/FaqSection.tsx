@@ -1,6 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Plus, Minus } from 'lucide-react';
-import { Badge } from '../ui/Badge';
 
 const FAQS = [
   {
@@ -31,64 +30,165 @@ const FAQS = [
 
 export function FaqSection() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);
+  const [isVisible, setIsVisible] = useState(false);
+  const sectionRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!sectionRef.current) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            observer.disconnect();
+          }
+        });
+      },
+      { threshold: 0.12 }
+    );
+    observer.observe(sectionRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   const toggle = (idx: number) => {
-    setOpenIndex(current => (current === idx ? null : idx));
+    setOpenIndex((current) => (current === idx ? null : idx));
   };
 
   return (
-    <section id="faq" className="landing-section relative">
-      <div className="boardly-container">
-        {/* Centered section header block */}
-        <div className="section-header">
-          <Badge color="muted">Got Questions?</Badge>
-          <h2>Frequently Asked Questions</h2>
-          <p>
+    <section
+      id="faq"
+      ref={sectionRef}
+      className="relative py-14 sm:py-20 lg:py-28 overflow-hidden cv-auto-section"
+      style={{ scrollMarginTop: 'calc(var(--nav-h) + 24px)' }}
+    >
+      {/* Ambient soft red radial glow behind the FAQ section */}
+      <div
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[700px] h-[400px] pointer-events-none -z-10 opacity-70"
+        aria-hidden="true"
+      >
+        <div className="w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(215,25,33,0.12)_0%,rgba(215,25,33,0.03)_55%,transparent_75%)]" />
+      </div>
+
+      <div className="boardly-container relative z-10">
+        {/* Section Header */}
+        <div className="text-center max-w-2xl mx-auto mb-10 sm:mb-14">
+          {/* "Got Questions?" glass pill chip */}
+          <div className="flex justify-center mb-4">
+            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide text-white/90 bg-white/[0.05] border border-white/12 shadow-[0_2px_8px_rgba(0,0,0,0.25)]">
+              <span
+                className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_8px_rgba(215,25,33,0.85)] shrink-0"
+                aria-hidden="true"
+              />
+              Got Questions?
+            </span>
+          </div>
+
+          {/* Heading in pixel font */}
+          <h2
+            className="font-dot font-extrabold text-white tracking-tight leading-tight mb-3.5"
+            style={{
+              fontFamily: 'var(--font-dot)',
+              letterSpacing: '0.01em',
+              fontWeight: 800,
+              fontSize: 'clamp(26px, 3.6vw, 38px)',
+            }}
+          >
+            Frequently Asked Questions
+          </h2>
+
+          {/* Subtext in muted gray */}
+          <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed max-w-xl mx-auto">
             Everything you need to know about practicing and learning with Boardly.
           </p>
         </div>
 
-        {/* FAQ list: centered at max-width 760px, 10px gap between slimmer rows */}
-        <div className="max-w-[760px] mx-auto flex flex-col gap-2.5">
+        {/* Floating Glass Accordion Rows */}
+        <div className="max-w-[840px] mx-auto flex flex-col gap-3.5 sm:gap-4">
           {FAQS.map((faq, idx) => {
             const isOpen = openIndex === idx;
+            const answerId = `faq-answer-${idx}`;
+            const triggerId = `faq-trigger-${idx}`;
+
             return (
               <div
                 key={faq.q}
-                onClick={() => toggle(idx)}
-                className={`rounded-[12px] bg-[var(--surface)] border transition-colors cursor-pointer px-5 py-3.5 ${
+                className={`group rounded-[24px] sm:rounded-[28px] border transition-all duration-300 ease-out hover:-translate-y-0.5 active:scale-[0.99] ${
                   isOpen
-                    ? 'border-[var(--border-strong)] bg-[var(--surface-raised)]'
-                    : 'border-[var(--border)] hover:bg-[var(--surface-muted)]/60'
+                    ? 'bg-[#121218]/94 border-[#D71921]/60 shadow-[0_16px_40px_-8px_rgba(0,0,0,0.7),inset_0_1px_1px_rgba(255,255,255,0.16)]'
+                    : 'bg-[#0e0e13]/90 border-white/12 hover:border-white/20 shadow-[0_12px_32px_-8px_rgba(0,0,0,0.6),inset_0_1px_1px_rgba(255,255,255,0.08)]'
+                } ${
+                  isVisible ? 'opacity-100 translate-y-0' : 'opacity-80 translate-y-3'
                 }`}
+                style={{
+                  transitionDelay: `${idx * 60}ms`,
+                }}
               >
-                {/* Question row: Space Grotesk 15px, neat + / - toggle icon on the right */}
-                <div className="flex items-center justify-between gap-4 min-h-[28px]">
-                  <h3
-                    className="text-[15px] font-semibold text-[var(--text)] leading-snug"
-                    style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
+                {/* Accessible Button Trigger */}
+                <button
+                  type="button"
+                  id={triggerId}
+                  aria-expanded={isOpen}
+                  aria-controls={answerId}
+                  onClick={() => toggle(idx)}
+                  className="w-full text-left flex items-center justify-between gap-4 p-5 sm:p-6 cursor-pointer rounded-[24px] sm:rounded-[28px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D71921] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
+                >
+                  <span
+                    className="text-[15px] sm:text-[16px] font-semibold text-white/95 leading-snug tracking-[-0.015em]"
+                    style={{ fontFamily: 'var(--font-heading)' }}
                   >
                     {faq.q}
-                  </h3>
-                  <div className="w-7 h-7 rounded-[8px] bg-[var(--surface-muted)] border border-[var(--border)] text-[var(--muted)] shrink-0 flex items-center justify-center">
-                    {isOpen ? <Minus size={15} /> : <Plus size={15} />}
+                  </span>
+
+                  {/* Round glass tile with plus/minus icon */}
+                  <span
+                    className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border transition-all duration-300 ${
+                      isOpen
+                        ? 'bg-[#D71921]/20 border-[#D71921]/60 text-white shadow-[0_0_12px_rgba(215,25,33,0.35)]'
+                        : 'bg-white/[0.05] border-white/12 text-white/70 group-hover:text-white group-hover:border-white/25 group-hover:bg-white/[0.08]'
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {isOpen ? (
+                      <Minus size={15} strokeWidth={2.5} />
+                    ) : (
+                      <Plus size={15} strokeWidth={2.5} />
+                    )}
+                  </span>
+                </button>
+
+                {/* Animated expandable answer area */}
+                <div
+                  id={answerId}
+                  role="region"
+                  aria-labelledby={triggerId}
+                  className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                    isOpen ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0 pointer-events-none'
+                  }`}
+                >
+                  <div className="overflow-hidden">
+                    <div className="px-5 pb-5 sm:px-6 sm:pb-6 pt-0">
+                      <div
+                        className="pt-3 border-t border-white/[0.08] text-sm sm:text-[14.5px] text-[var(--muted)] leading-relaxed"
+                        style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.01em' }}
+                      >
+                        {faq.a}
+                      </div>
+                    </div>
                   </div>
                 </div>
-
-                {/* Answer text when open */}
-                {isOpen && (
-                  <div
-                    className="mt-3 pt-3 border-t border-[var(--border)] text-[14px] text-[var(--text-muted)] leading-relaxed"
-                    style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.01em' }}
-                  >
-                    {faq.a}
-                  </div>
-                )}
               </div>
             );
           })}
         </div>
+
+        {/* Thin soft gradient divider line fading at edges */}
+        <div
+          className="w-full max-w-[960px] mx-auto mt-14 sm:mt-20 h-[1px] bg-gradient-to-r from-transparent via-white/12 to-transparent"
+          aria-hidden="true"
+        />
       </div>
     </section>
   );
 }
+
+export default FaqSection;

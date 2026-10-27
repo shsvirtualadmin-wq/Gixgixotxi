@@ -1,173 +1,328 @@
+import React, { useEffect, useRef, useState, lazy, Suspense } from 'react';
 import { Link } from 'react-router-dom';
 import { Cpu, MessageSquare, Calculator, Users, Flame } from 'lucide-react';
-import { Badge } from '../ui/Badge';
-import { Card } from '../ui/Card';
-import { MathText } from '../ui/MathText';
+
+const LazyMathText = lazy(() => import('../ui/MathText'));
 
 export function FeaturesGrid() {
+  const [isVisible, setIsVisible] = useState(false);
+  const sectionRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      setIsVisible(true);
+      return;
+    }
+
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    if (mediaQuery.matches) {
+      setIsVisible(true);
+      return;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            setIsVisible(true);
+            observer.disconnect();
+          }
+        });
+      },
+      { threshold: 0.1, rootMargin: '0px 0px -40px 0px' }
+    );
+
+    if (sectionRef.current) {
+      observer.observe(sectionRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, []);
+
   return (
-    <section id="features" className="landing-section relative">
+    <section
+      ref={sectionRef}
+      id="features"
+      className="relative py-14 sm:py-20 lg:py-28 overflow-hidden cv-auto-section"
+      style={{ scrollMarginTop: 'calc(var(--nav-h) + 24px)' }}
+    >
+      {/* Ambient background glow behind the grid (static radial-gradient) */}
+      <div
+        className="absolute inset-0 -z-10 pointer-events-none overflow-hidden"
+        aria-hidden="true"
+      >
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[880px] h-[520px] bg-[radial-gradient(ellipse_at_center,rgba(215,25,33,0.11)_0%,rgba(215,25,33,0.03)_45%,transparent_72%)] opacity-85" />
+      </div>
+
       <div className="boardly-container">
         {/* Section Header */}
-        <div className="section-header">
-          <Badge color="muted">Platform Capabilities</Badge>
-          <h2>Engineered for Student Excellence</h2>
-          <p>
+        <div className="text-center max-w-2xl mx-auto mb-12 sm:mb-16">
+          {/* Platform Capabilities Pill */}
+          <div className="flex justify-center mb-4 sm:mb-5">
+            <span className="inline-flex items-center px-3.5 py-1.5 rounded-full text-xs font-semibold font-heading tracking-wide text-white/90 bg-white/[0.06] border border-white/12 shadow-[0_2px_8px_rgba(0,0,0,0.25)]">
+              Platform Capabilities
+            </span>
+          </div>
+
+          {/* Heading */}
+          <h2
+            className="font-dot font-extrabold text-white tracking-tight leading-tight mb-3 sm:mb-4"
+            style={{
+              fontFamily: 'var(--font-dot)',
+              letterSpacing: '0.01em',
+              fontWeight: 800,
+              fontSize: 'clamp(26px, 3.6vw, 38px)',
+            }}
+          >
+            Engineered for Student Excellence
+          </h2>
+
+          {/* Subtext */}
+          <p className="text-sm sm:text-base text-[var(--muted)] leading-relaxed max-w-2xl mx-auto">
             Every feature is calibrated to help students master core subjects, build consistent practice habits, and learn together with clear derivations.
           </p>
         </div>
 
         {/* Bento Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch">
-          {/* Card 1: KaTeX Derivations (Spans 2 cols) */}
-          <Card className="md:col-span-2 h-full flex flex-col justify-between">
-            <div className="space-y-3.5">
-              <div className="icon-tile">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6 items-stretch">
+          {/* Card 1: KaTeX Derivations (Spans 2 cols on lg) */}
+          <div
+            style={{
+              opacity: isVisible ? 1 : 0,
+              transform: isVisible ? 'translateY(0)' : 'translateY(24px)',
+              transition: 'opacity 500ms cubic-bezier(0.16, 1, 0.3, 1), transform 500ms cubic-bezier(0.16, 1, 0.3, 1)',
+              transitionDelay: '0ms',
+            }}
+            className="lg:col-span-2 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 border border-white/12 bg-[rgba(14,14,19,0.82)] shadow-[0_18px_40px_-12px_rgba(0,0,0,0.68),inset_0_1px_1px_rgba(255,255,255,0.14)]"
+          >
+            <div className="space-y-4 sm:space-y-5">
+              {/* Floating Icon Tile */}
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] bg-white/[0.06] border border-white/12 shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)] flex items-center justify-center text-white shrink-0 animate-float-1">
                 <Calculator size={20} />
               </div>
+
               <div>
                 <h3
-                  className="text-lg font-bold text-[var(--text)] mb-1.5"
+                  className="text-lg sm:text-xl font-bold text-white tracking-tight mb-2 font-heading"
                   style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                 >
                   KaTeX Derivation Engine
                 </h3>
-                <p className="text-sm text-[var(--muted)] leading-relaxed">
+                <p className="text-sm text-[var(--muted)] leading-[1.65]">
                   No more blurry screenshots or cryptic notation. Every math and physics explanation is formatted with pure LaTeX derivations so you see exactly how terms cancel.
                 </p>
               </div>
 
-              {/* Live Math Demo */}
-              <div
-                className="p-3.5 rounded-[10px] border border-[var(--border)] bg-[var(--surface-muted)] text-[var(--text)] space-y-1.5 select-text"
-              >
+              {/* Live Math Demo / Inner Glass Panel */}
+              <div className="p-4 sm:p-5 rounded-[20px] sm:rounded-[22px] border border-white/10 bg-[rgba(10,10,14,0.65)] shadow-[inset_0_1px_1px_rgba(255,255,255,0.08)] space-y-2 select-text">
                 <div className="text-xs font-medium text-[var(--muted)]">
                   Sample solution step:
                 </div>
-                <div
-                  className="py-1 overflow-x-auto text-center text-[var(--text)]"
-                  style={{ color: 'var(--text)' }}
-                >
-                  <MathText block text={'$$\\int x e^{2x} \\, dx = \\frac{1}{2} x e^{2x} - \\frac{1}{4} e^{2x} + C$$'} />
+                <div className="py-2 overflow-x-auto text-center text-white max-w-full min-h-[44px] flex items-center justify-center">
+                  {isVisible ? (
+                    <Suspense
+                      fallback={
+                        <span className="font-serif italic text-base sm:text-lg tracking-wide">
+                          &int; x e<sup>2x</sup> dx = &frac12; x e<sup>2x</sup> &minus; &frac14; e<sup>2x</sup> + C
+                        </span>
+                      }
+                    >
+                      <LazyMathText
+                        block
+                        text={'$$\\int x e^{2x} \\, dx = \\frac{1}{2} x e^{2x} - \\frac{1}{4} e^{2x} + C$$'}
+                      />
+                    </Suspense>
+                  ) : (
+                    <span className="font-serif italic text-base sm:text-lg tracking-wide">
+                      &int; x e<sup>2x</sup> dx = &frac12; x e<sup>2x</sup> &minus; &frac14; e<sup>2x</sup> + C
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
-            <div className="mt-auto pt-4 border-t border-[var(--border)] flex items-center gap-2 text-xs text-[var(--muted)]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[var(--red)] shrink-0" />
+
+            {/* Pinned Footer with Red-Dot Caption */}
+            <div className="mt-6 pt-4 border-t border-white/10 min-h-[44px] flex items-center gap-2 text-xs text-[var(--muted)]">
+              <span
+                className="w-1.5 h-1.5 rounded-full bg-[#D71921] shadow-[0_0_6px_rgba(215,25,33,0.8)] shrink-0"
+                aria-hidden="true"
+              />
               <span>Formulas and step derivations verified in KaTeX</span>
             </div>
-          </Card>
+          </div>
 
-          {/* Card 2: Boardly Commons */}
-          <Card className="h-full flex flex-col justify-between">
-            <div className="space-y-3.5">
-              <div className="icon-tile">
+          {/* Card 2: Boardly Commons (Interactive: contains link) */}
+          <div
+            style={{
+              opacity: isVisible ? 1 : 0,
+              transform: isVisible ? 'translateY(0)' : 'translateY(24px)',
+              transition: 'opacity 500ms cubic-bezier(0.16, 1, 0.3, 1), transform 500ms cubic-bezier(0.16, 1, 0.3, 1)',
+              transitionDelay: '90ms',
+            }}
+            className="lg:col-span-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 border border-white/12 bg-[rgba(14,14,19,0.82)] backdrop-blur-[28px] sm:backdrop-blur-[34px] shadow-[0_20px_45px_-12px_rgba(0,0,0,0.7),0_10px_20px_-8px_rgba(0,0,0,0.45),0_0_30px_rgba(215,25,33,0.04),inset_0_1px_1px_rgba(255,255,255,0.14)] hover:-translate-y-1.5 hover:border-white/22 hover:shadow-[0_26px_55px_-12px_rgba(0,0,0,0.85),0_12px_24px_-8px_rgba(0,0,0,0.6),0_0_35px_rgba(215,25,33,0.1)] active:scale-[0.98] transition-all duration-300 ease-out"
+          >
+            <div className="space-y-4 sm:space-y-5">
+              {/* Floating Icon Tile */}
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] bg-white/[0.06] border border-white/12 shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)] flex items-center justify-center text-white shrink-0 animate-float-2">
                 <MessageSquare size={20} />
               </div>
+
               <div>
                 <h3
-                  className="text-lg font-bold text-[var(--text)] mb-1.5"
+                  className="text-lg sm:text-xl font-bold text-white tracking-tight mb-2 font-heading"
                   style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                 >
                   Boardly Commons
                 </h3>
-                <p className="text-sm text-[var(--muted)] leading-relaxed">
+                <p className="text-sm text-[var(--muted)] leading-[1.65]">
                   An open student community to share study material free with no limits, talk to the whole community, talk anonymously, and message peers directly to solve doubts together.
                 </p>
               </div>
-              {/* Callout with 3px red accent bar */}
-              <div
-                className="p-3.5 rounded-[10px] border border-[var(--border)] border-l-[3px] border-l-[var(--red)] bg-[var(--surface-muted)] text-[var(--text)]"
-              >
-                <span className="text-xs font-medium text-[var(--text)] leading-relaxed block">
+
+              {/* Callout with red left accent line and faint glow */}
+              <div className="p-3.5 sm:p-4 rounded-[18px] border border-white/10 border-l-[3px] border-l-[#D71921] bg-white/[0.03] text-white shadow-[0_0_20px_rgba(215,25,33,0.06)]">
+                <span className="text-xs font-medium text-white/90 leading-relaxed block">
                   Free, unlimited sharing and peer learning for everyone.
                 </span>
               </div>
             </div>
-            <div className="mt-auto pt-4 border-t border-[var(--border)]">
+
+            {/* Pinned Footer Link */}
+            <div className="mt-6 pt-4 border-t border-white/10 min-h-[44px] flex items-center">
               <Link
                 to="/commons/about"
-                className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--red)] hover:underline focus:underline focus:outline-hidden transition-colors w-fit"
+                className="group/link inline-flex items-center gap-1.5 text-xs font-semibold text-[#D71921] hover:text-[#ff3842] transition-colors duration-200"
               >
                 <span>Learn more about Commons</span>
-                <span aria-hidden="true">&rarr;</span>
+                <span
+                  aria-hidden="true"
+                  className="inline-block transition-transform duration-200 group-hover/link:translate-x-1"
+                >
+                  &rarr;
+                </span>
               </Link>
             </div>
-          </Card>
+          </div>
 
-          {/* Card 3: Boardy AI Tutor */}
-          <Card className="h-full flex flex-col justify-between">
-            <div className="space-y-3.5">
-              <div className="icon-tile">
+          {/* Card 3: Boardy AI Tutor (Non-interactive) */}
+          <div
+            style={{
+              opacity: isVisible ? 1 : 0,
+              transform: isVisible ? 'translateY(0)' : 'translateY(24px)',
+              transition: 'opacity 500ms cubic-bezier(0.16, 1, 0.3, 1), transform 500ms cubic-bezier(0.16, 1, 0.3, 1)',
+              transitionDelay: '180ms',
+            }}
+            className="lg:col-span-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 border border-white/12 bg-[rgba(14,14,19,0.82)] backdrop-blur-[28px] sm:backdrop-blur-[34px] shadow-[0_20px_45px_-12px_rgba(0,0,0,0.7),0_10px_20px_-8px_rgba(0,0,0,0.45),0_0_30px_rgba(215,25,33,0.04),inset_0_1px_1px_rgba(255,255,255,0.14)]"
+          >
+            <div className="space-y-4 sm:space-y-5">
+              {/* Floating Icon Tile */}
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] bg-white/[0.06] border border-white/12 shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)] flex items-center justify-center text-white shrink-0 animate-float-3">
                 <Cpu size={20} />
               </div>
+
               <div>
                 <h3
-                  className="text-lg font-bold text-[var(--text)] mb-1.5"
+                  className="text-lg sm:text-xl font-bold text-white tracking-tight mb-2 font-heading"
                   style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                 >
                   Boardy 24/7 AI Tutor
                 </h3>
-                <p className="text-sm text-[var(--muted)] leading-relaxed">
+                <p className="text-sm text-[var(--muted)] leading-[1.65]">
                   Stuck on a tricky organic reaction or vector projection? Ask Boardy. Step-by-step guidance without giving away the answer upfront.
                 </p>
               </div>
             </div>
-            <div className="mt-auto pt-4 border-t border-[var(--border)] text-xs text-[var(--muted)]">
+
+            {/* Pinned Footer */}
+            <div className="mt-6 pt-4 border-t border-white/10 min-h-[44px] flex items-center text-xs text-[var(--muted)]">
               Powered by server-verified edge intelligence.
             </div>
-          </Card>
+          </div>
 
-          {/* Card 4: Study Circles & Squads */}
-          <Card className="h-full flex flex-col justify-between">
-            <div className="space-y-3.5">
-              <div className="icon-tile">
+          {/* Card 4: Study Squads (Interactive: contains link) */}
+          <div
+            style={{
+              opacity: isVisible ? 1 : 0,
+              transform: isVisible ? 'translateY(0)' : 'translateY(24px)',
+              transition: 'opacity 500ms cubic-bezier(0.16, 1, 0.3, 1), transform 500ms cubic-bezier(0.16, 1, 0.3, 1)',
+              transitionDelay: '270ms',
+            }}
+            className="lg:col-span-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 border border-white/12 bg-[rgba(14,14,19,0.82)] backdrop-blur-[28px] sm:backdrop-blur-[34px] shadow-[0_20px_45px_-12px_rgba(0,0,0,0.7),0_10px_20px_-8px_rgba(0,0,0,0.45),0_0_30px_rgba(215,25,33,0.04),inset_0_1px_1px_rgba(255,255,255,0.14)] hover:-translate-y-1.5 hover:border-white/22 hover:shadow-[0_26px_55px_-12px_rgba(0,0,0,0.85),0_12px_24px_-8px_rgba(0,0,0,0.6),0_0_35px_rgba(215,25,33,0.1)] active:scale-[0.98] transition-all duration-300 ease-out"
+          >
+            <div className="space-y-4 sm:space-y-5">
+              {/* Floating Icon Tile */}
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] bg-white/[0.06] border border-white/12 shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)] flex items-center justify-center text-white shrink-0 animate-float-1">
                 <Users size={20} />
               </div>
+
               <div>
                 <h3
-                  className="text-lg font-bold text-[var(--text)] mb-1.5"
+                  className="text-lg sm:text-xl font-bold text-white tracking-tight mb-2 font-heading"
                   style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                 >
                   Study Squads
                 </h3>
-                <p className="text-sm text-[var(--muted)] leading-relaxed">
+                <p className="text-sm text-[var(--muted)] leading-[1.65]">
                   Form collaborative study squads of up to 30 classmates with private 6-character room codes. Compare solve times, coordinate drills, and track streaks.
                 </p>
               </div>
             </div>
-            <div className="mt-auto pt-4 border-t border-[var(--border)]">
-              <Link to="/crew" className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--red)] hover:underline">
+
+            {/* Pinned Footer Link */}
+            <div className="mt-6 pt-4 border-t border-white/10 min-h-[44px] flex items-center">
+              <Link
+                to="/crew"
+                className="group/link inline-flex items-center gap-1.5 text-xs font-semibold text-[#D71921] hover:text-[#ff3842] transition-colors duration-200"
+              >
                 <span>Learn more about Study Squads</span>
-                <span aria-hidden="true">&rarr;</span>
+                <span
+                  aria-hidden="true"
+                  className="inline-block transition-transform duration-200 group-hover/link:translate-x-1"
+                >
+                  &rarr;
+                </span>
               </Link>
             </div>
-          </Card>
+          </div>
 
-          {/* Card 5: Daily Drills & Streak */}
-          <Card className="h-full flex flex-col justify-between">
-            <div className="space-y-3.5">
-              <div className="icon-tile">
+          {/* Card 5: Daily Drills & Streak / PKT Midnight Resets (Non-interactive) */}
+          <div
+            style={{
+              opacity: isVisible ? 1 : 0,
+              transform: isVisible ? 'translateY(0)' : 'translateY(24px)',
+              transition: 'opacity 500ms cubic-bezier(0.16, 1, 0.3, 1), transform 500ms cubic-bezier(0.16, 1, 0.3, 1)',
+              transitionDelay: '360ms',
+            }}
+            className="lg:col-span-1 h-full flex flex-col justify-between rounded-[26px] sm:rounded-[32px] lg:rounded-[36px] p-6 sm:p-8 lg:p-9 border border-white/12 bg-[rgba(14,14,19,0.82)] backdrop-blur-[28px] sm:backdrop-blur-[34px] shadow-[0_20px_45px_-12px_rgba(0,0,0,0.7),0_10px_20px_-8px_rgba(0,0,0,0.45),0_0_30px_rgba(215,25,33,0.04),inset_0_1px_1px_rgba(255,255,255,0.14)]"
+          >
+            <div className="space-y-4 sm:space-y-5">
+              {/* Floating Icon Tile */}
+              <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-[16px] sm:rounded-[18px] bg-white/[0.06] border border-white/12 shadow-[inset_0_1px_1px_rgba(255,255,255,0.18)] flex items-center justify-center text-white shrink-0 animate-float-2">
                 <Flame size={20} />
               </div>
+
               <div>
                 <h3
-                  className="text-lg font-bold text-[var(--text)] mb-1.5"
+                  className="text-lg sm:text-xl font-bold text-white tracking-tight mb-2 font-heading"
                   style={{ fontFamily: 'var(--font-heading)', letterSpacing: '-0.02em' }}
                 >
                   PKT Midnight Resets
                 </h3>
-                <p className="text-sm text-[var(--muted)] leading-relaxed">
+                <p className="text-sm text-[var(--muted)] leading-[1.65]">
                   No awkward midday quota refreshes. All daily drill allowances refresh precisely at midnight Pakistan Standard Time (Asia/Karachi).
                 </p>
               </div>
             </div>
-            <div className="mt-auto pt-4 border-t border-[var(--border)] text-xs text-[var(--muted)]">
+
+            {/* Pinned Footer */}
+            <div className="mt-6 pt-4 border-t border-white/10 min-h-[44px] flex items-center text-xs text-[var(--muted)]">
               Keep your streak alive during late-night study sessions.
             </div>
-          </Card>
+          </div>
         </div>
       </div>
     </section>
   );
 }
+
+export default FeaturesGrid;

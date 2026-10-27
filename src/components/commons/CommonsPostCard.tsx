@@ -1,4 +1,5 @@
-import { useState, useEffect, memo } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
+import { Link } from 'react-router-dom';
 import {
   ThumbsUp,
   MessageSquare,
@@ -26,8 +27,9 @@ import {
   checkUserSaved,
 } from '@/services/commonsService';
 import { useProfileModal } from '@/contexts/ProfileModalContext';
+import { useAuthGate } from '@/contexts/AuthGateContext';
 import { BoardlyAvatar } from '@/components/ui/BoardlyAvatar';
-import { sanitizeStudentDisplayName } from '@/utils/privacy';
+import { sanitizeStudentDisplayName, maskPublicUserText, buildEntitySlug } from '@/utils/privacy';
 import { RoleBadge } from '@/components/ui/RoleBadge';
 import { useTheme } from '@/hooks/useTheme';
 import { CommonsImageAttachment } from './CommonsImageAttachment';
@@ -43,6 +45,8 @@ interface CommonsPostCardProps {
   onAuthorClick?: (authorUid: string) => void;
 }
 
+const voteSaveCache = new Map<string, { voted: boolean; saved: boolean }>();
+
 export const CommonsPostCard = memo(function CommonsPostCard({
   post,
   currentUserId,
@@ -53,6 +57,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   onAuthorClick,
 }: CommonsPostCardProps) {
   const { openProfile } = useProfileModal();
+  const { requireAuth } = useAuthGate();
   const { isDark } = useTheme();
   const [upvotes, setUpvotes] = useState(post.upvotes || 0);
   const [hasVoted, setHasVoted] = useState(false);
@@ -64,25 +69,57 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   const [isHidden, setIsHidden] = useState(false);
   const [localShares, setLocalShares] = useState(post.sharesCount || 0);
   const [viewerImage, setViewerImage] = useState<{ url: string; name?: string } | null>(null);
+  const cardRef = useRef<HTMLElement | null>(null);
 
-  // Sync vote & save state on mount / user change
+  // Sync vote & save state when card approaches viewport (with in-memory cache)
   useEffect(() => {
+    if (!currentUserId || !post.id) return;
+    const cacheKey = `${currentUserId}:${post.id}`;
+    const cached = voteSaveCache.get(cacheKey);
+    if (cached) {
+      setHasVoted(cached.voted);
+      setIsSaved(cached.saved);
+      return;
+    }
+
     let isMounted = true;
-    if (currentUserId && post.id) {
+    const fetchStatus = () => {
       Promise.all([
         checkUserVoted(post.id, currentUserId),
         checkUserSaved(post.id, currentUserId),
       ])
         .then(([voted, saved]) => {
+          voteSaveCache.set(cacheKey, { voted, saved });
           if (isMounted) {
             setHasVoted(voted);
             setIsSaved(saved);
           }
         })
         .catch(() => {});
+    };
+
+    const el = cardRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') {
+      fetchStatus();
+      return () => {
+        isMounted = false;
+      };
     }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) {
+          observer.disconnect();
+          fetchStatus();
+        }
+      },
+      { rootMargin: '300px' }
+    );
+
+    observer.observe(el);
     return () => {
       isMounted = false;
+      observer.disconnect();
     };
   }, [post.id, currentUserId]);
 
@@ -101,9 +138,14 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   }
 
   const typeMeta = COMMONS_POST_TYPES[post.type] || COMMONS_POST_TYPES.notes;
+  const postPermalink = `/commons/post/${buildEntitySlug(post.id, post.title)}`;
 
   const handleVote = async () => {
-    if (!currentUserId || voting) return;
+    if (!currentUserId) {
+      requireAuth('like this post');
+      return;
+    }
+    if (voting) return;
     setVoting(true);
     // Instant optimistic UI
     const prevVoted = hasVoted;
@@ -115,6 +157,9 @@ export const CommonsPostCard = memo(function CommonsPostCard({
       const res = await togglePostVote(post.id, currentUserId);
       setHasVoted(res.voted);
       setUpvotes(res.newCount);
+      const cacheKey = `${currentUserId}:${post.id}`;
+      const existing = voteSaveCache.get(cacheKey);
+      voteSaveCache.set(cacheKey, { voted: res.voted, saved: existing?.saved ?? isSaved });
     } catch {
       setHasVoted(prevVoted);
       setUpvotes(prevCount);
@@ -124,19 +169,25 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   };
 
   const handleSave = async () => {
-    if (!currentUserId) return;
+    if (!currentUserId) {
+      requireAuth('save this post to your library');
+      return;
+    }
     const prevSaved = isSaved;
     setIsSaved(!prevSaved);
     try {
       const res = await toggleSavePost(post.id, currentUserId);
       setIsSaved(res.saved);
+      const cacheKey = `${currentUserId}:${post.id}`;
+      const existing = voteSaveCache.get(cacheKey);
+      voteSaveCache.set(cacheKey, { voted: existing?.voted ?? hasVoted, saved: res.saved });
     } catch {
       setIsSaved(prevSaved);
     }
   };
 
   const handleShare = () => {
-    const url = `${window.location.origin}/dashboard/commons?post=${post.id}`;
+    const url = `${window.location.origin}${postPermalink}`;
     if (navigator.clipboard) {
       navigator.clipboard.writeText(url);
       setCopied(true);
@@ -249,10 +300,10 @@ export const CommonsPostCard = memo(function CommonsPostCard({
     (post.description.length > 220 || post.description.split('\n').length > 4);
 
   return (
-    <article className="group relative rounded-2xl border border-border bg-surface p-4 sm:p-5 shadow-xs transition-all duration-200 hover:border-border-strong hover:shadow-sm">
+    <article ref={cardRef} className="group relative glass-card rounded-[28px] p-4 sm:p-6 transition-all duration-200 hover:border-[var(--glass-border-hover)]">
       {/* ── Pinned Post Indicator (Super Admin) ── */}
       {isPinned && (
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-accent mb-3 pb-2.5 border-b border-border font-sans">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-accent mb-3 pb-2.5 border-b border-[var(--glass-border)] font-sans">
           <Pin size={13} className="fill-current text-accent" />
           <span>Pinned</span>
         </div>
@@ -403,7 +454,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
               <button
                 onClick={() => {
                   setMenuOpen(false);
-                  onOpenReport(post);
+                  requireAuth('report this post', () => onOpenReport(post));
                 }}
                 className="w-full flex items-center gap-2.5 px-3.5 py-2 text-xs text-secondary hover:bg-surface-muted hover:text-accent text-left transition-colors cursor-pointer"
               >
@@ -428,19 +479,21 @@ export const CommonsPostCard = memo(function CommonsPostCard({
         </div>
       </div>
 
-      {/* ── Post Title (Bold sans-serif, no stray slash) ── */}
+      {/* ── Post Title (Clickable Permalink to real Post Detail URL) ── */}
       <h2
         className="text-[17px] font-bold text-primary mb-2 leading-snug font-sans"
         style={{ fontFamily: 'var(--font-heading)' }}
       >
-        {post.title}
+        <Link to={postPermalink} className="hover:text-accent transition-colors">
+          {post.title}
+        </Link>
       </h2>
 
       {/* ── Post Body (Preserve line breaks, paragraphs, 4 lines + See more) ── */}
       {post.description && (
         <div className="text-[15px] text-secondary leading-relaxed whitespace-pre-wrap font-normal mb-3 font-sans">
           <div className={expanded ? '' : 'line-clamp-4'}>
-            {post.description}
+            {maskPublicUserText(post.description)}
           </div>
           {!expanded && isLongDescription && (
             <button
@@ -457,12 +510,13 @@ export const CommonsPostCard = memo(function CommonsPostCard({
       {post.tags && post.tags.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
           {post.tags.map((tag, idx) => (
-            <span
+            <Link
               key={idx}
-              className="text-muted bg-surface-muted px-2 py-0.5 rounded-md text-xs font-medium border border-border font-sans"
+              to={`/search?q=${encodeURIComponent(tag)}`}
+              className="text-muted bg-surface-muted hover:text-primary px-2 py-0.5 rounded-md text-xs font-medium border border-border font-sans transition-colors"
             >
               #{tag}
-            </span>
+            </Link>
           ))}
         </div>
       )}
@@ -474,7 +528,7 @@ export const CommonsPostCard = memo(function CommonsPostCard({
             <CommonsImageAttachment
               key={i}
               file={file}
-              authorUid={post.authorUid}
+              authorUid={post.isAnonymous ? null : post.authorUid}
               onOpenViewer={(url, name) => setViewerImage({ url, name: name || post.title })}
             />
           ))}
@@ -485,7 +539,12 @@ export const CommonsPostCard = memo(function CommonsPostCard({
       {docFiles.length > 0 && (
         <div className="space-y-2 mb-3">
           {docFiles.map((file, i) => (
-            <FileAttachmentChip key={i} file={file} />
+            <FileAttachmentChip
+              key={i}
+              file={file}
+              currentUserId={currentUserId}
+              onRequireAuth={() => requireAuth('download this study material')}
+            />
           ))}
         </div>
       )}
@@ -510,7 +569,6 @@ export const CommonsPostCard = memo(function CommonsPostCard({
         {/* Like */}
         <button
           onClick={handleVote}
-          disabled={!currentUserId}
           className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition-colors cursor-pointer ${
             hasVoted
               ? 'text-accent font-bold bg-accent-soft'
@@ -547,7 +605,6 @@ export const CommonsPostCard = memo(function CommonsPostCard({
         {/* Save Bookmark */}
         <button
           onClick={handleSave}
-          disabled={!currentUserId}
           className={`p-2.5 rounded-xl text-xs sm:text-sm transition-colors cursor-pointer ${
             isSaved
               ? 'text-accent bg-accent-soft'
@@ -570,7 +627,15 @@ export const CommonsPostCard = memo(function CommonsPostCard({
   );
 });
 
-function FileAttachmentChip({ file }: { file: CommonsFileAttachment }) {
+function FileAttachmentChip({
+  file,
+  currentUserId,
+  onRequireAuth,
+}: {
+  file: CommonsFileAttachment;
+  currentUserId?: string | null;
+  onRequireAuth: () => void;
+}) {
   const fileName = file?.name || 'attachment';
   const fileType = file?.type || '';
   const isPdf =
@@ -594,16 +659,28 @@ function FileAttachmentChip({ file }: { file: CommonsFileAttachment }) {
         </div>
       </div>
 
-      <a
-        href={file.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        download={file.name}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-secondary bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg shrink-0 transition-colors shadow-xs"
-      >
-        <Download size={13} />
-        <span>Open</span>
-      </a>
+      {currentUserId ? (
+        <a
+          href={file.url}
+          target="_blank"
+          rel="ugc nofollow noopener noreferrer"
+          download={file.name}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-secondary bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg shrink-0 transition-colors shadow-xs"
+        >
+          <Download size={13} />
+          <span>Download</span>
+        </a>
+      ) : (
+        <button
+          type="button"
+          onClick={onRequireAuth}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-secondary bg-surface hover:bg-surface-raised border border-border hover:border-border-strong rounded-lg shrink-0 transition-colors shadow-xs cursor-pointer"
+        >
+          <Download size={13} />
+          <span>Sign in to Download</span>
+        </button>
+      )}
     </div>
   );
 }
+

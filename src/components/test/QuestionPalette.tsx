@@ -36,39 +36,37 @@ export const QuestionPalette = memo(function QuestionPalette({
         justifyContent: 'flex-end',
       }}
     >
-      {/* Backdrop */}
+      {/* Backdrop (no backdrop-filter during active test for distraction-free speed) */}
       <div
         onClick={onClose}
         style={{
           position: 'absolute',
           inset: 0,
-          background: 'rgba(7, 11, 20, 0.7)',
-          backdropFilter: 'blur(8px)',
+          background: 'rgba(0, 0, 0, 0.65)',
         }}
       />
 
       {/* Drawer */}
       <div
-        className="glass"
+        className="glass-card"
         style={{
           position: 'relative',
           width: '100%',
           maxWidth: 380,
           height: '100%',
-          background: 'var(--bg-2)',
-          borderLeft: '1px solid var(--border)',
-          borderRadius: 0,
+          borderLeft: '1px solid var(--glass-border)',
+          borderRadius: '28px 0 0 28px',
           display: 'flex',
           flexDirection: 'column',
           zIndex: 101,
-          animation: 'page-enter 240ms var(--ease-out)',
+          animation: 'page-enter 200ms var(--ease-out)',
         }}
       >
         {/* Header */}
         <div
           style={{
-            padding: '1.25rem',
-            borderBottom: '1px solid var(--border)',
+            padding: '1.25rem 1.5rem',
+            borderBottom: '1px solid var(--glass-border)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
@@ -76,25 +74,23 @@ export const QuestionPalette = memo(function QuestionPalette({
         >
           <div>
             <h3
-              className="font-display"
+              className="font-dot"
               style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}
             >
               Question Palette
             </h3>
-            <p style={{ fontSize: 12, color: 'var(--text-faint)' }}>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               Jump to any question instantly
             </p>
           </div>
 
           <button
             onClick={onClose}
-            className="glass-hover"
+            className="glass-pill"
             style={{
-              width: 32,
-              height: 32,
+              width: 34,
+              height: 34,
               borderRadius: '50%',
-              border: '1px solid var(--border)',
-              background: 'var(--surface)',
               color: 'var(--text-muted)',
               display: 'flex',
               alignItems: 'center',
@@ -109,11 +105,11 @@ export const QuestionPalette = memo(function QuestionPalette({
         {/* Legend */}
         <div
           style={{
-            padding: '1rem 1.25rem',
+            padding: '1rem 1.5rem',
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
             gap: 8,
-            borderBottom: '1px solid var(--border)',
+            borderBottom: '1px solid var(--glass-border)',
             fontSize: 11,
             color: 'var(--text-muted)',
           }}
@@ -123,8 +119,9 @@ export const QuestionPalette = memo(function QuestionPalette({
               style={{
                 width: 12,
                 height: 12,
-                borderRadius: 3,
-                background: 'linear-gradient(135deg, var(--brand), var(--brand-2))',
+                borderRadius: 4,
+                background: 'rgba(215, 25, 33, 0.22)',
+                border: '1px solid #D71921',
               }}
             />
             <span>Answered ({answeredCount})</span>
@@ -135,8 +132,8 @@ export const QuestionPalette = memo(function QuestionPalette({
               style={{
                 width: 12,
                 height: 12,
-                borderRadius: 3,
-                background: 'rgba(251, 191, 36, 0.4)',
+                borderRadius: 4,
+                background: 'rgba(245, 158, 11, 0.25)',
                 border: '1px solid var(--warning)',
               }}
             />
@@ -148,9 +145,9 @@ export const QuestionPalette = memo(function QuestionPalette({
               style={{
                 width: 12,
                 height: 12,
-                borderRadius: 3,
-                background: 'var(--surface)',
-                border: '1px solid var(--border)',
+                borderRadius: 4,
+                background: 'var(--glass-row-bg)',
+                border: '1px solid var(--glass-border)',
               }}
             />
             <span>Unanswered ({unansweredCount})</span>
@@ -162,7 +159,7 @@ export const QuestionPalette = memo(function QuestionPalette({
           style={{
             flex: 1,
             overflowY: 'auto',
-            padding: '1.25rem',
+            padding: '1.25rem 1.5rem',
             display: 'grid',
             gridTemplateColumns: 'repeat(5, 1fr)',
             gap: 10,
@@ -181,26 +178,28 @@ export const QuestionPalette = memo(function QuestionPalette({
                   onSelectIndex(i);
                   onClose();
                 }}
-                className="glass-hover"
+                className="font-dot"
                 style={{
                   height: 48,
-                  borderRadius: 'var(--r-input)',
+                  borderRadius: 14,
                   border: isCurrent
-                    ? '2px solid var(--brand-2)'
+                    ? '2px solid #D71921'
                     : isItemFlagged
                     ? '1px solid var(--warning)'
                     : isAnswered
-                    ? '1px solid var(--brand)'
-                    : '1px solid var(--border)',
-                  background: isAnswered
-                    ? 'linear-gradient(135deg, rgba(47, 107, 255, 0.3), rgba(34, 211, 238, 0.2))'
-                    : isItemFlagged
-                    ? 'rgba(251, 191, 36, 0.15)'
-                    : 'var(--surface)',
-                  color: isCurrent
-                    ? 'var(--brand-2)'
+                    ? '1px solid rgba(215, 25, 33, 0.55)'
+                    : '1px solid var(--glass-border)',
+                  background: isCurrent
+                    ? '#D71921'
                     : isAnswered
+                    ? 'rgba(215, 25, 33, 0.16)'
+                    : isItemFlagged
+                    ? 'rgba(245, 158, 11, 0.15)'
+                    : 'var(--glass-row-bg)',
+                  color: isCurrent
                     ? '#ffffff'
+                    : isAnswered
+                    ? 'var(--text)'
                     : 'var(--text-muted)',
                   fontSize: 14,
                   fontWeight: isCurrent || isAnswered ? 700 : 500,
@@ -209,7 +208,7 @@ export const QuestionPalette = memo(function QuestionPalette({
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: isCurrent ? '0 0 12px rgba(34, 211, 238, 0.35)' : undefined,
+                  boxShadow: isCurrent ? '0 6px 16px -4px rgba(215, 25, 33, 0.45)' : undefined,
                 }}
               >
                 {i + 1}
