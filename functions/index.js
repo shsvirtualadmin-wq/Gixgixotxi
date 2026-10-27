@@ -63,8 +63,8 @@ function isSuperAdminUser(auth) {
  * - Appends immutable ledger entry
  */
 exports.unlockItem = functions.https.onCall(async (data, context) => {
-  // 1. Authenticate caller
-  const callerUid = context.auth ? context.auth.uid : data?.userId;
+  // 1. Authenticate caller strictly via verified Firebase auth context
+  const callerUid = context.auth ? context.auth.uid : null;
   if (!callerUid) {
     throw new functions.https.HttpsError(
       'unauthenticated',
@@ -237,8 +237,8 @@ exports.unlockItem = functions.https.onCall(async (data, context) => {
  * - Updates both users and publicProfiles collections
  */
 exports.toggleFollow = functions.https.onCall(async (data, context) => {
-  // 1. Authenticate caller
-  const callerUid = context.auth ? context.auth.uid : data?.userId;
+  // 1. Authenticate caller strictly via verified Firebase auth context
+  const callerUid = context.auth ? context.auth.uid : null;
   if (!callerUid) {
     throw new functions.https.HttpsError(
       'unauthenticated',
